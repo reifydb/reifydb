@@ -7,9 +7,15 @@ authors.workspace = true
 repository.workspace = true
 description = "Common infrastructure for HTTP and WebSocket server subsystems"
 
+[features]
+default = ["native"]
+native = ["reifydb-core/native", "reifydb-engine/tokio", "reifydb-runtime/native"]
+wasm = ["reifydb-core/wasm", "reifydb-engine/wasm", "reifydb-runtime/wasm"]
+
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
 
 futures-util = { workspace = true }

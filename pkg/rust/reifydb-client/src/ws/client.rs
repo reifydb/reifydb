@@ -2,20 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 use std::{collections::HashMap, sync::Arc};
 
-use futures_util::{SinkExt, StreamExt};
-use reifydb_type::{
-	error::{Error, diagnostic, diagnostic::internal::internal},
-	params::Params,
-};
-use tokio::sync::{Mutex, mpsc, oneshot};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
-
 use crate::{
-	AuthRequest, ChangePayload, CommandRequest, QueryRequest, Request, RequestPayload, Response, ResponsePayload,
-	ServerPush, SubscribeRequest, UnsubscribeRequest,
-	session::{CommandResult, QueryResult, parse_command_response, parse_query_response},
-	utils::generate_request_id,
+	session::{parse_command_response, parse_query_response, CommandResult, QueryResult}, utils::generate_request_id, AuthRequest, ChangePayload, CommandRequest, QueryRequest, Request, RequestPayload,
+	Response, ResponsePayload, ServerPush,
+	SubscribeRequest,
+	UnsubscribeRequest,
 };
+use futures_util::{SinkExt, StreamExt};
+use reifydb_type::{error::Error, params::Params};
+use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<Response>>>>;
 
@@ -51,9 +47,7 @@ impl WsClient {
 			url.to_string()
 		};
 
-		let (ws_stream, _) = connect_async(&url).await.map_err(|e| {
-			Error(diagnostic::internal::internal(format!("Failed to connect to WebSocket: {}", e)))
-		})?;
+		let (ws_stream, _) = connect_async(&url).await.unwrap(); // FIXME better error handling
 
 		let (write, read) = ws_stream.split();
 
@@ -184,7 +178,8 @@ impl WsClient {
 				Ok(())
 			}
 			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
-			_ => Err(Error(internal("Unexpected response type for auth"))),
+			// _ => Err(Error(internal("Unexpected response type for auth"))),
+			_ => panic!("Unexpected response type for auth"), // FIXME better error handling
 		}
 	}
 
@@ -280,7 +275,8 @@ impl WsClient {
 		match response.payload {
 			ResponsePayload::Subscribed(sub) => Ok(sub.subscription_id),
 			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
-			_ => Err(Error(internal("Unexpected response type for subscribe"))),
+			// _ => Err(Error(internal("Unexpected response type for subscribe"))),
+			_ => panic!("Unexpected response type for subscribe"), // FIXME better error handling
 		}
 	}
 
@@ -301,7 +297,8 @@ impl WsClient {
 		match response.payload {
 			ResponsePayload::Unsubscribed(_) => Ok(()),
 			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
-			_ => Err(Error(internal("Unexpected response type for unsubscribe"))),
+			// _ => Err(Error(internal("Unexpected response type for unsubscribe"))),
+			_ => panic!("Unexpected response type for unsubscribe"), // FIXME better error handling
 		}
 	}
 
@@ -324,9 +321,9 @@ impl WsClient {
 	async fn send_request(&self, request: Request) -> Result<Response, Error> {
 		let (tx, rx) = oneshot::channel();
 
-		self.request_tx.send((request, tx)).await.map_err(|_| Error(internal("Connection closed")))?;
+		self.request_tx.send((request, tx)).await.unwrap(); // FIXME better error handling
 
-		rx.await.map_err(|_| Error(internal("Response channel closed")))
+		Ok(rx.await.unwrap()) // FIXME better error handling
 	}
 
 	/// Close the WebSocket connection gracefully.

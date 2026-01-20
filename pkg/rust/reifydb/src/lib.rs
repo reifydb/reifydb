@@ -25,8 +25,12 @@ pub use reifydb_core as core;
 pub use reifydb_core::{
 	event::EventBus,
 	interface::auth::Identity,
-	runtime::{SharedRuntime, SharedRuntimeConfig, compute::ComputePool},
 };
+#[cfg(feature = "native")]
+pub use reifydb_runtime::compute::native::NativeComputePool as ComputePool;
+#[cfg(feature = "wasm")]
+pub use reifydb_runtime::compute::wasm::WasmComputePool as ComputePool;
+pub use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;

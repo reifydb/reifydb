@@ -5,7 +5,8 @@ use reifydb_catalog::catalog::view::ViewToCreate;
 use reifydb_core::{interface::catalog::change::CatalogTrackViewChangeOperations, value::column::columns::Columns};
 use reifydb_rql::plan::physical::CreateTransactionalViewNode;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::{error::diagnostic::catalog::view_already_exists, return_error, value::Value};
+use reifydb_type::{return_error, value::Value};
+use reifydb_core::error::diagnostic::catalog::view_already_exists;
 
 use crate::execute::Executor;
 

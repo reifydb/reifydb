@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_core::error::diagnostic::engine::frame_error;
+use reifydb_core::value::column::{data::ColumnData, Column};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 use reifydb_type::{
 	err,
 	error::diagnostic::{
-		engine::frame_error,
 		operator,
 		operator::{
 			not_can_not_applied_to_number, not_can_not_applied_to_temporal, not_can_not_applied_to_uuid,
@@ -15,7 +15,7 @@ use reifydb_type::{
 	value::{decimal::Decimal, int::Int, uint::Uint},
 };
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator, evaluate};
+use crate::evaluate::column::{evaluate, ColumnEvaluationContext, StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
 	pub(crate) fn prefix<'a>(

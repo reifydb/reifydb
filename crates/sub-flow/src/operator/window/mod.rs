@@ -6,6 +6,7 @@ use std::rc::Rc;
 use reifydb_core::{
 	common::{WindowSize, WindowSlide, WindowTimeMode, WindowType},
 	interface::catalog::flow::FlowNodeId,
+	internal,
 };
 use serde::{Deserialize, Serialize};
 
@@ -34,22 +35,21 @@ use reifydb_core::{
 	},
 	row::Row,
 	util::{clock, encoding::keycode::serializer::KeySerializer},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{columns::Columns, data::ColumnData, Column},
 };
 use reifydb_engine::{
-	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	evaluate::{column::StandardColumnEvaluator, ColumnEvaluationContext},
 	stack::Stack,
 };
-use reifydb_hash::{Hash128, xxh::xxh3_128};
-use reifydb_rql::expression::{Expression, name::column_name_from_expression};
+use reifydb_hash::{xxh::xxh3_128, Hash128};
+use reifydb_rql::expression::{name::column_name_from_expression, Expression};
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
-	internal,
 	params::Params,
 	util::cowvec::CowVec,
-	value::{Value, blob::Blob, row_number::RowNumber, r#type::Type},
+	value::{blob::Blob, r#type::Type, row_number::RowNumber, Value},
 };
 
 use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
@@ -251,13 +251,11 @@ impl WindowOperator {
 							let value = col.data().get_value(row_idx);
 							// Convert value to u64 timestamp
 							let ts = match value {
-								reifydb_type::value::Value::Int8(v) => v as u64,
-								reifydb_type::value::Value::Uint8(v) => v,
-								reifydb_type::value::Value::Int4(v) => v as u64,
-								reifydb_type::value::Value::Uint4(v) => v as u64,
-								reifydb_type::value::Value::DateTime(dt) => {
-									dt.timestamp_millis() as u64
-								}
+								Value::Int8(v) => v as u64,
+								Value::Uint8(v) => v,
+								Value::Int4(v) => v as u64,
+								Value::Uint4(v) => v as u64,
+								Value::DateTime(dt) => dt.timestamp_millis() as u64,
 								_ => {
 									return Err(Error(internal!(
 										"Cannot convert {:?} to timestamp",

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{error::diagnostic::operation, return_error};
+use reifydb_core::error::diagnostic::operation;
+use reifydb_type::return_error;
 
 use crate::ast::{
 	ast::{Ast, AstLiteral, AstTake},

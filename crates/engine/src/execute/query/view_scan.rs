@@ -56,7 +56,7 @@ impl ViewScanNode {
 
 		let stored_ctx = self.context.as_ref().expect("ViewScanNode context not set");
 		let schema = stored_ctx.executor.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-			reifydb_type::error!(reifydb_type::error::diagnostic::internal::internal(format!(
+			reifydb_type::error!(reifydb_core::error::diagnostic::internal::internal(format!(
 				"Schema with fingerprint {:?} not found for view {}",
 				fingerprint,
 				self.view.def().name

@@ -193,7 +193,7 @@ fn execute_table_insert<V: ValidationMode>(
 		for (idx, col) in table.columns.iter().enumerate() {
 			if let Some(dict_id) = col.dictionary_id {
 				let dictionary = catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-					reifydb_type::internal_error!(
+					reifydb_core::internal_error!(
 						"Dictionary {:?} not found for column {}",
 						dict_id,
 						col.name
@@ -245,7 +245,7 @@ fn execute_table_insert<V: ValidationMode>(
 			if txn.contains_key(&index_entry_key.encode())? {
 				let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
 				reifydb_type::return_error!(
-					reifydb_type::error::diagnostic::index::primary_key_violation(
+					reifydb_core::error::diagnostic::index::primary_key_violation(
 						Fragment::None,
 						table.name.clone(),
 						key_columns,
@@ -306,7 +306,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		for (idx, col) in ringbuffer.columns.iter().enumerate() {
 			if let Some(dict_id) = col.dictionary_id {
 				let dictionary = catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-					reifydb_type::internal_error!(
+					reifydb_core::internal_error!(
 						"Dictionary {:?} not found for column {}",
 						dict_id,
 						col.name

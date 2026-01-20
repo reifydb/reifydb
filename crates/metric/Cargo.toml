@@ -7,6 +7,11 @@ license.workspace = true
 repository.workspace = true
 description = "Storage and CDC metrics tracking for ReifyDB"
 
+[features]
+default = ["native"]
+native = ["reifydb-core/native", "reifydb-type/native"]
+wasm = ["reifydb-core/wasm", "reifydb-type/wasm"]
+
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-type = { workspace = true }

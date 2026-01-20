@@ -16,22 +16,69 @@ use std::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
 	},
-	thread::JoinHandle,
 	time::Duration,
 };
 
-use crossbeam_channel::{Sender, unbounded};
-use parking_lot::{Condvar, Mutex};
 use reifydb_core::common::CommitVersion;
+
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::condvar::native::Condvar;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::condvar::wasm::Condvar;
+
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::mutex::native::Mutex;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::mutex::wasm::Mutex;
+
+#[cfg(feature = "native")]
+use reifydb_runtime::worker::native::WorkerThread;
+
 use tracing::instrument;
 
 use crate::multi::watermark::closer::Closer;
 
+// WASM: use direct processing with RefCell
+#[cfg(feature = "wasm")]
+use std::cell::RefCell;
+
+// WASM-only: Sync wrapper for RefCell (safe because WASM is single-threaded)
+#[cfg(feature = "wasm")]
+pub(crate) struct SyncRefCell<T>(RefCell<T>);
+
+#[cfg(feature = "wasm")]
+unsafe impl<T> Sync for SyncRefCell<T> {}
+
+#[cfg(feature = "wasm")]
+impl<T> SyncRefCell<T> {
+	fn new(value: T) -> Self {
+		Self(RefCell::new(value))
+	}
+
+	fn borrow_mut(&self) -> std::cell::RefMut<'_, T> {
+		self.0.borrow_mut()
+	}
+}
+
+// Native implementation uses crossbeam channels
+#[cfg(feature = "native")]
+use crossbeam_channel::{Sender, unbounded};
+
+#[cfg(feature = "native")]
 pub struct WatermarkInner {
 	pub(crate) done_until: AtomicU64,
 	pub(crate) last_index: AtomicU64,
 	pub(crate) tx: Sender<Mark>,
-	pub(crate) processor_thread: Mutex<Option<JoinHandle<()>>>,
+	// Worker thread is stored but not used directly - it's managed via Drop
+	pub(crate) _worker: Mutex<Option<WorkerThread<()>>>,
+}
+
+// WASM implementation uses direct processing
+#[cfg(feature = "wasm")]
+pub struct WatermarkInner {
+	pub(crate) done_until: AtomicU64,
+	pub(crate) last_index: AtomicU64,
+	pub(crate) processor: SyncRefCell<crate::multi::watermark::process::WatermarkProcessor>,
 }
 
 #[derive(Debug)]
@@ -49,6 +96,7 @@ pub(crate) struct WaiterHandle {
 }
 
 impl WaiterHandle {
+	#[allow(dead_code)]
 	fn new() -> Self {
 		Self {
 			notified: Mutex::new(false),
@@ -62,6 +110,7 @@ impl WaiterHandle {
 		self.condvar.notify_one();
 	}
 
+	#[allow(dead_code)]
 	fn wait_timeout(&self, timeout: Duration) -> bool {
 		let mut guard = self.notified.lock();
 		if *guard {
@@ -97,6 +146,7 @@ impl Deref for WaterMark {
 
 impl WaterMark {
 	/// Create a new WaterMark with given name and closer.
+	#[cfg(feature = "native")]
 	#[instrument(name = "transaction::watermark::new", level = "debug", skip(closer), fields(task_name = %task_name))]
 	pub fn new(task_name: String, closer: Closer) -> Self {
 		let (tx, rx) = unbounded();
@@ -105,26 +155,39 @@ impl WaterMark {
 			done_until: AtomicU64::new(0),
 			last_index: AtomicU64::new(0),
 			tx,
-			processor_thread: Mutex::new(None),
+			_worker: Mutex::new(None),
 		});
 
 		let processing_inner = inner.clone();
 
-		// Spawn OS thread for watermark processing
-		let thread_handle = std::thread::Builder::new()
-			.name(task_name)
-			.spawn(move || {
-				processing_inner.process(rx, closer);
-			})
-			.expect("Failed to spawn watermark thread");
+		// Spawn worker thread using WorkerThread abstraction
+		// We use WorkerThread<()> since we manage our own crossbeam channel
+		let worker = WorkerThread::spawn(task_name, move |_receiver| {
+			processing_inner.process(rx, closer);
+		});
 
-		// Store the thread handle
-		*inner.processor_thread.lock() = Some(thread_handle);
+		*inner._worker.lock() = Some(worker);
+
+		Self(inner)
+	}
+
+	/// Create a new WaterMark with given name and closer.
+	#[cfg(feature = "wasm")]
+	#[instrument(name = "transaction::watermark::new", level = "debug", skip(closer, _task_name))]
+	pub fn new(_task_name: String, closer: Closer) -> Self {
+		use crate::multi::watermark::process::WatermarkProcessor;
+
+		let inner = Arc::new(WatermarkInner {
+			done_until: AtomicU64::new(0),
+			last_index: AtomicU64::new(0),
+			processor: SyncRefCell::new(WatermarkProcessor::new(closer)),
+		});
 
 		Self(inner)
 	}
 
 	/// Sets the last index to the given value.
+	#[cfg(feature = "native")]
 	#[instrument(name = "transaction::watermark::begin", level = "trace", skip(self), fields(version = version.0))]
 	pub fn begin(&self, version: CommitVersion) {
 		// Update last_index to the maximum
@@ -137,7 +200,22 @@ impl WaterMark {
 		});
 	}
 
+	/// Sets the last index to the given value.
+	#[cfg(feature = "wasm")]
+	#[instrument(name = "transaction::watermark::begin", level = "trace", skip(self), fields(version = version.0))]
+	pub fn begin(&self, version: CommitVersion) {
+		// Update last_index to the maximum
+		self.last_index.fetch_max(version.0, Ordering::SeqCst);
+
+		self.processor.borrow_mut().process_mark(Mark {
+			version: version.0,
+			waiter: None,
+			done: false,
+		}, &self.done_until);
+	}
+
 	/// Sets a single version as done.
+	#[cfg(feature = "native")]
 	#[instrument(name = "transaction::watermark::done", level = "trace", skip(self), fields(index = version.0))]
 	pub fn done(&self, version: CommitVersion) {
 		let _ = self.tx.send(Mark {
@@ -145,6 +223,17 @@ impl WaterMark {
 			waiter: None,
 			done: true,
 		});
+	}
+
+	/// Sets a single version as done.
+	#[cfg(feature = "wasm")]
+	#[instrument(name = "transaction::watermark::done", level = "trace", skip(self), fields(index = version.0))]
+	pub fn done(&self, version: CommitVersion) {
+		self.processor.borrow_mut().process_mark(Mark {
+			version: version.0,
+			waiter: None,
+			done: true,
+		}, &self.done_until);
 	}
 
 	/// Returns the maximum index that has the property that all indices
@@ -161,6 +250,7 @@ impl WaterMark {
 
 	/// Waits until the given index is marked as done with a specified
 	/// timeout.
+	#[cfg(feature = "native")]
 	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
 		if self.done_until.load(Ordering::SeqCst) >= index.0 {
 			return true;
@@ -183,6 +273,15 @@ impl WaterMark {
 		// Wait with timeout using condvar
 		waiter.wait_timeout(timeout)
 	}
+
+	/// Waits until the given index is marked as done with a specified
+	/// timeout.
+	#[cfg(feature = "wasm")]
+	pub fn wait_for_mark_timeout(&self, index: CommitVersion, _timeout: Duration) -> bool {
+		// In WASM, processing is synchronous so marks are immediately processed
+		// Just check if the version is already done
+		self.done_until.load(Ordering::SeqCst) >= index.0
+	}
 }
 
 #[cfg(test)]
@@ -190,8 +289,13 @@ pub mod tests {
 	use std::{
 		sync::atomic::AtomicUsize,
 		thread::sleep,
-		time::{Duration, Instant},
+		time::Duration,
 	};
+
+	#[cfg(feature = "native")]
+	use reifydb_runtime::time::native::Instant;
+	#[cfg(feature = "wasm")]
+	use reifydb_runtime::time::wasm::Instant;
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;

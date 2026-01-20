@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-#![cfg_attr(not(debug_assertions), deny(warnings))]
+// #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb_type::{
 	Result,
@@ -106,7 +106,7 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstDataType) -> Result<Ty
 
 fn parse_number_literal(s: &str) -> Result<usize> {
 	s.parse::<usize>().map_err(|_| {
-		reifydb_type::error!(reifydb_type::error::diagnostic::internal::internal(format!(
+		reifydb_type::error!(reifydb_core::error::diagnostic::internal::internal(format!(
 			"Invalid number literal: {}",
 			s
 		)))

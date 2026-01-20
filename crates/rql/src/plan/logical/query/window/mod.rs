@@ -207,7 +207,7 @@ impl Compiler {
 		if duration_str.ends_with("ms") {
 			let number_part = &duration_str[..duration_str.len() - 2];
 			let number: u64 = number_part.parse().map_err(|_| {
-				reifydb_type::error::Error(reifydb_type::error::diagnostic::internal::internal(
+				reifydb_type::error::Error(reifydb_core::error::diagnostic::internal::internal(
 					"Invalid duration number",
 				))
 			})?;
@@ -218,7 +218,7 @@ impl Compiler {
 		if let Some(suffix) = duration_str.chars().last() {
 			let number_part = &duration_str[..duration_str.len() - 1];
 			let number: u64 = number_part.parse().map_err(|_| {
-				reifydb_type::error::Error(reifydb_type::error::diagnostic::internal::internal(
+				reifydb_type::error::Error(reifydb_core::error::diagnostic::internal::internal(
 					"Invalid duration number",
 				))
 			})?;
@@ -230,7 +230,7 @@ impl Compiler {
 				'd' => Duration::from_secs(number * 86400),
 				_ => {
 					return Err(reifydb_type::error::Error(
-						reifydb_type::error::diagnostic::internal::internal(
+						reifydb_core::error::diagnostic::internal::internal(
 							"Invalid duration suffix",
 						),
 					));
@@ -239,7 +239,7 @@ impl Compiler {
 
 			Ok(duration)
 		} else {
-			Err(reifydb_type::error::Error(reifydb_type::error::diagnostic::internal::internal(
+			Err(reifydb_type::error::Error(reifydb_core::error::diagnostic::internal::internal(
 				"Invalid duration format",
 			)))
 		}

@@ -5,7 +5,8 @@ use reifydb_core::interface::resolved::{
 	ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedSequence, ResolvedTable, SequenceDef,
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
-use reifydb_type::{error::diagnostic::catalog::table_not_found, fragment::Fragment, return_error};
+use reifydb_core::error::diagnostic::catalog::table_not_found;
+use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::plan::{
 	logical::{self, resolver::DEFAULT_NAMESPACE},

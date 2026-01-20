@@ -9,6 +9,7 @@ description = "Column-oriented storage for analytical queries in ReifyDB"
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-runtime = {workspace = true}
 reifydb-type = { workspace = true }
 reifydb-compression = { workspace = true }
 

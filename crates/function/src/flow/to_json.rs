@@ -5,11 +5,11 @@ use std::time::Duration;
 
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	internal,
 	sort::SortKey,
 	value::column::data::ColumnData,
 };
 use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
-use reifydb_type::internal;
 use serde::Serialize;
 
 use crate::{ScalarFunction, ScalarFunctionContext};
@@ -300,7 +300,7 @@ pub mod tests {
 			identifier::{ColumnIdentifier, ColumnPrimitive},
 		},
 		sort::{SortDirection, SortKey},
-		value::column::{Column, columns::Columns, data::ColumnData},
+		value::column::{columns::Columns, data::ColumnData, Column},
 	};
 	use reifydb_rql::{
 		expression::{

@@ -2,5 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod memory;
+
+#[cfg(feature = "sqlite")]
 pub mod sqlite;
+
 pub mod tier;

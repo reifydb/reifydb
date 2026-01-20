@@ -17,8 +17,9 @@ use reifydb_transaction::{
 	change::TransactionalTableChanges,
 	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
 };
+use reifydb_core::{error::diagnostic::catalog::table_not_found, internal};
 use reifydb_type::{
-	error, error::diagnostic::catalog::table_not_found, fragment::Fragment, internal,
+	error, fragment::Fragment,
 	value::constraint::TypeConstraint,
 };
 use tracing::{instrument, warn};

@@ -4,7 +4,11 @@
 use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
-use parking_lot::RwLock;
+
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::rwlock::native::RwLock;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::rwlock::wasm::RwLock;
 use reifydb_core::{
 	delta::Delta,
 	encoded::{encoded::EncodedValues, key::EncodedKey},

@@ -25,8 +25,9 @@ use reifydb_sub_server::{
 	response::{ResponseColumn, ResponseFrame},
 	state::AppState,
 };
+use reifydb_core::error::diagnostic::internal::internal;
 use reifydb_type::{
-	error::{Error, diagnostic::internal::internal},
+	error::Error,
 	fragment::Fragment,
 };
 use tokio::sync::mpsc;

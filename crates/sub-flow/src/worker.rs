@@ -8,19 +8,19 @@ use std::{
 	thread::{JoinHandle, spawn},
 };
 
-use WorkerRequest::Process;
-use crossbeam_channel::{Receiver, Sender, bounded};
-use reifydb_catalog::catalog::Catalog;
-use reifydb_engine::engine::StandardEngine;
-use reifydb_rql::flow::flow::FlowDag;
-use reifydb_type::{Result, error::Error, internal};
-use tracing::{Span, error, instrument};
-
 use crate::{
 	FlowEngine,
 	instruction::WorkerBatch,
 	transaction::{FlowTransaction, pending::PendingWrites},
 };
+use WorkerRequest::Process;
+use crossbeam_channel::{Receiver, Sender, bounded};
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::internal;
+use reifydb_engine::engine::StandardEngine;
+use reifydb_rql::flow::flow::FlowDag;
+use reifydb_type::{Result, error::Error};
+use tracing::{Span, error, instrument};
 
 /// Message types for worker communication.
 enum WorkerRequest {

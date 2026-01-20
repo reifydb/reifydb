@@ -6,6 +6,9 @@
 //! This module provides an asynchronous drop processing worker that executes
 //! version cleanup operations off the critical commit path.
 
+use std::time::Duration;
+
+#[cfg(feature = "native")]
 use std::{
 	collections::HashMap,
 	sync::{
@@ -13,25 +16,38 @@ use std::{
 		atomic::{AtomicBool, Ordering},
 	},
 	thread::{self, JoinHandle},
-	time::Duration,
 };
 
+#[cfg(feature = "native")]
 use crossbeam_channel::{Receiver, Sender, bounded};
-use reifydb_core::{
-	common::CommitVersion,
-	encoded::key::EncodedKey,
-	event::{
-		EventBus,
-		metric::{StorageDrop, StorageStatsRecordedEvent},
-	},
-};
-use reifydb_type::util::cowvec::CowVec;
+
+#[cfg(feature = "native")]
 use tracing::{debug, error, trace};
 
+#[cfg(feature = "native")]
+use reifydb_runtime::time::native::Instant;
+
+use reifydb_core::{
+	common::CommitVersion,
+	event::EventBus,
+};
+
+#[cfg(feature = "native")]
+use reifydb_core::{
+	encoded::key::EncodedKey,
+	event::metric::{StorageDrop, StorageStatsRecordedEvent},
+};
+
+use reifydb_type::util::cowvec::CowVec;
+
+#[cfg(feature = "native")]
 use super::drop::find_keys_to_drop;
+#[cfg(feature = "native")]
+use crate::tier::TierStorage;
+
 use crate::{
 	hot::storage::HotStorage,
-	tier::{EntryKind, TierStorage},
+	tier::EntryKind,
 };
 
 /// Configuration for the drop worker.
@@ -71,6 +87,7 @@ pub struct DropRequest {
 }
 
 /// Control messages for the drop worker.
+#[cfg(feature = "native")]
 enum DropMessage {
 	/// A drop request to process.
 	Request(DropRequest),
@@ -78,13 +95,21 @@ enum DropMessage {
 	Shutdown,
 }
 
-/// Background worker for processing drop operations.
+/// Background worker for processing drop operations (native with threads).
+#[cfg(feature = "native")]
 pub struct DropWorker {
 	sender: Sender<DropMessage>,
 	running: Arc<AtomicBool>,
 	worker: Option<JoinHandle<()>>,
 }
 
+/// No-op drop worker for WASM (single-threaded).
+#[cfg(feature = "wasm")]
+pub struct DropWorker {
+	_config: DropWorkerConfig,
+}
+
+#[cfg(feature = "native")]
 impl DropWorker {
 	/// Create and start a new drop worker.
 	pub fn new(config: DropWorkerConfig, storage: HotStorage, event_bus: EventBus) -> Self {
@@ -152,7 +177,7 @@ impl DropWorker {
 		debug!("Drop worker started");
 
 		let mut pending_requests: Vec<DropRequest> = Vec::with_capacity(config.batch_size);
-		let mut last_flush = std::time::Instant::now();
+		let mut last_flush = Instant::now();
 
 		while running.load(Ordering::Acquire) {
 			// Use timeout to allow periodic flush checks
@@ -169,7 +194,7 @@ impl DropWorker {
 									&mut pending_requests,
 									&event_bus,
 								);
-								last_flush = std::time::Instant::now();
+								last_flush = Instant::now();
 							}
 						}
 						DropMessage::Shutdown => {
@@ -198,7 +223,7 @@ impl DropWorker {
 			// Periodic flush
 			if !pending_requests.is_empty() && last_flush.elapsed() >= config.flush_interval {
 				Self::process_batch(&storage, &mut pending_requests, &event_bus);
-				last_flush = std::time::Instant::now();
+				last_flush = Instant::now();
 			}
 		}
 
@@ -269,8 +294,37 @@ impl DropWorker {
 	}
 }
 
+#[cfg(feature = "native")]
 impl Drop for DropWorker {
 	fn drop(&mut self) {
 		self.stop();
+	}
+}
+
+// ===== WASM Implementation =====
+
+#[cfg(feature = "wasm")]
+impl DropWorker {
+	/// Create a no-op drop worker for WASM (no background threads).
+	pub fn new(config: DropWorkerConfig, _storage: HotStorage, _event_bus: EventBus) -> Self {
+		Self { _config: config }
+	}
+
+	/// Queue a drop request (no-op in WASM).
+	#[inline]
+	pub fn queue_drop(
+		&self,
+		_table: crate::tier::EntryKind,
+		_key: CowVec<u8>,
+		_up_to_version: Option<CommitVersion>,
+		_keep_last_versions: Option<usize>,
+		_pending_version: Option<CommitVersion>,
+	) {
+		// No-op in WASM - drops are not processed in background
+	}
+
+	/// Stop the worker (no-op in WASM).
+	pub fn stop(&mut self) {
+		// No-op in WASM
 	}
 }

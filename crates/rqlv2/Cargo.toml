@@ -7,6 +7,25 @@ license.workspace = true
 repository.workspace = true
 description = "ReifyDB Query Language (RQL)"
 
+[features]
+default = ["native"]
+native = [
+    "reifydb-catalog/native",
+    "reifydb-core/native",
+    "reifydb-function/native",
+    "reifydb-hash/native",
+    "reifydb-transaction/native",
+    "reifydb-type/native",
+]
+wasm = [
+    "reifydb-catalog/wasm",
+    "reifydb-core/wasm",
+    "reifydb-function/wasm",
+    "reifydb-hash/wasm",
+    "reifydb-transaction/wasm",
+    "reifydb-type/wasm",
+]
+
 [dependencies]
 bumpalo = { workspace = true }
 reifydb-catalog = { workspace = true }

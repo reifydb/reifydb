@@ -51,7 +51,7 @@ pub mod tests {
 	use std::time::Duration;
 
 	use reifydb_type::value::{identity::IdentityId, r#type::Type};
-	use tokio::time::sleep;
+	use std::thread::sleep;
 
 	use crate::encoded::schema::Schema;
 
@@ -114,8 +114,8 @@ pub mod tests {
 		assert_eq!(id.get_version_num(), 7);
 	}
 
-	#[tokio::test]
-	async fn test_timestamp_ordering() {
+	#[test]
+	fn test_timestamp_ordering() {
 		let schema = Schema::testing(&[Type::IdentityId]);
 
 		// Generate Identity IDs in sequence - they should be ordered by
@@ -130,7 +130,7 @@ pub mod tests {
 			ids.push(id);
 
 			// Small delay to ensure different timestamps
-			sleep(Duration::from_millis(1)).await;
+			sleep(Duration::from_millis(1));
 		}
 
 		// Verify that Identity IDs are ordered (timestamp-based)
@@ -267,13 +267,13 @@ pub mod tests {
 		assert_eq!(retrieved_bytes.len(), 16);
 	}
 
-	#[tokio::test]
-	async fn test_time_based_properties() {
+	#[test]
+	fn test_time_based_properties() {
 		let schema = Schema::testing(&[Type::IdentityId]);
 
 		// Generate Identity IDs at different times
 		let id1 = IdentityId::generate();
-		sleep(Duration::from_millis(2)).await;
+		sleep(Duration::from_millis(2));
 		let id2 = IdentityId::generate();
 
 		let mut row1 = schema.allocate();

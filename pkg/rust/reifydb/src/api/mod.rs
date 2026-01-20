@@ -3,19 +3,23 @@
 
 use std::time::Duration;
 
-use reifydb_core::{event::EventBus, runtime::compute::ComputePool};
+use reifydb_core::event::EventBus;
+#[cfg(feature = "native")]
+use reifydb_runtime::compute::native::NativeComputePool as ComputePool;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::compute::wasm::WasmComputePool as ComputePool;
 use reifydb_store_multi::{
-	MultiStore,
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
 	hot::{
 		sqlite::config::{DbPath, SqliteConfig},
 		storage::HotStorage,
 	},
+	MultiStore,
 };
 use reifydb_store_single::{
-	SingleStore,
 	config::{HotConfig as SingleHotConfig, SingleStoreConfig},
 	hot::sqlite::config::SqliteConfig as SingleSqliteConfig,
+	SingleStore,
 };
 use reifydb_transaction::{multi::transaction::TransactionMulti, single::TransactionSingle};
 
@@ -48,11 +52,11 @@ impl StorageFactory {
 }
 
 /// Internal: Create in-memory storage with the given compute pool.
-fn create_memory_store(compute_pool: ComputePool) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
+fn create_memory_store(_compute_pool: ComputePool) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
 	let eventbus = EventBus::new();
 
 	// Create multi-version store
-	let multi_storage = HotStorage::memory(compute_pool.clone());
+	let multi_storage = HotStorage::memory();
 	let multi_store = MultiStore::standard(MultiStoreConfig {
 		hot: Some(MultiHotConfig {
 			storage: multi_storage,
@@ -66,7 +70,7 @@ fn create_memory_store(compute_pool: ComputePool) -> (MultiStore, SingleStore, T
 	});
 
 	// Create single-version store
-	let single_storage = reifydb_store_single::hot::tier::HotTier::memory(compute_pool);
+	let single_storage = reifydb_store_single::hot::tier::HotTier::memory();
 	let single_store = SingleStore::standard(SingleStoreConfig {
 		hot: Some(SingleHotConfig {
 			storage: single_storage,

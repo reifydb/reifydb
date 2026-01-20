@@ -7,6 +7,10 @@ license = "MIT"
 repository.workspace = true
 description = "Core type system and value representations for ReifyDB"
 
+[features]
+default = ["native"]
+native = ["reifydb-runtime/native"]
+wasm = ["reifydb-runtime/wasm"]
 
 [dependencies]
 serde = { workspace = true }
@@ -16,6 +20,8 @@ uuid = { workspace = true }
 num-bigint = { workspace = true, features = ["serde"] }
 bigdecimal = { workspace = true, features = ["serde"] }
 num-traits = { workspace = true }
+
+reifydb-runtime = { workspace = true }
 
 [dev-dependencies]
 postcard = { workspace = true }

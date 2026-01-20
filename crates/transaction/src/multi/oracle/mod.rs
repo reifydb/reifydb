@@ -4,11 +4,19 @@
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	sync::Arc,
-	time::Instant,
 };
 
+#[cfg(feature = "native")]
+use reifydb_runtime::time::native::Instant;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::time::wasm::Instant;
+
 use cleanup::cleanup_old_windows;
-use parking_lot::RwLock;
+
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::rwlock::native::RwLock;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::rwlock::wasm::RwLock;
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
 use reifydb_type::Result;
 use tracing::{Span, instrument};

@@ -14,14 +14,11 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::InsertTableNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
-use reifydb_type::{
+use reifydb_core::{
 	error::diagnostic::{catalog::table_not_found, index::primary_key_violation},
-	fragment::Fragment,
 	internal_error,
-	params::Params,
-	return_error,
-	value::{Value, r#type::Type},
 };
+use reifydb_type::{fragment::Fragment, params::Params, return_error, value::{Value, r#type::Type}};
 use tracing::instrument;
 
 use super::{primary_key, schema::get_or_create_table_schema};

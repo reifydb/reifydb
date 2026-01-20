@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::flow::{FlowEdgeDef, FlowEdgeId};
+use reifydb_core::{interface::catalog::flow::{FlowEdgeDef, FlowEdgeId}, internal};
 use reifydb_transaction::standard::IntoStandardTransaction;
-use reifydb_type::{error::Error, internal};
+use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 

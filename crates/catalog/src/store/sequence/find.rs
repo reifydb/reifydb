@@ -5,8 +5,8 @@ use reifydb_core::{
 	interface::catalog::id::{NamespaceId, SequenceId},
 	key::system_sequence::SystemSequenceKey,
 };
+use reifydb_core::return_internal_error;
 use reifydb_transaction::standard::IntoStandardTransaction;
-use reifydb_type::return_internal_error;
 
 use crate::{
 	CatalogStore,

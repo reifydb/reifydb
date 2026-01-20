@@ -3,9 +3,9 @@
 
 use reifydb_core::{encoded::schema::Schema, interface::catalog::flow::FlowNodeId};
 use reifydb_hash::Hash128;
+use reifydb_core::internal;
 use reifydb_type::{
 	error::Error,
-	internal,
 	value::{blob::Blob, r#type::Type},
 };
 

@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::BinaryHeap, sync::Arc, time::Instant};
 
-use reifydb_core::runtime::SharedRuntime;
+use reifydb_runtime::SharedRuntime;
 use reifydb_engine::engine::StandardEngine;
 use tokio::sync::mpsc;
 

@@ -8,7 +8,8 @@ use reifydb_transaction::{
 	change::TransactionalNamespaceChanges,
 	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
 };
-use reifydb_type::{error, error::diagnostic::catalog::namespace_not_found, fragment::Fragment, internal};
+use reifydb_type::{error, fragment::Fragment};
+use reifydb_core::{error::diagnostic::catalog::namespace_not_found, internal};
 use tracing::{instrument, warn};
 
 use crate::{CatalogStore, catalog::Catalog, store::namespace::create::NamespaceToCreate as StoreNamespaceToCreate};

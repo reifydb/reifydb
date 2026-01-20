@@ -9,10 +9,10 @@ use reifydb_core::{
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
+use reifydb_core::internal_error;
 use reifydb_transaction::standard::StandardTransaction;
 use reifydb_type::{
 	fragment::Fragment,
-	internal_error,
 	value::{Value, dictionary::DictionaryEntryId, r#type::Type},
 };
 use tracing::instrument;

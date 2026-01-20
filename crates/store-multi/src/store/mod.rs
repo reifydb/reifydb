@@ -3,8 +3,13 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
+#[cfg(feature = "native")]
 use parking_lot::Mutex;
-use reifydb_core::{event::EventBus, runtime::compute::ComputePool};
+
+#[cfg(feature = "wasm")]
+use std::sync::Mutex;
+
+use reifydb_core::event::EventBus;
 use tracing::instrument;
 
 use crate::{HotConfig, cold::ColdStorage, config::MultiStoreConfig, hot::storage::HotStorage, warm::WarmStorage};
@@ -82,7 +87,7 @@ impl StandardMultiStore {
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
 		Self::new(MultiStoreConfig {
 			hot: Some(HotConfig {
-				storage: HotStorage::memory(ComputePool::new(1, 1)),
+				storage: HotStorage::memory(),
 				retention_period: Duration::from_millis(100),
 			}),
 			warm: None,

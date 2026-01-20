@@ -4,15 +4,19 @@
 use std::mem::take;
 
 use indexmap::IndexMap;
-use parking_lot::{RwLock, RwLockWriteGuard};
+
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::rwlock::native::{RwLock, RwLockWriteGuard};
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::rwlock::wasm::{RwLock, RwLockWriteGuard};
 use reifydb_core::interface::store::{
 	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionValues,
 };
 use reifydb_type::{
 	error,
-	error::diagnostic::transaction::key_out_of_scope,
 	util::{cowvec::CowVec, hex},
 };
+use reifydb_core::error::diagnostic::transaction::key_out_of_scope;
 
 use super::*;
 

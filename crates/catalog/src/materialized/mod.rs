@@ -33,7 +33,7 @@ use reifydb_core::{
 	retention::RetentionPolicy,
 	util::multi::MultiVersionContainer,
 };
-use reifydb_type::error::diagnostic::catalog::virtual_table_already_exists;
+use reifydb_core::error::diagnostic::catalog::virtual_table_already_exists;
 
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
@@ -178,7 +178,7 @@ impl MaterializedCatalog {
 				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
 				.unwrap_or_else(|| format!("{}", namespace.0));
 			Err(reifydb_type::error::Error(
-				reifydb_type::error::diagnostic::catalog::virtual_table_not_found(&ns_name, name),
+				reifydb_core::error::diagnostic::catalog::virtual_table_not_found(&ns_name, name),
 			))
 		}
 	}

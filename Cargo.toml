@@ -15,6 +15,7 @@ members = [
     "crates/macro",
     "crates/macro-impl",
     "crates/abi",
+    "crates/runtime",
     "crates/sdk",
     "crates/rql",
     "crates/rqlv2",
@@ -65,6 +66,7 @@ default-members = [
     "crates/macro",
     "crates/macro-impl",
     "crates/abi",
+    "crates/runtime",
     "crates/sdk",
     "crates/rql",
     "crates/rqlv2",
@@ -137,26 +139,27 @@ reifydb-client = { version = "0.2.0", path = "pkg/rust/reifydb-client" }
 reifydb-client-derive = { version = "0.2.0", path = "pkg/rust/reifydb-client-derive" }
 
 # Internal crates
-reifydb-auth = { version = "0.2.0", path = "crates/auth" }
-reifydb-function = { version = "0.2.0", path = "crates/function" }
-reifydb-catalog = { version = "0.2.0", path = "crates/catalog" }
+reifydb-auth = { version = "0.2.0", path = "crates/auth", default-features = false }
+reifydb-function = { version = "0.2.0", path = "crates/function", default-features = false }
+reifydb-catalog = { version = "0.2.0", path = "crates/catalog", default-features = false }
 reifydb-cdc = { version = "0.2.0", path = "crates/cdc", default-features = false }
 reifydb-compression = { version = "0.2.0", path = "crates/compression" }
-reifydb-core = { version = "0.2.0", path = "crates/core" }
+reifydb-core = { version = "0.2.0", path = "crates/core", default-features = false }
 reifydb-engine = { version = "0.2.0", path = "crates/engine" }
-reifydb-hash = { version = "0.2.0", path = "crates/hash" }
-reifydb-metric = { version = "0.2.0", path = "crates/metric" }
+reifydb-hash = { version = "0.2.0", path = "crates/hash", default-features = false }
+reifydb-metric = { version = "0.2.0", path = "crates/metric", default-features = false }
 reifydb-abi = { version = "0.2.0", path = "crates/abi" }
+reifydb-runtime = { version = "0.2.0", path = "crates/runtime", default-features = false }
 reifydb-sdk = { version = "0.2.0", path = "crates/sdk" }
-reifydb-rql = { version = "0.2.0", path = "crates/rql" }
-reifydb-rqlv2 = { version = "0.2.0", path = "crates/rqlv2" }
+reifydb-rql = { version = "0.2.0", path = "crates/rql", default-features = false }
+reifydb-rqlv2 = { version = "0.2.0", path = "crates/rqlv2", default-features = false }
 reifydb-store-column = { version = "0.2.0", path = "crates/store-column" }
-reifydb-store-multi = { version = "0.2.0", path = "crates/store-multi" }
-reifydb-store-single = { version = "0.2.0", path = "crates/store-single" }
+reifydb-store-multi = { version = "0.2.0", path = "crates/store-multi", default-features = false }
+reifydb-store-single = { version = "0.2.0", path = "crates/store-single", default-features = false }
 reifydb-testing = { version = "0.2.0", path = "crates/testing" }
-reifydb-transaction = { version = "0.2.0", path = "crates/transaction" }
-reifydb-type = { version = "0.2.0", path = "crates/type" }
-reifydb-vm = { version = "0.2.0", path = "crates/vm" }
+reifydb-transaction = { version = "0.2.0", path = "crates/transaction", default-features = false }
+reifydb-type = { version = "0.2.0", path = "crates/type", default-features = false }
+reifydb-vm = { version = "0.2.0", path = "crates/vm", default-features = false }
 reifydb-macro = { version = "0.2.0", path = "crates/macro" }
 reifydb-macro-impl = { version = "0.2.0", path = "crates/macro-impl" }
 
@@ -187,7 +190,7 @@ libc = { version = "0.2.175" }
 libloading = { version = "0.9" }
 
 once_cell = { version = "1.21.3" }
-uuid = { version = "1.19", default-features = false, features = ["v4", "v7", "serde", "std"] }
+uuid = { version = "1.19", default-features = false, features = ["v4", "v7", "serde", "std", "js"] }
 num-bigint = { version = "0.4.6", features = ["serde"] }
 bigdecimal = { version = "0.4.8", features = ["serde"] }
 num-traits = { version = "0.2.19" }

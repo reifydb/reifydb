@@ -21,8 +21,9 @@ use reifydb_core::{
 	key::schema::{SchemaFieldKey, SchemaKey},
 };
 use reifydb_transaction::{single::TransactionSingle, standard::IntoStandardTransaction};
+use reifydb_core::error::diagnostic::internal::internal;
 use reifydb_type::{
-	error::{Error, diagnostic::internal::internal},
+	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
 };
 

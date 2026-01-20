@@ -12,6 +12,7 @@ use crate::{
 		r#type::Type,
 	},
 };
+use crate::error::diagnostic::constraint::utf8_exceeds_max_bytes;
 
 pub mod bytes;
 pub mod precision;
@@ -122,10 +123,11 @@ impl TypeConstraint {
 		if value_type != self.base_type && value_type != Type::Undefined {
 			// For now, return a simple error - we'll create proper
 			// diagnostics later
-			return Err(crate::error!(crate::error::diagnostic::internal::internal(format!(
-				"Type mismatch: expected {}, got {}",
-				self.base_type, value_type
-			))));
+			// return Err(crate::error!(crate::error::diagnostic::internal::internal(format!(
+			// 	"Type mismatch: expected {}, got {}",
+			// 	self.base_type, value_type
+			// ))));
+			unimplemented!()
 		}
 
 		// If undefined, no further validation needed
@@ -141,7 +143,7 @@ impl TypeConstraint {
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
 						return Err(crate::error!(
-							crate::error::diagnostic::constraint::utf8_exceeds_max_bytes(
+							utf8_exceeds_max_bytes(
 								Fragment::None,
 								byte_len,
 								max_value

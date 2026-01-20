@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{error::diagnostic::operation::extend_multiple_expressions_without_braces, return_error};
+use reifydb_core::error::diagnostic::operation::extend_multiple_expressions_without_braces;
+use reifydb_type::return_error;
 
 use crate::ast::{ast::AstExtend, parse::Parser, tokenize::keyword::Keyword};
 

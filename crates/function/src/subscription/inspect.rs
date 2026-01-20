@@ -6,8 +6,9 @@ use reifydb_core::{
 	key::{Key, subscription_row::SubscriptionRowKey},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
+use reifydb_core::error::diagnostic::internal::internal;
 use reifydb_type::{
-	error::{Error, diagnostic::internal::internal},
+	error::Error,
 	fragment::Fragment,
 	value::uuid::parse::parse_uuid7,
 };

@@ -13,8 +13,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_core::error::diagnostic::catalog::dictionary_already_exists;
 use reifydb_type::{
-	error::diagnostic::catalog::dictionary_already_exists, fragment::Fragment, return_error, util::cowvec::CowVec,
+	fragment::Fragment, return_error, util::cowvec::CowVec,
 	value::r#type::Type,
 };
 

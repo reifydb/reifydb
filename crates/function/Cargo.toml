@@ -7,6 +7,23 @@ license.workspace = true
 repository.workspace = true
 description = "Function interfaces for ReifyDB"
 
+[features]
+default = ["native"]
+native = [
+    "reifydb-catalog/native",
+    "reifydb-core/native",
+    "reifydb-rql/native",
+    "reifydb-transaction/native",
+    "reifydb-type/native",
+]
+wasm = [
+    "reifydb-catalog/wasm",
+    "reifydb-core/wasm",
+    "reifydb-rql/wasm",
+    "reifydb-transaction/wasm",
+    "reifydb-type/wasm",
+]
+
 [dependencies]
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }

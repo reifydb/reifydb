@@ -3,8 +3,15 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use dashmap::DashMap;
-use parking_lot::RwLock;
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::rwlock::native::RwLock;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::rwlock::wasm::RwLock;
+
+#[cfg(feature = "native")]
+use reifydb_runtime::concurrent_map::native::ConcurrentMap;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::concurrent_map::wasm::ConcurrentMap;
 use reifydb_type::util::cowvec::CowVec;
 
 use crate::tier::EntryKind;
@@ -42,15 +49,17 @@ pub(super) fn entry_id_to_key(entry: EntryKind) -> String {
 	}
 }
 
-/// Table storage using DashMap for concurrent per-table access
+/// Table storage using ConcurrentMap for concurrent per-table access.
+///
+/// Uses DashMap on native platforms and Arc<RwLock<HashMap>> on WASM.
 pub(super) struct Entries {
-	pub(super) data: DashMap<String, Entry>,
+	pub(super) data: ConcurrentMap<String, Entry>,
 }
 
 impl Default for Entries {
 	fn default() -> Self {
 		Self {
-			data: DashMap::new(),
+			data: ConcurrentMap::new(),
 		}
 	}
 }

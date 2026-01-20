@@ -3,7 +3,8 @@
 
 use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::ParameterExpression;
-use reifydb_type::{error, error::diagnostic::engine, fragment::Fragment, value::Value};
+use reifydb_type::{error, fragment::Fragment, value::Value};
+use reifydb_core::error::diagnostic::engine;
 
 use super::StandardColumnEvaluator;
 use crate::evaluate::ColumnEvaluationContext;

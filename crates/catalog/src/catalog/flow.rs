@@ -10,7 +10,8 @@ use reifydb_transaction::{
 	change::TransactionalFlowChanges,
 	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
 };
-use reifydb_type::{error, fragment::Fragment, internal};
+use reifydb_core::internal;
+use reifydb_type::{error, fragment::Fragment};
 use tracing::{instrument, warn};
 
 use crate::{

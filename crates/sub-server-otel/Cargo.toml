@@ -10,6 +10,7 @@ description = "OpenTelemetry/Jaeger tracing subsystem for ReifyDB"
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-runtime = { workspace = true}
 reifydb-type = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
@@ -30,5 +31,7 @@ opentelemetry-otlp = { workspace = true, optional = true }
 tokio = { workspace = true }
 
 [features]
-default = ["otlp"]
+default = ["native", "otlp"]
+native = ["reifydb-core/native", "reifydb-engine/tokio", "reifydb-runtime/native"]
+wasm = ["reifydb-core/wasm", "reifydb-engine/wasm", "reifydb-runtime/wasm"]
 otlp = ["dep:opentelemetry-otlp"]

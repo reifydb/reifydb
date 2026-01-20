@@ -53,7 +53,8 @@ impl std::error::Error for FFIError {}
 /// Convert FFIError to reifydb_type::error::Error
 impl From<FFIError> for reifydb_type::error::Error {
 	fn from(err: FFIError) -> Self {
-		use reifydb_type::{error::Error, internal};
+		use reifydb_type::error::Error;
+		use reifydb_core::internal;
 		Error(internal!(format!("{}", err)))
 	}
 }

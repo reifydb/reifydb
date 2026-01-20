@@ -1,25 +1,46 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use core::mem::MaybeUninit;
-
 use crate::Hash160;
 
+// Use C FFI bindings for native builds
+#[cfg(feature = "native")]
+use core::mem::MaybeUninit;
+
+#[cfg(feature = "native")]
 pub mod binding;
+
+// Use pure Rust implementation for WASM builds
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 #[inline(always)]
 pub fn sha1(data: &[u8]) -> Hash160 {
-	let mut digest = [0u8; 20];
-	unsafe {
-		binding::SHA1(digest.as_mut_ptr(), data.as_ptr(), data.len() as u32);
+	#[cfg(feature = "native")]
+	{
+		let mut digest = [0u8; 20];
+		unsafe {
+			binding::SHA1(digest.as_mut_ptr(), data.as_ptr(), data.len() as u32);
+		}
+		Hash160(digest)
 	}
-	Hash160(digest)
+	#[cfg(feature = "wasm")]
+	{
+		let mut digest = [0u8; 20];
+		unsafe {
+			wasm::SHA1(digest.as_mut_ptr(), data.as_ptr(), data.len() as u32);
+		}
+		Hash160(digest)
+	}
 }
 
+// Native implementation uses C FFI
+#[cfg(feature = "native")]
 pub struct Sha1 {
 	ctx: binding::SHA1_CTX,
 }
 
+#[cfg(feature = "native")]
 impl Sha1 {
 	pub fn new() -> Self {
 		let mut ctx = MaybeUninit::<binding::SHA1_CTX>::uninit();
@@ -46,11 +67,16 @@ impl Sha1 {
 	}
 }
 
+#[cfg(feature = "native")]
 impl Default for Sha1 {
 	fn default() -> Self {
 		Self::new()
 	}
 }
+
+// WASM implementation uses pure Rust
+#[cfg(feature = "wasm")]
+pub use wasm::Sha1;
 
 #[cfg(test)]
 pub mod tests {

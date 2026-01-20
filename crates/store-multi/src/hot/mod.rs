@@ -3,5 +3,8 @@
 
 pub mod memory;
 pub mod result;
+
+#[cfg(feature = "sqlite")]
 pub mod sqlite;
+
 pub mod storage;

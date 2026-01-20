@@ -9,10 +9,14 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_core::{interface::auth::Identity, runtime::compute::ComputePool};
+use reifydb_core::interface::auth::Identity;
 use reifydb_engine::engine::StandardEngine;
+#[cfg(feature = "native")]
+use reifydb_runtime::compute::native::NativeComputePool as ComputePool;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::compute::wasm::WasmComputePool as ComputePool;
 use reifydb_type::{
-	error::{Error, diagnostic::Diagnostic},
+	error::{diagnostic::Diagnostic, Error},
 	params::Params,
 	value::frame::frame::Frame,
 };

@@ -3,7 +3,11 @@
 
 #[cfg(debug_assertions)]
 use std::cell::RefCell;
-use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(feature = "native")]
+use reifydb_runtime::time::native::now_nanos as runtime_now_nanos;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::time::wasm::now_nanos as runtime_now_nanos;
 
 use reifydb_type::value::datetime::DateTime;
 
@@ -14,7 +18,7 @@ thread_local! {
 }
 
 /// Get current time in nanoseconds since Unix epoch
-/// In release builds, this is a direct system call
+/// In release builds, this uses platform-specific time source
 /// In debug builds, this checks for mock time override
 #[inline(always)]
 pub fn now_nanos() -> u128 {
@@ -25,7 +29,7 @@ pub fn now_nanos() -> u128 {
 		}
 	}
 
-	SystemTime::now().duration_since(UNIX_EPOCH).expect("System time is before Unix epoch").as_nanos()
+	runtime_now_nanos()
 }
 
 /// Get current time in microseconds since Unix epoch
@@ -44,11 +48,7 @@ pub fn now_millis() -> u64 {
 /// Preserves nanosecond precision when available
 #[inline(always)]
 pub fn now() -> DateTime {
-	let nanos = now_nanos();
-	let secs = (nanos / 1_000_000_000) as i64;
-	let nanos_remainder = (nanos % 1_000_000_000) as u32;
-
-	DateTime::from_parts(secs, nanos_remainder).unwrap_or_else(|_| DateTime::now())
+	DateTime::from_timestamp_nanos(now_nanos())
 }
 
 // ============================================================================
@@ -284,18 +284,17 @@ pub fn mock_time_with_control<T>(initial_millis: u64, f: impl FnOnce(&MockTimeCo
 
 #[cfg(test)]
 pub mod tests {
-	use std::time::Duration;
+    use std::thread::sleep;
+    use std::time::Duration;
 
-	use tokio::time::sleep;
+    use super::*;
 
-	use super::*;
-
-	#[tokio::test]
-	async fn test_system_time() {
+    #[test]
+	fn test_system_time() {
 		mock_time_clear(); // Ensure no mock time is set
 
 		let t1 = now_millis();
-		sleep(Duration::from_millis(10)).await;
+		sleep(Duration::from_millis(10));
 		let t2 = now_millis();
 		assert!(t2 >= t1 + 10);
 	}

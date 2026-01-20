@@ -1573,6 +1573,7 @@ dependencies = [
  "reifydb-metric",
  "reifydb-rql",
  "reifydb-rqlv2",
+ "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-sub-api",
@@ -1620,7 +1621,6 @@ dependencies = [
  "reifydb-transaction",
  "reifydb-type",
  "serde",
- "tokio",
  "tracing",
 ]
 
@@ -1688,16 +1688,14 @@ dependencies = [
  "num-traits",
  "num_cpus",
  "once_cell",
- "parking_lot",
- "rayon",
  "reifydb-catalog",
  "reifydb-engine",
  "reifydb-hash",
+ "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-type",
  "serde",
  "serde_bytes",
- "tokio",
  "tracing",
  "uuid",
 ]
@@ -1728,6 +1726,7 @@ dependencies = [
  "reifydb-metric",
  "reifydb-rql",
  "reifydb-rqlv2",
+ "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-transaction",
@@ -1735,7 +1734,6 @@ dependencies = [
  "reifydb-vm",
  "serde",
  "serde_json",
- "tokio",
  "tracing",
 ]
 
@@ -1762,6 +1760,8 @@ version = "0.2.0"
 dependencies = [
  "cc",
  "serde",
+ "sha1",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -1829,6 +1829,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-runtime"
+version = "0.2.0"
+dependencies = [
+ "crossbeam-channel",
+ "dashmap",
+ "futures-util",
+ "js-sys",
+ "parking_lot",
+ "rayon",
+ "tokio",
+]
+
+[[package]]
 name = "reifydb-sdk"
 version = "0.2.0"
 dependencies = [
@@ -1849,6 +1862,7 @@ dependencies = [
  "crossbeam-skiplist",
  "reifydb-compression",
  "reifydb-core",
+ "reifydb-runtime",
  "reifydb-type",
 ]
 
@@ -1861,6 +1875,7 @@ dependencies = [
  "parking_lot",
  "rayon",
  "reifydb-core",
+ "reifydb-runtime",
  "reifydb-testing",
  "reifydb-type",
  "rusqlite",
@@ -1935,6 +1950,7 @@ dependencies = [
  "once_cell",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-runtime",
  "reifydb-type",
  "serde",
  "serde_json",
@@ -1949,6 +1965,7 @@ dependencies = [
  "axum",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
  "reifydb-type",
@@ -1967,6 +1984,7 @@ dependencies = [
  "axum",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
  "reifydb-type",
@@ -1987,6 +2005,7 @@ dependencies = [
  "opentelemetry_sdk",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
  "reifydb-type",
@@ -2005,6 +2024,7 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
  "reifydb-type",
@@ -2023,6 +2043,7 @@ dependencies = [
  "dashmap",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-type",
@@ -2062,9 +2083,10 @@ dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
  "indexmap",
- "parking_lot",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-hash",
+ "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-testing",
@@ -2082,6 +2104,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "postcard",
+ "reifydb-runtime",
  "serde",
  "serde_json",
  "tokio",
@@ -3188,6 +3211,12 @@ name = "writeable"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9edde0db4769d2dc68579893f2306b26c6ecfbe0ef499b013d731b7b9247e0b9"
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "yoke"

@@ -128,7 +128,7 @@ impl FlowCompiler {
 
 		// Serialize the node type to blob
 		let data = postcard::to_stdvec(&node_type).map_err(|e| {
-			reifydb_type::error::Error(reifydb_type::internal!("Failed to serialize FlowNodeType: {}", e))
+			reifydb_type::error::Error(reifydb_core::internal!("Failed to serialize FlowNodeType: {}", e))
 		})?;
 
 		// Create the catalog entry

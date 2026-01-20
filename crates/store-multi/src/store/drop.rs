@@ -118,17 +118,11 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 pub mod tests {
 	use std::collections::HashMap;
 
-	use reifydb_core::runtime::compute::ComputePool;
-
 	use super::{
 		super::version::{encode_versioned_key, extract_key},
 		*,
 	};
 	use crate::hot::storage::HotStorage;
-
-	fn test_compute_pool() -> ComputePool {
-		ComputePool::new(2, 8)
-	}
 
 	/// Create versioned test entries for a key
 	fn setup_versioned_entries(storage: &HotStorage, table: EntryKind, key: &[u8], versions: &[u64]) {
@@ -150,7 +144,7 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_all_versions() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -169,7 +163,7 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_up_to_version() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -191,7 +185,7 @@ pub mod tests {
 	#[test]
 	fn test_drop_up_to_version_boundary() {
 		// Test exact boundary - version == threshold should NOT be dropped
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -206,7 +200,7 @@ pub mod tests {
 
 	#[test]
 	fn test_keep_last_n_versions() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -228,7 +222,7 @@ pub mod tests {
 	#[test]
 	fn test_keep_more_than_exists() {
 		// Keep 10 but only 3 exist - should drop nothing
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -242,7 +236,7 @@ pub mod tests {
 	#[test]
 	fn test_keep_zero_versions() {
 		// Keep 0 = drop all
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -255,7 +249,7 @@ pub mod tests {
 
 	#[test]
 	fn test_keep_one_version() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -271,7 +265,7 @@ pub mod tests {
 
 	#[test]
 	fn test_combined_constraints_keep_protects() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -300,7 +294,7 @@ pub mod tests {
 	#[test]
 	fn test_combined_constraints_version_restricts() {
 		// Test case where up_to_version is more restrictive than keep_last
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -325,7 +319,7 @@ pub mod tests {
 	#[test]
 	fn test_combined_constraints_both_aggressive() {
 		// Both constraints are aggressive
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -355,7 +349,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_storage() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"nonexistent";
 
@@ -365,7 +359,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_version_drop_all() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -378,7 +372,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_version_keep_one() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -391,7 +385,7 @@ pub mod tests {
 
 	#[test]
 	fn test_different_keys_isolated() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 
 		setup_versioned_entries(&storage, table, b"key_a", &[1, 2, 3]);
@@ -411,7 +405,7 @@ pub mod tests {
 	#[test]
 	fn test_up_to_version_zero() {
 		// up_to_version=0 means drop nothing (no versions < 0)
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -425,7 +419,7 @@ pub mod tests {
 	#[test]
 	fn test_up_to_version_max() {
 		// up_to_version=MAX means drop all (all versions < MAX)
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 

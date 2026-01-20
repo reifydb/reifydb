@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::headers::ColumnHeaders;
+use reifydb_core::{internal, value::column::headers::ColumnHeaders};
 use reifydb_transaction::standard::StandardTransaction;
-use reifydb_type::internal;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 

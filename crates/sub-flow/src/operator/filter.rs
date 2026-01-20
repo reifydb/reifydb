@@ -3,7 +3,7 @@
 
 use std::{rc::Rc, sync::LazyLock};
 
-use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_core::{interface::catalog::flow::FlowNodeId, internal_err, value::column::columns::Columns};
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
@@ -11,7 +11,6 @@ use reifydb_engine::{
 use reifydb_rql::expression::Expression;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 use reifydb_type::{
-	internal_err,
 	params::Params,
 	value::{Value, row_number::RowNumber},
 };

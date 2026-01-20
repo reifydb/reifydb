@@ -9,9 +9,9 @@ use reifydb_core::{
 		primitive::PrimitiveId,
 	},
 	key::primary_key::PrimaryKeyKey,
+	return_internal_error,
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
-use reifydb_type::return_internal_error;
 
 use crate::{
 	CatalogStore,

@@ -12,11 +12,9 @@ use reifydb_core::{
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 	retention::RetentionPolicy,
 };
+use reifydb_core::error::diagnostic::catalog::table_already_exists;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::{
-	error::diagnostic::catalog::table_already_exists, fragment::Fragment, return_error,
-	value::constraint::TypeConstraint,
-};
+use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
 
 use crate::{
 	CatalogStore,

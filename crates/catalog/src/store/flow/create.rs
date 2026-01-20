@@ -9,7 +9,8 @@ use reifydb_core::{
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::{error::diagnostic::catalog::flow_already_exists, fragment::Fragment, return_error};
+use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_core::error::diagnostic::catalog::flow_already_exists;
 
 use crate::{
 	CatalogStore,

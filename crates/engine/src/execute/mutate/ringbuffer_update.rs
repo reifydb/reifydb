@@ -9,10 +9,9 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_core::{error::diagnostic::{catalog::ringbuffer_not_found, engine}, internal_error};
 use reifydb_type::{
-	error::diagnostic::{catalog::ringbuffer_not_found, engine},
 	fragment::Fragment,
-	internal_error,
 	params::Params,
 	return_error,
 	value::Value,

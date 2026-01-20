@@ -8,7 +8,8 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::CreateTableNode;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::{error::diagnostic::query::column_not_found, return_error, value::Value};
+use reifydb_type::{return_error, value::Value};
+use reifydb_core::error::diagnostic::query::column_not_found;
 
 use crate::execute::Executor;
 

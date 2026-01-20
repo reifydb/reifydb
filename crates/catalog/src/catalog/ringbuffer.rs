@@ -13,7 +13,8 @@ use reifydb_core::{
 use reifydb_transaction::standard::{
 	IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction,
 };
-use reifydb_type::{error, fragment::Fragment, internal, value::constraint::TypeConstraint};
+use reifydb_core::internal;
+use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::instrument;
 
 use crate::{

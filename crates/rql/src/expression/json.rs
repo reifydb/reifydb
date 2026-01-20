@@ -641,7 +641,7 @@ impl TryFrom<JsonExpression> for Expression {
 					"+" => PrefixOperator::Plus(Fragment::None),
 					"not" => PrefixOperator::Not(Fragment::None),
 					_ => {
-						return Err(reifydb_type::error::Error(reifydb_type::internal!(
+						return Err(reifydb_type::error::Error(reifydb_core::internal!(
 							"Unknown prefix operator: {}",
 							operator
 						)));
@@ -770,7 +770,7 @@ fn parse_type(s: &str) -> reifydb_type::Result<reifydb_type::value::r#type::Type
 		"uint" => Type::Uint,
 		"decimal" => Type::Decimal,
 		_ => {
-			return Err(reifydb_type::error::Error(reifydb_type::internal!("Unknown type: {}", s)));
+			return Err(reifydb_type::error::Error(reifydb_core::internal!("Unknown type: {}", s)));
 		}
 	};
 

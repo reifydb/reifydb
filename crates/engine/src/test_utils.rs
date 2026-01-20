@@ -24,9 +24,9 @@ use reifydb_core::{
 		metric::{CdcStatsRecordedEvent, StorageStatsRecordedEvent},
 		transaction::PostCommitEvent,
 	},
-	runtime::{SharedRuntime, SharedRuntimeConfig},
 	util::ioc::IocContainer,
 };
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_metric::worker::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
 use reifydb_rqlv2::compiler::Compiler;
 use reifydb_store_multi::MultiStore;

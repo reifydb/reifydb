@@ -8,8 +8,26 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = ["trace"]
+default = ["native", "trace"]
 trace = []
+native = [
+    "trace",
+    "reifydb-catalog/native",
+    "reifydb-core/native",
+    "reifydb-function/native",
+    "reifydb-rqlv2/native",
+    "reifydb-transaction/native",
+    "reifydb-type/native",
+]
+wasm = [
+    "trace",
+    "reifydb-catalog/wasm",
+    "reifydb-core/wasm",
+    "reifydb-function/wasm",
+    "reifydb-rqlv2/wasm",
+    "reifydb-transaction/wasm",
+    "reifydb-type/wasm",
+]
 
 [dependencies]
 reifydb-catalog = { workspace = true }

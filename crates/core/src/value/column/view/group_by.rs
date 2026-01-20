@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use indexmap::IndexMap;
-use reifydb_type::{error, error::diagnostic::engine::frame_error, value::Value};
-
-use crate::value::column::{ColumnData, columns::Columns};
+use reifydb_type::{error, value::Value};
+use crate::error::diagnostic::engine::frame_error;
+use crate::value::column::{columns::Columns, ColumnData};
 
 pub type GroupKey = Vec<Value>;
 pub type GroupByView = IndexMap<GroupKey, Vec<usize>>;

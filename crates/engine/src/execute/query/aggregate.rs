@@ -10,11 +10,7 @@ use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, he
 use reifydb_function::{AggregateFunction, AggregateFunctionContext, registry::Functions};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::standard::StandardTransaction;
-use reifydb_type::{
-	error::diagnostic,
-	fragment::Fragment,
-	value::{Value, r#type::Type},
-};
+use reifydb_type::{fragment::Fragment, value::{Value, r#type::Type}};
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
@@ -262,7 +258,7 @@ fn align_column_data(group_key_order: &[Vec<Value>], keys: &[Vec<Value>], data: 
 		.iter()
 		.map(|k| {
 			key_to_index.get(k).copied().ok_or_else(|| {
-				reifydb_type::error!(diagnostic::engine::frame_error(format!(
+				reifydb_type::error!(reifydb_core::error::diagnostic::engine::frame_error(format!(
 					"Group key {:?} missing in aggregate output",
 					k
 				)))

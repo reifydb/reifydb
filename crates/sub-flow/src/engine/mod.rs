@@ -19,13 +19,14 @@ use reifydb_core::{
 		id::{TableId, ViewId},
 		primitive::PrimitiveId,
 	},
+	internal,
 };
 use reifydb_engine::{evaluate::column::StandardColumnEvaluator, execute::Executor};
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
 };
-use reifydb_type::{error::Error, internal, value::Value};
+use reifydb_type::{error::Error, value::Value};
 use tracing::instrument;
 
 use crate::{

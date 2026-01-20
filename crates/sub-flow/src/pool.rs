@@ -6,15 +6,15 @@
 use std::collections::HashMap;
 
 use reifydb_catalog::catalog::Catalog;
+use reifydb_core::internal;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_type::{Result, error::Error, internal, util::hex::encode};
-use tracing::{Span, debug, instrument};
-
+use reifydb_type::{error::Error, util::hex::encode, Result};
+use tracing::{debug, instrument, Span};
 use crate::{
-	FlowEngine,
 	instruction::WorkerBatch,
 	transaction::pending::{Pending, PendingWrites},
 	worker::FlowWorker,
+	FlowEngine,
 };
 
 /// Pool of N flow workers for parallel flow processing.

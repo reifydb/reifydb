@@ -1,0 +1,30 @@
+[package]
+name = "reifydb-runtime"
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+readme.workspace = true
+license.workspace = true
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+description = "Runtime infrastructure (async I/O and compute pools) for ReifyDB"
+
+[features]
+default = ["native"]
+native = ["tokio", "rayon", "crossbeam-channel", "parking_lot", "dashmap"]
+wasm = ["js-sys"]
+
+[dependencies]
+# Native-only dependencies (made optional)
+tokio = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+crossbeam-channel = { workspace = true, optional = true }
+parking_lot = { workspace = true, optional = true }
+dashmap = { workspace = true, optional = true }
+
+# WASM-only dependencies
+js-sys = { version = "0.3", optional = true }
+
+# WASM-compatible dependencies
+futures-util = { workspace = true }

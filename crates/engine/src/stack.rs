@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::{internal, value::column::columns::Columns};
 use reifydb_type::{error, error::diagnostic, value::Value};
 
 /// A variable can be either a scalar value or a dataframe
@@ -98,7 +98,7 @@ impl Stack {
 	/// Returns error if trying to exit the global scope
 	pub fn exit_scope(&mut self) -> crate::Result<()> {
 		if self.scopes.len() <= 1 {
-			return Err(error!(diagnostic::internal::internal("Cannot exit global scope".to_string())));
+			return Err(error!(internal!("Cannot exit global scope")));
 		}
 		self.scopes.pop();
 		Ok(())
@@ -127,7 +127,7 @@ impl Stack {
 		if let Some(existing) = current_scope.variables.get(&name) {
 			if !existing.mutable {
 				return Err(reifydb_type::error::Error(
-					reifydb_type::error::diagnostic::runtime::variable_is_immutable(&name),
+					diagnostic::runtime::variable_is_immutable(&name),
 				));
 			}
 			// Update existing variable, keeping its mutability
@@ -140,7 +140,7 @@ impl Stack {
 			);
 		} else {
 			return Err(reifydb_type::error::Error(
-				reifydb_type::error::diagnostic::runtime::variable_not_found(&name),
+				diagnostic::runtime::variable_not_found(&name),
 			));
 		}
 

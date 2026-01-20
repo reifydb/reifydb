@@ -58,7 +58,7 @@ pub fn persist_flow(
 
 		// Serialize the node type
 		let data = postcard::to_stdvec(&compiled_node.node_type).map_err(|e| {
-			reifydb_type::error::Error(reifydb_type::internal!("Failed to serialize FlowNodeType: {}", e))
+			reifydb_type::error::Error(reifydb_core::internal!("Failed to serialize FlowNodeType: {}", e))
 		})?;
 
 		// Create and persist the catalog entry

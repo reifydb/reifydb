@@ -2,15 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::error::diagnostic::{cast, temporal};
 use reifydb_type::{
-	error::diagnostic::temporal,
 	fragment::Fragment,
 	return_error,
 	value::{
+		r#type::Type,
 		temporal::parse::{
 			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
 		},
-		r#type::Type,
 	},
 };
 
@@ -69,7 +69,6 @@ impl TemporalParser {
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		use reifydb_type::error::diagnostic::cast;
 		match target {
 			Type::Date => {
 				let date = match parse_date(fragment.clone()) {

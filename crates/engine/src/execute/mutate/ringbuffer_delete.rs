@@ -10,8 +10,8 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_core::error::diagnostic::{catalog::ringbuffer_not_found, engine};
 use reifydb_type::{
-	error::diagnostic::{catalog::ringbuffer_not_found, engine},
 	fragment::Fragment,
 	params::Params,
 	return_error,

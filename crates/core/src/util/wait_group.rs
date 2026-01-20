@@ -14,7 +14,15 @@ use std::sync::{
 	atomic::{AtomicUsize, Ordering},
 };
 
-use parking_lot::{Condvar, Mutex};
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::condvar::native::Condvar;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::condvar::wasm::Condvar;
+
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::mutex::native::Mutex;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::mutex::wasm::Mutex;
 
 struct Inner {
 	count: AtomicUsize,

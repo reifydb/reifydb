@@ -7,6 +7,21 @@ license.workspace = true
 repository.workspace = true
 description = "ReifyDB Query Language (RQL) parser and AST"
 
+[features]
+default = ["native"]
+native = [
+    "reifydb-catalog/native",
+    "reifydb-core/native",
+    "reifydb-transaction/native",
+    "reifydb-type/native",
+]
+wasm = [
+    "reifydb-catalog/wasm",
+    "reifydb-core/wasm",
+    "reifydb-transaction/wasm",
+    "reifydb-type/wasm",
+]
+
 [dependencies]
 reifydb-core = {workspace = true}
 reifydb-catalog = { workspace = true }

@@ -6,7 +6,8 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::flow::FlowId;
 use reifydb_transaction::standard::IntoStandardTransaction;
-use reifydb_type::{error::Error, internal};
+use reifydb_type::error::Error;
+use reifydb_core::internal;
 
 use crate::flow::{
 	flow::FlowDag,

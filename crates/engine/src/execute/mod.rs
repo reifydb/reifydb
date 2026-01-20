@@ -497,13 +497,6 @@ impl Executor {
 			| PhysicalPlan::Extend(_)
 			| PhysicalPlan::InlineData(_)
 			| PhysicalPlan::Generator(_)
-			| PhysicalPlan::Delete(_)
-			| PhysicalPlan::DeleteRingBuffer(_)
-			| PhysicalPlan::InsertTable(_)
-			| PhysicalPlan::InsertRingBuffer(_)
-			| PhysicalPlan::InsertDictionary(_)
-			| PhysicalPlan::Update(_)
-			| PhysicalPlan::UpdateRingBuffer(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::FlowScan(_)
@@ -518,6 +511,23 @@ impl Executor {
 			| PhysicalPlan::RowRangeScan(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params, stack)
+			}
+			// Mutations - should not be in query transactions
+			PhysicalPlan::Delete(_)
+			| PhysicalPlan::DeleteRingBuffer(_)
+			| PhysicalPlan::InsertTable(_)
+			| PhysicalPlan::InsertRingBuffer(_)
+			| PhysicalPlan::InsertDictionary(_)
+			| PhysicalPlan::Update(_)
+			| PhysicalPlan::UpdateRingBuffer(_) => {
+				reifydb_type::err!(reifydb_core::error::diagnostic::internal::internal_with_context(
+					"Mutation operations cannot be executed in a query transaction",
+					file!(),
+					line!(),
+					column!(),
+					module_path!(),
+					module_path!()
+				))
 			}
 			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
 				let mut std_txn = StandardTransaction::from(rx);

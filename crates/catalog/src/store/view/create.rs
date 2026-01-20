@@ -12,11 +12,9 @@ use reifydb_core::{
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
+use reifydb_core::error::diagnostic::catalog::view_already_exists;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::{
-	error::diagnostic::catalog::view_already_exists, fragment::Fragment, return_error,
-	value::constraint::TypeConstraint,
-};
+use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
 
 use crate::{
 	CatalogStore,

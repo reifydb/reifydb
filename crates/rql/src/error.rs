@@ -3,13 +3,9 @@
 
 use std::fmt;
 
-use reifydb_type::{
-	error,
-	error::{
-		Error,
-		diagnostic::{catalog::table_not_found, internal::internal},
-	},
-};
+use reifydb_core::error::diagnostic::{catalog::table_not_found, internal::internal};
+use reifydb_type::error;
+use reifydb_type::error::Error;
 
 /// Errors related to identifier resolution
 #[derive(Debug, Clone)]

@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::return_internal_error;
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::{
-	flow::{FlowDef, FlowId},
-	id::{DictionaryId, RingBufferId, TableId, ViewId},
-	table::TableDef,
-	view::ViewDef,
-	vtable::{VTableDef, VTableId},
+    flow::{FlowDef, FlowId},
+    id::{DictionaryId, RingBufferId, TableId, ViewId},
+    table::TableDef,
+    view::ViewDef,
+    vtable::{VTableDef, VTableId},
 };
+use crate::return_internal_error;
 
 /// PrimitiveId represents identifiers for catalog primitives that use u64-based IDs.
 /// Note: SubscriptionId is NOT included here because it uses UUID v7 which is a

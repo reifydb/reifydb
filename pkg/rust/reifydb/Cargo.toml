@@ -14,6 +14,7 @@ reifydb-catalog = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-rqlv2 = { workspace = true }
 reifydb-store-multi = { workspace = true }
@@ -43,7 +44,23 @@ tracing-opentelemetry = { workspace = true, optional = true }
 libc = { workspace = true }
 
 [features]
-default = []
+default = ["native"]
+native = [
+	"reifydb-core/native",
+	"reifydb-engine/tokio",
+	"reifydb-runtime/native",
+	"reifydb-store-multi/native",
+	"reifydb-store-single/native",
+	"reifydb-transaction/native",
+]
+wasm = [
+	"reifydb-core/wasm",
+	"reifydb-engine/wasm",
+	"reifydb-runtime/wasm",
+	"reifydb-store-multi/wasm",
+	"reifydb-store-single/wasm",
+	"reifydb-transaction/wasm",
+]
 
 # Subsystem features
 sub_flow = ["dep:reifydb-sub-flow"]

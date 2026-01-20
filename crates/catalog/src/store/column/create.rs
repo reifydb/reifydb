@@ -6,8 +6,8 @@ use reifydb_core::{
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_core::error::diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists};
 use reifydb_type::{
-	error::diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
 	fragment::Fragment,
 	return_error,
 	value::{

@@ -24,9 +24,9 @@ use reifydb_core::{
 		transaction::PostCommitEvent,
 	},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
-	runtime::SharedRuntime,
 	util::ioc::IocContainer,
 };
+use reifydb_runtime::SharedRuntime;
 use reifydb_engine::{EngineVersion, engine::StandardEngine};
 use reifydb_function::{
 	math,

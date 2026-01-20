@@ -16,9 +16,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
+use reifydb_core::error::diagnostic;
 use reifydb_type::{
 	error,
-	error::diagnostic,
 	fragment::Fragment,
 	util::cowvec::CowVec,
 	value::{dictionary::DictionaryEntryId, r#type::Type},

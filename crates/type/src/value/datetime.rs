@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	fmt::{Display, Formatter},
-	time::{SystemTime, UNIX_EPOCH},
-};
+use std::fmt::{Display, Formatter};
 
 use serde::{
-	Deserialize, Deserializer, Serialize, Serializer,
-	de::{self, Visitor},
+	de::{self, Visitor}, Deserialize, Deserializer, Serialize,
+	Serializer,
 };
 
 use crate::value::{date::Date, time::Time};
@@ -70,21 +67,22 @@ impl DateTime {
 		})
 	}
 
-	pub fn from_timestamp_millis(millis: i64) -> Result<Self, String> {
-		let seconds = millis / 1000;
+	pub fn from_timestamp_millis(millis: u64) -> Self {
+		let seconds = (millis / 1000) as i64;
 		let nanos = ((millis % 1000) * 1_000_000) as u32;
-		Ok(Self {
+		Self {
 			seconds,
 			nanos,
-		})
+		}
 	}
 
-	pub fn now() -> Self {
-		let duration = SystemTime::now().duration_since(UNIX_EPOCH).expect("System time before Unix epoch");
+	pub fn from_timestamp_nanos(nanos: u128) -> Self {
+		let seconds = (nanos / 1_000_000_000) as i64;
+		let nanos = (nanos % 1_000_000_000) as u32;
 
 		Self {
-			seconds: duration.as_secs() as i64,
-			nanos: duration.subsec_nanos(),
+			seconds,
+			nanos,
 		}
 	}
 
@@ -470,10 +468,10 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_display_from_timestamp_millis() {
-		let datetime = DateTime::from_timestamp_millis(1234567890123).unwrap();
+		let datetime = DateTime::from_timestamp_millis(1234567890123);
 		assert_eq!(format!("{}", datetime), "2009-02-13T23:31:30.123000000Z");
 
-		let datetime = DateTime::from_timestamp_millis(0).unwrap();
+		let datetime = DateTime::from_timestamp_millis(0);
 		assert_eq!(format!("{}", datetime), "1970-01-01T00:00:00.000000000Z");
 	}
 

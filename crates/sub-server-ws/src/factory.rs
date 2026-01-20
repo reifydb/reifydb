@@ -5,8 +5,9 @@
 
 use std::time::Duration;
 
-use reifydb_core::{runtime::SharedRuntime, util::ioc::IocContainer};
+use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_server::state::{AppState, StateConfig};
 

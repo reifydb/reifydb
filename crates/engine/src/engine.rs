@@ -3,27 +3,33 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
+use crate::{
+	bulk_insert::builder::BulkInsertBuilder,
+	execute::{Command, ExecuteCommand, ExecuteQuery, Executor, Query},
+	interceptor::catalog::MaterializedCatalogInterceptor,
+};
 use reifydb_catalog::{
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
 	vtable::{
 		system::flow_operator_store::{FlowOperatorEventListener, FlowOperatorStore},
 		tables::UserVTableDataFunction,
-		user::{UserVTable, UserVTableColumnDef, registry::UserVTableEntry},
+		user::{registry::UserVTableEntry, UserVTable, UserVTableColumnDef},
 	},
 };
 use reifydb_cdc::{consume::host::CdcHost, storage::CdcStore};
+use reifydb_core::error::diagnostic::catalog::namespace_not_found;
 use reifydb_core::{
 	common::CommitVersion,
 	event::{Event, EventBus},
 	interface::{
-		WithEventBus,
 		auth::Identity,
 		catalog::{
 			column::{ColumnDef, ColumnIndex},
 			id::ColumnId,
 			vtable::{VTableDef, VTableId},
 		},
+		WithEventBus,
 	},
 	util::ioc::IocContainer,
 	value::column::columns::Columns,
@@ -38,7 +44,7 @@ use reifydb_transaction::{
 	standard::{command::StandardCommandTransaction, query::StandardQueryTransaction},
 };
 use reifydb_type::{
-	error::{Error, diagnostic, diagnostic::catalog::namespace_not_found},
+	error::{diagnostic, Error},
 	fragment::Fragment,
 	params::Params,
 	value::{constraint::TypeConstraint, frame::frame::Frame},
@@ -48,12 +54,6 @@ use reifydb_vm::{
 	runtime::{context::VmContext, state::VmState},
 };
 use tracing::instrument;
-
-use crate::{
-	bulk_insert::builder::BulkInsertBuilder,
-	execute::{Command, ExecuteCommand, ExecuteQuery, Executor, Query},
-	interceptor::catalog::MaterializedCatalogInterceptor,
-};
 
 pub struct StandardEngine(Arc<Inner>);
 

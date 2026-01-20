@@ -10,6 +10,7 @@ use reifydb_core::{
 		catalog::primitive::PrimitiveId,
 		cdc::{Cdc, CdcChange},
 	},
+	internal,
 	key::{EncodableKey, Key, dictionary::DictionaryEntryIndexKey},
 	row::Row,
 	value::column::columns::Columns,
@@ -20,7 +21,6 @@ use reifydb_transaction::standard::query::StandardQueryTransaction;
 use reifydb_type::{
 	Result,
 	error::Error,
-	internal,
 	util::cowvec::CowVec,
 	value::{Value, dictionary::DictionaryEntryId, row_number::RowNumber},
 };

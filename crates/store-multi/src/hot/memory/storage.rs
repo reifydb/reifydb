@@ -7,8 +7,6 @@
 
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
-use rayon::prelude::*;
-use reifydb_core::runtime::compute::ComputePool;
 use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::{Span, instrument};
 
@@ -26,17 +24,14 @@ pub struct MemoryPrimitiveStorage {
 struct MemoryPrimitiveStorageInner {
 	/// Storage for each type
 	entries: Entries,
-	/// Compute pool for parallel processing
-	compute_pool: ComputePool,
 }
 
 impl MemoryPrimitiveStorage {
-	#[instrument(name = "store::multi::memory::new", level = "debug", skip(compute_pool))]
-	pub fn new(compute_pool: ComputePool) -> Self {
+	#[instrument(name = "store::multi::memory::new", level = "debug")]
+	pub fn new() -> Self {
 		Self {
 			inner: Arc::new(MemoryPrimitiveStorageInner {
 				entries: Entries::default(),
-				compute_pool,
 			}),
 		}
 	}
@@ -46,7 +41,7 @@ impl MemoryPrimitiveStorage {
 	#[instrument(name = "store::multi::memory::get_or_create_table", level = "trace", skip(self), fields(table = ?table))]
 	fn get_or_create_table(&self, table: EntryKind) -> Entry {
 		let table_key = entry_id_to_key(table);
-		self.inner.entries.data.entry(table_key).or_insert_with(Entry::new).value().clone()
+		self.inner.entries.data.get_or_insert_with(table_key, Entry::new)
 	}
 
 	/// Process a single table batch: get/create table, write entries
@@ -69,7 +64,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		let table_key = entry_id_to_key(table);
 		let entry = match self.inner.entries.data.get(&table_key) {
-			Some(e) => e.value().clone(),
+			Some(e) => e,
 			None => return Ok(None),
 		};
 
@@ -81,13 +76,13 @@ impl TierStorage for MemoryPrimitiveStorage {
 	fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
 		let table_key = entry_id_to_key(table);
 		let entry = match self.inner.entries.data.get(&table_key) {
-			Some(e) => e.value().clone(),
+			Some(e) => e,
 			None => return Ok(false),
 		};
 
 		let map = entry.data.read();
 		// Key exists and is not a tombstone (None value)
-		Ok(map.get(key).map_or(false, |v| v.is_some()))
+		Ok(map.get(key).map_or(false, |v: &Option<CowVec<u8>>| v.is_some()))
 	}
 
 	#[instrument(name = "store::multi::memory::set", level = "trace", skip(self, batches), fields(
@@ -97,10 +92,8 @@ impl TierStorage for MemoryPrimitiveStorage {
 	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
 
-		self.inner.compute_pool.install(|| {
-			batches.into_par_iter().for_each(|(table, entries)| {
-				self.process_table(table, entries);
-			});
+		batches.into_iter().for_each(|(table, entries)| {
+			self.process_table(table, entries);
 		});
 
 		Span::current().record("total_entry_count", total_entries);
@@ -122,7 +115,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		let table_key = entry_id_to_key(table);
 		let entry = match self.inner.entries.data.get(&table_key) {
-			Some(e) => e.value().clone(),
+			Some(e) => e,
 			None => {
 				cursor.exhausted = true;
 				return Ok(RangeBatch::empty());
@@ -141,7 +134,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		let entries: Vec<RawEntry> = map
 			.range::<[u8], _>((effective_start, end))
 			.take(batch_size + 1)
-			.map(|(k, v)| RawEntry {
+			.map(|(k, v): (&CowVec<u8>, &Option<CowVec<u8>>)| RawEntry {
 				key: k.clone(),
 				value: v.clone(),
 			})
@@ -183,7 +176,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		let table_key = entry_id_to_key(table);
 		let entry = match self.inner.entries.data.get(&table_key) {
-			Some(e) => e.value().clone(),
+			Some(e) => e,
 			None => {
 				cursor.exhausted = true;
 				return Ok(RangeBatch::empty());
@@ -203,7 +196,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 			.range::<[u8], _>((start, effective_end))
 			.rev()
 			.take(batch_size + 1)
-			.map(|(k, v)| RawEntry {
+			.map(|(k, v): (&CowVec<u8>, &Option<CowVec<u8>>)| RawEntry {
 				key: k.clone(),
 				value: v.clone(),
 			})
@@ -240,7 +233,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
 		let table_key = entry_id_to_key(table);
 		if let Some(entry) = self.inner.entries.data.get(&table_key) {
-			*entry.value().data.write() = OrderedMap::new();
+			*entry.data.write() = OrderedMap::new();
 		}
 		Ok(())
 	}
@@ -250,20 +243,13 @@ impl TierBackend for MemoryPrimitiveStorage {}
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{
-		interface::catalog::{id::TableId, primitive::PrimitiveId},
-		runtime::compute::ComputePool,
-	};
+	use reifydb_core::interface::catalog::{id::TableId, primitive::PrimitiveId};
 
 	use super::*;
 
-	fn test_compute_pool() -> ComputePool {
-		ComputePool::new(2, 8)
-	}
-
 	#[test]
 	fn test_basic_operations() {
-		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
+		let storage = MemoryPrimitiveStorage::new();
 
 		// Put and get
 		storage.set(HashMap::from([(
@@ -285,7 +271,7 @@ pub mod tests {
 
 	#[test]
 	fn test_source_tables() {
-		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
+		let storage = MemoryPrimitiveStorage::new();
 
 		let source1 = PrimitiveId::Table(TableId(1));
 		let source2 = PrimitiveId::Table(TableId(2));
@@ -313,7 +299,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next() {
-		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
+		let storage = MemoryPrimitiveStorage::new();
 
 		storage.set(HashMap::from([(
 			EntryKind::Multi,
@@ -346,7 +332,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_rev_next() {
-		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
+		let storage = MemoryPrimitiveStorage::new();
 
 		storage.set(HashMap::from([(
 			EntryKind::Multi,
@@ -379,7 +365,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_streaming_pagination() {
-		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
+		let storage = MemoryPrimitiveStorage::new();
 
 		// Insert 10 entries
 		for i in 0..10u8 {
@@ -441,7 +427,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_reving_pagination() {
-		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
+		let storage = MemoryPrimitiveStorage::new();
 
 		// Insert 10 entries
 		for i in 0..10u8 {

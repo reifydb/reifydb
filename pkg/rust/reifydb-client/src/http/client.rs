@@ -3,14 +3,14 @@
 use std::time::Duration;
 
 use reifydb_type::{
-	error::{Error, diagnostic},
+	error::{diagnostic, Error},
 	params::Params,
 };
 use reqwest::Client as ReqwestClient;
 
 use crate::{
-	CommandRequest, CommandResponse, ErrResponse, QueryRequest, QueryResponse, Response, ResponsePayload,
-	session::{CommandResult, QueryResult, parse_command_response, parse_query_response},
+	session::{parse_command_response, parse_query_response, CommandResult, QueryResult}, CommandRequest, CommandResponse, ErrResponse, QueryRequest, QueryResponse, Response,
+	ResponsePayload,
 };
 
 /// HTTP-specific error response matching the server's format
@@ -47,9 +47,11 @@ impl HttpClient {
 	/// }
 	/// ```
 	pub async fn connect(url: &str) -> Result<Self, Error> {
-		let inner = ReqwestClient::builder().timeout(Duration::from_secs(30)).build().map_err(|e| {
-			Error(diagnostic::internal::internal(format!("Failed to create HTTP client: {}", e)))
-		})?;
+		// let inner = ReqwestClient::builder().timeout(Duration::from_secs(30)).build().map_err(|e| {
+		// 	Error(diagnostic::internal::internal(format!("Failed to create HTTP client: {}", e)))
+		// })?;
+
+		let inner = ReqwestClient::builder().timeout(Duration::from_secs(30)).build().unwrap(); // FIXME better error handling
 
 		// Normalize URL (remove trailing slash)
 		let base_url = url.trim_end_matches('/').to_string();
@@ -218,14 +220,9 @@ impl HttpClient {
 			request = request.bearer_auth(token);
 		}
 
-		let response = request
-			.send()
-			.await
-			.map_err(|e| Error(diagnostic::internal::internal(format!("Request failed: {}", e))))?;
+		let response = request.send().await.unwrap(); // FIXME better error handling
 
-		response.text()
-			.await
-			.map_err(|e| Error(diagnostic::internal::internal(format!("Failed to read response: {}", e))))
+		Ok(response.text().await.unwrap()) // FIXME better error handling
 	}
 
 	/// Parse an error response body into an Error.
@@ -246,6 +243,7 @@ impl HttpClient {
 		}
 
 		// Fallback: return raw response as error
-		Error(diagnostic::internal::internal(format!("Failed to parse response: {}", body)))
+		// Error(diagnostic::internal::internal(format!("Failed to parse response: {}", body)))
+		panic!("Failed to parse response: {}", body) // FIXME better error handling
 	}
 }

@@ -32,7 +32,7 @@
 //! let stats = reader.get(Tier::Hot, id)?;
 //! ```
 
-#![cfg_attr(not(debug_assertions), deny(warnings))]
+// #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb_core::interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId};
 

@@ -3,27 +3,62 @@
 
 use crate::{Hash32, Hash64, Hash128};
 
+// Use C FFI bindings for native builds
+#[cfg(feature = "native")]
 pub mod binding;
+
+// Use pure Rust implementation for WASM builds
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 #[inline(always)]
 pub fn xxh32(data: &[u8], seed: u32) -> Hash32 {
-	Hash32(unsafe { binding::XXH32(data.as_ptr(), data.len(), seed) })
+	#[cfg(feature = "native")]
+	{
+		Hash32(unsafe { binding::XXH32(data.as_ptr(), data.len(), seed) })
+	}
+	#[cfg(feature = "wasm")]
+	{
+		Hash32(unsafe { wasm::XXH32(data.as_ptr(), data.len(), seed) })
+	}
 }
 
 #[inline(always)]
 pub fn xxh64(data: &[u8], seed: u64) -> Hash64 {
-	Hash64(unsafe { binding::XXH64(data.as_ptr(), data.len(), seed) })
+	#[cfg(feature = "native")]
+	{
+		Hash64(unsafe { binding::XXH64(data.as_ptr(), data.len(), seed) })
+	}
+	#[cfg(feature = "wasm")]
+	{
+		Hash64(unsafe { wasm::XXH64(data.as_ptr(), data.len(), seed) })
+	}
 }
 
 #[inline(always)]
 pub fn xxh3_64(data: &[u8]) -> Hash64 {
-	Hash64(unsafe { binding::XXH3_64bits(data.as_ptr(), data.len()) })
+	#[cfg(feature = "native")]
+	{
+		Hash64(unsafe { binding::XXH3_64bits(data.as_ptr(), data.len()) })
+	}
+	#[cfg(feature = "wasm")]
+	{
+		Hash64(unsafe { wasm::XXH3_64bits(data.as_ptr(), data.len()) })
+	}
 }
 
 #[inline(always)]
 pub fn xxh3_128(data: &[u8]) -> Hash128 {
-	let result = unsafe { binding::XXH3_128bits(data.as_ptr(), data.len()) };
-	Hash128((result.high as u128) << 64 | result.low as u128)
+	#[cfg(feature = "native")]
+	{
+		let result = unsafe { binding::XXH3_128bits(data.as_ptr(), data.len()) };
+		Hash128((result.high as u128) << 64 | result.low as u128)
+	}
+	#[cfg(feature = "wasm")]
+	{
+		let result = unsafe { wasm::XXH3_128bits(data.as_ptr(), data.len()) };
+		Hash128((result.high as u128) << 64 | result.low as u128)
+	}
 }
 
 #[cfg(test)]

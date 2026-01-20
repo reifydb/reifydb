@@ -16,7 +16,8 @@ use reifydb_core::{
 	delta::Delta,
 	encoded::{encoded::EncodedValues, key::EncodedKey},
 };
-use reifydb_type::{error::diagnostic::transaction, return_error, util::hex};
+use reifydb_type::{return_error, util::hex};
+use reifydb_core::error::diagnostic::transaction;
 use tracing::instrument;
 
 use crate::{

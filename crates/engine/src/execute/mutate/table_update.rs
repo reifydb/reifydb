@@ -14,17 +14,14 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
-use reifydb_type::{
+use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
 	},
-	fragment::Fragment,
 	internal_error,
-	params::Params,
-	return_error,
-	value::{Value, r#type::Type},
 };
+use reifydb_type::{fragment::Fragment, params::Params, return_error, value::{Value, r#type::Type}};
 
 use super::primary_key;
 use crate::{

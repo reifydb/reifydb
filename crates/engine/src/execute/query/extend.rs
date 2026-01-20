@@ -9,7 +9,8 @@ use reifydb_core::{
 };
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_transaction::standard::StandardTransaction;
-use reifydb_type::{error::diagnostic::query::extend_duplicate_column, fragment::Fragment, return_error};
+use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_core::error::diagnostic::query::extend_duplicate_column;
 use tracing::instrument;
 
 use crate::{

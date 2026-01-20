@@ -18,7 +18,6 @@ use reifydb_core::{
 	},
 	event::{EventBus, EventListener, store::StatsProcessed},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
-	runtime::compute::ComputePool,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
 use reifydb_metric::{
@@ -46,8 +45,7 @@ test_each_path! { in "crates/metric/tests/scripts/integration" as metric_memory 
 test_each_path! { in "crates/metric/tests/scripts/integration" as metric_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let compute_pool = ComputePool::new(2, 8);
-	let data_storage = HotStorage::memory(compute_pool);
+	let data_storage = HotStorage::memory();
 	let event_bus = EventBus::new();
 	let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 	let stats_waiter = StatsWaiter::new();

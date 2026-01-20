@@ -5,12 +5,12 @@ pub mod resolve_arc;
 pub mod resolve_rc;
 
 use std::{
-	any::{Any, TypeId, type_name},
+	any::{type_name, Any, TypeId},
 	collections::HashMap,
 	sync::{Arc, RwLock},
 };
-
-use reifydb_type::{error, error::diagnostic::internal::internal};
+use reifydb_type::error;
+use crate::error::diagnostic::internal::internal;
 
 struct BoxedValue {
 	value: Box<dyn Any + Send + Sync>,

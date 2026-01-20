@@ -19,7 +19,6 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 	},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
-	runtime::compute::ComputePool,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -39,8 +38,7 @@ test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_mem
 test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let compute_pool = ComputePool::new(2, 8);
-	let storage = HotStorage::memory(compute_pool);
+	let storage = HotStorage::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 

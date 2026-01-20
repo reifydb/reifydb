@@ -16,10 +16,10 @@ use reifydb_engine::{
 use reifydb_hash::{Hash128, xxh::xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_core::internal;
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
-	internal,
 	params::Params,
 	util::cowvec::CowVec,
 	value::{Value, blob::Blob, row_number::RowNumber, r#type::Type},

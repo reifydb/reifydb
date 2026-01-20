@@ -18,8 +18,18 @@ use std::{
 	time::Duration,
 };
 
+#[cfg(feature = "native")]
 use crossbeam_channel::{Receiver, Sender, unbounded};
-use parking_lot::{Condvar, Mutex};
+
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::condvar::native::Condvar;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::condvar::wasm::Condvar;
+
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::mutex::native::Mutex;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::mutex::wasm::Mutex;
 use reifydb_core::util::wait_group::WaitGroup;
 
 /// Closer holds the two things we need to close a task and wait for it to
@@ -36,6 +46,7 @@ impl Deref for Closer {
 	}
 }
 
+#[cfg(feature = "native")]
 #[derive(Debug)]
 pub struct CloserInner {
 	wg: WaitGroup,
@@ -47,7 +58,19 @@ pub struct CloserInner {
 	initial_count: usize,
 }
 
+#[cfg(feature = "wasm")]
+#[derive(Debug)]
+pub struct CloserInner {
+	wg: WaitGroup,
+	shutdown_condvar: Condvar,
+	shutdown_mutex: Mutex<bool>,
+	signaled: AtomicBool,
+	#[allow(dead_code)]
+	initial_count: usize,
+}
+
 impl CloserInner {
+	#[cfg(feature = "native")]
 	fn new() -> Self {
 		let (shutdown_tx, shutdown_rx) = unbounded();
 		Self {
@@ -61,12 +84,35 @@ impl CloserInner {
 		}
 	}
 
+	#[cfg(feature = "wasm")]
+	fn new() -> Self {
+		Self {
+			wg: WaitGroup::new(),
+			shutdown_condvar: Condvar::new(),
+			shutdown_mutex: Mutex::new(false),
+			signaled: AtomicBool::new(false),
+			initial_count: 0,
+		}
+	}
+
+	#[cfg(feature = "native")]
 	fn with(initial: usize) -> Self {
 		let (shutdown_tx, shutdown_rx) = unbounded();
 		Self {
 			wg: WaitGroup::from(initial),
 			shutdown_tx,
 			shutdown_rx,
+			shutdown_condvar: Condvar::new(),
+			shutdown_mutex: Mutex::new(false),
+			signaled: AtomicBool::new(false),
+			initial_count: initial,
+		}
+	}
+
+	#[cfg(feature = "wasm")]
+	fn with(initial: usize) -> Self {
+		Self {
+			wg: WaitGroup::from(initial),
 			shutdown_condvar: Condvar::new(),
 			shutdown_mutex: Mutex::new(false),
 			signaled: AtomicBool::new(false),
@@ -94,6 +140,7 @@ impl Closer {
 	}
 
 	/// Signals the shutdown.
+	#[cfg(feature = "native")]
 	pub fn signal(&self) {
 		// Only signal once
 		if !self.signaled.swap(true, Ordering::AcqRel) {
@@ -106,6 +153,18 @@ impl Closer {
 			for _ in 0..self.initial_count {
 				let _ = self.shutdown_tx.send(());
 			}
+		}
+	}
+
+	/// Signals the shutdown.
+	#[cfg(feature = "wasm")]
+	pub fn signal(&self) {
+		// Only signal once
+		if !self.signaled.swap(true, Ordering::AcqRel) {
+			let mut guard = self.shutdown_mutex.lock();
+			*guard = true;
+			drop(guard);
+			self.shutdown_condvar.notify_all();
 		}
 	}
 
@@ -158,6 +217,7 @@ pub mod tests {
 	}
 
 	#[test]
+	#[cfg(feature = "native")]
 	fn test_closer_single() {
 		let closer = Closer::new(1);
 		let tc = closer.clone();
@@ -172,6 +232,7 @@ pub mod tests {
 	}
 
 	#[test]
+	#[cfg(feature = "native")]
 	fn test_closer_many() {
 		use crossbeam_channel::unbounded;
 

@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use super::IocContainer;
+use crate::error::diagnostic::internal::internal;
+use reifydb_type::error;
 use std::{
-	any::{Any, type_name},
+	any::{type_name, Any},
 	cell::OnceCell,
 	rc::Rc,
 };
-
-use reifydb_type::{error, error::diagnostic::internal::internal};
-
-use super::IocContainer;
 
 /// Single-threaded lazy resolution wrapper using OnceCell
 /// Can be cheaply cloned as it uses Rc internally

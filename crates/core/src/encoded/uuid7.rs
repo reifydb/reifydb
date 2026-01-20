@@ -49,7 +49,7 @@ pub mod tests {
 	use std::time::Duration;
 
 	use reifydb_type::value::{r#type::Type, uuid::Uuid7};
-	use tokio::time::sleep;
+	use std::thread::sleep;
 
 	use crate::encoded::schema::Schema;
 
@@ -111,8 +111,8 @@ pub mod tests {
 		assert_eq!(retrieved.get_version_num(), 7);
 	}
 
-	#[tokio::test]
-	async fn test_timestamp_ordering() {
+	#[test]
+	fn test_timestamp_ordering() {
 		let schema = Schema::testing(&[Type::Uuid7]);
 
 		// Generate UUIDs in sequence - they should be ordered by
@@ -127,7 +127,7 @@ pub mod tests {
 			uuids.push(uuid);
 
 			// Small delay to ensure different timestamps
-			sleep(Duration::from_millis(1)).await;
+			sleep(Duration::from_millis(1));
 		}
 
 		// Verify that UUIDs are ordered (timestamp-based)
@@ -262,13 +262,13 @@ pub mod tests {
 		assert_eq!(retrieved_bytes.len(), 16);
 	}
 
-	#[tokio::test]
-	async fn test_time_based_properties() {
+	#[test]
+	fn test_time_based_properties() {
 		let schema = Schema::testing(&[Type::Uuid7]);
 
 		// Generate UUIDs at different times
 		let uuid1 = Uuid7::generate();
-		sleep(Duration::from_millis(2)).await;
+		sleep(Duration::from_millis(2));
 		let uuid2 = Uuid7::generate();
 
 		let mut row1 = schema.allocate();

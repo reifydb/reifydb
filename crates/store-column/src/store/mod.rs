@@ -3,8 +3,13 @@
 
 use std::{
 	sync::{Arc, Mutex},
-	time::{Duration, SystemTime},
+	time::Duration,
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_runtime::time::native::Instant;
+#[cfg(target_arch = "wasm32")]
+use reifydb_runtime::time::wasm::Instant;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -31,7 +36,7 @@ pub struct StandardColumnStore {
 struct TierState {
 	_hot_evicted_version: CommitVersion,  // Last version evicted from hot to warm
 	_warm_evicted_version: CommitVersion, // Last version evicted from warm to cold
-	_last_eviction_time: SystemTime,
+	_last_eviction_time: Instant,
 }
 
 impl Default for TierState {
@@ -39,7 +44,7 @@ impl Default for TierState {
 		Self {
 			_hot_evicted_version: CommitVersion(0),
 			_warm_evicted_version: CommitVersion(0),
-			_last_eviction_time: SystemTime::now(),
+			_last_eviction_time: Instant::now(),
 		}
 	}
 }
@@ -118,14 +123,10 @@ impl StandardColumnStore {
 	/// Check if data should be evicted based on retention policies
 	pub fn should_evict(&self) -> bool {
 		let state = self.tier_state.lock().unwrap();
-		let now = SystemTime::now();
+		let elapsed = state._last_eviction_time.elapsed();
 
 		// Simple time-based eviction check
-		if let Ok(duration) = now.duration_since(state._last_eviction_time) {
-			duration > Duration::from_secs(300) // Check every 5 minutes
-		} else {
-			false
-		}
+		elapsed > Duration::from_secs(300) // Check every 5 minutes
 	}
 
 	/// Evict data from hot to warm, and warm to cold based on retention policies
@@ -146,7 +147,7 @@ impl ColumnStore for StandardColumnStore {
 		if let Some(backend) = self.select_write_tier(version) {
 			backend.insert(version, columns)
 		} else {
-			reifydb_type::err!(reifydb_type::error::diagnostic::internal::internal_with_context(
+			reifydb_type::err!(reifydb_core::error::diagnostic::internal::internal_with_context(
 				"No available backend for column storage",
 				file!(),
 				line!(),

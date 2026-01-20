@@ -8,8 +8,8 @@ use reifydb_type::value::{
 	datetime::DateTime,
 	duration::Duration,
 	identity::IdentityId,
-	time::Time,
 	r#type::Type,
+	time::Time,
 	uuid::{Uuid4, Uuid7},
 };
 use uuid::Uuid;
@@ -1043,22 +1043,21 @@ pub mod tests {
 	}
 
 	mod uuid7 {
+		use std::thread::sleep;
 		use std::time::Duration;
 
-		use reifydb_type::value::{r#type::Type, uuid::Uuid7};
-		use tokio::time::sleep;
-
 		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 
-		#[tokio::test]
-		async fn test_asc() {
+		#[test]
+		fn test_asc() {
 			let layout = EncodedIndexLayout::new(&[Type::Uuid7], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
 			let uuid1 = Uuid7::generate();
 			// Sleep a bit to ensure different timestamps
-			sleep(Duration::from_millis(10)).await;
+			sleep(Duration::from_millis(10));
 			let uuid2 = Uuid7::generate();
 
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
@@ -1081,15 +1080,15 @@ pub mod tests {
 			assert!(key1.as_slice() < key2.as_slice());
 		}
 
-		#[tokio::test]
-		async fn test_desc() {
+		#[test]
+		fn test_desc() {
 			let layout = EncodedIndexLayout::new(&[Type::Uuid7], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
 			let uuid1 = Uuid7::generate();
 			// Sleep a bit to ensure different timestamps
-			sleep(Duration::from_millis(10)).await;
+			sleep(Duration::from_millis(10));
 			let uuid2 = Uuid7::generate();
 
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
@@ -1115,15 +1114,14 @@ pub mod tests {
 	}
 
 	mod identity_id {
+		use std::thread::sleep;
 		use std::time::Duration;
 
-		use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
-		use tokio::time::sleep;
-
 		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
 
-		#[tokio::test]
-		async fn test_asc() {
+		#[test]
+		fn test_asc() {
 			let layout = EncodedIndexLayout::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
@@ -1131,7 +1129,7 @@ pub mod tests {
 			let id1 = IdentityId::generate();
 			// Sleep a bit to ensure different timestamps
 			// (IdentityId wraps Uuid7)
-			sleep(Duration::from_millis(10)).await;
+			sleep(Duration::from_millis(10));
 			let id2 = IdentityId::generate();
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
@@ -1156,15 +1154,15 @@ pub mod tests {
 			assert!(key1.as_slice() < key2.as_slice());
 		}
 
-		#[tokio::test]
-		async fn test_desc() {
+		#[test]
+		fn test_desc() {
 			let layout = EncodedIndexLayout::new(&[Type::IdentityId], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
 			let id1 = IdentityId::generate();
 			// Sleep a bit to ensure different timestamps
-			sleep(Duration::from_millis(10)).await;
+			sleep(Duration::from_millis(10));
 			let id2 = IdentityId::generate();
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());

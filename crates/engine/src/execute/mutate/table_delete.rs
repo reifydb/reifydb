@@ -18,13 +18,13 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::DeleteTableNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_core::error::diagnostic::{
+	catalog::{namespace_not_found, table_not_found},
+	engine,
+	internal::internal,
+};
 use reifydb_type::{
 	error,
-	error::diagnostic::{
-		catalog::{namespace_not_found, table_not_found},
-		engine,
-		internal::internal,
-	},
 	fragment::Fragment,
 	params::Params,
 	return_error,
@@ -140,7 +140,7 @@ impl Executor {
 					let schema =
 						self.catalog.schema.get_or_load(fingerprint, cmd)?.ok_or_else(
 							|| {
-								error!(reifydb_type::error::diagnostic::internal::internal(
+								error!(reifydb_core::error::diagnostic::internal::internal(
 								format!("Schema with fingerprint {:?} not found for table {}", fingerprint, table.name)
 							))
 							},

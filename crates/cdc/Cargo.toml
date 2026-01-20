@@ -7,6 +7,19 @@ license.workspace = true
 repository.workspace = true
 description = "Change Data Capture module for ReifyDB"
 
+[features]
+default = ["native"]
+native = [
+    "reifydb-core/native",
+    "reifydb-transaction/native",
+    "reifydb-type/native",
+]
+wasm = [
+    "reifydb-core/wasm",
+    "reifydb-transaction/wasm",
+    "reifydb-type/wasm",
+]
+
 [dependencies]
 crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }

@@ -15,7 +15,8 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionValues},
 	},
 };
-use reifydb_type::{Result, error::diagnostic::transaction, return_error};
+use reifydb_type::{Result, return_error};
+use reifydb_core::error::diagnostic::transaction;
 use tracing::instrument;
 
 use crate::{

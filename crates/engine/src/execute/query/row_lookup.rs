@@ -17,8 +17,8 @@ use reifydb_core::{
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::standard::StandardTransaction;
+use reifydb_core::error::diagnostic::internal::internal;
 use reifydb_type::{
-	error::diagnostic::internal::internal,
 	fragment::Fragment,
 	value::{row_number::RowNumber, r#type::Type},
 };
@@ -63,7 +63,7 @@ impl<'a> RowPointLookupNode {
 
 		let stored_ctx = self.context.as_ref().expect("RowPointLookupNode context not set");
 		let schema = stored_ctx.executor.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-			reifydb_type::error!(reifydb_type::error::diagnostic::internal::internal(format!(
+			reifydb_type::error!(reifydb_core::error::diagnostic::internal::internal(format!(
 				"Schema with fingerprint {:?} not found",
 				fingerprint
 			)))
@@ -160,7 +160,7 @@ impl<'a> RowListLookupNode {
 
 		let stored_ctx = self.context.as_ref().expect("RowListLookupNode context not set");
 		let schema = stored_ctx.executor.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-			reifydb_type::error!(reifydb_type::error::diagnostic::internal::internal(format!(
+			reifydb_type::error!(reifydb_core::error::diagnostic::internal::internal(format!(
 				"Schema with fingerprint {:?} not found",
 				fingerprint
 			)))
@@ -378,7 +378,7 @@ fn get_source_id(source: &ResolvedPrimitive) -> crate::Result<PrimitiveId> {
 		ResolvedPrimitive::Table(table) => Ok(table.def().id.into()),
 		ResolvedPrimitive::View(view) => Ok(view.def().id.into()),
 		ResolvedPrimitive::RingBuffer(rb) => Ok(rb.def().id.into()),
-		_ => reifydb_type::internal_err!("Row lookup not supported for this source type"),
+		_ => reifydb_core::internal_err!("Row lookup not supported for this source type"),
 	}
 }
 

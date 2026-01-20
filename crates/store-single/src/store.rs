@@ -15,7 +15,6 @@ use reifydb_core::{
 	},
 	event::EventBus,
 	interface::store::SingleVersionValues,
-	runtime::compute::ComputePool,
 };
 use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
@@ -71,7 +70,7 @@ impl StandardSingleStore {
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
 		Self::new(SingleStoreConfig {
 			hot: Some(HotConfig {
-				storage: HotTier::memory(ComputePool::new(1, 1)),
+				storage: HotTier::memory(),
 			}),
 			event_bus,
 		})

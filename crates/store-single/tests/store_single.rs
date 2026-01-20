@@ -22,7 +22,6 @@ use reifydb_core::{
 		SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 		SingleVersionRangeRev, SingleVersionValues,
 	},
-	runtime::compute::ComputePool,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -45,8 +44,7 @@ test_each_path! { in "crates/store-single/tests/scripts/single" as store_single_
 test_each_path! { in "crates/store-single/tests/scripts/single" as store_single_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let compute_pool = ComputePool::new(2, 8);
-	let storage = HotTier::memory(compute_pool);
+	let storage = HotTier::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 

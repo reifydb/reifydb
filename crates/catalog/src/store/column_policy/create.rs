@@ -9,7 +9,8 @@ use reifydb_core::{
 	key::column_policy::ColumnPolicyKey,
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::{error::diagnostic::catalog::table_column_policy_already_exists, return_error};
+use reifydb_type::return_error;
+use reifydb_core::error::diagnostic::catalog::table_column_policy_already_exists;
 
 use crate::{
 	CatalogStore,

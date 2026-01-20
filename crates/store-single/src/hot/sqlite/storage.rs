@@ -8,7 +8,8 @@
 use std::{ops::Bound, sync::Arc};
 
 use parking_lot::Mutex;
-use reifydb_type::{Result, error, error::diagnostic::internal::internal, util::cowvec::CowVec};
+use reifydb_type::{Result, error, util::cowvec::CowVec};
+use reifydb_core::error::diagnostic::internal::internal;
 use rusqlite::{Connection, Error::QueryReturnedNoRows, params};
 use tracing::instrument;
 

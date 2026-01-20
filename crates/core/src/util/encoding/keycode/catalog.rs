@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::return_internal_error;
 
 use crate::interface::catalog::{
 	flow::FlowId,
@@ -9,6 +8,7 @@ use crate::interface::catalog::{
 	primitive::PrimitiveId,
 	vtable::VTableId,
 };
+use crate::return_internal_error;
 
 /// Serialize a PrimitiveId for use in database keys
 /// Returns [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for

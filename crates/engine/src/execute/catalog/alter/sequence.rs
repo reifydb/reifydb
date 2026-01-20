@@ -7,9 +7,8 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::AlterSequenceNode;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::{
-	error::diagnostic::sequence::can_not_alter_not_auto_increment, params::Params, return_error, value::Value,
-};
+use reifydb_core::error::diagnostic::sequence::can_not_alter_not_auto_increment;
+use reifydb_type::{params::Params, return_error, value::Value};
 
 use crate::{
 	evaluate::{ColumnEvaluationContext, column::evaluate},

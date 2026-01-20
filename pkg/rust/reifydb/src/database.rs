@@ -13,8 +13,8 @@ use std::{
 use reifydb_core::{
 	event::lifecycle::OnStartEvent,
 	interface::{WithEventBus, auth::Identity},
-	runtime::SharedRuntime,
 };
+use reifydb_runtime::SharedRuntime;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_sub_api::subsystem::HealthStatus;
 #[cfg(feature = "sub_flow")]

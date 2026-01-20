@@ -11,7 +11,8 @@ use reifydb_core::{
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::standard::StandardTransaction;
-use reifydb_type::{error, error::diagnostic::query, util::cowvec::CowVec};
+use reifydb_type::{error, util::cowvec::CowVec};
+use reifydb_core::error::diagnostic::query;
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};

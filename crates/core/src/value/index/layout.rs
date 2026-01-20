@@ -5,10 +5,11 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_type::{
 	error,
-	error::diagnostic::catalog::{index_types_directions_mismatch, index_variable_length_not_supported},
 	util::cowvec::CowVec,
 	value::r#type::Type,
 };
+
+use crate::error::diagnostic::catalog::{index_types_directions_mismatch, index_variable_length_not_supported};
 
 use crate::{sort::SortDirection, value::index::encoded::EncodedIndexKey};
 

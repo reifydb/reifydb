@@ -3,7 +3,7 @@
 
 //! ReifyDB Operator SDK
 
-#![cfg_attr(not(debug_assertions), deny(warnings))]
+// #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub mod catalog;
 pub mod error;

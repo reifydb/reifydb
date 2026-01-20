@@ -4,12 +4,8 @@
 use reifydb_core::{interface::catalog::flow::FlowStatus, value::column::columns::Columns};
 use reifydb_rql::plan::physical::alter::flow::{AlterFlowAction, AlterFlowNode};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::{
-	error::diagnostic::catalog::{flow_not_found, namespace_not_found},
-	fragment::Fragment,
-	return_error,
-	value::Value,
-};
+use reifydb_core::error::diagnostic::catalog::{flow_not_found, namespace_not_found};
+use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
 use crate::execute::Executor;
 

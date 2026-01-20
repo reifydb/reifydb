@@ -7,9 +7,15 @@ authors.workspace = true
 repository.workspace = true
 description = "HTTP server subsystem for ReifyDB using Axum"
 
+[features]
+default = ["native"]
+native = ["reifydb-core/native", "reifydb-engine/tokio", "reifydb-runtime/native", "reifydb-sub-server/native"]
+wasm = ["reifydb-core/wasm", "reifydb-engine/wasm", "reifydb-runtime/wasm", "reifydb-sub-server/wasm"]
+
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }

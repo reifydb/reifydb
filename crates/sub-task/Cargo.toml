@@ -3,11 +3,17 @@ name = "reifydb-sub-task"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = ["native"]
+native = ["reifydb-core/native", "reifydb-engine/tokio", "reifydb-runtime/native", "reifydb-transaction/native"]
+wasm = ["reifydb-core/wasm", "reifydb-engine/wasm", "reifydb-runtime/wasm", "reifydb-transaction/wasm"]
+
 [dependencies]
 tokio = { workspace = true }
 dashmap = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }

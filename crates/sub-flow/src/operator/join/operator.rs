@@ -8,6 +8,7 @@ use reifydb_core::{
 	common::JoinType,
 	encoded::{key::EncodedKey, schema::Schema},
 	interface::catalog::flow::FlowNodeId,
+	internal,
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{Column, columns::Columns},
 };
@@ -22,7 +23,6 @@ use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
-	internal,
 	params::Params,
 	util::cowvec::CowVec,
 	value::{Value, row_number::RowNumber, r#type::Type},

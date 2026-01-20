@@ -5,8 +5,9 @@ use reifydb_core::interface::catalog::{
 	id::RingBufferId,
 	ringbuffer::{RingBufferDef, RingBufferMetadata},
 };
+use reifydb_core::internal;
 use reifydb_transaction::standard::IntoStandardTransaction;
-use reifydb_type::{error::Error, internal};
+use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 

@@ -7,7 +7,10 @@ use std::{
 	sync::Arc,
 };
 
-use parking_lot::RwLock;
+#[cfg(feature = "native")]
+use reifydb_runtime::sync::rwlock::native::RwLock;
+#[cfg(feature = "wasm")]
+use reifydb_runtime::sync::rwlock::wasm::RwLock;
 
 pub mod flow;
 pub mod lifecycle;

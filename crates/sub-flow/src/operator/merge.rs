@@ -4,12 +4,12 @@
 use std::rc::Rc;
 
 use reifydb_core::{
-	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId,
+	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId, internal,
 	util::encoding::keycode::serializer::KeySerializer, value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin, FlowDiff};
-use reifydb_type::{error::Error, internal, value::row_number::RowNumber};
+use reifydb_type::{error::Error, value::row_number::RowNumber};
 
 use crate::{
 	operator::{Operator, Operators, stateful::row::RowNumberProvider},

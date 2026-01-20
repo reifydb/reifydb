@@ -3,7 +3,8 @@
 
 //! Factory for creating OpenTelemetry subsystem instances.
 
-use reifydb_core::{runtime::SharedRuntime, util::ioc::IocContainer};
+use reifydb_core::util::ioc::IocContainer;
+use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 
 use crate::{config::OtelConfig, subsystem::OtelSubsystem};

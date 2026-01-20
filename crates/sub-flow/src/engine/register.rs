@@ -18,9 +18,9 @@ use reifydb_rql::flow::{
 	},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::{error::Error, internal};
+use reifydb_type::error::Error;
 use tracing::instrument;
-
+use reifydb_core::internal;
 use super::eval::evaluate_operator_config;
 use crate::{
 	engine::FlowEngine,

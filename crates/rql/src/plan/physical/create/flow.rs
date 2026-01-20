@@ -3,7 +3,8 @@
 
 use PhysicalPlan::CreateFlow;
 use reifydb_transaction::standard::IntoStandardTransaction;
-use reifydb_type::{error::diagnostic::catalog::namespace_not_found, fragment::Fragment, return_error};
+use reifydb_core::error::diagnostic::catalog::namespace_not_found;
+use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::plan::{
 	logical,

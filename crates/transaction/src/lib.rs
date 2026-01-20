@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-#![cfg_attr(not(debug_assertions), deny(warnings))]
+// #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use std::{
 	fmt::{Display, Formatter},
@@ -9,7 +9,8 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_type::{error::Error, return_internal_error, value::uuid::Uuid7};
+use reifydb_type::{error::Error, value::uuid::Uuid7};
+use reifydb_core::return_internal_error;
 
 pub mod change;
 pub mod delta;

@@ -228,7 +228,11 @@ impl MultiVersionCommit for StandardMultiStore {
 		}
 
 		// Queue deferred drops for single-version-semantics keys to background worker
+		#[cfg(feature = "native")]
 		let drop_worker = self.drop_worker.lock();
+		#[cfg(feature = "wasm")]
+		let drop_worker = self.drop_worker.lock().unwrap();
+
 		for key_bytes in pending_set_keys.iter() {
 			let key = CowVec::new(key_bytes.clone());
 			let table = classify_key(&EncodedKey(key.clone()));

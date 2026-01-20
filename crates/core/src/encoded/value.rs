@@ -409,7 +409,7 @@ pub mod tests {
 
 		let original_values = vec![
 			Value::Date(Date::new(2025, 7, 15).unwrap()),
-			Value::DateTime(DateTime::now()),
+			Value::DateTime(DateTime::from_ymd_hms(2025, 7, 15, 14, 30, 45).unwrap()),
 			Value::Time(Time::new(14, 30, 45, 123456789).unwrap()),
 			Value::Duration(Duration::from_seconds(3600)),
 		];

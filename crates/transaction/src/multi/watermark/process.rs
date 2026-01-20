@@ -12,22 +12,36 @@
 use std::{
 	cmp::Reverse,
 	collections::{BinaryHeap, HashMap, HashSet},
-	sync::{Arc, atomic::Ordering},
+	sync::Arc,
 };
 
+#[cfg(any(feature = "native", feature = "wasm"))]
+use std::sync::atomic::Ordering;
+
+#[cfg(feature = "wasm")]
+use std::sync::atomic::AtomicU64;
+
+#[cfg(feature = "native")]
 use crossbeam_channel::{Receiver, select};
 
 use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
+use crate::multi::watermark::closer::Closer;
 
 // Maximum orphaned done() entries before cleanup
 const MAX_ORPHANED: usize = 10000;
 // Threshold for cleaning up old orphaned entries
 const ORPHAN_CLEANUP_THRESHOLD: u64 = 1000;
-use crate::multi::watermark::{
-	closer::Closer,
-	watermark::{WaiterHandle, WatermarkInner},
-};
 
+#[cfg(any(feature = "native", feature = "wasm"))]
+use crate::multi::watermark::watermark::WaiterHandle;
+
+#[cfg(feature = "wasm")]
+use crate::multi::watermark::watermark::Mark;
+
+#[cfg(feature = "native")]
+use crate::multi::watermark::watermark::WatermarkInner;
+
+#[cfg(feature = "native")]
 impl WatermarkInner {
 	pub(crate) fn process(&self, rx: Receiver<super::watermark::Mark>, closer: Closer) {
 		let mut indices: BinaryHeap<Reverse<u64>> = BinaryHeap::new();
@@ -204,6 +218,153 @@ impl WatermarkInner {
 					}
 				}
 			}
+		}
+	}
+}
+
+/// WASM processor for synchronous watermark processing
+#[cfg(feature = "wasm")]
+pub struct WatermarkProcessor {
+	indices: BinaryHeap<Reverse<u64>>,
+	pending: HashMap<u64, i64>,
+	waiters: HashMap<u64, Vec<Arc<WaiterHandle>>>,
+	begun: HashSet<u64>,
+	orphaned_done: HashSet<u64>,
+	_closer: Closer,
+}
+
+// SAFETY: WASM is single-threaded, so Sync is safe
+#[cfg(feature = "wasm")]
+unsafe impl Sync for WatermarkProcessor {}
+
+#[cfg(feature = "wasm")]
+impl WatermarkProcessor {
+	pub fn new(closer: Closer) -> Self {
+		Self {
+			indices: BinaryHeap::new(),
+			pending: HashMap::new(),
+			waiters: HashMap::new(),
+			begun: HashSet::new(),
+			orphaned_done: HashSet::new(),
+			_closer: closer,
+		}
+	}
+
+	pub fn process_mark(&mut self, mark: Mark, done_until: &AtomicU64) {
+		// Handle waiters
+		if let Some(waiter) = mark.waiter {
+			let done = done_until.load(Ordering::SeqCst);
+			if done >= mark.version {
+				waiter.notify();
+			} else if mark.version < done.saturating_sub(OLD_VERSION_THRESHOLD) {
+				waiter.notify();
+			} else {
+				self.waiters.entry(mark.version).or_default().push(waiter);
+			}
+			return;
+		}
+
+		// Prevent unbounded growth
+		if self.pending.len() > MAX_PENDING {
+			let done = done_until.load(Ordering::SeqCst);
+			let cutoff = done.saturating_sub(PENDING_CLEANUP_THRESHOLD);
+			self.pending.retain(|&k, _| k > cutoff);
+			self.begun.retain(|&k| k > cutoff);
+		}
+
+		if self.waiters.len() > MAX_WAITERS {
+			let done = done_until.load(Ordering::SeqCst);
+			let cutoff = done.saturating_sub(OLD_VERSION_THRESHOLD);
+			self.waiters.retain(|&k, waiters_list| {
+				if k <= cutoff {
+					for waiter in waiters_list.drain(..) {
+						waiter.notify();
+					}
+					false
+				} else {
+					true
+				}
+			});
+		}
+
+		if self.orphaned_done.len() > MAX_ORPHANED {
+			let done = done_until.load(Ordering::SeqCst);
+			let cutoff = done.saturating_sub(ORPHAN_CLEANUP_THRESHOLD);
+			self.orphaned_done.retain(|&v| v > cutoff);
+		}
+
+		// Process mark
+		if mark.done {
+			if self.begun.contains(&mark.version) {
+				self.pending.entry(mark.version).and_modify(|v| *v -= 1).or_insert(-1);
+			} else {
+				self.orphaned_done.insert(mark.version);
+				return;
+			}
+		} else {
+			self.begun.insert(mark.version);
+
+			if self.orphaned_done.remove(&mark.version) {
+				self.pending.insert(mark.version, 0);
+			} else {
+				self.pending.entry(mark.version).and_modify(|v| *v += 1).or_insert(1);
+			}
+
+			if !self.pending.contains_key(&mark.version) || !self.indices.iter().any(|Reverse(v)| *v == mark.version) {
+				self.indices.push(Reverse(mark.version));
+			}
+		}
+
+		// Update done_until
+		let old_done_until = done_until.load(Ordering::SeqCst);
+		let mut until = old_done_until;
+
+		while !self.indices.is_empty() {
+			let min = self.indices.peek().unwrap().0;
+
+			if !self.begun.contains(&min) {
+				break;
+			}
+
+			if let Some(done) = self.pending.get(&min) {
+				if done.gt(&0) {
+					break;
+				}
+			}
+
+			self.indices.pop();
+			self.pending.remove(&min);
+			self.begun.remove(&min);
+			until = min;
+		}
+
+		if until != old_done_until {
+			assert_eq!(
+				done_until.compare_exchange(old_done_until, until, Ordering::SeqCst, Ordering::Acquire),
+				Ok(old_done_until)
+			);
+		}
+
+		// Notify waiters
+		if until != old_done_until {
+			(old_done_until + 1..=until).for_each(|idx| {
+				if let Some(waiters_list) = self.waiters.remove(&idx) {
+					for waiter in waiters_list {
+						waiter.notify();
+					}
+				}
+			});
+		} else {
+			self.waiters.retain(|&idx, waiters_list| {
+				if idx <= done_until.load(Ordering::SeqCst) {
+					for waiter in waiters_list.drain(..) {
+						waiter.notify();
+					}
+					false
+				} else {
+					true
+				}
+			});
 		}
 	}
 }

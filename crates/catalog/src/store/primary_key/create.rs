@@ -9,10 +9,13 @@ use reifydb_core::{
 	key::primary_key::PrimaryKeyKey,
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::{
+use reifydb_core::{
 	error::diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
+	return_internal_error,
+};
+use reifydb_type::{
 	fragment::Fragment,
-	return_error, return_internal_error,
+	return_error,
 };
 
 use crate::{

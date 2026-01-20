@@ -8,10 +8,11 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::runtime::compute::ComputePool;
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-use super::{memory::storage::MemoryPrimitiveStorage, sqlite::storage::SqlitePrimitiveStorage};
+use super::memory::storage::MemoryPrimitiveStorage;
+#[cfg(feature = "sqlite")]
+use super::sqlite::storage::SqlitePrimitiveStorage;
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 /// Hot storage tier.
@@ -24,21 +25,24 @@ pub enum HotStorage {
 	/// In-memory storage (non-persistent)
 	Memory(MemoryPrimitiveStorage) = 0,
 	/// SQLite-based persistent storage
+	#[cfg(feature = "sqlite")]
 	Sqlite(SqlitePrimitiveStorage) = 1,
 }
 
 impl HotStorage {
 	/// Create a new in-memory backend
-	pub fn memory(compute_pool: ComputePool) -> Self {
-		Self::Memory(MemoryPrimitiveStorage::new(compute_pool))
+	pub fn memory() -> Self {
+		Self::Memory(MemoryPrimitiveStorage::new())
 	}
 
 	/// Create a new SQLite backend with in-memory database
+	#[cfg(feature = "sqlite")]
 	pub fn sqlite_in_memory() -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::in_memory())
 	}
 
 	/// Create a new SQLite backend with the given configuration
+	#[cfg(feature = "sqlite")]
 	pub fn sqlite(config: super::sqlite::config::SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::new(config))
 	}
@@ -49,6 +53,7 @@ impl TierStorage for HotStorage {
 	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		match self {
 			Self::Memory(s) => s.get(table, key),
+			#[cfg(feature = "sqlite")]
 			Self::Sqlite(s) => s.get(table, key),
 		}
 	}
@@ -57,6 +62,7 @@ impl TierStorage for HotStorage {
 	fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
 		match self {
 			Self::Memory(s) => s.contains(table, key),
+			#[cfg(feature = "sqlite")]
 			Self::Sqlite(s) => s.contains(table, key),
 		}
 	}
@@ -65,6 +71,7 @@ impl TierStorage for HotStorage {
 	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.set(batches),
+			#[cfg(feature = "sqlite")]
 			Self::Sqlite(s) => s.set(batches),
 		}
 	}
@@ -80,6 +87,7 @@ impl TierStorage for HotStorage {
 	) -> Result<RangeBatch> {
 		match self {
 			Self::Memory(s) => s.range_next(table, cursor, start, end, batch_size),
+			#[cfg(feature = "sqlite")]
 			Self::Sqlite(s) => s.range_next(table, cursor, start, end, batch_size),
 		}
 	}
@@ -95,6 +103,7 @@ impl TierStorage for HotStorage {
 	) -> Result<RangeBatch> {
 		match self {
 			Self::Memory(s) => s.range_rev_next(table, cursor, start, end, batch_size),
+			#[cfg(feature = "sqlite")]
 			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, batch_size),
 		}
 	}
@@ -103,6 +112,7 @@ impl TierStorage for HotStorage {
 	fn ensure_table(&self, table: EntryKind) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.ensure_table(table),
+			#[cfg(feature = "sqlite")]
 			Self::Sqlite(s) => s.ensure_table(table),
 		}
 	}
@@ -111,6 +121,7 @@ impl TierStorage for HotStorage {
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.clear_table(table),
+			#[cfg(feature = "sqlite")]
 			Self::Sqlite(s) => s.clear_table(table),
 		}
 	}
@@ -120,17 +131,11 @@ impl TierBackend for HotStorage {}
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::runtime::compute::ComputePool;
-
 	use super::*;
-
-	fn test_compute_pool() -> ComputePool {
-		ComputePool::new(2, 8)
-	}
 
 	#[test]
 	fn test_memory_backend() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 
 		storage.set(HashMap::from([(
 			EntryKind::Multi,
@@ -154,7 +159,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next_memory() {
-		let storage = HotStorage::memory(test_compute_pool());
+		let storage = HotStorage::memory();
 
 		storage.set(HashMap::from([(
 			EntryKind::Multi,

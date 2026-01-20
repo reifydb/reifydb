@@ -31,8 +31,8 @@ macro_rules! error {
 /// Err(Error(diagnostic_function(args).with_fragment(fragment)))`
 ///
 /// Examples:
-/// - `return_error!(sequence_exhausted(Type::Uint8))`
-/// - `return_error!(sequence_exhausted(Type::Uint8), fragment)`
+/// - `return_error!(nan_not_allowed())`
+/// - `return_error!(nan_not_allowed(), fragment)`
 #[macro_export]
 macro_rules! return_error {
 	($diagnostic:expr) => {
@@ -55,8 +55,8 @@ macro_rules! return_error {
 /// `Err(Error(diagnostic_function(args).with_fragment(fragment)))`
 ///
 /// Examples:
-/// - `err!(sequence_exhausted(Type::Uint8))`
-/// - `err!(sequence_exhausted(Type::Uint8), fragment)`
+/// - `err!(nan_not_allowed())`
+/// - `err!(nan_not_allowed(), fragment)`
 #[macro_export]
 macro_rules! err {
 	($diagnostic:expr) => {
@@ -71,31 +71,30 @@ macro_rules! err {
 
 #[cfg(test)]
 pub mod tests {
-	use std::sync::Arc;
+    use std::sync::Arc;
 
-	use crate::{
-		error::diagnostic::sequence::sequence_exhausted,
-		fragment::{Fragment, StatementColumn, StatementLine},
-		value::r#type::Type,
-	};
+    use crate::{
+        error::diagnostic::number::nan_not_allowed,
+        fragment::{Fragment, StatementColumn, StatementLine},
+    };
 
-	#[test]
+    #[test]
 	fn test_error_macro() {
 		// Test that error! macro creates correct Error type
-		let err = error!(sequence_exhausted(Type::Uint8));
+		let err = error!(nan_not_allowed());
 
 		// Verify it creates the correct Error type
 		assert!(matches!(err, crate::error::Error(_)));
 
 		// Test that the diagnostic is properly wrapped
 		let diagnostic = err.diagnostic();
-		assert!(diagnostic.message.contains("exhausted"));
+		assert!(diagnostic.message.contains("NaN"));
 	}
 
 	#[test]
 	fn test_return_error_macro() {
 		fn test_fn() -> Result<(), crate::error::Error> {
-			return_error!(sequence_exhausted(Type::Uint8));
+			return_error!(nan_not_allowed());
 		}
 
 		let result = test_fn();
@@ -103,20 +102,20 @@ pub mod tests {
 
 		if let Err(err) = result {
 			let diagnostic = err.diagnostic();
-			assert!(diagnostic.message.contains("exhausted"));
+			assert!(diagnostic.message.contains("NaN"));
 		}
 	}
 
 	#[test]
 	fn test_err_macro() {
 		// Test that err! macro creates correct Result type with Err
-		let result: Result<(), crate::error::Error> = err!(sequence_exhausted(Type::Uint8));
+		let result: Result<(), crate::error::Error> = err!(nan_not_allowed());
 
 		assert!(result.is_err());
 
 		if let Err(err) = result {
 			let diagnostic = err.diagnostic();
-			assert!(diagnostic.message.contains("exhausted"));
+			assert!(diagnostic.message.contains("NaN"));
 		}
 	}
 
@@ -131,7 +130,7 @@ pub mod tests {
 
 		// Test that error! macro with fragment creates correct Error
 		// type
-		let err = error!(sequence_exhausted(Type::Uint8), fragment.clone());
+		let err = error!(nan_not_allowed(), fragment.clone());
 
 		// Verify it creates the correct Error type
 		assert!(matches!(err, crate::error::Error(_)));
@@ -159,7 +158,7 @@ pub mod tests {
 				column: StatementColumn(25),
 				text: Arc::new("error location".to_string()),
 			};
-			return_error!(sequence_exhausted(Type::Uint8), fragment);
+			return_error!(nan_not_allowed(), fragment);
 		}
 
 		let result = test_fn();
@@ -191,7 +190,7 @@ pub mod tests {
 
 		// Test that err! macro with fragment creates correct Result
 		// type with Err
-		let result: Result<(), crate::error::Error> = err!(sequence_exhausted(Type::Uint8), fragment);
+		let result: Result<(), crate::error::Error> = err!(nan_not_allowed(), fragment);
 
 		assert!(result.is_err());
 
@@ -221,7 +220,7 @@ pub mod tests {
 			text: Arc::new("closure fragment".to_string()),
 		};
 
-		let err = error!(sequence_exhausted(Type::Uint8), get_fragment());
+		let err = error!(nan_not_allowed(), get_fragment());
 		let diagnostic = err.diagnostic();
 		let fragment = diagnostic.fragment();
 		assert!(fragment.is_some());
