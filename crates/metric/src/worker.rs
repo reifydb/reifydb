@@ -4,7 +4,9 @@
 //! Background worker for metrics processing.
 //!
 //! This module provides the single-writer MetricsWorker that processes
-//! stats events off the critical commit path.
+//! stats events off the critical commit path using an unbounded channel.
+//! This ensures the hot path never blocks, even when the metrics worker
+//! falls behind. Backpressure monitoring provides visibility into worker health.
 
 use std::{
 	sync::{
@@ -15,7 +17,7 @@ use std::{
 	time::Duration,
 };
 
-use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 use reifydb_core::{
 	common::CommitVersion,
 	event::{
@@ -35,15 +37,15 @@ use crate::{
 /// Configuration for the metrics worker.
 #[derive(Debug, Clone)]
 pub struct MetricsWorkerConfig {
-	/// Maximum number of pending events in the channel.
-	/// If the channel is full, events will be dropped (fire-and-forget).
-	pub channel_capacity: usize,
+	/// Threshold for warning about channel backlog (default: 50,000).
+	/// When the number of pending events exceeds this threshold, warnings will be logged.
+	pub backpressure_warning_threshold: usize,
 }
 
 impl Default for MetricsWorkerConfig {
 	fn default() -> Self {
 		Self {
-			channel_capacity: 10_000,
+			backpressure_warning_threshold: 50_000,
 		}
 	}
 }
@@ -87,14 +89,22 @@ impl MetricsWorker {
 		S: SingleVersionStore,
 		R: MultiVersionGetPrevious + Clone + Send + Sync + 'static,
 	{
-		let (sender, receiver) = bounded(config.channel_capacity);
+		let (sender, receiver) = unbounded();
 		let running = Arc::new(AtomicBool::new(true));
+		let backpressure_threshold = config.backpressure_warning_threshold;
 
 		let worker_running = Arc::clone(&running);
 		let worker = thread::Builder::new()
 			.name("metrics-worker".to_string())
 			.spawn(move || {
-				Self::worker_loop(receiver, storage, resolver, worker_running, event_bus);
+				Self::worker_loop(
+					receiver,
+					storage,
+					resolver,
+					worker_running,
+					event_bus,
+					backpressure_threshold,
+				);
 			})
 			.expect("Failed to spawn metrics worker thread");
 
@@ -136,6 +146,7 @@ impl MetricsWorker {
 		resolver: R,
 		running: Arc<AtomicBool>,
 		event_bus: EventBus,
+		backpressure_threshold: usize,
 	) where
 		S: SingleVersionStore,
 		R: MultiVersionGetPrevious,
@@ -147,6 +158,17 @@ impl MetricsWorker {
 		let mut max_version = CommitVersion(0);
 
 		while running.load(Ordering::Acquire) {
+			// Check backlog before processing
+			let backlog = receiver.len();
+			if backlog > backpressure_threshold {
+				error!(
+					"Metrics worker backlog HIGH: {} events (threshold: {}). Worker may be falling behind.",
+					backlog, backpressure_threshold
+				);
+			} else if backlog > backpressure_threshold / 2 {
+				debug!("Metrics worker backlog elevated: {} events", backlog);
+			}
+
 			match receiver.recv_timeout(Duration::from_millis(100)) {
 				Ok(event) => {
 					match event {
@@ -352,12 +374,10 @@ impl EventListener<StorageStatsRecordedEvent> for StorageStatsListener {
 			});
 		}
 
-		if !ops.is_empty() {
-			let _ = self.sender.send(MetricsEvent::Multi {
-				ops,
-				version: *event.version(),
-			});
-		}
+		let _ = self.sender.send(MetricsEvent::Multi {
+			ops,
+			version: *event.version(),
+		});
 	}
 }
 

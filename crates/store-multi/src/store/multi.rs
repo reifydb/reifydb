@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::util::hex;
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
 	ops::{Bound, RangeBounds},
@@ -20,14 +19,17 @@ use reifydb_core::{
 		MultiVersionStore, MultiVersionValues,
 	},
 };
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
 
 use super::{
-	router::{classify_key, is_single_version_semantics_key},
-	version::{compute_version_suffix, encode_versioned_key, encode_versioned_key_with_suffix, get_at_version, VersionedGetResult},
-	worker::{DropMessage, DropRequest},
 	StandardMultiStore,
+	router::{classify_key, is_single_version_semantics_key},
+	version::{
+		VersionedGetResult, compute_version_suffix, encode_versioned_key, encode_versioned_key_with_suffix,
+		get_at_version,
+	},
+	worker::{DropMessage, DropRequest},
 };
 use crate::tier::{EntryKind, EntryKind::Multi, RangeCursor, TierStorage};
 
@@ -133,7 +135,6 @@ impl MultiVersionCommit for StandardMultiStore {
 					key,
 					values,
 				} => {
-
 					if is_single_version {
 						pending_set_keys.insert(key.as_ref().to_vec());
 					}
@@ -143,13 +144,16 @@ impl MultiVersionCommit for StandardMultiStore {
 						value_bytes: values.len() as u64,
 					});
 
-					encode_versioned_key_with_suffix(key.as_ref(), &version_suffix, &mut key_buffer);
+					encode_versioned_key_with_suffix(
+						key.as_ref(),
+						&version_suffix,
+						&mut key_buffer,
+					);
 
 					let versioned_key = CowVec::new(key_buffer.clone());
 					batches.entry(table)
 						.or_default()
 						.push((versioned_key, Some(CowVec::new(values.as_ref().to_vec()))));
-
 				}
 				Delta::Unset {
 					key,
@@ -160,7 +164,11 @@ impl MultiVersionCommit for StandardMultiStore {
 						value_bytes: values.len() as u64,
 					});
 
-					encode_versioned_key_with_suffix(key.as_ref(), &version_suffix, &mut key_buffer);
+					encode_versioned_key_with_suffix(
+						key.as_ref(),
+						&version_suffix,
+						&mut key_buffer,
+					);
 
 					let versioned_key = CowVec::new(key_buffer.clone());
 					batches.entry(table).or_default().push((versioned_key, None));
@@ -168,7 +176,11 @@ impl MultiVersionCommit for StandardMultiStore {
 				Delta::Remove {
 					key,
 				} => {
-					encode_versioned_key_with_suffix(key.as_ref(), &version_suffix, &mut key_buffer);
+					encode_versioned_key_with_suffix(
+						key.as_ref(),
+						&version_suffix,
+						&mut key_buffer,
+					);
 
 					let versioned_key = CowVec::new(key_buffer.clone());
 					batches.entry(table).or_default().push((versioned_key, None));
@@ -224,12 +236,7 @@ impl MultiVersionCommit for StandardMultiStore {
 
 		// Emit storage stats event for this commit
 		if !writes.is_empty() || !deletes.is_empty() {
-			self.event_bus.emit(StorageStatsRecordedEvent::new(
-				writes,
-				deletes,
-				vec![],
-				version,
-			));
+			self.event_bus.emit(StorageStatsRecordedEvent::new(writes, deletes, vec![], version));
 		}
 
 		Ok(())

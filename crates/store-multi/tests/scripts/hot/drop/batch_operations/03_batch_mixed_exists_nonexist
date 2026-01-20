@@ -1,0 +1,53 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify batch with existing and non-existing keys works correctly
+
+# Insert 3 entries
+set a=1
+set b=2
+set c=3
+---
+ok
+ok
+ok
+
+# Storage has 3 entries
+storage_size
+---
+size: 3
+
+# Drop mix of existing and non-existing keys
+# 'a' exists, 'x' does not exist, 'b' exists, 'y' does not exist
+drop a
+drop x
+drop b
+drop y
+---
+ok
+ok
+ok
+ok
+
+# Storage now has 1 entry (only 'c')
+storage_size
+---
+size: 1
+
+# Verify states
+contains a
+contains b
+contains c
+contains x
+contains y
+---
+false
+false
+true
+false
+false
+
+# Scan shows only 'c'
+scan
+---
+"c" => "3"

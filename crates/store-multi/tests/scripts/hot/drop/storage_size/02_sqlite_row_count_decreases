@@ -1,0 +1,46 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that SQLite row count decreases after drop (same behavior as memory)
+
+# Start with empty storage
+storage_size
+---
+size: 0
+
+# Insert 3 entries
+set key1=value1
+set key2=value2
+set key3=value3
+---
+ok
+ok
+ok
+
+# Storage has 3 entries
+storage_size
+count_entries
+---
+size: 3
+entries: 3
+
+# Drop one entry
+drop key2
+---
+ok
+
+# Storage now has 2 entries
+storage_size
+count_entries
+---
+size: 2
+entries: 2
+
+# Verify remaining entries exist
+contains key1
+contains key2
+contains key3
+---
+true
+false
+true

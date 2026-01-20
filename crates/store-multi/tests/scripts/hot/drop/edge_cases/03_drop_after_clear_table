@@ -1,0 +1,87 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify drop after clear_table works correctly
+
+# Insert entries
+set a=1
+set b=2
+set c=3
+---
+ok
+ok
+ok
+
+# Storage has 3 entries
+storage_size
+---
+size: 3
+
+# Clear the table
+clear_table
+---
+ok
+
+# Storage is empty
+storage_size
+---
+size: 0
+
+# Try to drop from empty table
+drop a
+drop b
+---
+ok
+ok
+
+# Storage still empty
+storage_size
+---
+size: 0
+
+# Insert new entries
+set x=10
+set y=20
+---
+ok
+ok
+
+# Storage has 2 entries
+storage_size
+---
+size: 2
+
+# Clear again
+clear_table
+---
+ok
+
+# Storage is empty
+storage_size
+---
+size: 0
+
+# Drop from cleared table
+drop x
+---
+ok
+
+# Storage still empty
+storage_size
+---
+size: 0
+
+# Insert and verify normal operations work
+set z=30
+---
+ok
+
+# Storage has 1 entry
+storage_size
+---
+size: 1
+
+# Verify entry exists
+contains z
+---
+true

@@ -3,20 +3,19 @@
 
 //! Schema retrieval from storage.
 
-use tracing::{instrument, Span};
-
 use reifydb_core::{
-	encoded::schema::{fingerprint::SchemaFingerprint, Schema, SchemaField},
+	encoded::schema::{Schema, SchemaField, fingerprint::SchemaFingerprint},
 	key::{
-		schema::{SchemaFieldKey, SchemaKey},
 		EncodableKey,
+		schema::{SchemaFieldKey, SchemaKey},
 	},
 };
 use reifydb_transaction::{single::svl::write::SvlCommandTransaction, standard::IntoStandardTransaction};
 use reifydb_type::{
-	error::{diagnostic::internal::internal, Error},
+	error::{Error, diagnostic::internal::internal},
 	value::constraint::{FFITypeConstraint, TypeConstraint},
 };
+use tracing::{Span, instrument};
 
 use super::schema::{schema_field, schema_header};
 

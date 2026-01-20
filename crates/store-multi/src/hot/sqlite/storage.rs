@@ -35,7 +35,7 @@ pub struct SqlitePrimitiveStorage {
 struct SqlitePrimitiveStorageInner {
 	/// Single connection protected by Mutex for thread-safe access.
 	/// Note: We use Mutex instead of RwLock because rusqlite::Connection
-	/// is Send but not Sync (contains RefCell).
+	/// is Send but not Sync.
 	conn: Mutex<Connection>,
 }
 
@@ -336,6 +336,36 @@ impl TierStorage for SqlitePrimitiveStorage {
 			Err(e) if e.to_string().contains("no such table") => Ok(()),
 			Err(e) => Err(error!(internal(format!("Failed to clear table: {}", e)))),
 		}
+	}
+
+	#[instrument(name = "store::multi::sqlite::drop", level = "debug", skip(self, batches), fields(table_count = batches.len()))]
+	fn drop(&self, batches: HashMap<EntryKind, Vec<CowVec<u8>>>) -> Result<()> {
+		if batches.is_empty() {
+			return Ok(());
+		}
+
+		let conn = self.inner.conn.lock();
+		let tx = conn
+			.unchecked_transaction()
+			.map_err(|e| error!(internal(format!("Failed to start transaction: {}", e))))?;
+
+		for (table, keys) in batches {
+			let table_name = entry_id_to_name(table);
+			for key in keys {
+				let result = tx.execute(
+					&format!("DELETE FROM \"{}\" WHERE key = ?1", table_name),
+					params![key.as_slice()],
+				);
+				// Ignore errors for non-existent tables
+				if let Err(e) = result {
+					if !e.to_string().contains("no such table") {
+						return Err(error!(internal(format!("Failed to delete entry: {}", e))));
+					}
+				}
+			}
+		}
+
+		tx.commit().map_err(|e| error!(internal(format!("Failed to commit transaction: {}", e))))
 	}
 }
 

@@ -1,0 +1,61 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that large batch drop shows significant size decrease
+
+# Insert 10 entries
+set k1=v1
+set k2=v2
+set k3=v3
+set k4=v4
+set k5=v5
+set k6=v6
+set k7=v7
+set k8=v8
+set k9=v9
+set k10=v10
+---
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+
+# Storage has 10 entries
+storage_size
+---
+size: 10
+
+# Drop 7 entries
+drop k1
+drop k2
+drop k3
+drop k4
+drop k5
+drop k6
+drop k7
+---
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+
+# Storage now has 3 entries
+storage_size
+---
+size: 3
+
+# Verify only k8, k9, k10 remain
+scan
+---
+"k10" => "v10"
+"k8" => "v8"
+"k9" => "v9"

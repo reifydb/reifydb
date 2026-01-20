@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
-use std::thread::sleep;
+use std::{error::Error as StdError, fmt::Write, path::Path, thread::sleep, time::Duration};
+
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,

@@ -1,0 +1,55 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify batch dropping multiple keys from one table
+
+# Insert 5 entries
+set a=1
+set b=2
+set c=3
+set d=4
+set e=5
+---
+ok
+ok
+ok
+ok
+ok
+
+# Verify all exist
+storage_size
+---
+size: 5
+
+# Batch drop 3 keys
+drop a
+drop c
+drop e
+---
+ok
+ok
+ok
+
+# Verify only 2 remain
+storage_size
+---
+size: 2
+
+# Check which ones remain
+contains a
+contains b
+contains c
+contains d
+contains e
+---
+false
+true
+false
+true
+false
+
+# Scan shows only b and d
+scan
+---
+"b" => "2"
+"d" => "4"

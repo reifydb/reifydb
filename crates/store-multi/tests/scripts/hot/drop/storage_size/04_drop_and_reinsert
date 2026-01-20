@@ -1,0 +1,60 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that size changes correctly on drop and reinsert
+
+# Insert entry
+set x=original
+---
+ok
+
+# Storage has 1 entry
+storage_size
+---
+size: 1
+
+# Drop entry
+drop x
+---
+ok
+
+# Storage is empty
+storage_size
+---
+size: 0
+
+# Reinsert with new value
+set x=new_value
+---
+ok
+
+# Storage has 1 entry again
+storage_size
+---
+size: 1
+
+# Verify new value
+get x
+---
+"x" => "new_value"
+
+# Drop and reinsert multiple times
+drop x
+set x=value2
+drop x
+set x=value3
+---
+ok
+ok
+ok
+ok
+
+# Storage still has 1 entry
+storage_size
+---
+size: 1
+
+# Verify latest value
+get x
+---
+"x" => "value3"

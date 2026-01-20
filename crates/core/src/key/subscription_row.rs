@@ -155,10 +155,7 @@ impl SubscriptionRowKey {
 	}
 
 	pub fn full_scan(subscription: SubscriptionId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::start(subscription)),
-			Some(Self::end(subscription)),
-		)
+		EncodedKeyRange::start_end(Some(Self::start(subscription)), Some(Self::end(subscription)))
 	}
 
 	fn start(subscription: SubscriptionId) -> EncodedKey {

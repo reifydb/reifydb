@@ -6,27 +6,27 @@
 //! This module provides an asynchronous drop processing worker that executes
 //! version cleanup operations off the critical commit path.
 
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use std::{
+	collections::HashMap,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	thread::{self, JoinHandle},
+	time::{Duration, Instant},
+};
+
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::EncodedKey,
 	event::{
-		metric::{StorageDrop, StorageStatsRecordedEvent},
 		EventBus,
+		metric::{StorageDrop, StorageStatsRecordedEvent},
 	},
 };
 use reifydb_type::util::cowvec::CowVec;
-use std::time::Instant;
-use std::{
-	collections::HashMap,
-	sync::{
-		atomic::{AtomicBool, Ordering},
-		Arc,
-	},
-	thread::{self, JoinHandle},
-	time::Duration,
-};
-use tracing::{debug, error, trace};
+use tracing::{Span, debug, error, instrument};
 
 use super::drop::find_keys_to_drop;
 use crate::{
@@ -147,7 +147,6 @@ impl DropWorker {
 						DropMessage::Request(request) => {
 							pending_requests.push(request);
 
-							// Flush if batch is full
 							if pending_requests.len() >= config.batch_size {
 								Self::process_batch(
 									&storage,
@@ -202,11 +201,10 @@ impl DropWorker {
 		debug!("Drop worker stopped");
 	}
 
+	#[instrument(name = "drop_worker::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
 	fn process_batch(storage: &HotStorage, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
-		trace!("Drop worker processing {} requests", requests.len());
-
-		// Collect all entries to delete, grouped by table
-		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
+		// Collect all keys to drop, grouped by table
+		let mut batches: HashMap<EntryKind, Vec<CowVec<u8>>> = HashMap::new();
 		// Collect drop stats for metrics
 		let mut drops_with_stats = Vec::new();
 		let mut max_pending_version = CommitVersion(0);
@@ -234,10 +232,8 @@ impl DropWorker {
 							value_bytes: entry.value_bytes,
 						});
 
-						// Queue for deletion (None value = delete)
-						batches.entry(request.table)
-							.or_default()
-							.push((entry.versioned_key, None));
+						// Queue for physical deletion
+						batches.entry(request.table).or_default().push(entry.versioned_key);
 					}
 				}
 				Err(e) => {
@@ -246,22 +242,16 @@ impl DropWorker {
 			}
 		}
 
-		// Execute all deletes in a single batch write
 		if !batches.is_empty() {
-			if let Err(e) = storage.set(batches) {
-				error!("Drop worker failed to execute deletes: {}", e);
+			if let Err(e) = storage.drop(batches) {
+				error!("Drop worker failed to execute drops: {}", e);
 			}
 		}
 
-		// Emit stats event for metrics tracking
-		if !drops_with_stats.is_empty() {
-			event_bus.emit(StorageStatsRecordedEvent::new(
-				vec![],
-				vec![],
-				drops_with_stats,
-				max_pending_version,
-			));
-		}
+		let total_dropped = drops_with_stats.len();
+		Span::current().record("total_dropped", total_dropped);
+
+		event_bus.emit(StorageStatsRecordedEvent::new(vec![], vec![], drops_with_stats, max_pending_version));
 	}
 }
 

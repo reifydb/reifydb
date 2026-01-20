@@ -1,0 +1,51 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that dropped entries don't appear in range queries
+
+# Insert entries
+set a=1
+set b=2
+set c=3
+set d=4
+set e=5
+---
+ok
+ok
+ok
+ok
+ok
+
+# Range query shows all entries
+range a..f
+---
+"a" => "1"
+"b" => "2"
+"c" => "3"
+"d" => "4"
+"e" => "5"
+
+# Drop middle entries
+drop b
+drop d
+---
+ok
+ok
+
+# Range query now excludes dropped entries
+range a..f
+---
+"a" => "1"
+"c" => "3"
+"e" => "5"
+
+# Drop first entry
+drop a
+---
+ok
+
+# Range query shows remaining entries
+range a..f
+---
+"c" => "3"
+"e" => "5"

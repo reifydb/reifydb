@@ -1,0 +1,49 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that delete (set with None) creates tombstone, not physical deletion
+
+# Insert entry
+set a=hello
+---
+ok
+
+# Verify it exists
+contains a
+---
+true
+
+# Check storage has 1 entry
+storage_size
+---
+size: 1
+
+# Delete with tombstone
+delete a
+---
+ok
+
+# Entry doesn't exist (from user perspective)
+contains a
+---
+false
+
+# But storage still has entry (tombstone)
+storage_size
+---
+size: 1
+
+# Count tombstones shows 1
+count_tombstones
+---
+tombstones: 1
+
+# Count entries shows 0
+count_entries
+---
+entries: 0
+
+# Get returns None (tombstone is like a delete)
+get a
+---
+"a" => None

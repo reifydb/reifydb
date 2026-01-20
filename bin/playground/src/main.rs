@@ -149,20 +149,10 @@ fn main() {
 		// 11. DELETE operation test - outside filter (no notification expected)
 		println!("\n>>> Deleting record with id=3 (outside filter)...");
 		println!("    This delete is outside the subscription filter, so NO notification is expected");
-		client.command(
-			"from demo.events | filter id == 3 | delete demo.events",
-			None,
-		)
-		.await
-		.unwrap();
+		client.command("from demo.events | filter id == 3 | delete demo.events", None).await.unwrap();
 		println!("Record deleted (id=3)!");
 
-		client.command(
-			"from demo.events | filter id == 2 | delete demo.events",
-			None,
-		)
-		.await
-		.unwrap();
+		client.command("from demo.events | filter id == 2 | delete demo.events", None).await.unwrap();
 		println!("Record deleted (id=2)!");
 
 		// Receive REMOVE notification
@@ -208,8 +198,6 @@ fn main() {
 		.unwrap();
 	println!("{}", frame.first().unwrap());
 
-	let frame = db
-		.command_as_root("from demo.events", Params::None)
-		.unwrap();
+	let frame = db.command_as_root("from demo.events", Params::None).unwrap();
 	println!("{}", frame.first().unwrap());
 }

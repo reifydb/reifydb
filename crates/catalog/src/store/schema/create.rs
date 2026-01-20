@@ -3,13 +3,12 @@
 
 //! Schema creation/persistence.
 
-use tracing::instrument;
-
 use reifydb_core::{
 	encoded::schema::Schema,
 	key::schema::{SchemaFieldKey, SchemaKey},
 };
 use reifydb_transaction::single::svl::write::SvlCommandTransaction;
+use tracing::instrument;
 
 use super::schema::{schema_field, schema_header};
 

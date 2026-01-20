@@ -131,9 +131,10 @@ pub fn compile_scalar_call<'bump>(function_name: String, arguments: &[&PlanExpr<
 		})?;
 
 		// Look up scalar function
-		let scalar_func = functions.get_scalar(&function_name).ok_or_else(|| EvalError::UnsupportedOperation {
-			operation: format!("unknown scalar function '{}'", function_name),
-		})?;
+		let scalar_func =
+			functions.get_scalar(&function_name).ok_or_else(|| EvalError::UnsupportedOperation {
+				operation: format!("unknown scalar function '{}'", function_name),
+			})?;
 
 		// Call scalar function
 		let result_data = scalar_func
@@ -172,11 +173,10 @@ pub fn compile_aggregate_call<'bump>(
 		})?;
 
 		// Look up aggregate function
-		let mut agg_func = functions.get_aggregate(&function_name).ok_or_else(|| {
-			EvalError::UnsupportedOperation {
+		let mut agg_func =
+			functions.get_aggregate(&function_name).ok_or_else(|| EvalError::UnsupportedOperation {
 				operation: format!("unknown aggregate function '{}'", function_name),
-			}
-		})?;
+			})?;
 
 		// Create single-group view for expression context
 		// (In plan operators like GroupBy, this would be multiple groups)
@@ -192,14 +192,13 @@ pub fn compile_aggregate_call<'bump>(
 		};
 
 		// Execute aggregate
-		agg_func
-			.aggregate(AggregateFunctionContext {
-				column: &column,
-				groups: &group_view,
-			})
-			.map_err(|e| EvalError::SubqueryError {
-				message: format!("Aggregate '{}' error: {}", function_name, e),
-			})?;
+		agg_func.aggregate(AggregateFunctionContext {
+			column: &column,
+			groups: &group_view,
+		})
+		.map_err(|e| EvalError::SubqueryError {
+			message: format!("Aggregate '{}' error: {}", function_name, e),
+		})?;
 
 		let (_keys, result_data) = agg_func.finalize().map_err(|e| EvalError::SubqueryError {
 			message: format!("Aggregate '{}' finalize error: {}", function_name, e),

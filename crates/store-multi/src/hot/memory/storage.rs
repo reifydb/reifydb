@@ -8,10 +8,10 @@
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use reifydb_core::runtime::compute::ComputePool;
-use reifydb_type::{util::cowvec::CowVec, Result};
-use tracing::{instrument, Span};
+use reifydb_type::{Result, util::cowvec::CowVec};
+use tracing::{Span, instrument};
 
-use super::entry::{entry_id_to_key, Entries, Entry, OrderedMap};
+use super::entry::{Entries, Entry, OrderedMap, entry_id_to_key};
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
 /// Memory-based primitive storage implementation.
@@ -238,6 +238,25 @@ impl TierStorage for MemoryPrimitiveStorage {
 		if let Some(entry) = self.inner.entries.data.get(&table_key) {
 			*entry.value().data.write() = OrderedMap::new();
 		}
+		Ok(())
+	}
+
+	#[instrument(name = "store::multi::memory::drop", level = "debug", skip(self, batches), fields(
+		table_count = batches.len(),
+		total_entry_count = tracing::field::Empty
+	))]
+	fn drop(&self, batches: HashMap<EntryKind, Vec<CowVec<u8>>>) -> Result<()> {
+		let total_entries: usize = batches.values().map(|v| v.len()).sum();
+
+		for (table, keys) in batches {
+			let table_entry = self.get_or_create_table(table);
+			let mut map = table_entry.data.write();
+			for key in keys {
+				map.remove(&key);
+			}
+		}
+
+		Span::current().record("total_entry_count", total_entries);
 		Ok(())
 	}
 }

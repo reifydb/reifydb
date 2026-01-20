@@ -11,21 +11,21 @@
 pub mod load;
 
 use std::sync::Arc;
-use tracing::{instrument, Span};
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	encoded::{
 		key::EncodedKey,
-		schema::{fingerprint::SchemaFingerprint, Schema, SchemaField},
+		schema::{Schema, SchemaField, fingerprint::SchemaFingerprint},
 	},
 	key::schema::{SchemaFieldKey, SchemaKey},
 };
 use reifydb_transaction::{single::TransactionSingle, standard::IntoStandardTransaction};
 use reifydb_type::{
-	error::{diagnostic::internal::internal, Error},
+	error::{Error, diagnostic::internal::internal},
 	value::constraint::{FFITypeConstraint, TypeConstraint},
 };
+use tracing::{Span, instrument};
 
 use crate::store::schema::{
 	create::create_schema,

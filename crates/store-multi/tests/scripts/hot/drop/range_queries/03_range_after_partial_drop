@@ -1,0 +1,57 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify range queries work correctly after partial drop
+
+# Insert 6 entries
+set key1=val1
+set key2=val2
+set key3=val3
+set key4=val4
+set key5=val5
+set key6=val6
+---
+ok
+ok
+ok
+ok
+ok
+ok
+
+# Full scan shows all entries
+scan
+---
+"key1" => "val1"
+"key2" => "val2"
+"key3" => "val3"
+"key4" => "val4"
+"key5" => "val5"
+"key6" => "val6"
+
+# Drop even numbered keys
+drop key2
+drop key4
+drop key6
+---
+ok
+ok
+ok
+
+# Full scan shows only odd keys
+scan
+---
+"key1" => "val1"
+"key3" => "val3"
+"key5" => "val5"
+
+# Range query key2..key5 shows only key3
+range key2..key5
+---
+"key3" => "val3"
+
+# Range query key1..key6 shows all remaining
+range key1..key6
+---
+"key1" => "val1"
+"key3" => "val3"
+"key5" => "val5"

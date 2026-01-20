@@ -16,8 +16,8 @@
 ///
 /// define_event! {
 ///     pub struct MyEvent {
-///         pub data: Vec<i32>,
-///         pub name: String,
+/// 	pub data: Vec<i32>,
+/// 	pub name: String,
 ///     }
 /// }
 ///

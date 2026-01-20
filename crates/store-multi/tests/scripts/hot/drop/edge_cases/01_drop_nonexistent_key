@@ -1,0 +1,54 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that dropping non-existent key is a no-op
+
+# Start with empty storage
+storage_size
+---
+size: 0
+
+# Drop non-existent key
+drop nonexistent
+---
+ok
+
+# Storage still empty
+storage_size
+---
+size: 0
+
+# Insert an entry
+set a=value
+---
+ok
+
+# Storage has 1 entry
+storage_size
+---
+size: 1
+
+# Drop non-existent key
+drop nonexistent
+---
+ok
+
+# Storage still has 1 entry
+storage_size
+---
+size: 1
+
+# Entry 'a' still exists
+contains a
+---
+true
+
+# Drop the existing entry
+drop a
+---
+ok
+
+# Storage is now empty
+storage_size
+---
+size: 0

@@ -3,9 +3,8 @@
 
 //! Schema Registry loading from storage.
 
-use tracing::instrument;
-
 use reifydb_transaction::standard::IntoStandardTransaction;
+use tracing::instrument;
 
 use super::SchemaRegistry;
 use crate::store::schema::find::load_all_schemas;
