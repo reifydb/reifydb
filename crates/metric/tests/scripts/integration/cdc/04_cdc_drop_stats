@@ -1,0 +1,45 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+# Tests that CDC stats are decremented when CDC entries are dropped.
+# Uses direct event emission to simulate CDC write/drop.
+
+# Write CDC entries via direct event emission
+cdc_write a=12345
+---
+ok
+
+cdc_write b=67890
+---
+ok
+
+# Verify CDC stats are incremented
+stats_cdc
+---
+cdc_count: 2
+cdc_key_bytes: 2
+cdc_value_bytes: 10
+
+# Drop first CDC entry
+cdc_drop a=5
+---
+ok
+
+# Verify CDC stats decremented by one entry
+stats_cdc
+---
+cdc_count: 1
+cdc_key_bytes: 1
+cdc_value_bytes: 5
+
+# Drop second CDC entry
+cdc_drop b=5
+---
+ok
+
+# Verify CDC stats are now zero
+stats_cdc
+---
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0

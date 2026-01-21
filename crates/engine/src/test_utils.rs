@@ -4,38 +4,38 @@
 use std::sync::Arc;
 
 use reifydb_catalog::{
-	catalog::{
-		Catalog,
-		namespace::NamespaceToCreate,
-		table::{TableColumnToCreate, TableToCreate},
-	},
-	materialized::MaterializedCatalog,
-	schema::SchemaRegistry,
+    catalog::{
+        namespace::NamespaceToCreate,
+        table::{TableColumnToCreate, TableToCreate},
+        Catalog,
+    },
+    materialized::MaterializedCatalog,
+    schema::SchemaRegistry,
 };
 use reifydb_cdc::{
-	produce::{listener::CdcEventListener, worker::CdcWorker},
-	storage::CdcStore,
+    produce::{listener::CdcEventListener, worker::CdcWorker},
+    storage::CdcStore,
 };
 #[cfg(debug_assertions)]
 use reifydb_core::util::clock::mock_time_set;
 use reifydb_core::{
-	event::{
-		EventBus,
-		metric::{CdcStatsRecordedEvent, StorageStatsRecordedEvent},
-		transaction::PostCommitEvent,
-	},
-	runtime::{SharedRuntime, SharedRuntimeConfig},
-	util::ioc::IocContainer,
+    event::{
+        metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
+        transaction::PostCommitEvent,
+        EventBus,
+    },
+    runtime::{SharedRuntime, SharedRuntimeConfig},
+    util::ioc::IocContainer,
 };
-use reifydb_metric::worker::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
+use reifydb_metric::worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
 use reifydb_rqlv2::compiler::Compiler;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
-	interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
-	multi::transaction::TransactionMulti,
-	single::{TransactionSingle, svl::TransactionSvl},
-	standard::command::StandardCommandTransaction,
+    interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
+    multi::transaction::TransactionMulti,
+    single::{svl::TransactionSvl, TransactionSingle},
+    standard::command::StandardCommandTransaction,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -64,7 +64,6 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 	let mut result =
 		StandardCommandTransaction::new(multi, single.clone(), event_bus.clone(), Interceptors::new()).unwrap();
 
-	// Create a temporary catalog instance for creating internal schema
 	let materialized_catalog = MaterializedCatalog::new();
 	let schema_registry = SchemaRegistry::new(single);
 	let catalog = Catalog::new(materialized_catalog, schema_registry);
@@ -139,13 +138,10 @@ pub fn create_test_engine() -> StandardEngine {
 	let compiler = Compiler::new(materialized_catalog.clone());
 	ioc = ioc.register(compiler);
 
-	// Create dedicated SingleStore for metrics persistence
 	let metrics_store = single_store.clone();
 
-	// Register metrics store in IoC so engine can access it
 	ioc = ioc.register(metrics_store.clone());
 
-	// Create metrics worker and register event listeners
 	let metrics_worker = Arc::new(MetricsWorker::new(
 		MetricsWorkerConfig::default(),
 		metrics_store,
@@ -154,23 +150,27 @@ pub fn create_test_engine() -> StandardEngine {
 	));
 	eventbus.register::<StorageStatsRecordedEvent, _>(StorageStatsListener::new(metrics_worker.sender()));
 	eventbus.register::<CdcStatsRecordedEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
+	eventbus.register::<CdcStatsDroppedEvent, _>(CdcStatsDroppedListener::new(metrics_worker.sender()));
 	ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
 
-	// Create CDC pipeline
 	let cdc_store = CdcStore::memory();
 	ioc = ioc.register(cdc_store.clone());
 
-	let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, multi_store.clone(), eventbus.clone()));
-	eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender()));
-	ioc.register_service::<Arc<CdcWorker>>(cdc_worker);
+	let ioc_for_cdc = ioc.clone();
 
-	StandardEngine::new(
+	let engine = StandardEngine::new(
 		multi,
 		single,
-		eventbus,
+		eventbus.clone(),
 		Box::new(StandardInterceptorFactory::default()),
 		Catalog::new(materialized_catalog, schema_registry),
 		None,
 		ioc,
-	)
+	);
+
+	let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, multi_store.clone(), eventbus.clone(), engine.clone()));
+	eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender()));
+	ioc_for_cdc.register_service::<Arc<CdcWorker>>(cdc_worker);
+
+	engine
 }

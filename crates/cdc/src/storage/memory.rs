@@ -18,7 +18,7 @@ use reifydb_core::{
 	interface::cdc::{Cdc, CdcBatch},
 };
 
-use super::{CdcStorage, CdcStorageResult};
+use super::{CdcStorage, CdcStorageResult, DropBeforeResult, DroppedCdcEntry};
 
 /// In-memory CDC storage backed by a BTreeMap.
 ///
@@ -123,6 +123,30 @@ impl CdcStorage for MemoryCdcStorage {
 
 	fn max_version(&self) -> CdcStorageResult<Option<CommitVersion>> {
 		Ok(self.inner.read().keys().next_back().copied())
+	}
+
+	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
+		let mut guard = self.inner.write();
+		let keys_to_remove: Vec<_> = guard.range(..version).map(|(k, _)| *k).collect();
+		let count = keys_to_remove.len();
+
+		let mut entries = Vec::new();
+		for key in &keys_to_remove {
+			if let Some(cdc) = guard.get(key) {
+				for seq_change in &cdc.changes {
+					entries.push(DroppedCdcEntry {
+						key: seq_change.change.key().clone(),
+						value_bytes: seq_change.change.value_bytes() as u64,
+					});
+				}
+			}
+		}
+
+		for key in keys_to_remove {
+			guard.remove(&key);
+		}
+
+		Ok(DropBeforeResult { count, entries })
 	}
 }
 

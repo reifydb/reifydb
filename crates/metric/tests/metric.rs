@@ -16,7 +16,11 @@ use reifydb_core::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},
-	event::{EventBus, EventListener, store::StatsProcessedEvent},
+	event::{
+		metric::{CdcEntryDrop, CdcEntryStats, CdcStatsDroppedEvent, CdcStatsRecordedEvent},
+		store::StatsProcessedEvent,
+		EventBus, EventListener,
+	},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
 	runtime::compute::ComputePool,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -24,7 +28,7 @@ use reifydb_core::{
 use reifydb_metric::{
 	cdc::{CdcStats, CdcStatsReader},
 	multi::{MultiStorageStats, StorageStatsReader, Tier},
-	worker::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener},
+	worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener},
 };
 use reifydb_store_multi::{
 	config::{HotConfig, MultiStoreConfig},
@@ -127,6 +131,8 @@ pub struct Runner {
 	cdc_reader: CdcStatsReader<StandardSingleStore>,
 	/// Waiter for async stats processing
 	stats_waiter: StatsWaiter,
+	/// Event bus for emitting CDC events
+	event_bus: EventBus,
 	/// Current version integration
 	version: CommitVersion,
 }
@@ -167,6 +173,9 @@ impl Runner {
 		let cdc_listener = CdcStatsListener::new(metrics_worker.sender());
 		event_bus.register(cdc_listener);
 
+		let cdc_drop_listener = CdcStatsDroppedListener::new(metrics_worker.sender());
+		event_bus.register(cdc_drop_listener);
+
 		// Create readers for querying stats
 		let storage_stats_reader = StorageStatsReader::new(metrics_storage.clone());
 		let cdc_stats_reader = CdcStatsReader::new(metrics_storage.clone());
@@ -178,6 +187,7 @@ impl Runner {
 			storage_reader: storage_stats_reader,
 			cdc_reader: cdc_stats_reader,
 			stats_waiter,
+			event_bus,
 			version: CommitVersion(0),
 		}
 	}
@@ -476,6 +486,46 @@ impl TestRunner for Runner {
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats to be processed".into());
 				}
+			}
+
+			// ==================== CDC Event Commands ====================
+
+			// cdc_write KEY=VALUE [version=VERSION] - simulates CDC entry being written
+			"cdc_write" => {
+				let mut args = command.consume_args();
+				let kv = args.next_key().ok_or("key=value not given")?.clone();
+				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
+				let value_bytes = decode_binary(&kv.value).len() as u64;
+				let version = if let Some(v) = args.lookup_parse("version")? {
+					CommitVersion(v)
+				} else {
+					self.version.0 += 1;
+					self.version
+				};
+				args.reject_rest()?;
+
+				let entries = vec![CdcEntryStats { key, value_bytes }];
+				self.event_bus.emit(CdcStatsRecordedEvent::new(entries, version));
+				writeln!(output, "ok")?;
+			}
+
+			// cdc_drop KEY=VALUE_BYTES [version=VERSION] - simulates CDC cleanup
+			"cdc_drop" => {
+				let mut args = command.consume_args();
+				let kv = args.next_key().ok_or("key=value_bytes not given")?.clone();
+				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
+				let value_bytes: u64 = String::from_utf8_lossy(&decode_binary(&kv.value)).parse()?;
+				let version = if let Some(v) = args.lookup_parse("version")? {
+					CommitVersion(v)
+				} else {
+					self.version.0 += 1;
+					self.version
+				};
+				args.reject_rest()?;
+
+				let entries = vec![CdcEntryDrop { key, value_bytes }];
+				self.event_bus.emit(CdcStatsDroppedEvent::new(entries, version));
+				writeln!(output, "ok")?;
 			}
 
 			name => {

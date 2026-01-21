@@ -20,7 +20,7 @@ use reifydb_core::{
 	CoreVersion,
 	event::{
 		EventBus,
-		metric::{CdcStatsRecordedEvent, StorageStatsRecordedEvent},
+		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
 		transaction::PostCommitEvent,
 	},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
@@ -33,7 +33,7 @@ use reifydb_function::{
 	registry::{Functions, FunctionsBuilder},
 	series,
 };
-use reifydb_metric::worker::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
+use reifydb_metric::worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
 use reifydb_rql::RqlVersion;
 use reifydb_rqlv2::{self, compiler::Compiler};
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
@@ -201,16 +201,11 @@ impl DatabaseBuilder {
 		));
 		eventbus.register::<StorageStatsRecordedEvent, _>(StorageStatsListener::new(metrics_worker.sender()));
 		eventbus.register::<CdcStatsRecordedEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
+		eventbus.register::<CdcStatsDroppedEvent, _>(CdcStatsDroppedListener::new(metrics_worker.sender()));
 		self.ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
 
 		// Register single store in IoC for engine to access
 		self.ioc = self.ioc.register(single_store);
-
-		// Create CDC worker and register event listener
-		// The worker is stored in IoC to keep it alive for the database lifetime
-		let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, multi_store, eventbus.clone()));
-		eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender()));
-		self.ioc.register_service::<Arc<CdcWorker>>(cdc_worker);
 
 		let functions = if let Some(configurator) = self.functions_configurator {
 			let default_builder = Functions::builder()
@@ -228,6 +223,7 @@ impl DatabaseBuilder {
 			None
 		};
 
+		// Create engine before CDC worker (CDC worker needs engine for cleanup)
 		let engine = StandardEngine::new(
 			multi.clone(),
 			single.clone(),
@@ -239,6 +235,13 @@ impl DatabaseBuilder {
 		);
 
 		self.ioc = self.ioc.register(engine.clone());
+
+		// Create CDC worker and register event listener
+		// The worker is stored in IoC to keep it alive for the database lifetime
+		// Engine is passed for periodic cleanup based on consumer watermarks
+		let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, multi_store, eventbus.clone(), engine.clone()));
+		eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender()));
+		self.ioc.register_service::<Arc<CdcWorker>>(cdc_worker);
 
 		// Collect all versions
 		let mut all_versions = Vec::new();
@@ -280,7 +283,6 @@ impl DatabaseBuilder {
 		}
 
 		{
-			// Task subsystem - enabled by default with memory monitoring
 			let factory = self.task_factory.unwrap_or_else(|| {
 				Box::new(TaskSubsystemFactory::with_config(TaskConfig::new(create_system_tasks())))
 			});
