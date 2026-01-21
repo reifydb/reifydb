@@ -103,6 +103,7 @@ export function createCallbackTracker<S extends SchemaNode>(
     getCallCount: () => number;
     getAllRows: () => InferSchema<S>[];
     clear: () => void;
+    waitForCall: (timeoutMs?: number) => Promise<InferSchema<S>[]>;
 };
 
 // Overload 2: Without schema (explicit type)
@@ -112,6 +113,7 @@ export function createCallbackTracker<T = any>(): {
     getCallCount: () => number;
     getAllRows: () => T[];
     clear: () => void;
+    waitForCall: (timeoutMs?: number) => Promise<T[]>;
 };
 
 // Implementation
@@ -119,16 +121,34 @@ export function createCallbackTracker<S extends SchemaNode = any>(
     schema?: S
 ) {
     const calls: any[][] = [];
+    let pendingResolve: ((rows: any[]) => void) | null = null;
 
     return {
         callback: (rows: any[]) => {
             calls.push(rows);
+            if (pendingResolve) {
+                pendingResolve(rows);
+                pendingResolve = null;
+            }
         },
         getCalls: () => calls,
         getCallCount: () => calls.length,
         getAllRows: () => calls.flat(),
         clear: () => {
             calls.length = 0;
+        },
+        waitForCall: (timeoutMs: number = 5000): Promise<any[]> => {
+            return new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    pendingResolve = null;
+                    reject(new Error(`Callback timeout after ${timeoutMs}ms`));
+                }, timeoutMs);
+
+                pendingResolve = (rows) => {
+                    clearTimeout(timeout);
+                    resolve(rows);
+                };
+            });
         }
     };
 }
