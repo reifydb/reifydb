@@ -55,6 +55,13 @@ impl CdcStats {
 		self.value_bytes += value_bytes;
 		self.entry_count += 1;
 	}
+
+	/// Record CDC entry drop (decrement stats).
+	pub fn record_drop(&mut self, key_bytes: u64, value_bytes: u64) {
+		self.key_bytes = self.key_bytes.saturating_sub(key_bytes);
+		self.value_bytes = self.value_bytes.saturating_sub(value_bytes);
+		self.entry_count = self.entry_count.saturating_sub(1);
+	}
 }
 
 impl AddAssign for CdcStats {
@@ -109,6 +116,22 @@ impl<S: SingleVersionStore> CdcStatsWriter<S> {
 		stats.record(key_bytes, value_bytes);
 
 		// Write back
+		self.storage.set(&storage_key, EncodedValues(CowVec::new(encode_cdc_stats(&stats))))
+	}
+
+	/// Record CDC entry drop (decrement stats).
+	pub fn record_drop(&mut self, key: &[u8], value_bytes: u64) -> reifydb_type::Result<()> {
+		let id = parse_id(key);
+		let key_bytes = key.len() as u64;
+		let storage_key = EncodedKey::new(encode_cdc_stats_key(id));
+
+		let mut stats = self
+			.storage
+			.get(&storage_key)?
+			.and_then(|v| decode_cdc_stats(v.values.as_slice()))
+			.unwrap_or_default();
+
+		stats.record_drop(key_bytes, value_bytes);
 		self.storage.set(&storage_key, EncodedValues(CowVec::new(encode_cdc_stats(&stats))))
 	}
 }
@@ -180,5 +203,34 @@ pub mod tests {
 		assert_eq!(stats1.key_bytes, 30);
 		assert_eq!(stats1.value_bytes, 300);
 		assert_eq!(stats1.entry_count, 2);
+	}
+
+	#[test]
+	fn test_cdc_stats_record_drop() {
+		let mut stats = CdcStats::new();
+		stats.record(10, 100);
+		stats.record(20, 200);
+
+		assert_eq!(stats.entry_count, 2);
+
+		// Drop one entry
+		stats.record_drop(10, 100);
+
+		assert_eq!(stats.key_bytes, 20);
+		assert_eq!(stats.value_bytes, 200);
+		assert_eq!(stats.entry_count, 1);
+	}
+
+	#[test]
+	fn test_cdc_stats_record_drop_saturates() {
+		let mut stats = CdcStats::new();
+		stats.record(10, 100);
+
+		// Drop more than recorded - should saturate at 0
+		stats.record_drop(20, 200);
+
+		assert_eq!(stats.key_bytes, 0);
+		assert_eq!(stats.value_bytes, 0);
+		assert_eq!(stats.entry_count, 0);
 	}
 }

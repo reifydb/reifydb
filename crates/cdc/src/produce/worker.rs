@@ -14,7 +14,7 @@ use std::{
 		atomic::{AtomicBool, Ordering},
 	},
 	thread::{self, JoinHandle},
-	time::Duration,
+	time::{Duration, Instant},
 };
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
@@ -23,7 +23,7 @@ use reifydb_core::{
 	delta::Delta,
 	event::{
 		EventBus,
-		metric::{CdcEntryStats, CdcStatsRecordedEvent},
+		metric::{CdcEntryDrop, CdcEntryStats, CdcStatsDroppedEvent, CdcStatsRecordedEvent},
 	},
 	interface::{
 		cdc::{Cdc, CdcChange, CdcSequencedChange},
@@ -31,12 +31,15 @@ use reifydb_core::{
 	},
 	key::{Key, cdc_exclude::should_exclude_from_cdc},
 };
-use tracing::{error, info, trace};
+use tracing::{debug, error, info, trace};
 
-use crate::storage::CdcStorage;
+use crate::{consume::host::CdcHost, consume::watermark::compute_watermark, storage::CdcStorage};
 
 /// Timeout for recv in worker loop - allows checking shutdown flag
 const RECV_TIMEOUT: Duration = Duration::from_millis(100);
+
+/// Default interval between CDC cleanup attempts (30 seconds)
+const CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Work item sent to the CDC worker.
 pub struct CdcWorkItem {
@@ -59,16 +62,11 @@ pub struct CdcWorker {
 }
 
 impl CdcWorker {
-	/// Spawn a new CDC worker.
-	///
-	/// # Arguments
-	/// - `storage`: The CDC storage backend to write entries to
-	/// - `transaction_store`: Transaction store for looking up previous versions (needed for Update/Delete CDC)
-	/// - `event_bus`: Event bus for emitting CDC stats events
-	pub fn spawn<S, T>(storage: S, transaction_store: T, event_bus: EventBus) -> Self
+	pub fn spawn<S, T, H>(storage: S, transaction_store: T, event_bus: EventBus, host: H) -> Self
 	where
 		S: CdcStorage + Send + 'static,
 		T: MultiVersionGetPrevious + Clone + Send + Sync + 'static,
+		H: CdcHost,
 	{
 		let (sender, receiver) = unbounded();
 		let running = Arc::new(AtomicBool::new(true));
@@ -78,7 +76,7 @@ impl CdcWorker {
 			.name("cdc-worker".to_string())
 			.spawn(move || {
 				info!("CDC worker started");
-				worker_loop(storage, transaction_store, receiver, running_clone, event_bus);
+				worker_loop(storage, transaction_store, receiver, running_clone, event_bus, host);
 				info!("CDC worker stopped");
 			})
 			.expect("Failed to spawn CDC worker");
@@ -124,17 +122,28 @@ impl Drop for CdcWorker {
 	}
 }
 
-fn worker_loop<S, T>(
+fn worker_loop<S, T, H>(
 	storage: S,
 	transaction_store: T,
 	receiver: Receiver<CdcWorkItem>,
 	running: Arc<AtomicBool>,
 	event_bus: EventBus,
+	host: H,
 ) where
 	S: CdcStorage,
 	T: MultiVersionGetPrevious,
+	H: CdcHost,
 {
+	let mut last_cleanup = Instant::now();
+
 	while running.load(Ordering::SeqCst) {
+		if last_cleanup.elapsed() >= CLEANUP_INTERVAL {
+			if let Err(e) = try_cleanup(&storage, &host, &event_bus) {
+				error!("CDC cleanup failed: {:?}", e);
+			}
+			last_cleanup = Instant::now();
+		}
+
 		match receiver.recv_timeout(RECV_TIMEOUT) {
 			Ok(item) => {
 				process_work_item(&storage, &transaction_store, item, &event_bus);
@@ -148,6 +157,29 @@ fn worker_loop<S, T>(
 			}
 		}
 	}
+}
+
+fn try_cleanup<S: CdcStorage, H: CdcHost>(storage: &S, host: &H, event_bus: &EventBus) -> reifydb_type::Result<()> {
+	let mut txn = host.begin_command()?;
+	let watermark = compute_watermark(&mut txn)?;
+	txn.rollback()?;
+
+	let result = storage.drop_before(watermark)?;
+	if result.count > 0 {
+		debug!(watermark = watermark.0, deleted = result.count, "CDC cleanup completed");
+
+		let drop_entries: Vec<CdcEntryDrop> = result
+			.entries
+			.into_iter()
+			.map(|e| CdcEntryDrop {
+				key: e.key,
+				value_bytes: e.value_bytes,
+			})
+			.collect();
+
+		event_bus.emit(CdcStatsDroppedEvent::new(drop_entries, watermark));
+	}
+	Ok(())
 }
 
 fn process_work_item<S, T>(storage: &S, transaction_store: &T, item: CdcWorkItem, event_bus: &EventBus)
@@ -256,6 +288,11 @@ pub mod tests {
 
 	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
 	use reifydb_store_multi::MultiStore;
+	use reifydb_store_single::SingleStore;
+	use reifydb_transaction::{
+		interceptor::interceptors::Interceptors, multi::transaction::TransactionMulti,
+		single::TransactionSingle, standard::command::StandardCommandTransaction,
+	};
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
@@ -269,13 +306,59 @@ pub mod tests {
 		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
 	}
 
+	#[derive(Clone)]
+	struct TestCdcHost {
+		multi: TransactionMulti,
+		single: TransactionSingle,
+		event_bus: EventBus,
+	}
+
+	impl TestCdcHost {
+		fn new() -> Self {
+			let multi_store = MultiStore::testing_memory();
+			let single_store = SingleStore::testing_memory();
+			let event_bus = EventBus::new();
+			let single = TransactionSingle::svl(single_store, event_bus.clone());
+			let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone()).unwrap();
+			Self {
+				multi,
+				single,
+				event_bus,
+			}
+		}
+	}
+
+	impl CdcHost for TestCdcHost {
+		fn begin_command(&self) -> reifydb_type::Result<StandardCommandTransaction> {
+			StandardCommandTransaction::new(
+				self.multi.clone(),
+				self.single.clone(),
+				self.event_bus.clone(),
+				Interceptors::new(),
+			)
+		}
+
+		fn current_version(&self) -> reifydb_type::Result<CommitVersion> {
+			Ok(CommitVersion(1))
+		}
+
+		fn done_until(&self) -> CommitVersion {
+			CommitVersion(1)
+		}
+
+		fn wait_for_mark_timeout(&self, _version: CommitVersion, _timeout: Duration) -> bool {
+			true
+		}
+	}
+
 	#[test]
 	fn test_worker_processes_insert() {
 		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let resolver = store;
 		let event_bus = EventBus::new();
-		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus);
+		let host = TestCdcHost::new();
+		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus, host);
 
 		let deltas = vec![Delta::Set {
 			key: make_key("test_key"),
@@ -315,7 +398,8 @@ pub mod tests {
 		let store = MultiStore::testing_memory();
 		let resolver = store;
 		let event_bus = EventBus::new();
-		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus);
+		let host = TestCdcHost::new();
+		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus, host);
 
 		let deltas = vec![
 			Delta::Set {

@@ -54,3 +54,18 @@ pub struct CdcEntryStats {
 	pub key: EncodedKey,
 	pub value_bytes: u64,
 }
+
+/// A CDC entry drop for stats tracking.
+#[derive(Clone, Debug)]
+pub struct CdcEntryDrop {
+	pub key: EncodedKey,
+	pub value_bytes: u64,
+}
+
+define_event! {
+	/// Emitted when CDC entries are dropped that need stats tracking.
+	pub struct CdcStatsDroppedEvent {
+		pub entries: Vec<CdcEntryDrop>,
+		pub version: CommitVersion,
+	}
+}
