@@ -13,6 +13,7 @@ use tokio::time::timeout;
 mod basic;
 mod data_types;
 mod filtered;
+mod integration;
 mod lifecycle;
 mod multiple;
 mod notifications;
