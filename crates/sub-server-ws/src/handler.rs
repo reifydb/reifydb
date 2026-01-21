@@ -16,7 +16,14 @@ use std::{
 };
 
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId as DbSubscriptionId};
+use reifydb_catalog::{delete_flow_by_name, delete_subscription};
+use reifydb_core::interface::{
+	auth::Identity,
+	catalog::{
+		id::SubscriptionId as DbSubscriptionId,
+		subscription::{subscription_flow_name, subscription_flow_namespace},
+	},
+};
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
 	execute::{ExecuteError, execute_command, execute_query},
@@ -203,8 +210,39 @@ pub async fn handle_connection(
 	}
 
 	// Cleanup all subscriptions for this connection
-	registry.cleanup_connection(connection_id);
+	let subscription_ids = registry.cleanup_connection(connection_id);
+
+	// Cleanup database subscriptions for each subscription
+	for subscription_id in subscription_ids {
+		// Unregister from poller first
+		poller.unregister(&subscription_id);
+
+		// Delete the subscription and its associated flow from database
+		if let Err(e) = cleanup_subscription_from_db(&state, subscription_id) {
+			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
+		}
+	}
+
 	debug!("WebSocket connection {} from {:?} cleaned up", connection_id, peer);
+}
+
+/// Cleanup a subscription from the database.
+///
+/// This deletes both the subscription (metadata, columns, rows) and its associated flow.
+fn cleanup_subscription_from_db(state: &AppState, subscription_id: DbSubscriptionId) -> reifydb_type::Result<()> {
+	let engine = state.engine_clone();
+	let mut txn = engine.begin_command()?;
+
+	// Delete the associated flow (named after the subscription ID)
+	let flow_name = subscription_flow_name(subscription_id);
+	let namespace_id = subscription_flow_namespace();
+	delete_flow_by_name(&mut txn, namespace_id, &flow_name)?;
+
+	// Delete the subscription (metadata, columns, rows)
+	delete_subscription(&mut txn, subscription_id)?;
+
+	txn.commit()?;
+	Ok(())
 }
 
 /// Connection ID type alias for clarity.
@@ -334,6 +372,11 @@ async fn process_message(
 			let removed = registry.unsubscribe(subscription_id);
 
 			if removed {
+				// Cleanup the subscription from the database
+				if let Err(e) = cleanup_subscription_from_db(state, subscription_id) {
+					warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
+				}
+
 				tracing::info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
 				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
 			} else {

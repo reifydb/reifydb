@@ -126,6 +126,12 @@ impl FlowEngine {
 			SinkSubscription {
 				subscription,
 			} => {
+				// Guard against race condition: flow may have been deleted during loading
+				if node.inputs.is_empty() {
+					return Err(Error(internal!(
+						"SinkSubscription node has no inputs - flow may have been deleted during loading"
+					)));
+				}
 				let parent = self
 					.operators
 					.get(&node.inputs[0])

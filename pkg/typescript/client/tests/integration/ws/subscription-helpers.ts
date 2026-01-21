@@ -73,11 +73,15 @@ export function waitForCallback<S extends SchemaNode = any>(
 
     let resolve: (rows: any[]) => void;
     let reject: (err: Error) => void;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
     const promise = new Promise<any[]>((res, rej) => {
-        resolve = res;
+        resolve = (rows) => {
+            clearTimeout(timeoutId);
+            res(rows);
+        };
         reject = rej;
-        setTimeout(() => rej(new Error('Callback timeout')), timeout);
+        timeoutId = setTimeout(() => rej(new Error('Callback timeout')), timeout);
     });
 
     const callback = (rows: any[]) => {

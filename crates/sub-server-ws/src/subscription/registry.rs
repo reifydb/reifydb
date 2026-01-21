@@ -91,9 +91,21 @@ impl SubscriptionRegistry {
 	/// Returns true if the subscription existed and was removed.
 	pub fn unsubscribe(&self, subscription_id: SubscriptionId) -> bool {
 		if let Some((_, state)) = self.subscriptions.remove(&subscription_id) {
-			// Remove from connection's subscription list
-			if let Some(mut subs) = self.connections.get_mut(&state.connection_id) {
-				subs.retain(|id| *id != subscription_id);
+			let connection_id = state.connection_id;
+
+			// Remove from connection's subscription list and check if empty
+			let should_remove_connection = {
+				if let Some(mut subs) = self.connections.get_mut(&connection_id) {
+					subs.retain(|id| *id != subscription_id);
+					subs.is_empty()
+				} else {
+					false
+				}
+			};
+
+			// If the connection has no more subscriptions, remove the entry entirely
+			if should_remove_connection {
+				self.connections.remove(&connection_id);
 			}
 
 			tracing::debug!("Unsubscribed subscription {}", subscription_id);
@@ -106,12 +118,16 @@ impl SubscriptionRegistry {
 	/// Cleanup all subscriptions for a connection.
 	///
 	/// Called when a WebSocket connection is closed.
-	pub fn cleanup_connection(&self, connection_id: ConnectionId) {
+	/// Returns the list of subscription IDs that were cleaned up.
+	pub fn cleanup_connection(&self, connection_id: ConnectionId) -> Vec<SubscriptionId> {
 		if let Some((_, subscription_ids)) = self.connections.remove(&connection_id) {
-			for sub_id in subscription_ids {
-				self.subscriptions.remove(&sub_id);
+			for sub_id in &subscription_ids {
+				self.subscriptions.remove(sub_id);
 			}
 			tracing::debug!("Cleaned up subscriptions for disconnected connection {}", connection_id);
+			subscription_ids
+		} else {
+			Vec::new()
 		}
 	}
 
@@ -145,6 +161,16 @@ impl SubscriptionRegistry {
 	#[allow(dead_code)]
 	pub fn connection_count(&self) -> usize {
 		self.connections.len()
+	}
+
+	/// Log registry stats for debugging resource usage.
+	#[allow(dead_code)]
+	pub fn log_stats(&self) {
+		tracing::info!(
+			"Registry stats: {} subscriptions, {} connections",
+			self.subscriptions.len(),
+			self.connections.len()
+		);
 	}
 }
 
@@ -199,6 +225,8 @@ pub mod tests {
 		// Unsubscribe
 		assert!(registry.unsubscribe(sub_id));
 		assert_eq!(registry.subscription_count(), 0);
+		// Connection entry should be removed when last subscription is unsubscribed
+		assert_eq!(registry.connection_count(), 0);
 
 		// Unsubscribe again should return false
 		assert!(!registry.unsubscribe(sub_id));
@@ -220,6 +248,32 @@ pub mod tests {
 
 		// Cleanup connection
 		registry.cleanup_connection(connection_id);
+		assert_eq!(registry.subscription_count(), 0);
+		assert_eq!(registry.connection_count(), 0);
+	}
+
+	#[tokio::test]
+	async fn test_partial_unsubscribe() {
+		let registry = SubscriptionRegistry::new();
+		let connection_id = Uuid7::generate();
+		let (tx1, _rx1) = mpsc::channel(10);
+		let (tx2, _rx2) = mpsc::channel(10);
+
+		// Subscribe twice
+		let sub1 = SubscriptionId(uuid::Uuid::new_v4());
+		let sub2 = SubscriptionId(uuid::Uuid::new_v4());
+		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1);
+		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2);
+		assert_eq!(registry.subscription_count(), 2);
+		assert_eq!(registry.connection_count(), 1);
+
+		// Unsubscribe first subscription - connection should still exist
+		assert!(registry.unsubscribe(sub1));
+		assert_eq!(registry.subscription_count(), 1);
+		assert_eq!(registry.connection_count(), 1);
+
+		// Unsubscribe second subscription - connection entry should be removed
+		assert!(registry.unsubscribe(sub2));
 		assert_eq!(registry.subscription_count(), 0);
 		assert_eq!(registry.connection_count(), 0);
 	}

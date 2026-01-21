@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::id::SubscriptionId, key::subscription::SubscriptionKey};
+use reifydb_core::{
+	interface::catalog::id::SubscriptionId,
+	key::{subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey, subscription_row::SubscriptionRowKey},
+};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::CatalogStore;
@@ -11,15 +14,34 @@ impl CatalogStore {
 		txn: &mut StandardCommandTransaction,
 		subscription: SubscriptionId,
 	) -> crate::Result<()> {
-		// Delete the subscription metadata
+		// Step 1: Delete subscription columns
+		let col_range = SubscriptionColumnKey::subscription_range(subscription);
+		let mut col_stream = txn.range(col_range, 1000)?;
+		let mut col_keys = Vec::new();
+		while let Some(entry) = col_stream.next() {
+			let entry = entry?;
+			col_keys.push(entry.key.clone());
+		}
+		drop(col_stream);
+		for key in col_keys {
+			txn.remove(&key)?;
+		}
+
+		// Step 2: Delete subscription rows (unconsumed deltas)
+		let row_range = SubscriptionRowKey::full_scan(subscription);
+		let mut row_stream = txn.range(row_range, 10000)?;
+		let mut row_keys = Vec::new();
+		while let Some(entry) = row_stream.next() {
+			let entry = entry?;
+			row_keys.push(entry.key.clone());
+		}
+		drop(row_stream);
+		for key in row_keys {
+			txn.remove(&key)?;
+		}
+
+		// Step 3: Delete the subscription metadata
 		txn.remove(&SubscriptionKey::encoded(subscription))?;
-
-		// Note: Column deletion would require iterating through and removing columns
-		// For now, the columns associated with the subscription are orphaned when deleted
-		// This is acceptable since subscriptions are ephemeral
-
-		// Note: Subscription deltas should be cleaned up by the consumer API (ack/close)
-		// before calling delete_subscription
 
 		Ok(())
 	}

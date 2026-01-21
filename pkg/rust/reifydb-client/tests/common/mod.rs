@@ -7,13 +7,16 @@
 
 use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
-use reifydb::{Database, server, sub_server_http::factory::HttpConfig, sub_server_ws::factory::WsConfig};
+use reifydb::{
+	Database, WithSubsystem, server, sub_server_http::factory::HttpConfig, sub_server_ws::factory::WsConfig,
+};
 use reifydb_client::{Frame, Params, Value};
 use reifydb_testing::testscript::command::Command;
 use tokio::runtime::Runtime;
 
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 	server::memory()
+		.with_flow(|f| f)
 		.with_http(HttpConfig::default().bind_addr("::1:0"))
 		.with_ws(WsConfig::default().bind_addr("::1:0"))
 		.build()
@@ -35,12 +38,14 @@ pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Data
 }
 
 /// Parse RQL command from testscript Command
+#[allow(dead_code)]
 pub fn parse_rql(command: &Command) -> String {
 	command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ")
 }
 
 /// Parse positional parameters from command arguments
 /// First argument is the SQL, rest are positional parameters
+#[allow(dead_code)]
 pub fn parse_positional_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
 
@@ -56,6 +61,7 @@ pub fn parse_positional_params(command: &Command) -> (String, Params) {
 
 /// Parse named parameters from command arguments
 /// First argument is the SQL, rest are name=value pairs
+#[allow(dead_code)]
 pub fn parse_named_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
 
@@ -76,6 +82,7 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 }
 
 /// Parse a parameter value from string
+#[allow(dead_code)]
 fn parse_param_value(s: &str) -> Value {
 	// Try to parse as number first
 	if let Ok(i) = s.parse::<i32>() {
@@ -111,6 +118,7 @@ fn parse_param_value(s: &str) -> Value {
 }
 
 /// Write frames to output string
+#[allow(dead_code)]
 pub fn write_frames(frames: Vec<Frame>) -> Result<String, Box<dyn Error>> {
 	let mut output = String::new();
 	for frame in frames {
