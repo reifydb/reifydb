@@ -69,7 +69,7 @@ pub mod tests {
 	#[test]
 	fn test_set_and_find_subscription() {
 		let catalog = MaterializedCatalog::new();
-		let subscription_id = SubscriptionId::new();
+		let subscription_id = SubscriptionId(1);
 		let subscription = create_test_subscription(subscription_id);
 
 		// Set subscription at version 1
@@ -91,7 +91,7 @@ pub mod tests {
 	#[test]
 	fn test_subscription_deletion() {
 		let catalog = MaterializedCatalog::new();
-		let subscription_id = SubscriptionId::new();
+		let subscription_id = SubscriptionId(2);
 
 		// Create and set subscription
 		let subscription = create_test_subscription(subscription_id);
@@ -114,9 +114,9 @@ pub mod tests {
 	fn test_multiple_subscriptions() {
 		let catalog = MaterializedCatalog::new();
 
-		let id1 = SubscriptionId::new();
-		let id2 = SubscriptionId::new();
-		let id3 = SubscriptionId::new();
+		let id1 = SubscriptionId(10);
+		let id2 = SubscriptionId(11);
+		let id3 = SubscriptionId(12);
 
 		let sub1 = create_test_subscription(id1);
 		let sub2 = create_test_subscription(id2);
@@ -136,7 +136,7 @@ pub mod tests {
 	#[test]
 	fn test_subscription_version_isolation() {
 		let catalog = MaterializedCatalog::new();
-		let subscription_id = SubscriptionId::new();
+		let subscription_id = SubscriptionId(20);
 
 		// Create subscription v1 with one column
 		let subscription_v1 = SubscriptionDef {

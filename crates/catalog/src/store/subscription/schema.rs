@@ -12,7 +12,7 @@ pub mod subscription {
 
 	pub static SCHEMA: Lazy<Schema> = Lazy::new(|| {
 		Schema::new(vec![
-			SchemaField::unconstrained("id", Type::Uuid7),
+			SchemaField::unconstrained("id", Type::Uint8),
 			SchemaField::unconstrained("acknowledged_version", Type::Uint8),
 			SchemaField::unconstrained("primary_key", Type::Uint8),
 		])

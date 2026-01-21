@@ -82,8 +82,7 @@ pub mod tests {
 		let mut txn = create_test_command_transaction();
 
 		use reifydb_core::interface::catalog::id::SubscriptionId;
-		// Deleting a non-existent subscription should not error
-		let non_existent = SubscriptionId::new();
+		let non_existent = SubscriptionId(999999);
 		let result = CatalogStore::delete_subscription(&mut txn, non_existent);
 		assert!(result.is_ok());
 	}

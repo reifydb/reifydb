@@ -26,7 +26,7 @@ use reifydb_core::interface::{
 };
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
-	execute::{ExecuteError, execute_command, execute_query},
+	execute::{execute_command, execute_query, ExecuteError},
 	response::convert_frames,
 	state::AppState,
 };
@@ -39,7 +39,6 @@ use tokio::{
 };
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, warn};
-use uuid::Uuid as StdUuid;
 
 use crate::{
 	protocol::{Request, RequestPayload},
@@ -74,11 +73,8 @@ pub async fn handle_connection(
 	poller: Arc<SubscriptionPoller>,
 	mut shutdown: watch::Receiver<bool>,
 ) {
-	let handler_start = Instant::now();
 	let peer = stream.peer_addr().ok();
 	let connection_id = Uuid7::generate();
-
-	println!("[TIMING] Connection {} from {:?}: handler started at T+0ms", connection_id, peer);
 
 	// Set TCP_NODELAY to disable Nagle's algorithm for lower latency
 	if let Err(e) = stream.set_nodelay(true) {
@@ -87,35 +83,11 @@ pub async fn handle_connection(
 
 	// Wrap accept_async with a 30-second timeout to prevent hanging on slow/malicious clients
 	let ws_stream = match timeout(Duration::from_secs(30), accept_async(stream)).await {
-		Ok(Ok(ws)) => {
-			let handshake_duration = handler_start.elapsed();
-			println!(
-				"[TIMING] Connection {} from {:?}: handshake completed at T+{}ms",
-				connection_id,
-				peer,
-				handshake_duration.as_millis()
-			);
-			ws
-		}
-		Ok(Err(e)) => {
-			let duration = handler_start.elapsed();
-			println!(
-				"[TIMING] Connection {} from {:?}: handshake failed at T+{}ms: {}",
-				connection_id,
-				peer,
-				duration.as_millis(),
-				e
-			);
+		Ok(Ok(ws)) => ws,
+		Ok(Err(_)) => {
 			return;
 		}
 		Err(_) => {
-			let duration = handler_start.elapsed();
-			println!(
-				"[TIMING] Connection {} from {:?}: handshake timeout at T+{}ms",
-				connection_id,
-				peer,
-				duration.as_millis()
-			);
 			return;
 		}
 	};
@@ -353,9 +325,8 @@ async fn process_message(
 		RequestPayload::Unsubscribe(unsub) => {
 			use crate::response::Response;
 
-			// Parse the subscription ID
-			let subscription_id = match unsub.subscription_id.parse::<StdUuid>() {
-				Ok(uuid) => DbSubscriptionId(uuid),
+			let subscription_id = match unsub.subscription_id.parse::<u64>() {
+				Ok(id) => DbSubscriptionId(id),
 				Err(_) => {
 					return Some(build_error(
 						&request.id,
@@ -374,7 +345,10 @@ async fn process_message(
 			if removed {
 				// Cleanup the subscription from the database
 				if let Err(e) = cleanup_subscription_from_db(state, subscription_id) {
-					warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
+					warn!(
+						"Failed to cleanup subscription {} from database: {:?}",
+						subscription_id, e
+					);
 				}
 
 				tracing::info!("Connection {} unsubscribed from {}", connection_id, subscription_id);

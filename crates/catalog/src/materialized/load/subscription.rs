@@ -42,8 +42,7 @@ pub(crate) fn load_subscriptions(
 
 fn convert_subscription(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> SubscriptionDef {
 	let row = multi.values;
-	let uuid = subscription::SCHEMA.get_uuid7(&row, ID);
-	let id = SubscriptionId(uuid.into());
+	let id = SubscriptionId(subscription::SCHEMA.get_u64(&row, ID));
 	let acknowledged_version = CommitVersion(subscription::SCHEMA.get_u64(&row, ACKNOWLEDGED_VERSION));
 
 	SubscriptionDef {

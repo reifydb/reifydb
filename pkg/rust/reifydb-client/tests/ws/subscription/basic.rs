@@ -22,11 +22,8 @@ fn test_subscribe_returns_subscription_id() {
 		let table = unique_table_name("sub_basic");
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
-		// Subscribe returns a subscription ID
 		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
-
-		assert!(!sub_id.is_empty(), "Subscription ID should not be empty");
-		assert!(sub_id.len() >= 32, "Subscription ID should be a valid identifier");
+		assert_eq!(sub_id, "1");
 
 		client.unsubscribe(&sub_id).await.unwrap();
 		client.close().await.unwrap();

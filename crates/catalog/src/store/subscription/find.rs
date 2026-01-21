@@ -21,18 +21,15 @@ impl CatalogStore {
 		};
 
 		let row = multi.values;
-		let uuid = subscription::SCHEMA.get_uuid7(&row, subscription::ID);
-		let id = SubscriptionId(uuid.into());
+		let id = SubscriptionId(subscription::SCHEMA.get_u64(&row, subscription::ID));
 		let acknowledged_version =
 			CommitVersion(subscription::SCHEMA.get_u64(&row, subscription::ACKNOWLEDGED_VERSION));
 
-		// Load columns (works for all transaction types)
 		let columns = Self::list_subscription_columns(&mut txn, id)?;
 
 		Ok(Some(SubscriptionDef {
 			id,
 			columns,
-			// Subscriptions don't have primary keys (they use UUID v7 as their identifier)
 			primary_key: None,
 			acknowledged_version,
 		}))
@@ -66,8 +63,7 @@ pub mod tests {
 	fn test_find_subscription_not_found() {
 		let mut txn = create_test_command_transaction();
 
-		// Generate a random UUID that doesn't exist
-		let non_existent = SubscriptionId::new();
+		let non_existent = SubscriptionId(999999);
 		let result = CatalogStore::find_subscription(&mut txn, non_existent).unwrap();
 		assert!(result.is_none());
 	}

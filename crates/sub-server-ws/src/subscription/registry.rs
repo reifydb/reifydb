@@ -193,8 +193,7 @@ pub mod tests {
 		let connection_id = Uuid7::generate();
 		let (tx, mut rx) = mpsc::channel(10);
 
-		// Subscribe
-		let sub_id = SubscriptionId(uuid::Uuid::new_v4());
+		let sub_id = SubscriptionId(12345);
 		registry.subscribe(sub_id, connection_id, "FROM test".to_string(), tx);
 		assert_eq!(registry.subscription_count(), 1);
 
@@ -239,14 +238,12 @@ pub mod tests {
 		let (tx1, _rx1) = mpsc::channel(10);
 		let (tx2, _rx2) = mpsc::channel(10);
 
-		// Subscribe twice
-		let sub1 = SubscriptionId(uuid::Uuid::new_v4());
-		let sub2 = SubscriptionId(uuid::Uuid::new_v4());
+		let sub1 = SubscriptionId(12345);
+		let sub2 = SubscriptionId(12346);
 		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1);
 		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2);
 		assert_eq!(registry.subscription_count(), 2);
 
-		// Cleanup connection
 		registry.cleanup_connection(connection_id);
 		assert_eq!(registry.subscription_count(), 0);
 		assert_eq!(registry.connection_count(), 0);
@@ -259,20 +256,17 @@ pub mod tests {
 		let (tx1, _rx1) = mpsc::channel(10);
 		let (tx2, _rx2) = mpsc::channel(10);
 
-		// Subscribe twice
-		let sub1 = SubscriptionId(uuid::Uuid::new_v4());
-		let sub2 = SubscriptionId(uuid::Uuid::new_v4());
+		let sub1 = SubscriptionId(12345);
+		let sub2 = SubscriptionId(12346);
 		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1);
 		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2);
 		assert_eq!(registry.subscription_count(), 2);
 		assert_eq!(registry.connection_count(), 1);
 
-		// Unsubscribe first subscription - connection should still exist
 		assert!(registry.unsubscribe(sub1));
 		assert_eq!(registry.subscription_count(), 1);
 		assert_eq!(registry.connection_count(), 1);
 
-		// Unsubscribe second subscription - connection entry should be removed
 		assert!(registry.unsubscribe(sub2));
 		assert_eq!(registry.subscription_count(), 0);
 		assert_eq!(registry.connection_count(), 0);

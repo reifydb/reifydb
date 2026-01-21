@@ -8,10 +8,7 @@
 
 use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId as DbSubscriptionId};
 use reifydb_sub_server::{execute::execute_command, state::AppState};
-use reifydb_type::{
-	params::Params,
-	value::{Value, uuid::Uuid7},
-};
+use reifydb_type::{params::Params, value::Value};
 use tokio::sync::mpsc;
 use tracing::{debug, error};
 
@@ -20,6 +17,8 @@ use crate::{
 	protocol::SubscribeRequest,
 	subscription::{PushMessage, SubscriptionPoller, SubscriptionRegistry},
 };
+
+use reifydb_type::value::uuid::Uuid7;
 
 type ConnectionId = Uuid7;
 
@@ -78,7 +77,7 @@ pub(crate) async fn handle_subscribe(
 					if sub_id_col.data.len() > 0 {
 						let value = sub_id_col.data.get_value(0);
 						match value {
-							Value::Uuid7(uuid) => Some(DbSubscriptionId(uuid.0)),
+							Value::Uint8(id) => Some(DbSubscriptionId(id)),
 							_ => {
 								error!(
 									"subscription_id column has wrong type: {:?}",
