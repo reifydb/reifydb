@@ -11,19 +11,9 @@ set -e
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
 # Third-party crates that are OK to re-export (whitelist)
-ALLOWED_EXTERNAL=(
-    "std::"
-    "core::"
-    "alloc::"
-    "tokio::"
-    "tracing::"
-    "serde::"
-    "serde_json::"
-    "anyhow::"
-    "thiserror::"
-    "axum::"
-    "futures::"
-    "async_trait::"
+ALLOWED=(
+    "native::"
+    "wasm::"
 )
 
 echo "Checking for internal pub use re-exports in /crates/..."
@@ -53,7 +43,7 @@ for file in $crates_files; do
 
         # Check if it's an allowed external crate
         is_allowed=false
-        for allowed in "${ALLOWED_EXTERNAL[@]}"; do
+        for allowed in "${ALLOWED[@]}"; do
             if echo "$content" | grep -q "$allowed"; then
                 is_allowed=true
                 break

@@ -31,5 +31,5 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }
-reifydb-engine = { workspace = true }
+reifydb-engine = { workspace = true, features = ["tokio"] }
 test_each_file = { workspace = true }

@@ -5,10 +5,7 @@ use std::mem::take;
 
 use indexmap::IndexMap;
 
-#[cfg(feature = "native")]
-use reifydb_runtime::sync::rwlock::native::{RwLock, RwLockWriteGuard};
-#[cfg(feature = "wasm")]
-use reifydb_runtime::sync::rwlock::wasm::{RwLock, RwLockWriteGuard};
+use reifydb_runtime::sync::rwlock::{RwLock, RwLockWriteGuard};
 use reifydb_core::interface::store::{
 	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionValues,
 };

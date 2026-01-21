@@ -32,8 +32,8 @@ num_cpus = { workspace = true }
 paste = { workspace = true }
 
 [dev-dependencies]
-reifydb-catalog = {workspace = true}
-reifydb-engine = {workspace = true}
-reifydb-transaction = {workspace = true}
+reifydb-catalog = { workspace = true, features = ["native"] }
+reifydb-engine = { workspace = true, features = ["tokio"] }
+reifydb-transaction = { workspace = true, features = ["native"] }
 
 

@@ -122,4 +122,3 @@ mod native {
 #[cfg(feature = "native")]
 pub(crate) use native::ActorRunner;
 
-// No runner needed for WASM - messages are processed inline

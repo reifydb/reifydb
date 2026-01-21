@@ -226,6 +226,14 @@ pub struct ActorRef<M> {
 	pub(crate) alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
+// SAFETY: WASM is single-threaded, so Send and Sync are safe.
+// The Rc<RefCell<...>> is only accessed from a single thread.
+#[cfg(feature = "wasm")]
+unsafe impl<M> Send for ActorRef<M> {}
+
+#[cfg(feature = "wasm")]
+unsafe impl<M> Sync for ActorRef<M> {}
+
 #[cfg(feature = "wasm")]
 impl<M> Clone for ActorRef<M> {
 	fn clone(&self) -> Self {

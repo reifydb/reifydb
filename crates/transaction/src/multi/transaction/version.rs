@@ -6,10 +6,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-#[cfg(feature = "native")]
-use reifydb_runtime::sync::mutex::native::Mutex;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::sync::mutex::wasm::Mutex;
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::schema::{Schema, SchemaField},

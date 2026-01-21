@@ -3,10 +3,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-#[cfg(feature = "native")]
-use reifydb_runtime::sync::rwlock::native::RwLock;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::sync::rwlock::wasm::RwLock;
+use reifydb_runtime::sync::rwlock::RwLock;
 
 #[cfg(feature = "native")]
 use reifydb_runtime::concurrent_map::native::ConcurrentMap;

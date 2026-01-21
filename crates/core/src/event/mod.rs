@@ -7,10 +7,7 @@ use std::{
 	sync::Arc,
 };
 
-#[cfg(feature = "native")]
-use reifydb_runtime::sync::rwlock::native::RwLock;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::sync::rwlock::wasm::RwLock;
+use reifydb_runtime::sync::rwlock::RwLock;
 
 pub mod flow;
 pub mod lifecycle;

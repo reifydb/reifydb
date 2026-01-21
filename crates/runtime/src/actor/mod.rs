@@ -78,18 +78,10 @@
 //! assert_eq!(*harness.state(), 2);
 //! ```
 
-mod context;
-mod mailbox;
-mod runner;
-mod runtime;
-mod testing;
-mod timers;
-mod traits;
-
-// Public re-exports
-pub use context::{CancellationToken, Context};
-pub use mailbox::{ActorRef, AskError, SendError};
-pub use runtime::{ActorHandle, ActorRuntime, JoinError};
-pub use testing::TestHarness;
-pub use timers::{schedule_once, schedule_repeat, TimerHandle};
-pub use traits::{Actor, ActorConfig, Flow};
+pub mod context;
+pub mod mailbox;
+pub mod runner;
+pub mod runtime;
+pub mod testing;
+pub mod timers;
+pub mod traits;

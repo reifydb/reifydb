@@ -14,15 +14,8 @@ use std::sync::{
 	atomic::{AtomicUsize, Ordering},
 };
 
-#[cfg(feature = "native")]
-use reifydb_runtime::sync::condvar::native::Condvar;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::sync::condvar::wasm::Condvar;
-
-#[cfg(feature = "native")]
-use reifydb_runtime::sync::mutex::native::Mutex;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::sync::mutex::wasm::Mutex;
+use reifydb_runtime::sync::condvar::Condvar;
+use reifydb_runtime::sync::mutex::Mutex;
 
 struct Inner {
 	count: AtomicUsize,

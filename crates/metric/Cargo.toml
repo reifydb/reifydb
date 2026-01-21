@@ -19,7 +19,7 @@ crossbeam-channel = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-reifydb-store-single = { workspace = true }
-reifydb-store-multi = { workspace = true }
+reifydb-store-single = { workspace = true, features = ["native", "sqlite"] }
+reifydb-store-multi = { workspace = true, features = ["native", "sqlite"] }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }

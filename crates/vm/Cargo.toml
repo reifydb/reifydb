@@ -39,7 +39,7 @@ reifydb-type = { workspace = true }
 
 
 [dev-dependencies]
-reifydb-engine = { workspace = true }
-reifydb-store-multi = { workspace = true }
-reifydb-store-single = { workspace = true }
-reifydb-transaction = { path = "../transaction" }
+reifydb-engine = { workspace = true, features = ["tokio"] }
+reifydb-store-multi = { workspace = true, features = ["native"] }
+reifydb-store-single = { workspace = true, features = ["native"] }
+reifydb-transaction = { workspace = true, features = ["native"] }

@@ -45,4 +45,4 @@ serde = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-reifydb-engine = { workspace = true}
+reifydb-engine = { workspace = true, features = ["tokio"] }

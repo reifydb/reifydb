@@ -29,9 +29,9 @@ reifydb-type = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-reifydb-catalog = { workspace = true }
-reifydb-engine = { workspace = true }
-reifydb-store-multi = { workspace = true }
-reifydb-store-single = { workspace = true }
+reifydb-catalog = { workspace = true, features = ["native"] }
+reifydb-engine = { workspace = true, features = ["tokio"] }
+reifydb-store-multi = { workspace = true, features = ["native"] }
+reifydb-store-single = { workspace = true, features = ["native"] }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }

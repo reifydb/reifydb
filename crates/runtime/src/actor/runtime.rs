@@ -212,7 +212,9 @@ mod wasm {
 				*processor_ref = Some(Box::new(processor));
 			}
 
-			ActorHandle { actor_ref }
+			ActorHandle {
+				actor_ref,
+			}
 		}
 
 		/// Spawn and return just the ActorRef (fire-and-forget).

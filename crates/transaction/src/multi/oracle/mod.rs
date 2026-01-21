@@ -14,11 +14,8 @@ use reifydb_runtime::time::wasm::Instant;
 use cleanup::cleanup_old_windows;
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
-use reifydb_runtime::actor::ActorRuntime;
-#[cfg(feature = "native")]
-use reifydb_runtime::sync::rwlock::native::RwLock;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::sync::rwlock::wasm::RwLock;
+use reifydb_runtime::actor::runtime::ActorRuntime;
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_type::Result;
 use tracing::{Span, instrument};
 

@@ -12,24 +12,18 @@
 use std::{
 	fmt::Debug,
 	sync::{
-		Arc,
 		atomic::{AtomicU64, Ordering},
+		Arc,
 	},
 	time::Duration,
 };
 
 use reifydb_core::common::CommitVersion;
-use reifydb_runtime::actor::{ActorRef, ActorRuntime};
+use reifydb_runtime::actor::mailbox::ActorRef;
+use reifydb_runtime::actor::runtime::ActorRuntime;
 
-#[cfg(feature = "native")]
-use reifydb_runtime::sync::condvar::native::Condvar;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::sync::condvar::wasm::Condvar;
-
-#[cfg(feature = "native")]
-use reifydb_runtime::sync::mutex::native::Mutex;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::sync::mutex::wasm::Mutex;
+use reifydb_runtime::sync::condvar::Condvar;
+use reifydb_runtime::sync::mutex::Mutex;
 
 use tracing::instrument;
 
@@ -37,7 +31,7 @@ use super::actor::{WatermarkActor, WatermarkMsg, WatermarkShared};
 
 /// Handle for waiting on a specific version to complete
 #[derive(Debug)]
-pub(crate) struct WaiterHandle {
+pub struct WaiterHandle {
 	notified: Mutex<bool>,
 	condvar: Condvar,
 }
@@ -184,7 +178,7 @@ pub mod tests {
 	#[cfg(feature = "wasm")]
 	use reifydb_runtime::time::wasm::Instant;
 
-	use reifydb_runtime::actor::ActorRuntime;
+	use reifydb_runtime::actor::runtime::ActorRuntime;
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;

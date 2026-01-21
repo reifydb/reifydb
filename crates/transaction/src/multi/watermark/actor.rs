@@ -18,7 +18,8 @@ use std::{
 	},
 };
 
-use reifydb_runtime::actor::{Actor, ActorConfig, Context, Flow};
+use reifydb_runtime::actor::context::Context;
+use reifydb_runtime::actor::traits::{Actor, ActorConfig, Flow};
 
 use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
 use super::watermark::WaiterHandle;
