@@ -13,7 +13,7 @@ description = "Runtime infrastructure (async I/O and compute pools) for ReifyDB"
 [features]
 default = ["native"]
 native = ["tokio", "rayon", "crossbeam-channel", "parking_lot", "dashmap"]
-wasm = ["js-sys"]
+wasm = ["js-sys", "wasm-bindgen", "wasm-bindgen-futures", "web-sys"]
 
 [dependencies]
 # Native-only dependencies (made optional)
@@ -25,6 +25,12 @@ dashmap = { workspace = true, optional = true }
 
 # WASM-only dependencies
 js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen-futures = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true, features = ["Window"] }
 
-# WASM-compatible dependencies
+# Common dependencies
+tracing = { workspace = true }
+
+# Used by runtime/wasm.rs (not actor module)
 futures-util = { workspace = true }

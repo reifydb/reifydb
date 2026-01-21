@@ -57,6 +57,8 @@ pub mod sync;
 
 pub mod time;
 
+pub mod actor;
+
 pub mod concurrent_map;
 
 use std::{future::Future, sync::Arc};

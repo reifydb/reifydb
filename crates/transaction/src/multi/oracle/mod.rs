@@ -13,19 +13,16 @@ use reifydb_runtime::time::wasm::Instant;
 
 use cleanup::cleanup_old_windows;
 
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
+use reifydb_runtime::actor::ActorRuntime;
 #[cfg(feature = "native")]
 use reifydb_runtime::sync::rwlock::native::RwLock;
 #[cfg(feature = "wasm")]
 use reifydb_runtime::sync::rwlock::wasm::RwLock;
-use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
 use reifydb_type::Result;
 use tracing::{Span, instrument};
 
-use crate::multi::{
-	conflict::ConflictManager,
-	transaction::version::VersionProvider,
-	watermark::{closer::Closer, watermark::WaterMark},
-};
+use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvider, watermark::watermark::WaterMark};
 
 pub mod cleanup;
 
@@ -134,8 +131,8 @@ where
 	pub(crate) command: WaterMark,
 	/// Shutdown signal for cleanup thread
 	shutdown_signal: Arc<RwLock<bool>>,
-	/// closer is used to stop watermarks.
-	closer: Closer,
+	/// Actor runtime for watermark actors
+	runtime: ActorRuntime,
 }
 
 impl<L> Oracle<L>
@@ -144,8 +141,8 @@ where
 {
 	/// Create a new oracle with efficient conflict detection
 	pub fn new(clock: L) -> Self {
-		let closer = Closer::new(2);
 		let shutdown_signal = Arc::new(RwLock::new(false));
+		let runtime = ActorRuntime::new();
 
 		Self {
 			inner: RwLock::new(OracleInner {
@@ -155,10 +152,10 @@ where
 				key_to_windows: HashMap::with_capacity(10000),
 				window_size: DEFAULT_WINDOW_SIZE,
 			}),
-			query: WaterMark::new("txn-mark-query".into(), closer.clone()),
-			command: WaterMark::new("txn-mark-cmd".into(), closer.clone()),
+			query: WaterMark::new("txn-mark-query".into(), &runtime),
+			command: WaterMark::new("txn-mark-cmd".into(), &runtime),
 			shutdown_signal,
-			closer,
+			runtime,
 		}
 	}
 
@@ -362,7 +359,7 @@ where
 			*shutdown = true;
 		}
 
-		self.closer.signal_and_wait();
+		self.runtime.shutdown();
 	}
 
 	/// Mark a query as done

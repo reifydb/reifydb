@@ -9,8 +9,8 @@ description = "Transaction management and concurrency control for ReifyDB"
 
 [features]
 default = ["native"]
-native = ["reifydb-runtime/native", "reifydb-hash/native", "crossbeam-channel"]
-wasm = ["reifydb-runtime/wasm", "reifydb-hash/wasm"]
+native = ["reifydb-core/native", "reifydb-runtime/native", "reifydb-hash/native", "crossbeam-channel"]
+wasm = ["reifydb-core/wasm", "reifydb-runtime/wasm", "reifydb-hash/wasm"]
 test-stress = []
 worker_pool = []
 

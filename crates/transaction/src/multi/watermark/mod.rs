@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-pub mod closer;
-pub mod process;
+pub mod actor;
 pub mod watermark;
 
 // Configuration constants for watermark processing

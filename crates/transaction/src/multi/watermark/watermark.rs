@@ -11,7 +11,6 @@
 
 use std::{
 	fmt::Debug,
-	ops::Deref,
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -20,6 +19,7 @@ use std::{
 };
 
 use reifydb_core::common::CommitVersion;
+use reifydb_runtime::actor::{ActorRef, ActorRuntime};
 
 #[cfg(feature = "native")]
 use reifydb_runtime::sync::condvar::native::Condvar;
@@ -31,62 +31,9 @@ use reifydb_runtime::sync::mutex::native::Mutex;
 #[cfg(feature = "wasm")]
 use reifydb_runtime::sync::mutex::wasm::Mutex;
 
-#[cfg(feature = "native")]
-use reifydb_runtime::worker::native::WorkerThread;
-
 use tracing::instrument;
 
-use crate::multi::watermark::closer::Closer;
-
-// WASM: use direct processing with RefCell
-#[cfg(feature = "wasm")]
-use std::cell::RefCell;
-
-// WASM-only: Sync wrapper for RefCell (safe because WASM is single-threaded)
-#[cfg(feature = "wasm")]
-pub(crate) struct SyncRefCell<T>(RefCell<T>);
-
-#[cfg(feature = "wasm")]
-unsafe impl<T> Sync for SyncRefCell<T> {}
-
-#[cfg(feature = "wasm")]
-impl<T> SyncRefCell<T> {
-	fn new(value: T) -> Self {
-		Self(RefCell::new(value))
-	}
-
-	fn borrow_mut(&self) -> std::cell::RefMut<'_, T> {
-		self.0.borrow_mut()
-	}
-}
-
-// Native implementation uses crossbeam channels
-#[cfg(feature = "native")]
-use crossbeam_channel::{Sender, unbounded};
-
-#[cfg(feature = "native")]
-pub struct WatermarkInner {
-	pub(crate) done_until: AtomicU64,
-	pub(crate) last_index: AtomicU64,
-	pub(crate) tx: Sender<Mark>,
-	// Worker thread is stored but not used directly - it's managed via Drop
-	pub(crate) _worker: Mutex<Option<WorkerThread<()>>>,
-}
-
-// WASM implementation uses direct processing
-#[cfg(feature = "wasm")]
-pub struct WatermarkInner {
-	pub(crate) done_until: AtomicU64,
-	pub(crate) last_index: AtomicU64,
-	pub(crate) processor: SyncRefCell<crate::multi::watermark::process::WatermarkProcessor>,
-}
-
-#[derive(Debug)]
-pub(crate) struct Mark {
-	pub(crate) version: u64,
-	pub(crate) waiter: Option<Arc<WaiterHandle>>,
-	pub(crate) done: bool,
-}
+use super::actor::{WatermarkActor, WatermarkMsg, WatermarkShared};
 
 /// Handle for waiting on a specific version to complete
 #[derive(Debug)]
@@ -96,7 +43,6 @@ pub(crate) struct WaiterHandle {
 }
 
 impl WaiterHandle {
-	#[allow(dead_code)]
 	fn new() -> Self {
 		Self {
 			notified: Mutex::new(false),
@@ -110,7 +56,6 @@ impl WaiterHandle {
 		self.condvar.notify_one();
 	}
 
-	#[allow(dead_code)]
 	fn wait_timeout(&self, timeout: Duration) -> bool {
 		let mut guard = self.notified.lock();
 		if *guard {
@@ -125,121 +70,68 @@ impl WaiterHandle {
 /// `done(k)` has been called
 ///  1. as many times as `begin(k)` has, AND
 ///  2. a positive number of times.
-pub struct WaterMark(Arc<WatermarkInner>);
+pub struct WaterMark {
+	actor: ActorRef<WatermarkMsg>,
+	shared: Arc<WatermarkShared>,
+}
 
 impl Debug for WaterMark {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("WaterMark")
-			.field("done_until", &self.done_until.load(Ordering::Relaxed))
-			.field("last_index", &self.last_index.load(Ordering::Relaxed))
+			.field("done_until", &self.shared.done_until.load(Ordering::Relaxed))
+			.field("last_index", &self.shared.last_index.load(Ordering::Relaxed))
 			.finish()
 	}
 }
 
-impl Deref for WaterMark {
-	type Target = WatermarkInner;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
 impl WaterMark {
-	/// Create a new WaterMark with given name and closer.
-	#[cfg(feature = "native")]
-	#[instrument(name = "transaction::watermark::new", level = "debug", skip(closer), fields(task_name = %task_name))]
-	pub fn new(task_name: String, closer: Closer) -> Self {
-		let (tx, rx) = unbounded();
-
-		let inner = Arc::new(WatermarkInner {
+	/// Create a new WaterMark with given name and runtime.
+	#[instrument(name = "transaction::watermark::new", level = "debug", skip(runtime), fields(task_name = %task_name))]
+	pub fn new(task_name: String, runtime: &ActorRuntime) -> Self {
+		let shared = Arc::new(WatermarkShared {
 			done_until: AtomicU64::new(0),
 			last_index: AtomicU64::new(0),
-			tx,
-			_worker: Mutex::new(None),
 		});
 
-		let processing_inner = inner.clone();
+		let actor = WatermarkActor {
+			shared: shared.clone(),
+		};
+		let actor_ref = runtime.spawn_ref(&task_name, actor);
 
-		// Spawn worker thread using WorkerThread abstraction
-		// We use WorkerThread<()> since we manage our own crossbeam channel
-		let worker = WorkerThread::spawn(task_name, move |_receiver| {
-			processing_inner.process(rx, closer);
-		});
-
-		*inner._worker.lock() = Some(worker);
-
-		Self(inner)
-	}
-
-	/// Create a new WaterMark with given name and closer.
-	#[cfg(feature = "wasm")]
-	#[instrument(name = "transaction::watermark::new", level = "debug", skip(closer, _task_name))]
-	pub fn new(_task_name: String, closer: Closer) -> Self {
-		use crate::multi::watermark::process::WatermarkProcessor;
-
-		let inner = Arc::new(WatermarkInner {
-			done_until: AtomicU64::new(0),
-			last_index: AtomicU64::new(0),
-			processor: SyncRefCell::new(WatermarkProcessor::new(closer)),
-		});
-
-		Self(inner)
+		Self {
+			actor: actor_ref,
+			shared,
+		}
 	}
 
 	/// Sets the last index to the given value.
-	#[cfg(feature = "native")]
 	#[instrument(name = "transaction::watermark::begin", level = "trace", skip(self), fields(version = version.0))]
 	pub fn begin(&self, version: CommitVersion) {
 		// Update last_index to the maximum
-		self.last_index.fetch_max(version.0, Ordering::SeqCst);
+		self.shared.last_index.fetch_max(version.0, Ordering::SeqCst);
 
-		let _ = self.tx.send(Mark {
+		let _ = self.actor.send(WatermarkMsg::Begin {
 			version: version.0,
-			waiter: None,
-			done: false,
-		});
-	}
-
-	/// Sets the last index to the given value.
-	#[cfg(feature = "wasm")]
-	#[instrument(name = "transaction::watermark::begin", level = "trace", skip(self), fields(version = version.0))]
-	pub fn begin(&self, version: CommitVersion) {
-		// Update last_index to the maximum
-		self.last_index.fetch_max(version.0, Ordering::SeqCst);
-
-		self.processor.borrow_mut().process_mark(Mark {
-			version: version.0,
-			waiter: None,
-			done: false,
-		}, &self.done_until);
-	}
-
-	/// Sets a single version as done.
-	#[cfg(feature = "native")]
-	#[instrument(name = "transaction::watermark::done", level = "trace", skip(self), fields(index = version.0))]
-	pub fn done(&self, version: CommitVersion) {
-		let _ = self.tx.send(Mark {
-			version: version.0,
-			waiter: None,
-			done: true,
 		});
 	}
 
 	/// Sets a single version as done.
-	#[cfg(feature = "wasm")]
 	#[instrument(name = "transaction::watermark::done", level = "trace", skip(self), fields(index = version.0))]
 	pub fn done(&self, version: CommitVersion) {
-		self.processor.borrow_mut().process_mark(Mark {
+		let _ = self.actor.send(WatermarkMsg::Done {
 			version: version.0,
-			waiter: None,
-			done: true,
-		}, &self.done_until);
+		});
 	}
 
 	/// Returns the maximum index that has the property that all indices
 	/// less than or equal to it are done.
 	pub fn done_until(&self) -> CommitVersion {
-		CommitVersion(self.done_until.load(Ordering::SeqCst))
+		CommitVersion(self.shared.done_until.load(Ordering::SeqCst))
+	}
+
+	/// Returns the last index that was begun.
+	pub fn last_index(&self) -> CommitVersion {
+		CommitVersion(self.shared.last_index.load(Ordering::SeqCst))
 	}
 
 	/// Waits until the given index is marked as done with a default
@@ -252,21 +144,20 @@ impl WaterMark {
 	/// timeout.
 	#[cfg(feature = "native")]
 	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
-		if self.done_until.load(Ordering::SeqCst) >= index.0 {
+		if self.shared.done_until.load(Ordering::SeqCst) >= index.0 {
 			return true;
 		}
 
 		let waiter = Arc::new(WaiterHandle::new());
 
-		if self.tx
-			.send(Mark {
+		if self.actor
+			.send(WatermarkMsg::WaitFor {
 				version: index.0,
-				waiter: Some(waiter.clone()),
-				done: false,
+				waiter: waiter.clone(),
 			})
 			.is_err()
 		{
-			// Channel closed
+			// Actor stopped
 			return false;
 		}
 
@@ -280,22 +171,20 @@ impl WaterMark {
 	pub fn wait_for_mark_timeout(&self, index: CommitVersion, _timeout: Duration) -> bool {
 		// In WASM, processing is synchronous so marks are immediately processed
 		// Just check if the version is already done
-		self.done_until.load(Ordering::SeqCst) >= index.0
+		self.shared.done_until.load(Ordering::SeqCst) >= index.0
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use std::{
-		sync::atomic::AtomicUsize,
-		thread::sleep,
-		time::Duration,
-	};
+	use std::{sync::atomic::AtomicUsize, thread::sleep, time::Duration};
 
 	#[cfg(feature = "native")]
 	use reifydb_runtime::time::native::Instant;
 	#[cfg(feature = "wasm")]
 	use reifydb_runtime::time::wasm::Instant;
+
+	use reifydb_runtime::actor::ActorRuntime;
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;
@@ -340,15 +229,15 @@ pub mod tests {
 	#[test]
 	fn test_done_until() {
 		init_and_close(|watermark| {
-			watermark.done_until.store(1, Ordering::SeqCst);
+			watermark.shared.done_until.store(1, Ordering::SeqCst);
 			assert_eq!(watermark.done_until(), 1);
 		});
 	}
 
 	#[test]
 	fn test_high_concurrency() {
-		let closer = Closer::new(1);
-		let watermark = Arc::new(WaterMark::new("concurrent".into(), closer.clone()));
+		let runtime = ActorRuntime::new();
+		let watermark = Arc::new(WaterMark::new("concurrent".into(), &runtime));
 
 		const NUM_TASKS: usize = 50;
 		const OPS_PER_TASK: usize = 100;
@@ -378,13 +267,14 @@ pub mod tests {
 		let final_done = watermark.done_until();
 		assert!(final_done.0 > 0, "Watermark should have progressed");
 
-		closer.signal_and_wait();
+		runtime.shutdown();
+		sleep(Duration::from_millis(150)); // Wait for actor to stop
 	}
 
 	#[test]
 	fn test_concurrent_wait_for_mark() {
-		let closer = Closer::new(1);
-		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), closer.clone()));
+		let runtime = ActorRuntime::new();
+		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), &runtime));
 		let success_count = Arc::new(AtomicUsize::new(0));
 
 		// Start some versions
@@ -422,7 +312,8 @@ pub mod tests {
 		// All waits should have succeeded
 		assert_eq!(success_count.load(Ordering::Relaxed), 10);
 
-		closer.signal_and_wait();
+		runtime.shutdown();
+		sleep(Duration::from_millis(150)); // Wait for actor to stop
 	}
 
 	#[test]
@@ -544,12 +435,13 @@ pub mod tests {
 	where
 		F: FnOnce(Arc<WaterMark>),
 	{
-		let closer = Closer::new(1);
+		let runtime = ActorRuntime::new();
+		let watermark = Arc::new(WaterMark::new("watermark".into(), &runtime));
 
-		let watermark = Arc::new(WaterMark::new("watermark".into(), closer.clone()));
 		f(watermark);
 
 		sleep(Duration::from_millis(10));
-		closer.signal_and_wait();
+		runtime.shutdown();
+		sleep(Duration::from_millis(150)); // Wait for actor to stop
 	}
 }
