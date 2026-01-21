@@ -50,6 +50,8 @@ members = [
     "pkg/rust/examples",
     "pkg/rust/tests/limit",
     "pkg/rust/tests/regression",
+    # WebAssembly
+    "pkg/webassembly",
 ]
 
 default-members = [
@@ -145,7 +147,7 @@ reifydb-catalog = { version = "0.2.0", path = "crates/catalog", default-features
 reifydb-cdc = { version = "0.2.0", path = "crates/cdc", default-features = false }
 reifydb-compression = { version = "0.2.0", path = "crates/compression" }
 reifydb-core = { version = "0.2.0", path = "crates/core", default-features = false }
-reifydb-engine = { version = "0.2.0", path = "crates/engine" }
+reifydb-engine = { version = "0.2.0", path = "crates/engine", default-features = false }
 reifydb-hash = { version = "0.2.0", path = "crates/hash", default-features = false }
 reifydb-metric = { version = "0.2.0", path = "crates/metric", default-features = false }
 reifydb-abi = { version = "0.2.0", path = "crates/abi" }
@@ -236,3 +238,11 @@ paste = { version = "1.0" }
 
 # load-testing
 hdrhistogram = { version = "7.5" }
+
+# WASM dependencies
+wasm-bindgen = "0.2.108"
+wasm-bindgen-futures = "0.4.58"
+js-sys = "0.3.85"
+web-sys = "0.3.85"
+serde-wasm-bindgen = "0.6.5"
+console_error_panic_hook = "0.1.7"

@@ -63,6 +63,7 @@ help:
 	@printf "  %-25s %s\n" "clean" "Clean all reifydb packages"
 	@printf "  %-25s %s\n" "format" "Format all code with rustfmt (nightly)"
 	@printf "  %-25s %s\n" "format-check" "Format code and fail if files changed"
+	@printf "  %-25s %s\n" "build-wasm" "Build WebAssembly packages (requires wasm-pack)"
 	@echo ""
 	@echo "  🐳 Docker"
 	@echo "  ───────────────────────────────────────────────────────────────"
