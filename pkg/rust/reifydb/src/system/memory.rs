@@ -67,7 +67,7 @@ impl MemoryWatchdog {
 	/// This is not supported on non-Linux platforms.
 	#[cfg(not(target_os = "linux"))]
 	pub fn get_current_memory() -> Result<u64, String> {
-		Err("Memory monitoring is only supported on Linux".to_string())
+		panic!("Memory monitoring is only supported on Linux".to_string())
 	}
 
 	/// Get maximum available system memory in bytes.
@@ -75,6 +75,29 @@ impl MemoryWatchdog {
 	/// This is Linux-only and reads from `/proc/meminfo`.
 	#[cfg(target_os = "linux")]
 	pub fn get_max_available_memory() -> Result<u64, String> {
+		// cgroup v2
+		if let Ok(s) = fs::read_to_string("/sys/fs/cgroup/memory.max") {
+			let s = s.trim();
+			if s != "max" {
+				return s
+					.parse::<u64>()
+					.map_err(|e| format!("Failed to parse memory.max: {}", e));
+			}
+		}
+
+		// cgroup v1 fallback
+		if let Ok(s) = fs::read_to_string("/sys/fs/cgroup/memory/memory.limit_in_bytes") {
+			let bytes = s
+				.trim()
+				.parse::<u64>()
+				.map_err(|e| format!("Failed to parse memory.limit_in_bytes: {}", e))?;
+
+			// Docker sometimes sets this to a huge number if unlimited
+			if bytes < (1u64 << 60) {
+				return Ok(bytes);
+			}
+		}
+
 		// Read /proc/meminfo for MemTotal
 		let meminfo = fs::read_to_string("/proc/meminfo")
 			.map_err(|e| format!("Failed to read /proc/meminfo: {}", e))?;
@@ -99,7 +122,7 @@ impl MemoryWatchdog {
 	/// This is not supported on non-Linux platforms.
 	#[cfg(not(target_os = "linux"))]
 	pub fn get_max_available_memory() -> Result<u64, String> {
-		Err("Memory monitoring is only supported on Linux".to_string())
+		panic!("Memory monitoring is only supported on Linux".to_string())
 	}
 
 	fn check_and_kill_if_exceeded(&self, stats: &MemoryStats) {

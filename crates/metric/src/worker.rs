@@ -22,17 +22,28 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::{
 		EventBus, EventListener,
-		metric::{CdcStatsRecordedEvent, StorageStatsRecordedEvent},
+		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
 		store::StatsProcessedEvent,
 	},
 	interface::store::{MultiVersionGetPrevious, SingleVersionStore},
 };
 use tracing::{debug, error, trace};
 
+use reifydb_core::encoded::key::EncodedKey;
+
 use crate::{
 	cdc::{CdcOperation, CdcStatsWriter},
 	multi::{MultiStorageOperation, StorageStatsWriter, Tier},
 };
+
+/// CDC drop operation for stats tracking.
+#[derive(Debug, Clone)]
+pub struct CdcDropOperation {
+	/// The key associated with this dropped CDC entry
+	pub key: EncodedKey,
+	/// Size of the value that was dropped
+	pub value_bytes: u64,
+}
 
 /// Configuration for the metrics worker.
 #[derive(Debug, Clone)]
@@ -61,6 +72,11 @@ pub enum MetricsEvent {
 	/// CDC operations batch.
 	Cdc {
 		ops: Vec<CdcOperation>,
+		version: CommitVersion,
+	},
+	/// CDC drop operations batch (for cleanup).
+	CdcDrop {
+		ops: Vec<CdcDropOperation>,
 		version: CommitVersion,
 	},
 	/// Shutdown the worker.
@@ -294,6 +310,26 @@ impl MetricsWorker {
 								max_version = version;
 							}
 						}
+						MetricsEvent::CdcDrop {
+							ops,
+							version,
+						} => {
+							trace!(
+								"Processing {} CDC drop ops for version {:?}",
+								ops.len(),
+								version
+							);
+							for op in ops {
+								if let Err(e) = cdc_writer
+									.record_drop(op.key.as_ref(), op.value_bytes)
+								{
+									error!("Failed to record cdc drop: {}", e);
+								}
+							}
+							if version > max_version {
+								max_version = version;
+							}
+						}
 						MetricsEvent::Shutdown => {
 							debug!("Metrics worker received shutdown signal");
 							Self::emit_stats_processed(&event_bus, &mut max_version);
@@ -407,6 +443,39 @@ impl EventListener<CdcStatsRecordedEvent> for CdcStatsListener {
 
 		if !ops.is_empty() {
 			let _ = self.sender.send(MetricsEvent::Cdc {
+				ops,
+				version: *event.version(),
+			});
+		}
+	}
+}
+
+/// Event listener for CDC stats dropped events.
+pub struct CdcStatsDroppedListener {
+	sender: Sender<MetricsEvent>,
+}
+
+impl CdcStatsDroppedListener {
+	pub fn new(sender: Sender<MetricsEvent>) -> Self {
+		Self {
+			sender,
+		}
+	}
+}
+
+impl EventListener<CdcStatsDroppedEvent> for CdcStatsDroppedListener {
+	fn on(&self, event: &CdcStatsDroppedEvent) {
+		let ops: Vec<CdcDropOperation> = event
+			.entries()
+			.iter()
+			.map(|entry| CdcDropOperation {
+				key: entry.key.clone(),
+				value_bytes: entry.value_bytes,
+			})
+			.collect();
+
+		if !ops.is_empty() {
+			let _ = self.sender.send(MetricsEvent::CdcDrop {
 				ops,
 				version: *event.version(),
 			});

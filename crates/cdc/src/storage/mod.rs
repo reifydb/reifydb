@@ -17,10 +17,26 @@ use reifydb_core::{
 	interface::cdc::{Cdc, CdcBatch},
 };
 
+use reifydb_core::encoded::key::EncodedKey;
+
 use crate::error::CdcError;
 
 /// Result type for CDC storage operations.
 pub type CdcStorageResult<T> = Result<T, CdcError>;
+
+/// Information about a dropped CDC entry for stats tracking.
+#[derive(Debug, Clone)]
+pub struct DroppedCdcEntry {
+	pub key: EncodedKey,
+	pub value_bytes: u64,
+}
+
+/// Result of a drop_before operation.
+#[derive(Debug, Clone, Default)]
+pub struct DropBeforeResult {
+	pub count: usize,
+	pub entries: Vec<DroppedCdcEntry>,
+}
 
 /// Trait for CDC storage backends.
 ///
@@ -72,6 +88,10 @@ pub trait CdcStorage: Send + Sync + Clone + 'static {
 		Ok(self.read(version)?.is_some())
 	}
 
+	/// Delete all CDC entries with version strictly less than the given version.
+	/// Returns the count and entry information for stats tracking.
+	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult>;
+
 	/// Convenience method with default batch size.
 	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> CdcStorageResult<CdcBatch> {
 		self.read_range(start, end, 1024)
@@ -112,6 +132,10 @@ impl<T: CdcStorage> CdcStorage for std::sync::Arc<T> {
 
 	fn max_version(&self) -> CdcStorageResult<Option<CommitVersion>> {
 		(**self).max_version()
+	}
+
+	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
+		(**self).drop_before(version)
 	}
 }
 
@@ -177,6 +201,13 @@ impl CdcStore {
 			Self::Memory(s) => s.max_version(),
 		}
 	}
+
+	/// Delete all CDC entries with version strictly less than the given version.
+	pub fn delete_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
+		match self {
+			Self::Memory(s) => s.drop_before(version),
+		}
+	}
 }
 
 impl CdcStorage for CdcStore {
@@ -207,6 +238,10 @@ impl CdcStorage for CdcStore {
 
 	fn max_version(&self) -> CdcStorageResult<Option<CommitVersion>> {
 		CdcStore::max_version(self)
+	}
+
+	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
+		CdcStore::delete_before(self, version)
 	}
 }
 
@@ -312,5 +347,126 @@ pub mod tests {
 
 		assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(3)));
 		assert_eq!(storage.max_version().unwrap(), Some(CommitVersion(8)));
+	}
+
+	#[test]
+	fn test_delete_before_empty_storage() {
+		let storage = MemoryCdcStorage::new();
+
+		// Deleting from empty storage should return 0
+		let result = storage.drop_before(CommitVersion(10)).unwrap();
+		assert_eq!(result.count, 0);
+		assert!(result.entries.is_empty());
+	}
+
+	#[test]
+	fn test_delete_before_some_entries() {
+		let storage = MemoryCdcStorage::new();
+
+		// Add entries at versions 1, 3, 5, 7, 9
+		for v in [1, 3, 5, 7, 9] {
+			storage.write(&create_test_cdc(v, 1)).unwrap();
+		}
+
+		// Delete entries before version 5 (should delete 1 and 3)
+		let result = storage.drop_before(CommitVersion(5)).unwrap();
+		assert_eq!(result.count, 2);
+		// Each CDC entry has 1 change, so 2 entries total
+		assert_eq!(result.entries.len(), 2);
+
+		// Verify versions 1 and 3 are gone
+		assert!(storage.read(CommitVersion(1)).unwrap().is_none());
+		assert!(storage.read(CommitVersion(3)).unwrap().is_none());
+
+		// Verify versions 5, 7, 9 remain
+		assert!(storage.read(CommitVersion(5)).unwrap().is_some());
+		assert!(storage.read(CommitVersion(7)).unwrap().is_some());
+		assert!(storage.read(CommitVersion(9)).unwrap().is_some());
+
+		// Min version should now be 5
+		assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(5)));
+	}
+
+	#[test]
+	fn test_delete_before_all_entries() {
+		let storage = MemoryCdcStorage::new();
+
+		// Add entries at versions 1, 2, 3
+		for v in 1..=3 {
+			storage.write(&create_test_cdc(v, 1)).unwrap();
+		}
+
+		// Delete all entries (version 10 is greater than all)
+		let result = storage.drop_before(CommitVersion(10)).unwrap();
+		assert_eq!(result.count, 3);
+		assert_eq!(result.entries.len(), 3);
+
+		// Verify storage is empty
+		assert!(storage.min_version().unwrap().is_none());
+		assert!(storage.max_version().unwrap().is_none());
+	}
+
+	#[test]
+	fn test_delete_before_none_when_version_too_low() {
+		let storage = MemoryCdcStorage::new();
+
+		// Add entries at versions 5, 6, 7
+		for v in 5..=7 {
+			storage.write(&create_test_cdc(v, 1)).unwrap();
+		}
+
+		// Delete entries before version 3 (should delete nothing)
+		let result = storage.drop_before(CommitVersion(3)).unwrap();
+		assert_eq!(result.count, 0);
+		assert!(result.entries.is_empty());
+
+		// All entries should remain
+		assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(5)));
+		assert_eq!(storage.max_version().unwrap(), Some(CommitVersion(7)));
+	}
+
+	#[test]
+	fn test_delete_before_boundary_condition() {
+		let storage = MemoryCdcStorage::new();
+
+		// Add entries at versions 1, 2, 3, 4, 5
+		for v in 1..=5 {
+			storage.write(&create_test_cdc(v, 1)).unwrap();
+		}
+
+		// Delete entries before version 3 (should delete 1 and 2, keep 3, 4, 5)
+		let result = storage.drop_before(CommitVersion(3)).unwrap();
+		assert_eq!(result.count, 2);
+		assert_eq!(result.entries.len(), 2);
+
+		// Version 3 should still exist (strictly less than)
+		assert!(storage.read(CommitVersion(3)).unwrap().is_some());
+		assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(3)));
+	}
+
+	#[test]
+	fn test_drop_before_returns_entry_stats() {
+		let storage = MemoryCdcStorage::new();
+
+		// Create CDC with known key/value sizes
+		let cdc = Cdc::new(
+			CommitVersion(1),
+			12345,
+			vec![CdcSequencedChange {
+				sequence: 1,
+				change: CdcChange::Insert {
+					key: EncodedKey::new(vec![1, 2, 3]), // 3 bytes
+					post: EncodedValues(CowVec::new(vec![10, 20, 30, 40, 50])), // 5 bytes
+				},
+			}],
+		);
+		storage.write(&cdc).unwrap();
+
+		let result = storage.drop_before(CommitVersion(2)).unwrap();
+
+		assert_eq!(result.count, 1);
+		assert_eq!(result.entries.len(), 1);
+		assert_eq!(result.entries[0].key.as_ref(), &[1, 2, 3]);
+		assert_eq!(result.entries[0].value_bytes, 5);
 	}
 }
