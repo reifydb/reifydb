@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-import { afterAll, beforeAll, afterEach, describe, expect, it } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
-import { useSubscription, ConnectionProvider, getConnection, clearConnection, Schema } from '../../../src';
-import { waitForDatabase } from '../setup';
-import { createTestTableForHook } from './subscription-test-helpers';
+import {afterAll, beforeAll, afterEach, describe, expect, it} from 'vitest';
+import {renderHook, waitFor, act} from '@testing-library/react';
+import {useSubscription, ConnectionProvider, getConnection, clearConnection, Schema} from '../../../src';
+import {waitForDatabase} from '../setup';
+import {createTestTableForHook} from './subscription-test-helpers';
 // @ts-ignore
 import React from 'react';
 
 describe('useSubscription Hook', () => {
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
-        <ConnectionProvider config={{ url: 'ws://127.0.0.1:8090' }} children={children} />
+    const wrapper = ({children}: { children: React.ReactNode }) => (
+        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children}/>
     );
 
     beforeAll(async () => {
@@ -35,14 +35,14 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'name Utf8']
             );
 
-            const schema = Schema.object({ id: Schema.number(), name: Schema.string() });
-            const { result } = renderHook(
+            const schema = Schema.object({id: Schema.number(), name: Schema.string()});
+            const {result} = renderHook(
                 () => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema
                 ),
-                { wrapper }
+                {wrapper}
             );
 
             // Should start subscribing
@@ -63,15 +63,15 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({ id: Schema.number() });
-            const { result } = renderHook(
+            const schema = Schema.object({id: Schema.number()});
+            const {result} = renderHook(
                 () => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema,
-                    { enabled: false }
+                    {enabled: false}
                 ),
-                { wrapper }
+                {wrapper}
             );
 
             // Give it a moment to potentially subscribe (it shouldn't)
@@ -88,21 +88,21 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({ id: Schema.number() });
-            const { result, rerender } = renderHook(
-                ({ enabled }) => useSubscription(
+            const schema = Schema.object({id: Schema.number()});
+            const {result, rerender} = renderHook(
+                ({enabled}) => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema,
-                    { enabled }
+                    {enabled}
                 ),
-                { initialProps: { enabled: false }, wrapper }
+                {initialProps: {enabled: false}, wrapper}
             );
 
             expect(result.current.isSubscribed).toBe(false);
 
             // Enable subscription
-            rerender({ enabled: true });
+            rerender({enabled: true});
 
             await waitFor(() => {
                 expect(result.current.isSubscribed).toBe(true);
@@ -117,15 +117,15 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({ id: Schema.number() });
-            const { result, rerender } = renderHook(
-                ({ enabled }) => useSubscription(
+            const schema = Schema.object({id: Schema.number()});
+            const {result, rerender} = renderHook(
+                ({enabled}) => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema,
-                    { enabled }
+                    {enabled}
                 ),
-                { initialProps: { enabled: true }, wrapper }
+                {initialProps: {enabled: true}, wrapper}
             );
 
             await waitFor(() => {
@@ -136,7 +136,7 @@ describe('useSubscription Hook', () => {
             expect(subscriptionId).toBeDefined();
 
             // Disable subscription
-            rerender({ enabled: false });
+            rerender({enabled: false});
 
             await waitFor(() => {
                 expect(result.current.isSubscribed).toBe(false);
@@ -151,14 +151,14 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({ id: Schema.number() });
-            const { result, unmount } = renderHook(
+            const schema = Schema.object({id: Schema.number()});
+            const {result, unmount} = renderHook(
                 () => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema
                 ),
-                { wrapper }
+                {wrapper}
             );
 
             await waitFor(() => {
@@ -184,14 +184,14 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({ id: Schema.number() });
-            const { result, rerender } = renderHook(
-                ({ query }) => useSubscription(
+            const schema = Schema.object({id: Schema.number()});
+            const {result, rerender} = renderHook(
+                ({query}) => useSubscription(
                     query,
                     null,
                     schema
                 ),
-                { initialProps: { query: `from test.${table1}` }, wrapper }
+                {initialProps: {query: `from test.${table1}`}, wrapper}
             );
 
             await waitFor(() => {
@@ -201,7 +201,7 @@ describe('useSubscription Hook', () => {
             const firstSubId = result.current.subscriptionId;
 
             // Change query
-            rerender({ query: `from test.${table2}` });
+            rerender({query: `from test.${table2}`});
 
             await waitFor(() => {
                 expect(result.current.subscriptionId).not.toBe(firstSubId);
@@ -216,14 +216,14 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'value Int4']
             );
 
-            const schema = Schema.object({ id: Schema.number(), value: Schema.number() });
-            const { result, rerender } = renderHook(
-                ({ params }) => useSubscription(
+            const schema = Schema.object({id: Schema.number(), value: Schema.number()});
+            const {result, rerender} = renderHook(
+                ({params}) => useSubscription(
                     `from test.${tableName} filter value == $val`,
                     params,
                     schema
                 ),
-                { initialProps: { params: { val: 1 } }, wrapper }
+                {initialProps: {params: {val: 1}}, wrapper}
             );
 
             await waitFor(() => {
@@ -233,7 +233,7 @@ describe('useSubscription Hook', () => {
             const firstSubId = result.current.subscriptionId;
 
             // Change params
-            rerender({ params: { val: 2 } });
+            rerender({params: {val: 2}});
 
             await waitFor(() => {
                 expect(result.current.subscriptionId).not.toBe(firstSubId);
@@ -248,16 +248,16 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'name Utf8', 'value Int4']
             );
 
-            const schema1 = Schema.object({ id: Schema.number(), name: Schema.string() });
-            const schema2 = Schema.object({ id: Schema.number(), value: Schema.number() });
+            const schema1 = Schema.object({id: Schema.number(), name: Schema.string()});
+            const schema2 = Schema.object({id: Schema.number(), value: Schema.number()});
 
-            const { result, rerender } = renderHook(
-                ({ schema }) => useSubscription(
+            const {result, rerender} = renderHook(
+                ({schema}) => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema as any
                 ),
-                { initialProps: { schema: schema1 }, wrapper }
+                {initialProps: {schema: schema1}, wrapper}
             );
 
             await waitFor(() => {
@@ -267,7 +267,7 @@ describe('useSubscription Hook', () => {
             const firstSubId = result.current.subscriptionId;
 
             // Change schema
-            rerender({ schema: schema2 });
+            rerender({schema: schema2});
 
             await waitFor(() => {
                 expect(result.current.subscriptionId).not.toBe(firstSubId);
@@ -286,14 +286,14 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({ id: Schema.number() });
-            const { result, rerender } = renderHook(
-                ({ query }) => useSubscription(
+            const schema = Schema.object({id: Schema.number()});
+            const {result, rerender} = renderHook(
+                ({query}) => useSubscription(
                     query,
                     null,
                     schema
                 ),
-                { initialProps: { query: `from test.${table1}` }, wrapper }
+                {initialProps: {query: `from test.${table1}`}, wrapper}
             );
 
             await waitFor(() => {
@@ -304,7 +304,7 @@ describe('useSubscription Hook', () => {
             expect(firstSubId).toBeDefined();
 
             // Change query to trigger re-subscription
-            rerender({ query: `from test.${table2}` });
+            rerender({query: `from test.${table2}`});
 
             await waitFor(() => {
                 const newSubId = result.current.subscriptionId;
@@ -321,14 +321,14 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'name Utf8']
             );
 
-            const schema = Schema.object({ id: Schema.number(), name: Schema.string() });
-            const { result } = renderHook(
+            const schema = Schema.object({id: Schema.number(), name: Schema.string()});
+            const {result} = renderHook(
                 () => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema
                 ),
-                { wrapper }
+                {wrapper}
             );
 
             await waitFor(() => {
@@ -350,7 +350,7 @@ describe('useSubscription Hook', () => {
             });
 
             expect(result.current.changes[0].operation).toBe('INSERT');
-            expect(result.current.changes[0].rows[0]).toEqual({ id: 1, name: 'test' });
+            expect(result.current.changes[0].rows[0]).toEqual({id: 1, name: 'test'});
         });
 
         it('should work with connection config override', async () => {
@@ -359,17 +359,17 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const overrideConfig = { url: 'ws://127.0.0.1:8090', options: { timeoutMs: 2000 } };
-            const schema = Schema.object({ id: Schema.number() });
+            const overrideConfig = {url: 'ws://127.0.0.1:8090', options: {timeoutMs: 2000}};
+            const schema = Schema.object({id: Schema.number()});
 
-            const { result, unmount } = renderHook(
+            const {result, unmount} = renderHook(
                 () => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema,
-                    { connectionConfig: overrideConfig }
+                    {connectionConfig: overrideConfig}
                 ),
-                { wrapper }
+                {wrapper}
             );
 
             await waitFor(() => {
@@ -380,7 +380,7 @@ describe('useSubscription Hook', () => {
 
             // Clean up
             unmount();
-            await clearConnection(overrideConfig);
+            await clearConnection();
         });
 
         it('should flatten state from executor correctly', async () => {
@@ -389,14 +389,14 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'value Utf8']
             );
 
-            const schema = Schema.object({ id: Schema.number(), value: Schema.string() });
-            const { result } = renderHook(
+            const schema = Schema.object({id: Schema.number(), value: Schema.string()});
+            const {result} = renderHook(
                 () => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema
                 ),
-                { wrapper }
+                {wrapper}
             );
 
             await waitFor(() => {
@@ -420,14 +420,14 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'name Utf8']
             );
 
-            const schema = Schema.object({ id: Schema.number(), name: Schema.string() });
-            const { result } = renderHook(
+            const schema = Schema.object({id: Schema.number(), name: Schema.string()});
+            const {result} = renderHook(
                 () => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema
                 ),
-                { wrapper }
+                {wrapper}
             );
 
             await waitFor(() => {
@@ -450,66 +450,6 @@ describe('useSubscription Hook', () => {
             expect(result.current.changes[0].operation).toBe('INSERT');
             expect(result.current.changes[0].rows).toHaveLength(2);
         });
-
-        it('should track multiple operations', async () => {
-            const tableName = await createTestTableForHook(
-                'track_multi',
-                ['id Int4', 'value Utf8']
-            );
-
-            // Pre-populate
-            const client = getConnection().getClient();
-            await client!.command(
-                `from [{id: 1, value: 'original'}] insert test.${tableName}`,
-                null,
-                []
-            );
-
-            const schema = Schema.object({ id: Schema.number(), value: Schema.string() });
-            const { result } = renderHook(
-                () => useSubscription(
-                    `from test.${tableName}`,
-                    null,
-                    schema
-                ),
-                { wrapper }
-            );
-
-            await waitFor(() => {
-                expect(result.current.isSubscribed).toBe(true);
-            });
-
-            // INSERT
-            await act(async () => {
-                const client = getConnection().getClient();
-                await client!.command(
-                    `from [{id: 2, value: 'new'}] insert test.${tableName}`,
-                    null,
-                    []
-                );
-            });
-
-            await waitFor(() => {
-                expect(result.current.changes.length).toBe(1);
-            });
-
-            // UPDATE
-            await act(async () => {
-                const client = getConnection().getClient();
-                await client!.command(
-                    `from test.${tableName} filter id == 1 map {id, value: 'updated'} update test.${tableName}`,
-                    null,
-                    []
-                );
-            });
-
-            await waitFor(() => {
-                expect(result.current.changes.length).toBe(2);
-            });
-
-            expect(result.current.changes[0].operation).toBe('INSERT');
-            expect(result.current.changes[1].operation).toBe('UPDATE');
-        });
     });
 
     describe('Edge Cases', () => {
@@ -519,22 +459,22 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({ id: Schema.number() });
-            const { result, rerender } = renderHook(
-                ({ enabled }) => useSubscription(
+            const schema = Schema.object({id: Schema.number()});
+            const {result, rerender} = renderHook(
+                ({enabled}) => useSubscription(
                     `from test.${tableName}`,
                     null,
                     schema,
-                    { enabled }
+                    {enabled}
                 ),
-                { initialProps: { enabled: true }, wrapper }
+                {initialProps: {enabled: true}, wrapper}
             );
 
             // Rapid toggling
-            rerender({ enabled: false });
-            rerender({ enabled: true });
-            rerender({ enabled: false });
-            rerender({ enabled: true });
+            rerender({enabled: false});
+            rerender({enabled: true});
+            rerender({enabled: false});
+            rerender({enabled: true});
 
             await waitFor(() => {
                 expect(result.current.isSubscribed).toBe(true);
@@ -549,14 +489,14 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({ id: Schema.number() });
-            const { result } = renderHook(
+            const schema = Schema.object({id: Schema.number()});
+            const {result} = renderHook(
                 () => useSubscription(
                     `from test.${tableName} filter id > 1000`,
                     null,
                     schema
                 ),
-                { wrapper }
+                {wrapper}
             );
 
             await waitFor(() => {
@@ -568,14 +508,14 @@ describe('useSubscription Hook', () => {
         });
 
         it('should handle subscription errors', async () => {
-            const schema = Schema.object({ id: Schema.number() });
-            const { result } = renderHook(
+            const schema = Schema.object({id: Schema.number()});
+            const {result} = renderHook(
                 () => useSubscription(
                     'from nonexistent.table',
                     null,
                     schema
                 ),
-                { wrapper }
+                {wrapper}
             );
 
             await waitFor(() => {

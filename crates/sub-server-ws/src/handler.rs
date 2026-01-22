@@ -10,10 +10,7 @@
 //! - Query and command execution
 //! - Subscription management for push notifications
 
-use std::{
-	sync::Arc,
-	time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_catalog::{delete_flow_by_name, delete_subscription};
@@ -26,7 +23,7 @@ use reifydb_core::interface::{
 };
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
-	execute::{execute_command, execute_query, ExecuteError},
+	execute::{ExecuteError, execute_command, execute_query},
 	response::convert_frames,
 	state::AppState,
 };

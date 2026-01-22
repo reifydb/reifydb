@@ -40,7 +40,7 @@ impl Default for WsConfig {
 			max_frame_size: 16 << 20, // 16MB
 			runtime: None,
 			poll_interval: Duration::from_millis(10), // Poll every 10ms
-			poll_batch_size: 100,                      // Read up to 100 rows per poll
+			poll_batch_size: 100,                     // Read up to 100 rows per poll
 		}
 	}
 }

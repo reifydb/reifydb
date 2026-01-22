@@ -3,7 +3,7 @@
 
 use reifydb_client::Type;
 
-use super::{find_column, get_op_value, SubscriptionTestHarness};
+use super::{SubscriptionTestHarness, find_column, get_op_value};
 
 #[test]
 fn test_recv_insert_notification() {

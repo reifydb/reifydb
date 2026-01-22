@@ -345,7 +345,8 @@
 // 		let sub_id2 = client2.subscribe(&format!("from test.{}", table)).await.unwrap();
 //
 // 		// Insert new data
-// 		client2.command(&format!("from [{{ id: 1, name: 'after_reconnect' }}] insert test.{}", table), None).await.unwrap();
+// 		client2.command(&format!("from [{{ id: 1, name: 'after_reconnect' }}] insert test.{}", table),
+// None).await.unwrap();
 //
 // 		let change = recv_with_timeout(&mut client2, 5000).await.expect("Should receive notification after reconnect");
 // 		assert_eq!(change.subscription_id, sub_id2);
@@ -399,8 +400,8 @@
 //
 // 		// Insert into all tables
 // 		for (i, table) in tables.iter().enumerate() {
-// 			client2.command(&format!("from [{{ id: {}, value: {} }}] insert test.{}", i, i * 100, table), None).await.unwrap();
-// 		}
+// 			client2.command(&format!("from [{{ id: {}, value: {} }}] insert test.{}", i, i * 100, table),
+// None).await.unwrap(); 		}
 //
 // 		let changes = recv_multiple_with_timeout(&mut client2, 3, 10000).await;
 // 		assert_eq!(changes.len(), 3, "Should receive 3 notifications");
@@ -639,8 +640,8 @@
 // 		let changes = recv_multiple_with_timeout(&mut client, 10, 15000).await;
 //
 // 		// Count total rows received
-// 		let total_rows: usize = changes.iter().map(|c| find_column(&c.frame, "id").map(|col| col.data.len()).unwrap_or(0)).sum();
-// 		assert_eq!(total_rows, 10, "Should have received all 10 rows");
+// 		let total_rows: usize = changes.iter().map(|c| find_column(&c.frame, "id").map(|col|
+// col.data.len()).unwrap_or(0)).sum(); 		assert_eq!(total_rows, 10, "Should have received all 10 rows");
 //
 // 		client.unsubscribe(&sub_id).await.unwrap();
 // 		client.close().await.unwrap();

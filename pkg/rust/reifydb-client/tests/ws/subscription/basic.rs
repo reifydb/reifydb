@@ -3,10 +3,13 @@
 
 use std::sync::Arc;
 
-use crate::common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
-use crate::ws::subscription::{create_test_table, unique_table_name};
 use reifydb_client::WsClient;
 use tokio::runtime::Runtime;
+
+use crate::{
+	common::{cleanup_server, create_server_instance, start_server_and_get_ws_port},
+	ws::subscription::{create_test_table, unique_table_name},
+};
 
 #[test]
 fn test_subscribe_returns_subscription_id() {

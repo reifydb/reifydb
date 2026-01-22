@@ -3,7 +3,10 @@
 
 use reifydb_core::{
 	interface::catalog::id::SubscriptionId,
-	key::{subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey, subscription_row::SubscriptionRowKey},
+	key::{
+		subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey,
+		subscription_row::SubscriptionRowKey,
+	},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 

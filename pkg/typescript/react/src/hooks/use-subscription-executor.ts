@@ -8,7 +8,6 @@ import type { ConnectionConfig } from '../connection/connection';
 
 export interface SubscriptionExecutorOptions {
     connectionConfig?: ConnectionConfig;
-    maxChanges?: number;       // Max change events to retain (default: 50)
 }
 
 export interface ChangeEvent<T> {
@@ -53,8 +52,7 @@ export function useSubscriptionExecutor<T = any>(
         clientRef.current = client;
     }, [client]);
 
-    // Helper to add change event and accumulate data
-    const maxChangesOption = options?.maxChanges;
+    // Helper to add change event
     const addChangeEvent = useCallback((
         operation: 'INSERT' | 'UPDATE' | 'REMOVE',
         rows: T[]
@@ -66,8 +64,7 @@ export function useSubscriptionExecutor<T = any>(
                 timestamp: Date.now()
             };
 
-            const maxChanges = maxChangesOption ?? 50;
-            const newChanges = [...prev.changes, newChange].slice(-maxChanges);
+            const newChanges = [...prev.changes, newChange];
 
             return {
                 ...prev,
@@ -75,7 +72,7 @@ export function useSubscriptionExecutor<T = any>(
                 changes: newChanges
             };
         });
-    }, [maxChangesOption]);
+    }, []);
 
     // Separate callbacks for each operation type
     const handleInsert = useCallback((rows: T[]) => {

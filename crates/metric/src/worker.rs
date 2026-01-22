@@ -20,6 +20,7 @@ use std::{
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	event::{
 		EventBus, EventListener,
 		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
@@ -28,8 +29,6 @@ use reifydb_core::{
 	interface::store::{MultiVersionGetPrevious, SingleVersionStore},
 };
 use tracing::{debug, error, trace};
-
-use reifydb_core::encoded::key::EncodedKey;
 
 use crate::{
 	cdc::{CdcOperation, CdcStatsWriter},

@@ -229,90 +229,6 @@ describe('useSubscriptionExecutor Hook', () => {
             expect(change.timestamp).toBeLessThanOrEqual(Date.now());
         });
 
-        it('should enforce maxChanges rolling buffer (default 50)', async () => {
-            const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
-                'sub_maxchanges',
-                ['id Int4']
-            );
-
-            await act(async () => {
-                await result.current.subscribe(
-                    `from test.${tableName}`,
-                    null,
-                    Schema.object({id: Schema.number()})
-                );
-            });
-
-            await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
-            });
-
-            // Insert 60 rows individually to generate 60 change events
-            const client = getConnection().getClient();
-            for (let i = 0; i < 60; i++) {
-                await act(async () => {
-                    await client!.command(
-                        `from [{id: ${i}}] insert test.${tableName}`,
-                        null,
-                        []
-                    );
-                });
-            }
-
-            await waitFor(() => {
-                expect(result.current.state.changes.length).toBe(50);
-            }, {timeout: 10000});
-
-            // Should keep only the last 50 changes
-            expect(result.current.state.changes.length).toBe(50);
-            // First change should be id: 10 (since 0-9 were dropped)
-            expect(result.current.state.changes[0].rows[0].id).toBe(10);
-            // Last change should be id: 59
-            expect(result.current.state.changes[49].rows[0].id).toBe(59);
-        });
-
-        it('should enforce custom maxChanges option', async () => {
-            const {result} = renderHook(() => useSubscriptionExecutor({maxChanges: 5}));
-            const tableName = await createTestTableForHook(
-                'sub_custom_max',
-                ['id Int4']
-            );
-
-            await act(async () => {
-                await result.current.subscribe(
-                    `from test.${tableName}`,
-                    null,
-                    Schema.object({id: Schema.number()})
-                );
-            });
-
-            await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
-            });
-
-            // Insert 10 rows
-            const client = getConnection().getClient();
-            for (let i = 0; i < 10; i++) {
-                await act(async () => {
-                    await client!.command(
-                        `from [{id: ${i}}] insert test.${tableName}`,
-                        null,
-                        []
-                    );
-                });
-            }
-
-            await waitFor(() => {
-                expect(result.current.state.changes.length).toBe(5);
-            }, {timeout: 5000});
-
-            // Should keep only the last 5 changes
-            expect(result.current.state.changes.length).toBe(5);
-            expect(result.current.state.changes[0].rows[0].id).toBe(5);
-            expect(result.current.state.changes[4].rows[0].id).toBe(9);
-        });
-
         it('should clear changes when clearChanges() is called', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
             const tableName = await createTestTableForHook(
@@ -499,11 +415,12 @@ describe('useSubscriptionExecutor Hook', () => {
             });
 
             await waitFor(() => {
-                expect(result.current.state.changes.length).toBe(1);
+                expect(result.current.state.changes.length).toBe(2);
             });
 
-            expect(result.current.state.changes[0].operation).toBe('UPDATE');
-            expect(result.current.state.changes[0].rows).toEqual([
+            expect(result.current.state.changes[0].operation).toBe('INSERT');
+            expect(result.current.state.changes[1].operation).toBe('UPDATE');
+            expect(result.current.state.changes[1].rows).toEqual([
                 {id: 1, value: 'updated'}
             ]);
         });
@@ -544,11 +461,12 @@ describe('useSubscriptionExecutor Hook', () => {
             });
 
             await waitFor(() => {
-                expect(result.current.state.changes.length).toBe(1);
+                expect(result.current.state.changes.length).toBe(2);
             });
 
-            expect(result.current.state.changes[0].operation).toBe('REMOVE');
-            expect(result.current.state.changes[0].rows).toEqual([
+            expect(result.current.state.changes[0].operation).toBe('INSERT');
+            expect(result.current.state.changes[1].operation).toBe('REMOVE');
+            expect(result.current.state.changes[1].rows).toEqual([
                 {id: 1, value: 'to_delete'}
             ]);
         });

@@ -4,38 +4,40 @@
 use std::sync::Arc;
 
 use reifydb_catalog::{
-    catalog::{
-        namespace::NamespaceToCreate,
-        table::{TableColumnToCreate, TableToCreate},
-        Catalog,
-    },
-    materialized::MaterializedCatalog,
-    schema::SchemaRegistry,
+	catalog::{
+		Catalog,
+		namespace::NamespaceToCreate,
+		table::{TableColumnToCreate, TableToCreate},
+	},
+	materialized::MaterializedCatalog,
+	schema::SchemaRegistry,
 };
 use reifydb_cdc::{
-    produce::{listener::CdcEventListener, worker::CdcWorker},
-    storage::CdcStore,
+	produce::{listener::CdcEventListener, worker::CdcWorker},
+	storage::CdcStore,
 };
 #[cfg(debug_assertions)]
 use reifydb_core::util::clock::mock_time_set;
 use reifydb_core::{
-    event::{
-        metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
-        transaction::PostCommitEvent,
-        EventBus,
-    },
-    runtime::{SharedRuntime, SharedRuntimeConfig},
-    util::ioc::IocContainer,
+	event::{
+		EventBus,
+		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
+		transaction::PostCommitEvent,
+	},
+	runtime::{SharedRuntime, SharedRuntimeConfig},
+	util::ioc::IocContainer,
 };
-use reifydb_metric::worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
+use reifydb_metric::worker::{
+	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
+};
 use reifydb_rqlv2::compiler::Compiler;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
-    interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
-    multi::transaction::TransactionMulti,
-    single::{svl::TransactionSvl, TransactionSingle},
-    standard::command::StandardCommandTransaction,
+	interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
+	multi::transaction::TransactionMulti,
+	single::{TransactionSingle, svl::TransactionSvl},
+	standard::command::StandardCommandTransaction,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 

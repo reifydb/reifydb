@@ -168,11 +168,7 @@ impl SubscriptionRowKey {
 
 	fn end(subscription: SubscriptionId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(18); // 1 + 1 + 8 + 8
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(subscription.0)
-			.extend_u64(0u64);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(subscription.0).extend_u64(0u64);
 		serializer.to_encoded_key()
 	}
 }

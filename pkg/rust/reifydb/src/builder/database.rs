@@ -33,7 +33,9 @@ use reifydb_function::{
 	registry::{Functions, FunctionsBuilder},
 	series,
 };
-use reifydb_metric::worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
+use reifydb_metric::worker::{
+	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
+};
 use reifydb_rql::RqlVersion;
 use reifydb_rqlv2::{self, compiler::Compiler};
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};

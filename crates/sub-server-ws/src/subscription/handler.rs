@@ -8,7 +8,10 @@
 
 use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId as DbSubscriptionId};
 use reifydb_sub_server::{execute::execute_command, state::AppState};
-use reifydb_type::{params::Params, value::Value};
+use reifydb_type::{
+	params::Params,
+	value::{Value, uuid::Uuid7},
+};
 use tokio::sync::mpsc;
 use tracing::{debug, error};
 
@@ -17,8 +20,6 @@ use crate::{
 	protocol::SubscribeRequest,
 	subscription::{PushMessage, SubscriptionPoller, SubscriptionRegistry},
 };
-
-use reifydb_type::value::uuid::Uuid7;
 
 type ConnectionId = Uuid7;
 

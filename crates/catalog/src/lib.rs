@@ -4,7 +4,10 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb_core::interface::{
-	catalog::{id::NamespaceId, id::SubscriptionId, subscription::SubscriptionDef},
+	catalog::{
+		id::{NamespaceId, SubscriptionId},
+		subscription::SubscriptionDef,
+	},
 	version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_transaction::standard::{IntoStandardTransaction, command::StandardCommandTransaction};
@@ -36,10 +39,7 @@ pub fn find_subscription(
 ///
 /// This is a low-level function that performs complete cleanup of a subscription.
 /// Use this when cleaning up subscriptions after a WebSocket connection closes.
-pub fn delete_subscription(
-	txn: &mut StandardCommandTransaction,
-	id: SubscriptionId,
-) -> Result<()> {
+pub fn delete_subscription(txn: &mut StandardCommandTransaction, id: SubscriptionId) -> Result<()> {
 	CatalogStore::delete_subscription(txn, id)
 }
 
@@ -47,11 +47,7 @@ pub fn delete_subscription(
 ///
 /// This is useful for cleaning up flows associated with subscriptions,
 /// where the flow name is derived from the subscription ID.
-pub fn delete_flow_by_name(
-	txn: &mut StandardCommandTransaction,
-	namespace: NamespaceId,
-	name: &str,
-) -> Result<()> {
+pub fn delete_flow_by_name(txn: &mut StandardCommandTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
 	CatalogStore::delete_flow_by_name(txn, namespace, name)
 }
 

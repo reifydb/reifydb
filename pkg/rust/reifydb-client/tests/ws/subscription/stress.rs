@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::error::Error;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
+use std::{
+	error::Error,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Duration,
+};
 
-use crate::common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
-use crate::ws::subscription::{ create_test_table, recv_multiple_with_timeout, recv_with_timeout, unique_table_name};
 use reifydb_client::WsClient;
-use tokio::runtime::Runtime;
-use tokio::time::sleep;
+use tokio::{runtime::Runtime, time::sleep};
+
+use crate::{
+	common::{cleanup_server, create_server_instance, start_server_and_get_ws_port},
+	ws::subscription::{create_test_table, recv_multiple_with_timeout, recv_with_timeout, unique_table_name},
+};
 
 /// Test creating many subscriptions from a single client
 #[test]
@@ -39,7 +45,6 @@ fn test_many_subscriptions_single_client() {
 
 		// Allow subscriptions to settle
 
-
 		// Insert into all tables
 		for table in &tables {
 			client.command(&format!("from [{{ id: 1 }}] insert test.{}", table), None).await.unwrap();
@@ -47,13 +52,7 @@ fn test_many_subscriptions_single_client() {
 
 		// Receive all notifications (with generous timeout for 50 notifications)
 		let changes = recv_multiple_with_timeout(&mut client, NUM_SUBS, 30000).await;
-		assert_eq!(
-			changes.len(),
-			NUM_SUBS,
-			"Should receive {} notifications, got {}",
-			NUM_SUBS,
-			changes.len()
-		);
+		assert_eq!(changes.len(), NUM_SUBS, "Should receive {} notifications, got {}", NUM_SUBS, changes.len());
 
 		// Verify all subscription IDs are represented
 		let received_sub_ids: std::collections::HashSet<_> =
@@ -132,7 +131,8 @@ fn test_many_concurrent_clients() {
 		trigger_client.authenticate("mysecrettoken").await.unwrap();
 		trigger_client
 			.command(&format!("from [{{ id: 999 }}] insert test.{}", shared_table), None)
-			.await.unwrap();
+			.await
+			.unwrap();
 		trigger_client.close().await.unwrap();
 
 		// Wait for all clients to complete
@@ -185,9 +185,6 @@ fn test_rapid_subscribe_unsubscribe() {
 		// Verify system still works after rapid cycles
 		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
 		assert!(!sub_id.is_empty(), "Should get valid subscription after rapid cycles");
-
-
-
 
 		client.command(&format!("from [{{ id: 999 }}] insert test.{}", table), None).await.unwrap();
 
@@ -245,9 +242,6 @@ fn test_client_disconnect_without_unsubscribe() {
 		let sub_id = new_client.subscribe(&format!("from test.{}", shared_table)).await.unwrap();
 		assert!(!sub_id.is_empty(), "New client should be able to subscribe after abrupt disconnects");
 
-
-
-
 		// Insert and verify new client receives notification
 		new_client.command(&format!("from [{{ id: 1 }}] insert test.{}", shared_table), None).await.unwrap();
 
@@ -302,7 +296,8 @@ fn test_concurrent_connect_disconnect() {
 					const MAX_RETRIES: usize = 3;
 
 					loop {
-						let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await?;
+						let mut client =
+							WsClient::connect(&format!("ws://[::1]:{}", port)).await?;
 						client.authenticate("mysecrettoken").await?;
 
 						match client.subscribe(&format!("from test.{}", table)).await {
@@ -316,7 +311,9 @@ fn test_concurrent_connect_disconnect() {
 								counter.fetch_add(1, Ordering::SeqCst);
 								break; // Success, exit retry loop
 							}
-							Err(e) if retries < MAX_RETRIES && e.to_string().contains("TXN_001") => {
+							Err(e) if retries < MAX_RETRIES
+								&& e.to_string().contains("TXN_001") =>
+							{
 								// Transaction conflict, retry after small delay
 								retries += 1;
 								client.close().await?;
@@ -361,9 +358,6 @@ fn test_concurrent_connect_disconnect() {
 
 		let sub_id = final_client.subscribe(&format!("from test.{}", tables[0])).await.unwrap();
 		assert!(!sub_id.is_empty(), "Server should still accept new subscriptions");
-
-
-
 
 		final_client.command(&format!("from [{{ id: 1 }}] insert test.{}", tables[0]), None).await.unwrap();
 

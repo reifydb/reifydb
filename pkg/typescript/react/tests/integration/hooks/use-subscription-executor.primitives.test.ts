@@ -94,6 +94,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
 
             const row = result.current.state.changes[0].rows[0];
             expect(typeof row.bigValue).toBe('bigint');
+            // @ts-ignore
             expect(row.bigValue).toBe(9007199254740991n);
         });
 

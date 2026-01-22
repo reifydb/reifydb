@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
+use std::{error::Error, future::Future, sync::Arc, time::Duration};
+
 use reifydb_client::{ChangePayload, WsClient};
-use std::error::Error;
-use std::future::Future;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::runtime::Runtime;
-use tokio::time::timeout;
+use tokio::{runtime::Runtime, time::timeout};
+
+use crate::common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
 
 mod basic;
 mod data_types;
