@@ -7,15 +7,15 @@ use std::time::Duration;
 
 use crate::sync::mutex::MutexGuard;
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub mod native;
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub mod wasm;
 
 cfg_if::cfg_if! {
-	if #[cfg(feature = "native")] {
+	if #[cfg(reifydb_target = "native")] {
 		type CondvarInner = native::CondvarInner;
-	} else if #[cfg(feature = "wasm")] {
+	} else {
 		type CondvarInner = wasm::CondvarInner;
 	}
 }

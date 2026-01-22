@@ -6,17 +6,17 @@
 use std::ops::{Deref, DerefMut};
 use cfg_if::cfg_if;
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub(crate) mod native;
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub(crate) mod wasm;
 
 cfg_if! {
-	if #[cfg(feature = "native")] {
+	if #[cfg(reifydb_target = "native")] {
 		type RwLockInnerImpl<T> = native::RwLockInner<T>;
 		type RwLockReadGuardInnerImpl<'a, T> = native::RwLockReadGuardInner<'a, T>;
 		type RwLockWriteGuardInnerImpl<'a, T> = native::RwLockWriteGuardInner<'a, T>;
-	} else if #[cfg(feature = "wasm")] {
+	} else {
 		type RwLockInnerImpl<T> = wasm::RwLockInner<T>;
 		type RwLockReadGuardInnerImpl<'a, T> = wasm::RwLockReadGuardInner<'a, T>;
 		type RwLockWriteGuardInnerImpl<'a, T> = wasm::RwLockWriteGuardInner<'a, T>;
@@ -29,7 +29,7 @@ pub struct RwLock<T> {
 }
 
 // SAFETY: WASM is single-threaded, so Sync is safe
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 unsafe impl<T> Sync for RwLock<T> {}
 
 impl<T> RwLock<T> {

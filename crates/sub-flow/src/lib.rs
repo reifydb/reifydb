@@ -10,7 +10,7 @@ pub(crate) mod convert;
 pub(crate) mod coordinator;
 pub(crate) mod coordinator_actor;
 pub mod engine;
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub mod ffi;
 pub(crate) mod instruction;
 pub(crate) mod lag;

@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     # Core crates
     "crates/auth",
+    "crates/build",
     "crates/function",
     "crates/catalog",
     "crates/cdc",
@@ -134,41 +135,42 @@ overflow-checks = true
 [workspace.dependencies]
 reifydb = { version = "0.2.0", path = "pkg/rust/reifydb" }
 reifydb-derive = { version = "0.2.0", path = "pkg/rust/reifydb-derive" }
+reifydb-build = { version = "0.2.0", path = "crates/build" }
 
 reifydb-client = { version = "0.2.0", path = "pkg/rust/reifydb-client" }
 reifydb-client-derive = { version = "0.2.0", path = "pkg/rust/reifydb-client-derive" }
 
 # Internal crates
-reifydb-auth = { version = "0.2.0", path = "crates/auth", default-features = false }
-reifydb-function = { version = "0.2.0", path = "crates/function", default-features = false }
-reifydb-catalog = { version = "0.2.0", path = "crates/catalog", default-features = false }
-reifydb-cdc = { version = "0.2.0", path = "crates/cdc", default-features = false }
+reifydb-auth = { version = "0.2.0", path = "crates/auth" }
+reifydb-function = { version = "0.2.0", path = "crates/function" }
+reifydb-catalog = { version = "0.2.0", path = "crates/catalog" }
+reifydb-cdc = { version = "0.2.0", path = "crates/cdc" }
 reifydb-compression = { version = "0.2.0", path = "crates/compression" }
-reifydb-core = { version = "0.2.0", path = "crates/core", default-features = false }
-reifydb-engine = { version = "0.2.0", path = "crates/engine", default-features = false }
-reifydb-metric = { version = "0.2.0", path = "crates/metric", default-features = false }
+reifydb-core = { version = "0.2.0", path = "crates/core" }
+reifydb-engine = { version = "0.2.0", path = "crates/engine" }
+reifydb-metric = { version = "0.2.0", path = "crates/metric" }
 reifydb-abi = { version = "0.2.0", path = "crates/abi" }
-reifydb-runtime = { version = "0.2.0", path = "crates/runtime", default-features = false }
+reifydb-runtime = { version = "0.2.0", path = "crates/runtime" }
 reifydb-sdk = { version = "0.2.0", path = "crates/sdk" }
-reifydb-rql = { version = "0.2.0", path = "crates/rql", default-features = false }
-reifydb-rqlv2 = { version = "0.2.0", path = "crates/rqlv2", default-features = false }
+reifydb-rql = { version = "0.2.0", path = "crates/rql" }
+reifydb-rqlv2 = { version = "0.2.0", path = "crates/rqlv2" }
 reifydb-store-column = { version = "0.2.0", path = "crates/store-column" }
-reifydb-store-multi = { version = "0.2.0", path = "crates/store-multi", default-features = false }
-reifydb-store-single = { version = "0.2.0", path = "crates/store-single", default-features = false }
+reifydb-store-multi = { version = "0.2.0", path = "crates/store-multi" }
+reifydb-store-single = { version = "0.2.0", path = "crates/store-single" }
 reifydb-testing = { version = "0.2.0", path = "crates/testing" }
-reifydb-transaction = { version = "0.2.0", path = "crates/transaction", default-features = false }
-reifydb-type = { version = "0.2.0", path = "crates/type", default-features = false }
-reifydb-vm = { version = "0.2.0", path = "crates/vm", default-features = false }
+reifydb-transaction = { version = "0.2.0", path = "crates/transaction" }
+reifydb-type = { version = "0.2.0", path = "crates/type" }
+reifydb-vm = { version = "0.2.0", path = "crates/vm" }
 reifydb-macro = { version = "0.2.0", path = "crates/macro" }
 reifydb-macro-impl = { version = "0.2.0", path = "crates/macro-impl" }
 
 # Subsystems
 reifydb-sub-api = { version = "0.2.0", path = "crates/sub-api" }
 reifydb-sub-server-admin = { version = "0.2.0", path = "crates/sub-server-admin" }
-reifydb-sub-flow = { version = "0.2.0", path = "crates/sub-flow", default-features = false }
+reifydb-sub-flow = { version = "0.2.0", path = "crates/sub-flow" }
 reifydb-sub-task = { version = "0.2.0", path = "crates/sub-task" }
 reifydb-sub-tracing = { version = "0.2.0", path = "crates/sub-tracing" }
-reifydb-sub-server = { version = "0.2.0", path = "crates/sub-server", default-features = false }
+reifydb-sub-server = { version = "0.2.0", path = "crates/sub-server" }
 reifydb-sub-server-http = { version = "0.2.0", path = "crates/sub-server-http" }
 reifydb-sub-server-otel = { version = "0.2.0", path = "crates/sub-server-otel" }
 reifydb-sub-server-ws = { version = "0.2.0", path = "crates/sub-server-ws" }
@@ -219,6 +221,9 @@ futures-util = { version = "0.3.31", features = ["sink"] }
 
 # sqlite
 rusqlite = { version = "0.37.0", features = ["bundled"] }
+
+# hashing
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 # serde
 serde = { version = "1.0.219", features = ["derive", "rc"] }

@@ -13,10 +13,10 @@
 //! - **WASM**: No runner is needed - actors process messages inline (synchronously)
 //!   when sent.
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub(crate) mod native;
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub(crate) mod wasm;
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub(crate) use native::ActorRunner;

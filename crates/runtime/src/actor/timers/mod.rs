@@ -16,9 +16,9 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub(crate) mod native;
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub(crate) mod wasm;
 
 // =============================================================================
@@ -88,8 +88,8 @@ pub(crate) fn next_timer_id() -> u64 {
 // Re-exports
 // =============================================================================
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub use native::{schedule_once, schedule_repeat};
 
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub use wasm::{schedule_once, schedule_repeat};

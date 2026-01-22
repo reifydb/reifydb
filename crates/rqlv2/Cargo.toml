@@ -8,23 +8,7 @@ repository.workspace = true
 description = "ReifyDB Query Language (RQL)"
 
 [features]
-default = ["native"]
-native = [
-    "reifydb-catalog/native",
-    "reifydb-core/native",
-    "reifydb-function/native",
-    "reifydb-runtime/native",
-    "reifydb-transaction/native",
-    "reifydb-type/native",
-]
-wasm = [
-    "reifydb-catalog/wasm",
-    "reifydb-core/wasm",
-    "reifydb-function/wasm",
-    "reifydb-runtime/wasm",
-    "reifydb-transaction/wasm",
-    "reifydb-type/wasm",
-]
+default = []
 
 [dependencies]
 bumpalo = { workspace = true }
@@ -37,6 +21,6 @@ reifydb-type = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-reifydb = { workspace = true, features = ["native"] }
+reifydb = { workspace = true }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }

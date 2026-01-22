@@ -8,9 +8,7 @@ repository.workspace = true
 description = "Core type system and value representations for ReifyDB"
 
 [features]
-default = ["native"]
-native = ["reifydb-runtime/native"]
-wasm = ["reifydb-runtime/wasm"]
+default = []
 
 [dependencies]
 serde = { workspace = true }

@@ -8,9 +8,7 @@ repository.workspace = true
 description = "Testing utilities and helpers for ReifyDB"
 
 [features]
-default = ["native"]
-native = ["reifydb-core/native"]
-wasm = ["reifydb-core/wasm"]
+default = []
 
 [dependencies]
 reifydb-core = { workspace = true }

@@ -4,16 +4,16 @@
 //! Compute pool implementations for different platforms.
 
 // Platform-specific compute pool implementations
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub mod native;
 
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub mod wasm;
 
 cfg_if::cfg_if! {
-    if #[cfg(feature = "native")] {
+    if #[cfg(reifydb_target = "native")] {
         pub type ComputePool = native::NativeComputePool;
-    } else if #[cfg(feature = "wasm")] {
+    } else {
         pub type ComputePool = wasm::WasmComputePool;
     }
 }

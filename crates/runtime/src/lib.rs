@@ -31,22 +31,15 @@
 //! });
 //!
 //! // Get the compute pool for CPU-bound work
-//! #[cfg(feature = "native")]
+//! #[cfg(not(target_arch = "wasm32"))]
 //! let pool: reifydb_runtime::compute::native::NativeComputePool = runtime.compute_pool();
-//! #[cfg(feature = "wasm")]
+//! #[cfg(target_arch = "wasm32")]
 //! let pool: reifydb_runtime::compute::wasm::WasmComputePool = runtime.compute_pool();
 //! let result = pool.compute(|| expensive_calculation()).await;
 //! ```
 
 #![allow(dead_code)]
 
-// Ensure at least one runtime feature is enabled
-#[cfg(not(any(feature = "native", feature = "wasm")))]
-compile_error!("Either feature \"native\" or feature \"wasm\" must be enabled for reifydb-runtime");
-
-#[cfg(feature = "native")]
-pub mod runtime;
-#[cfg(feature = "wasm")]
 pub mod runtime;
 
 pub mod compute;
@@ -61,9 +54,8 @@ pub mod actor;
 
 pub mod concurrent_map;
 
-use std::{future::Future, sync::Arc};
 use cfg_if::cfg_if;
-use futures_util::task::SpawnExt;
+use std::{future::Future, sync::Arc};
 
 /// Configuration for creating a [`SharedRuntime`].
 #[derive(Clone, Debug)]
@@ -107,10 +99,10 @@ impl SharedRuntimeConfig {
 }
 
 cfg_if! {
-    if #[cfg(feature = "native")] {
-        type RuntimeImpl = runtime::NativeRuntime;
-    } else if #[cfg(feature = "wasm")] {
-        type RuntimeImpl = runtime::WasmRuntime;
+    if #[cfg(not(target_arch = "wasm32"))] {
+	type RuntimeImpl = runtime::NativeRuntime;
+    } else {
+	type RuntimeImpl = runtime::WasmRuntime;
     }
 }
 
@@ -132,19 +124,15 @@ impl SharedRuntime {
 	///
 	/// Panics if the runtime cannot be created (native only).
 	pub fn from_config(config: SharedRuntimeConfig) -> Self {
-		#[cfg(feature = "native")]
+		#[cfg(not(target_arch = "wasm32"))]
 		let runtime = runtime::NativeRuntime::new(
 			config.async_threads,
 			config.compute_threads,
 			config.compute_max_in_flight,
 		);
 
-		#[cfg(feature = "wasm")]
-		let runtime = runtime::WasmRuntime::new(
-			config.async_threads,
-			config.compute_threads,
-			config.compute_max_in_flight,
-		);
+		#[cfg(reifydb_target = "wasm")]
+		let runtime = runtime::WasmRuntime::new(config.async_threads, config.compute_threads, config.compute_max_in_flight);
 
 		Self(Arc::new(runtime))
 	}
@@ -154,25 +142,25 @@ impl SharedRuntime {
 	/// Returns a platform-specific handle type:
 	/// - Native: `tokio::runtime::Handle`
 	/// - WASM: `WasmHandle`
-	#[cfg(feature = "native")]
+	#[cfg(not(target_arch = "wasm32"))]
 	pub fn handle(&self) -> tokio::runtime::Handle {
 		self.0.handle()
 	}
 
 	/// Get a handle to the async runtime.
-	#[cfg(feature = "wasm")]
+	#[cfg(reifydb_target = "wasm")]
 	pub fn handle(&self) -> runtime::WasmHandle {
 		self.0.handle()
 	}
 
 	/// Get the compute pool for CPU-bound work.
-	#[cfg(feature = "native")]
+	#[cfg(not(target_arch = "wasm32"))]
 	pub fn compute_pool(&self) -> compute::native::NativeComputePool {
 		self.0.compute_pool()
 	}
 
 	/// Get the compute pool for CPU-bound work.
-	#[cfg(feature = "wasm")]
+	#[cfg(reifydb_target = "wasm")]
 	pub fn compute_pool(&self) -> compute::wasm::WasmComputePool {
 		self.0.compute_pool()
 	}
@@ -182,7 +170,7 @@ impl SharedRuntime {
 	/// Returns a platform-specific join handle type:
 	/// - Native: `tokio::task::JoinHandle`
 	/// - WASM: `WasmJoinHandle`
-	#[cfg(feature = "native")]
+	#[cfg(not(target_arch = "wasm32"))]
 	pub fn spawn<F>(&self, future: F) -> tokio::task::JoinHandle<F::Output>
 	where
 		F: Future + Send + 'static,
@@ -192,7 +180,7 @@ impl SharedRuntime {
 	}
 
 	/// Spawn a future onto the runtime.
-	#[cfg(feature = "wasm")]
+	#[cfg(reifydb_target = "wasm")]
 	pub fn spawn<F>(&self, future: F) -> runtime::WasmJoinHandle<F::Output>
 	where
 		F: Future + 'static,
@@ -230,12 +218,12 @@ impl std::fmt::Debug for SharedRuntime {
 	}
 }
 
-// Keep existing tests but gate them by feature
-#[cfg(all(test, feature = "native"))]
+// Keep existing tests but gate them by target
+#[cfg(all(test, reifydb_target = "native"))]
 mod tests {
-	use super::*;
+    use super::*;
 
-	fn test_config() -> SharedRuntimeConfig {
+    fn test_config() -> SharedRuntimeConfig {
 		SharedRuntimeConfig::default().async_threads(2).compute_threads(2).compute_max_in_flight(4)
 	}
 
@@ -269,11 +257,11 @@ mod tests {
 	}
 }
 
-#[cfg(all(test, feature = "wasm"))]
+#[cfg(all(test, reifydb_target = "wasm"))]
 mod wasm_tests {
-	use super::*;
+    use super::*;
 
-	#[test]
+    #[test]
 	fn test_wasm_runtime_creation() {
 		let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default());
 		let pool = runtime.compute_pool();

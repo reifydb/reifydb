@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod factory;
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub mod ffi;
 
 use std::{any::Any, sync::Arc, time::Duration};
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 use ffi::load_ffi_operators;
 use reifydb_cdc::{
 	consume::{
@@ -48,7 +48,7 @@ impl FlowSubsystem {
 		let executor = engine.executor();
 		let event_bus = engine.event_bus().clone();
 
-		#[cfg(feature = "native")]
+		#[cfg(reifydb_target = "native")]
 		if let Some(ref operators_dir) = config.operators_dir {
 			if let Err(e) = load_ffi_operators(operators_dir, &event_bus) {
 				panic!("Failed to load FFI operators from {:?}: {}", operators_dir, e);

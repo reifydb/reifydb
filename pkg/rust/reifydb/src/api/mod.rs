@@ -4,9 +4,9 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 use reifydb_runtime::compute::native::NativeComputePool as ComputePool;
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 use reifydb_runtime::compute::wasm::WasmComputePool as ComputePool;
 use reifydb_runtime::actor::runtime::ActorRuntime;
 use reifydb_store_multi::{

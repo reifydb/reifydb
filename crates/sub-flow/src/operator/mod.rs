@@ -10,7 +10,7 @@ use crate::transaction::FlowTransaction;
 pub mod apply;
 pub mod distinct;
 pub mod extend;
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub mod ffi;
 pub mod filter;
 pub mod join;

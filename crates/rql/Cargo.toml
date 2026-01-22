@@ -8,19 +8,7 @@ repository.workspace = true
 description = "ReifyDB Query Language (RQL) parser and AST"
 
 [features]
-default = ["native"]
-native = [
-    "reifydb-catalog/native",
-    "reifydb-core/native",
-    "reifydb-transaction/native",
-    "reifydb-type/native",
-]
-wasm = [
-    "reifydb-catalog/wasm",
-    "reifydb-core/wasm",
-    "reifydb-transaction/wasm",
-    "reifydb-type/wasm",
-]
+default = []
 
 [dependencies]
 reifydb-core = {workspace = true}
@@ -34,7 +22,7 @@ postcard = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }
-reifydb-catalog = { workspace = true, features = ["native"] }
+reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }
 test_each_file = { workspace = true }
 tokio = { workspace = true }

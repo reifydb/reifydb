@@ -8,9 +8,7 @@ repository.workspace = true
 description = "Storage and CDC metrics tracking for ReifyDB"
 
 [features]
-default = ["native"]
-native = ["reifydb-core/native", "reifydb-type/native"]
-wasm = ["reifydb-core/wasm", "reifydb-type/wasm"]
+default = []
 
 [dependencies]
 reifydb-core = { workspace = true }
@@ -19,7 +17,7 @@ crossbeam-channel = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-reifydb-store-single = { workspace = true, features = ["native", "sqlite"] }
-reifydb-store-multi = { workspace = true, features = ["native", "sqlite"] }
+reifydb-store-single = { workspace = true, features = ["sqlite"] }
+reifydb-store-multi = { workspace = true, features = ["sqlite"] }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }

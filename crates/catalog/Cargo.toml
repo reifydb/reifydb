@@ -8,23 +8,7 @@ repository.workspace = true
 description = "Database catalog and metadata management for ReifyDB"
 
 [features]
-default = ["native"]
-native = [
-    "reifydb-core/native",
-    "reifydb-metric/native",
-    "reifydb-store-multi/native",
-    "reifydb-store-single/native",
-    "reifydb-transaction/native",
-    "reifydb-type/native",
-]
-wasm = [
-    "reifydb-core/wasm",
-    "reifydb-metric/wasm",
-    "reifydb-store-multi/wasm",
-    "reifydb-store-single/wasm",
-    "reifydb-transaction/wasm",
-    "reifydb-type/wasm",
-]
+default = []
 
 [dependencies]
 reifydb-abi = { workspace = true }

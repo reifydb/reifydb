@@ -1,0 +1,8 @@
+[package]
+name = "reifydb-build"
+version.workspace = true
+edition.workspace = true
+description = "Build utilities for ReifyDB target detection"
+
+[dependencies]
+# No dependencies needed - pure build-time logic

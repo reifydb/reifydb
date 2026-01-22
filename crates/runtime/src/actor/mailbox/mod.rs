@@ -15,16 +15,16 @@
 use std::fmt;
 use cfg_if::cfg_if;
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub(crate) mod native;
 
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub(crate) mod wasm;
 
 cfg_if! {
-	if #[cfg(feature = "native")] {
+	if #[cfg(reifydb_target = "native")] {
 		type ActorRefInnerImpl<M> = native::ActorRefInner<M>;
-	} else if #[cfg(feature = "wasm")] {
+	} else {
 		type ActorRefInnerImpl<M> = wasm::ActorRefInner<M>;
 	}
 }
@@ -134,10 +134,10 @@ impl<M> fmt::Debug for ActorRef<M> {
 }
 
 // SAFETY: WASM is single-threaded, so Send and Sync are safe
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 unsafe impl<M> Send for ActorRef<M> {}
 
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 unsafe impl<M> Sync for ActorRef<M> {}
 
 impl<M> ActorRef<M> {
@@ -149,7 +149,7 @@ impl<M> ActorRef<M> {
 }
 
 // Native-specific methods (require M: Send)
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 impl<M: Send> ActorRef<M> {
 	/// Create a new ActorRef from a crossbeam sender (native only).
 	#[inline]
@@ -185,7 +185,7 @@ impl<M: Send> ActorRef<M> {
 }
 
 // WASM-specific methods (no Send bound needed)
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 impl<M> ActorRef<M> {
 	/// Create a new ActorRef with WASM components (WASM only).
 	#[inline]
@@ -242,11 +242,11 @@ impl<M> ActorRef<M> {
 // Re-exports for native mailbox
 // =============================================================================
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub(crate) use native::Mailbox;
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub(crate) use native::create_mailbox;
 
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub(crate) use wasm::create_actor_ref;

@@ -219,13 +219,13 @@ impl<M: Send + 'static> TestContext<M> {
 	/// messages in tests. Use `harness.send()` instead.
 	fn to_context(&self) -> Context<M> {
 		// Create a dummy actor ref using platform-specific implementation
-		#[cfg(feature = "native")]
+		#[cfg(reifydb_target = "native")]
 		let actor_ref = {
 			let (tx, _rx) = crossbeam_channel::unbounded();
 			ActorRef::new(tx)
 		};
 
-		#[cfg(feature = "wasm")]
+		#[cfg(reifydb_target = "wasm")]
 		let actor_ref = crate::actor::mailbox::create_actor_ref();
 
 		// Create a runtime (no tokio handle needed anymore)

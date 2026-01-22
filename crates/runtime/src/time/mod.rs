@@ -10,21 +10,21 @@
 
 use std::time::Duration;
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 mod native;
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 mod wasm;
 
 // Re-export time functions for external use
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub use native::{now_micros, now_millis, now_nanos, now_secs};
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub use wasm::{now_micros, now_millis, now_nanos, now_secs};
 
 cfg_if::cfg_if! {
-	if #[cfg(feature = "native")] {
+	if #[cfg(reifydb_target = "native")] {
 		type InstantInner = native::InstantInner;
-	} else if #[cfg(feature = "wasm")] {
+	} else {
 		type InstantInner = wasm::InstantInner;
 	}
 }
@@ -59,9 +59,9 @@ impl Instant {
 
 #[cfg(test)]
 mod tests {
-	#[cfg(feature = "native")]
+	#[cfg(reifydb_target = "native")]
 	use super::native::*;
-	#[cfg(feature = "wasm")]
+	#[cfg(reifydb_target = "wasm")]
 	use super::wasm::*;
 
 	#[test]

@@ -8,19 +8,7 @@ repository.workspace = true
 description = "Change Data Capture module for ReifyDB"
 
 [features]
-default = ["native"]
-native = [
-    "reifydb-core/native",
-    "reifydb-runtime/native",
-    "reifydb-transaction/native",
-    "reifydb-type/native",
-]
-wasm = [
-    "reifydb-core/wasm",
-    "reifydb-runtime/wasm",
-    "reifydb-transaction/wasm",
-    "reifydb-type/wasm",
-]
+default = []
 
 [dependencies]
 crossbeam-channel = { workspace = true }
@@ -32,9 +20,9 @@ reifydb-type = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-reifydb-catalog = { workspace = true, features = ["native"] }
+reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }
-reifydb-store-multi = { workspace = true, features = ["native"] }
-reifydb-store-single = { workspace = true, features = ["native"] }
+reifydb-store-multi = { workspace = true }
+reifydb-store-single = { workspace = true }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }

@@ -4,9 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-default = ["native"]
-native = ["reifydb-core/native", "reifydb-engine/tokio", "reifydb-runtime/native", "reifydb-transaction/native"]
-wasm = ["reifydb-core/wasm", "reifydb-engine/wasm", "reifydb-runtime/wasm", "reifydb-transaction/wasm"]
+default = []
 
 [dependencies]
 tokio = { workspace = true }

@@ -31,7 +31,5 @@ opentelemetry-otlp = { workspace = true, optional = true }
 tokio = { workspace = true }
 
 [features]
-default = ["native", "otlp"]
-native = ["reifydb-core/native", "reifydb-engine/tokio", "reifydb-runtime/native"]
-wasm = ["reifydb-core/wasm", "reifydb-engine/wasm", "reifydb-runtime/wasm"]
+default = ["otlp"]
 otlp = ["dep:opentelemetry-otlp"]

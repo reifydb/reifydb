@@ -8,16 +8,16 @@ use std::hash::Hash;
 
 use cfg_if::cfg_if;
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub(crate) mod native;
 
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub(crate) mod wasm;
 
 cfg_if! {
-    if #[cfg(feature = "native")] {
+    if #[cfg(reifydb_target = "native")] {
         type ConcurrentMapInnerImpl<K, V> = native::ConcurrentMapInner<K, V>;
-    } else if #[cfg(feature = "wasm")] {
+    } else {
         type ConcurrentMapInnerImpl<K, V> = wasm::ConcurrentMapInner<K, V>;
     }
 }

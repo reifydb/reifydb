@@ -17,18 +17,18 @@ wasm-opt = false
 default = ["console_error_panic_hook"]
 
 [dependencies]
-reifydb-engine = { workspace = true, default-features = false, features = ["wasm"] }
-reifydb-store-multi = { workspace = true, default-features = false, features = ["wasm"] }
-reifydb-store-single = { workspace = true, default-features = false, features = ["wasm"] }
-reifydb-type = { workspace = true, default-features = false }
-reifydb-core = { workspace = true, default-features = false, features = ["wasm"] }
-reifydb-catalog = { workspace = true, default-features = false }
-reifydb-auth = { workspace = true, default-features = false }
-reifydb-transaction = { workspace = true, default-features = false, features = ["wasm"] }
-reifydb-rqlv2 = { workspace = true, default-features = false }
-reifydb-runtime = { workspace = true, default-features = false, features = ["wasm"] }
-reifydb-sub-flow = { workspace = true, default-features = false, features = ["wasm"] }
-reifydb-cdc = { workspace = true, default-features = false, features = ["wasm"] }
+reifydb-engine = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-store-single = { workspace = true }
+reifydb-type = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-catalog = { workspace = true }
+reifydb-auth = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-rqlv2 = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sub-flow = { workspace = true }
+reifydb-cdc = { workspace = true }
 reifydb-sub-api = { workspace = true }
 
 wasm-bindgen = { workspace = true }

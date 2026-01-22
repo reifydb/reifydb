@@ -14,4 +14,4 @@ proc-macro = true
 reifydb-macro-impl = { workspace = true }
 
 [dev-dependencies]
-reifydb-type = { workspace = true, features = ["native"] }
+reifydb-type = { workspace = true }

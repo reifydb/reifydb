@@ -8,9 +8,7 @@ repository.workspace = true
 description = "Admin web server subsystem for ReifyDB using Axum"
 
 [features]
-default = ["native"]
-native = ["reifydb-core/native", "reifydb-engine/tokio", "reifydb-runtime/native", "reifydb-sub-server/native"]
-wasm = ["reifydb-core/wasm", "reifydb-engine/wasm", "reifydb-runtime/wasm", "reifydb-sub-server/wasm"]
+default = []
 
 [dependencies]
 reifydb-core = { workspace = true }

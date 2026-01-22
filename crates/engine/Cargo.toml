@@ -8,42 +8,12 @@ repository.workspace = true
 description = "Query execution and processing engine for ReifyDB"
 
 [features]
-default = ["tokio"]
-tokio = [
-	"reifydb-auth/native",
-	"reifydb-cdc/native",
-	"reifydb-catalog/native",
-	"reifydb-core/native",
-	"reifydb-function/native",
-	"reifydb-metric/native",
-	"reifydb-rql/native",
-	"reifydb-rqlv2/native",
-	"reifydb-runtime/native",
-	"reifydb-store-multi/native",
-	"reifydb-store-multi/sqlite",
-	"reifydb-store-single/native",
-	"reifydb-store-single/sqlite",
-	"reifydb-transaction/native",
-	"reifydb-type/native",
-	"reifydb-vm/native",
-	"futures-util"
-]
-wasm = [
-	"reifydb-auth/wasm",
-	"reifydb-cdc/wasm",
-	"reifydb-catalog/wasm",
-	"reifydb-core/wasm",
-	"reifydb-function/wasm",
-	"reifydb-metric/wasm",
-	"reifydb-rql/wasm",
-	"reifydb-rqlv2/wasm",
-	"reifydb-runtime/wasm",
-	"reifydb-store-multi/wasm",
-	"reifydb-store-single/wasm",
-	"reifydb-transaction/wasm",
-	"reifydb-type/wasm",
-	"reifydb-vm/wasm"
-]
+default = ["tokio", "sqlite"]
+tokio = []
+sqlite = ["reifydb-store-multi/sqlite", "reifydb-store-single/sqlite"]
+
+[build-dependencies]
+reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-auth = { workspace = true }
@@ -67,6 +37,8 @@ postcard = { workspace = true }
 once_cell = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-futures-util = { workspace = true, optional = true }
 indexmap = { workspace = true }
 bumpalo = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+futures-util = { workspace = true }

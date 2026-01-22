@@ -31,7 +31,7 @@ use tracing::instrument;
 
 use crate::operator::{BoxedOperator, Operators};
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 use crate::ffi::loader::ffi_operator_loader;
 
 pub struct FlowEngine {
@@ -71,7 +71,7 @@ impl FlowEngine {
 	}
 
 	/// Create an FFI operator instance from the global singleton loader
-	#[cfg(feature = "native")]
+	#[cfg(reifydb_target = "native")]
 	#[instrument(name = "flow::engine::create_ffi_operator", level = "debug", skip(self, config), fields(operator = %operator, node_id = ?node_id))]
 	pub(crate) fn create_ffi_operator(
 		&self,
@@ -94,7 +94,7 @@ impl FlowEngine {
 	}
 
 	/// Check if an operator name corresponds to an FFI operator
-	#[cfg(feature = "native")]
+	#[cfg(reifydb_target = "native")]
 	pub(crate) fn is_ffi_operator(&self, operator: &str) -> bool {
 		let loader = ffi_operator_loader();
 		let loader_read = loader.read().unwrap();
@@ -102,7 +102,7 @@ impl FlowEngine {
 	}
 
 	/// FFI operators are not supported in WASM
-	#[cfg(not(feature = "native"))]
+	#[cfg(not(reifydb_target = "native"))]
 	pub(crate) fn is_ffi_operator(&self, _operator: &str) -> bool {
 		false
 	}

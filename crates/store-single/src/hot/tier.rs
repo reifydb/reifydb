@@ -11,7 +11,7 @@ use std::ops::Bound;
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryPrimitiveStorage;
-#[cfg(feature = "sqlite")]
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use super::sqlite::storage::SqlitePrimitiveStorage;
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
@@ -25,7 +25,7 @@ pub enum HotTier {
 	/// In-memory storage (non-persistent)
 	Memory(MemoryPrimitiveStorage) = 0,
 	/// SQLite-based persistent storage
-	#[cfg(feature = "sqlite")]
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(SqlitePrimitiveStorage) = 1,
 }
 
@@ -36,13 +36,13 @@ impl HotTier {
 	}
 
 	/// Create a new SQLite backend with in-memory database
-	#[cfg(feature = "sqlite")]
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite_in_memory() -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::in_memory())
 	}
 
 	/// Create a new SQLite backend with the given configuration
-	#[cfg(feature = "sqlite")]
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(config: super::sqlite::config::SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::new(config))
 	}
@@ -53,7 +53,7 @@ impl TierStorage for HotTier {
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		match self {
 			Self::Memory(s) => s.get(key),
-			#[cfg(feature = "sqlite")]
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.get(key),
 		}
 	}
@@ -62,7 +62,7 @@ impl TierStorage for HotTier {
 	fn contains(&self, key: &[u8]) -> Result<bool> {
 		match self {
 			Self::Memory(s) => s.contains(key),
-			#[cfg(feature = "sqlite")]
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.contains(key),
 		}
 	}
@@ -71,7 +71,7 @@ impl TierStorage for HotTier {
 	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.set(entries),
-			#[cfg(feature = "sqlite")]
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.set(entries),
 		}
 	}
@@ -86,7 +86,7 @@ impl TierStorage for HotTier {
 	) -> Result<RangeBatch> {
 		match self {
 			Self::Memory(s) => s.range_next(cursor, start, end, batch_size),
-			#[cfg(feature = "sqlite")]
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.range_next(cursor, start, end, batch_size),
 		}
 	}
@@ -101,7 +101,7 @@ impl TierStorage for HotTier {
 	) -> Result<RangeBatch> {
 		match self {
 			Self::Memory(s) => s.range_rev_next(cursor, start, end, batch_size),
-			#[cfg(feature = "sqlite")]
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.range_rev_next(cursor, start, end, batch_size),
 		}
 	}
@@ -110,7 +110,7 @@ impl TierStorage for HotTier {
 	fn ensure_table(&self) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.ensure_table(),
-			#[cfg(feature = "sqlite")]
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.ensure_table(),
 		}
 	}
@@ -119,7 +119,7 @@ impl TierStorage for HotTier {
 	fn clear_table(&self) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.clear_table(),
-			#[cfg(feature = "sqlite")]
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.clear_table(),
 		}
 	}

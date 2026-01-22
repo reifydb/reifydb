@@ -13,9 +13,7 @@ rust-version.workspace = true
 edition.workspace = true
 
 [features]
-default = ["native"]
-native = ["reifydb-core/native", "reifydb-engine/tokio", "reifydb-runtime/native", "reifydb-sub-server/native"]
-wasm = ["reifydb-core/wasm", "reifydb-engine/wasm", "reifydb-runtime/wasm", "reifydb-sub-server/wasm"]
+default = []
 
 [dependencies]
 reifydb-sub-server = { workspace = true }

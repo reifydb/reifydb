@@ -1,4 +1,4 @@
-#![cfg(feature = "native")]
+#![cfg(reifydb_target = "native")]
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 

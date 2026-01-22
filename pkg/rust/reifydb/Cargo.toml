@@ -43,26 +43,11 @@ tracing-opentelemetry = { workspace = true, optional = true }
 
 libc = { workspace = true }
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [features]
-default = ["native"]
-native = [
-	"reifydb-core/native",
-	"reifydb-engine/tokio",
-	"reifydb-runtime/native",
-	"reifydb-store-multi/native",
-	"reifydb-store-single/native",
-	"reifydb-transaction/native",
-	"reifydb-sub-flow?/native",
-]
-wasm = [
-	"reifydb-core/wasm",
-	"reifydb-engine/wasm",
-	"reifydb-runtime/wasm",
-	"reifydb-store-multi/wasm",
-	"reifydb-store-single/wasm",
-	"reifydb-transaction/wasm",
-	"reifydb-sub-flow?/wasm",
-]
+default = []
 
 # Subsystem features
 sub_flow = ["dep:reifydb-sub-flow"]
@@ -72,5 +57,3 @@ sub_server_admin = ["dep:reifydb-sub-server-admin", "sub_server"]
 sub_server_http = ["dep:reifydb-sub-server-http", "sub_server"]
 sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:tracing-opentelemetry", "sub_server"]
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
-
-

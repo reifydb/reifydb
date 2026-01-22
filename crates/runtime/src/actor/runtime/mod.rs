@@ -13,9 +13,9 @@ use crate::actor::context::CancellationToken;
 use crate::actor::mailbox::ActorRef;
 use crate::actor::traits::Actor;
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub(crate) mod native;
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub(crate) mod wasm;
 
 // =============================================================================
@@ -69,7 +69,7 @@ impl ActorRuntime {
 	/// Spawn an actor.
 	///
 	/// Returns a handle with the ActorRef and join capability.
-	#[cfg(feature = "native")]
+	#[cfg(reifydb_target = "native")]
 	pub fn spawn<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
 		let inner = self.spawn_inner(name, actor);
 		ActorHandle {
@@ -81,7 +81,7 @@ impl ActorRuntime {
 	/// Spawn an actor.
 	///
 	/// Returns a handle with the ActorRef and join capability.
-	#[cfg(feature = "wasm")]
+	#[cfg(reifydb_target = "wasm")]
 	pub fn spawn<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
 		let inner = self.spawn_inner(name, actor);
 		ActorHandle {
@@ -103,13 +103,13 @@ impl ActorRuntime {
 pub struct ActorHandle<M> {
 	/// Reference to send messages to the actor.
 	pub actor_ref: ActorRef<M>,
-	#[cfg(feature = "native")]
+	#[cfg(reifydb_target = "native")]
 	join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl<M> ActorHandle<M> {
 	/// Wait for the actor to complete.
-	#[cfg(feature = "native")]
+	#[cfg(reifydb_target = "native")]
 	pub fn join(mut self) -> Result<(), JoinError> {
 		if let Some(handle) = self.join_handle.take() {
 			handle.join().map_err(|e| JoinError::new(format!("{:?}", e)))
@@ -121,7 +121,7 @@ impl<M> ActorHandle<M> {
 	/// Wait for the actor to complete.
 	///
 	/// In WASM, this is a no-op since messages are processed inline.
-	#[cfg(feature = "wasm")]
+	#[cfg(reifydb_target = "wasm")]
 	pub fn join(self) -> Result<(), JoinError> {
 		Ok(())
 	}

@@ -4,15 +4,15 @@
 //! Runtime implementations for different platforms.
 
 // Re-exports for internal use
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub mod native;
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub mod wasm;
 
 cfg_if::cfg_if! {
-    if #[cfg(feature = "native")] {
+    if #[cfg(reifydb_target = "native")] {
         pub(crate) use native::NativeRuntime;
-    } else if #[cfg(feature = "wasm")] {
+    } else {
         pub(crate) use wasm::{WasmHandle, WasmJoinError, WasmJoinHandle, WasmRuntime};
     }
 }

@@ -302,7 +302,7 @@ impl FlowEngine {
 				operator,
 				expressions,
 			} => {
-				#[cfg(feature = "native")]
+				#[cfg(reifydb_target = "native")]
 				{
 					let parent = self
 						.operators
@@ -322,7 +322,7 @@ impl FlowEngine {
 						Rc::new(Operators::Apply(ApplyOperator::new(parent, node.id, operator))),
 					);
 				}
-				#[cfg(not(feature = "native"))]
+				#[cfg(not(reifydb_target = "native"))]
 				{
 					let _ = (operator, expressions);
 					return Err(Error(internal!("FFI operators are not supported in WASM")));

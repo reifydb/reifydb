@@ -5,16 +5,16 @@ use std::fmt::Debug;
 use cfg_if::cfg_if;
 use std::ops::{Deref, DerefMut};
 
-#[cfg(feature = "native")]
+#[cfg(reifydb_target = "native")]
 pub(crate) mod native;
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 pub(crate) mod wasm;
 
 cfg_if! {
-	if #[cfg(feature = "native")] {
+	if #[cfg(reifydb_target = "native")] {
 		type MutexInnerImpl<T> = native::MutexInner<T>;
 		type MutexGuardInnerImpl<'a, T> = native::MutexGuardInner<'a, T>;
-	} else if #[cfg(feature = "wasm")] {
+	} else {
 		type MutexInnerImpl<T> = wasm::MutexInner<T>;
 		type MutexGuardInnerImpl<'a, T> = wasm::MutexGuardInner<'a, T>;
 	}
@@ -33,7 +33,7 @@ impl<T: Debug> Debug for Mutex<T> {
 }
 
 // SAFETY: WASM is single-threaded, so Sync is safe
-#[cfg(feature = "wasm")]
+#[cfg(reifydb_target = "wasm")]
 unsafe impl<T> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {

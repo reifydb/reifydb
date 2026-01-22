@@ -8,10 +8,11 @@ repository.workspace = true
 description = "Multi-version storage for OLTP operations with MVCC support"
 
 [features]
-default = ["native", "sqlite"]
-native = ["reifydb-runtime/native", "reifydb-core/native"]
-sqlite = ["rusqlite"]  # SQLite persistent storage
-wasm = ["reifydb-runtime/wasm", "reifydb-core/wasm"]  # Memory-only storage for WASM (single-threaded)
+default = ["sqlite"]
+sqlite = ["rusqlite"]
+
+[build-dependencies]
+reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-core = { workspace = true }
@@ -19,9 +20,10 @@ reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
 
 tracing = { workspace = true }
-
-rusqlite = { workspace = true, features = ["bundled"], optional = true }
 uuid = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rusqlite = { workspace = true, features = ["bundled"], optional = true }
 
 [dev-dependencies]
 test_each_file = { workspace = true }
