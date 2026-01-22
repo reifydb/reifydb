@@ -117,6 +117,7 @@ async function initializeEngine() {
 
         updateStatus('Creating engine...');
         engine = new WasmEngine();
+        window.engine = engine;
 
         updateStatus('Ready ✓');
         document.getElementById('run-query').disabled = false;

@@ -9,19 +9,15 @@ description = "Single-version storage for OLTP operations without version histor
 
 [features]
 default = ["native", "sqlite"]
-native = ["rayon", "parking_lot", "crossbeam-channel", "dashmap", "reifydb-core/native"]  # Multi-threaded native builds
+native = ["reifydb-runtime/native", "reifydb-core/native"]
 sqlite = ["rusqlite"]  # SQLite persistent storage
-wasm = ["reifydb-core/wasm"]  # Memory-only storage for WASM (single-threaded)
+wasm = ["reifydb-runtime/wasm", "reifydb-core/wasm"]  # Memory-only storage for WASM (single-threaded)
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
 
-# Threading dependencies - only for native builds
-crossbeam-channel = { workspace = true, optional = true }
-dashmap = { workspace = true, optional = true }
-rayon = { workspace = true, optional = true }
-parking_lot = { workspace = true, optional = true }
 tracing = { workspace = true }
 
 rusqlite = { workspace = true, features = ["bundled"], optional = true }

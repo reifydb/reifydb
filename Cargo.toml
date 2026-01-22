@@ -168,10 +168,10 @@ reifydb-macro-impl = { version = "0.2.0", path = "crates/macro-impl" }
 # Subsystems
 reifydb-sub-api = { version = "0.2.0", path = "crates/sub-api" }
 reifydb-sub-server-admin = { version = "0.2.0", path = "crates/sub-server-admin" }
-reifydb-sub-flow = { version = "0.2.0", path = "crates/sub-flow" }
+reifydb-sub-flow = { version = "0.2.0", path = "crates/sub-flow", default-features = false }
 reifydb-sub-task = { version = "0.2.0", path = "crates/sub-task" }
 reifydb-sub-tracing = { version = "0.2.0", path = "crates/sub-tracing" }
-reifydb-sub-server = { version = "0.2.0", path = "crates/sub-server" }
+reifydb-sub-server = { version = "0.2.0", path = "crates/sub-server", default-features = false }
 reifydb-sub-server-http = { version = "0.2.0", path = "crates/sub-server-http" }
 reifydb-sub-server-otel = { version = "0.2.0", path = "crates/sub-server-otel" }
 reifydb-sub-server-ws = { version = "0.2.0", path = "crates/sub-server-ws" }
@@ -246,3 +246,4 @@ js-sys = "0.3.85"
 web-sys = "0.3.85"
 serde-wasm-bindgen = "0.6.5"
 console_error_panic_hook = "0.1.7"
+cfg-if = "1.0"

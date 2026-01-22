@@ -17,6 +17,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::store::{MultiVersionContains, MultiVersionGet},
 };
+use reifydb_runtime::actor::runtime::ActorRuntime;
 use reifydb_store_multi::MultiStore;
 use reifydb_type::{Result, util::hex};
 use tracing::instrument;
@@ -87,15 +88,20 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock))]
-	pub fn new(clock: L) -> Result<Self> {
+	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock, runtime))]
+	pub fn new(clock: L, runtime: ActorRuntime) -> Result<Self> {
 		let version = clock.next()?;
-		let oracle = Oracle::new(clock);
+		let oracle = Oracle::new(clock, runtime);
 		oracle.query.done(version);
 		oracle.command.done(version);
 		Ok(Self {
 			inner: Arc::new(oracle),
 		})
+	}
+
+	/// Get the actor runtime
+	pub fn actor_runtime(&self) -> ActorRuntime {
+		self.inner.actor_runtime()
 	}
 
 	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
@@ -163,9 +169,9 @@ impl Clone for TransactionMulti {
 }
 
 impl Inner {
-	fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus) -> Result<Self> {
+	fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus, runtime: ActorRuntime) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
-		let tm = TransactionManager::new(version_provider)?;
+		let tm = TransactionManager::new(version_provider, runtime)?;
 
 		Ok(Self {
 			tm,
@@ -177,6 +183,10 @@ impl Inner {
 	fn version(&self) -> Result<CommitVersion> {
 		self.tm.version()
 	}
+
+	fn actor_runtime(&self) -> ActorRuntime {
+		self.tm.actor_runtime()
+	}
 }
 
 impl TransactionMulti {
@@ -184,19 +194,26 @@ impl TransactionMulti {
 		let multi_store = reifydb_store_multi::MultiStore::testing_memory();
 		let single_store = reifydb_store_single::SingleStore::testing_memory();
 		let event_bus = EventBus::new();
+		let runtime = ActorRuntime::new();
 		Self::new(
 			multi_store,
 			TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, event_bus.clone())),
 			event_bus,
+			runtime,
 		)
 		.unwrap()
 	}
 }
 
 impl TransactionMulti {
-	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus))]
-	pub fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus) -> Result<Self> {
-		Ok(Self(Arc::new(Inner::new(store, single, event_bus)?)))
+	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus, runtime))]
+	pub fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus, runtime: ActorRuntime) -> Result<Self> {
+		Ok(Self(Arc::new(Inner::new(store, single, event_bus, runtime)?)))
+	}
+
+	/// Get the actor runtime
+	pub fn actor_runtime(&self) -> ActorRuntime {
+		self.0.actor_runtime()
 	}
 }
 

@@ -32,15 +32,13 @@ pub fn now_secs() -> u64 {
 	(now_nanos() / 1_000_000_000) as u64
 }
 
-/// Platform-agnostic instant for measuring elapsed time.
-///
-/// Native implementation uses std::time::Instant.
+/// Native instant implementation using std::time::Instant.
 #[derive(Clone, Copy, Debug)]
-pub struct Instant {
+pub struct InstantInner {
 	inner: std::time::Instant,
 }
 
-impl Instant {
+impl InstantInner {
 	/// Creates an Instant representing the current moment in time.
 	#[inline]
 	pub fn now() -> Self {
@@ -57,7 +55,7 @@ impl Instant {
 
 	/// Returns the amount of time elapsed between two instants.
 	#[inline]
-	pub fn duration_since(&self, earlier: Instant) -> Duration {
+	pub fn duration_since(&self, earlier: InstantInner) -> Duration {
 		self.inner.duration_since(earlier.inner)
 	}
 }

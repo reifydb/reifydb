@@ -9,3 +9,11 @@ pub mod native;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "native")] {
+        pub type ComputePool = native::NativeComputePool;
+    } else if #[cfg(feature = "wasm")] {
+        pub type ComputePool = wasm::WasmComputePool;
+    }
+}

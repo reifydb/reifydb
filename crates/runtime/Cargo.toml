@@ -8,7 +8,7 @@ license.workspace = true
 version.workspace = true
 rust-version.workspace = true
 edition.workspace = true
-description = "Runtime infrastructure (async I/O and compute pools) for ReifyDB"
+description = "Runtime infrastructure for ReifyDB"
 
 [features]
 default = ["native"]
@@ -30,6 +30,7 @@ wasm-bindgen-futures = { workspace = true, optional = true }
 web-sys = { workspace = true, optional = true, features = ["Window"] }
 
 # Common dependencies
+cfg-if = { workspace = true }
 tracing = { workspace = true }
 
 # Used by runtime/wasm.rs (not actor module)

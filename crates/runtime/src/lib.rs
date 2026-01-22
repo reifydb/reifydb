@@ -51,8 +51,6 @@ pub mod runtime;
 
 pub mod compute;
 
-pub mod worker;
-
 pub mod sync;
 
 pub mod time;
@@ -62,6 +60,8 @@ pub mod actor;
 pub mod concurrent_map;
 
 use std::{future::Future, sync::Arc};
+use cfg_if::cfg_if;
+use futures_util::task::SpawnExt;
 
 /// Configuration for creating a [`SharedRuntime`].
 #[derive(Clone, Debug)]
@@ -104,12 +104,13 @@ impl SharedRuntimeConfig {
 	}
 }
 
-/// Inner runtime implementation (platform-specific)
-#[cfg(feature = "native")]
-type RuntimeImpl = runtime::NativeRuntime;
-
-#[cfg(feature = "wasm")]
-type RuntimeImpl = runtime::WasmRuntime;
+cfg_if! {
+    if #[cfg(feature = "native")] {
+        type RuntimeImpl = runtime::NativeRuntime;
+    } else if #[cfg(feature = "wasm")] {
+        type RuntimeImpl = runtime::WasmRuntime;
+    }
+}
 
 /// Shared runtime that can be cloned and passed across subsystems.
 ///

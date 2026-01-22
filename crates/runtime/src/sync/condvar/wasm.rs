@@ -7,27 +7,13 @@
 
 use std::time::Duration;
 
-use crate::sync::mutex::wasm::MutexGuard;
+use crate::sync::mutex::MutexGuard;
 
-/// Result of a timed wait on a condition variable.
-pub struct WaitTimeoutResult {
-	timed_out: bool,
-}
-
-impl WaitTimeoutResult {
-	/// Returns whether the wait timed out.
-	pub fn timed_out(&self) -> bool {
-		self.timed_out
-	}
-}
-
-/// A condition variable for coordinating threads.
-///
-/// WASM implementation is a no-op (single-threaded).
+/// WASM condition variable implementation (no-op since single-threaded).
 #[derive(Debug)]
-pub struct Condvar;
+pub struct CondvarInner;
 
-impl Condvar {
+impl CondvarInner {
 	/// Creates a new condition variable.
 	pub fn new() -> Self {
 		Self
@@ -39,9 +25,9 @@ impl Condvar {
 	}
 
 	/// No-op in WASM (returns immediately as if timed out).
-	pub fn wait_for<'a, T>(&self, _guard: &mut MutexGuard<'a, T>, _timeout: Duration) -> WaitTimeoutResult {
-		// Return timed_out=true to indicate timeout (can't actually wait)
-		WaitTimeoutResult { timed_out: true }
+	/// Returns true to indicate timeout (can't actually wait).
+	pub fn wait_for<'a, T>(&self, _guard: &mut MutexGuard<'a, T>, _timeout: Duration) -> bool {
+		true
 	}
 
 	/// No-op in WASM (no threads to wake).
@@ -55,7 +41,7 @@ impl Condvar {
 	}
 }
 
-impl Default for Condvar {
+impl Default for CondvarInner {
 	fn default() -> Self {
 		Self::new()
 	}

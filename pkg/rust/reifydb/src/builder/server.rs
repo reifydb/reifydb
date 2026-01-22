@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, actor::runtime::ActorRuntime};
 use reifydb_function::registry::FunctionsBuilder;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -153,8 +153,11 @@ impl ServerBuilder {
 		let compute_pool = runtime.compute_pool();
 		let (multi_store, single_store, transaction_single, eventbus) =
 			self.storage_factory.create(compute_pool);
+
+		// Create actor runtime at top level for watermark and flow actors
+		let actor_runtime = ActorRuntime::new();
 		let (multi, single, eventbus) =
-			transaction((multi_store.clone(), single_store.clone(), transaction_single, eventbus));
+			transaction((multi_store.clone(), single_store.clone(), transaction_single, eventbus), actor_runtime);
 
 		let mut database_builder = DatabaseBuilder::new(multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)

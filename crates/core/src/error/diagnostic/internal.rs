@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-#[cfg(feature = "native")]
-use reifydb_runtime::time::native::now_millis;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::time::wasm::now_millis;
+use reifydb_runtime::time::now_millis;
 
 use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
 

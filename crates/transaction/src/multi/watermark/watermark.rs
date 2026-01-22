@@ -12,8 +12,8 @@
 use std::{
 	fmt::Debug,
 	sync::{
-		atomic::{AtomicU64, Ordering},
 		Arc,
+		atomic::{AtomicU64, Ordering},
 	},
 	time::Duration,
 };
@@ -136,7 +136,7 @@ impl WaterMark {
 
 	/// Waits until the given index is marked as done with a specified
 	/// timeout.
-	#[cfg(feature = "native")]
+	// #[cfg(feature = "native")]
 	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
 		if self.shared.done_until.load(Ordering::SeqCst) >= index.0 {
 			return true;
@@ -158,25 +158,13 @@ impl WaterMark {
 		// Wait with timeout using condvar
 		waiter.wait_timeout(timeout)
 	}
-
-	/// Waits until the given index is marked as done with a specified
-	/// timeout.
-	#[cfg(feature = "wasm")]
-	pub fn wait_for_mark_timeout(&self, index: CommitVersion, _timeout: Duration) -> bool {
-		// In WASM, processing is synchronous so marks are immediately processed
-		// Just check if the version is already done
-		self.shared.done_until.load(Ordering::SeqCst) >= index.0
-	}
 }
 
 #[cfg(test)]
 pub mod tests {
 	use std::{sync::atomic::AtomicUsize, thread::sleep, time::Duration};
 
-	#[cfg(feature = "native")]
-	use reifydb_runtime::time::native::Instant;
-	#[cfg(feature = "wasm")]
-	use reifydb_runtime::time::wasm::Instant;
+	use reifydb_runtime::time::Instant;
 
 	use reifydb_runtime::actor::runtime::ActorRuntime;
 

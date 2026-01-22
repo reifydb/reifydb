@@ -1,71 +1,150 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Flow coordinator that handles CDC consumption and orchestration.
+//! Flow coordinator wrapper that provides CdcConsume interface over the CoordinatorActor.
+//!
+//! This module provides [`FlowCoordinator`] which implements the `CdcConsume` trait
+//! while using the actor model internally for state management.
 
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
+use crossbeam_channel::bounded;
 use reifydb_cdc::{
-	consume::{checkpoint::CdcCheckpoint, consumer::CdcConsume},
+	consume::checkpoint::CdcCheckpoint,
+	consume::consumer::CdcConsume,
 	storage::CdcStore,
 };
-use reifydb_core::{
-	common::CommitVersion,
-	interface::{
-		catalog::{flow::FlowId, primitive::PrimitiveId},
-		cdc::{Cdc, CdcChange},
-	},
-	key::{Key, kind::KeyKind},
-};
+use reifydb_core::internal;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_rql::flow::analyzer::FlowGraphAnalyzer;
-use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin::External};
+use reifydb_runtime::actor::{
+	mailbox::ActorRef,
+	runtime::{ActorHandle, ActorRuntime},
+};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::Result;
-use tracing::{Span, debug, instrument};
+use reifydb_type::{Result, error::Error};
+use tracing::{Span, instrument};
 
 use crate::{
+	FlowEngine,
+	actor::{FlowActor, FlowMsg},
 	catalog::FlowCatalog,
-	convert,
-	instruction::{FlowInstruction, WorkerBatch},
-	pool::FlowWorkerPool,
-	state::FlowStates,
+	coordinator_actor::{
+		CoordinatorActor, CoordinatorMsg, CoordinatorResponse, extract_new_flow_ids,
+	},
+	pool::{PoolActor, PoolMsg},
 	tracker::PrimitiveVersionTracker,
 	transaction::pending::Pending,
 };
 
 /// Flow coordinator that implements CDC consumption logic.
+///
+/// Provides a synchronous CdcConsume interface by embedding reply channels
+/// in actor messages and blocking on the response.
 pub(crate) struct FlowCoordinator {
-	pub(crate) engine: StandardEngine,
-	pub(crate) catalog: FlowCatalog,
-	pub(crate) pool: FlowWorkerPool,
-	tracker: Arc<PrimitiveVersionTracker>,
-	/// Per-flow state tracking for routing and backfill management.
-	pub(crate) states: RefCell<FlowStates>,
-	/// Analyzer for source-to-flow mapping.
-	pub(crate) analyzer: RefCell<FlowGraphAnalyzer>,
-	/// CDC storage for reading historical CDC entries during backfill.
-	pub(crate) cdc_store: CdcStore,
+	catalog: FlowCatalog,
+	actor_ref: ActorRef<CoordinatorMsg>,
+	/// Worker handles for proper cleanup - must be joined on shutdown
+	worker_handles: Vec<ActorHandle<FlowMsg>>,
+	/// Pool handle for proper cleanup - must be joined on shutdown
+	pool_handle: Option<ActorHandle<PoolMsg>>,
+	/// Coordinator handle for proper cleanup - must be joined on shutdown
+	coordinator_handle: Option<ActorHandle<CoordinatorMsg>>,
+	runtime: ActorRuntime,
 }
 
 impl FlowCoordinator {
-	/// Create a new flow coordinator.
-	pub fn new(
+	/// Create a new flow coordinator with the given configuration.
+	///
+	/// Spawns worker actors, pool actor, and coordinator actor on the provided runtime.
+	/// The runtime should be shared with other components (like PollConsumer) so that
+	/// all actors can communicate properly, especially in WASM where actors on different
+	/// runtimes cannot exchange messages.
+	pub fn new<F, Fac>(
 		engine: StandardEngine,
 		tracker: Arc<PrimitiveVersionTracker>,
-		pool: FlowWorkerPool,
+		num_workers: usize,
+		factory_builder: F,
 		cdc_store: CdcStore,
-	) -> Self {
+		runtime: ActorRuntime,
+	) -> Self
+	where
+		F: Fn() -> Fac + Send + 'static,
+		Fac: FnOnce() -> FlowEngine + Send + 'static,
+	{
 		let catalog = FlowCatalog::new(engine.catalog());
-		Self {
-			engine,
-			catalog,
-			pool,
-			tracker,
-			states: RefCell::new(FlowStates::new()),
-			analyzer: RefCell::new(FlowGraphAnalyzer::new()),
-			cdc_store,
+
+		let mut worker_refs = Vec::with_capacity(num_workers);
+		let mut worker_handles = Vec::with_capacity(num_workers);
+		for i in 0..num_workers {
+			let worker_factory = factory_builder();
+			let actor = FlowActor::new(worker_factory, engine.clone(), engine.catalog());
+			let handle = runtime.spawn(&format!("flow-worker-{}", i), actor);
+			worker_refs.push(handle.actor_ref.clone());
+			worker_handles.push(handle);
 		}
+
+		let pool_actor = PoolActor::new(worker_refs);
+		let pool_handle = runtime.spawn("flow-pool", pool_actor);
+		let pool_ref = pool_handle.actor_ref.clone();
+
+		let coordinator_actor = CoordinatorActor::new(
+			engine.clone(),
+			catalog.clone(),
+			pool_ref,
+			tracker,
+			cdc_store,
+			num_workers,
+		);
+
+		let coordinator_handle = runtime.spawn("flow-coordinator", coordinator_actor);
+		let actor_ref = coordinator_handle.actor_ref.clone();
+
+		Self {
+			catalog,
+			actor_ref,
+			worker_handles,
+			pool_handle: Some(pool_handle),
+			coordinator_handle: Some(coordinator_handle),
+			runtime,
+		}
+	}
+
+	/// Get the parent transaction's snapshot version for state reads.
+	fn get_parent_snapshot_version(&self, txn: &StandardCommandTransaction) -> Result<reifydb_core::common::CommitVersion> {
+		let query_txn = txn.multi.begin_query()?;
+		Ok(query_txn.version())
+	}
+
+	/// Stop the coordinator and all workers.
+	///
+	/// This properly joins all actor threads in the correct order:
+	/// 1. Signal shutdown to all actors via cancellation token
+	/// 2. Join coordinator first (it sends messages to pool and workers)
+	/// 3. Join pool (it sends messages to workers)
+	/// 4. Join workers last
+	pub fn stop(&mut self) {
+		// Signal shutdown to all actors
+		self.runtime.shutdown();
+
+		// Join coordinator first (it uses pool and workers)
+		if let Some(handle) = self.coordinator_handle.take() {
+			let _ = handle.join();
+		}
+
+		// Join pool (it uses workers)
+		if let Some(handle) = self.pool_handle.take() {
+			let _ = handle.join();
+		}
+
+		// Join workers last
+		for handle in self.worker_handles.drain(..) {
+			let _ = handle.join();
+		}
+	}
+
+	/// Get a clone of the flow catalog.
+	pub fn catalog(&self) -> FlowCatalog {
+		self.catalog.clone()
 	}
 }
 
@@ -74,11 +153,14 @@ impl CdcConsume for FlowCoordinator {
 		cdc_count = cdcs.len(),
 		version_start = tracing::field::Empty,
 		version_end = tracing::field::Empty,
-		batch_count = tracing::field::Empty,
 		elapsed_us = tracing::field::Empty
 	))]
-	fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
-		let consume_start = std::time::Instant::now();
+	fn consume(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		cdcs: Vec<reifydb_core::interface::cdc::Cdc>,
+	) -> Result<()> {
+		let consume_start = reifydb_runtime::time::Instant::now();
 
 		// Record version range
 		if let Some(first) = cdcs.first() {
@@ -89,39 +171,40 @@ impl CdcConsume for FlowCoordinator {
 		}
 
 		let state_version = self.get_parent_snapshot_version(txn)?;
+		let current_version = cdcs.last().map(|c| c.version).unwrap_or(state_version);
 
-		let latest_version = cdcs.last().map(|c| c.version);
-
-		let mut all_changes = Vec::new();
-		for cdc in &cdcs {
-			let version = cdc.version;
-
-			// Update tracker for lag calculation
-			for change in &cdc.changes {
-				if let Some(Key::Row(row_key)) = Key::decode(change.key()) {
-					self.tracker.update(row_key.primitive, version);
-				}
+		// Extract new flow IDs from CDC and load them from catalog
+		let new_flow_ids = extract_new_flow_ids(&cdcs);
+		let mut new_flows = Vec::with_capacity(new_flow_ids.len());
+		for flow_id in new_flow_ids {
+			let (flow, is_new) = self.catalog.get_or_load_flow(txn, flow_id)?;
+			if is_new {
+				new_flows.push(flow);
 			}
-
-			self.handle_new_flows(txn, cdc)?;
-
-			// Convert CDC to flow changes
-			let changes = convert::to_flow_change(&self.engine, &self.catalog, cdc, version)?;
-			all_changes.extend(changes);
 		}
 
-		// Route changes to active flows and group by worker
-		if let Some(to_version) = latest_version {
-			let worker_batches = self.route_and_group_changes(&all_changes, to_version, state_version);
+		// Send to coordinator actor
+		let (reply_tx, reply_rx) = bounded(1);
 
-			// Record batch count
-			Span::current().record("batch_count", worker_batches.len());
+		self.actor_ref
+			.send(CoordinatorMsg::Consume {
+				cdcs,
+				state_version,
+				new_flows,
+				current_version,
+				reply: reply_tx,
+			})
+			.map_err(|_| Error(internal!("Coordinator actor stopped")))?;
 
-			if !worker_batches.is_empty() {
-				let pending_writes = self.pool.submit(worker_batches)?;
+		let response = reply_rx
+			.recv()
+			.map_err(|_| Error(internal!("Coordinator actor response error")))?;
 
-				// Apply pending writes to transaction
-				for (key, pending) in pending_writes.iter_sorted() {
+		// Apply results to transaction
+		match response {
+			CoordinatorResponse::Success(result) => {
+				// Apply pending writes
+				for (key, pending) in result.pending_writes.iter_sorted() {
 					match pending {
 						Pending::Set(value) => {
 							txn.set(key, value.clone())?;
@@ -131,15 +214,15 @@ impl CdcConsume for FlowCoordinator {
 						}
 					}
 				}
-			}
 
-			for flow_id in self.states.borrow().active_flow_ids() {
-				CdcCheckpoint::persist(txn, &flow_id, to_version)?;
+				// Persist checkpoints
+				for (flow_id, version) in result.checkpoints {
+					CdcCheckpoint::persist(txn, &flow_id, version)?;
+				}
 			}
-
-			self.advance_backfilling_flows(txn, to_version, state_version)?;
-		} else {
-			Span::current().record("batch_count", 0usize);
+			CoordinatorResponse::Error(e) => {
+				return Err(Error(internal!("{}", e)));
+			}
 		}
 
 		Span::current().record("elapsed_us", consume_start.elapsed().as_micros() as u64);
@@ -147,145 +230,8 @@ impl CdcConsume for FlowCoordinator {
 	}
 }
 
-impl FlowCoordinator {
-	/// Get the parent transaction's snapshot version for state reads.
-	/// This version is constant for the entire CDC batch.
-	pub(crate) fn get_parent_snapshot_version(&self, txn: &StandardCommandTransaction) -> Result<CommitVersion> {
-		let query_txn = txn.multi.begin_query()?;
-		Ok(query_txn.version())
-	}
-
-	/// Detect new flow registrations from CDC.
-	#[instrument(name = "flow::coordinator::handle_new_flows", level = "debug", skip(self, txn, cdc), fields(
-		change_count = cdc.changes.len(),
-		new_flows = tracing::field::Empty
-	))]
-	fn handle_new_flows(&self, txn: &mut StandardCommandTransaction, cdc: &Cdc) -> Result<()> {
-		let mut new_flows = 0u32;
-		for change in &cdc.changes {
-			if let Some(kind) = Key::kind(change.key()) {
-				if kind == KeyKind::Flow {
-					if let CdcChange::Insert {
-						key,
-						..
-					} = &change.change
-					{
-						if let Some(Key::Flow(flow_key)) = Key::decode(key) {
-							let flow_id = flow_key.flow;
-
-							let (flow, is_new) =
-								self.catalog.get_or_load_flow(txn, flow_id)?;
-							if is_new {
-								self.pool.register_flow(flow.clone())?;
-								self.analyzer.borrow_mut().add(flow.clone());
-								self.states.borrow_mut().register_backfilling(flow_id);
-								new_flows += 1;
-
-								debug!(
-									flow_id = flow_id.0,
-									"registered new flow in backfilling status"
-								);
-							}
-						}
-					}
-				}
-			}
-		}
-
-		Span::current().record("new_flows", new_flows);
-		Ok(())
-	}
-
-	/// Filter CDC changes to only those relevant to a specific flow.
-	///
-	/// Uses the flow analyzer to determine which sources the flow depends on,
-	/// then filters changes to only include those from subscribed sources.
-	/// Maintains original CDC sequence order.
-	#[instrument(name = "flow::coordinator::filter_cdc", level = "trace", skip(self, changes), fields(
-		input = changes.len(),
-		output = tracing::field::Empty
-	))]
-	pub(crate) fn filter_cdc_for_flow(&self, flow_id: FlowId, changes: &[FlowChange]) -> Vec<FlowChange> {
-		let analyzer = self.analyzer.borrow();
-		let dependency_graph = analyzer.get_dependency_graph();
-
-		// Get all sources this flow depends on
-		let mut flow_sources: std::collections::HashSet<PrimitiveId> = std::collections::HashSet::new();
-
-		// Add table sources
-		for (table_id, flow_ids) in &dependency_graph.source_tables {
-			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(PrimitiveId::Table(*table_id));
-			}
-		}
-
-		// Add view sources
-		for (view_id, flow_ids) in &dependency_graph.source_views {
-			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(PrimitiveId::View(*view_id));
-			}
-		}
-
-		// Filter changes to only those from this flow's sources
-		let result: Vec<FlowChange> = changes
-			.iter()
-			.filter(|change| {
-				if let External(source) = change.origin {
-					flow_sources.contains(&source)
-				} else {
-					// Internal changes are already scoped, keep them
-					true
-				}
-			})
-			.cloned()
-			.collect();
-
-		Span::current().record("output", result.len());
-		result
-	}
-
-	/// Route CDC changes to flows and group by worker.
-	///
-	/// Returns a map of worker_id -> WorkerBatch containing only the
-	/// changes relevant to each worker's assigned flows.
-	#[instrument(name = "flow::coordinator::route_and_group", level = "debug", skip(self, changes), fields(
-		changes = changes.len(),
-		active_flows = tracing::field::Empty,
-		batches = tracing::field::Empty,
-		elapsed_us = tracing::field::Empty
-	))]
-	fn route_and_group_changes(
-		&self,
-		changes: &[FlowChange],
-		to_version: CommitVersion,
-		state_version: CommitVersion,
-	) -> HashMap<usize, WorkerBatch> {
-		let start = std::time::Instant::now();
-		let states = self.states.borrow();
-		let num_workers = self.pool.num_workers();
-		let mut worker_batches: HashMap<usize, WorkerBatch> = HashMap::new();
-
-		let active_flow_ids: Vec<_> = states.active_flow_ids();
-		Span::current().record("active_flows", active_flow_ids.len());
-
-		// Only process active flows (not backfilling)
-		for flow_id in active_flow_ids {
-			let flow_changes = self.filter_cdc_for_flow(flow_id, changes);
-
-			// Skip flows with no relevant changes
-			if flow_changes.is_empty() {
-				continue;
-			}
-
-			let worker_id = (flow_id.0 as usize) % num_workers;
-
-			let batch = worker_batches.entry(worker_id).or_insert_with(|| WorkerBatch::new(state_version));
-
-			batch.add_instruction(FlowInstruction::new(flow_id, to_version, flow_changes));
-		}
-
-		Span::current().record("batches", worker_batches.len());
-		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
-		worker_batches
+impl Drop for FlowCoordinator {
+	fn drop(&mut self) {
+		self.stop();
 	}
 }

@@ -5,14 +5,12 @@
 
 use std::ops::{Deref, DerefMut};
 
-/// A reader-writer lock for shared read access and exclusive write access.
-///
-/// Native implementation wraps parking_lot::RwLock.
-pub struct RwLock<T> {
+/// Native reader-writer lock implementation wrapping parking_lot::RwLock.
+pub struct RwLockInner<T> {
 	inner: parking_lot::RwLock<T>,
 }
 
-impl<T> RwLock<T> {
+impl<T> RwLockInner<T> {
 	/// Creates a new reader-writer lock.
 	pub fn new(value: T) -> Self {
 		Self {
@@ -21,36 +19,36 @@ impl<T> RwLock<T> {
 	}
 
 	/// Acquires a read lock, blocking until it's available.
-	pub fn read(&self) -> RwLockReadGuard<'_, T> {
-		RwLockReadGuard {
+	pub fn read(&self) -> RwLockReadGuardInner<'_, T> {
+		RwLockReadGuardInner {
 			inner: self.inner.read(),
 		}
 	}
 
 	/// Acquires a write lock, blocking until it's available.
-	pub fn write(&self) -> RwLockWriteGuard<'_, T> {
-		RwLockWriteGuard {
+	pub fn write(&self) -> RwLockWriteGuardInner<'_, T> {
+		RwLockWriteGuardInner {
 			inner: self.inner.write(),
 		}
 	}
 
 	/// Attempts to acquire a read lock without blocking.
-	pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
-		self.inner.try_read().map(|guard| RwLockReadGuard { inner: guard })
+	pub fn try_read(&self) -> Option<RwLockReadGuardInner<'_, T>> {
+		self.inner.try_read().map(|guard| RwLockReadGuardInner { inner: guard })
 	}
 
 	/// Attempts to acquire a write lock without blocking.
-	pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T>> {
-		self.inner.try_write().map(|guard| RwLockWriteGuard { inner: guard })
+	pub fn try_write(&self) -> Option<RwLockWriteGuardInner<'_, T>> {
+		self.inner.try_write().map(|guard| RwLockWriteGuardInner { inner: guard })
 	}
 }
 
-/// A guard providing read access to the data protected by an RwLock.
-pub struct RwLockReadGuard<'a, T> {
+/// Native guard providing read access to the data protected by an RwLock.
+pub struct RwLockReadGuardInner<'a, T> {
 	inner: parking_lot::RwLockReadGuard<'a, T>,
 }
 
-impl<'a, T> Deref for RwLockReadGuard<'a, T> {
+impl<'a, T> Deref for RwLockReadGuardInner<'a, T> {
 	type Target = T;
 
 	fn deref(&self) -> &T {
@@ -58,12 +56,12 @@ impl<'a, T> Deref for RwLockReadGuard<'a, T> {
 	}
 }
 
-/// A guard providing write access to the data protected by an RwLock.
-pub struct RwLockWriteGuard<'a, T> {
+/// Native guard providing write access to the data protected by an RwLock.
+pub struct RwLockWriteGuardInner<'a, T> {
 	inner: parking_lot::RwLockWriteGuard<'a, T>,
 }
 
-impl<'a, T> Deref for RwLockWriteGuard<'a, T> {
+impl<'a, T> Deref for RwLockWriteGuardInner<'a, T> {
 	type Target = T;
 
 	fn deref(&self) -> &T {
@@ -71,7 +69,7 @@ impl<'a, T> Deref for RwLockWriteGuard<'a, T> {
 	}
 }
 
-impl<'a, T> DerefMut for RwLockWriteGuard<'a, T> {
+impl<'a, T> DerefMut for RwLockWriteGuardInner<'a, T> {
 	fn deref_mut(&mut self) -> &mut T {
 		&mut self.inner
 	}

@@ -2,10 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod factory;
+#[cfg(feature = "native")]
 pub mod ffi;
 
 use std::{any::Any, sync::Arc, time::Duration};
 
+#[cfg(feature = "native")]
 use ffi::load_ffi_operators;
 use reifydb_cdc::{
 	consume::{
@@ -29,7 +31,7 @@ use reifydb_type::Result;
 use tracing::info;
 
 use crate::{
-	FlowEngine, builder::FlowBuilderConfig, coordinator::FlowCoordinator, lag::FlowLags, pool::FlowWorkerPool,
+	FlowEngine, builder::FlowBuilderConfig, coordinator::FlowCoordinator, lag::FlowLags,
 	tracker::PrimitiveVersionTracker,
 };
 
@@ -41,11 +43,12 @@ pub struct FlowSubsystem {
 
 impl FlowSubsystem {
 	/// Create a new flow subsystem.
-	pub(crate) fn new(config: FlowBuilderConfig, engine: StandardEngine, ioc: &IocContainer) -> Self {
+	pub fn new(config: FlowBuilderConfig, engine: StandardEngine, ioc: &IocContainer) -> Self {
 		let catalog = engine.catalog();
 		let executor = engine.executor();
 		let event_bus = engine.event_bus().clone();
 
+		#[cfg(feature = "native")]
 		if let Some(ref operators_dir) = config.operators_dir {
 			if let Err(e) = load_ffi_operators(operators_dir, &event_bus) {
 				panic!("Failed to load FFI operators from {:?}: {}", operators_dir, e);
@@ -65,15 +68,23 @@ impl FlowSubsystem {
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
 		let num_workers = config.num_workers;
-		info!(num_workers, "initializing flow worker pool");
+		info!(num_workers, "initializing flow coordinator with {} workers", num_workers);
 
-		let worker_pool = FlowWorkerPool::new(num_workers, factory_builder, engine.clone(), engine.catalog());
+		// Use the engine's actor runtime instead of creating a new one
+		// This is critical for WASM where actors on different runtimes cannot communicate
+		let runtime = engine.actor_runtime();
 
-		let coordinator =
-			FlowCoordinator::new(engine.clone(), primitive_tracker.clone(), worker_pool, cdc_store.clone());
+		let coordinator = FlowCoordinator::new(
+			engine.clone(),
+			primitive_tracker.clone(),
+			num_workers,
+			factory_builder,
+			cdc_store.clone(),
+			runtime.clone(),
+		);
 
 		// Register FlowLags with access to the flow catalog
-		let catalog = coordinator.catalog.clone();
+		let catalog = coordinator.catalog();
 		ioc.register_service::<Arc<dyn FlowLagsProvider>>(Arc::new(FlowLags::new(
 			primitive_tracker,
 			engine.clone(),
@@ -87,7 +98,9 @@ impl FlowSubsystem {
 			Some(100),
 		);
 
-		let consumer = PollConsumer::new(poll_config, engine, coordinator, cdc_store);
+		// Pass the same shared runtime to PollConsumer so PollActor can communicate
+		// with the coordinator and worker actors
+		let consumer = PollConsumer::new(poll_config, engine, coordinator, cdc_store, runtime);
 
 		Self {
 			consumer,

@@ -5,10 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_runtime::sync::rwlock::RwLock;
 
-#[cfg(feature = "native")]
-use reifydb_runtime::concurrent_map::native::ConcurrentMap;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::concurrent_map::wasm::ConcurrentMap;
+use reifydb_runtime::concurrent_map::ConcurrentMap;
 use reifydb_type::util::cowvec::CowVec;
 
 use crate::tier::EntryKind;

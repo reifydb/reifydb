@@ -6,9 +6,10 @@
 //! This module provides the consumer-side functionality for CDC:
 //! - Consumer traits for processing CDC events
 //! - Checkpoint management for tracking consumer progress
-//! - Poll-based consumer implementation
+//! - Poll-based consumer implementation (actor-based)
 //! - Watermark computation for retention coordination
 
+pub mod actor;
 pub mod checkpoint;
 pub mod consumer;
 pub mod host;

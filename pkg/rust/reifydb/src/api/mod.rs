@@ -8,6 +8,7 @@ use reifydb_core::event::EventBus;
 use reifydb_runtime::compute::native::NativeComputePool as ComputePool;
 #[cfg(feature = "wasm")]
 use reifydb_runtime::compute::wasm::WasmComputePool as ComputePool;
+use reifydb_runtime::actor::runtime::ActorRuntime;
 use reifydb_store_multi::{
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
 	hot::{
@@ -133,7 +134,8 @@ fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, Transa
 /// Convenience function to create a transaction layer
 pub(crate) fn transaction(
 	input: (MultiStore, SingleStore, TransactionSingle, EventBus),
+	actor_runtime: ActorRuntime,
 ) -> (TransactionMulti, TransactionSingle, EventBus) {
-	let multi = TransactionMulti::new(input.0, input.2.clone(), input.3.clone()).unwrap();
+	let multi = TransactionMulti::new(input.0, input.2.clone(), input.3.clone(), actor_runtime).unwrap();
 	(multi, input.2, input.3)
 }

@@ -185,7 +185,7 @@ pub(crate) fn to_flow_change(
 	cdc: &Cdc,
 	version: CommitVersion,
 ) -> Result<Vec<FlowChange>> {
-	let start = std::time::Instant::now();
+	let start = reifydb_runtime::time::Instant::now();
 	let mut changes = Vec::new();
 
 	let mut query_txn = engine.begin_query_at_version(version)?;

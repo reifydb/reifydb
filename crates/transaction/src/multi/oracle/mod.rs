@@ -6,10 +6,7 @@ use std::{
 	sync::Arc,
 };
 
-#[cfg(feature = "native")]
-use reifydb_runtime::time::native::Instant;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::time::wasm::Instant;
+use reifydb_runtime::time::Instant;
 
 use cleanup::cleanup_old_windows;
 
@@ -137,9 +134,8 @@ where
 	L: VersionProvider,
 {
 	/// Create a new oracle with efficient conflict detection
-	pub fn new(clock: L) -> Self {
+	pub fn new(clock: L, runtime: ActorRuntime) -> Self {
 		let shutdown_signal = Arc::new(RwLock::new(false));
-		let runtime = ActorRuntime::new();
 
 		Self {
 			inner: RwLock::new(OracleInner {
@@ -154,6 +150,11 @@ where
 			shutdown_signal,
 			runtime,
 		}
+	}
+
+	/// Get the actor runtime
+	pub fn actor_runtime(&self) -> ActorRuntime {
+		self.runtime.clone()
 	}
 
 	/// Efficient conflict detection using time windows and key indexing
@@ -447,10 +448,15 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
+	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
+		let clock = MockVersionProvider::new(start);
+		let runtime = ActorRuntime::new();
+		Oracle::new(clock, runtime)
+	}
+
 	#[test]
 	fn test_oracle_basic_creation() {
-		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(0);
 
 		// Oracle should be created successfully
 		assert_eq!(oracle.version().unwrap(), 0);
@@ -458,8 +464,7 @@ pub mod tests {
 
 	#[test]
 	fn test_window_creation_and_indexing() {
-		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(0);
 
 		// Create a conflict manager with some keys
 		let mut conflicts = ConflictManager::new();
@@ -490,8 +495,7 @@ pub mod tests {
 
 	#[test]
 	fn test_conflict_detection_between_transactions() {
-		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(1);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -527,8 +531,7 @@ pub mod tests {
 
 	#[test]
 	fn test_no_conflict_different_keys() {
-		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(0);
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -557,8 +560,7 @@ pub mod tests {
 
 	#[test]
 	fn test_key_indexing_multiple_windows() {
-		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(0);
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -593,8 +595,7 @@ pub mod tests {
 
 	#[test]
 	fn test_version_filtering_in_conflict_detection() {
-		let clock = MockVersionProvider::new(2);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(2);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -635,8 +636,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_operations_fallback() {
-		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(1);
 
 		let key1 = create_test_key("key1");
 
@@ -667,8 +667,7 @@ pub mod tests {
 
 	#[test]
 	fn test_window_cleanup_mechanism() {
-		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(0);
 
 		// Add many transactions to trigger cleanup
 		let mut keys = Vec::new();
@@ -703,8 +702,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_conflict_manager() {
-		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(0);
 
 		// Transaction with no conflicts (read-only)
 		let conflicts = ConflictManager::new(); // Empty conflict manager
@@ -726,8 +724,7 @@ pub mod tests {
 
 	#[test]
 	fn test_write_write_conflict() {
-		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(1);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -754,8 +751,7 @@ pub mod tests {
 
 	#[test]
 	fn test_read_write_conflict() {
-		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(1);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -782,8 +778,7 @@ pub mod tests {
 
 	#[test]
 	fn test_sequential_transactions_no_conflict() {
-		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(0);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -814,8 +809,7 @@ pub mod tests {
 
 	#[test]
 	fn test_comptokenize_multi_key_scenario() {
-		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = create_test_oracle(1);
 
 		let key_a = create_test_key("key_a");
 		let key_b = create_test_key("key_b");
@@ -864,8 +858,7 @@ pub mod tests {
 
 		for iteration in 0..ITERATIONS {
 			// Create fresh oracle for each iteration to avoid conflicts
-			let clock = MockVersionProvider::new(0);
-			let oracle = Arc::new(Oracle::<_>::new(clock));
+			let oracle = Arc::new(create_test_oracle(0));
 			let mut handles = vec![];
 
 			for i in 0..NUM_CONCURRENT {
@@ -940,8 +933,7 @@ pub mod tests {
 			time::Duration,
 		};
 
-		let clock = MockVersionProvider::new(0);
-		let oracle = Arc::new(Oracle::<_>::new(clock));
+		let oracle = Arc::new(create_test_oracle(0));
 		let barrier = Arc::new(Barrier::new(10));
 
 		let mut handles = vec![];

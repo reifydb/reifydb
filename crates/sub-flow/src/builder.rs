@@ -47,8 +47,10 @@ impl FlowBuilder {
 	}
 }
 
-/// Internal configuration extracted from FlowBuilder
-pub(crate) struct FlowBuilderConfig {
+/// Configuration for FlowSubsystem
+pub struct FlowBuilderConfig {
+	/// Directory containing FFI operator shared libraries (native only)
 	pub operators_dir: Option<PathBuf>,
+	/// Number of worker threads for flow processing
 	pub num_workers: usize,
 }

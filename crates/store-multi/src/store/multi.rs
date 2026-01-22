@@ -29,9 +29,8 @@ use super::{
 		VersionedGetResult, compute_version_suffix, encode_versioned_key, encode_versioned_key_with_suffix,
 		get_at_version,
 	},
+	worker::{DropMessage, DropRequest},
 };
-#[cfg(feature = "native")]
-use super::worker::{DropMessage, DropRequest};
 use crate::tier::{EntryKind, EntryKind::Multi, RangeCursor, TierStorage};
 
 /// Fixed chunk size for internal tier scans.
@@ -196,51 +195,41 @@ impl MultiVersionCommit for StandardMultiStore {
 			}
 		}
 
-		// Process explicit drops now that pending_set_keys is complete (native only - uses background worker)
-		#[cfg(feature = "native")]
-		{
-			let mut drop_batch = Vec::with_capacity(explicit_drops.len() + pending_set_keys.len());
-			for (table, key, up_to_version, keep_last_versions) in explicit_drops {
-				let pending_version = if pending_set_keys.contains(key.as_ref()) {
-					Some(version)
-				} else {
-					None
-				};
+		// Process explicit drops now that pending_set_keys is complete
+		let mut drop_batch = Vec::with_capacity(explicit_drops.len() + pending_set_keys.len());
+		for (table, key, up_to_version, keep_last_versions) in explicit_drops {
+			let pending_version = if pending_set_keys.contains(key.as_ref()) {
+				Some(version)
+			} else {
+				None
+			};
 
-				drop_batch.push(DropRequest {
-					table,
-					key: key.0.clone(),
-					up_to_version,
-					keep_last_versions,
-					commit_version: version,
-					pending_version,
-				});
-			}
-
-			// Add implicit drops for single-version-semantics keys
-			for key_bytes in pending_set_keys.iter() {
-				let key = CowVec::new(key_bytes.clone());
-				let table = classify_key(&EncodedKey(key.clone()));
-				drop_batch.push(DropRequest {
-					table,
-					key,
-					up_to_version: None,
-					keep_last_versions: Some(1),
-					commit_version: version,
-					pending_version: Some(version),
-				});
-			}
-
-			if !drop_batch.is_empty() {
-				let _ = self.drop_sender.send(DropMessage::Batch(drop_batch));
-			}
+			drop_batch.push(DropRequest {
+				table,
+				key: key.0.clone(),
+				up_to_version,
+				keep_last_versions,
+				commit_version: version,
+				pending_version,
+			});
 		}
 
-		// Suppress unused warnings in WASM
-		#[cfg(feature = "wasm")]
-		{
-			let _ = explicit_drops;
-			let _ = pending_set_keys;
+		// Add implicit drops for single-version-semantics keys
+		for key_bytes in pending_set_keys.iter() {
+			let key = CowVec::new(key_bytes.clone());
+			let table = classify_key(&EncodedKey(key.clone()));
+			drop_batch.push(DropRequest {
+				table,
+				key,
+				up_to_version: None,
+				keep_last_versions: Some(1),
+				commit_version: version,
+				pending_version: Some(version),
+			});
+		}
+
+		if !drop_batch.is_empty() {
+			let _ = self.drop_actor.send(DropMessage::Batch(drop_batch));
 		}
 
 		storage.set(batches)?;

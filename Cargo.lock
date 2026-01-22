@@ -1672,6 +1672,7 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-testing",
@@ -1872,6 +1873,7 @@ dependencies = [
 name = "reifydb-runtime"
 version = "0.2.0"
 dependencies = [
+ "cfg-if",
  "crossbeam-channel",
  "dashmap",
  "futures-util",
@@ -1914,10 +1916,6 @@ dependencies = [
 name = "reifydb-store-multi"
 version = "0.2.0"
 dependencies = [
- "crossbeam-channel",
- "dashmap",
- "parking_lot",
- "rayon",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-testing",
@@ -1932,11 +1930,8 @@ dependencies = [
 name = "reifydb-store-single"
 version = "0.2.0"
 dependencies = [
- "crossbeam-channel",
- "dashmap",
- "parking_lot",
- "rayon",
  "reifydb-core",
+ "reifydb-runtime",
  "reifydb-testing",
  "reifydb-type",
  "rusqlite",
@@ -1973,11 +1968,11 @@ dependencies = [
  "reifydb-engine",
  "reifydb-hash",
  "reifydb-rql",
+ "reifydb-runtime",
  "reifydb-sdk",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-sub-api",
- "reifydb-sub-server",
  "reifydb-transaction",
  "reifydb-type",
  "serde",
@@ -2178,6 +2173,7 @@ dependencies = [
  "js-sys",
  "reifydb-auth",
  "reifydb-catalog",
+ "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-hash",
@@ -2185,6 +2181,8 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
+ "reifydb-sub-api",
+ "reifydb-sub-flow",
  "reifydb-transaction",
  "reifydb-type",
  "serde",

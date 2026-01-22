@@ -5,29 +5,15 @@
 
 use std::time::Duration;
 
-use crate::sync::mutex::native::MutexGuard;
+use crate::sync::mutex::MutexGuard;
 
-/// Result of a timed wait on a condition variable.
-pub struct WaitTimeoutResult {
-	timed_out: bool,
-}
-
-impl WaitTimeoutResult {
-	/// Returns whether the wait timed out.
-	pub fn timed_out(&self) -> bool {
-		self.timed_out
-	}
-}
-
-/// A condition variable for coordinating threads.
-///
-/// Native implementation wraps parking_lot::Condvar.
+/// Native condition variable implementation wrapping parking_lot::Condvar.
 #[derive(Debug)]
-pub struct Condvar {
+pub struct CondvarInner {
 	inner: parking_lot::Condvar,
 }
 
-impl Condvar {
+impl CondvarInner {
 	/// Creates a new condition variable.
 	pub fn new() -> Self {
 		Self {
@@ -37,15 +23,13 @@ impl Condvar {
 
 	/// Blocks the current thread until notified.
 	pub fn wait<'a, T>(&self, guard: &mut MutexGuard<'a, T>) {
-		self.inner.wait(&mut guard.inner);
+		self.inner.wait(&mut guard.inner.inner);
 	}
 
 	/// Blocks the current thread until notified or the timeout expires.
-	pub fn wait_for<'a, T>(&self, guard: &mut MutexGuard<'a, T>, timeout: Duration) -> WaitTimeoutResult {
-		let result = self.inner.wait_for(&mut guard.inner, timeout);
-		WaitTimeoutResult {
-			timed_out: result.timed_out(),
-		}
+	/// Returns true if timed out.
+	pub fn wait_for<'a, T>(&self, guard: &mut MutexGuard<'a, T>, timeout: Duration) -> bool {
+		self.inner.wait_for(&mut guard.inner.inner, timeout).timed_out()
 	}
 
 	/// Wakes up one blocked thread.
@@ -59,7 +43,7 @@ impl Condvar {
 	}
 }
 
-impl Default for Condvar {
+impl Default for CondvarInner {
 	fn default() -> Self {
 		Self::new()
 	}

@@ -28,6 +28,9 @@ reifydb-auth = { workspace = true, default-features = false }
 reifydb-transaction = { workspace = true, default-features = false, features = ["wasm"] }
 reifydb-rqlv2 = { workspace = true, default-features = false }
 reifydb-runtime = { workspace = true, default-features = false, features = ["wasm"] }
+reifydb-sub-flow = { workspace = true, default-features = false, features = ["wasm"] }
+reifydb-cdc = { workspace = true, default-features = false, features = ["wasm"] }
+reifydb-sub-api = { workspace = true }
 
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }

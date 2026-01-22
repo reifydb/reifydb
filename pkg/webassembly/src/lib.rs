@@ -9,10 +9,21 @@
 use reifydb_catalog::schema::SchemaRegistry;
 use wasm_bindgen::prelude::*;
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::actor::runtime::ActorRuntime;
+
+// Debug helper to log to browser console
+fn console_log(msg: &str) {
+    web_sys::console::log_1(&msg.into());
+}
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_core::interface::auth::Identity;
+use reifydb_core::event::transaction::PostCommitEvent;
 use reifydb_type::params::Params;
+use reifydb_cdc::storage::CdcStore;
+use reifydb_cdc::produce::actor::{spawn_cdc_producer, CdcProducerEventListener};
+use reifydb_sub_flow::{builder::FlowBuilderConfig, subsystem::FlowSubsystem};
+use reifydb_sub_api::subsystem::Subsystem;
 
 mod utils;
 mod error;
@@ -26,6 +37,7 @@ pub use error::JsError;
 #[wasm_bindgen]
 pub struct WasmEngine {
 	inner: StandardEngine,
+	flow_subsystem: FlowSubsystem,
 }
 
 #[wasm_bindgen]
@@ -62,9 +74,13 @@ impl WasmEngine {
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 
+		// Create actor runtime at the top level - this will be shared by
+		// the transaction manager (watermark actors) and flow subsystem (poll/coordinator actors)
+		let actor_runtime = ActorRuntime::new();
+
 		// Create transactions
 		let single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
-		let multi = TransactionMulti::new(multi_store.clone(), single.clone(), eventbus.clone())
+		let multi = TransactionMulti::new(multi_store.clone(), single.clone(), eventbus.clone(), actor_runtime.clone())
 			.map_err(|e| JsError::from_error(&e))?;
 
 		// Setup IoC container
@@ -85,6 +101,26 @@ impl WasmEngine {
 		// Register metrics store for engine
 		ioc = ioc.register(single_store.clone());
 
+		// Register CdcStore (required by sub-flow)
+		let cdc_store = CdcStore::memory();
+		ioc = ioc.register(cdc_store.clone());
+
+		// Spawn CDC producer actor on the shared runtime
+		console_log("[WASM] Spawning CDC producer actor...");
+		let cdc_producer_handle = spawn_cdc_producer(
+			&actor_runtime,
+			cdc_store,
+			multi_store.clone(),
+		);
+
+		// Register event listener to forward PostCommitEvent to CDC producer
+		let cdc_listener = CdcProducerEventListener::new(cdc_producer_handle.actor_ref.clone());
+		eventbus.register::<PostCommitEvent, _>(cdc_listener);
+		console_log("[WASM] CDC producer actor registered!");
+
+		// Clone ioc for FlowSubsystem (engine consumes ioc)
+		let ioc_ref = ioc.clone();
+
 		// Build engine
 		let inner = StandardEngine::new(
 			multi,
@@ -96,7 +132,18 @@ impl WasmEngine {
 			ioc,
 		);
 
-		Ok(WasmEngine { inner })
+		// Create and start FlowSubsystem
+		let flow_config = FlowBuilderConfig {
+			operators_dir: None,  // No FFI operators in WASM
+			num_workers: 1,       // Single-threaded for WASM
+		};
+		console_log("[WASM] Creating FlowSubsystem...");
+		let mut flow_subsystem = FlowSubsystem::new(flow_config, inner.clone(), &ioc_ref);
+		console_log("[WASM] Starting FlowSubsystem...");
+		flow_subsystem.start().map_err(|e| JsError::from_error(&e))?;
+		console_log("[WASM] FlowSubsystem started successfully!");
+
+		Ok(WasmEngine { inner, flow_subsystem })
 	}
 
 	/// Execute a query and return results as JavaScript objects
@@ -183,6 +230,12 @@ impl WasmEngine {
 			.map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
+	}
+}
+
+impl Drop for WasmEngine {
+	fn drop(&mut self) {
+		let _ = self.flow_subsystem.shutdown();
 	}
 }
 

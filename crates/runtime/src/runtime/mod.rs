@@ -9,8 +9,10 @@ pub mod native;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-#[cfg(feature = "native")]
-pub(crate) use native::NativeRuntime;
-
-#[cfg(feature = "wasm")]
-pub(crate) use wasm::{WasmHandle, WasmJoinError, WasmJoinHandle, WasmRuntime};
+cfg_if::cfg_if! {
+    if #[cfg(feature = "native")] {
+        pub(crate) use native::NativeRuntime;
+    } else if #[cfg(feature = "wasm")] {
+        pub(crate) use wasm::{WasmHandle, WasmJoinError, WasmJoinHandle, WasmRuntime};
+    }
+}

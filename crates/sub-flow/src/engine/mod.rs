@@ -29,10 +29,10 @@ use reifydb_rql::flow::{
 use reifydb_type::{error::Error, value::Value};
 use tracing::instrument;
 
-use crate::{
-	ffi::loader::ffi_operator_loader,
-	operator::{BoxedOperator, Operators},
-};
+use crate::operator::{BoxedOperator, Operators};
+
+#[cfg(feature = "native")]
+use crate::ffi::loader::ffi_operator_loader;
 
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
@@ -71,6 +71,7 @@ impl FlowEngine {
 	}
 
 	/// Create an FFI operator instance from the global singleton loader
+	#[cfg(feature = "native")]
 	#[instrument(name = "flow::engine::create_ffi_operator", level = "debug", skip(self, config), fields(operator = %operator, node_id = ?node_id))]
 	pub(crate) fn create_ffi_operator(
 		&self,
@@ -93,10 +94,17 @@ impl FlowEngine {
 	}
 
 	/// Check if an operator name corresponds to an FFI operator
+	#[cfg(feature = "native")]
 	pub(crate) fn is_ffi_operator(&self, operator: &str) -> bool {
 		let loader = ffi_operator_loader();
 		let loader_read = loader.read().unwrap();
 		loader_read.has_operator(operator)
+	}
+
+	/// FFI operators are not supported in WASM
+	#[cfg(not(feature = "native"))]
+	pub(crate) fn is_ffi_operator(&self, _operator: &str) -> bool {
+		false
 	}
 
 	/// Returns a set of all currently registered flow IDs

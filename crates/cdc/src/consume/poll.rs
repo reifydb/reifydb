@@ -1,28 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+//! Poll-based CDC consumer that wraps the PollActor with the CdcConsumer interface.
+
 use std::{
-	ops::Bound,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	thread,
-	thread::{JoinHandle, sleep},
 	time::Duration,
 };
 
-use reifydb_core::{
-	common::CommitVersion,
-	encoded::key::EncodedKey,
-	interface::cdc::{Cdc, CdcChange, CdcConsumerId},
-	key::{EncodableKey, Key, cdc_consumer::CdcConsumerKey, kind::KeyKind},
-};
+use reifydb_core::interface::cdc::CdcConsumerId;
+use reifydb_runtime::actor::runtime::{ActorHandle, ActorRuntime};
 use reifydb_type::Result;
-use tracing::{debug, error};
 
 use super::{
-	checkpoint::CdcCheckpoint,
+	actor::{PollActor, PollActorConfig, PollMsg},
 	consumer::{CdcConsume, CdcConsumer},
 	host::CdcHost,
 };
@@ -57,199 +51,86 @@ impl PollConsumerConfig {
 	}
 }
 
-pub struct PollConsumer<H: CdcHost, F: CdcConsume> {
-	host: Option<H>,
-	consumer: Option<Box<F>>,
+/// Poll-based CDC consumer backed by an actor.
+///
+/// Implements the `CdcConsumer` trait for start/stop lifecycle management.
+/// Internally uses `PollActor` for the actual polling logic.
+pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
 	config: PollConsumerConfig,
-	state: Arc<ConsumerState>,
-	worker: Option<JoinHandle<()>>,
+	host: Option<H>,
+	consumer: Option<C>,
 	store: Option<CdcStore>,
+	running: Arc<AtomicBool>,
+	runtime: ActorRuntime,
+	/// Handle to the poll actor - must be joined on stop for proper cleanup
+	handle: Option<ActorHandle<PollMsg>>,
 }
 
-struct ConsumerState {
-	consumer_key: EncodedKey,
-	running: AtomicBool,
-}
-
-impl<H: CdcHost, C: CdcConsume> PollConsumer<H, C> {
-	pub fn new(config: PollConsumerConfig, host: H, consume: C, store: CdcStore) -> Self {
-		let consumer_key = CdcConsumerKey {
-			consumer: config.consumer_id.clone(),
-		}
-		.encode();
-
-		Self {
-			host: Some(host),
-			consumer: Some(Box::new(consume)),
-			config,
-			state: Arc::new(ConsumerState {
-				consumer_key,
-				running: AtomicBool::new(false),
-			}),
-			worker: None,
-			store: Some(store),
-		}
-	}
-
-	/// Consume a batch of CDC events.
-	/// Returns the number of CDC transactions processed (0 if none available).
-	fn consume_batch(
-		state: &ConsumerState,
-		host: &H,
-		consumer: &C,
-		store: &CdcStore,
-		max_batch_size: Option<u64>,
-	) -> Result<usize> {
-		// Get current version and wait for watermark to catch up.
-		// This ensures we can fetch CDC events up to the latest committed version
-		// rather than always chasing a lagging done_until.
-		let current_version = host.current_version()?;
-		host.wait_for_mark_timeout(current_version, Duration::from_millis(200));
-
-		let safe_version = host.done_until();
-
-		let mut transaction = host.begin_command()?;
-
-		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key)?;
-		if safe_version <= checkpoint {
-			// there's nothing safe to fetch yet
-			transaction.rollback()?;
-			return Ok(0);
-		}
-
-		// Only fetch CDC events up to safe_version to avoid race conditions
-		let transactions = fetch_cdcs_until(store, checkpoint, safe_version, max_batch_size)?;
-		if transactions.is_empty() {
-			transaction.rollback()?;
-			return Ok(0);
-		}
-
-		let count = transactions.len();
-		let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
-
-		// Filter transactions to only those with Row or Flow-related changes
-		// Flow-related changes are needed to detect new flow definitions
-		let relevant_cdcs = transactions
-			.into_iter()
-			.filter(|cdc| {
-				cdc.changes.iter().any(|change| match &change.change {
-					CdcChange::Insert {
-						key,
-						..
-					}
-					| CdcChange::Update {
-						key,
-						..
-					}
-					| CdcChange::Delete {
-						key,
-						..
-					} => {
-						if let Some(kind) = Key::kind(key) {
-							matches!(
-								kind,
-								KeyKind::Row
-									| KeyKind::Flow | KeyKind::FlowNode
-									| KeyKind::FlowNodeByFlow | KeyKind::FlowEdge
-									| KeyKind::FlowEdgeByFlow | KeyKind::NamespaceFlow
-							)
-						} else {
-							false
-						}
-					}
-				})
-			})
-			.collect::<Vec<_>>();
-
-		if !relevant_cdcs.is_empty() {
-			consumer.consume(&mut transaction, relevant_cdcs)?;
-		}
-
-		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version)?;
-		transaction.commit()?;
-
-		Ok(count)
-	}
-
-	fn polling_loop(
+impl<H: CdcHost, C: CdcConsume + Send + 'static> PollConsumer<H, C> {
+	pub fn new(
 		config: PollConsumerConfig,
 		host: H,
-		consumer: Box<C>,
+		consume: C,
 		store: CdcStore,
-		state: Arc<ConsumerState>,
-	) {
-		debug!("[Consumer {:?}] Started polling with interval {:?}", config.consumer_id, config.poll_interval);
-
-		while state.running.load(Ordering::Acquire) {
-			match Self::consume_batch(&state, &host, &consumer, &store, config.max_batch_size) {
-				Ok(count) if count > 0 => {
-					// More events likely available - poll again immediately
-				}
-				Ok(_) => {
-					sleep(config.poll_interval);
-				}
-				Err(error) => {
-					error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
-					// Sleep before retrying on error
-					sleep(config.poll_interval);
-				}
-			}
+		runtime: ActorRuntime,
+	) -> Self {
+		Self {
+			config,
+			host: Some(host),
+			consumer: Some(consume),
+			store: Some(store),
+			running: Arc::new(AtomicBool::new(false)),
+			runtime,
+			handle: None,
 		}
-
-		debug!("[Consumer {:?}] Stopped", config.consumer_id);
 	}
 }
 
-impl<H: CdcHost, F: CdcConsume + Send + 'static> CdcConsumer for PollConsumer<H, F> {
+impl<H: CdcHost, C: CdcConsume + Send + 'static> CdcConsumer for PollConsumer<H, C> {
 	fn start(&mut self) -> Result<()> {
-		assert!(self.worker.is_none(), "start() can only be called once");
-
-		if self.state.running.swap(true, Ordering::AcqRel) {
-			return Ok(());
+		if self.running.swap(true, Ordering::AcqRel) {
+			return Ok(()); // Already running
 		}
 
 		let host = self.host.take().expect("host already consumed");
 		let consumer = self.consumer.take().expect("consumer already consumed");
-		let store = self.store.take().expect("cdc_store already consumed");
+		let store = self.store.take().expect("store already consumed");
 
-		let state = Arc::clone(&self.state);
-		let config = self.config.clone();
+		let actor_config = PollActorConfig {
+			consumer_id: self.config.consumer_id.clone(),
+			poll_interval: self.config.poll_interval,
+			max_batch_size: self.config.max_batch_size,
+		};
 
-		self.worker = Some(thread::Builder::new()
-			.name(config.thread_name.clone())
-			.spawn(move || {
-				Self::polling_loop(config, host, consumer, store, state);
-			})
-			.expect("Failed to spawn CDC poll thread"));
+		let actor = PollActor::new(actor_config, host, consumer, store);
+
+		// Use the shared runtime instead of creating a new one
+		let handle = self.runtime.spawn(&self.config.thread_name, actor);
+		self.handle = Some(handle);
 
 		Ok(())
 	}
 
 	fn stop(&mut self) -> Result<()> {
-		if !self.state.running.swap(false, Ordering::AcqRel) {
-			return Ok(());
+		if !self.running.swap(false, Ordering::AcqRel) {
+			return Ok(()); // Already stopped
 		}
 
-		if let Some(worker) = self.worker.take() {
-			// Wait for thread to finish
-			let _ = worker.join();
+		// Signal the runtime to shutdown - this will trigger cancellation
+		// which the actor checks before each poll
+		self.runtime.shutdown();
+
+		// Join the poll actor thread to ensure proper cleanup
+		// This ensures the PollActor (and its consumer, e.g. FlowCoordinator)
+		// are dropped cleanly before we return
+		if let Some(handle) = self.handle.take() {
+			let _ = handle.join();
 		}
 
 		Ok(())
 	}
 
 	fn is_running(&self) -> bool {
-		self.state.running.load(Ordering::Acquire)
+		self.running.load(Ordering::Acquire)
 	}
-}
-
-fn fetch_cdcs_until(
-	cdc_store: &CdcStore,
-	since_version: CommitVersion,
-	until_version: CommitVersion,
-	max_batch_size: Option<u64>,
-) -> Result<Vec<Cdc>> {
-	let batch_size = max_batch_size.unwrap_or(1024);
-	let batch = cdc_store.read_range(Bound::Excluded(since_version), Bound::Included(until_version), batch_size)?;
-	Ok(batch.items)
 }

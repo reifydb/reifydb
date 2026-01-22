@@ -287,6 +287,7 @@ pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
 	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+	use reifydb_runtime::actor::runtime::ActorRuntime;
 	use reifydb_store_multi::MultiStore;
 	use reifydb_store_single::SingleStore;
 	use reifydb_transaction::{
@@ -318,8 +319,9 @@ pub mod tests {
 			let multi_store = MultiStore::testing_memory();
 			let single_store = SingleStore::testing_memory();
 			let event_bus = EventBus::new();
+			let actor_runtime = ActorRuntime::new();
 			let single = TransactionSingle::svl(single_store, event_bus.clone());
-			let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone()).unwrap();
+			let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_runtime).unwrap();
 			Self {
 				multi,
 				single,

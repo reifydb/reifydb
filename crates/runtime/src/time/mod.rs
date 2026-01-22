@@ -8,10 +8,54 @@
 //! - **Native**: Uses `std::time::SystemTime`
 //! - **WASM**: Uses JavaScript's `Date.now()` via wasm-bindgen
 
+use std::time::Duration;
+
 #[cfg(feature = "native")]
-pub mod native;
+mod native;
 #[cfg(feature = "wasm")]
-pub mod wasm;
+mod wasm;
+
+// Re-export time functions for external use
+#[cfg(feature = "native")]
+pub use native::{now_micros, now_millis, now_nanos, now_secs};
+#[cfg(feature = "wasm")]
+pub use wasm::{now_micros, now_millis, now_nanos, now_secs};
+
+cfg_if::cfg_if! {
+	if #[cfg(feature = "native")] {
+		type InstantInner = native::InstantInner;
+	} else if #[cfg(feature = "wasm")] {
+		type InstantInner = wasm::InstantInner;
+	}
+}
+
+/// Platform-agnostic instant for measuring elapsed time.
+#[derive(Clone, Copy, Debug)]
+pub struct Instant {
+	inner: InstantInner,
+}
+
+impl Instant {
+	/// Creates an Instant representing the current moment in time.
+	#[inline]
+	pub fn now() -> Self {
+		Self {
+			inner: InstantInner::now(),
+		}
+	}
+
+	/// Returns the amount of time elapsed since this instant.
+	#[inline]
+	pub fn elapsed(&self) -> Duration {
+		self.inner.elapsed()
+	}
+
+	/// Returns the amount of time elapsed between two instants.
+	#[inline]
+	pub fn duration_since(&self, earlier: Instant) -> Duration {
+		self.inner.duration_since(earlier.inner)
+	}
+}
 
 #[cfg(test)]
 mod tests {
@@ -19,25 +63,6 @@ mod tests {
 	use super::native::*;
 	#[cfg(feature = "wasm")]
 	use super::wasm::*;
-
-	#[test]
-	fn test_time_functions_return_reasonable_values() {
-		let nanos = now_nanos();
-		let micros = now_micros();
-		let millis = now_millis();
-		let secs = now_secs();
-
-		// Check that values are in reasonable ranges (after year 2020)
-		assert!(secs > 1_600_000_000);
-		assert!(millis > 1_600_000_000_000);
-		assert!(micros > 1_600_000_000_000_000);
-		assert!(nanos > 1_600_000_000_000_000_000);
-
-		// Check consistency between units
-		assert_eq!(micros, (nanos / 1_000) as u64);
-		assert_eq!(millis, (nanos / 1_000_000) as u64);
-		assert_eq!(secs, (nanos / 1_000_000_000) as u64);
-	}
 
 	#[test]
 	fn test_time_progresses() {

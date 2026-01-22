@@ -7,12 +7,7 @@
 
 use std::{collections::BTreeMap, ops::Bound, sync::Arc};
 
-#[cfg(feature = "native")]
-use parking_lot::RwLock;
-
-#[cfg(feature = "wasm")]
-use std::sync::RwLock;
-
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::instrument;
 
@@ -41,49 +36,24 @@ impl MemoryPrimitiveStorage {
 		}
 	}
 
-	// Helper to acquire read lock (handles platform differences)
-	#[cfg(feature = "native")]
-	#[inline]
-	fn read_lock(&self) -> parking_lot::RwLockReadGuard<'_, BTreeMap<CowVec<u8>, Option<CowVec<u8>>>> {
-		self.inner.data.read()
-	}
-
-	#[cfg(feature = "wasm")]
-	#[inline]
-	fn read_lock(&self) -> std::sync::RwLockReadGuard<'_, BTreeMap<CowVec<u8>, Option<CowVec<u8>>>> {
-		self.inner.data.read().unwrap()
-	}
-
-	// Helper to acquire write lock (handles platform differences)
-	#[cfg(feature = "native")]
-	#[inline]
-	fn write_lock(&self) -> parking_lot::RwLockWriteGuard<'_, BTreeMap<CowVec<u8>, Option<CowVec<u8>>>> {
-		self.inner.data.write()
-	}
-
-	#[cfg(feature = "wasm")]
-	#[inline]
-	fn write_lock(&self) -> std::sync::RwLockWriteGuard<'_, BTreeMap<CowVec<u8>, Option<CowVec<u8>>>> {
-		self.inner.data.write().unwrap()
-	}
 }
 
 impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::single::memory::get", level = "trace", skip(self, key), fields(key_len = key.len()))]
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
-		let map = self.read_lock();
+		let map = self.inner.data.read();
 		Ok(map.get(key).cloned().flatten())
 	}
 
 	#[instrument(name = "store::single::memory::contains", level = "trace", skip(self, key), fields(key_len = key.len()), ret)]
 	fn contains(&self, key: &[u8]) -> Result<bool> {
-		let map = self.read_lock();
+		let map = self.inner.data.read();
 		Ok(map.contains_key(key))
 	}
 
 	#[instrument(name = "store::single::memory::set", level = "debug", skip(self, entries), fields(entry_count = entries.len()))]
 	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
-		let mut map = self.write_lock();
+		let mut map = self.inner.data.write();
 		for (key, value) in entries {
 			match value {
 				Some(v) => {
@@ -109,7 +79,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		let map = self.read_lock();
+		let map = self.inner.data.read();
 
 		// Adjust start bound based on cursor
 		let actual_start = if let Some(ref last_key) = cursor.last_key {
@@ -154,7 +124,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		let map = self.read_lock();
+		let map = self.inner.data.read();
 
 		// Adjust end bound based on cursor (reverse iteration)
 		let actual_end = if let Some(ref last_key) = cursor.last_key {
@@ -196,7 +166,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::single::memory::clear_table", level = "debug", skip(self))]
 	fn clear_table(&self) -> Result<()> {
-		let mut map = self.write_lock();
+		let mut map = self.inner.data.write();
 		map.clear();
 		Ok(())
 	}

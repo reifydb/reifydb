@@ -6,10 +6,7 @@ use std::{
 	time::Duration,
 };
 
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_runtime::time::native::Instant;
-#[cfg(target_arch = "wasm32")]
-use reifydb_runtime::time::wasm::Instant;
+use reifydb_runtime::time::Instant;
 
 use reifydb_core::{
 	common::CommitVersion,

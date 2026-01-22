@@ -226,17 +226,7 @@ impl<M: Send + 'static> TestContext<M> {
 		};
 
 		#[cfg(feature = "wasm")]
-		let actor_ref = {
-			use std::cell::RefCell;
-			use std::rc::Rc;
-			use std::sync::atomic::AtomicBool;
-			use std::sync::Arc;
-
-			ActorRef::new(
-				Rc::new(RefCell::new(None)),
-				Arc::new(AtomicBool::new(true)),
-			)
-		};
+		let actor_ref = crate::actor::mailbox::create_actor_ref();
 
 		// Create a runtime (no tokio handle needed anymore)
 		let runtime = ActorRuntime::new();

@@ -37,6 +37,7 @@ use reifydb_core::{
 use reifydb_function::{math, registry::Functions, series, subscription};
 use reifydb_metric::metric::MetricReader;
 use reifydb_rqlv2::compiler::Compiler;
+use reifydb_runtime::actor::runtime::ActorRuntime;
 use reifydb_transaction::{
 	interceptor::factory::InterceptorFactory,
 	multi::transaction::TransactionMulti,
@@ -507,6 +508,12 @@ impl StandardEngine {
 	#[inline]
 	pub fn multi_owned(&self) -> TransactionMulti {
 		self.multi.clone()
+	}
+
+	/// Get the actor runtime
+	#[inline]
+	pub fn actor_runtime(&self) -> ActorRuntime {
+		self.multi.actor_runtime()
 	}
 
 	#[inline]

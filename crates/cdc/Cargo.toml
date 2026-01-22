@@ -11,11 +11,13 @@ description = "Change Data Capture module for ReifyDB"
 default = ["native"]
 native = [
     "reifydb-core/native",
+    "reifydb-runtime/native",
     "reifydb-transaction/native",
     "reifydb-type/native",
 ]
 wasm = [
     "reifydb-core/wasm",
+    "reifydb-runtime/wasm",
     "reifydb-transaction/wasm",
     "reifydb-type/wasm",
 ]
@@ -24,6 +26,7 @@ wasm = [
 crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 tracing = { workspace = true }

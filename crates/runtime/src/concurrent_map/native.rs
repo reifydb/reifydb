@@ -4,14 +4,14 @@ use std::hash::Hash;
 use dashmap::DashMap;
 
 /// Native implementation of ConcurrentMap using DashMap for high-performance concurrent access.
-pub struct ConcurrentMap<K, V>
+pub struct ConcurrentMapInner<K, V>
 where
     K: Eq + Hash,
 {
     inner: DashMap<K, V>,
 }
 
-impl<K, V> ConcurrentMap<K, V>
+impl<K, V> ConcurrentMapInner<K, V>
 where
     K: Eq + Hash,
 {
@@ -74,7 +74,7 @@ where
     }
 }
 
-impl<K, V> Default for ConcurrentMap<K, V>
+impl<K, V> Default for ConcurrentMapInner<K, V>
 where
     K: Eq + Hash,
 {

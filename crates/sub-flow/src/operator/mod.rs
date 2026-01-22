@@ -10,6 +10,7 @@ use crate::transaction::FlowTransaction;
 pub mod apply;
 pub mod distinct;
 pub mod extend;
+#[cfg(feature = "native")]
 pub mod ffi;
 pub mod filter;
 pub mod join;

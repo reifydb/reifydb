@@ -9,10 +9,7 @@
 use std::time::Duration;
 
 use reifydb_engine::engine::StandardEngine;
-#[cfg(feature = "native")]
-use reifydb_runtime::compute::native::NativeComputePool as ComputePool;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::compute::wasm::WasmComputePool as ComputePool;
+use reifydb_runtime::compute::ComputePool;
 
 /// Configuration for query execution.
 #[derive(Debug, Clone)]

@@ -34,15 +34,13 @@ pub fn now_secs() -> u64 {
 	(now_nanos() / 1_000_000_000) as u64
 }
 
-/// Platform-agnostic instant for measuring elapsed time.
-///
-/// WASM implementation uses JavaScript's Date.now() for timing.
+/// WASM instant implementation using JavaScript's Date.now() for timing.
 #[derive(Clone, Copy, Debug)]
-pub struct Instant {
+pub struct InstantInner {
 	millis: f64,
 }
 
-impl Instant {
+impl InstantInner {
 	/// Creates an Instant representing the current moment in time.
 	#[inline]
 	pub fn now() -> Self {
@@ -61,7 +59,7 @@ impl Instant {
 
 	/// Returns the amount of time elapsed between two instants.
 	#[inline]
-	pub fn duration_since(&self, earlier: Instant) -> Duration {
+	pub fn duration_since(&self, earlier: InstantInner) -> Duration {
 		let elapsed_millis = self.millis - earlier.millis;
 		Duration::from_millis(elapsed_millis.max(0.0) as u64)
 	}

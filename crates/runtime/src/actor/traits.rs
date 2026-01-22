@@ -119,7 +119,7 @@ impl ActorConfig {
 /// ```
 pub trait Actor: Send + 'static {
 	/// The actor's internal state (owned, not shared).
-	type State: Send + 'static;
+	type State: 'static;
 
 	/// Messages this actor can receive.
 	type Message: Send + 'static;

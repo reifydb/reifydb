@@ -52,6 +52,7 @@ native = [
 	"reifydb-store-multi/native",
 	"reifydb-store-single/native",
 	"reifydb-transaction/native",
+	"reifydb-sub-flow?/native",
 ]
 wasm = [
 	"reifydb-core/wasm",
@@ -60,6 +61,7 @@ wasm = [
 	"reifydb-store-multi/wasm",
 	"reifydb-store-single/wasm",
 	"reifydb-transaction/wasm",
+	"reifydb-sub-flow?/wasm",
 ]
 
 # Subsystem features

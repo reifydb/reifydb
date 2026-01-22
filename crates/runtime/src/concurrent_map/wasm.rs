@@ -4,7 +4,7 @@ use std::hash::Hash;
 use std::sync::{Arc, RwLock};
 
 /// WASM implementation of ConcurrentMap using Arc<RwLock<HashMap>>.
-pub struct ConcurrentMap<K, V>
+pub struct ConcurrentMapInner<K, V>
 where
     K: Eq + Hash,
 {
@@ -13,14 +13,14 @@ where
 
 // SAFETY: The inner Arc<RwLock<HashMap>> is Sync, and we need to explicitly mark this
 // for WASM targets where Sync is not automatically derived.
-unsafe impl<K, V> Sync for ConcurrentMap<K, V>
+unsafe impl<K, V> Sync for ConcurrentMapInner<K, V>
 where
     K: Eq + Hash + Send,
     V: Send,
 {
 }
 
-impl<K, V> ConcurrentMap<K, V>
+impl<K, V> ConcurrentMapInner<K, V>
 where
     K: Eq + Hash,
 {
@@ -99,7 +99,7 @@ where
     }
 }
 
-impl<K, V> Default for ConcurrentMap<K, V>
+impl<K, V> Default for ConcurrentMapInner<K, V>
 where
     K: Eq + Hash,
 {

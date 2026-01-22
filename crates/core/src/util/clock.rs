@@ -4,10 +4,7 @@
 #[cfg(debug_assertions)]
 use std::cell::RefCell;
 
-#[cfg(feature = "native")]
-use reifydb_runtime::time::native::now_nanos as runtime_now_nanos;
-#[cfg(feature = "wasm")]
-use reifydb_runtime::time::wasm::now_nanos as runtime_now_nanos;
+use reifydb_runtime::time::now_nanos as runtime_now_nanos;
 
 use reifydb_type::value::datetime::DateTime;
 

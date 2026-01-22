@@ -7,26 +7,46 @@ license.workspace = true
 repository.workspace = true
 description = "Flow subsystem for stream processing and data flows"
 
+[features]
+default = ["native"]
+native = [
+    "reifydb-cdc/native",
+    "reifydb-core/native",
+    "reifydb-engine/tokio",
+    "reifydb-runtime/native",
+    "reifydb-transaction/native",
+    "reifydb-type/native",
+    "libloading",
+]
+wasm = [
+    "reifydb-cdc/wasm",
+    "reifydb-core/wasm",
+    "reifydb-engine/wasm",
+    "reifydb-runtime/wasm",
+    "reifydb-transaction/wasm",
+    "reifydb-type/wasm",
+]
+
 [dependencies]
-reifydb-cdc = { workspace = true }
-reifydb-core = { workspace = true }
+reifydb-cdc = { workspace = true, default-features = false }
+reifydb-core = { workspace = true, default-features = false }
 reifydb-catalog = { workspace = true }
-reifydb-engine = { workspace = true }
+reifydb-engine = { workspace = true, default-features = false }
 reifydb-hash = { workspace = true }
 reifydb-abi = { workspace = true }
+reifydb-runtime = { workspace = true, default-features = false }
 reifydb-sdk = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-sub-api = { workspace = true }
-reifydb-sub-server = { workspace = true }
-reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-transaction = { workspace = true, default-features = false }
+reifydb-type = { workspace = true, default-features = false }
 
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 postcard = { workspace = true }
-libloading = { workspace = true }
+libloading = { workspace = true, optional = true }
 parking_lot = { workspace = true }
 crossbeam-channel = { workspace = true }
 

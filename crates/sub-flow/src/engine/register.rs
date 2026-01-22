@@ -302,23 +302,31 @@ impl FlowEngine {
 				operator,
 				expressions,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
-					.clone();
+				#[cfg(feature = "native")]
+				{
+					let parent = self
+						.operators
+						.get(&node.inputs[0])
+						.ok_or_else(|| Error(internal!("Parent operator not found")))?
+						.clone();
 
-				if !self.is_ffi_operator(operator.as_str()) {
-					unimplemented!("only ffi operators can be used")
+					if !self.is_ffi_operator(operator.as_str()) {
+						unimplemented!("only ffi operators can be used")
+					}
+
+					let config = evaluate_operator_config(expressions.as_slice(), &self.evaluator)?;
+					let operator = self.create_ffi_operator(operator.as_str(), node.id, &config)?;
+
+					self.operators.insert(
+						node.id,
+						Rc::new(Operators::Apply(ApplyOperator::new(parent, node.id, operator))),
+					);
 				}
-
-				let config = evaluate_operator_config(expressions.as_slice(), &self.evaluator)?;
-				let operator = self.create_ffi_operator(operator.as_str(), node.id, &config)?;
-
-				self.operators.insert(
-					node.id,
-					Rc::new(Operators::Apply(ApplyOperator::new(parent, node.id, operator))),
-				);
+				#[cfg(not(feature = "native"))]
+				{
+					let _ = (operator, expressions);
+					return Err(Error(internal!("FFI operators are not supported in WASM")));
+				}
 			}
 			Aggregate {
 				..
