@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! SQLite implementation of PrimitiveStorage.
+//! SQLite implementation of PrimitiveStorage with MVCC versioning.
 //!
-//! Uses SQLite tables for persistent key-value storage.
-//! All operations use a single connection protected by RwLock for thread safety,
-//! matching the memory backend's synchronization pattern.
+//! Uses SQLite tables with (key, version) composite primary key for persistent
+//! multi-version storage. All operations use a single connection protected by
+//! Mutex for thread safety.
 
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use parking_lot::Mutex;
+use reifydb_core::common::CommitVersion;
 use reifydb_type::{Result, error, error::diagnostic::internal::internal, util::cowvec::CowVec};
 use rusqlite::{Connection, Error::QueryReturnedNoRows, params};
 use tracing::instrument;
@@ -18,15 +19,14 @@ use super::{
 	SqliteConfig,
 	connection::{connect, convert_flags, resolve_db_path},
 	entry::entry_id_to_name,
-	query::build_range_query,
+	query::{build_versioned_range_query, version_to_bytes},
 };
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
-/// SQLite-based primitive storage implementation.
+/// SQLite-based primitive storage implementation with MVCC versioning.
 ///
-/// Uses SQLite for persistent storage with a single connection protected by RwLock.
-/// This matches the memory backend's synchronization pattern, ensuring writes
-/// are immediately visible to subsequent reads.
+/// Uses SQLite for persistent storage with a single connection protected by Mutex.
+/// Tables use (key, version) composite primary key for multi-version support.
 #[derive(Clone)]
 pub struct SqlitePrimitiveStorage {
 	inner: Arc<SqlitePrimitiveStorageInner>,
@@ -76,37 +76,62 @@ impl SqlitePrimitiveStorage {
 	pub fn in_memory() -> Self {
 		Self::new(SqliteConfig::in_memory())
 	}
+
+	/// Create a table with the versioned schema if it doesn't exist.
+	fn create_table_if_needed(conn: &Connection, table_name: &str) -> rusqlite::Result<()> {
+		conn.execute(
+			&format!(
+				"CREATE TABLE IF NOT EXISTS \"{}\" (
+					key BLOB NOT NULL,
+					version BLOB NOT NULL,
+					value BLOB,
+					PRIMARY KEY (key, version)
+				) WITHOUT ROWID",
+				table_name
+			),
+			[],
+		)?;
+		Ok(())
+	}
 }
 
 impl TierStorage for SqlitePrimitiveStorage {
-	#[instrument(name = "store::multi::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len()))]
-	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<CowVec<u8>>> {
+	#[instrument(name = "store::multi::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len(), version = version.0))]
+	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
 		let table_name = entry_id_to_name(table);
 		let conn = self.inner.conn.lock();
 
+		// Get the latest version <= requested version for this key
 		let result = conn.query_row(
-			&format!("SELECT value FROM \"{}\" WHERE key = ?1", table_name),
-			params![key],
+			&format!(
+				"SELECT value FROM \"{}\" WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
+				table_name
+			),
+			params![key, version_to_bytes(version).as_slice()],
 			|row| row.get::<_, Option<Vec<u8>>>(0),
 		);
 
 		match result {
 			Ok(Some(value)) => Ok(Some(CowVec::new(value))),
-			Ok(None) => Ok(None),
+			Ok(None) => Ok(None), // Tombstone
 			Err(QueryReturnedNoRows) => Ok(None),
 			Err(e) if e.to_string().contains("no such table") => Ok(None),
 			Err(e) => Err(error!(internal(format!("Failed to get: {}", e)))),
 		}
 	}
 
-	#[instrument(name = "store::multi::sqlite::contains", level = "trace", skip(self), fields(table = ?table, key_len = key.len()), ret)]
-	fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
+	#[instrument(name = "store::multi::sqlite::contains", level = "trace", skip(self), fields(table = ?table, key_len = key.len(), version = version.0), ret)]
+	fn contains(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<bool> {
 		let table_name = entry_id_to_name(table);
 		let conn = self.inner.conn.lock();
 
+		// Check if value exists and is not a tombstone
 		let result = conn.query_row(
-			&format!("SELECT value IS NOT NULL FROM \"{}\" WHERE key = ?1", table_name),
-			params![key],
+			&format!(
+				"SELECT value IS NOT NULL FROM \"{}\" WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
+				table_name
+			),
+			params![key, version_to_bytes(version).as_slice()],
 			|row| row.get::<_, bool>(0),
 		);
 
@@ -118,8 +143,8 @@ impl TierStorage for SqlitePrimitiveStorage {
 		}
 	}
 
-	#[instrument(name = "store::multi::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len()))]
-	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
+	#[instrument(name = "store::multi::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
+	fn set(&self, version: CommitVersion, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
 		if batches.is_empty() {
 			return Ok(());
 		}
@@ -131,23 +156,15 @@ impl TierStorage for SqlitePrimitiveStorage {
 
 		for (table, entries) in batches {
 			let table_name = entry_id_to_name(table);
-			let result = insert_entries_in_tx(&tx, &table_name, &entries);
+
+			// Try to insert entries, creating table if needed
+			let result = insert_versioned_entries_in_tx(&tx, &table_name, version, &entries);
 			if let Err(e) = result {
 				if e.to_string().contains("no such table") {
-					tx.execute(
-						&format!(
-							"CREATE TABLE IF NOT EXISTS \"{}\" (
-								key BLOB NOT NULL PRIMARY KEY,
-								value BLOB
-							) WITHOUT ROWID",
-							table_name
-						),
-						[],
-					)
-					.map_err(|e| error!(internal(format!("Failed to create table: {}", e))))?;
-					insert_entries_in_tx(&tx, &table_name, &entries).map_err(|e| {
-						error!(internal(format!("Failed to insert entries: {}", e)))
-					})?;
+					Self::create_table_if_needed(&tx, &table_name)
+						.map_err(|e| error!(internal(format!("Failed to create table: {}", e))))?;
+					insert_versioned_entries_in_tx(&tx, &table_name, version, &entries)
+						.map_err(|e| error!(internal(format!("Failed to insert entries: {}", e))))?;
 				} else {
 					return Err(error!(internal(format!("Failed to insert entries: {}", e))));
 				}
@@ -157,13 +174,14 @@ impl TierStorage for SqlitePrimitiveStorage {
 		tx.commit().map_err(|e| error!(internal(format!("Failed to commit transaction: {}", e))))
 	}
 
-	#[instrument(name = "store::multi::sqlite::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
+	#[instrument(name = "store::multi::sqlite::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, version = version.0))]
 	fn range_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
+		version: CommitVersion,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		if cursor.exhausted {
@@ -183,7 +201,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 
 		let start_ref = bound_as_ref(&effective_start);
 		let end_ref = bound_as_ref(&end_owned);
-		let (query, params) = build_range_query(&table_name, start_ref, end_ref, false, batch_size + 1);
+		let (query, params) = build_versioned_range_query(&table_name, start_ref, end_ref, version, false, batch_size + 1);
 
 		let mut stmt = match conn.prepare(&query) {
 			Ok(stmt) => stmt,
@@ -199,9 +217,14 @@ impl TierStorage for SqlitePrimitiveStorage {
 		let entries: Vec<RawEntry> = stmt
 			.query_map(params_refs.as_slice(), |row| {
 				let key: Vec<u8> = row.get(0)?;
-				let value: Option<Vec<u8>> = row.get(1)?;
+				let version_bytes: Vec<u8> = row.get(1)?;
+				let value: Option<Vec<u8>> = row.get(2)?;
+				let version = u64::from_be_bytes(
+					version_bytes.as_slice().try_into().expect("version must be 8 bytes"),
+				);
 				Ok(RawEntry {
 					key: CowVec::new(key),
+					version: CommitVersion(version),
 					value: value.map(CowVec::new),
 				})
 			})
@@ -232,13 +255,14 @@ impl TierStorage for SqlitePrimitiveStorage {
 		Ok(batch)
 	}
 
-	#[instrument(name = "store::multi::sqlite::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
+	#[instrument(name = "store::multi::sqlite::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, version = version.0))]
 	fn range_rev_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
+		version: CommitVersion,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		if cursor.exhausted {
@@ -258,7 +282,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 
 		let start_ref = bound_as_ref(&start_owned);
 		let end_ref = bound_as_ref(&effective_end);
-		let (query, params) = build_range_query(&table_name, start_ref, end_ref, true, batch_size + 1);
+		let (query, params) = build_versioned_range_query(&table_name, start_ref, end_ref, version, true, batch_size + 1);
 
 		let mut stmt = match conn.prepare(&query) {
 			Ok(stmt) => stmt,
@@ -274,9 +298,14 @@ impl TierStorage for SqlitePrimitiveStorage {
 		let entries: Vec<RawEntry> = stmt
 			.query_map(params_refs.as_slice(), |row| {
 				let key: Vec<u8> = row.get(0)?;
-				let value: Option<Vec<u8>> = row.get(1)?;
+				let version_bytes: Vec<u8> = row.get(1)?;
+				let value: Option<Vec<u8>> = row.get(2)?;
+				let version = u64::from_be_bytes(
+					version_bytes.as_slice().try_into().expect("version must be 8 bytes"),
+				);
 				Ok(RawEntry {
 					key: CowVec::new(key),
+					version: CommitVersion(version),
 					value: value.map(CowVec::new),
 				})
 			})
@@ -311,18 +340,8 @@ impl TierStorage for SqlitePrimitiveStorage {
 		let table_name = entry_id_to_name(table);
 		let conn = self.inner.conn.lock();
 
-		conn.execute(
-			&format!(
-				"CREATE TABLE IF NOT EXISTS \"{}\" (
-					key   BLOB NOT NULL PRIMARY KEY,
-					value BLOB
-				) WITHOUT ROWID",
-				table_name
-			),
-			[],
-		)
-		.map(|_| ())
-		.map_err(|e| error!(internal(format!("Failed to ensure table: {}", e))))
+		Self::create_table_if_needed(&conn, &table_name)
+			.map_err(|e| error!(internal(format!("Failed to ensure table: {}", e))))
 	}
 
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
@@ -339,7 +358,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 	}
 
 	#[instrument(name = "store::multi::sqlite::drop", level = "debug", skip(self, batches), fields(table_count = batches.len()))]
-	fn drop(&self, batches: HashMap<EntryKind, Vec<CowVec<u8>>>) -> Result<()> {
+	fn drop(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
 		if batches.is_empty() {
 			return Ok(());
 		}
@@ -349,23 +368,79 @@ impl TierStorage for SqlitePrimitiveStorage {
 			.unchecked_transaction()
 			.map_err(|e| error!(internal(format!("Failed to start transaction: {}", e))))?;
 
-		for (table, keys) in batches {
+		for (table, entries) in batches {
 			let table_name = entry_id_to_name(table);
-			for key in keys {
-				let result = tx.execute(
-					&format!("DELETE FROM \"{}\" WHERE key = ?1", table_name),
-					params![key.as_slice()],
-				);
-				// Ignore errors for non-existent tables
-				if let Err(e) = result {
-					if !e.to_string().contains("no such table") {
-						return Err(error!(internal(format!("Failed to delete entry: {}", e))));
+			for (key, version) in entries {
+				let version_bytes = version_to_bytes(version);
+				// First check if this is the latest version for this key
+				let is_latest: bool = tx
+					.query_row(
+						&format!(
+							"SELECT version = ?2 FROM \"{}\" WHERE key = ?1 ORDER BY version DESC LIMIT 1",
+							table_name
+						),
+						params![key.as_slice(), version_bytes.as_slice()],
+						|row| row.get(0),
+					)
+					.unwrap_or(false);
+
+				if is_latest {
+					// Dropping the latest version - remove ALL versions of this key
+					let result = tx.execute(
+						&format!("DELETE FROM \"{}\" WHERE key = ?1", table_name),
+						params![key.as_slice()],
+					);
+					if let Err(e) = result {
+						if !e.to_string().contains("no such table") {
+							return Err(error!(internal(format!("Failed to delete entry: {}", e))));
+						}
+					}
+				} else {
+					// Dropping a non-latest version - just remove that specific version
+					let result = tx.execute(
+						&format!("DELETE FROM \"{}\" WHERE key = ?1 AND version = ?2", table_name),
+						params![key.as_slice(), version_bytes.as_slice()],
+					);
+					if let Err(e) = result {
+						if !e.to_string().contains("no such table") {
+							return Err(error!(internal(format!("Failed to delete entry: {}", e))));
+						}
 					}
 				}
 			}
 		}
 
 		tx.commit().map_err(|e| error!(internal(format!("Failed to commit transaction: {}", e))))
+	}
+
+	#[instrument(name = "store::multi::sqlite::get_all_versions", level = "trace", skip(self), fields(table = ?table, key_len = key.len()))]
+	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
+		let table_name = entry_id_to_name(table);
+		let conn = self.inner.conn.lock();
+
+		let mut stmt = match conn.prepare(&format!(
+			"SELECT version, value FROM \"{}\" WHERE key = ?1 ORDER BY version DESC",
+			table_name
+		)) {
+			Ok(stmt) => stmt,
+			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
+			Err(e) => return Err(error!(internal(format!("Failed to prepare query: {}", e)))),
+		};
+
+		let versions: Vec<(CommitVersion, Option<CowVec<u8>>)> = stmt
+			.query_map(params![key], |row| {
+				let version_bytes: Vec<u8> = row.get(0)?;
+				let value: Option<Vec<u8>> = row.get(1)?;
+				let version = u64::from_be_bytes(
+					version_bytes.as_slice().try_into().expect("version must be 8 bytes"),
+				);
+				Ok((CommitVersion(version), value.map(CowVec::new)))
+			})
+			.map_err(|e| error!(internal(format!("Failed to query versions: {}", e))))?
+			.filter_map(|r| r.ok())
+			.collect();
+
+		Ok(versions)
 	}
 }
 
@@ -389,16 +464,18 @@ fn bound_to_owned(bound: Bound<&[u8]>) -> Bound<Vec<u8>> {
 	}
 }
 
-/// Insert entries into a table within an existing transaction
-fn insert_entries_in_tx(
+/// Insert versioned entries into a table within an existing transaction
+fn insert_versioned_entries_in_tx(
 	tx: &rusqlite::Transaction,
 	table_name: &str,
+	version: CommitVersion,
 	entries: &[(CowVec<u8>, Option<CowVec<u8>>)],
 ) -> rusqlite::Result<()> {
+	let version_bytes = version_to_bytes(version);
 	for (key, value) in entries {
 		tx.execute(
-			&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name),
-			params![key.as_slice(), value.as_ref().map(|v| v.as_slice())],
+			&format!("INSERT OR REPLACE INTO \"{}\" (key, version, value) VALUES (?1, ?2, ?3)", table_name),
+			params![key.as_slice(), version_bytes.as_slice(), value.as_ref().map(|v| v.as_slice())],
 		)?;
 	}
 	Ok(())
@@ -414,22 +491,26 @@ pub mod tests {
 	fn test_basic_operations() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
+		let key = CowVec::new(b"key1".to_vec());
+		let version = CommitVersion(1);
+
 		// Put and get
-		storage.set(HashMap::from([(
+		storage.set(version, HashMap::from([(
 			EntryKind::Multi,
-			vec![(CowVec::new(b"key1".to_vec()), Some(CowVec::new(b"value1".to_vec())))],
+			vec![(key.clone(), Some(CowVec::new(b"value1".to_vec())))],
 		)]))
 		.unwrap();
-		let value = storage.get(EntryKind::Multi, b"key1").unwrap();
+		let value = storage.get(EntryKind::Multi, &key, version).unwrap();
 		assert_eq!(value.as_deref(), Some(b"value1".as_slice()));
 
 		// Contains
-		assert!(storage.contains(EntryKind::Multi, b"key1").unwrap());
-		assert!(!storage.contains(EntryKind::Multi, b"nonexistent").unwrap());
+		assert!(storage.contains(EntryKind::Multi, &key, version).unwrap());
+		assert!(!storage.contains(EntryKind::Multi, b"nonexistent", version).unwrap());
 
 		// Delete (tombstone)
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key1".to_vec()), None)])])).unwrap();
-		assert!(!storage.contains(EntryKind::Multi, b"key1").unwrap());
+		let version2 = CommitVersion(2);
+		storage.set(version2, HashMap::from([(EntryKind::Multi, vec![(key.clone(), None)])])).unwrap();
+		assert!(!storage.contains(EntryKind::Multi, &key, version2).unwrap());
 	}
 
 	#[test]
@@ -438,25 +519,71 @@ pub mod tests {
 
 		let source1 = PrimitiveId::Table(TableId(1));
 		let source2 = PrimitiveId::Table(TableId(2));
+		let key = CowVec::new(b"key".to_vec());
+		let version = CommitVersion(1);
 
-		storage.set(HashMap::from([(
+		storage.set(version, HashMap::from([(
 			EntryKind::Source(source1),
-			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"table1".to_vec())))],
+			vec![(key.clone(), Some(CowVec::new(b"table1".to_vec())))],
 		)]))
 		.unwrap();
-		storage.set(HashMap::from([(
+		storage.set(version, HashMap::from([(
 			EntryKind::Source(source2),
-			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"table2".to_vec())))],
+			vec![(key.clone(), Some(CowVec::new(b"table2".to_vec())))],
 		)]))
 		.unwrap();
 
 		assert_eq!(
-			storage.get(EntryKind::Source(source1), b"key").unwrap().as_deref(),
+			storage.get(EntryKind::Source(source1), &key, version).unwrap().as_deref(),
 			Some(b"table1".as_slice())
 		);
 		assert_eq!(
-			storage.get(EntryKind::Source(source2), b"key").unwrap().as_deref(),
+			storage.get(EntryKind::Source(source2), &key, version).unwrap().as_deref(),
 			Some(b"table2".as_slice())
+		);
+	}
+
+	#[test]
+	fn test_version_queries() {
+		let storage = SqlitePrimitiveStorage::in_memory();
+
+		let key = CowVec::new(b"key1".to_vec());
+
+		// Insert multiple versions
+		storage.set(CommitVersion(1), HashMap::from([(
+			EntryKind::Multi,
+			vec![(key.clone(), Some(CowVec::new(b"v1".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(CommitVersion(2), HashMap::from([(
+			EntryKind::Multi,
+			vec![(key.clone(), Some(CowVec::new(b"v2".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(CommitVersion(3), HashMap::from([(
+			EntryKind::Multi,
+			vec![(key.clone(), Some(CowVec::new(b"v3".to_vec())))],
+		)]))
+		.unwrap();
+
+		// Get at specific versions
+		assert_eq!(
+			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().as_deref(),
+			Some(b"v3".as_slice())
+		);
+		assert_eq!(
+			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().as_deref(),
+			Some(b"v2".as_slice())
+		);
+		assert_eq!(
+			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().as_deref(),
+			Some(b"v1".as_slice())
+		);
+
+		// Get at intermediate version returns closest <= version
+		assert_eq!(
+			storage.get(EntryKind::Multi, &key, CommitVersion(10)).unwrap().as_deref(),
+			Some(b"v3".as_slice())
 		);
 	}
 
@@ -464,25 +591,20 @@ pub mod tests {
 	fn test_range_next() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
-		storage.set(HashMap::from([(
+		let version = CommitVersion(1);
+		storage.set(version, HashMap::from([(
 			EntryKind::Multi,
-			vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))],
-		)]))
-		.unwrap();
-		storage.set(HashMap::from([(
-			EntryKind::Multi,
-			vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))],
-		)]))
-		.unwrap();
-		storage.set(HashMap::from([(
-			EntryKind::Multi,
-			vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))],
+			vec![
+				(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
+				(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
+				(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+			],
 		)]))
 		.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 100)
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
@@ -497,25 +619,20 @@ pub mod tests {
 	fn test_range_rev_next() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
-		storage.set(HashMap::from([(
+		let version = CommitVersion(1);
+		storage.set(version, HashMap::from([(
 			EntryKind::Multi,
-			vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))],
-		)]))
-		.unwrap();
-		storage.set(HashMap::from([(
-			EntryKind::Multi,
-			vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))],
-		)]))
-		.unwrap();
-		storage.set(HashMap::from([(
-			EntryKind::Multi,
-			vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))],
+			vec![
+				(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
+				(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
+				(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+			],
 		)]))
 		.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 100)
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
@@ -530,21 +647,20 @@ pub mod tests {
 	fn test_range_streaming_pagination() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
+		let version = CommitVersion(1);
+
 		// Insert 10 entries
-		for i in 0..10u8 {
-			storage.set(HashMap::from([(
-				EntryKind::Multi,
-				vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))],
-			)]))
-			.unwrap();
-		}
+		let entries: Vec<_> = (0..10u8)
+			.map(|i| (CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10]))))
+			.collect();
+		storage.set(version, HashMap::from([(EntryKind::Multi, entries)])).unwrap();
 
 		// Use a single cursor to stream through all entries
 		let mut cursor = RangeCursor::new();
 
 		// First batch of 3
 		let batch1 = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
@@ -554,7 +670,7 @@ pub mod tests {
 
 		// Second batch of 3 - cursor automatically continues
 		let batch2 = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
@@ -567,21 +683,20 @@ pub mod tests {
 	fn test_range_reving_pagination() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
+		let version = CommitVersion(1);
+
 		// Insert 10 entries
-		for i in 0..10u8 {
-			storage.set(HashMap::from([(
-				EntryKind::Multi,
-				vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))],
-			)]))
-			.unwrap();
-		}
+		let entries: Vec<_> = (0..10u8)
+			.map(|i| (CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10]))))
+			.collect();
+		storage.set(version, HashMap::from([(EntryKind::Multi, entries)])).unwrap();
 
 		// Use a single cursor to stream in reverse
 		let mut cursor = RangeCursor::new();
 
 		// First batch of 3 (reverse)
 		let batch1 = storage
-			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
@@ -591,7 +706,7 @@ pub mod tests {
 
 		// Second batch
 		let batch2 = storage
-			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
@@ -605,7 +720,7 @@ pub mod tests {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
 		// Should return None for non-existent table, not error
-		let value = storage.get(EntryKind::Multi, b"key").unwrap();
+		let value = storage.get(EntryKind::Multi, b"key", CommitVersion(1)).unwrap();
 		assert_eq!(value, None);
 	}
 
@@ -616,9 +731,41 @@ pub mod tests {
 		// Should return empty batch for non-existent table, not error
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, CommitVersion(1), 100)
 			.unwrap();
 		assert!(batch.entries.is_empty());
 		assert!(cursor.exhausted);
+	}
+
+	#[test]
+	fn test_drop_specific_version() {
+		let storage = SqlitePrimitiveStorage::in_memory();
+
+		let key = CowVec::new(b"key1".to_vec());
+
+		// Insert versions 1, 2, 3
+		for v in 1..=3u64 {
+			storage.set(CommitVersion(v), HashMap::from([(
+				EntryKind::Multi,
+				vec![(key.clone(), Some(CowVec::new(format!("v{}", v).into_bytes())))],
+			)]))
+			.unwrap();
+		}
+
+		// Drop version 1
+		storage.drop(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(1))])])).unwrap();
+
+		// Version 1 should no longer be accessible
+		assert!(storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().is_none());
+
+		// Versions 2 and 3 should still work
+		assert_eq!(
+			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().as_deref(),
+			Some(b"v2".as_slice())
+		);
+		assert_eq!(
+			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().as_deref(),
+			Some(b"v3".as_slice())
+		);
 	}
 }

@@ -1,26 +1,42 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{cmp::Reverse, collections::BTreeMap, sync::Arc};
 
 use dashmap::DashMap;
 use parking_lot::RwLock;
+use reifydb_core::common::CommitVersion;
 use reifydb_type::util::cowvec::CowVec;
 
 use crate::tier::EntryKind;
 
-/// Ordered map type for storing key-value pairs.
-pub(super) type OrderedMap = BTreeMap<CowVec<u8>, Option<CowVec<u8>>>;
+/// Value with optional tombstone (None = deleted)
+pub(super) type Value = Option<CowVec<u8>>;
 
-/// Table entry using RwLock<BTreeMap> for concurrent reads and writes.
+/// Current versions: key -> (version, value)
+pub(super) type CurrentMap = BTreeMap<CowVec<u8>, (CommitVersion, Value)>;
+
+/// Historical versions: key -> (version -> value)
+/// Inner BTreeMap uses Reverse<CommitVersion> for descending order
+pub(super) type HistoricalMap = BTreeMap<CowVec<u8>, BTreeMap<Reverse<CommitVersion>, Value>>;
+
+/// Table entry with split current/historical storage for MVCC.
+///
+/// This design optimizes for the common case of reading the latest version:
+/// - `current`: Most recent version per key (fast path for normal reads)
+/// - `historical`: All older versions (point-in-time queries)
 pub(super) struct Entry {
-	pub data: Arc<RwLock<OrderedMap>>,
+	/// Most recent version for each key
+	pub current: Arc<RwLock<CurrentMap>>,
+	/// Historical versions (all except current)
+	pub historical: Arc<RwLock<HistoricalMap>>,
 }
 
 impl Entry {
 	pub fn new() -> Self {
 		Self {
-			data: Arc::new(RwLock::new(BTreeMap::new())),
+			current: Arc::new(RwLock::new(BTreeMap::new())),
+			historical: Arc::new(RwLock::new(BTreeMap::new())),
 		}
 	}
 }
@@ -28,7 +44,8 @@ impl Entry {
 impl Clone for Entry {
 	fn clone(&self) -> Self {
 		Self {
-			data: Arc::clone(&self.data),
+			current: Arc::clone(&self.current),
+			historical: Arc::clone(&self.historical),
 		}
 	}
 }

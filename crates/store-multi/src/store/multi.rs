@@ -25,10 +25,7 @@ use tracing::instrument;
 use super::{
 	StandardMultiStore,
 	router::{classify_key, is_single_version_semantics_key},
-	version::{
-		VersionedGetResult, compute_version_suffix, encode_versioned_key, encode_versioned_key_with_suffix,
-		get_at_version,
-	},
+	version::{VersionedGetResult, get_at_version},
 	worker::{DropMessage, DropRequest},
 };
 use crate::tier::{EntryKind, EntryKind::Multi, RangeCursor, TierStorage};
@@ -115,9 +112,6 @@ impl MultiVersionCommit for StandardMultiStore {
 			return Ok(());
 		};
 
-		let version_suffix = compute_version_suffix(version);
-		let mut key_buffer = Vec::with_capacity(256);
-
 		let mut pending_set_keys: HashSet<Vec<u8>> = HashSet::new();
 		let mut writes: Vec<StorageWrite> = Vec::new();
 		let mut deletes: Vec<StorageDelete> = Vec::new();
@@ -144,16 +138,11 @@ impl MultiVersionCommit for StandardMultiStore {
 						value_bytes: values.len() as u64,
 					});
 
-					encode_versioned_key_with_suffix(
-						key.as_ref(),
-						&version_suffix,
-						&mut key_buffer,
-					);
-
-					let versioned_key = CowVec::new(key_buffer.clone());
+					// Pass the logical key directly - version is a separate parameter
+					let logical_key = CowVec::new(key.as_ref().to_vec());
 					batches.entry(table)
 						.or_default()
-						.push((versioned_key, Some(CowVec::new(values.as_ref().to_vec()))));
+						.push((logical_key, Some(CowVec::new(values.as_ref().to_vec()))));
 				}
 				Delta::Unset {
 					key,
@@ -164,26 +153,16 @@ impl MultiVersionCommit for StandardMultiStore {
 						value_bytes: values.len() as u64,
 					});
 
-					encode_versioned_key_with_suffix(
-						key.as_ref(),
-						&version_suffix,
-						&mut key_buffer,
-					);
-
-					let versioned_key = CowVec::new(key_buffer.clone());
-					batches.entry(table).or_default().push((versioned_key, None));
+					// Pass the logical key directly - tombstone with version
+					let logical_key = CowVec::new(key.as_ref().to_vec());
+					batches.entry(table).or_default().push((logical_key, None));
 				}
 				Delta::Remove {
 					key,
 				} => {
-					encode_versioned_key_with_suffix(
-						key.as_ref(),
-						&version_suffix,
-						&mut key_buffer,
-					);
-
-					let versioned_key = CowVec::new(key_buffer.clone());
-					batches.entry(table).or_default().push((versioned_key, None));
+					// Pass the logical key directly - tombstone with version
+					let logical_key = CowVec::new(key.as_ref().to_vec());
+					batches.entry(table).or_default().push((logical_key, None));
 				}
 				Delta::Drop {
 					key,
@@ -232,7 +211,8 @@ impl MultiVersionCommit for StandardMultiStore {
 			let _ = self.drop_sender.send(DropMessage::Batch(drop_batch));
 		}
 
-		storage.set(batches)?;
+		// Pass version explicitly to storage
+		storage.set(version, batches)?;
 
 		// Emit storage stats event for this commit
 		if !writes.is_empty() || !deletes.is_empty() {
@@ -291,7 +271,7 @@ impl StandardMultiStore {
 		}
 
 		let table = classify_key_range(&range);
-		let (start, end) = make_versioned_range_bounds(&range);
+		let (start, end) = make_range_bounds(&range);
 		let batch_size = batch_size as usize;
 
 		// Collected entries: logical_key -> (version, value)
@@ -392,13 +372,12 @@ impl StandardMultiStore {
 		range: &EncodedKeyRange,
 		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
 	) -> crate::Result<bool> {
-		use super::version::{extract_key, extract_version};
-
 		let batch = storage.range_next(
 			table,
 			cursor,
 			Bound::Included(start),
 			Bound::Included(end),
+			version,
 			TIER_SCAN_CHUNK_SIZE,
 		)?;
 
@@ -407,29 +386,24 @@ impl StandardMultiStore {
 		}
 
 		for entry in batch.entries {
-			if let (Some(original_key), Some(entry_version)) =
-				(extract_key(&entry.key), extract_version(&entry.key))
-			{
-				// Skip if version is greater than requested
-				if entry_version > version {
-					continue;
-				}
+			// Entry key is already the logical key, entry.version is the version
+			let original_key = entry.key.as_slice().to_vec();
+			let entry_version = entry.version;
 
-				// Skip if key is not within the requested logical range
-				let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
-				if !range.contains(&original_key_encoded) {
-					continue;
-				}
+			// Skip if key is not within the requested logical range
+			let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
+			if !range.contains(&original_key_encoded) {
+				continue;
+			}
 
-				// Update if no entry exists or this is a higher version
-				let should_update = match collected.get(&original_key) {
-					None => true,
-					Some((existing_version, _)) => entry_version > *existing_version,
-				};
+			// Update if no entry exists or this is a higher version
+			let should_update = match collected.get(&original_key) {
+				None => true,
+				Some((existing_version, _)) => entry_version > *existing_version,
+			};
 
-				if should_update {
-					collected.insert(original_key, (entry_version, entry.value));
-				}
+			if should_update {
+				collected.insert(original_key, (entry_version, entry.value));
 			}
 		}
 
@@ -499,7 +473,7 @@ impl StandardMultiStore {
 		}
 
 		let table = classify_key_range(&range);
-		let (start, end) = make_versioned_range_bounds(&range);
+		let (start, end) = make_range_bounds(&range);
 		let batch_size = batch_size as usize;
 
 		// Collected entries: logical_key -> (version, value)
@@ -601,13 +575,12 @@ impl StandardMultiStore {
 		range: &EncodedKeyRange,
 		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
 	) -> crate::Result<bool> {
-		use super::version::{extract_key, extract_version};
-
 		let batch = storage.range_rev_next(
 			table,
 			cursor,
 			Bound::Included(start),
 			Bound::Included(end),
+			version,
 			TIER_SCAN_CHUNK_SIZE,
 		)?;
 
@@ -616,29 +589,24 @@ impl StandardMultiStore {
 		}
 
 		for entry in batch.entries {
-			if let (Some(original_key), Some(entry_version)) =
-				(extract_key(&entry.key), extract_version(&entry.key))
-			{
-				// Skip if version is greater than requested
-				if entry_version > version {
-					continue;
-				}
+			// Entry key is already the logical key, entry.version is the version
+			let original_key = entry.key.as_slice().to_vec();
+			let entry_version = entry.version;
 
-				// Skip if key is not within the requested logical range
-				let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
-				if !range.contains(&original_key_encoded) {
-					continue;
-				}
+			// Skip if key is not within the requested logical range
+			let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
+			if !range.contains(&original_key_encoded) {
+				continue;
+			}
 
-				// Update if no entry exists or this is a higher version
-				let should_update = match collected.get(&original_key) {
-					None => true,
-					Some((existing_version, _)) => entry_version > *existing_version,
-				};
+			// Update if no entry exists or this is a higher version
+			let should_update = match collected.get(&original_key) {
+				None => true,
+				Some((existing_version, _)) => entry_version > *existing_version,
+			};
 
-				if should_update {
-					collected.insert(original_key, (entry_version, entry.value));
-				}
+			if should_update {
+				collected.insert(original_key, (entry_version, entry.value));
 			}
 		}
 
@@ -776,26 +744,19 @@ fn classify_key_range(range: &EncodedKeyRange) -> EntryKind {
 	classify_range(range).unwrap_or(Multi)
 }
 
-/// - Version MAX encodes to 0x00..00 (smallest bytes)
-/// - Version 0 encodes to 0xFF..FF (largest bytes)
-///
-/// For range queries, we need start <= end in byte order:
-/// - Start uses version MAX to get the smallest encoded value
-/// - End uses version 0 to get the largest encoded value
-/// The actual key range and version filtering happens after retrieval.
-fn make_versioned_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
+/// Create range bounds from an EncodedKeyRange.
+/// Returns the start and end byte slices for the range query.
+fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 	let start = match &range.start {
-		// Version MAX encodes smallest, capturing all versions of this key
-		Bound::Included(key) => encode_versioned_key(key.as_ref(), CommitVersion(u64::MAX)),
-		Bound::Excluded(key) => encode_versioned_key(key.as_ref(), CommitVersion(u64::MAX)),
-		Bound::Unbounded => encode_versioned_key(&[], CommitVersion(u64::MAX)),
+		Bound::Included(key) => key.as_ref().to_vec(),
+		Bound::Excluded(key) => key.as_ref().to_vec(),
+		Bound::Unbounded => vec![],
 	};
 
 	let end = match &range.end {
-		// Version 0 encodes largest, capturing all versions of this key
-		Bound::Included(key) => encode_versioned_key(key.as_ref(), CommitVersion(0)),
-		Bound::Excluded(key) => encode_versioned_key(key.as_ref(), CommitVersion(0)),
-		Bound::Unbounded => encode_versioned_key(&[0xFFu8; 256], CommitVersion(0)),
+		Bound::Included(key) => key.as_ref().to_vec(),
+		Bound::Excluded(key) => key.as_ref().to_vec(),
+		Bound::Unbounded => vec![0xFFu8; 256],
 	};
 
 	(start, end)
