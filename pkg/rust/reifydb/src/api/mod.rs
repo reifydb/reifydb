@@ -4,11 +4,7 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
-use reifydb_runtime::actor::runtime::ActorRuntime;
-#[cfg(reifydb_target = "native")]
-use reifydb_runtime::compute::native::NativeComputePool as ComputePool;
-#[cfg(reifydb_target = "wasm")]
-use reifydb_runtime::compute::wasm::WasmComputePool as ComputePool;
+use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_store_multi::{
 	MultiStore,
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
@@ -29,8 +25,8 @@ pub mod server;
 
 /// Storage factory enum for deferred storage creation.
 ///
-/// This allows the builder to create storage with the appropriate `ComputePool`
-/// during the `build()` phase, rather than requiring users to provide it upfront.
+/// This allows the builder to create storage during the `build()` phase,
+/// rather than requiring users to provide it upfront.
 #[derive(Clone)]
 pub enum StorageFactory {
 	/// In-memory storage (non-persistent)
@@ -40,20 +36,17 @@ pub enum StorageFactory {
 }
 
 impl StorageFactory {
-	/// Create the storage with the given compute pool.
-	pub(crate) fn create(
-		&self,
-		compute_pool: ComputePool,
-	) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
+	/// Create the storage.
+	pub(crate) fn create(&self) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
 		match self {
-			StorageFactory::Memory => create_memory_store(compute_pool),
+			StorageFactory::Memory => create_memory_store(),
 			StorageFactory::Sqlite(config) => create_sqlite_store(config.clone()),
 		}
 	}
 }
 
-/// Internal: Create in-memory storage with the given compute pool.
-fn create_memory_store(_compute_pool: ComputePool) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
+/// Internal: Create in-memory storage.
+fn create_memory_store() -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
 	let eventbus = EventBus::new();
 
 	// Create multi-version store
@@ -134,8 +127,8 @@ fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, Transa
 /// Convenience function to create a transaction layer
 pub(crate) fn transaction(
 	input: (MultiStore, SingleStore, TransactionSingle, EventBus),
-	actor_runtime: ActorRuntime,
+	actor_system: ActorSystem,
 ) -> (TransactionMulti, TransactionSingle, EventBus) {
-	let multi = TransactionMulti::new(input.0, input.2.clone(), input.3.clone(), actor_runtime).unwrap();
+	let multi = TransactionMulti::new(input.0, input.2.clone(), input.3.clone(), actor_system).unwrap();
 	(multi, input.2, input.3)
 }

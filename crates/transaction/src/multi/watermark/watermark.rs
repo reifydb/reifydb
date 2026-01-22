@@ -20,8 +20,9 @@ use std::{
 
 use reifydb_core::common::CommitVersion;
 use reifydb_runtime::{
-	actor::{mailbox::ActorRef, runtime::ActorRuntime},
+	actor::mailbox::ActorRef,
 	sync::{condvar::Condvar, mutex::Mutex},
+	actor::system::ActorSystem,
 };
 use tracing::instrument;
 
@@ -77,9 +78,9 @@ impl Debug for WaterMark {
 }
 
 impl WaterMark {
-	/// Create a new WaterMark with given name and runtime.
-	#[instrument(name = "transaction::watermark::new", level = "debug", skip(runtime), fields(task_name = %task_name))]
-	pub fn new(task_name: String, runtime: &ActorRuntime) -> Self {
+	/// Create a new WaterMark with given name and actor system.
+	#[instrument(name = "transaction::watermark::new", level = "debug", skip(system), fields(task_name = %task_name))]
+	pub fn new(task_name: String, system: &ActorSystem) -> Self {
 		let shared = Arc::new(WatermarkShared {
 			done_until: AtomicU64::new(0),
 			last_index: AtomicU64::new(0),
@@ -88,7 +89,7 @@ impl WaterMark {
 		let actor = WatermarkActor {
 			shared: shared.clone(),
 		};
-		let actor_ref = runtime.spawn_ref(&task_name, actor);
+		let actor_ref = system.spawn(&task_name, actor).actor_ref().clone();
 
 		Self {
 			actor: actor_ref,
@@ -162,7 +163,7 @@ impl WaterMark {
 pub mod tests {
 	use std::{sync::atomic::AtomicUsize, thread::sleep, time::Duration};
 
-	use reifydb_runtime::{actor::runtime::ActorRuntime, time::Instant};
+	use reifydb_runtime::{actor::system::{ActorSystem, ActorSystemConfig}, time::Instant};
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;
@@ -214,8 +215,8 @@ pub mod tests {
 
 	#[test]
 	fn test_high_concurrency() {
-		let runtime = ActorRuntime::new();
-		let watermark = Arc::new(WaterMark::new("concurrent".into(), &runtime));
+		let system = ActorSystem::new(ActorSystemConfig::default());
+		let watermark = Arc::new(WaterMark::new("concurrent".into(), &system));
 
 		const NUM_TASKS: usize = 50;
 		const OPS_PER_TASK: usize = 100;
@@ -245,14 +246,14 @@ pub mod tests {
 		let final_done = watermark.done_until();
 		assert!(final_done.0 > 0, "Watermark should have progressed");
 
-		runtime.shutdown();
+		system.shutdown();
 		sleep(Duration::from_millis(150)); // Wait for actor to stop
 	}
 
 	#[test]
 	fn test_concurrent_wait_for_mark() {
-		let runtime = ActorRuntime::new();
-		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), &runtime));
+		let system = ActorSystem::new(ActorSystemConfig::default());
+		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), &system));
 		let success_count = Arc::new(AtomicUsize::new(0));
 
 		// Start some versions
@@ -290,7 +291,7 @@ pub mod tests {
 		// All waits should have succeeded
 		assert_eq!(success_count.load(Ordering::Relaxed), 10);
 
-		runtime.shutdown();
+		system.shutdown();
 		sleep(Duration::from_millis(150)); // Wait for actor to stop
 	}
 
@@ -413,13 +414,13 @@ pub mod tests {
 	where
 		F: FnOnce(Arc<WaterMark>),
 	{
-		let runtime = ActorRuntime::new();
-		let watermark = Arc::new(WaterMark::new("watermark".into(), &runtime));
+		let system = ActorSystem::new(ActorSystemConfig::default());
+		let watermark = Arc::new(WaterMark::new("watermark".into(), &system));
 
 		f(watermark);
 
 		sleep(Duration::from_millis(10));
-		runtime.shutdown();
+		system.shutdown();
 		sleep(Duration::from_millis(150)); // Wait for actor to stop
 	}
 }

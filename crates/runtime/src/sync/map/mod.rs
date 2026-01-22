@@ -15,28 +15,28 @@ pub(crate) mod wasm;
 
 cfg_if! {
     if #[cfg(reifydb_target = "native")] {
-	type ConcurrentMapInnerImpl<K, V> = native::ConcurrentMapInner<K, V>;
+	type MapInnerImpl<K, V> = native::MapInner<K, V>;
     } else {
-	type ConcurrentMapInnerImpl<K, V> = wasm::ConcurrentMapInner<K, V>;
+	type MapInnerImpl<K, V> = wasm::MapInner<K, V>;
     }
 }
 
 /// A concurrent map that provides a unified API across native and WASM targets.
-pub struct ConcurrentMap<K, V>
+pub struct Map<K, V>
 where
 	K: Eq + Hash,
 {
-	inner: ConcurrentMapInnerImpl<K, V>,
+	inner: MapInnerImpl<K, V>,
 }
 
-impl<K, V> ConcurrentMap<K, V>
+impl<K, V> Map<K, V>
 where
 	K: Eq + Hash,
 {
 	#[inline]
 	pub fn new() -> Self {
 		Self {
-			inner: ConcurrentMapInnerImpl::new(),
+			inner: MapInnerImpl::new(),
 		}
 	}
 
@@ -85,7 +85,7 @@ where
 	}
 }
 
-impl<K, V> Default for ConcurrentMap<K, V>
+impl<K, V> Default for Map<K, V>
 where
 	K: Eq + Hash,
 {

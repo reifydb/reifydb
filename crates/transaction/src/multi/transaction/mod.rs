@@ -17,7 +17,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::store::{MultiVersionContains, MultiVersionGet},
 };
-use reifydb_runtime::actor::runtime::ActorRuntime;
+use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_store_multi::MultiStore;
 use reifydb_type::{Result, util::hex};
 use tracing::instrument;
@@ -88,10 +88,10 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock, runtime))]
-	pub fn new(clock: L, runtime: ActorRuntime) -> Result<Self> {
+	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock, actor_system))]
+	pub fn new(clock: L, actor_system: ActorSystem) -> Result<Self> {
 		let version = clock.next()?;
-		let oracle = Oracle::new(clock, runtime);
+		let oracle = Oracle::new(clock, actor_system);
 		oracle.query.done(version);
 		oracle.command.done(version);
 		Ok(Self {
@@ -99,9 +99,9 @@ where
 		})
 	}
 
-	/// Get the actor runtime
-	pub fn actor_runtime(&self) -> ActorRuntime {
-		self.inner.actor_runtime()
+	/// Get the actor system
+	pub fn actor_system(&self) -> ActorSystem {
+		self.inner.actor_system()
 	}
 
 	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
@@ -173,10 +173,10 @@ impl Inner {
 		store: MultiStore,
 		single: TransactionSingle,
 		event_bus: EventBus,
-		runtime: ActorRuntime,
+		actor_system: ActorSystem,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
-		let tm = TransactionManager::new(version_provider, runtime)?;
+		let tm = TransactionManager::new(version_provider, actor_system)?;
 
 		Ok(Self {
 			tm,
@@ -189,41 +189,42 @@ impl Inner {
 		self.tm.version()
 	}
 
-	fn actor_runtime(&self) -> ActorRuntime {
-		self.tm.actor_runtime()
+	fn actor_system(&self) -> ActorSystem {
+		self.tm.actor_system()
 	}
 }
 
 impl TransactionMulti {
 	pub fn testing() -> Self {
+		use reifydb_runtime::actor::system::ActorSystemConfig;
 		let multi_store = reifydb_store_multi::MultiStore::testing_memory();
 		let single_store = reifydb_store_single::SingleStore::testing_memory();
 		let event_bus = EventBus::new();
-		let runtime = ActorRuntime::new();
+		let actor_system = ActorSystem::new(ActorSystemConfig::default());
 		Self::new(
 			multi_store,
 			TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, event_bus.clone())),
 			event_bus,
-			runtime,
+			actor_system,
 		)
 		.unwrap()
 	}
 }
 
 impl TransactionMulti {
-	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus, runtime))]
+	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus, actor_system))]
 	pub fn new(
 		store: MultiStore,
 		single: TransactionSingle,
 		event_bus: EventBus,
-		runtime: ActorRuntime,
+		actor_system: ActorSystem,
 	) -> Result<Self> {
-		Ok(Self(Arc::new(Inner::new(store, single, event_bus, runtime)?)))
+		Ok(Self(Arc::new(Inner::new(store, single, event_bus, actor_system)?)))
 	}
 
-	/// Get the actor runtime
-	pub fn actor_runtime(&self) -> ActorRuntime {
-		self.0.actor_runtime()
+	/// Get the actor system
+	pub fn actor_system(&self) -> ActorSystem {
+		self.0.actor_system()
 	}
 }
 

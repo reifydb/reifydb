@@ -2,15 +2,15 @@ use std::{borrow::Borrow, hash::Hash};
 
 use dashmap::DashMap;
 
-/// Native implementation of ConcurrentMap using DashMap for high-performance concurrent access.
-pub struct ConcurrentMapInner<K, V>
+/// Native implementation of Map using DashMap for high-performance concurrent access.
+pub struct MapInner<K, V>
 where
 	K: Eq + Hash,
 {
 	inner: DashMap<K, V>,
 }
 
-impl<K, V> ConcurrentMapInner<K, V>
+impl<K, V> MapInner<K, V>
 where
 	K: Eq + Hash,
 {
@@ -73,7 +73,7 @@ where
 	}
 }
 
-impl<K, V> Default for ConcurrentMapInner<K, V>
+impl<K, V> Default for MapInner<K, V>
 where
 	K: Eq + Hash,
 {

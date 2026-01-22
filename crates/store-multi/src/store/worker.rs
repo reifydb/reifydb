@@ -24,9 +24,9 @@ use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
-		runtime::ActorRuntime,
-		timers::{TimerHandle, schedule_repeat},
+		timers::TimerHandle,
 		traits::{Actor, ActorConfig, Flow},
+		system::ActorSystem,
 	},
 	time::Instant,
 };
@@ -117,17 +117,17 @@ impl DropActor {
 		}
 	}
 
-	/// Spawn a drop actor on the given runtime.
+	/// Spawn a drop actor on the given system.
 	///
 	/// Returns the ActorRef for sending messages.
 	pub fn spawn(
-		runtime: &ActorRuntime,
+		system: &ActorSystem,
 		config: DropWorkerConfig,
 		storage: HotStorage,
 		event_bus: EventBus,
 	) -> ActorRef<DropMessage> {
 		let actor = Self::new(config, storage, event_bus);
-		runtime.spawn_ref("drop-worker", actor)
+		system.spawn("drop-worker", actor).actor_ref().clone()
 	}
 
 	/// Maybe flush if batch is full.
@@ -209,7 +209,7 @@ impl Actor for DropActor {
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		// Schedule periodic tick for flushing partial batches
-		let timer_handle = schedule_repeat(ctx.self_ref(), Duration::from_millis(10), DropMessage::Tick);
+		let timer_handle = ctx.schedule_repeat(Duration::from_millis(10), DropMessage::Tick);
 
 		DropActorState {
 			pending_requests: Vec::with_capacity(self.config.batch_size),

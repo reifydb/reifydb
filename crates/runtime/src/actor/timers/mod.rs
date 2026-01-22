@@ -5,27 +5,27 @@
 //!
 //! This module provides timer functionality for scheduling messages:
 //! - [`TimerHandle`]: A handle to cancel a scheduled timer
-//! - [`schedule_once`]: Schedule a message to be sent after a delay
-//! - [`schedule_repeat`]: Schedule a message to be sent repeatedly
+//! - [`Context::schedule_once`]: Schedule a message to be sent after a delay
+//! - [`Context::schedule_repeat`]: Schedule a message to be sent repeatedly
 //!
 //! # Platform Differences
 //!
-//! - **Native**: Uses `std::thread` with `std::thread::sleep` for timing
+//! - **Native**: Uses a centralized scheduler with a BinaryHeap min-heap
 //! - **WASM**: Uses `setTimeout` and `setInterval` via `web-sys`
+//!
+//! [`Context::schedule_once`]: crate::actor::context::Context::schedule_once
+//! [`Context::schedule_repeat`]: crate::actor::context::Context::schedule_repeat
 
+use std::fmt::Debug;
 use std::sync::{
 	Arc,
 	atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 #[cfg(reifydb_target = "native")]
-pub(crate) mod native;
+pub mod scheduler;
 #[cfg(reifydb_target = "wasm")]
 pub(crate) mod wasm;
-
-// =============================================================================
-// Shared types
-// =============================================================================
 
 /// Handle to a scheduled timer.
 ///
@@ -68,7 +68,7 @@ impl TimerHandle {
 	}
 }
 
-impl std::fmt::Debug for TimerHandle {
+impl Debug for TimerHandle {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("TimerHandle").field("id", &self.id).field("cancelled", &self.is_cancelled()).finish()
 	}
@@ -80,12 +80,3 @@ static TIMER_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub(crate) fn next_timer_id() -> u64 {
 	TIMER_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
-
-// =============================================================================
-// Re-exports
-// =============================================================================
-
-#[cfg(reifydb_target = "native")]
-pub use native::{schedule_once, schedule_repeat};
-#[cfg(reifydb_target = "wasm")]
-pub use wasm::{schedule_once, schedule_repeat};

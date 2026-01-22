@@ -8,7 +8,7 @@ use std::{
 
 use cleanup::cleanup_old_windows;
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
-use reifydb_runtime::{actor::runtime::ActorRuntime, sync::rwlock::RwLock, time::Instant};
+use reifydb_runtime::{sync::rwlock::RwLock, actor::system::ActorSystem, time::Instant};
 use reifydb_type::Result;
 use tracing::{Span, instrument};
 
@@ -121,8 +121,8 @@ where
 	pub(crate) command: WaterMark,
 	/// Shutdown signal for cleanup thread
 	shutdown_signal: Arc<RwLock<bool>>,
-	/// Actor runtime for watermark actors
-	runtime: ActorRuntime,
+	/// Actor system for watermark actors
+	actor_system: ActorSystem,
 }
 
 impl<L> Oracle<L>
@@ -130,7 +130,7 @@ where
 	L: VersionProvider,
 {
 	/// Create a new oracle with efficient conflict detection
-	pub fn new(clock: L, runtime: ActorRuntime) -> Self {
+	pub fn new(clock: L, actor_system: ActorSystem) -> Self {
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
 		Self {
@@ -141,16 +141,16 @@ where
 				key_to_windows: HashMap::with_capacity(10000),
 				window_size: DEFAULT_WINDOW_SIZE,
 			}),
-			query: WaterMark::new("txn-mark-query".into(), &runtime),
-			command: WaterMark::new("txn-mark-cmd".into(), &runtime),
+			query: WaterMark::new("txn-mark-query".into(), &actor_system),
+			command: WaterMark::new("txn-mark-cmd".into(), &actor_system),
 			shutdown_signal,
-			runtime,
+			actor_system,
 		}
 	}
 
-	/// Get the actor runtime
-	pub fn actor_runtime(&self) -> ActorRuntime {
-		self.runtime.clone()
+	/// Get the actor system
+	pub fn actor_system(&self) -> ActorSystem {
+		self.actor_system.clone()
 	}
 
 	/// Efficient conflict detection using time windows and key indexing
@@ -353,7 +353,7 @@ where
 			*shutdown = true;
 		}
 
-		self.runtime.shutdown();
+		self.actor_system.shutdown();
 	}
 
 	/// Mark a query as done
@@ -413,6 +413,8 @@ pub mod tests {
 		atomic::{AtomicU64, Ordering},
 	};
 
+	use reifydb_runtime::actor::system::ActorSystemConfig;
+
 	use super::*;
 	use crate::multi::transaction::version::VersionProvider;
 
@@ -446,8 +448,8 @@ pub mod tests {
 
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
-		let runtime = ActorRuntime::new();
-		Oracle::new(clock, runtime)
+		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		Oracle::new(clock, actor_system)
 	}
 
 	#[test]

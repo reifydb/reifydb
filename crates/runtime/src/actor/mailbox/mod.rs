@@ -14,6 +14,15 @@
 
 use std::fmt;
 
+#[cfg(reifydb_target = "wasm")]
+use std::cell::{Cell, RefCell};
+#[cfg(reifydb_target = "wasm")]
+use std::rc::Rc;
+#[cfg(reifydb_target = "wasm")]
+use std::sync::Arc;
+#[cfg(reifydb_target = "wasm")]
+use std::sync::atomic::AtomicBool;
+
 use cfg_if::cfg_if;
 
 #[cfg(reifydb_target = "native")]
@@ -197,10 +206,23 @@ impl<M> ActorRef<M> {
 	/// Create a new ActorRef with WASM components (WASM only).
 	#[inline]
 	pub(crate) fn new(
-		processor: std::rc::Rc<std::cell::RefCell<Option<Box<dyn FnMut(M)>>>>,
-		alive: std::sync::Arc<std::sync::atomic::AtomicBool>,
-		queue: std::rc::Rc<std::cell::RefCell<Vec<M>>>,
-		processing: std::rc::Rc<std::cell::Cell<bool>>,
+		processor: Rc<RefCell<Option<Box<dyn FnMut(M)>>>>,
+		alive: Arc<AtomicBool>,
+		queue: Rc<RefCell<Vec<M>>>,
+		processing: Rc<Cell<bool>>,
+	) -> Self {
+		Self {
+			inner: wasm::ActorRefInner::new(processor, alive, queue, processing),
+		}
+	}
+
+	/// Create a new ActorRef from WASM inner components (used by system/wasm).
+	#[inline]
+	pub(crate) fn from_wasm_inner(
+		processor: Rc<RefCell<Option<Box<dyn FnMut(M)>>>>,
+		alive: Arc<AtomicBool>,
+		queue: Rc<RefCell<Vec<M>>>,
+		processing: Rc<Cell<bool>>,
 	) -> Self {
 		Self {
 			inner: wasm::ActorRefInner::new(processor, alive, queue, processing),
@@ -240,7 +262,7 @@ impl<M> ActorRef<M> {
 
 	/// Get access to the processor for setting it up (WASM only).
 	#[inline]
-	pub(crate) fn processor(&self) -> &std::rc::Rc<std::cell::RefCell<Option<Box<dyn FnMut(M)>>>> {
+	pub(crate) fn processor(&self) -> &Rc<RefCell<Option<Box<dyn FnMut(M)>>>> {
 		&self.inner.processor
 	}
 }
@@ -249,8 +271,6 @@ impl<M> ActorRef<M> {
 // Re-exports for native mailbox
 // =============================================================================
 
-#[cfg(reifydb_target = "native")]
-pub(crate) use native::Mailbox;
 #[cfg(reifydb_target = "native")]
 pub(crate) use native::create_mailbox;
 #[cfg(reifydb_target = "wasm")]

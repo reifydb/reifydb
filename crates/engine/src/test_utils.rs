@@ -30,7 +30,7 @@ use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_rqlv2::compiler::Compiler;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, actor::runtime::ActorRuntime};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, actor::system::{ActorSystem, ActorSystemConfig}};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
@@ -48,10 +48,10 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction {
 	let single_store = SingleStore::testing_memory();
 
 	let event_bus = EventBus::new();
-	let actor_runtime = ActorRuntime::new();
+	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let single_svl = TransactionSvl::new(single_store, event_bus.clone());
 	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
-	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_runtime).unwrap();
+	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system).unwrap();
 
 	StandardCommandTransaction::new(multi, single, event_bus, Interceptors::new()).unwrap()
 }
@@ -61,10 +61,10 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 	let single_store = SingleStore::testing_memory();
 
 	let event_bus = EventBus::new();
-	let actor_runtime = ActorRuntime::new();
+	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let single_svl = TransactionSvl::new(single_store, event_bus.clone());
 	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
-	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_runtime).unwrap();
+	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system).unwrap();
 	let mut result =
 		StandardCommandTransaction::new(multi, single.clone(), event_bus.clone(), Interceptors::new()).unwrap();
 
@@ -121,12 +121,12 @@ pub fn create_test_engine() -> StandardEngine {
 	mock_time_set(1000);
 
 	let eventbus = EventBus::new();
-	let actor_runtime = ActorRuntime::new();
+	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 	let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 	let single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
 	let multi =
-		TransactionMulti::new(multi_store.clone(), single.clone(), eventbus.clone(), actor_runtime).unwrap();
+		TransactionMulti::new(multi_store.clone(), single.clone(), eventbus.clone(), actor_system).unwrap();
 
 	let mut ioc = IocContainer::new();
 

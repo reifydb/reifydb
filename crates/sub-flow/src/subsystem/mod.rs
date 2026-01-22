@@ -70,9 +70,9 @@ impl FlowSubsystem {
 		let num_workers = config.num_workers;
 		info!(num_workers, "initializing flow coordinator with {} workers", num_workers);
 
-		// Use the engine's actor runtime instead of creating a new one
-		// This is critical for WASM where actors on different runtimes cannot communicate
-		let runtime = engine.actor_runtime();
+		// Use the engine's actor system instead of creating a new one
+		// This is critical for WASM where actors on different systems cannot communicate
+		let actor_system = engine.actor_system();
 
 		let coordinator = FlowCoordinator::new(
 			engine.clone(),
@@ -80,7 +80,7 @@ impl FlowSubsystem {
 			num_workers,
 			factory_builder,
 			cdc_store.clone(),
-			runtime.clone(),
+			actor_system.clone(),
 		);
 
 		// Register FlowLags with access to the flow catalog
@@ -98,9 +98,9 @@ impl FlowSubsystem {
 			Some(100),
 		);
 
-		// Pass the same shared runtime to PollConsumer so PollActor can communicate
+		// Pass the same shared actor system to PollConsumer so PollActor can communicate
 		// with the coordinator and worker actors
-		let consumer = PollConsumer::new(poll_config, engine, coordinator, cdc_store, runtime);
+		let consumer = PollConsumer::new(poll_config, engine, coordinator, cdc_store, actor_system);
 
 		Self {
 			consumer,

@@ -12,7 +12,7 @@ use std::{
 };
 
 use reifydb_core::interface::cdc::CdcConsumerId;
-use reifydb_runtime::actor::runtime::{ActorHandle, ActorRuntime};
+use reifydb_runtime::actor::system::{ActorHandle, ActorSystem};
 use reifydb_type::Result;
 
 use super::{
@@ -61,20 +61,20 @@ pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
 	consumer: Option<C>,
 	store: Option<CdcStore>,
 	running: Arc<AtomicBool>,
-	runtime: ActorRuntime,
+	actor_system: ActorSystem,
 	/// Handle to the poll actor - must be joined on stop for proper cleanup
 	handle: Option<ActorHandle<PollMsg>>,
 }
 
 impl<H: CdcHost, C: CdcConsume + Send + 'static> PollConsumer<H, C> {
-	pub fn new(config: PollConsumerConfig, host: H, consume: C, store: CdcStore, runtime: ActorRuntime) -> Self {
+	pub fn new(config: PollConsumerConfig, host: H, consume: C, store: CdcStore, actor_system: ActorSystem) -> Self {
 		Self {
 			config,
 			host: Some(host),
 			consumer: Some(consume),
 			store: Some(store),
 			running: Arc::new(AtomicBool::new(false)),
-			runtime,
+			actor_system,
 			handle: None,
 		}
 	}
@@ -98,8 +98,8 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> CdcConsumer for PollConsumer<H,
 
 		let actor = PollActor::new(actor_config, host, consumer, store);
 
-		// Use the shared runtime instead of creating a new one
-		let handle = self.runtime.spawn(&self.config.thread_name, actor);
+		// Use the shared actor system instead of creating a new one
+		let handle = self.actor_system.spawn(&self.config.thread_name, actor);
 		self.handle = Some(handle);
 
 		Ok(())
@@ -110,9 +110,9 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> CdcConsumer for PollConsumer<H,
 			return Ok(()); // Already stopped
 		}
 
-		// Signal the runtime to shutdown - this will trigger cancellation
+		// Signal the actor system to shutdown - this will trigger cancellation
 		// which the actor checks before each poll
-		self.runtime.shutdown();
+		self.actor_system.shutdown();
 
 		// Join the poll actor thread to ensure proper cleanup
 		// This ensures the PollActor (and its consumer, e.g. FlowCoordinator)

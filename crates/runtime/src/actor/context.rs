@@ -5,7 +5,7 @@
 //!
 //! The context provides actors with access to:
 //! - Self reference for receiving messages
-//! - Runtime for spawning child actors
+//! - Actor system for spawning child actors
 //! - Cancellation status for graceful shutdown
 //! - Timer scheduling (when enabled)
 
@@ -13,8 +13,11 @@ use std::sync::{
 	Arc,
 	atomic::{AtomicBool, Ordering},
 };
+use std::time::Duration;
 
-use crate::actor::{mailbox::ActorRef, runtime::ActorRuntime};
+use crate::actor::mailbox::ActorRef;
+use crate::actor::timers::TimerHandle;
+use crate::actor::system::ActorSystem;
 
 /// A cancellation token for signaling shutdown.
 ///
@@ -53,20 +56,20 @@ impl Default for CancellationToken {
 ///
 /// Provides access to:
 /// - Self reference (to give to other actors)
-/// - Runtime (to spawn child actors)
+/// - Actor system (to spawn child actors and run compute)
 /// - Cancellation (for graceful shutdown)
 pub struct Context<M> {
 	self_ref: ActorRef<M>,
-	runtime: ActorRuntime,
+	system: ActorSystem,
 	cancel: CancellationToken,
 }
 
 impl<M: Send + 'static> Context<M> {
 	/// Create a new context.
-	pub(crate) fn new(self_ref: ActorRef<M>, runtime: ActorRuntime, cancel: CancellationToken) -> Self {
+	pub(crate) fn new(self_ref: ActorRef<M>, system: ActorSystem, cancel: CancellationToken) -> Self {
 		Self {
 			self_ref,
-			runtime,
+			system,
 			cancel,
 		}
 	}
@@ -76,9 +79,9 @@ impl<M: Send + 'static> Context<M> {
 		self.self_ref.clone()
 	}
 
-	/// Get the runtime (for spawning child actors).
-	pub fn runtime(&self) -> &ActorRuntime {
-		&self.runtime
+	/// Get the actor system (for spawning child actors).
+	pub fn system(&self) -> &ActorSystem {
+		&self.system
 	}
 
 	/// Check if shutdown was requested.
@@ -92,11 +95,55 @@ impl<M: Send + 'static> Context<M> {
 	}
 }
 
+impl<M: Send + Clone + 'static> Context<M> {
+	/// Schedule a message to be sent to this actor after a delay.
+	///
+	/// Returns a handle that can be used to cancel the timer.
+	#[cfg(reifydb_target = "native")]
+	pub fn schedule_once(&self, delay: Duration, msg: M) -> TimerHandle {
+		let actor_ref = self.self_ref.clone();
+		self.system.scheduler().schedule_once(delay, move || {
+			let _ = actor_ref.send(msg);
+		})
+	}
+
+	/// Schedule a message to be sent to this actor after a delay.
+	///
+	/// Returns a handle that can be used to cancel the timer.
+	#[cfg(reifydb_target = "wasm")]
+	pub fn schedule_once(&self, delay: Duration, msg: M) -> TimerHandle {
+		crate::actor::timers::wasm::schedule_once(self.self_ref.clone(), delay, msg)
+	}
+}
+
+impl<M: Send + Sync + Clone + 'static> Context<M> {
+	/// Schedule a message to be sent to this actor repeatedly at an interval.
+	///
+	/// The timer continues until cancelled or the actor is dropped.
+	/// Returns a handle that can be used to cancel the timer.
+	#[cfg(reifydb_target = "native")]
+	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
+		let actor_ref = self.self_ref.clone();
+		self.system.scheduler().schedule_repeat(interval, move || {
+			actor_ref.send(msg.clone()).is_ok()
+		})
+	}
+
+	/// Schedule a message to be sent to this actor repeatedly at an interval.
+	///
+	/// The timer continues until cancelled or the actor is dropped.
+	/// Returns a handle that can be used to cancel the timer.
+	#[cfg(reifydb_target = "wasm")]
+	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
+		crate::actor::timers::wasm::schedule_repeat(self.self_ref.clone(), interval, msg)
+	}
+}
+
 impl<M> Clone for Context<M> {
 	fn clone(&self) -> Self {
 		Self {
 			self_ref: self.self_ref.clone(),
-			runtime: self.runtime.clone(),
+			system: self.system.clone(),
 			cancel: self.cancel.clone(),
 		}
 	}

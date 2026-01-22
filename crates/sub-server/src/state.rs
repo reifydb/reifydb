@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::compute::ComputePool;
+use reifydb_runtime::actor::system::ActorSystem;
 
 /// Configuration for query execution.
 #[derive(Debug, Clone)]
@@ -68,38 +68,38 @@ impl StateConfig {
 /// # Example
 ///
 /// ```ignore
-/// let state = AppState::new(pool, engine, QueryConfig::default());
+/// let state = AppState::new(actor_system, engine, QueryConfig::default());
 ///
 /// // In an axum handler:
 /// async fn handle_query(State(state): State<AppState>, ...) {
-///     let pool = state.pool();
+///     let system = state.actor_system();
 ///     let engine = state.engine();
 ///     // ...
 /// }
 /// ```
 #[derive(Clone)]
 pub struct AppState {
-	pool: ComputePool,
+	actor_system: ActorSystem,
 	engine: StandardEngine,
 	config: StateConfig,
 }
 
 impl AppState {
-	/// Create a new AppState with the given compute pool, engine, and configuration.
-	pub fn new(pool: ComputePool, engine: StandardEngine, config: StateConfig) -> Self {
+	/// Create a new AppState with the given actor system, engine, and configuration.
+	pub fn new(actor_system: ActorSystem, engine: StandardEngine, config: StateConfig) -> Self {
 		Self {
-			pool,
+			actor_system,
 			engine,
 			config,
 		}
 	}
 
-	/// Get a clone of the compute pool.
+	/// Get a clone of the actor system.
 	///
-	/// This is cheap since `ComputePool` uses `Arc` internally.
+	/// This is cheap since `ActorSystem` uses `Arc` internally.
 	#[inline]
-	pub fn pool(&self) -> ComputePool {
-		self.pool.clone()
+	pub fn actor_system(&self) -> ActorSystem {
+		self.actor_system.clone()
 	}
 
 	/// Get a reference to the database engine.

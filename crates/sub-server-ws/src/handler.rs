@@ -211,9 +211,9 @@ fn cleanup_subscription_from_db_sync(
 /// Cleanup a subscription from the database.
 async fn cleanup_subscription_from_db(state: &AppState, subscription_id: DbSubscriptionId) -> reifydb_type::Result<()> {
 	let engine = state.engine_clone();
-	let pool = state.pool();
+	let system = state.actor_system();
 
-	pool.compute(move || cleanup_subscription_from_db_sync(&engine, subscription_id))
+	system.compute(move || cleanup_subscription_from_db_sync(&engine, subscription_id))
 		.await
 		.map_err(|e| Error(internal(format!("Compute pool error: {:?}", e))))?
 }
@@ -272,7 +272,7 @@ async fn process_message(
 			let query = q.statements.join("; ");
 			let timeout = state.query_timeout();
 
-			match execute_query(state.pool(), state.engine_clone(), query, id, params, timeout).await {
+			match execute_query(state.actor_system(), state.engine_clone(), query, id, params, timeout).await {
 				Ok(frames) => {
 					let ws_frames = convert_frames(frames);
 					Some(Response::query(&request.id, ws_frames).to_json())
@@ -298,7 +298,7 @@ async fn process_message(
 			let params = c.params.unwrap_or(Params::None);
 			let timeout = state.query_timeout();
 
-			match execute_command(state.pool(), state.engine_clone(), c.statements, id, params, timeout)
+			match execute_command(state.actor_system(), state.engine_clone(), c.statements, id, params, timeout)
 				.await
 			{
 				Ok(frames) => {

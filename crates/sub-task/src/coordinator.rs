@@ -214,7 +214,7 @@ fn spawn_task(
 			(TaskWork::Sync(f), TaskExecutor::ComputePool) => {
 				let f = f.clone();
 				let ctx_clone = ctx.clone();
-				runtime.compute_pool()
+				runtime.actor_system()
 					.compute(move || f(ctx_clone))
 					.await
 					.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)

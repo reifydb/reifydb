@@ -4,7 +4,10 @@
 use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::event::EventBus;
-use reifydb_runtime::actor::{mailbox::ActorRef, runtime::ActorRuntime};
+use reifydb_runtime::{
+	actor::mailbox::ActorRef,
+	actor::system::{ActorSystem, ActorSystemConfig},
+};
 use tracing::instrument;
 
 use crate::{HotConfig, cold::ColdStorage, config::MultiStoreConfig, hot::storage::HotStorage, warm::WarmStorage};
@@ -26,8 +29,8 @@ pub struct StandardMultiStoreInner {
 	pub(crate) cold: Option<ColdStorage>,
 	/// Reference to the drop actor for sending drop requests.
 	pub(crate) drop_actor: ActorRef<DropMessage>,
-	/// Runtime that owns the drop actor.
-	_runtime: ActorRuntime,
+	/// Actor system that owns the drop actor.
+	_actor_system: ActorSystem,
 	/// Event bus for emitting storage statistics events.
 	pub(crate) event_bus: EventBus,
 }
@@ -46,20 +49,20 @@ impl StandardMultiStore {
 		let _ = config.warm;
 		let _ = config.cold;
 
-		// Create actor runtime for the drop actor
-		let runtime = ActorRuntime::new();
+		// Create actor system for the drop actor
+		let actor_system = ActorSystem::new(ActorSystemConfig::default());
 
 		// Spawn drop actor
 		let storage = hot.as_ref().expect("hot tier is required");
 		let drop_config = DropWorkerConfig::default();
-		let drop_actor = DropActor::spawn(&runtime, drop_config, storage.clone(), config.event_bus.clone());
+		let drop_actor = DropActor::spawn(&actor_system, drop_config, storage.clone(), config.event_bus.clone());
 
 		Ok(Self(Arc::new(StandardMultiStoreInner {
 			hot,
 			warm,
 			cold,
 			drop_actor,
-			_runtime: runtime,
+			_actor_system: actor_system,
 			event_bus: config.event_bus,
 		})))
 	}

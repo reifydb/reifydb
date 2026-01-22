@@ -6,66 +6,35 @@
 //! This module defines the fundamental abstractions for the actor model:
 //! - [`Actor`]: The trait that all actors must implement
 //! - [`Flow`]: Control flow for actor scheduling
-//! - [`ActorConfig`]: Configuration for actor behavior
+//! - [`ActorConfig`]: Configuration for actor behavior (re-exported from system)
 
 use crate::actor::context::Context;
+
+// Re-export config types from system module
+pub use crate::actor::system::config::{ActorConfig, ThreadingModel};
 
 /// What the actor wants to do after handling a message.
 ///
 /// This enum controls actor behavior after processing each message.
 ///
-/// In the thread-based model:
-/// - **Native**: Each actor runs on its own OS thread, so `Yield` is a no-op
+/// - **Native SharedPool/DedicatedThread**: `Yield` and `Park` are no-ops since actors have their own threads
 /// - **WASM**: Messages are processed inline (synchronously), so `Yield` and `Park` are no-ops
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Flow {
 	/// Keep processing messages immediately.
 	Continue,
 
-	/// Yield to other actors (Native: no-op since each actor has own thread).
+	/// Yield to other actors (no-op in current implementation).
 	Yield,
 
-	/// Block waiting for message (Native: blocks on channel recv).
+	/// Block waiting for message (no-op in current implementation).
 	Park,
 
 	/// Stop this actor permanently.
 	///
 	/// The actor's `post_stop` hook will be called, and the actor
-	/// will be removed from the runtime.
+	/// will be removed from the system.
 	Stop,
-}
-
-/// Configuration for actor behavior.
-///
-/// Simplified for the thread-based model - no batch_size or max_run_duration
-/// since each actor has its own thread (native) or processes inline (WASM).
-#[derive(Debug, Clone)]
-pub struct ActorConfig {
-	/// Mailbox capacity. 0 = unbounded.
-	///
-	/// Default: 0 (unbounded)
-	pub mailbox_capacity: usize,
-}
-
-impl Default for ActorConfig {
-	fn default() -> Self {
-		Self {
-			mailbox_capacity: 0,
-		}
-	}
-}
-
-impl ActorConfig {
-	/// Create a new config with default values.
-	pub fn new() -> Self {
-		Self::default()
-	}
-
-	/// Set the mailbox capacity. 0 = unbounded.
-	pub fn mailbox_capacity(mut self, capacity: usize) -> Self {
-		self.mailbox_capacity = capacity;
-		self
-	}
 }
 
 /// The core actor abstraction.

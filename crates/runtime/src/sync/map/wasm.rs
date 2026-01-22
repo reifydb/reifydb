@@ -5,8 +5,8 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
-/// WASM implementation of ConcurrentMap using Arc<RwLock<HashMap>>.
-pub struct ConcurrentMapInner<K, V>
+/// WASM implementation of Map using Arc<RwLock<HashMap>>.
+pub struct MapInner<K, V>
 where
 	K: Eq + Hash,
 {
@@ -15,14 +15,14 @@ where
 
 // SAFETY: The inner Arc<RwLock<HashMap>> is Sync, and we need to explicitly mark this
 // for WASM targets where Sync is not automatically derived.
-unsafe impl<K, V> Sync for ConcurrentMapInner<K, V>
+unsafe impl<K, V> Sync for MapInner<K, V>
 where
 	K: Eq + Hash + Send,
 	V: Send,
 {
 }
 
-impl<K, V> ConcurrentMapInner<K, V>
+impl<K, V> MapInner<K, V>
 where
 	K: Eq + Hash,
 {
@@ -101,7 +101,7 @@ where
 	}
 }
 
-impl<K, V> Default for ConcurrentMapInner<K, V>
+impl<K, V> Default for MapInner<K, V>
 where
 	K: Eq + Hash,
 {

@@ -22,7 +22,6 @@ use reifydb_core::{
 };
 use reifydb_runtime::actor::{
 	context::Context,
-	timers::schedule_once,
 	traits::{Actor, ActorConfig, Flow},
 };
 use reifydb_type::Result;
@@ -117,7 +116,7 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> Actor for PollActor<H, C> {
 					}
 					Ok(_) => {
 						// No data - schedule delayed poll
-						schedule_once(ctx.self_ref(), self.config.poll_interval, PollMsg::Poll);
+						ctx.schedule_once(self.config.poll_interval, PollMsg::Poll);
 					}
 					Err(e) => {
 						error!(
@@ -125,7 +124,7 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> Actor for PollActor<H, C> {
 							self.config.consumer_id, e
 						);
 						// Sleep before retrying on error
-						schedule_once(ctx.self_ref(), self.config.poll_interval, PollMsg::Poll);
+						ctx.schedule_once(self.config.poll_interval, PollMsg::Poll);
 					}
 				}
 			}

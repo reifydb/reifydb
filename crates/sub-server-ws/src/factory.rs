@@ -119,7 +119,7 @@ impl SubsystemFactory for WsSubsystemFactory {
 			.max_connections(self.config.max_connections);
 
 		let runtime = self.config.runtime.unwrap_or(ioc_runtime);
-		let state = AppState::new(runtime.compute_pool(), engine, query_config);
+		let state = AppState::new(runtime.actor_system(), engine, query_config);
 		let subsystem = WsSubsystem::new(
 			self.config.bind_addr.clone(),
 			state,

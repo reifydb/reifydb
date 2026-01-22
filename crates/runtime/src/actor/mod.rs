@@ -1,29 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Thread-based actor model for ReifyDB.
+//! Actor model for ReifyDB.
 //!
 //! This module provides an actor model that provides identical semantics whether
 //! running on a single thread (WASM) or multiple OS threads (native).
 //!
 //! # Execution Model
 //!
-//! - **Native**: Each actor runs on its own OS thread using `std::thread::spawn`. Messages are sent via
-//!   `crossbeam-channel` and received with blocking `recv()`.
-//! - **WASM**: Messages are processed inline (synchronously) when sent. No separate thread or task is created.
+//! - **Native SharedPool**: Actors run on threads with shared rayon pool for compute
+//! - **Native DedicatedThread**: Each actor runs on its own OS thread
+//! - **WASM**: Messages are processed inline (synchronously) when sent
 //!
-//! # Design Goals
+//! # Threading Models
 //!
-//! 1. **Behavioral Equivalence**: Same code, same semantics on 1 thread or N threads
-//! 2. **Thread-Based on Native**: Each actor runs on its own OS thread
-//! 3. **Synchronous on WASM**: Messages processed inline when sent
-//! 4. **No Async/Tokio**: Uses `std::thread` and `crossbeam-channel`, not async
-//! 5. **Testability**: Actors can be tested synchronously without spawning threads
+//! Actors can be configured with different threading models via [`ActorConfig`]:
+//! - `ThreadingModel::SharedPool`: Run on shared pool (requires `State: Send`)
+//! - `ThreadingModel::DedicatedThread`: Run on dedicated thread (allows non-Send state)
 //!
 //! # Example
 //!
 //! ```ignore
-//! use reifydb_runtime::actor::{Actor, ActorRuntime, Context, Flow};
+//! use reifydb_runtime::{system::ActorSystem, actor::{Actor, Context, Flow, ActorConfig, ThreadingModel}};
 //!
 //! struct Counter;
 //!
@@ -52,14 +50,18 @@
 //!         }
 //!         Flow::Continue
 //!     }
+//!
+//!     fn config(&self) -> ActorConfig {
+//!         ActorConfig::new().threading(ThreadingModel::SharedPool)
+//!     }
 //! }
 //!
-//! // Create runtime and spawn actor
-//! let runtime = ActorRuntime::new();
-//! let counter = runtime.spawn_ref("counter", Counter);
+//! // Create system and spawn actor
+//! let system = ActorSystem::new(Default::default());
+//! let handle = system.spawn("counter", Counter);
 //!
 //! // Send messages
-//! counter.send(CounterMsg::Inc).unwrap();
+//! handle.actor_ref().send(CounterMsg::Inc).unwrap();
 //! ```
 //!
 //! # Testing
@@ -79,8 +81,7 @@
 
 pub mod context;
 pub mod mailbox;
-pub mod runner;
-pub mod runtime;
+pub mod system;
 pub mod testing;
 pub mod timers;
 pub mod traits;

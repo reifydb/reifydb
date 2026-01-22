@@ -4,7 +4,7 @@
 use std::{cmp::Reverse, collections::BTreeMap, sync::Arc};
 
 use reifydb_core::common::CommitVersion;
-use reifydb_runtime::{concurrent_map::ConcurrentMap, sync::rwlock::RwLock};
+use reifydb_runtime::sync::{map::Map, rwlock::RwLock};
 use reifydb_type::util::cowvec::CowVec;
 
 use crate::tier::EntryKind;
@@ -58,17 +58,17 @@ pub(super) fn entry_id_to_key(entry: EntryKind) -> String {
 	}
 }
 
-/// Table storage using ConcurrentMap for concurrent per-table access.
+/// Table storage using Map for concurrent per-table access.
 ///
 /// Uses DashMap on native platforms and Arc<RwLock<HashMap>> on WASM.
 pub(super) struct Entries {
-	pub(super) data: ConcurrentMap<String, Entry>,
+	pub(super) data: Map<String, Entry>,
 }
 
 impl Default for Entries {
 	fn default() -> Self {
 		Self {
-			data: ConcurrentMap::new(),
+			data: Map::new(),
 		}
 	}
 }

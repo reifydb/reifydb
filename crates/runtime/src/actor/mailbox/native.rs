@@ -4,7 +4,7 @@
 //! Native mailbox implementation using crossbeam-channel.
 
 use std::{fmt, time::Duration};
-
+use crossbeam_channel::Receiver;
 use super::{ActorRef, RecvError, RecvTimeoutError, SendError, TryRecvError};
 
 /// Native implementation of ActorRef inner.
@@ -61,7 +61,7 @@ impl<M: Send> ActorRefInner<M> {
 
 /// Internal receiver for the actor's mailbox.
 pub(crate) struct Mailbox<M> {
-	pub(crate) rx: crossbeam_channel::Receiver<M>,
+	pub(crate) rx: Receiver<M>,
 }
 
 impl<M> Mailbox<M> {

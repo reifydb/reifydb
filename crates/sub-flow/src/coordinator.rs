@@ -17,7 +17,7 @@ use reifydb_core::internal;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::{
 	mailbox::ActorRef,
-	runtime::{ActorHandle, ActorRuntime},
+	system::{ActorHandle, ActorSystem},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{Result, error::Error};
@@ -46,23 +46,23 @@ pub(crate) struct FlowCoordinator {
 	pool_handle: Option<ActorHandle<PoolMsg>>,
 	/// Coordinator handle for proper cleanup - must be joined on shutdown
 	coordinator_handle: Option<ActorHandle<CoordinatorMsg>>,
-	runtime: ActorRuntime,
+	actor_system: ActorSystem,
 }
 
 impl FlowCoordinator {
 	/// Create a new flow coordinator with the given configuration.
 	///
-	/// Spawns worker actors, pool actor, and coordinator actor on the provided runtime.
-	/// The runtime should be shared with other components (like PollConsumer) so that
+	/// Spawns worker actors, pool actor, and coordinator actor on the provided system.
+	/// The actor system should be shared with other components (like PollConsumer) so that
 	/// all actors can communicate properly, especially in WASM where actors on different
-	/// runtimes cannot exchange messages.
+	/// systems cannot exchange messages.
 	pub fn new<F, Fac>(
 		engine: StandardEngine,
 		tracker: Arc<PrimitiveVersionTracker>,
 		num_workers: usize,
 		factory_builder: F,
 		cdc_store: CdcStore,
-		runtime: ActorRuntime,
+		actor_system: ActorSystem,
 	) -> Self
 	where
 		F: Fn() -> Fac + Send + 'static,
@@ -75,14 +75,14 @@ impl FlowCoordinator {
 		for i in 0..num_workers {
 			let worker_factory = factory_builder();
 			let actor = FlowActor::new(worker_factory, engine.clone(), engine.catalog());
-			let handle = runtime.spawn(&format!("flow-worker-{}", i), actor);
-			worker_refs.push(handle.actor_ref.clone());
+			let handle = actor_system.spawn_dedicated(&format!("flow-worker-{}", i), actor);
+			worker_refs.push(handle.actor_ref().clone());
 			worker_handles.push(handle);
 		}
 
 		let pool_actor = PoolActor::new(worker_refs);
-		let pool_handle = runtime.spawn("flow-pool", pool_actor);
-		let pool_ref = pool_handle.actor_ref.clone();
+		let pool_handle = actor_system.spawn("flow-pool", pool_actor);
+		let pool_ref = pool_handle.actor_ref().clone();
 
 		let coordinator_actor = CoordinatorActor::new(
 			engine.clone(),
@@ -93,8 +93,8 @@ impl FlowCoordinator {
 			num_workers,
 		);
 
-		let coordinator_handle = runtime.spawn("flow-coordinator", coordinator_actor);
-		let actor_ref = coordinator_handle.actor_ref.clone();
+		let coordinator_handle = actor_system.spawn("flow-coordinator", coordinator_actor);
+		let actor_ref = coordinator_handle.actor_ref().clone();
 
 		Self {
 			catalog,
@@ -102,7 +102,7 @@ impl FlowCoordinator {
 			worker_handles,
 			pool_handle: Some(pool_handle),
 			coordinator_handle: Some(coordinator_handle),
-			runtime,
+			actor_system,
 		}
 	}
 
@@ -124,7 +124,7 @@ impl FlowCoordinator {
 	/// 4. Join workers last
 	pub fn stop(&mut self) {
 		// Signal shutdown to all actors
-		self.runtime.shutdown();
+		self.actor_system.shutdown();
 
 		// Join coordinator first (it uses pool and workers)
 		if let Some(handle) = self.coordinator_handle.take() {

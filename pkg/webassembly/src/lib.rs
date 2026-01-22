@@ -8,7 +8,6 @@
 
 use reifydb_catalog::schema::SchemaRegistry;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::runtime::ActorRuntime;
 use wasm_bindgen::prelude::*;
 
 // Debug helper to log to browser console
@@ -74,9 +73,14 @@ impl WasmDB {
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 
-		// Create actor runtime at the top level - this will be shared by
+		// WASM runtime with minimal threads (single-threaded)
+		let runtime = SharedRuntime::from_config(
+			SharedRuntimeConfig::default().async_threads(1).compute_threads(1).compute_max_in_flight(8),
+		);
+
+		// Create actor system at the top level - this will be shared by
 		// the transaction manager (watermark actors) and flow subsystem (poll/coordinator actors)
-		let actor_runtime = ActorRuntime::new();
+		let actor_system = runtime.actor_system();
 
 		// Create transactions
 		let single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
@@ -84,7 +88,7 @@ impl WasmDB {
 			multi_store.clone(),
 			single.clone(),
 			eventbus.clone(),
-			actor_runtime.clone(),
+			actor_system.clone(),
 		)
 		.map_err(|e| JsError::from_error(&e))?;
 
@@ -94,10 +98,6 @@ impl WasmDB {
 		let materialized_catalog = MaterializedCatalog::new();
 		ioc = ioc.register(materialized_catalog.clone());
 
-		// WASM runtime with minimal threads (single-threaded)
-		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default().async_threads(1).compute_threads(1).compute_max_in_flight(8),
-		);
 		ioc = ioc.register(runtime.clone());
 
 		let compiler = Compiler::new(materialized_catalog.clone());
@@ -112,10 +112,10 @@ impl WasmDB {
 
 		// Spawn CDC producer actor on the shared runtime
 		console_log("[WASM] Spawning CDC producer actor...");
-		let cdc_producer_handle = spawn_cdc_producer(&actor_runtime, cdc_store, multi_store.clone());
+		let cdc_producer_handle = spawn_cdc_producer(&actor_system, cdc_store, multi_store.clone());
 
 		// Register event listener to forward PostCommitEvent to CDC producer
-		let cdc_listener = CdcProducerEventListener::new(cdc_producer_handle.actor_ref.clone());
+		let cdc_listener = CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone());
 		eventbus.register::<PostCommitEvent, _>(cdc_listener);
 		console_log("[WASM] CDC producer actor registered!");
 

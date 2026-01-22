@@ -23,8 +23,8 @@ use reifydb_core::{
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
-	runtime::{ActorHandle, ActorRuntime},
 	traits::{Actor, ActorConfig, Flow},
+	system::{ActorHandle, ActorSystem},
 };
 use tracing::{debug, error, trace};
 
@@ -209,15 +209,15 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	}
 }
 
-/// Spawn a CDC producer actor on the given runtime.
+/// Spawn a CDC producer actor on the given actor system.
 ///
 /// Returns a handle to the actor. The actor_ref from this handle should be used
 /// to create a `CdcProducerEventListener` which is then registered on the EventBus.
-pub fn spawn_cdc_producer<S, T>(runtime: &ActorRuntime, storage: S, transaction_store: T) -> ActorHandle<CdcProduceMsg>
+pub fn spawn_cdc_producer<S, T>(system: &ActorSystem, storage: S, transaction_store: T) -> ActorHandle<CdcProduceMsg>
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
 {
 	let actor = CdcProducerActor::new(storage, transaction_store);
-	runtime.spawn("cdc-producer", actor)
+	system.spawn("cdc-producer", actor)
 }

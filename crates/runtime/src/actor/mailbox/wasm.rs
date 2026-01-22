@@ -75,16 +75,13 @@ impl<M> ActorRefInner<M> {
 			return Err(SendError::Closed(msg));
 		}
 
-		// If we're already processing, queue the message for later
 		if self.processing.get() {
 			self.queue.borrow_mut().push(msg);
 			return Ok(());
 		}
 
-		// Mark that we're processing
 		self.processing.set(true);
 
-		// Process this message
 		{
 			let mut processor_ref = self.processor.borrow_mut();
 			if let Some(ref mut processor) = *processor_ref {
@@ -95,7 +92,6 @@ impl<M> ActorRefInner<M> {
 			}
 		}
 
-		// Drain the queue (messages that arrived during processing)
 		loop {
 			let next_msg = self.queue.borrow_mut().pop();
 			match next_msg {
@@ -131,7 +127,7 @@ impl<M> ActorRefInner<M> {
 	}
 }
 
-/// Create an ActorRef for WASM (no mailbox needed since processing is inline).
+/// Create an ActorRef for WASM.
 pub(crate) fn create_actor_ref<M>() -> ActorRef<M> {
 	ActorRef::from_inner(ActorRefInner {
 		processor: Rc::new(RefCell::new(None)),

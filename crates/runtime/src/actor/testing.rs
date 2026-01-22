@@ -38,10 +38,11 @@ use std::collections::VecDeque;
 
 use crate::actor::{
 	context::{CancellationToken, Context},
-	mailbox::ActorRef,
-	runtime::ActorRuntime,
 	traits::{Actor, Flow},
 };
+#[cfg(reifydb_target = "native")]
+use crate::actor::mailbox::ActorRef;
+use crate::actor::system::{ActorSystem, ActorSystemConfig};
 
 /// Test harness for synchronous actor testing.
 ///
@@ -230,10 +231,10 @@ impl<M: Send + 'static> TestContext<M> {
 		#[cfg(reifydb_target = "wasm")]
 		let actor_ref = crate::actor::mailbox::create_actor_ref();
 
-		// Create a runtime (no tokio handle needed anymore)
-		let runtime = ActorRuntime::new();
+		// Create an actor system for testing
+		let system = ActorSystem::new(ActorSystemConfig::default());
 
-		Context::new(actor_ref, runtime, self.cancel.clone())
+		Context::new(actor_ref, system, self.cancel.clone())
 	}
 }
 

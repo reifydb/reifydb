@@ -11,7 +11,7 @@ use std::{sync::Arc, time::Duration};
 
 use reifydb_core::interface::auth::Identity;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::compute::ComputePool;
+use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_type::{
 	error::{Error, diagnostic::Diagnostic},
 	params::Params,
@@ -68,13 +68,13 @@ pub type ExecuteResult<T> = std::result::Result<T, ExecuteError>;
 /// Execute a query with timeout.
 ///
 /// This function:
-/// 1. Starts the query execution on the compute pool
+/// 1. Starts the query execution on the actor system's compute pool
 /// 2. Applies a timeout to the operation
 /// 3. Returns the query results or an appropriate error
 ///
 /// # Arguments
 ///
-/// * `pool` - The compute pool to execute the query on
+/// * `system` - The actor system to execute the query on
 /// * `engine` - The database engine to execute the query on
 /// * `query` - The RQL query string
 /// * `identity` - The identity context for permission checking
@@ -92,7 +92,7 @@ pub type ExecuteResult<T> = std::result::Result<T, ExecuteError>;
 ///
 /// ```ignore
 /// let result = execute_query(
-///     pool,
+///     system,
 ///     engine,
 ///     "FROM users take 42".to_string(),
 ///     identity,
@@ -101,15 +101,15 @@ pub type ExecuteResult<T> = std::result::Result<T, ExecuteError>;
 /// ).await?;
 /// ```
 pub async fn execute_query(
-	pool: ComputePool,
+	system: ActorSystem,
 	engine: StandardEngine,
 	query: String,
 	identity: Identity,
 	params: Params,
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
-	// Execute synchronous query on compute pool with timeout
-	let task = pool.compute(move || engine.query_as(&identity, &query, params));
+	// Execute synchronous query on actor system's compute pool with timeout
+	let task = system.compute(move || engine.query_as(&identity, &query, params));
 
 	let result = time::timeout(timeout, task).await;
 
@@ -127,7 +127,7 @@ pub async fn execute_query(
 ///
 /// # Arguments
 ///
-/// * `pool` - The compute pool to execute the command on
+/// * `system` - The actor system to execute the command on
 /// * `engine` - The database engine to execute the command on
 /// * `statements` - The RQL command statements
 /// * `identity` - The identity context for permission checking
@@ -141,7 +141,7 @@ pub async fn execute_query(
 /// * `Err(ExecuteError::Cancelled)` - If the command was cancelled
 /// * `Err(ExecuteError::Engine)` - If the engine returns an error
 pub async fn execute_command(
-	pool: ComputePool,
+	system: ActorSystem,
 	engine: StandardEngine,
 	statements: Vec<String>,
 	identity: Identity,
@@ -150,8 +150,8 @@ pub async fn execute_command(
 ) -> ExecuteResult<Vec<Frame>> {
 	let combined = statements.join("; ");
 
-	// Execute synchronous command on compute pool with timeout
-	let task = pool.compute(move || engine.command_as(&identity, &combined, params));
+	// Execute synchronous command on actor system's compute pool with timeout
+	let task = system.compute(move || engine.command_as(&identity, &combined, params));
 
 	let result = time::timeout(timeout, task).await;
 

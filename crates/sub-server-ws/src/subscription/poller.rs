@@ -129,9 +129,9 @@ impl SubscriptionPoller {
 		let last_consumed_key = consumption_state.last_consumed_key.clone();
 		let batch_size = self.batch_size;
 		let engine = state.engine_clone();
-		let pool = state.pool();
+		let system = state.actor_system();
 
-		let read_result: reifydb_type::Result<(Columns, Vec<EncodedKey>)> = pool
+		let read_result: reifydb_type::Result<(Columns, Vec<EncodedKey>)> = system
 			.compute(move || {
 				Self::read_subscription_rows_sync(
 					&engine,
@@ -163,10 +163,10 @@ impl SubscriptionPoller {
 			Ok(_) => {
 				// Successfully sent, now delete the rows
 				let engine = state.engine_clone();
-				let pool = state.pool();
+				let system = state.actor_system();
 				let keys_to_delete: Vec<EncodedKey> = row_keys.clone();
 
-				let delete_result: reifydb_type::Result<()> = pool
+				let delete_result: reifydb_type::Result<()> = system
 					.compute(move || Self::delete_rows_sync(&engine, &keys_to_delete))
 					.await
 					.map_err(|e| Error(internal(format!("Compute pool error: {:?}", e))))?;

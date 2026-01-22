@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_function::registry::FunctionsBuilder;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, actor::runtime::ActorRuntime};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowBuilder;
@@ -149,16 +149,15 @@ impl ServerBuilder {
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		let runtime = SharedRuntime::from_config(runtime_config);
 
-		// Create storage with the runtime's compute pool
-		let compute_pool = runtime.compute_pool();
+		// Create storage
 		let (multi_store, single_store, transaction_single, eventbus) =
-			self.storage_factory.create(compute_pool);
+			self.storage_factory.create();
 
-		// Create actor runtime at top level for watermark and flow actors
-		let actor_runtime = ActorRuntime::new();
+		// Create transaction layer using the runtime's actor system
+		let actor_system = runtime.actor_system();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
-			actor_runtime,
+			actor_system,
 		);
 
 		let mut database_builder = DatabaseBuilder::new(multi, single, eventbus)
