@@ -20,7 +20,6 @@ default = ["console_error_panic_hook"]
 reifydb-engine = { workspace = true, default-features = false, features = ["wasm"] }
 reifydb-store-multi = { workspace = true, default-features = false, features = ["wasm"] }
 reifydb-store-single = { workspace = true, default-features = false, features = ["wasm"] }
-reifydb-hash = { workspace = true, default-features = false, features = ["wasm"] }
 reifydb-type = { workspace = true, default-features = false }
 reifydb-core = { workspace = true, default-features = false, features = ["wasm"] }
 reifydb-catalog = { workspace = true, default-features = false }

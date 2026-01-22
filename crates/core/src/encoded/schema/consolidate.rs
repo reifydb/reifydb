@@ -10,7 +10,7 @@
 //! Currently stubbed with unimplemented!() as this is out of scope
 //! for the initial implementation.
 
-use reifydb_hash::Hash64;
+use reifydb_runtime::hash::Hash64;
 use reifydb_type::value::r#type::Type;
 
 use super::Schema;

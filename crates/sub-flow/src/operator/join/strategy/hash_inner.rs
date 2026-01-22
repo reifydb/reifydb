@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{common::CommitVersion, value::column::columns::Columns};
-use reifydb_hash::Hash128;
+use reifydb_runtime::hash::Hash128;
 use reifydb_sdk::flow::FlowDiff;
 
 use super::hash::{

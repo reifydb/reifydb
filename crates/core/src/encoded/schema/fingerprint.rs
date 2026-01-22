@@ -9,7 +9,7 @@
 
 use std::ops::Deref;
 
-use reifydb_hash::{Hash64, xxh::xxh3_64};
+use reifydb_runtime::hash::{Hash64, xxh3_64};
 use serde::{Deserialize, Serialize};
 
 use crate::encoded::schema::SchemaField;

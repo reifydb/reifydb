@@ -13,7 +13,7 @@ use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
 };
-use reifydb_hash::{Hash128, xxh::xxh3_128};
+use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 use reifydb_core::internal;

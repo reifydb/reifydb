@@ -10,7 +10,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_core::internal_error;
-use reifydb_hash::xxh::xxh3_128;
+use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
 use reifydb_type::{util::cowvec::CowVec, value::{Value, dictionary::DictionaryEntryId}};
 

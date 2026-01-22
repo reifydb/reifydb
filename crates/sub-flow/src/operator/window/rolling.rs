@@ -5,7 +5,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_hash::Hash128;
+use reifydb_runtime::hash::Hash128;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 
 use super::{WindowEvent, WindowOperator};

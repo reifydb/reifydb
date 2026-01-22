@@ -15,7 +15,6 @@ tokio = [
 	"reifydb-catalog/native",
 	"reifydb-core/native",
 	"reifydb-function/native",
-	"reifydb-hash/native",
 	"reifydb-metric/native",
 	"reifydb-rql/native",
 	"reifydb-rqlv2/native",
@@ -35,7 +34,6 @@ wasm = [
 	"reifydb-catalog/wasm",
 	"reifydb-core/wasm",
 	"reifydb-function/wasm",
-	"reifydb-hash/wasm",
 	"reifydb-metric/wasm",
 	"reifydb-rql/wasm",
 	"reifydb-rqlv2/wasm",
@@ -54,7 +52,6 @@ reifydb-function = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-abi = { workspace = true }
-reifydb-hash = { workspace = true }
 reifydb-metric = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }

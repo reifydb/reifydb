@@ -9,12 +9,11 @@ description = "Core database interfaces and data structures for ReifyDB"
 
 [features]
 default = ["native"]
-native = ["reifydb-runtime/native", "reifydb-hash/native", "futures-util"]
-wasm = ["reifydb-runtime/wasm", "reifydb-hash/wasm"]
+native = ["reifydb-runtime/native", "futures-util"]
+wasm = ["reifydb-runtime/wasm"]
 
 [dependencies]
 dashmap = { workspace = true }
-reifydb-hash = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
 tracing = { workspace = true }

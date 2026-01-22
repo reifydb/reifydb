@@ -11,7 +11,6 @@ description = "Database catalog and metadata management for ReifyDB"
 default = ["native"]
 native = [
     "reifydb-core/native",
-    "reifydb-hash/native",
     "reifydb-metric/native",
     "reifydb-store-multi/native",
     "reifydb-store-single/native",
@@ -20,7 +19,6 @@ native = [
 ]
 wasm = [
     "reifydb-core/wasm",
-    "reifydb-hash/wasm",
     "reifydb-metric/wasm",
     "reifydb-store-multi/wasm",
     "reifydb-store-single/wasm",
@@ -31,7 +29,6 @@ wasm = [
 [dependencies]
 reifydb-abi = { workspace = true }
 reifydb-core = { workspace = true }
-reifydb-hash = { workspace = true }
 reifydb-metric = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }

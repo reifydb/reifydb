@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::{CommitVersion, JoinType},
 	value::column::columns::Columns,
 };
-use reifydb_hash::Hash128;
+use reifydb_runtime::hash::Hash128;
 use reifydb_sdk::flow::FlowDiff;
 
 use crate::{

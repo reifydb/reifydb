@@ -51,6 +51,8 @@ pub mod runtime;
 
 pub mod compute;
 
+pub mod hash;
+
 pub mod sync;
 
 pub mod time;

@@ -1653,7 +1653,6 @@ dependencies = [
  "reifydb-abi",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-hash",
  "reifydb-metric",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -1731,7 +1730,6 @@ dependencies = [
  "paste",
  "reifydb-catalog",
  "reifydb-engine",
- "reifydb-hash",
  "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-type",
@@ -1763,7 +1761,6 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-function",
- "reifydb-hash",
  "reifydb-metric",
  "reifydb-rql",
  "reifydb-rqlv2",
@@ -1793,16 +1790,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "reifydb-hash"
-version = "0.2.0"
-dependencies = [
- "cc",
- "serde",
- "sha1",
- "xxhash-rust",
 ]
 
 [[package]]
@@ -1861,7 +1848,7 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-function",
- "reifydb-hash",
+ "reifydb-runtime",
  "reifydb-testing",
  "reifydb-transaction",
  "reifydb-type",
@@ -1880,11 +1867,13 @@ dependencies = [
  "js-sys",
  "parking_lot",
  "rayon",
+ "serde",
  "tokio",
  "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -1966,7 +1955,6 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-hash",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
@@ -2124,7 +2112,6 @@ dependencies = [
  "indexmap",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-hash",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -2176,7 +2163,6 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-hash",
  "reifydb-rqlv2",
  "reifydb-runtime",
  "reifydb-store-multi",

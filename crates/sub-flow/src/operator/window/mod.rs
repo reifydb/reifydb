@@ -41,7 +41,7 @@ use reifydb_engine::{
 	evaluate::{column::StandardColumnEvaluator, ColumnEvaluationContext},
 	stack::Stack,
 };
-use reifydb_hash::{xxh::xxh3_128, Hash128};
+use reifydb_runtime::hash::{xxh3_128, Hash128};
 use reifydb_rql::expression::{name::column_name_from_expression, Expression};
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 use reifydb_type::{

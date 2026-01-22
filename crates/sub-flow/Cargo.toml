@@ -32,7 +32,6 @@ reifydb-cdc = { workspace = true, default-features = false }
 reifydb-core = { workspace = true, default-features = false }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true, default-features = false }
-reifydb-hash = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-runtime = { workspace = true, default-features = false }
 reifydb-sdk = { workspace = true }

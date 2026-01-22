@@ -13,7 +13,7 @@ native = [
     "reifydb-catalog/native",
     "reifydb-core/native",
     "reifydb-function/native",
-    "reifydb-hash/native",
+    "reifydb-runtime/native",
     "reifydb-transaction/native",
     "reifydb-type/native",
 ]
@@ -21,7 +21,7 @@ wasm = [
     "reifydb-catalog/wasm",
     "reifydb-core/wasm",
     "reifydb-function/wasm",
-    "reifydb-hash/wasm",
+    "reifydb-runtime/wasm",
     "reifydb-transaction/wasm",
     "reifydb-type/wasm",
 ]
@@ -31,7 +31,7 @@ bumpalo = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-function = { workspace = true }
-reifydb-hash = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 tracing = { workspace = true }

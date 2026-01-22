@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_hash::Hash128;
+use reifydb_runtime::hash::Hash128;
 use reifydb_sdk::flow::FlowDiff;
 use reifydb_type::value::row_number::RowNumber;
 

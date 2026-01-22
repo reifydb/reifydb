@@ -32,6 +32,8 @@ web-sys = { workspace = true, optional = true, features = ["Window"] }
 # Common dependencies
 cfg-if = { workspace = true }
 tracing = { workspace = true }
+serde = { workspace = true }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 # Used by runtime/wasm.rs (not actor module)
 futures-util = { workspace = true }
