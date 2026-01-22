@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { SchemaNode, InferSchema } from '@reifydb/core';
 import {
     useSubscriptionExecutor,
@@ -32,7 +32,9 @@ export function useSubscription<S extends SchemaNode = any>(
         unsubscribe
     } = useSubscriptionExecutor<InferSchema<S>>(options);
 
-    // Auto-subscribe when query/params change
+    // Serialize params for stable comparison (objects create new refs each render)
+    const paramsKey = useMemo(() => JSON.stringify(params), [params]);
+
     useEffect(() => {
         if (options?.enabled === false) return;
 
@@ -41,7 +43,7 @@ export function useSubscription<S extends SchemaNode = any>(
         return () => {
             unsubscribe();
         };
-    }, [query, params, schema, options?.enabled, subscribe, unsubscribe]);
+    }, [query, paramsKey, schema, options?.enabled, subscribe, unsubscribe]);
 
     return {
         data: state.data,

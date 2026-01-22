@@ -10,7 +10,6 @@ use reifydb_core::error::diagnostic::internal::internal;
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
-	value::uuid::parse::parse_uuid7,
 };
 
 use crate::{GeneratorContext, GeneratorFunction};
@@ -27,33 +26,31 @@ impl GeneratorFunction for InspectSubscription {
 	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> reifydb_type::Result<Columns> {
 		let txn = ctx.txn;
 
-		// Extract subscription_id parameter
 		let params = &ctx.params;
 		if params.len() != 1 {
-			panic!("inspect_subscription requires exactly 1 parameter: subscription_id (uuid7)");
+			panic!("inspect_subscription requires exactly 1 parameter: subscription_id (u64)");
 		}
 
 		let id_column = params.get(0).unwrap();
-		let subscription_id_uuid = match id_column.data() {
-			ColumnData::Uuid7(container) => {
+		let subscription_id_value = match id_column.data() {
+			ColumnData::Uint8(container) => {
 				container.get(0).copied().expect("subscription_id parameter is empty")
 			}
 			ColumnData::Utf8 {
 				container,
 				..
 			} => {
-				// Parse UTF-8 string as UUID7
-				let uuid_str = container.get(0).expect("subscription_id parameter is empty");
-				parse_uuid7(Fragment::internal(uuid_str)).expect("Invalid UUID7 format")
+				let id_str = container.get(0).expect("subscription_id parameter is empty");
+				id_str.parse::<u64>().expect("Invalid subscription_id format")
 			}
-			_ => panic!("subscription_id must be of type uuid7 or utf8"),
+			_ => panic!("subscription_id must be of type u64 or utf8"),
 		};
 
-		let subscription_id = SubscriptionId(subscription_id_uuid.0);
+		let subscription_id = SubscriptionId(subscription_id_value);
 
 		// Use catalog function to get subscription definition
 		let subscription_def = reifydb_catalog::find_subscription(txn, subscription_id)?
-			.unwrap_or_else(|| panic!("Subscription {} not found", subscription_id_uuid));
+			.unwrap_or_else(|| panic!("Subscription {} not found", subscription_id));
 
 		// Scan subscription rows
 		let range = SubscriptionRowKey::full_scan(subscription_id);

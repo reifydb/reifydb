@@ -19,8 +19,8 @@ impl EncodableKey for SubscriptionKey {
 	const KIND: KeyKind = KeyKind::Subscription;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18); // 1 + 1 + 16 bytes for UUID
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_bytes(self.subscription.as_bytes());
+		let mut serializer = KeySerializer::with_capacity(10); // 1 + 1 + 8 bytes for u64
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.subscription.0);
 		serializer.to_encoded_key()
 	}
 
@@ -37,12 +37,10 @@ impl EncodableKey for SubscriptionKey {
 			return None;
 		}
 
-		// read_bytes handles the escaped encoding used by extend_bytes
-		let bytes = de.read_bytes().ok()?;
-		let uuid_bytes: [u8; 16] = bytes.try_into().ok()?;
+		let subscription_id = de.read_u64().ok()?;
 
 		Some(Self {
-			subscription: SubscriptionId::from_bytes(uuid_bytes),
+			subscription: SubscriptionId(subscription_id),
 		})
 	}
 }
@@ -56,16 +54,16 @@ impl SubscriptionKey {
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::subscription_start()), Some(Self::subscription_end()))
+		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
 
-	fn subscription_start() -> EncodedKey {
+	fn start() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
 		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
-	fn subscription_end() -> EncodedKey {
+	fn end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
 		serializer.extend_u8(VERSION).extend_u8((Self::KIND as u8).wrapping_sub(1));
 		serializer.to_encoded_key()
@@ -79,7 +77,7 @@ pub mod tests {
 
 	#[test]
 	fn test_encode_decode() {
-		let subscription_id = SubscriptionId::new();
+		let subscription_id = SubscriptionId(12345);
 		let key = SubscriptionKey {
 			subscription: subscription_id,
 		};

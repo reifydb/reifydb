@@ -1,187 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Version management for MVCC (Multi-Version Concurrency Control).
-//!
-//! This module handles versioning by encoding version into keys.
-//! Key format: `[original_key_bytes][version_be_u64]`
-//!
-//! This allows efficient range queries to find all versions of a key,
-//! and finding the latest version <= a requested version.
-
-use std::ops::Bound;
-
 use reifydb_core::common::CommitVersion;
-use reifydb_type::{Result, util::cowvec::CowVec};
+use reifydb_type::{util::cowvec::CowVec, Result};
 
-use crate::tier::{EntryKind, RangeCursor, TierStorage};
-
-/// Size of version suffix in bytes (terminator + u64 big-endian)
-pub(crate) const VERSION_SIZE: usize = 10; // 2 bytes terminator + 8 bytes version
-
-/// Terminator bytes for key/version separator
-const TERMINATOR: [u8; 2] = [0x00, 0x00];
-
-/// Encode a versioned key: `[escaped_key_bytes][0x00 0x00][!version_be]`
-///
-/// Uses 0x00 escaping (0x00 -> 0x00 0xFF) to allow 0x00 0x00 as terminator.
-/// This ensures proper lexicographic ordering for variable-length keys.
-///
-/// Uses bitwise NOT (!version) for descending order:
-/// higher versions encode to lower byte values, sorting first.
-pub fn encode_versioned_key(key: &[u8], version: CommitVersion) -> Vec<u8> {
-	// Estimate capacity: key + potential escapes + terminator + version
-	let mut result = Vec::with_capacity(key.len() + VERSION_SIZE);
-
-	// Escape 0x00 bytes in key (0x00 -> 0x00 0xFF)
-	for &byte in key {
-		if byte == 0x00 {
-			result.push(0x00);
-			result.push(0xFF);
-		} else {
-			result.push(byte);
-		}
-	}
-
-	// Add terminator
-	result.extend_from_slice(&TERMINATOR);
-
-	// Add inverted version (bitwise NOT for descending order)
-	result.extend_from_slice(&(!version.0).to_be_bytes());
-	result
-}
-
-/// Pre-compute the version suffix (terminator + encoded version) for batch encoding.
-///
-/// This allows reusing the same version suffix across multiple keys in a commit batch,
-/// reducing allocations and redundant version encoding.
-///
-/// # Performance
-/// In a commit with N deltas, this eliminates N-1 version suffix computations.
-pub fn compute_version_suffix(version: CommitVersion) -> [u8; VERSION_SIZE] {
-	let mut suffix = [0u8; VERSION_SIZE];
-	suffix[0..2].copy_from_slice(&TERMINATOR);
-	suffix[2..10].copy_from_slice(&(!version.0).to_be_bytes());
-	suffix
-}
-
-/// Encode a versioned key using a pre-computed version suffix.
-///
-/// This is more efficient than `encode_versioned_key()` when encoding multiple keys
-/// with the same version, as it reuses the version suffix and can reuse a buffer.
-///
-/// # Parameters
-/// - `key`: The logical key to encode
-/// - `version_suffix`: Pre-computed suffix from `compute_version_suffix()`
-/// - `buffer`: Reusable buffer (will be cleared and reused)
-///
-/// # Performance
-/// Eliminates per-key version encoding and can reuse allocations when called
-/// multiple times with the same buffer.
-pub fn encode_versioned_key_with_suffix(key: &[u8], version_suffix: &[u8; VERSION_SIZE], buffer: &mut Vec<u8>) {
-	buffer.clear();
-	buffer.reserve(key.len() + VERSION_SIZE);
-
-	// Escape 0x00 bytes in key (0x00 -> 0x00 0xFF)
-	for &byte in key {
-		if byte == 0x00 {
-			buffer.push(0x00);
-			buffer.push(0xFF);
-		} else {
-			buffer.push(byte);
-		}
-	}
-
-	// Add pre-computed version suffix
-	buffer.extend_from_slice(version_suffix);
-}
-
-/// Find the terminator position in a versioned key
-fn find_terminator(versioned_key: &[u8]) -> Option<usize> {
-	let mut i = 0;
-	while i + 1 < versioned_key.len() {
-		if versioned_key[i] == 0x00 {
-			if versioned_key[i + 1] == 0x00 {
-				// Found terminator
-				return Some(i);
-			} else if versioned_key[i + 1] == 0xFF {
-				// Escaped 0x00, skip both bytes
-				i += 2;
-			} else {
-				// Invalid escape sequence
-				return None;
-			}
-		} else {
-			i += 1;
-		}
-	}
-	None
-}
-
-/// Unescape a key (0x00 0xFF -> 0x00)
-fn unescape_key(escaped: &[u8]) -> Vec<u8> {
-	let mut result = Vec::with_capacity(escaped.len());
-	let mut i = 0;
-	while i < escaped.len() {
-		if i + 1 < escaped.len() && escaped[i] == 0x00 && escaped[i + 1] == 0xFF {
-			result.push(0x00);
-			i += 2;
-		} else {
-			result.push(escaped[i]);
-			i += 1;
-		}
-	}
-	result
-}
-
-/// Decode a versioned key back to (key, version)
-#[cfg(test)]
-pub fn decode_versioned_key(versioned_key: &[u8]) -> Option<(Vec<u8>, CommitVersion)> {
-	let terminator_pos = find_terminator(versioned_key)?;
-	let escaped_key = &versioned_key[..terminator_pos];
-	let version_start = terminator_pos + 2; // Skip terminator
-
-	if versioned_key.len() < version_start + 8 {
-		return None;
-	}
-
-	let version_bytes: [u8; 8] = versioned_key[version_start..version_start + 8].try_into().ok()?;
-	let version = CommitVersion(!u64::from_be_bytes(version_bytes));
-	let key = unescape_key(escaped_key);
-
-	Some((key, version))
-}
-
-/// Extract just the original key from a versioned key (unescaped)
-pub fn extract_key(versioned_key: &[u8]) -> Option<Vec<u8>> {
-	let terminator_pos = find_terminator(versioned_key)?;
-	let escaped_key = &versioned_key[..terminator_pos];
-	Some(unescape_key(escaped_key))
-}
-
-/// Extract just the version from a versioned key
-pub fn extract_version(versioned_key: &[u8]) -> Option<CommitVersion> {
-	let terminator_pos = find_terminator(versioned_key)?;
-	let version_start = terminator_pos + 2;
-
-	if versioned_key.len() < version_start + 8 {
-		return None;
-	}
-
-	let version_bytes: [u8; 8] = versioned_key[version_start..version_start + 8].try_into().ok()?;
-	Some(CommitVersion(!u64::from_be_bytes(version_bytes)))
-}
-
-/// Create range bounds to find all versions of a key (newest first)
-///
-/// With complement encoding, higher versions sort first:
-/// - start: version MAX encodes to 0x00...00 (newest, sorts first)
-/// - end: version 0 encodes to 0xFF...FF (oldest, sorts last)
-pub fn key_version_range(key: &[u8]) -> (Vec<u8>, Vec<u8>) {
-	let start = encode_versioned_key(key, CommitVersion(u64::MAX));
-	let end = encode_versioned_key(key, CommitVersion(0));
-	(start, end)
-}
+use crate::tier::{EntryKind, TierStorage};
 
 /// Result of a versioned get operation
 #[derive(Debug, Clone)]
@@ -204,152 +27,174 @@ pub fn get_at_version<S: TierStorage>(
 	key: &[u8],
 	version: CommitVersion,
 ) -> Result<VersionedGetResult> {
-	// With complement encoding, higher versions sort first.
-	// Range from requested version (sorts first) to version 0 (sorts last).
-	let start = encode_versioned_key(key, version);
-	let end = encode_versioned_key(key, CommitVersion(0));
+	// The storage layer now handles version lookups directly
+	match storage.get(table, key, version)? {
+		Some(value) => Ok(VersionedGetResult::Value {
+			value,
+			version,
+		}),
+		None => {
+			// Need to determine if it's a tombstone or not found
+			// Get all versions and check if any version <= requested exists
+			let all_versions = storage.get_all_versions(table, key)?;
 
-	// Forward scan finds newest version first (just need 1 entry)
-	let mut cursor = RangeCursor::new();
-	let batch = storage.range_next(
-		table,
-		&mut cursor,
-		Bound::Included(start.as_slice()),
-		Bound::Included(end.as_slice()),
-		1,
-	)?;
-
-	if let Some(entry) = batch.entries.first() {
-		// Verify this entry is for our key
-		if let Some(entry_key) = extract_key(&entry.key) {
-			if entry_key == key {
-				let entry_version = extract_version(&entry.key).unwrap_or(CommitVersion(0));
-				return Ok(match &entry.value {
-					Some(value) => VersionedGetResult::Value {
-						value: value.clone(),
-						version: entry_version,
-					},
-					None => VersionedGetResult::Tombstone,
-				});
+			// Find the latest version <= requested
+			for (v, value) in all_versions {
+				if v <= version {
+					// Found a version at or before requested
+					return match value {
+						Some(val) => Ok(VersionedGetResult::Value {
+							value: val,
+							version: v,
+						}),
+						None => Ok(VersionedGetResult::Tombstone),
+					};
+				}
 			}
+
+			// No version exists at or before requested version
+			Ok(VersionedGetResult::NotFound)
 		}
 	}
-
-	Ok(VersionedGetResult::NotFound)
 }
 
 #[cfg(test)]
 pub mod tests {
+	use std::collections::HashMap;
+
 	use super::*;
+	use crate::hot::{memory::storage::MemoryPrimitiveStorage, storage::HotStorage};
 
 	#[test]
-	fn test_encode_decode_versioned_key() {
-		let key = b"test_key";
+	fn test_get_at_version_basic() {
+		let storage = MemoryPrimitiveStorage::new();
+
+		let key = CowVec::new(b"test_key".to_vec());
 		let version = CommitVersion(42);
 
-		let encoded = encode_versioned_key(key, version);
-		// Key (8 bytes) + terminator (2 bytes) + version (8 bytes) = 18 bytes
-		assert_eq!(encoded.len(), key.len() + VERSION_SIZE);
+		// Insert a value
+		storage.set(
+			version,
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"value".to_vec())))])]),
+		)
+		.unwrap();
 
-		let (decoded_key, decoded_version) = decode_versioned_key(&encoded).unwrap();
-		assert_eq!(decoded_key.as_slice(), key);
-		assert_eq!(decoded_version, version);
+		// Get at exact version
+		match get_at_version(&storage, EntryKind::Multi, &key, version).unwrap() {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => {
+				assert_eq!(value.as_slice(), b"value");
+			}
+			_ => panic!("Expected Value result"),
+		}
+
+		// Get at higher version should still work
+		match get_at_version(&storage, EntryKind::Multi, &key, CommitVersion(100)).unwrap() {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => {
+				assert_eq!(value.as_slice(), b"value");
+			}
+			_ => panic!("Expected Value result"),
+		}
 	}
 
 	#[test]
-	fn test_encode_decode_with_null_bytes() {
-		let key = b"test\x00key\x00";
-		let version = CommitVersion(100);
+	fn test_get_at_version_not_found() {
+		let storage = MemoryPrimitiveStorage::new();
 
-		let encoded = encode_versioned_key(key, version);
-		// Key has 2 null bytes, each escaped to 2 bytes, so 9 + 2 = 11 key bytes
-		// Plus terminator (2) + version (8) = 21 bytes
-		assert_eq!(encoded.len(), 11 + VERSION_SIZE);
-
-		let (decoded_key, decoded_version) = decode_versioned_key(&encoded).unwrap();
-		assert_eq!(decoded_key.as_slice(), key);
-		assert_eq!(decoded_version, version);
+		let result = get_at_version(&storage, EntryKind::Multi, b"nonexistent", CommitVersion(100)).unwrap();
+		assert!(matches!(result, VersionedGetResult::NotFound));
 	}
 
 	#[test]
-	fn test_version_ordering() {
-		let key = b"key";
+	fn test_get_at_version_tombstone() {
+		let storage = MemoryPrimitiveStorage::new();
 
-		let v1 = encode_versioned_key(key, CommitVersion(1));
-		let v2 = encode_versioned_key(key, CommitVersion(2));
-		let v10 = encode_versioned_key(key, CommitVersion(10));
+		let key = CowVec::new(b"test_key".to_vec());
 
-		// Higher versions should sort before lower versions (descending order)
-		assert!(v10 < v2);
-		assert!(v2 < v1);
+		// Insert a tombstone (None value)
+		storage.set(CommitVersion(1), HashMap::from([(EntryKind::Multi, vec![(key.clone(), None)])])).unwrap();
+
+		let result = get_at_version(&storage, EntryKind::Multi, &key, CommitVersion(1)).unwrap();
+		assert!(matches!(result, VersionedGetResult::Tombstone));
 	}
 
 	#[test]
-	fn test_compute_version_suffix() {
-		let version = CommitVersion(42);
-		let suffix = compute_version_suffix(version);
+	fn test_get_at_version_multiple_versions() {
+		let storage = HotStorage::memory();
 
-		// Verify suffix structure: [terminator (2 bytes)][inverted version (8 bytes)]
-		assert_eq!(suffix.len(), VERSION_SIZE);
-		assert_eq!(&suffix[0..2], &TERMINATOR);
+		let key = CowVec::new(b"test_key".to_vec());
 
-		// Extract and verify version
-		let version_bytes: [u8; 8] = suffix[2..10].try_into().unwrap();
-		let decoded_version = CommitVersion(!u64::from_be_bytes(version_bytes));
-		assert_eq!(decoded_version, version);
+		// Insert multiple versions
+		storage.set(
+			CommitVersion(1),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v1".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(5),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v5".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(10),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v10".to_vec())))])]),
+		)
+		.unwrap();
+
+		// Get at version 3 should return v1 (latest <= 3)
+		match get_at_version(&storage, EntryKind::Multi, &key, CommitVersion(3)).unwrap() {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => {
+				assert_eq!(value.as_slice(), b"v1");
+			}
+			_ => panic!("Expected Value result"),
+		}
+
+		// Get at version 7 should return v5 (latest <= 7)
+		match get_at_version(&storage, EntryKind::Multi, &key, CommitVersion(7)).unwrap() {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => {
+				assert_eq!(value.as_slice(), b"v5");
+			}
+			_ => panic!("Expected Value result"),
+		}
+
+		// Get at version 15 should return v10 (latest <= 15)
+		match get_at_version(&storage, EntryKind::Multi, &key, CommitVersion(15)).unwrap() {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => {
+				assert_eq!(value.as_slice(), b"v10");
+			}
+			_ => panic!("Expected Value result"),
+		}
 	}
 
 	#[test]
-	fn test_encode_versioned_key_with_suffix_matches_original() {
-		let key = b"test_key";
-		let version = CommitVersion(100);
+	fn test_get_at_version_before_any_version() {
+		let storage = HotStorage::memory();
 
-		// Encode using original function
-		let expected = encode_versioned_key(key, version);
+		let key = CowVec::new(b"test_key".to_vec());
 
-		// Encode using new helper with suffix
-		let suffix = compute_version_suffix(version);
-		let mut buffer = Vec::new();
-		encode_versioned_key_with_suffix(key, &suffix, &mut buffer);
+		// Insert at version 10
+		storage.set(
+			CommitVersion(10),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"value".to_vec())))])]),
+		)
+		.unwrap();
 
-		// Should produce identical results
-		assert_eq!(buffer, expected);
-	}
-
-	#[test]
-	fn test_encode_versioned_key_with_suffix_null_bytes() {
-		let key = b"test\x00key\x00";
-		let version = CommitVersion(200);
-
-		// Encode using original function
-		let expected = encode_versioned_key(key, version);
-
-		// Encode using new helper with suffix
-		let suffix = compute_version_suffix(version);
-		let mut buffer = Vec::new();
-		encode_versioned_key_with_suffix(key, &suffix, &mut buffer);
-
-		// Should produce identical results (with proper null byte escaping)
-		assert_eq!(buffer, expected);
-	}
-
-	#[test]
-	fn test_encode_versioned_key_with_suffix_buffer_reuse() {
-		let version = CommitVersion(42);
-		let suffix = compute_version_suffix(version);
-		let mut buffer = Vec::new();
-
-		// Encode multiple keys with the same buffer
-		let key1 = b"key1";
-		encode_versioned_key_with_suffix(key1, &suffix, &mut buffer);
-		let result1 = buffer.clone();
-
-		let key2 = b"longer_key_2";
-		encode_versioned_key_with_suffix(key2, &suffix, &mut buffer);
-		let result2 = buffer.clone();
-
-		// Verify each result is correct
-		assert_eq!(result1, encode_versioned_key(key1, version));
-		assert_eq!(result2, encode_versioned_key(key2, version));
+		// Get at version 5 (before any version exists) should return NotFound
+		let result = get_at_version(&storage, EntryKind::Multi, &key, CommitVersion(5)).unwrap();
+		assert!(matches!(result, VersionedGetResult::NotFound));
 	}
 }

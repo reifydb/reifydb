@@ -52,6 +52,20 @@ impl CatalogStore {
 		Ok(Self::get_flow(txn, flow_id)?)
 	}
 
+	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
+	/// This skips the name uniqueness check since the ID is guaranteed unique by the sequence.
+	pub(crate) fn create_flow_with_id(
+		txn: &mut StandardCommandTransaction,
+		flow_id: FlowId,
+		to_create: FlowToCreate,
+	) -> crate::Result<FlowDef> {
+		let namespace_id = to_create.namespace;
+		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
+		Self::link_flow_to_namespace(txn, namespace_id, flow_id, &to_create.name)?;
+
+		Ok(Self::get_flow(txn, flow_id)?)
+	}
+
 	fn store_flow(
 		txn: &mut StandardCommandTransaction,
 		flow: FlowId,

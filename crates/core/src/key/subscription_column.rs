@@ -20,11 +20,11 @@ impl EncodableKey for SubscriptionColumnKey {
 	const KIND: KeyKind = KeyKind::SubscriptionColumn;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(26); // 1 + 1 + 16 (UUID) + 8 (column)
+		let mut serializer = KeySerializer::with_capacity(18); // 1 + 1 + 8 (subscription u64) + 8 (column)
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
-			.extend_bytes(self.subscription.as_bytes())
+			.extend_u64(self.subscription.0)
 			.extend_u64(self.column);
 		serializer.to_encoded_key()
 	}
@@ -42,13 +42,11 @@ impl EncodableKey for SubscriptionColumnKey {
 			return None;
 		}
 
-		// read_bytes handles the escaped encoding used by extend_bytes
-		let bytes = de.read_bytes().ok()?;
-		let uuid_bytes: [u8; 16] = bytes.try_into().ok()?;
+		let subscription_id = de.read_u64().ok()?;
 		let column = de.read_u64().ok()?;
 
 		Some(Self {
-			subscription: SubscriptionId::from_bytes(uuid_bytes),
+			subscription: SubscriptionId(subscription_id),
 			column: SubscriptionColumnId(column),
 		})
 	}
@@ -73,28 +71,14 @@ impl SubscriptionColumnKey {
 	}
 
 	fn subscription_start(subscription: SubscriptionId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18); // 1 + 1 + 16 (UUID)
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_bytes(subscription.as_bytes());
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(subscription.0);
 		serializer.to_encoded_key()
 	}
 
 	fn subscription_end(subscription: SubscriptionId) -> EncodedKey {
-		// For UUID-based keys, we use the subscription UUID prefix
-		// The end bound needs to come after all columns for this subscription
-		// Bytes are NOT inverted in extend_bytes, so we INCREMENT to get a larger value
-		let mut uuid_bytes = *subscription.as_bytes();
-		// Increment the UUID bytes (with wrapping) to get a larger encoded value
-		for i in (0..16).rev() {
-			if uuid_bytes[i] < 0xFF {
-				uuid_bytes[i] = uuid_bytes[i].wrapping_add(1);
-				break;
-			} else {
-				uuid_bytes[i] = 0x00;
-			}
-		}
-
-		let mut serializer = KeySerializer::with_capacity(18);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_bytes(&uuid_bytes);
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(subscription.0.wrapping_sub(1));
 		serializer.to_encoded_key()
 	}
 }
@@ -106,7 +90,7 @@ pub mod tests {
 
 	#[test]
 	fn test_encode_decode() {
-		let subscription_id = SubscriptionId::new();
+		let subscription_id = SubscriptionId(12345);
 		let key = SubscriptionColumnKey {
 			subscription: subscription_id,
 			column: SubscriptionColumnId(0x1234),

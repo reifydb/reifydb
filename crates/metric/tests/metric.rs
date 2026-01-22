@@ -17,9 +17,9 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 	},
 	event::{
+		EventBus, EventListener,
 		metric::{CdcEntryDrop, CdcEntryStats, CdcStatsDroppedEvent, CdcStatsRecordedEvent},
 		store::StatsProcessedEvent,
-		EventBus, EventListener,
 	},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -502,7 +502,10 @@ impl TestRunner for Runner {
 				};
 				args.reject_rest()?;
 
-				let entries = vec![CdcEntryStats { key, value_bytes }];
+				let entries = vec![CdcEntryStats {
+					key,
+					value_bytes,
+				}];
 				self.event_bus.emit(CdcStatsRecordedEvent::new(entries, version));
 				writeln!(output, "ok")?;
 			}
@@ -521,7 +524,10 @@ impl TestRunner for Runner {
 				};
 				args.reject_rest()?;
 
-				let entries = vec![CdcEntryDrop { key, value_bytes }];
+				let entries = vec![CdcEntryDrop {
+					key,
+					value_bytes,
+				}];
 				self.event_bus.emit(CdcStatsDroppedEvent::new(entries, version));
 				writeln!(output, "ok")?;
 			}

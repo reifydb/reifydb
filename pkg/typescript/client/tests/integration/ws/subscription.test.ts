@@ -176,8 +176,7 @@ describe('WebSocket Subscriptions', () => {
                 []
             );
 
-            // Wait for callbacks
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await insertTracker.waitForCall();
 
             expect(insertTracker.getCallCount()).toBe(1);
             expect(insertTracker.getAllRows().length).toBe(2);
@@ -224,16 +223,13 @@ describe('WebSocket Subscriptions', () => {
                 }
             );
 
-            // Wait for subscription to be established
-            await new Promise(resolve => setTimeout(resolve, 100));
-
             // Now insert initial data
             await wsClient.command(
                 `from [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }] insert test.${tableName}`,
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await insertTracker.waitForCall();
 
             // Verify inserts were received
             expect(insertTracker.getCallCount()).toBe(1);
@@ -249,8 +245,7 @@ describe('WebSocket Subscriptions', () => {
                 []
             );
 
-            // Wait for callbacks
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await updateTracker.waitForCall();
 
             expect(insertTracker.getCallCount()).toBe(0);
             expect(updateTracker.getCallCount()).toBe(1);
@@ -294,16 +289,13 @@ describe('WebSocket Subscriptions', () => {
                 }
             );
 
-            // Wait for subscription to be established
-            await new Promise(resolve => setTimeout(resolve, 100));
-
             // Now insert initial data
             await wsClient.command(
                 `from [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }] insert test.${tableName}`,
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await insertTracker.waitForCall();
 
             // Verify inserts were received
             expect(insertTracker.getCallCount()).toBe(1);
@@ -319,8 +311,7 @@ describe('WebSocket Subscriptions', () => {
                 []
             );
 
-            // Wait for callbacks
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await removeTracker.waitForCall();
 
             expect(insertTracker.getCallCount()).toBe(0);
             expect(updateTracker.getCallCount()).toBe(0);
@@ -363,16 +354,13 @@ describe('WebSocket Subscriptions', () => {
                 }
             );
 
-            // Wait for subscription to be fully established
-            await new Promise(resolve => setTimeout(resolve, 100));
-
             // Insert
             await wsClient.command(
                 `from [{ id: 1, name: 'alice' }] insert test.${tableName}`,
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await insertTracker.waitForCall();
 
             // Update
             await wsClient.command(
@@ -380,7 +368,7 @@ describe('WebSocket Subscriptions', () => {
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await updateTracker.waitForCall();
 
             // Remove
             await wsClient.command(
@@ -388,7 +376,7 @@ describe('WebSocket Subscriptions', () => {
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await removeTracker.waitForCall();
 
             expect(insertTracker.getCallCount()).toBe(1);
             expect(insertTracker.getAllRows().length).toBe(1);
@@ -449,8 +437,7 @@ describe('WebSocket Subscriptions', () => {
                 []
             );
 
-            // Wait for callbacks
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await insertTracker.waitForCall();
 
             // Should be batched into one call with all 10 rows
             expect(insertTracker.getCallCount()).toBe(1);
@@ -590,7 +577,7 @@ describe('WebSocket Subscriptions', () => {
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await tracker1.waitForCall();
 
             // Insert into table 2
             await wsClient.command(
@@ -598,7 +585,7 @@ describe('WebSocket Subscriptions', () => {
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await tracker2.waitForCall();
 
             expect(tracker1.getCallCount()).toBe(1);
             expect(tracker1.getAllRows().length).toBe(1);
@@ -640,9 +627,6 @@ describe('WebSocket Subscriptions', () => {
                 )
             );
 
-            // Wait for subscriptions to be established
-            await new Promise(resolve => setTimeout(resolve, 100));
-
             // Insert into all tables
             await Promise.all(
                 tables.map((table, i) =>
@@ -655,7 +639,7 @@ describe('WebSocket Subscriptions', () => {
             );
 
             // Wait for all callbacks
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await Promise.all(trackers.map(t => t.waitForCall()));
 
             // Verify all callbacks fired
             for (let i = 0; i < 5; i++) {
@@ -701,7 +685,7 @@ describe('WebSocket Subscriptions', () => {
             socket.close();
 
             // Wait for reconnection to complete
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 300));
 
             // Insert new data
             await wsClient.command(
@@ -710,8 +694,7 @@ describe('WebSocket Subscriptions', () => {
                 []
             );
 
-            // Wait for callback
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await tracker.waitForCall();
 
             // Should have received the callback after reconnection
             expect(tracker.getCallCount()).toBe(1);
@@ -749,7 +732,7 @@ describe('WebSocket Subscriptions', () => {
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await tracker.waitForCall();
 
             // Verify first insert
             expect(tracker.getCallCount()).toBe(1);
@@ -760,7 +743,9 @@ describe('WebSocket Subscriptions', () => {
 
             // Force disconnect and reconnect
             (wsClient as any).socket.close();
-            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Wait for reconnection to complete
+            await new Promise(resolve => setTimeout(resolve, 300));
 
             // Insert after reconnect
             await wsClient.command(
@@ -768,7 +753,7 @@ describe('WebSocket Subscriptions', () => {
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await tracker.waitForCall();
 
             // Verify callback was invoked again after reconnection
             expect(tracker.getCallCount()).toBeGreaterThan(callsBeforeReconnect);
@@ -810,7 +795,9 @@ describe('WebSocket Subscriptions', () => {
 
             // Force disconnect
             (wsClient as any).socket.close();
-            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Wait for reconnection to complete
+            await new Promise(resolve => setTimeout(resolve, 300));
 
             // Insert into all tables
             await Promise.all(
@@ -823,7 +810,7 @@ describe('WebSocket Subscriptions', () => {
                 )
             );
 
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await Promise.all(trackers.map(t => t.waitForCall()));
 
             // All callbacks should still work
             for (let i = 0; i < 3; i++) {
@@ -938,8 +925,8 @@ describe('WebSocket Subscriptions', () => {
                 []
             );
 
-            // Wait
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Small wait to verify no callback fires
+            await new Promise(resolve => setTimeout(resolve, 100));
 
             // Should not have received callback
             expect(tracker.getCallCount()).toBe(0);
@@ -971,7 +958,8 @@ describe('WebSocket Subscriptions', () => {
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 300));
+            // Small wait to verify no callback fires for non-matching data
+            await new Promise(resolve => setTimeout(resolve, 100));
 
             // Should not trigger callback
             expect(tracker.getCallCount()).toBe(0);
@@ -982,7 +970,7 @@ describe('WebSocket Subscriptions', () => {
                 null,
                 []
             );
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await tracker.waitForCall();
 
             // Should trigger callback now
             expect(tracker.getCallCount()).toBe(1);
@@ -1024,8 +1012,7 @@ describe('WebSocket Subscriptions', () => {
                 []
             );
 
-            // Wait for callback
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await tracker.waitForCall();
 
             const duration = Date.now() - startTime;
 
@@ -1081,8 +1068,7 @@ describe('WebSocket Subscriptions', () => {
 
             await Promise.all(promises);
 
-            // Wait for all callbacks
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await tracker.waitForCall();
 
             // Rapid inserts are batched by the server into a single callback
             expect(tracker.getCallCount()).toBe(1);

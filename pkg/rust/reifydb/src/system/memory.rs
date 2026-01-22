@@ -79,18 +79,15 @@ impl MemoryWatchdog {
 		if let Ok(s) = fs::read_to_string("/sys/fs/cgroup/memory.max") {
 			let s = s.trim();
 			if s != "max" {
-				return s
-					.parse::<u64>()
-					.map_err(|e| format!("Failed to parse memory.max: {}", e));
+				return s.parse::<u64>().map_err(|e| format!("Failed to parse memory.max: {}", e));
 			}
 		}
 
 		// cgroup v1 fallback
 		if let Ok(s) = fs::read_to_string("/sys/fs/cgroup/memory/memory.limit_in_bytes") {
-			let bytes = s
-				.trim()
-				.parse::<u64>()
-				.map_err(|e| format!("Failed to parse memory.limit_in_bytes: {}", e))?;
+			let bytes =
+				s.trim().parse::<u64>()
+					.map_err(|e| format!("Failed to parse memory.limit_in_bytes: {}", e))?;
 
 			// Docker sometimes sets this to a huge number if unlimited
 			if bytes < (1u64 << 60) {

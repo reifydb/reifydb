@@ -3,9 +3,10 @@
 
 //! Integration tests for CDC consumer watermark functionality
 
-use reifydb_cdc::consume::{checkpoint::CdcCheckpoint, watermark::compute_watermark};
-use reifydb_cdc::storage::memory::MemoryCdcStorage;
-use reifydb_cdc::storage::CdcStorage;
+use reifydb_cdc::{
+	consume::{checkpoint::CdcCheckpoint, watermark::compute_watermark},
+	storage::{CdcStorage, memory::MemoryCdcStorage},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{encoded::EncodedValues, key::EncodedKey},

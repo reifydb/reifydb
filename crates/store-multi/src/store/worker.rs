@@ -146,8 +146,8 @@ impl DropActor {
 
 	#[instrument(name = "drop_actor::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
 	fn process_batch(storage: &HotStorage, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
-		// Collect all keys to drop, grouped by table
-		let mut batches: HashMap<EntryKind, Vec<CowVec<u8>>> = HashMap::new();
+		// Collect all keys to drop, grouped by table: (key, version) pairs
+		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>> = HashMap::new();
 		// Collect drop stats for metrics
 		let mut drops_with_stats = Vec::new();
 		let mut max_pending_version = CommitVersion(0);
@@ -175,8 +175,8 @@ impl DropActor {
 							value_bytes: entry.value_bytes,
 						});
 
-						// Queue for physical deletion
-						batches.entry(request.table).or_default().push(entry.versioned_key);
+						// Queue for physical deletion: (key, version) pair
+						batches.entry(request.table).or_default().push((entry.key, entry.version));
 					}
 				}
 				Err(e) => {

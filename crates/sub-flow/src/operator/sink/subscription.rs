@@ -44,7 +44,7 @@ impl SinkSubscriptionOperator {
 	pub fn new(parent: Rc<Operators>, node: FlowNodeId, subscription: ResolvedSubscription) -> Self {
 		let counter_key = {
 			let mut serializer = KeySerializer::new();
-			serializer.extend_bytes(subscription.def().id.as_bytes());
+			serializer.extend_u64(subscription.def().id.0);
 			EncodedKey::new(serializer.finish())
 		};
 

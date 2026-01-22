@@ -498,11 +498,17 @@ export class WsClient {
         const {subscription_id, frame} = msg.payload;
         const state = this.subscriptions.get(subscription_id);
 
-        if (!state) return;
+        if (!state) {
+            console.error('No state for subscription_id:', subscription_id);
+            return;
+        }
 
         // Extract _op column to determine operation type
         const opColumn = frame.columns.find(c => c.name === "_op");
-        if (!opColumn || opColumn.data.length === 0) return;
+        if (!opColumn || opColumn.data.length === 0) {
+            console.error('Missing or empty _op column:', { opColumn, frame });
+            return;
+        }
 
         // Transform frame to rows using existing transformResult logic
         const rows = this.frameToRows(frame, state.schema);

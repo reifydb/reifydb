@@ -1,29 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! WebSocket connection handler.
-//!
-//! This module handles individual WebSocket connections, including:
-//! - WebSocket handshake via tokio-tungstenite
-//! - Message parsing and routing
-//! - Authentication state management
-//! - Query and command execution
-//! - Subscription management for push notifications
-
-use std::{
-	sync::Arc,
-	time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId as DbSubscriptionId};
+use reifydb_catalog::{delete_flow_by_name, delete_subscription};
+use reifydb_core::interface::{
+	auth::Identity,
+	catalog::{
+		id::SubscriptionId as DbSubscriptionId,
+		subscription::{subscription_flow_name, subscription_flow_namespace},
+	},
+};
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
 	execute::{ExecuteError, execute_command, execute_query},
 	response::convert_frames,
 	state::AppState,
 };
-use reifydb_type::{params::Params, value::uuid::Uuid7};
+use reifydb_core::error::diagnostic::internal::internal;
+use reifydb_type::{error::Error, params::Params, value::uuid::Uuid7};
 use tokio::{
 	net::TcpStream,
 	select,
@@ -32,7 +28,6 @@ use tokio::{
 };
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, warn};
-use uuid::Uuid as StdUuid;
 
 use crate::{
 	protocol::{Request, RequestPayload},
@@ -67,11 +62,8 @@ pub async fn handle_connection(
 	poller: Arc<SubscriptionPoller>,
 	mut shutdown: watch::Receiver<bool>,
 ) {
-	let handler_start = Instant::now();
 	let peer = stream.peer_addr().ok();
 	let connection_id = Uuid7::generate();
-
-	println!("[TIMING] Connection {} from {:?}: handler started at T+0ms", connection_id, peer);
 
 	// Set TCP_NODELAY to disable Nagle's algorithm for lower latency
 	if let Err(e) = stream.set_nodelay(true) {
@@ -80,35 +72,11 @@ pub async fn handle_connection(
 
 	// Wrap accept_async with a 30-second timeout to prevent hanging on slow/malicious clients
 	let ws_stream = match timeout(Duration::from_secs(30), accept_async(stream)).await {
-		Ok(Ok(ws)) => {
-			let handshake_duration = handler_start.elapsed();
-			println!(
-				"[TIMING] Connection {} from {:?}: handshake completed at T+{}ms",
-				connection_id,
-				peer,
-				handshake_duration.as_millis()
-			);
-			ws
-		}
-		Ok(Err(e)) => {
-			let duration = handler_start.elapsed();
-			println!(
-				"[TIMING] Connection {} from {:?}: handshake failed at T+{}ms: {}",
-				connection_id,
-				peer,
-				duration.as_millis(),
-				e
-			);
+		Ok(Ok(ws)) => ws,
+		Ok(Err(_)) => {
 			return;
 		}
 		Err(_) => {
-			let duration = handler_start.elapsed();
-			println!(
-				"[TIMING] Connection {} from {:?}: handshake timeout at T+{}ms",
-				connection_id,
-				peer,
-				duration.as_millis()
-			);
 			return;
 		}
 	};
@@ -203,8 +171,49 @@ pub async fn handle_connection(
 	}
 
 	// Cleanup all subscriptions for this connection
-	registry.cleanup_connection(connection_id);
+	let subscription_ids = registry.cleanup_connection(connection_id);
+
+	// Cleanup database subscriptions for each subscription
+	for subscription_id in subscription_ids {
+		// Unregister from poller first
+		poller.unregister(&subscription_id);
+
+		// Delete the subscription and its associated flow from database
+		if let Err(e) = cleanup_subscription_from_db(&state, subscription_id).await {
+			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
+		}
+	}
+
 	debug!("WebSocket connection {} from {:?} cleaned up", connection_id, peer);
+}
+
+/// Cleanup a subscription from the database (synchronous).
+fn cleanup_subscription_from_db_sync(
+	engine: &reifydb_engine::engine::StandardEngine,
+	subscription_id: DbSubscriptionId,
+) -> reifydb_type::Result<()> {
+	let mut txn = engine.begin_command()?;
+
+	// Delete the associated flow (named after the subscription ID)
+	let flow_name = subscription_flow_name(subscription_id);
+	let namespace_id = subscription_flow_namespace();
+	delete_flow_by_name(&mut txn, namespace_id, &flow_name)?;
+
+	// Delete the subscription (metadata, columns, rows)
+	delete_subscription(&mut txn, subscription_id)?;
+
+	txn.commit()?;
+	Ok(())
+}
+
+/// Cleanup a subscription from the database.
+async fn cleanup_subscription_from_db(state: &AppState, subscription_id: DbSubscriptionId) -> reifydb_type::Result<()> {
+	let engine = state.engine_clone();
+	let pool = state.pool();
+
+	pool.compute(move || cleanup_subscription_from_db_sync(&engine, subscription_id))
+		.await
+		.map_err(|e| Error(internal(format!("Compute pool error: {:?}", e))))?
 }
 
 /// Connection ID type alias for clarity.
@@ -315,9 +324,8 @@ async fn process_message(
 		RequestPayload::Unsubscribe(unsub) => {
 			use crate::response::Response;
 
-			// Parse the subscription ID
-			let subscription_id = match unsub.subscription_id.parse::<StdUuid>() {
-				Ok(uuid) => DbSubscriptionId(uuid),
+			let subscription_id = match unsub.subscription_id.parse::<u64>() {
+				Ok(id) => DbSubscriptionId(id),
 				Err(_) => {
 					return Some(build_error(
 						&request.id,
@@ -334,6 +342,14 @@ async fn process_message(
 			let removed = registry.unsubscribe(subscription_id);
 
 			if removed {
+				// Cleanup the subscription from the database
+				if let Err(e) = cleanup_subscription_from_db(state, subscription_id).await {
+					warn!(
+						"Failed to cleanup subscription {} from database: {:?}",
+						subscription_id, e
+					);
+				}
+
 				tracing::info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
 				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
 			} else {

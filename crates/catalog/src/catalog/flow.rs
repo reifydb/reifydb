@@ -164,6 +164,20 @@ impl Catalog {
 		Ok(flow)
 	}
 
+	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
+	/// This skips the name uniqueness check since the ID is guaranteed unique by the sequence.
+	#[instrument(name = "catalog::flow::create_with_id", level = "debug", skip(self, txn, to_create))]
+	pub fn create_flow_with_id(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		flow_id: FlowId,
+		to_create: FlowToCreate,
+	) -> crate::Result<FlowDef> {
+		let flow = CatalogStore::create_flow_with_id(txn, flow_id, to_create.into())?;
+		txn.track_flow_def_created(flow.clone())?;
+		Ok(flow)
+	}
+
 	#[instrument(name = "catalog::flow::delete", level = "debug", skip(self, txn))]
 	pub fn delete_flow(&self, txn: &mut StandardCommandTransaction, flow: FlowDef) -> crate::Result<()> {
 		CatalogStore::delete_flow(txn, flow.id)?;
