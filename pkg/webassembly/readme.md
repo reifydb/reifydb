@@ -14,12 +14,12 @@ WebAssembly bindings for [ReifyDB](https://github.com/reifydb/reifydb), enabling
 ### Browser (ES Modules)
 
 ```javascript
-import init, { WasmEngine } from './pkg/web/reifydb_engine_wasm.js';
+import init, { WasmDB } from './pkg/web/reifydb_engine_wasm.js';
 
 await init();
-const engine = new WasmEngine();
+const db = new WasmDB();
 
-const results = await engine.query(`
+const results = await db.query(`
   FROM [{ name: "Alice", age: 30 }]
   FILTER age > 25
 `);
@@ -28,10 +28,10 @@ const results = await engine.query(`
 ### Node.js
 
 ```javascript
-const { WasmEngine } = require('./pkg/node/reifydb_engine_wasm.js');
+const { WasmDB } = require('./pkg/node/reifydb_engine_wasm.js');
 
-const engine = new WasmEngine();
-// ... use engine
+const db = new WasmDB();
+// ... use db
 ```
 
 ## Building

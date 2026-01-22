@@ -3,9 +3,9 @@
 
 // Import the WASM module
 // Update this path to match your build output
-import init, { WasmEngine } from '../../dist/web/reifydb_webassembly.js';
+import init, { WasmDB } from '../../dist/web/reifydb_webassembly.js';
 
-let engine = null;
+let db = null;
 let queryCount = 0;
 let totalRows = 0;
 let lastQueryTime = 0;
@@ -109,31 +109,31 @@ JOIN demo.users ON orders.user_id = users.id
 MAP { order_id: orders.id, user_name: users.name, total: orders.total };`
 };
 
-// Initialize the WASM engine
-async function initializeEngine() {
+// Initialize the WASM database
+async function initializeDb() {
     try {
         updateStatus('Initializing WASM...');
         await init();
 
-        updateStatus('Creating engine...');
-        engine = new WasmEngine();
-        window.engine = engine;
+        updateStatus('Creating database...');
+        db = new WasmDB();
+        window.db = db;
 
         updateStatus('Ready ✓');
         document.getElementById('run-query').disabled = false;
 
-        console.log('ReifyDB WASM engine initialized successfully!');
+        console.log('ReifyDB WASM database initialized successfully!');
     } catch (error) {
         updateStatus('Failed to initialize');
-        showError('Failed to initialize WASM engine: ' + error.message);
+        showError('Failed to initialize WASM database: ' + error.message);
         console.error(error);
     }
 }
 
 // Run query
 async function runCommand() {
-    if (!engine) {
-        showError('Engine not initialized');
+    if (!db) {
+        showError('Database not initialized');
         return;
     }
 
@@ -149,7 +149,7 @@ async function runCommand() {
     const startTime = performance.now();
 
     try {
-        let results = await engine.command(query);
+        let results = await db.command(query);
 
         const endTime = performance.now();
         lastQueryTime = Math.round(endTime - startTime);
@@ -269,4 +269,4 @@ document.getElementById('query-editor').addEventListener('keydown', (e) => {
 });
 
 // Initialize on page load
-initializeEngine();
+initializeDb();

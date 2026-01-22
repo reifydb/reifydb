@@ -5,34 +5,34 @@
 //!
 //! Run with: wasm-pack test --headless --firefox
 
-use reifydb_webassembly::WasmEngine;
+use reifydb_webassembly::WasmDB;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
-fn test_create_engine() {
-	// Test that we can create a WASM engine
-	let engine = WasmEngine::new();
-	assert!(engine.is_ok(), "Should be able to create WasmEngine");
+fn test_create_db() {
+	// Test that we can create a WASM database
+	let db = WasmDB::new();
+	assert!(db.is_ok(), "Should be able to create WasmDB");
 }
 
 #[wasm_bindgen_test]
 fn test_simple_query() {
-	let engine = WasmEngine::new().expect("Failed to create engine");
+	let db = WasmDB::new().expect("Failed to create db");
 
 	// Test a simple inline query
-	let result = engine.query(r#"FROM [{ x: 1, y: 2 }]"#);
+	let result = db.query(r#"FROM [{ x: 1, y: 2 }]"#);
 
 	assert!(result.is_ok(), "Simple query should succeed");
 }
 
 #[wasm_bindgen_test]
 fn test_query_with_filter() {
-	let engine = WasmEngine::new().expect("Failed to create engine");
+	let db = WasmDB::new().expect("Failed to create db");
 
 	// Test filtering
-	let result = engine.query(r#"
+	let result = db.query(r#"
         FROM [
             { name: "Alice", age: 30 },
             { name: "Bob", age: 25 },
@@ -46,14 +46,14 @@ fn test_query_with_filter() {
 
 #[wasm_bindgen_test]
 fn test_create_table() {
-	let engine = WasmEngine::new().expect("Failed to create engine");
+	let db = WasmDB::new().expect("Failed to create db");
 
 	// Create namespace
-	let result = engine.command("CREATE NAMESPACE test");
+	let result = db.command("CREATE NAMESPACE test");
 	assert!(result.is_ok(), "CREATE NAMESPACE should succeed");
 
 	// Create table
-	let result = engine.command(
+	let result = db.command(
 		r#"
         CREATE TABLE test.users {
             id: int4,
@@ -66,11 +66,11 @@ fn test_create_table() {
 
 #[wasm_bindgen_test]
 fn test_insert_and_query() {
-	let engine = WasmEngine::new().expect("Failed to create engine");
+	let db = WasmDB::new().expect("Failed to create db");
 
 	// Create namespace and table
-	engine.command("CREATE NAMESPACE test").expect("CREATE NAMESPACE failed");
-	engine.command(
+	db.command("CREATE NAMESPACE test").expect("CREATE NAMESPACE failed");
+	db.command(
 		r#"
         CREATE TABLE test.users {
             id: int4,
@@ -81,7 +81,7 @@ fn test_insert_and_query() {
 	.expect("CREATE TABLE failed");
 
 	// Insert data
-	let result = engine.command(
+	let result = db.command(
 		r#"
         FROM [
             { id: 1, name: "Alice" },
@@ -93,26 +93,26 @@ fn test_insert_and_query() {
 	assert!(result.is_ok(), "INSERT should succeed");
 
 	// Query data back
-	let result = engine.query("FROM test.users");
+	let result = db.query("FROM test.users");
 	assert!(result.is_ok(), "Query after insert should succeed");
 }
 
 #[wasm_bindgen_test]
 fn test_invalid_query() {
-	let engine = WasmEngine::new().expect("Failed to create engine");
+	let db = WasmDB::new().expect("Failed to create db");
 
 	// Test that invalid queries return errors
-	let result = engine.query("INVALID QUERY SYNTAX");
+	let result = db.query("INVALID QUERY SYNTAX");
 
 	assert!(result.is_err(), "Invalid query should return error");
 }
 
 #[wasm_bindgen_test]
 fn test_multiple_queries() {
-	let engine = WasmEngine::new().expect("Failed to create engine");
+	let db = WasmDB::new().expect("Failed to create db");
 
-	// Test that we can run multiple queries on same engine
-	engine.query(r#"FROM [{ x: 1 }]"#).expect("First query failed");
-	engine.query(r#"FROM [{ y: 2 }]"#).expect("Second query failed");
-	engine.query(r#"FROM [{ z: 3 }]"#).expect("Third query failed");
+	// Test that we can run multiple queries on same db
+	db.query(r#"FROM [{ x: 1 }]"#).expect("First query failed");
+	db.query(r#"FROM [{ y: 2 }]"#).expect("Second query failed");
+	db.query(r#"FROM [{ z: 3 }]"#).expect("Third query failed");
 }

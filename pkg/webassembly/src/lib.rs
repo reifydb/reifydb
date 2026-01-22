@@ -35,25 +35,25 @@ pub use error::JsError;
 /// Provides an in-memory query engine that runs entirely in the browser.
 /// All data is stored in memory and lost when the page is closed.
 #[wasm_bindgen]
-pub struct WasmEngine {
+pub struct WasmDB {
 	inner: StandardEngine,
 	flow_subsystem: FlowSubsystem,
 }
 
 #[wasm_bindgen]
-impl WasmEngine {
+impl WasmDB {
 	/// Create a new in-memory ReifyDB engine
 	///
 	/// # Example
 	///
 	/// ```javascript
-	/// import init, { WasmEngine } from './pkg/reifydb_engine_wasm.js';
+	/// import init, { WasmDB } from './pkg/reifydb_engine_wasm.js';
 	///
 	/// await init();
-	/// const engine = new WasmEngine();
+	/// const db = new WasmDB();
 	/// ```
 	#[wasm_bindgen(constructor)]
-	pub fn new() -> Result<WasmEngine, JsValue> {
+	pub fn new() -> Result<WasmDB, JsValue> {
 		use reifydb_core::{event::EventBus, util::ioc::IocContainer};
 		use reifydb_catalog::{catalog::Catalog, materialized::MaterializedCatalog};
 		use reifydb_transaction::{
@@ -143,7 +143,7 @@ impl WasmEngine {
 		flow_subsystem.start().map_err(|e| JsError::from_error(&e))?;
 		console_log("[WASM] FlowSubsystem started successfully!");
 
-		Ok(WasmEngine { inner, flow_subsystem })
+		Ok(WasmDB { inner, flow_subsystem })
 	}
 
 	/// Execute a query and return results as JavaScript objects
@@ -151,7 +151,7 @@ impl WasmEngine {
 	/// # Example
 	///
 	/// ```javascript
-	/// const results = await engine.query(`
+	/// const results = await db.query(`
 	///   FROM [{ name: "Alice", age: 30 }]
 	///   FILTER age > 25
 	/// `);
@@ -177,8 +177,8 @@ impl WasmEngine {
 	/// # Example
 	///
 	/// ```javascript
-	/// await engine.command("CREATE NAMESPACE demo");
-	/// await engine.command(`
+	/// await db.command("CREATE NAMESPACE demo");
+	/// await db.command(`
 	///   CREATE TABLE demo.users {
 	///     id: int4,
 	///     name: utf8
@@ -201,7 +201,7 @@ impl WasmEngine {
 	/// # Example
 	///
 	/// ```javascript
-	/// const results = await engine.queryWithParams(
+	/// const results = await db.queryWithParams(
 	///   "FROM users FILTER age > $min_age",
 	///   { min_age: 25 }
 	/// );
@@ -233,14 +233,14 @@ impl WasmEngine {
 	}
 }
 
-impl Drop for WasmEngine {
+impl Drop for WasmDB {
 	fn drop(&mut self) {
 		let _ = self.flow_subsystem.shutdown();
 	}
 }
 
-impl Default for WasmEngine {
+impl Default for WasmDB {
 	fn default() -> Self {
-		Self::new().expect("Failed to create WasmEngine")
+		Self::new().expect("Failed to create WasmDB")
 	}
 }

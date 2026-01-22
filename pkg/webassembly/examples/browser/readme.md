@@ -1,6 +1,6 @@
 # ReifyDB WASM Browser Example
 
-Interactive browser-based playground for ReifyDB WASM engine.
+Interactive browser-based playground for ReifyDB WASM database.
 
 ## Running the Example
 
@@ -66,7 +66,7 @@ The playground includes examples for:
 Make sure the path in `index.js` points to the correct WASM build:
 
 ```javascript
-import init, { WasmEngine } from '../../pkg/wasm/web/reifydb_engine_wasm.js';
+import init, { WasmDB } from '../../pkg/wasm/web/reifydb_engine_wasm.js';
 ```
 
 ### CORS errors

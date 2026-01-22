@@ -1,7 +1,7 @@
 {
   "name": "reifydb-wasm-browser-example",
   "version": "0.1.0",
-  "description": "Browser example for ReifyDB WASM engine",
+  "description": "Browser example for ReifyDB WASM database",
   "type": "module",
   "scripts": {
     "dev": "vite",
