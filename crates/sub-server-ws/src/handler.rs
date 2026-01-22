@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! WebSocket connection handler.
-//!
-//! This module handles individual WebSocket connections, including:
-//! - WebSocket handshake via tokio-tungstenite
-//! - Message parsing and routing
-//! - Authentication state management
-//! - Query and command execution
-//! - Subscription management for push notifications
-
 use std::{sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
@@ -27,7 +18,11 @@ use reifydb_sub_server::{
 	response::convert_frames,
 	state::AppState,
 };
-use reifydb_type::{params::Params, value::uuid::Uuid7};
+use reifydb_type::{
+	error::{Error, diagnostic::internal::internal},
+	params::Params,
+	value::uuid::Uuid7,
+};
 use tokio::{
 	net::TcpStream,
 	select,
@@ -187,7 +182,7 @@ pub async fn handle_connection(
 		poller.unregister(&subscription_id);
 
 		// Delete the subscription and its associated flow from database
-		if let Err(e) = cleanup_subscription_from_db(&state, subscription_id) {
+		if let Err(e) = cleanup_subscription_from_db(&state, subscription_id).await {
 			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
 		}
 	}
@@ -195,11 +190,11 @@ pub async fn handle_connection(
 	debug!("WebSocket connection {} from {:?} cleaned up", connection_id, peer);
 }
 
-/// Cleanup a subscription from the database.
-///
-/// This deletes both the subscription (metadata, columns, rows) and its associated flow.
-fn cleanup_subscription_from_db(state: &AppState, subscription_id: DbSubscriptionId) -> reifydb_type::Result<()> {
-	let engine = state.engine_clone();
+/// Cleanup a subscription from the database (synchronous).
+fn cleanup_subscription_from_db_sync(
+	engine: &reifydb_engine::engine::StandardEngine,
+	subscription_id: DbSubscriptionId,
+) -> reifydb_type::Result<()> {
 	let mut txn = engine.begin_command()?;
 
 	// Delete the associated flow (named after the subscription ID)
@@ -212,6 +207,16 @@ fn cleanup_subscription_from_db(state: &AppState, subscription_id: DbSubscriptio
 
 	txn.commit()?;
 	Ok(())
+}
+
+/// Cleanup a subscription from the database.
+async fn cleanup_subscription_from_db(state: &AppState, subscription_id: DbSubscriptionId) -> reifydb_type::Result<()> {
+	let engine = state.engine_clone();
+	let pool = state.pool();
+
+	pool.compute(move || cleanup_subscription_from_db_sync(&engine, subscription_id))
+		.await
+		.map_err(|e| Error(internal(format!("Compute pool error: {:?}", e))))?
 }
 
 /// Connection ID type alias for clarity.
@@ -341,7 +346,7 @@ async fn process_message(
 
 			if removed {
 				// Cleanup the subscription from the database
-				if let Err(e) = cleanup_subscription_from_db(state, subscription_id) {
+				if let Err(e) = cleanup_subscription_from_db(state, subscription_id).await {
 					warn!(
 						"Failed to cleanup subscription {} from database: {:?}",
 						subscription_id, e

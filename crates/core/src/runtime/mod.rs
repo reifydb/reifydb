@@ -58,9 +58,11 @@ pub struct SharedRuntimeConfig {
 
 impl Default for SharedRuntimeConfig {
 	fn default() -> Self {
+		let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+
 		Self {
-			async_threads: 1,
-			compute_threads: 1,
+			async_threads: cpus.max(2),
+			compute_threads: cpus.max(2),
 			compute_max_in_flight: 32,
 		}
 	}
