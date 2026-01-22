@@ -29,10 +29,9 @@ use reifydb_rql::flow::{
 use reifydb_type::{error::Error, value::Value};
 use tracing::instrument;
 
-use crate::operator::{BoxedOperator, Operators};
-
 #[cfg(reifydb_target = "native")]
 use crate::ffi::loader::ffi_operator_loader;
+use crate::operator::{BoxedOperator, Operators};
 
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,

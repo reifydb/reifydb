@@ -5,23 +5,26 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::schema::Schema,
+	error::diagnostic::{
+		catalog::{namespace_not_found, table_not_found},
+		engine,
+	},
 	interface::{
 		catalog::id::IndexId,
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
+	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey, row::RowKey},
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
-use reifydb_core::{
-	error::diagnostic::{
-		catalog::{namespace_not_found, table_not_found},
-		engine,
-	},
-	internal_error,
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	return_error,
+	value::{Value, r#type::Type},
 };
-use reifydb_type::{fragment::Fragment, params::Params, return_error, value::{Value, r#type::Type}};
 
 use super::primary_key;
 use crate::{

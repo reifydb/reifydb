@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::resolved::ResolvedDictionary,
+	internal_error,
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
-use reifydb_core::internal_error;
 use reifydb_transaction::standard::StandardTransaction;
 use reifydb_type::{
 	fragment::Fragment,

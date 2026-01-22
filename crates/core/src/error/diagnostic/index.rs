@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::error::diagnostic::Diagnostic;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 pub fn primary_key_violation(fragment: Fragment, table_name: String, key_columns: Vec<String>) -> Diagnostic {
 	let columns_str = if key_columns.is_empty() {

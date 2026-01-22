@@ -3,6 +3,7 @@
 
 use reifydb_core::{
 	encoded::encoded::EncodedValues,
+	error::diagnostic::catalog::dictionary_already_exists,
 	interface::catalog::{
 		dictionary::DictionaryDef,
 		id::{DictionaryId, NamespaceId},
@@ -13,11 +14,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_core::error::diagnostic::catalog::dictionary_already_exists;
-use reifydb_type::{
-	fragment::Fragment, return_error, util::cowvec::CowVec,
-	value::r#type::Type,
-};
+use reifydb_type::{fragment::Fragment, return_error, util::cowvec::CowVec, value::r#type::Type};
 
 use crate::{CatalogStore, store::sequence::system::SystemSequence};
 

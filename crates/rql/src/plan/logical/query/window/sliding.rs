@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::common::{WindowSize, WindowSlide, WindowType};
+use reifydb_core::{
+	common::{WindowSize, WindowSlide, WindowType},
+	error::diagnostic::operation,
+};
 use reifydb_type::{error::Error, fragment::Fragment, return_error};
-use reifydb_core::error::diagnostic::operation;
 
 use super::{WindowConfig, WindowNode};
 use crate::{Result, expression::Expression};

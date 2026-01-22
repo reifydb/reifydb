@@ -29,19 +29,19 @@ use std::env;
 /// fn wasm_only() { }
 /// ```
 pub fn emit_target_cfg() {
-    let target = env::var("TARGET").unwrap_or_default();
+	let target = env::var("TARGET").unwrap_or_default();
 
-    let reifydb_target = if target.contains("wasm32") {
-        "wasm"
-    } else {
-        // Default to native for all non-wasm targets
-        // Future: could check for DST-specific target/env var here
-        "native"
-    };
+	let reifydb_target = if target.contains("wasm32") {
+		"wasm"
+	} else {
+		// Default to native for all non-wasm targets
+		// Future: could check for DST-specific target/env var here
+		"native"
+	};
 
-    // Emit the check-cfg directive to tell the compiler about our custom cfg
-    println!("cargo::rustc-check-cfg=cfg(reifydb_target, values(\"native\", \"wasm\", \"dst\"))");
-    println!("cargo:rustc-cfg=reifydb_target=\"{}\"", reifydb_target);
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed=TARGET");
+	// Emit the check-cfg directive to tell the compiler about our custom cfg
+	println!("cargo::rustc-check-cfg=cfg(reifydb_target, values(\"native\", \"wasm\", \"dst\"))");
+	println!("cargo:rustc-cfg=reifydb_target=\"{}\"", reifydb_target);
+	println!("cargo:rerun-if-changed=build.rs");
+	println!("cargo:rerun-if-env-changed=TARGET");
 }

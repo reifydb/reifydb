@@ -4,8 +4,8 @@
 use reifydb_core::{
 	interface::catalog::id::{PrimaryKeyId, ViewId},
 	key::view::ViewKey,
+	return_internal_error,
 };
-use reifydb_core::return_internal_error;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::{CatalogStore, store::view::schema::view};

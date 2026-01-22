@@ -16,11 +16,10 @@ use std::{
 	time::Duration,
 };
 
-use crate::{
-	handler::handle_connection,
-	subscription::{poller::SubscriptionPoller, registry::SubscriptionRegistry},
+use reifydb_core::{
+	error::diagnostic::subsystem::{address_unavailable, bind_failed},
+	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
@@ -32,7 +31,11 @@ use tokio::{
 	time::interval,
 };
 use tracing::info;
-use reifydb_core::error::diagnostic::subsystem::{address_unavailable, bind_failed};
+
+use crate::{
+	handler::handle_connection,
+	subscription::{poller::SubscriptionPoller, registry::SubscriptionRegistry},
+};
 
 /// WebSocket server subsystem.
 ///

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_core::error::diagnostic::catalog::namespace_not_found;
+use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{

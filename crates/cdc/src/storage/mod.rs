@@ -14,10 +14,9 @@ use std::collections::Bound;
 use memory::MemoryCdcStorage;
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	interface::cdc::{Cdc, CdcBatch},
 };
-
-use reifydb_core::encoded::key::EncodedKey;
 
 use crate::error::CdcError;
 
@@ -455,7 +454,7 @@ pub mod tests {
 			vec![CdcSequencedChange {
 				sequence: 1,
 				change: CdcChange::Insert {
-					key: EncodedKey::new(vec![1, 2, 3]), // 3 bytes
+					key: EncodedKey::new(vec![1, 2, 3]),                        // 3 bytes
 					post: EncodedValues(CowVec::new(vec![10, 20, 30, 40, 50])), // 5 bytes
 				},
 			}],

@@ -9,9 +9,7 @@
 
 use std::sync::Arc;
 
-use crate::actor::context::CancellationToken;
-use crate::actor::mailbox::ActorRef;
-use crate::actor::traits::Actor;
+use crate::actor::{context::CancellationToken, mailbox::ActorRef, traits::Actor};
 
 #[cfg(reifydb_target = "native")]
 pub(crate) mod native;

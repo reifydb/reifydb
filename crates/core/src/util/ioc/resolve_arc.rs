@@ -5,9 +5,11 @@ use std::{
 	any::{Any, type_name},
 	sync::{Arc, OnceLock},
 };
+
 use reifydb_type::error;
-use crate::error::diagnostic::internal::internal;
+
 use super::IocContainer;
+use crate::error::diagnostic::internal::internal;
 
 /// Thread-safe lazy resolution wrapper using OnceLock
 /// Can be cheaply cloned as it uses Arc internally

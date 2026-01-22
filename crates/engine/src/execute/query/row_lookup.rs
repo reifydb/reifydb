@@ -12,12 +12,12 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, schema::Schema},
+	error::diagnostic::internal::internal,
 	interface::{catalog::primitive::PrimitiveId, resolved::ResolvedPrimitive},
 	key::row::RowKey,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::standard::StandardTransaction;
-use reifydb_core::error::diagnostic::internal::internal;
 use reifydb_type::{
 	fragment::Fragment,
 	value::{row_number::RowNumber, r#type::Type},

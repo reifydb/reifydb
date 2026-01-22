@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use super::{super::StandardColumnEvaluator, compare_columns, GreaterThan};
-use crate::evaluate::ColumnEvaluationContext;
 use reifydb_rql::expression::GreaterThanExpression;
 use reifydb_type::error::diagnostic::operator::greater_than_cannot_be_applied_to_incompatible_types;
+
+use super::{super::StandardColumnEvaluator, GreaterThan, compare_columns};
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn greater_than(

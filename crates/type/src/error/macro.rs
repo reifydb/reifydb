@@ -71,14 +71,14 @@ macro_rules! err {
 
 #[cfg(test)]
 pub mod tests {
-    use std::sync::Arc;
+	use std::sync::Arc;
 
-    use crate::{
-        error::diagnostic::number::nan_not_allowed,
-        fragment::{Fragment, StatementColumn, StatementLine},
-    };
+	use crate::{
+		error::diagnostic::number::nan_not_allowed,
+		fragment::{Fragment, StatementColumn, StatementLine},
+	};
 
-    #[test]
+	#[test]
 	fn test_error_macro() {
 		// Test that error! macro creates correct Error type
 		let err = error!(nan_not_allowed());

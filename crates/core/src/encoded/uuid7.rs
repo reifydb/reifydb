@@ -46,10 +46,9 @@ impl Schema {
 
 #[cfg(test)]
 pub mod tests {
-	use std::time::Duration;
+	use std::{thread::sleep, time::Duration};
 
 	use reifydb_type::value::{r#type::Type, uuid::Uuid7};
-	use std::thread::sleep;
 
 	use crate::encoded::schema::Schema;
 

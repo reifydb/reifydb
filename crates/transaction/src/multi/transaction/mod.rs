@@ -169,7 +169,12 @@ impl Clone for TransactionMulti {
 }
 
 impl Inner {
-	fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus, runtime: ActorRuntime) -> Result<Self> {
+	fn new(
+		store: MultiStore,
+		single: TransactionSingle,
+		event_bus: EventBus,
+		runtime: ActorRuntime,
+	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
 		let tm = TransactionManager::new(version_provider, runtime)?;
 
@@ -207,7 +212,12 @@ impl TransactionMulti {
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus, runtime))]
-	pub fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus, runtime: ActorRuntime) -> Result<Self> {
+	pub fn new(
+		store: MultiStore,
+		single: TransactionSingle,
+		event_bus: EventBus,
+		runtime: ActorRuntime,
+	) -> Result<Self> {
 		Ok(Self(Arc::new(Inner::new(store, single, event_bus, runtime)?)))
 	}
 

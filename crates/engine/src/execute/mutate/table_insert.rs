@@ -5,20 +5,23 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, schema::Schema},
+	error::diagnostic::{catalog::table_not_found, index::primary_key_violation},
 	interface::{
 		catalog::id::IndexId,
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
+	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::InsertTableNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
-use reifydb_core::{
-	error::diagnostic::{catalog::table_not_found, index::primary_key_violation},
-	internal_error,
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	return_error,
+	value::{Value, r#type::Type},
 };
-use reifydb_type::{fragment::Fragment, params::Params, return_error, value::{Value, r#type::Type}};
 use tracing::instrument;
 
 use super::{primary_key, schema::get_or_create_table_schema};

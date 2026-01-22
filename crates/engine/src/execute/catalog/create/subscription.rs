@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::CreateSubscriptionNode;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_type::value::{Value, uuid::Uuid7};
+use reifydb_type::value::Value;
 
 use crate::execute::Executor;
 
@@ -25,13 +25,12 @@ impl Executor {
 		)?;
 		txn.track_subscription_def_created(result.clone())?;
 
-		// If AS clause is provided, create and compile a flow for the subscription
 		if let Some(as_clause) = plan.as_clause {
 			self.create_subscription_flow(txn, &result, *as_clause)?;
 		}
 
 		Ok(Columns::single_row([
-			("subscription_id", Value::Uuid7(Uuid7(result.id.0))),
+			("subscription_id", Value::Uint8(result.id.0)),
 			("created", Value::Boolean(true)),
 		]))
 	}

@@ -22,19 +22,16 @@ pub use health::HealthMonitor;
 pub use reifydb_auth as auth;
 pub use reifydb_cdc as cdc;
 pub use reifydb_core as core;
-pub use reifydb_core::{
-	event::EventBus,
-	interface::auth::Identity,
-};
+pub use reifydb_core::{event::EventBus, interface::auth::Identity};
+pub use reifydb_derive as derive;
+pub use reifydb_derive::FromFrame;
+pub use reifydb_engine as engine;
+pub use reifydb_rql as rql;
 #[cfg(reifydb_target = "native")]
 pub use reifydb_runtime::compute::native::NativeComputePool as ComputePool;
 #[cfg(reifydb_target = "wasm")]
 pub use reifydb_runtime::compute::wasm::WasmComputePool as ComputePool;
 pub use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
-pub use reifydb_derive as derive;
-pub use reifydb_derive::FromFrame;
-pub use reifydb_engine as engine;
-pub use reifydb_rql as rql;
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_multi::hot::{sqlite::config::SqliteConfig, storage::HotStorage};
 pub use reifydb_store_single as single_storage;

@@ -2,10 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_core::encoded::{key::EncodedKey, schema::Schema};
+use reifydb_core::{
+	encoded::{key::EncodedKey, schema::Schema},
+	error::diagnostic::sequence::sequence_exhausted,
+};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{return_error, value::r#type::Type};
-use reifydb_core::error::diagnostic::sequence::sequence_exhausted;
 
 macro_rules! impl_generator {
 	(
@@ -105,7 +107,9 @@ macro_rules! impl_generator {
 
 			#[cfg(test)]
 			mod tests {
-				use reifydb_core::{encoded::key::EncodedKey, error::diagnostic::sequence::sequence_exhausted};
+				use reifydb_core::{
+					encoded::key::EncodedKey, error::diagnostic::sequence::sequence_exhausted,
+				};
 				use reifydb_engine::test_utils::create_test_command_transaction;
 				use reifydb_type::value::r#type::Type;
 

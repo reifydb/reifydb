@@ -6,12 +6,12 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::schema::{Schema, SchemaField},
 	key::{EncodableKey, transaction_version::TransactionVersionKey},
 };
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_type::{Result, value::r#type::Type};
 
 use crate::single::TransactionSingle;

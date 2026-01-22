@@ -13,6 +13,7 @@
 //! - **WASM**: Uses `Rc<RefCell>` processor for inline (synchronous) message handling
 
 use std::fmt;
+
 use cfg_if::cfg_if;
 
 #[cfg(reifydb_target = "native")]
@@ -122,7 +123,9 @@ pub struct ActorRef<M> {
 impl<M> Clone for ActorRef<M> {
 	#[inline]
 	fn clone(&self) -> Self {
-		Self { inner: self.inner.clone() }
+		Self {
+			inner: self.inner.clone(),
+		}
 	}
 }
 
@@ -144,7 +147,9 @@ impl<M> ActorRef<M> {
 	/// Create a new ActorRef from an inner implementation.
 	#[inline]
 	pub(crate) fn from_inner(inner: ActorRefInnerImpl<M>) -> Self {
-		Self { inner }
+		Self {
+			inner,
+		}
 	}
 }
 
@@ -154,7 +159,9 @@ impl<M: Send> ActorRef<M> {
 	/// Create a new ActorRef from a crossbeam sender (native only).
 	#[inline]
 	pub(crate) fn new(tx: crossbeam_channel::Sender<M>) -> Self {
-		Self { inner: native::ActorRefInner::new(tx) }
+		Self {
+			inner: native::ActorRefInner::new(tx),
+		}
 	}
 
 	/// Send a message (non-blocking, may fail if mailbox full).
@@ -244,9 +251,7 @@ impl<M> ActorRef<M> {
 
 #[cfg(reifydb_target = "native")]
 pub(crate) use native::Mailbox;
-
 #[cfg(reifydb_target = "native")]
 pub(crate) use native::create_mailbox;
-
 #[cfg(reifydb_target = "wasm")]
 pub(crate) use wasm::create_actor_ref;

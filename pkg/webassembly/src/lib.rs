@@ -7,26 +7,27 @@
 //! queries in a browser or Node.js environment with in-memory storage.
 
 use reifydb_catalog::schema::SchemaRegistry;
-use wasm_bindgen::prelude::*;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::runtime::ActorRuntime;
+use wasm_bindgen::prelude::*;
 
 // Debug helper to log to browser console
 fn console_log(msg: &str) {
-    web_sys::console::log_1(&msg.into());
+	web_sys::console::log_1(&msg.into());
 }
+use reifydb_cdc::{
+	produce::actor::{CdcProducerEventListener, spawn_cdc_producer},
+	storage::CdcStore,
+};
+use reifydb_core::{event::transaction::PostCommitEvent, interface::auth::Identity};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
-use reifydb_core::interface::auth::Identity;
-use reifydb_core::event::transaction::PostCommitEvent;
-use reifydb_type::params::Params;
-use reifydb_cdc::storage::CdcStore;
-use reifydb_cdc::produce::actor::{spawn_cdc_producer, CdcProducerEventListener};
-use reifydb_sub_flow::{builder::FlowBuilderConfig, subsystem::FlowSubsystem};
 use reifydb_sub_api::subsystem::Subsystem;
+use reifydb_sub_flow::{builder::FlowBuilderConfig, subsystem::FlowSubsystem};
+use reifydb_type::params::Params;
 
-mod utils;
 mod error;
+mod utils;
 
 pub use error::JsError;
 
@@ -54,15 +55,14 @@ impl WasmDB {
 	/// ```
 	#[wasm_bindgen(constructor)]
 	pub fn new() -> Result<WasmDB, JsValue> {
-		use reifydb_core::{event::EventBus, util::ioc::IocContainer};
 		use reifydb_catalog::{catalog::Catalog, materialized::MaterializedCatalog};
-		use reifydb_transaction::{
-			interceptor::factory::StandardInterceptorFactory,
-			multi::transaction::TransactionMulti,
-			single::TransactionSingle,
-		};
+		use reifydb_core::{event::EventBus, util::ioc::IocContainer};
 		use reifydb_rqlv2::compiler::Compiler;
 		use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+		use reifydb_transaction::{
+			interceptor::factory::StandardInterceptorFactory, multi::transaction::TransactionMulti,
+			single::TransactionSingle,
+		};
 
 		// Set panic hook for better error messages in browser console
 
@@ -80,8 +80,13 @@ impl WasmDB {
 
 		// Create transactions
 		let single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
-		let multi = TransactionMulti::new(multi_store.clone(), single.clone(), eventbus.clone(), actor_runtime.clone())
-			.map_err(|e| JsError::from_error(&e))?;
+		let multi = TransactionMulti::new(
+			multi_store.clone(),
+			single.clone(),
+			eventbus.clone(),
+			actor_runtime.clone(),
+		)
+		.map_err(|e| JsError::from_error(&e))?;
 
 		// Setup IoC container
 		let mut ioc = IocContainer::new();
@@ -107,11 +112,7 @@ impl WasmDB {
 
 		// Spawn CDC producer actor on the shared runtime
 		console_log("[WASM] Spawning CDC producer actor...");
-		let cdc_producer_handle = spawn_cdc_producer(
-			&actor_runtime,
-			cdc_store,
-			multi_store.clone(),
-		);
+		let cdc_producer_handle = spawn_cdc_producer(&actor_runtime, cdc_store, multi_store.clone());
 
 		// Register event listener to forward PostCommitEvent to CDC producer
 		let cdc_listener = CdcProducerEventListener::new(cdc_producer_handle.actor_ref.clone());
@@ -134,8 +135,8 @@ impl WasmDB {
 
 		// Create and start FlowSubsystem
 		let flow_config = FlowBuilderConfig {
-			operators_dir: None,  // No FFI operators in WASM
-			num_workers: 1,       // Single-threaded for WASM
+			operators_dir: None, // No FFI operators in WASM
+			num_workers: 1,      // Single-threaded for WASM
 		};
 		console_log("[WASM] Creating FlowSubsystem...");
 		let mut flow_subsystem = FlowSubsystem::new(flow_config, inner.clone(), &ioc_ref);
@@ -143,7 +144,10 @@ impl WasmDB {
 		flow_subsystem.start().map_err(|e| JsError::from_error(&e))?;
 		console_log("[WASM] FlowSubsystem started successfully!");
 
-		Ok(WasmDB { inner, flow_subsystem })
+		Ok(WasmDB {
+			inner,
+			flow_subsystem,
+		})
 	}
 
 	/// Execute a query and return results as JavaScript objects
@@ -163,8 +167,7 @@ impl WasmDB {
 		let params = Params::None;
 
 		// Execute query
-		let frames = self.inner.query_as(&identity, rql, params)
-			.map_err(|e| JsError::from_error(&e))?;
+		let frames = self.inner.query_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		// Convert frames to JavaScript array of objects
 		utils::frames_to_js(&frames)
@@ -190,8 +193,7 @@ impl WasmDB {
 		let identity = Identity::root();
 		let params = Params::None;
 
-		let frames = self.inner.command_as(&identity, rql, params)
-			.map_err(|e| JsError::from_error(&e))?;
+		let frames = self.inner.command_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
 	}
@@ -213,8 +215,7 @@ impl WasmDB {
 		// Parse JavaScript params to Rust Params
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.query_as(&identity, rql, params)
-			.map_err(|e| JsError::from_error(&e))?;
+		let frames = self.inner.query_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
 	}
@@ -226,8 +227,7 @@ impl WasmDB {
 
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.command_as(&identity, rql, params)
-			.map_err(|e| JsError::from_error(&e))?;
+		let frames = self.inner.command_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
 	}

@@ -4,14 +4,13 @@
 use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
-
-use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_core::{
 	delta::Delta,
 	encoded::{encoded::EncodedValues, key::EncodedKey},
 	event::EventBus,
 	interface::WithEventBus,
 };
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_store_single::SingleStore;
 
 pub mod read;

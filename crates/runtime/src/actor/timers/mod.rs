@@ -13,8 +13,10 @@
 //! - **Native**: Uses `std::thread` with `std::thread::sleep` for timing
 //! - **WASM**: Uses `setTimeout` and `setInterval` via `web-sys`
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{
+	Arc,
+	atomic::{AtomicBool, AtomicU64, Ordering},
+};
 
 #[cfg(reifydb_target = "native")]
 pub(crate) mod native;
@@ -47,9 +49,7 @@ impl TimerHandle {
 	/// If the timer hasn't fired yet, it will be cancelled.
 	/// Returns `true` if the timer was successfully cancelled.
 	pub fn cancel(&self) -> bool {
-		self.cancelled
-			.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-			.is_ok()
+		self.cancelled.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok()
 	}
 
 	/// Check if this timer has been cancelled.
@@ -70,10 +70,7 @@ impl TimerHandle {
 
 impl std::fmt::Debug for TimerHandle {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("TimerHandle")
-			.field("id", &self.id)
-			.field("cancelled", &self.is_cancelled())
-			.finish()
+		f.debug_struct("TimerHandle").field("id", &self.id).field("cancelled", &self.is_cancelled()).finish()
 	}
 }
 
@@ -90,6 +87,5 @@ pub(crate) fn next_timer_id() -> u64 {
 
 #[cfg(reifydb_target = "native")]
 pub use native::{schedule_once, schedule_repeat};
-
 #[cfg(reifydb_target = "wasm")]
 pub use wasm::{schedule_once, schedule_repeat};

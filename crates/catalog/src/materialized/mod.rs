@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
+	error::diagnostic::catalog::virtual_table_already_exists,
 	interface::catalog::{
 		dictionary::DictionaryDef,
 		flow::{FlowDef, FlowId, FlowNodeId},
@@ -33,7 +34,6 @@ use reifydb_core::{
 	retention::RetentionPolicy,
 	util::multi::MultiVersionContainer,
 };
-use reifydb_core::error::diagnostic::catalog::virtual_table_already_exists;
 
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;

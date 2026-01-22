@@ -5,11 +5,13 @@ pub mod resolve_arc;
 pub mod resolve_rc;
 
 use std::{
-	any::{type_name, Any, TypeId},
+	any::{Any, TypeId, type_name},
 	collections::HashMap,
 	sync::{Arc, RwLock},
 };
+
 use reifydb_type::error;
+
 use crate::error::diagnostic::internal::internal;
 
 struct BoxedValue {

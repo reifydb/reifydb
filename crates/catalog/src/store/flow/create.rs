@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	error::diagnostic::catalog::flow_already_exists,
 	interface::catalog::{
 		flow::{FlowDef, FlowId, FlowStatus},
 		id::NamespaceId,
@@ -10,7 +11,6 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
-use reifydb_core::error::diagnostic::catalog::flow_already_exists;
 
 use crate::{
 	CatalogStore,
@@ -46,6 +46,20 @@ impl CatalogStore {
 		}
 
 		let flow_id = next_flow_id(txn)?;
+		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
+		Self::link_flow_to_namespace(txn, namespace_id, flow_id, &to_create.name)?;
+
+		Ok(Self::get_flow(txn, flow_id)?)
+	}
+
+	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
+	/// This skips the name uniqueness check since the ID is guaranteed unique by the sequence.
+	pub(crate) fn create_flow_with_id(
+		txn: &mut StandardCommandTransaction,
+		flow_id: FlowId,
+		to_create: FlowToCreate,
+	) -> crate::Result<FlowDef> {
+		let namespace_id = to_create.namespace;
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::link_flow_to_namespace(txn, namespace_id, flow_id, &to_create.name)?;
 

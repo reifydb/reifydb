@@ -3,8 +3,9 @@
 
 //! Error handling for WASM bindings
 
-use wasm_bindgen::prelude::*;
 use std::fmt::Display;
+
+use wasm_bindgen::prelude::*;
 
 /// JavaScript-compatible error wrapper
 #[wasm_bindgen]

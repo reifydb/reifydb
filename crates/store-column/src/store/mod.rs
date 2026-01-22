@@ -6,12 +6,11 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_runtime::time::Instant;
-
 use reifydb_core::{
 	common::CommitVersion,
 	value::column::{compressed::CompressedColumn, data::ColumnData},
 };
+use reifydb_runtime::time::Instant;
 use reifydb_type::Result;
 
 use crate::{ColumnStatistics, ColumnStore, backend::Backend, config::ColumnStoreConfig, statistics::merge};

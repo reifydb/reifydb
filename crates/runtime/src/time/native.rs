@@ -8,10 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// Get current time in nanoseconds since Unix epoch.
 #[inline(always)]
 pub fn now_nanos() -> u128 {
-	SystemTime::now()
-		.duration_since(UNIX_EPOCH)
-		.expect("System time is before Unix epoch")
-		.as_nanos()
+	SystemTime::now().duration_since(UNIX_EPOCH).expect("System time is before Unix epoch").as_nanos()
 }
 
 /// Get current time in microseconds since Unix epoch.

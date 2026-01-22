@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::error::diagnostic::util::value_max;
-use reifydb_type::error::diagnostic::Diagnostic;
-use reifydb_type::fragment::Fragment;
-use reifydb_type::value::r#type::Type;
+use reifydb_type::{
+	error::diagnostic::{Diagnostic, util::value_max},
+	fragment::Fragment,
+	value::r#type::Type,
+};
 
 pub fn sequence_exhausted(value: Type) -> Diagnostic {
 	Diagnostic {

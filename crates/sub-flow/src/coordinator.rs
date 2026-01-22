@@ -10,8 +10,7 @@ use std::sync::Arc;
 
 use crossbeam_channel::bounded;
 use reifydb_cdc::{
-	consume::checkpoint::CdcCheckpoint,
-	consume::consumer::CdcConsume,
+	consume::{checkpoint::CdcCheckpoint, consumer::CdcConsume},
 	storage::CdcStore,
 };
 use reifydb_core::internal;
@@ -28,9 +27,7 @@ use crate::{
 	FlowEngine,
 	actor::{FlowActor, FlowMsg},
 	catalog::FlowCatalog,
-	coordinator_actor::{
-		CoordinatorActor, CoordinatorMsg, CoordinatorResponse, extract_new_flow_ids,
-	},
+	coordinator_actor::{CoordinatorActor, CoordinatorMsg, CoordinatorResponse, extract_new_flow_ids},
 	pool::{PoolActor, PoolMsg},
 	tracker::PrimitiveVersionTracker,
 	transaction::pending::Pending,
@@ -110,7 +107,10 @@ impl FlowCoordinator {
 	}
 
 	/// Get the parent transaction's snapshot version for state reads.
-	fn get_parent_snapshot_version(&self, txn: &StandardCommandTransaction) -> Result<reifydb_core::common::CommitVersion> {
+	fn get_parent_snapshot_version(
+		&self,
+		txn: &StandardCommandTransaction,
+	) -> Result<reifydb_core::common::CommitVersion> {
 		let query_txn = txn.multi.begin_query()?;
 		Ok(query_txn.version())
 	}
@@ -196,9 +196,7 @@ impl CdcConsume for FlowCoordinator {
 			})
 			.map_err(|_| Error(internal!("Coordinator actor stopped")))?;
 
-		let response = reply_rx
-			.recv()
-			.map_err(|_| Error(internal!("Coordinator actor response error")))?;
+		let response = reply_rx.recv().map_err(|_| Error(internal!("Coordinator actor response error")))?;
 
 		// Apply results to transaction
 		match response {

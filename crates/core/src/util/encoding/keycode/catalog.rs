@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-
-use crate::interface::catalog::{
-	flow::FlowId,
-	id::{DictionaryId, IndexId, PrimaryKeyId, RingBufferId, TableId, ViewId},
-	primitive::PrimitiveId,
-	vtable::VTableId,
+use crate::{
+	interface::catalog::{
+		flow::FlowId,
+		id::{DictionaryId, IndexId, PrimaryKeyId, RingBufferId, TableId, ViewId},
+		primitive::PrimitiveId,
+		vtable::VTableId,
+	},
+	return_internal_error,
 };
-use crate::return_internal_error;
 
 /// Serialize a PrimitiveId for use in database keys
 /// Returns [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for

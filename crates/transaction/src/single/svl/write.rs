@@ -4,16 +4,15 @@
 use std::mem::take;
 
 use indexmap::IndexMap;
-
-use reifydb_runtime::sync::rwlock::{RwLock, RwLockWriteGuard};
-use reifydb_core::interface::store::{
-	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionValues,
+use reifydb_core::{
+	error::diagnostic::transaction::key_out_of_scope,
+	interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionValues},
 };
+use reifydb_runtime::sync::rwlock::{RwLock, RwLockWriteGuard};
 use reifydb_type::{
 	error,
 	util::{cowvec::CowVec, hex},
 };
-use reifydb_core::error::diagnostic::transaction::key_out_of_scope;
 
 use super::*;
 

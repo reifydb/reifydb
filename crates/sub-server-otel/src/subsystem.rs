@@ -16,7 +16,7 @@ use opentelemetry_otlp::SpanExporter;
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer as SdkTracer};
 use reifydb_core::{
 	error::diagnostic::subsystem::init_failed,
-	interface::version::{ComponentType, HasVersion, SystemVersion}
+	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};

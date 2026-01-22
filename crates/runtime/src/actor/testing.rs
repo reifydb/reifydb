@@ -36,10 +36,12 @@
 
 use std::collections::VecDeque;
 
-use crate::actor::context::{CancellationToken, Context};
-use crate::actor::mailbox::ActorRef;
-use crate::actor::runtime::ActorRuntime;
-use crate::actor::traits::{Actor, Flow};
+use crate::actor::{
+	context::{CancellationToken, Context},
+	mailbox::ActorRef,
+	runtime::ActorRuntime,
+	traits::{Actor, Flow},
+};
 
 /// Test harness for synchronous actor testing.
 ///
@@ -249,12 +251,7 @@ mod tests {
 			0
 		}
 
-		fn handle(
-			&self,
-			state: &mut Self::State,
-			msg: Self::Message,
-			_ctx: &Context<Self::Message>,
-		) -> Flow {
+		fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
 			match msg {
 				CounterMsg::Inc => *state += 1,
 				CounterMsg::Dec => *state -= 1,

@@ -5,22 +5,22 @@ mod common;
 
 use std::{error::Error, path::Path, sync::Arc};
 
-use common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
+use common::{cleanup_server, create_server_instance, start_server_and_get_http_port};
 use reifydb::{Database, core::util::retry::retry};
-use reifydb_client::WsClient;
+use reifydb_client::HttpClient;
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
 use crate::common::{parse_named_params, parse_positional_params, parse_rql, write_frames};
 
-pub struct WsRunner {
+pub struct HttpRunner {
 	instance: Option<Database>,
-	client: Option<WsClient>,
+	client: Option<HttpClient>,
 	runtime: Arc<Runtime>,
 }
 
-impl WsRunner {
+impl HttpRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
 		Self {
 			instance: Some(create_server_instance(&runtime)),
@@ -30,7 +30,7 @@ impl WsRunner {
 	}
 }
 
-impl testscript::runner::Runner for WsRunner {
+impl testscript::runner::Runner for HttpRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let client = self.client.as_ref().ok_or("No client available")?;
 
@@ -89,10 +89,10 @@ impl testscript::runner::Runner for WsRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let port = start_server_and_get_ws_port(&self.runtime, server)?;
+		let port = start_server_and_get_http_port(&self.runtime, server)?;
 
-		let mut client = self.runtime.block_on(WsClient::connect(&format!("ws://[::1]:{}", port)))?;
-		self.runtime.block_on(client.authenticate("mysecrettoken"))?;
+		let mut client = self.runtime.block_on(HttpClient::connect(&format!("http://[::1]:{}", port)))?;
+		client.authenticate("mysecrettoken");
 
 		self.client = Some(client);
 
@@ -100,21 +100,19 @@ impl testscript::runner::Runner for WsRunner {
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-		if let Some(client) = self.client.take() {
-			let _ = self.runtime.block_on(client.close());
-		}
+		self.client = None;
 		cleanup_server(self.instance.take());
 		Ok(())
 	}
 }
 
-test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as ws => test_ws }
+test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as scripts_http => test_http }
 
-fn test_ws(path: &Path) {
+fn test_http(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::runner::run_path(&mut WsRunner::new(Arc::clone(&runtime)), path)
+		testscript::runner::run_path(&mut HttpRunner::new(Arc::clone(&runtime)), path)
 	})
 	.expect("test failed")
 }

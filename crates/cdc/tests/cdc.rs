@@ -240,7 +240,8 @@ fn test_multiple_consumers() {
 	insert_test_events(&engine, 3);
 
 	let config1 = PollConsumerConfig::new(consumer_id1.clone(), "cdc-poll-test-1", Duration::from_millis(50), None);
-	let mut test_instance1 = PollConsumer::new(config1, engine.clone(), consumer1, cdc_store.clone(), runtime.clone());
+	let mut test_instance1 =
+		PollConsumer::new(config1, engine.clone(), consumer1, cdc_store.clone(), runtime.clone());
 
 	let config2 = PollConsumerConfig::new(consumer_id2.clone(), "cdc-poll-test-2", Duration::from_millis(75), None);
 	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2, cdc_store, runtime);
@@ -367,7 +368,8 @@ fn test_rapid_start_stop() {
 	for _ in 0..5 {
 		let config =
 			PollConsumerConfig::new(consumer_id.clone(), "cdc-poll-test", Duration::from_millis(100), None);
-		let mut test_instance = PollConsumer::new(config, engine.clone(), consumer.clone(), cdc_store.clone(), runtime.clone());
+		let mut test_instance =
+			PollConsumer::new(config, engine.clone(), consumer.clone(), cdc_store.clone(), runtime.clone());
 
 		test_instance.start().expect("Failed to start consumer");
 		assert!(test_instance.is_running());
@@ -595,7 +597,8 @@ fn test_multiple_consumers_different_batch_sizes() {
 	// Consumer 1 with batch size 3
 	let config1 =
 		PollConsumerConfig::new(consumer_id1.clone(), "cdc-poll-test-1", Duration::from_millis(50), Some(3));
-	let mut test_instance1 = PollConsumer::new(config1, engine.clone(), consumer1, cdc_store.clone(), runtime.clone());
+	let mut test_instance1 =
+		PollConsumer::new(config1, engine.clone(), consumer1, cdc_store.clone(), runtime.clone());
 
 	// Consumer 2 with no batch limit (None)
 	let config2 = PollConsumerConfig::new(consumer_id2.clone(), "cdc-poll-test-2", Duration::from_millis(75), None);

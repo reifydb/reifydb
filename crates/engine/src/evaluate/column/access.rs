@@ -3,10 +3,9 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::Column;
+use reifydb_core::{error::diagnostic::query::column_not_found, value::column::Column};
 use reifydb_rql::expression::AccessPrimitiveExpression;
 use reifydb_type::{error, fragment::Fragment};
-use reifydb_core::error::diagnostic::query::column_not_found;
 
 use crate::evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator};
 

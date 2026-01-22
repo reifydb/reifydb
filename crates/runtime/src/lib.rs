@@ -54,8 +54,9 @@ pub mod actor;
 
 pub mod concurrent_map;
 
-use cfg_if::cfg_if;
 use std::{future::Future, sync::Arc};
+
+use cfg_if::cfg_if;
 
 /// Configuration for creating a [`SharedRuntime`].
 #[derive(Clone, Debug)]
@@ -221,9 +222,9 @@ impl std::fmt::Debug for SharedRuntime {
 // Keep existing tests but gate them by target
 #[cfg(all(test, reifydb_target = "native"))]
 mod tests {
-    use super::*;
+	use super::*;
 
-    fn test_config() -> SharedRuntimeConfig {
+	fn test_config() -> SharedRuntimeConfig {
 		SharedRuntimeConfig::default().async_threads(2).compute_threads(2).compute_max_in_flight(4)
 	}
 
@@ -259,9 +260,9 @@ mod tests {
 
 #[cfg(all(test, reifydb_target = "wasm"))]
 mod wasm_tests {
-    use super::*;
+	use super::*;
 
-    #[test]
+	#[test]
 	fn test_wasm_runtime_creation() {
 		let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default());
 		let pool = runtime.compute_pool();

@@ -10,7 +10,7 @@
 
 use std::{cmp::min, collections::HashMap, ops::Bound, sync::Arc};
 
-use crossbeam_channel::{bounded, Sender};
+use crossbeam_channel::{Sender, bounded};
 use reifydb_cdc::{consume::checkpoint::CdcCheckpoint, storage::CdcStore};
 use reifydb_core::{
 	common::CommitVersion,
@@ -118,12 +118,7 @@ impl Actor for CoordinatorActor {
 		}
 	}
 
-	fn handle(
-		&self,
-		state: &mut Self::State,
-		msg: Self::Message,
-		_ctx: &Context<Self::Message>,
-	) -> Flow {
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
 		match msg {
 			CoordinatorMsg::Consume {
 				cdcs,
@@ -132,13 +127,7 @@ impl Actor for CoordinatorActor {
 				current_version,
 				reply,
 			} => {
-				let resp = self.handle_consume(
-					state,
-					cdcs,
-					state_version,
-					new_flows,
-					current_version,
-				);
+				let resp = self.handle_consume(state, cdcs, state_version, new_flows, current_version);
 				let _ = reply.send(resp);
 			}
 		}
@@ -281,10 +270,7 @@ impl CoordinatorActor {
 	}
 
 	/// Submit batches to the pool actor.
-	fn submit_to_pool(
-		&self,
-		batches: HashMap<usize, WorkerBatch>,
-	) -> Result<PendingWrites, String> {
+	fn submit_to_pool(&self, batches: HashMap<usize, WorkerBatch>) -> Result<PendingWrites, String> {
 		let (reply_tx, reply_rx) = bounded(1);
 
 		self.pool_ref
@@ -303,11 +289,7 @@ impl CoordinatorActor {
 	}
 
 	/// Submit a batch to a specific worker in the pool.
-	fn submit_to_pool_worker(
-		&self,
-		worker_id: usize,
-		batch: WorkerBatch,
-	) -> Result<PendingWrites, String> {
+	fn submit_to_pool_worker(&self, worker_id: usize, batch: WorkerBatch) -> Result<PendingWrites, String> {
 		let (reply_tx, reply_rx) = bounded(1);
 
 		self.pool_ref
@@ -340,8 +322,7 @@ impl CoordinatorActor {
 		let dependency_graph = state.analyzer.get_dependency_graph();
 
 		// Get all sources this flow depends on
-		let mut flow_sources: std::collections::HashSet<PrimitiveId> =
-			std::collections::HashSet::new();
+		let mut flow_sources: std::collections::HashSet<PrimitiveId> = std::collections::HashSet::new();
 
 		// Add table sources
 		for (table_id, flow_ids) in &dependency_graph.source_tables {
@@ -403,9 +384,7 @@ impl CoordinatorActor {
 
 			let worker_id = (flow_id.0 as usize) % self.num_workers;
 
-			let batch = worker_batches
-				.entry(worker_id)
-				.or_insert_with(|| WorkerBatch::new(state_version));
+			let batch = worker_batches.entry(worker_id).or_insert_with(|| WorkerBatch::new(state_version));
 
 			batch.add_instruction(FlowInstruction::new(flow_id, to_version, flow_changes));
 		}
@@ -440,10 +419,7 @@ impl CoordinatorActor {
 		for flow_id in backfilling_flows {
 			// Get current checkpoint for this flow
 			let from_version = {
-				let mut query = self
-					.engine
-					.begin_query()
-					.map_err(|e| e.to_string())?;
+				let mut query = self.engine.begin_query().map_err(|e| e.to_string())?;
 				CdcCheckpoint::fetch(&mut query, &flow_id).unwrap_or(CommitVersion(0))
 			};
 
@@ -458,8 +434,7 @@ impl CoordinatorActor {
 			}
 
 			// Calculate chunk range
-			let to_version =
-				CommitVersion(min(from_version.0 + BACKFILL_CHUNK_SIZE, current_version.0));
+			let to_version = CommitVersion(min(from_version.0 + BACKFILL_CHUNK_SIZE, current_version.0));
 
 			// Fetch CDC for this chunk from storage
 			let batch = self
@@ -565,7 +540,11 @@ pub fn extract_new_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
 		for change in &cdc.changes {
 			if let Some(kind) = Key::kind(change.key()) {
 				if kind == KeyKind::Flow {
-					if let CdcChange::Insert { key, .. } = &change.change {
+					if let CdcChange::Insert {
+						key,
+						..
+					} = &change.change
+					{
 						if let Some(Key::Flow(flow_key)) = Key::decode(key) {
 							flow_ids.push(flow_key.flow);
 						}

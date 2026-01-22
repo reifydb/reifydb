@@ -2,16 +2,17 @@
 // Copyright (c) 2025 ReifyDB
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{
-	session::{parse_command_response, parse_query_response, CommandResult, QueryResult}, utils::generate_request_id, AuthRequest, ChangePayload, CommandRequest, QueryRequest, Request, RequestPayload,
-	Response, ResponsePayload, ServerPush,
-	SubscribeRequest,
-	UnsubscribeRequest,
-};
 use futures_util::{SinkExt, StreamExt};
 use reifydb_type::{error::Error, params::Params};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+
+use crate::{
+	AuthRequest, ChangePayload, CommandRequest, QueryRequest, Request, RequestPayload, Response, ResponsePayload,
+	ServerPush, SubscribeRequest, UnsubscribeRequest,
+	session::{CommandResult, QueryResult, parse_command_response, parse_query_response},
+	utils::generate_request_id,
+};
 
 type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<Response>>>>;
 

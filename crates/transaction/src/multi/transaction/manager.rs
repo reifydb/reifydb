@@ -15,9 +15,9 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	encoded::{encoded::EncodedValues, key::EncodedKey},
+	error::diagnostic::transaction,
 };
 use reifydb_type::{return_error, util::hex};
-use reifydb_core::error::diagnostic::transaction;
 use tracing::instrument;
 
 use crate::{

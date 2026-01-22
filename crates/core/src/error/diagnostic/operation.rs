@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::error::diagnostic::Diagnostic;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 pub fn take_negative_value(fragment: Fragment) -> Diagnostic {
 	let value = fragment.text();

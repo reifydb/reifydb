@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	error::diagnostic::catalog::table_already_exists,
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{DictionaryId, NamespaceId, TableId},
@@ -12,7 +13,6 @@ use reifydb_core::{
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 	retention::RetentionPolicy,
 };
-use reifydb_core::error::diagnostic::catalog::table_already_exists;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
 

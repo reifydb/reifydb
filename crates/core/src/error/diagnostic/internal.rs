@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_runtime::time::now_millis;
-
 use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 /// Creates a detailed internal error diagnostic with source location and
@@ -18,12 +17,8 @@ pub fn internal_with_context(
 	let reason = reason.into();
 
 	// Generate a unique error ID based on timestamp and location
-	let error_id = format!(
-		"ERR-{}-{}:{}",
-		now_millis(),
-		file.rsplit('/').next().unwrap_or(file).replace(".rs", ""),
-		line
-	);
+	let error_id =
+		format!("ERR-{}-{}:{}", now_millis(), file.rsplit('/').next().unwrap_or(file).replace(".rs", ""), line);
 
 	let detailed_message = format!("Internal error [{}]: {}", error_id, reason);
 
@@ -178,9 +173,7 @@ macro_rules! return_internal_error {
 
 #[cfg(test)]
 pub mod tests {
-	use std::time::Duration;
-
-	use std::thread::sleep;
+	use std::{thread::sleep, time::Duration};
 
 	use super::*;
 
@@ -243,7 +236,8 @@ pub mod tests {
 	fn test_internal_err_with_format() {
 		let code = "ERR_123";
 		let line = 456;
-		let result: Result<(), reifydb_type::error::Error> = internal_err!("Error code: {} at line {}", code, line);
+		let result: Result<(), reifydb_type::error::Error> =
+			internal_err!("Error code: {} at line {}", code, line);
 
 		assert!(result.is_err());
 		let error = result.unwrap_err();

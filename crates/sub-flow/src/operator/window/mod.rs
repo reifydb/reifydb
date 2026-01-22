@@ -35,21 +35,21 @@ use reifydb_core::{
 	},
 	row::Row,
 	util::{clock, encoding::keycode::serializer::KeySerializer},
-	value::column::{columns::Columns, data::ColumnData, Column},
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
-	evaluate::{column::StandardColumnEvaluator, ColumnEvaluationContext},
+	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
 };
-use reifydb_runtime::hash::{xxh3_128, Hash128};
-use reifydb_rql::expression::{name::column_name_from_expression, Expression};
+use reifydb_rql::expression::{Expression, name::column_name_from_expression};
+use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
-	value::{blob::Blob, r#type::Type, row_number::RowNumber, Value},
+	value::{Value, blob::Blob, row_number::RowNumber, r#type::Type},
 };
 
 use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};

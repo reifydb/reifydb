@@ -8,9 +8,11 @@ use std::{
 	ops::Deref,
 };
 
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_core::{
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+	return_internal_error,
+};
 use reifydb_type::{error::Error, value::uuid::Uuid7};
-use reifydb_core::return_internal_error;
 
 pub mod change;
 pub mod delta;

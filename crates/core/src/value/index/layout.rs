@@ -3,15 +3,13 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_type::{
-	error,
-	util::cowvec::CowVec,
-	value::r#type::Type,
+use reifydb_type::{error, util::cowvec::CowVec, value::r#type::Type};
+
+use crate::{
+	error::diagnostic::catalog::{index_types_directions_mismatch, index_variable_length_not_supported},
+	sort::SortDirection,
+	value::index::encoded::EncodedIndexKey,
 };
-
-use crate::error::diagnostic::catalog::{index_types_directions_mismatch, index_variable_length_not_supported};
-
-use crate::{sort::SortDirection, value::index::encoded::EncodedIndexKey};
 
 #[derive(Debug, Clone)]
 pub struct EncodedIndexLayout(Arc<EncodedIndexLayoutInner>);

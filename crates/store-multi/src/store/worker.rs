@@ -10,23 +10,26 @@
 //! - **Native**: Runs on its own OS thread, processes messages from a channel
 //! - **WASM**: Messages are processed inline (synchronously) when sent
 
-use std::collections::HashMap;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::EncodedKey,
-	event::EventBus,
-	event::metric::{StorageDrop, StorageStatsRecordedEvent},
+	event::{
+		EventBus,
+		metric::{StorageDrop, StorageStatsRecordedEvent},
+	},
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	mailbox::ActorRef,
-	runtime::ActorRuntime,
-	timers::{TimerHandle, schedule_repeat},
-	traits::{Actor, ActorConfig, Flow},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		mailbox::ActorRef,
+		runtime::ActorRuntime,
+		timers::{TimerHandle, schedule_repeat},
+		traits::{Actor, ActorConfig, Flow},
+	},
+	time::Instant,
 };
-use reifydb_runtime::time::Instant;
 use reifydb_type::util::cowvec::CowVec;
 use tracing::{Span, debug, error, instrument};
 
@@ -146,8 +149,8 @@ impl DropActor {
 
 	#[instrument(name = "drop_actor::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
 	fn process_batch(storage: &HotStorage, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
-		// Collect all keys to drop, grouped by table
-		let mut batches: HashMap<EntryKind, Vec<CowVec<u8>>> = HashMap::new();
+		// Collect all keys to drop, grouped by table: (key, version) pairs
+		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>> = HashMap::new();
 		// Collect drop stats for metrics
 		let mut drops_with_stats = Vec::new();
 		let mut max_pending_version = CommitVersion(0);
@@ -175,8 +178,10 @@ impl DropActor {
 							value_bytes: entry.value_bytes,
 						});
 
-						// Queue for physical deletion
-						batches.entry(request.table).or_default().push(entry.versioned_key);
+						// Queue for physical deletion: (key, version) pair
+						batches.entry(request.table)
+							.or_default()
+							.push((entry.key, entry.version));
 					}
 				}
 				Err(e) => {
@@ -204,11 +209,7 @@ impl Actor for DropActor {
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		// Schedule periodic tick for flushing partial batches
-		let timer_handle = schedule_repeat(
-			ctx.self_ref(),
-			Duration::from_millis(10),
-			DropMessage::Tick,
-		);
+		let timer_handle = schedule_repeat(ctx.self_ref(), Duration::from_millis(10), DropMessage::Tick);
 
 		DropActorState {
 			pending_requests: Vec::with_capacity(self.config.batch_size),
@@ -221,12 +222,7 @@ impl Actor for DropActor {
 		debug!("Drop actor started");
 	}
 
-	fn handle(
-		&self,
-		state: &mut Self::State,
-		msg: Self::Message,
-		ctx: &Context<Self::Message>,
-	) -> Flow {
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Flow {
 		// Check for cancellation
 		if ctx.is_cancelled() {
 			// Flush remaining requests before stopping

@@ -4,8 +4,8 @@
 use std::fmt::{Display, Formatter};
 
 use serde::{
-	de::{self, Visitor}, Deserialize, Deserializer, Serialize,
-	Serializer,
+	Deserialize, Deserializer, Serialize, Serializer,
+	de::{self, Visitor},
 };
 
 use crate::value::{date::Date, time::Time};

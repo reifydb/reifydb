@@ -8,10 +8,8 @@
 //!
 //! # Platform Differences
 //!
-//! - **Native**: The runner drives actor execution on its own OS thread with
-//!   a blocking message receive loop.
-//! - **WASM**: No runner is needed - actors process messages inline (synchronously)
-//!   when sent.
+//! - **Native**: The runner drives actor execution on its own OS thread with a blocking message receive loop.
+//! - **WASM**: No runner is needed - actors process messages inline (synchronously) when sent.
 
 #[cfg(reifydb_target = "native")]
 pub(crate) mod native;

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, schema::Schema},
+	error::diagnostic,
 	interface::{catalog::dictionary::DictionaryDef, resolved::ResolvedTable},
 	key::{
 		EncodableKey,
@@ -16,7 +17,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
-use reifydb_core::error::diagnostic;
 use reifydb_type::{
 	error,
 	fragment::Fragment,

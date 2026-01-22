@@ -4,23 +4,23 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
+use reifydb_runtime::actor::runtime::ActorRuntime;
 #[cfg(reifydb_target = "native")]
 use reifydb_runtime::compute::native::NativeComputePool as ComputePool;
 #[cfg(reifydb_target = "wasm")]
 use reifydb_runtime::compute::wasm::WasmComputePool as ComputePool;
-use reifydb_runtime::actor::runtime::ActorRuntime;
 use reifydb_store_multi::{
+	MultiStore,
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
 	hot::{
 		sqlite::config::{DbPath, SqliteConfig},
 		storage::HotStorage,
 	},
-	MultiStore,
 };
 use reifydb_store_single::{
+	SingleStore,
 	config::{HotConfig as SingleHotConfig, SingleStoreConfig},
 	hot::sqlite::config::SqliteConfig as SingleSqliteConfig,
-	SingleStore,
 };
 use reifydb_transaction::{multi::transaction::TransactionMulti, single::TransactionSingle};
 

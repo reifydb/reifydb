@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	error::diagnostic::catalog::table_column_policy_already_exists,
 	interface::catalog::{
 		id::ColumnId,
 		policy::{ColumnPolicy, ColumnPolicyKind},
@@ -10,7 +11,6 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::return_error;
-use reifydb_core::error::diagnostic::catalog::table_column_policy_already_exists;
 
 use crate::{
 	CatalogStore,

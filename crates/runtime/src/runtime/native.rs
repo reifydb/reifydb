@@ -25,11 +25,7 @@ pub(crate) struct NativeRuntime {
 
 impl NativeRuntime {
 	/// Create a new native runtime.
-	pub(crate) fn new(
-		async_threads: usize,
-		compute_threads: usize,
-		compute_max_in_flight: usize,
-	) -> Self {
+	pub(crate) fn new(async_threads: usize, compute_threads: usize, compute_max_in_flight: usize) -> Self {
 		let runtime = tokio::runtime::Builder::new_multi_thread()
 			.worker_threads(async_threads)
 			.thread_name("async")

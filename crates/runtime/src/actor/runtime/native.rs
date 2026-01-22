@@ -5,12 +5,13 @@
 //!
 //! Spawns each actor on its own OS thread.
 
-use crate::actor::context::Context;
-use crate::actor::mailbox::{create_mailbox, ActorRef};
-use crate::actor::runner::ActorRunner;
-use crate::actor::traits::Actor;
-
 use super::ActorRuntime;
+use crate::actor::{
+	context::Context,
+	mailbox::{ActorRef, create_mailbox},
+	runner::ActorRunner,
+	traits::Actor,
+};
 
 impl ActorRuntime {
 	/// Spawn an actor on its own OS thread.

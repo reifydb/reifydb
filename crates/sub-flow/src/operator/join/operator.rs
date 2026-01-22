@@ -17,8 +17,8 @@ use reifydb_engine::{
 	execute::Executor,
 	stack::Stack,
 };
-use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
+use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_type::{
 	error::Error,

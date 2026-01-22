@@ -4,15 +4,18 @@
 use reifydb_core::{
 	encoded::encoded::EncodedValues,
 	interface::catalog::dictionary::DictionaryDef,
+	internal_error,
 	key::{
 		EncodableKey,
 		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
 	},
 };
-use reifydb_core::internal_error;
 use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
-use reifydb_type::{util::cowvec::CowVec, value::{Value, dictionary::DictionaryEntryId}};
+use reifydb_type::{
+	util::cowvec::CowVec,
+	value::{Value, dictionary::DictionaryEntryId},
+};
 
 pub(crate) trait DictionaryOperations {
 	/// Insert a value into the dictionary, returning its ID.

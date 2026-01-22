@@ -6,11 +6,15 @@
 //! In WASM, messages are processed synchronously inline when sent.
 //! Uses a message queue to handle reentrancy (when message handling triggers more messages).
 
-use std::cell::{Cell, RefCell};
-use std::fmt;
-use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::{
+	cell::{Cell, RefCell},
+	fmt,
+	rc::Rc,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+};
 
 use super::{ActorRef, SendError};
 
@@ -42,9 +46,7 @@ impl<M> Clone for ActorRefInner<M> {
 
 impl<M> fmt::Debug for ActorRefInner<M> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("ActorRefInner")
-			.field("alive", &self.alive.load(Ordering::SeqCst))
-			.finish()
+		f.debug_struct("ActorRefInner").field("alive", &self.alive.load(Ordering::SeqCst)).finish()
 	}
 }
 
@@ -56,7 +58,12 @@ impl<M> ActorRefInner<M> {
 		queue: Rc<RefCell<Vec<M>>>,
 		processing: Rc<Cell<bool>>,
 	) -> Self {
-		Self { processor, alive, queue, processing }
+		Self {
+			processor,
+			alive,
+			queue,
+			processing,
+		}
 	}
 
 	/// Send a message (processes synchronously inline in WASM).

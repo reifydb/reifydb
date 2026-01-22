@@ -4,10 +4,9 @@
 //! Loader module for reconstructing Flows from catalog nodes and edges
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::catalog::flow::FlowId;
+use reifydb_core::{interface::catalog::flow::FlowId, internal};
 use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::error::Error;
-use reifydb_core::internal;
 
 use crate::flow::{
 	flow::FlowDag,

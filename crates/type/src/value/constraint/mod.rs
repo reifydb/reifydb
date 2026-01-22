@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	error::Error,
+	error::{Error, diagnostic::constraint::utf8_exceeds_max_bytes},
 	fragment::Fragment,
 	value::{
 		Value,
@@ -12,7 +12,6 @@ use crate::{
 		r#type::Type,
 	},
 };
-use crate::error::diagnostic::constraint::utf8_exceeds_max_bytes;
 
 pub mod bytes;
 pub mod precision;
@@ -142,13 +141,11 @@ impl TypeConstraint {
 					let byte_len = s.as_bytes().len();
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
-						return Err(crate::error!(
-							utf8_exceeds_max_bytes(
-								Fragment::None,
-								byte_len,
-								max_value
-							)
-						));
+						return Err(crate::error!(utf8_exceeds_max_bytes(
+							Fragment::None,
+							byte_len,
+							max_value
+						)));
 					}
 				}
 			}

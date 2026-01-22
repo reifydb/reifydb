@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::error::diagnostic::operation::{
+	aggregate_multiple_by_without_braces, aggregate_multiple_map_without_braces,
+};
 use reifydb_type::return_error;
-use reifydb_core::error::diagnostic::operation::{aggregate_multiple_by_without_braces, aggregate_multiple_map_without_braces};
 
 use crate::ast::{
 	ast::AstAggregate,

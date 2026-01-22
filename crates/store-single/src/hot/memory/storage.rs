@@ -35,7 +35,6 @@ impl MemoryPrimitiveStorage {
 			}),
 		}
 	}
-
 }
 
 impl TierStorage for MemoryPrimitiveStorage {

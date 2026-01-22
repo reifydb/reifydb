@@ -3,6 +3,7 @@
 
 use reifydb_core::{
 	encoded::schema::Schema,
+	error::diagnostic::catalog::table_not_found,
 	interface::catalog::{
 		change::CatalogTrackTableChangeOperations,
 		column::ColumnDef,
@@ -11,17 +12,14 @@ use reifydb_core::{
 		primitive::PrimitiveId,
 		table::TableDef,
 	},
+	internal,
 	retention::RetentionPolicy,
 };
 use reifydb_transaction::{
 	change::TransactionalTableChanges,
 	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
 };
-use reifydb_core::{error::diagnostic::catalog::table_not_found, internal};
-use reifydb_type::{
-	error, fragment::Fragment,
-	value::constraint::TypeConstraint,
-};
+use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::{instrument, warn};
 
 use crate::{

@@ -4,6 +4,7 @@
 use std::cmp::Ordering::Equal;
 
 use reifydb_core::{
+	error::diagnostic::query,
 	sort::{
 		SortDirection::{Asc, Desc},
 		SortKey,
@@ -12,7 +13,6 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::StandardTransaction;
 use reifydb_type::{error, util::cowvec::CowVec};
-use reifydb_core::error::diagnostic::query;
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};

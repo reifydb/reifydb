@@ -4,6 +4,7 @@
 use std::{collections::HashMap, error::Error as StdError, fmt::Write, ops::Bound, path::Path};
 
 use reifydb_core::{
+	common::CommitVersion,
 	interface::catalog::{flow::FlowNodeId, id::TableId, primitive::PrimitiveId},
 	util::encoding::{binary::decode_binary, format::raw::Raw},
 };
@@ -42,6 +43,8 @@ fn test_sqlite(path: &Path) {
 pub struct Runner {
 	storage: HotStorage,
 	table: EntryKind,
+	/// Current version counter - increments with each write
+	version: u64,
 }
 
 impl Runner {
@@ -49,7 +52,14 @@ impl Runner {
 		Self {
 			storage,
 			table: EntryKind::Multi,
+			version: 1,
 		}
+	}
+
+	fn next_version(&mut self) -> CommitVersion {
+		let v = CommitVersion(self.version);
+		self.version += 1;
+		v
 	}
 
 	fn parse_table(&self, args: &mut ArgumentConsumer) -> Result<EntryKind, Box<dyn StdError>> {
@@ -81,9 +91,10 @@ impl Runner {
 	) -> Result<Vec<(CowVec<u8>, Option<CowVec<u8>>)>, Box<dyn StdError>> {
 		let mut cursor = RangeCursor::new();
 		let mut results = Vec::new();
+		let version = CommitVersion(u64::MAX); // Get latest version
 
 		while !cursor.exhausted {
-			let batch = self.storage.range_next(table, &mut cursor, start, end, 1000)?;
+			let batch = self.storage.range_next(table, &mut cursor, start, end, version, 1000)?;
 			for entry in batch.entries {
 				results.push((entry.key, entry.value));
 			}
@@ -106,7 +117,8 @@ impl testscript::runner::Runner for Runner {
 				let table = self.parse_table(&mut args)?;
 				args.reject_rest()?;
 
-				self.storage.set(HashMap::from([(table, vec![(key, Some(value))])]))?;
+				let version = self.next_version();
+				self.storage.set(version, HashMap::from([(table, vec![(key, Some(value))])]))?;
 				writeln!(output, "ok")?;
 			}
 
@@ -117,18 +129,23 @@ impl testscript::runner::Runner for Runner {
 				let table = self.parse_table(&mut args)?;
 				args.reject_rest()?;
 
-				self.storage.set(HashMap::from([(table, vec![(key, None)])]))?;
+				let version = self.next_version();
+				self.storage.set(version, HashMap::from([(table, vec![(key, None)])]))?;
 				writeln!(output, "ok")?;
 			}
 
-			// drop KEY - physically removes entry
+			// drop KEY - physically removes the latest version of the entry
 			"drop" => {
 				let mut args = command.consume_args();
 				let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
 				let table = self.parse_table(&mut args)?;
 				args.reject_rest()?;
 
-				self.storage.drop(HashMap::from([(table, vec![key])]))?;
+				// Look up the latest version of this key to drop
+				let all_versions = self.storage.get_all_versions(table, &key)?;
+				if let Some((version, _)) = all_versions.first() {
+					self.storage.drop(HashMap::from([(table, vec![(key.clone(), *version)])]))?;
+				}
 				writeln!(output, "ok")?;
 			}
 
@@ -139,7 +156,8 @@ impl testscript::runner::Runner for Runner {
 				let table = self.parse_table(&mut args)?;
 				args.reject_rest()?;
 
-				let value = self.storage.get(table, &key)?;
+				let version = CommitVersion(u64::MAX); // Get latest
+				let value = self.storage.get(table, &key, version)?;
 				let key_str = Raw::bytes(key.as_ref());
 				match value {
 					Some(v) => {
@@ -159,7 +177,8 @@ impl testscript::runner::Runner for Runner {
 				let table = self.parse_table(&mut args)?;
 				args.reject_rest()?;
 
-				let exists = self.storage.get(table, &key)?.is_some();
+				let version = CommitVersion(u64::MAX); // Get latest
+				let exists = self.storage.get(table, &key, version)?.is_some();
 				writeln!(output, "{}", exists)?;
 			}
 

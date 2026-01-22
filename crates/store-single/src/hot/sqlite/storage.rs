@@ -7,9 +7,9 @@
 
 use std::{ops::Bound, sync::Arc};
 
+use reifydb_core::error::diagnostic::internal::internal;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_type::{Result, error, util::cowvec::CowVec};
-use reifydb_core::error::diagnostic::internal::internal;
 use rusqlite::{Connection, Error::QueryReturnedNoRows, params};
 use tracing::instrument;
 

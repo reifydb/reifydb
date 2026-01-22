@@ -3,14 +3,14 @@
 use std::time::Duration;
 
 use reifydb_type::{
-	error::{diagnostic, Error},
+	error::{Error, diagnostic},
 	params::Params,
 };
 use reqwest::Client as ReqwestClient;
 
 use crate::{
-	session::{parse_command_response, parse_query_response, CommandResult, QueryResult}, CommandRequest, CommandResponse, ErrResponse, QueryRequest, QueryResponse, Response,
-	ResponsePayload,
+	CommandRequest, CommandResponse, ErrResponse, QueryRequest, QueryResponse, Response, ResponsePayload,
+	session::{CommandResult, QueryResult, parse_command_response, parse_query_response},
 };
 
 /// HTTP-specific error response matching the server's format

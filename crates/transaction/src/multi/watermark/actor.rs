@@ -18,11 +18,12 @@ use std::{
 	},
 };
 
-use reifydb_runtime::actor::context::Context;
-use reifydb_runtime::actor::traits::{Actor, ActorConfig, Flow};
+use reifydb_runtime::actor::{
+	context::Context,
+	traits::{Actor, ActorConfig, Flow},
+};
 
-use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
-use super::watermark::WaiterHandle;
+use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD, watermark::WaiterHandle};
 
 // Maximum orphaned done() entries before cleanup
 const MAX_ORPHANED: usize = 10000;
@@ -32,9 +33,16 @@ const ORPHAN_CLEANUP_THRESHOLD: u64 = 1000;
 /// Messages for the watermark actor
 #[derive(Debug)]
 pub enum WatermarkMsg {
-	Begin { version: u64 },
-	Done { version: u64 },
-	WaitFor { version: u64, waiter: Arc<WaiterHandle> },
+	Begin {
+		version: u64,
+	},
+	Done {
+		version: u64,
+	},
+	WaitFor {
+		version: u64,
+		waiter: Arc<WaiterHandle>,
+	},
 }
 
 /// Shared state for fast reads without message passing
@@ -73,13 +81,20 @@ impl Actor for WatermarkActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
 		match msg {
-			WatermarkMsg::Begin { version } => {
+			WatermarkMsg::Begin {
+				version,
+			} => {
 				state.process_begin(version, &self.shared.done_until);
 			}
-			WatermarkMsg::Done { version } => {
+			WatermarkMsg::Done {
+				version,
+			} => {
 				state.process_done(version, &self.shared.done_until);
 			}
-			WatermarkMsg::WaitFor { version, waiter } => {
+			WatermarkMsg::WaitFor {
+				version,
+				waiter,
+			} => {
 				state.register_waiter(version, waiter, &self.shared.done_until);
 			}
 		}

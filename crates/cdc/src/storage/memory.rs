@@ -146,7 +146,10 @@ impl CdcStorage for MemoryCdcStorage {
 			guard.remove(&key);
 		}
 
-		Ok(DropBeforeResult { count, entries })
+		Ok(DropBeforeResult {
+			count,
+			entries,
+		})
 	}
 }
 

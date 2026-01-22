@@ -11,6 +11,7 @@ use reifydb_catalog::catalog::{
 };
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	error::diagnostic::catalog::{dictionary_not_found, ringbuffer_not_found, table_not_found},
 	interface::{
 		catalog::{
 			column::{ColumnDef, ColumnIndex},
@@ -26,9 +27,12 @@ use reifydb_core::{
 	sort::SortKey,
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
-use reifydb_type::{fragment::Fragment, return_error, value::{constraint::TypeConstraint, r#type::Type}};
-use reifydb_core::error::diagnostic::catalog::{dictionary_not_found, ringbuffer_not_found, table_not_found};
-use reifydb_type::error::diagnostic::function::internal_error;
+use reifydb_type::{
+	error::diagnostic::function::internal_error,
+	fragment::Fragment,
+	return_error,
+	value::{constraint::TypeConstraint, r#type::Type},
+};
 use tracing::instrument;
 
 use crate::{

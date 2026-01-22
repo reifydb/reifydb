@@ -3,8 +3,8 @@
 
 use reifydb_core::{
 	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId},
-	retention::RetentionPolicy,
 	internal,
+	retention::RetentionPolicy,
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::error::Error;

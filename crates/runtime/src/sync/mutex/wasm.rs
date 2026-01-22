@@ -5,8 +5,10 @@
 //!
 //! Since WASM is single-threaded, this is a simple wrapper around RefCell.
 
-use std::cell::RefMut;
-use std::ops::{Deref, DerefMut};
+use std::{
+	cell::RefMut,
+	ops::{Deref, DerefMut},
+};
 
 /// WASM mutex implementation using RefCell (no actual locking needed).
 pub struct MutexInner<T> {
@@ -36,7 +38,9 @@ impl<T> MutexInner<T> {
 
 	/// Attempts to acquire the mutex (always succeeds in WASM).
 	pub fn try_lock(&self) -> Option<MutexGuardInner<'_, T>> {
-		self.inner.try_borrow_mut().ok().map(|inner| MutexGuardInner { inner })
+		self.inner.try_borrow_mut().ok().map(|inner| MutexGuardInner {
+			inner,
+		})
 	}
 }
 

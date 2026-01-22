@@ -9,11 +9,14 @@ use reifydb_core::{
 	key::{subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey},
 };
 use reifydb_transaction::standard::{IntoStandardTransaction, command::StandardCommandTransaction};
-use reifydb_type::value::{r#type::Type, uuid::Uuid7};
+use reifydb_type::value::r#type::Type;
 
 use crate::{
 	CatalogStore,
-	store::subscription::schema::{subscription, subscription_column},
+	store::{
+		sequence::flow::next_flow_id,
+		subscription::schema::{subscription, subscription_column},
+	},
 };
 
 #[derive(Debug, Clone)]
@@ -32,8 +35,9 @@ impl CatalogStore {
 		txn: &mut StandardCommandTransaction,
 		to_create: SubscriptionToCreate,
 	) -> crate::Result<SubscriptionDef> {
-		// Generate a new UUID v7 subscription ID (time-ordered and globally unique)
-		let subscription_id = SubscriptionId::new();
+		// Use the flow sequence to generate subscription ID (FlowId == SubscriptionId for subscription flows)
+		let flow_id = next_flow_id(txn)?;
+		let subscription_id = SubscriptionId(flow_id.0);
 		Self::store_subscription(txn, subscription_id)?;
 		Self::insert_columns_for_subscription(txn, subscription_id, &to_create)?;
 
@@ -42,7 +46,7 @@ impl CatalogStore {
 
 	fn store_subscription(txn: &mut StandardCommandTransaction, subscription: SubscriptionId) -> crate::Result<()> {
 		let mut row = subscription::SCHEMA.allocate();
-		subscription::SCHEMA.set_uuid7(&mut row, subscription::ID, Uuid7::from(subscription.0));
+		subscription::SCHEMA.set_u64(&mut row, subscription::ID, subscription.0);
 		subscription::SCHEMA.set_u64(&mut row, subscription::ACKNOWLEDGED_VERSION, 0u64);
 		subscription::SCHEMA.set_u64(&mut row, subscription::PRIMARY_KEY, 0u64);
 

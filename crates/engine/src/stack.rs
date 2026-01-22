@@ -126,9 +126,9 @@ impl Stack {
 		// Check if variable exists and is mutable
 		if let Some(existing) = current_scope.variables.get(&name) {
 			if !existing.mutable {
-				return Err(reifydb_type::error::Error(
-					diagnostic::runtime::variable_is_immutable(&name),
-				));
+				return Err(reifydb_type::error::Error(diagnostic::runtime::variable_is_immutable(
+					&name,
+				)));
 			}
 			// Update existing variable, keeping its mutability
 			current_scope.variables.insert(
@@ -139,9 +139,7 @@ impl Stack {
 				},
 			);
 		} else {
-			return Err(reifydb_type::error::Error(
-				diagnostic::runtime::variable_not_found(&name),
-			));
+			return Err(reifydb_type::error::Error(diagnostic::runtime::variable_not_found(&name)));
 		}
 
 		Ok(())

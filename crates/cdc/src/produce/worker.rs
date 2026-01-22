@@ -33,7 +33,10 @@ use reifydb_core::{
 };
 use tracing::{debug, error, info, trace};
 
-use crate::{consume::host::CdcHost, consume::watermark::compute_watermark, storage::CdcStorage};
+use crate::{
+	consume::{host::CdcHost, watermark::compute_watermark},
+	storage::CdcStorage,
+};
 
 /// Timeout for recv in worker loop - allows checking shutdown flag
 const RECV_TIMEOUT: Duration = Duration::from_millis(100);
@@ -321,7 +324,9 @@ pub mod tests {
 			let event_bus = EventBus::new();
 			let actor_runtime = ActorRuntime::new();
 			let single = TransactionSingle::svl(single_store, event_bus.clone());
-			let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_runtime).unwrap();
+			let multi =
+				TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_runtime)
+					.unwrap();
 			Self {
 				multi,
 				single,

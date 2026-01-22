@@ -78,7 +78,10 @@ where
 			seq += 1;
 
 			let change = match delta {
-				Delta::Set { key, values } => {
+				Delta::Set {
+					key,
+					values,
+				} => {
 					// Check if previous version exists to determine Insert vs Update
 					let pre = self
 						.transaction_store
@@ -93,19 +96,40 @@ where
 							post: values,
 						}
 					} else {
-						CdcChange::Insert { key, post: values }
+						CdcChange::Insert {
+							key,
+							post: values,
+						}
 					}
 				}
-				Delta::Unset { key, values } => {
-					let pre = if values.is_empty() { None } else { Some(values) };
-					CdcChange::Delete { key, pre }
+				Delta::Unset {
+					key,
+					values,
+				} => {
+					let pre = if values.is_empty() {
+						None
+					} else {
+						Some(values)
+					};
+					CdcChange::Delete {
+						key,
+						pre,
+					}
 				}
-				Delta::Remove { .. } | Delta::Drop { .. } => {
+				Delta::Remove {
+					..
+				}
+				| Delta::Drop {
+					..
+				} => {
 					continue;
 				}
 			};
 
-			changes.push(CdcSequencedChange { sequence: seq, change });
+			changes.push(CdcSequencedChange {
+				sequence: seq,
+				change,
+			});
 		}
 
 		if !changes.is_empty() {
@@ -138,12 +162,7 @@ where
 		debug!("CDC producer actor started");
 	}
 
-	fn handle(
-		&self,
-		_state: &mut Self::State,
-		msg: Self::Message,
-		ctx: &Context<Self::Message>,
-	) -> Flow {
+	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Flow {
 		if ctx.is_cancelled() {
 			debug!("CDC producer actor stopping");
 			return Flow::Stop;
@@ -170,7 +189,9 @@ pub struct CdcProducerEventListener {
 
 impl CdcProducerEventListener {
 	pub fn new(actor_ref: ActorRef<CdcProduceMsg>) -> Self {
-		Self { actor_ref }
+		Self {
+			actor_ref,
+		}
 	}
 }
 
@@ -192,11 +213,7 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 ///
 /// Returns a handle to the actor. The actor_ref from this handle should be used
 /// to create a `CdcProducerEventListener` which is then registered on the EventBus.
-pub fn spawn_cdc_producer<S, T>(
-	runtime: &ActorRuntime,
-	storage: S,
-	transaction_store: T,
-) -> ActorHandle<CdcProduceMsg>
+pub fn spawn_cdc_producer<S, T>(runtime: &ActorRuntime, storage: S, transaction_store: T) -> ActorHandle<CdcProduceMsg>
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,

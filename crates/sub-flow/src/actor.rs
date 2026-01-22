@@ -8,8 +8,7 @@
 //! - [`FlowMsg`]: Messages the actor can receive (Process, Register)
 //! - [`FlowResponse`]: Response sent back through reply channels
 
-use std::mem::take;
-use std::sync::Mutex;
+use std::{mem::take, sync::Mutex};
 
 use crossbeam_channel::Sender;
 use reifydb_catalog::catalog::Catalog;
@@ -19,12 +18,12 @@ use reifydb_runtime::actor::{
 	context::Context,
 	traits::{Actor, ActorConfig, Flow},
 };
-use tracing::{error, instrument, Span};
+use tracing::{Span, error, instrument};
 
 use crate::{
-	instruction::WorkerBatch,
-	transaction::{pending::PendingWrites, FlowTransaction},
 	FlowEngine,
+	instruction::WorkerBatch,
+	transaction::{FlowTransaction, pending::PendingWrites},
 };
 
 /// Messages for the flow actor
@@ -81,7 +80,9 @@ impl Actor for FlowActor {
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		let factory = self.engine_factory.lock().unwrap().take();
 		let flow_engine = factory.expect("FlowActor::init called twice")();
-		FlowState { flow_engine }
+		FlowState {
+			flow_engine,
+		}
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {

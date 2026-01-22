@@ -8,7 +8,10 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId},
+};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 /// Identifies a logical table/namespace in storage.
@@ -24,12 +27,13 @@ pub enum EntryKind {
 	Operator(FlowNodeId),
 }
 
-/// A raw storage entry.
+/// A raw storage entry with version.
 ///
 /// Value is None for tombstones (deletions).
 #[derive(Debug, Clone)]
 pub struct RawEntry {
 	pub key: CowVec<u8>,
+	pub version: CommitVersion,
 	pub value: Option<CowVec<u8>>,
 }
 
@@ -93,26 +97,31 @@ impl Default for RangeCursor {
 /// The tier storage trait.
 ///
 /// This is intentionally minimal - just raw bytes in/out.
+/// Version is a first-class parameter for all operations.
 /// All MVCC, CDC, and routing logic belongs in the store layer above.
 ///
 /// Implementations must be thread-safe and cloneable.
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
-	/// Get the value for a key, or None if not found.
-	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<CowVec<u8>>>;
+	/// Get the value for a key at or before the given version.
+	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>>;
 
-	/// Check if a key exists in storage.
-	fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
-		Ok(self.get(table, key)?.is_some())
+	/// Check if a key exists at or before the given version.
+	fn contains(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<bool> {
+		Ok(self.get(table, key, version)?.is_some())
 	}
 
-	/// Write entries to multiple tables atomically.
+	/// Write entries to multiple tables atomically at the given version.
 	///
 	/// All entries across all tables are written in a single transaction.
 	/// This ensures durability and atomicity for multi-table commits.
-	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()>;
+	fn set(
+		&self,
+		version: CommitVersion,
+		batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>,
+	) -> Result<()>;
 
-	/// Fetch the next batch of entries in key order (descending).
+	/// Fetch the next batch of entries in key order at or before version.
 	///
 	/// Uses the cursor to track position. On first call, cursor should be new.
 	/// On subsequent calls, pass the same cursor to continue from where left off.
@@ -124,10 +133,11 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
+		version: CommitVersion,
 		batch_size: usize,
 	) -> Result<RangeBatch>;
 
-	/// Fetch the next batch of entries in reverse key order (ascending).
+	/// Fetch the next batch of entries in reverse key order at or before version.
 	///
 	/// Uses the cursor to track position. On first call, cursor should be new.
 	/// On subsequent calls, pass the same cursor to continue from where left off.
@@ -139,6 +149,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
+		version: CommitVersion,
 		batch_size: usize,
 	) -> Result<RangeBatch>;
 
@@ -151,12 +162,24 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// Delete all entries in a table.
 	fn clear_table(&self, table: EntryKind) -> Result<()>;
 
-	/// Physically drop entries from storage (no tombstones).
+	/// Physically drop specific versions of entries from storage.
 	///
 	/// Unlike `set()` with None values which inserts tombstones for MVCC,
 	/// this method actually removes entries from storage to reclaim memory.
 	/// Used by the drop worker to erase old versions after they're no longer needed.
-	fn drop(&self, batches: HashMap<EntryKind, Vec<CowVec<u8>>>) -> Result<()>;
+	///
+	/// Each entry in the batch is a (key, version) pair identifying the specific
+	/// version of the key to remove.
+	fn drop(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()>;
+
+	/// Get all versions of a specific key (for internal cleanup operations).
+	///
+	/// Unlike `get()` which does MVCC resolution, this returns ALL stored versions
+	/// of the key with their values. Used by the drop worker to discover which
+	/// versions exist before deciding which to clean up.
+	///
+	/// Returns a vector of (version, value) pairs, sorted by version descending.
+	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>>;
 }
 
 /// Marker trait for storage tiers that support the tier storage interface.

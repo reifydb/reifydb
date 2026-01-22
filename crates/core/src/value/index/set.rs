@@ -8,8 +8,8 @@ use reifydb_type::value::{
 	datetime::DateTime,
 	duration::Duration,
 	identity::IdentityId,
-	r#type::Type,
 	time::Time,
+	r#type::Type,
 	uuid::{Uuid4, Uuid7},
 };
 use uuid::Uuid;
@@ -1043,11 +1043,11 @@ pub mod tests {
 	}
 
 	mod uuid7 {
-		use std::thread::sleep;
-		use std::time::Duration;
+		use std::{thread::sleep, time::Duration};
+
+		use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 
 		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
-		use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 
 		#[test]
 		fn test_asc() {
@@ -1114,11 +1114,11 @@ pub mod tests {
 	}
 
 	mod identity_id {
-		use std::thread::sleep;
-		use std::time::Duration;
+		use std::{thread::sleep, time::Duration};
+
+		use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
 
 		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
-		use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
 
 		#[test]
 		fn test_asc() {

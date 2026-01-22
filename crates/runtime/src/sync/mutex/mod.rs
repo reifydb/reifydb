@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::Debug;
+use std::{
+	fmt::Debug,
+	ops::{Deref, DerefMut},
+};
+
 use cfg_if::cfg_if;
-use std::ops::{Deref, DerefMut};
 
 #[cfg(reifydb_target = "native")]
 pub(crate) mod native;

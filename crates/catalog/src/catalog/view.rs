@@ -8,12 +8,12 @@ use reifydb_core::{
 		id::{NamespaceId, PrimaryKeyId, ViewId},
 		view::ViewDef,
 	},
+	internal,
 };
 use reifydb_transaction::{
 	change::TransactionalViewChanges,
 	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
 };
-use reifydb_core::internal;
 use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::{instrument, warn};
 

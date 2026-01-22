@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, collections::BinaryHeap, sync::Arc, time::Instant};
 
-use reifydb_runtime::SharedRuntime;
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::SharedRuntime;
 use tokio::sync::mpsc;
 
 use crate::{

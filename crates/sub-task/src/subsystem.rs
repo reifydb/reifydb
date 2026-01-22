@@ -12,8 +12,8 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_runtime::SharedRuntime;
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
 use tokio::sync::mpsc;

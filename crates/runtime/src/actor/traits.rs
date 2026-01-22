@@ -49,7 +49,9 @@ pub struct ActorConfig {
 
 impl Default for ActorConfig {
 	fn default() -> Self {
-		Self { mailbox_capacity: 0 }
+		Self {
+			mailbox_capacity: 0,
+		}
 	}
 }
 
@@ -134,12 +136,7 @@ pub trait Actor: Send + 'static {
 	/// - `Yield`: Give other actors a chance to run
 	/// - `Park`: Sleep until a message arrives
 	/// - `Stop`: Terminate this actor
-	fn handle(
-		&self,
-		state: &mut Self::State,
-		msg: Self::Message,
-		ctx: &Context<Self::Message>,
-	) -> Flow;
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Flow;
 
 	/// Called when the mailbox is empty.
 	///

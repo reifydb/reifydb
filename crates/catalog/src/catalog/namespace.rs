@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	change::CatalogTrackNamespaceChangeOperations, id::NamespaceId, namespace::NamespaceDef,
+use reifydb_core::{
+	error::diagnostic::catalog::namespace_not_found,
+	interface::catalog::{change::CatalogTrackNamespaceChangeOperations, id::NamespaceId, namespace::NamespaceDef},
+	internal,
 };
 use reifydb_transaction::{
 	change::TransactionalNamespaceChanges,
 	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
 };
 use reifydb_type::{error, fragment::Fragment};
-use reifydb_core::{error::diagnostic::catalog::namespace_not_found, internal};
 use tracing::{instrument, warn};
 
 use crate::{CatalogStore, catalog::Catalog, store::namespace::create::NamespaceToCreate as StoreNamespaceToCreate};

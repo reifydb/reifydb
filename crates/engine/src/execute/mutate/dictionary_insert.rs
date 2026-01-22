@@ -3,10 +3,12 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::{
+	error::diagnostic::catalog::dictionary_not_found,
+	value::column::{Column, columns::Columns, data::ColumnData},
+};
 use reifydb_rql::plan::physical::InsertDictionaryNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
-use reifydb_core::error::diagnostic::catalog::dictionary_not_found;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,

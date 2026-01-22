@@ -14,6 +14,7 @@
 use dashmap::DashMap;
 use reifydb_core::{
 	encoded::key::EncodedKey,
+	error::diagnostic::internal::internal,
 	interface::catalog::id::SubscriptionId,
 	key::{
 		Key,
@@ -25,11 +26,7 @@ use reifydb_sub_server::{
 	response::{ResponseColumn, ResponseFrame},
 	state::AppState,
 };
-use reifydb_core::error::diagnostic::internal::internal;
-use reifydb_type::{
-	error::Error,
-	fragment::Fragment,
-};
+use reifydb_type::{error::Error, fragment::Fragment};
 use tokio::sync::mpsc;
 
 use super::{PushMessage, SubscriptionRegistry};
@@ -128,14 +125,25 @@ impl SubscriptionPoller {
 			}
 		};
 
-		// Read rows from subscription storage
-		let (rows, row_keys) = self
-			.read_subscription_rows(
-				state,
-				consumption_state.db_subscription_id,
-				consumption_state.last_consumed_key.as_ref(),
-			)
-			.await?;
+		let db_subscription_id = consumption_state.db_subscription_id;
+		let last_consumed_key = consumption_state.last_consumed_key.clone();
+		let batch_size = self.batch_size;
+		let engine = state.engine_clone();
+		let pool = state.pool();
+
+		let read_result: reifydb_type::Result<(Columns, Vec<EncodedKey>)> = pool
+			.compute(move || {
+				Self::read_subscription_rows_sync(
+					&engine,
+					db_subscription_id,
+					last_consumed_key.as_ref(),
+					batch_size,
+				)
+			})
+			.await
+			.map_err(|e| Error(internal(format!("Compute pool error: {:?}", e))))?;
+
+		let (rows, row_keys) = read_result?;
 
 		if rows.is_empty() {
 			// No new data to send
@@ -154,7 +162,15 @@ impl SubscriptionPoller {
 		match push_tx.try_send(msg) {
 			Ok(_) => {
 				// Successfully sent, now delete the rows
-				self.delete_rows(state, &row_keys).await?;
+				let engine = state.engine_clone();
+				let pool = state.pool();
+				let keys_to_delete: Vec<EncodedKey> = row_keys.clone();
+
+				let delete_result: reifydb_type::Result<()> = pool
+					.compute(move || Self::delete_rows_sync(&engine, &keys_to_delete))
+					.await
+					.map_err(|e| Error(internal(format!("Compute pool error: {:?}", e))))?;
+				delete_result?;
 
 				// Update cursor to last consumed key
 				if let Some(last_key) = row_keys.last() {
@@ -183,14 +199,12 @@ impl SubscriptionPoller {
 	/// Read rows from a subscription's storage.
 	///
 	/// Returns (columns, row_keys) where row_keys are the encoded keys for deletion.
-	async fn read_subscription_rows(
-		&self,
-		state: &AppState,
+	fn read_subscription_rows_sync(
+		engine: &reifydb_engine::engine::StandardEngine,
 		db_subscription_id: SubscriptionId,
 		last_consumed_key: Option<&EncodedKey>,
+		batch_size: usize,
 	) -> reifydb_type::Result<(Columns, Vec<EncodedKey>)> {
-		// Begin a read transaction
-		let engine = state.engine_clone();
 		let mut cmd_txn = engine.begin_command()?;
 
 		// Get subscription definition using catalog function
@@ -213,8 +227,7 @@ impl SubscriptionPoller {
 			SubscriptionRowKey::full_scan(db_subscription_id)
 		};
 
-		// Scan rows and collect entries first
-		let mut stream = cmd_txn.range(range, self.batch_size)?;
+		let mut stream = cmd_txn.range(range, batch_size)?;
 		let mut entries = Vec::new();
 		while let Some(result) = stream.next() {
 			entries.push(result?);
@@ -305,12 +318,14 @@ impl SubscriptionPoller {
 	}
 
 	/// Delete consumed rows from subscription storage.
-	async fn delete_rows(&self, state: &AppState, row_keys: &[EncodedKey]) -> reifydb_type::Result<()> {
+	fn delete_rows_sync(
+		engine: &reifydb_engine::engine::StandardEngine,
+		row_keys: &[EncodedKey],
+	) -> reifydb_type::Result<()> {
 		if row_keys.is_empty() {
 			return Ok(());
 		}
 
-		let engine = state.engine_clone();
 		let mut delete_txn = engine.begin_command()?;
 
 		for key in row_keys {

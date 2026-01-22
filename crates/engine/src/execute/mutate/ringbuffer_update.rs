@@ -4,18 +4,14 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	error::diagnostic::{catalog::ringbuffer_not_found, engine},
 	interface::resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+	internal_error,
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
-use reifydb_core::{error::diagnostic::{catalog::ringbuffer_not_found, engine}, internal_error};
-use reifydb_type::{
-	fragment::Fragment,
-	params::Params,
-	return_error,
-	value::Value,
-};
+use reifydb_type::{fragment::Fragment, params::Params, return_error, value::Value};
 
 use super::coerce::coerce_value_to_column_type;
 use crate::{

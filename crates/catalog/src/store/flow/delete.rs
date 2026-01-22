@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::FlowId,
+	interface::catalog::{flow::FlowId, id::NamespaceId},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
@@ -10,6 +10,23 @@ use reifydb_transaction::standard::command::StandardCommandTransaction;
 use crate::CatalogStore;
 
 impl CatalogStore {
+	/// Delete a flow by its name within a namespace.
+	///
+	/// This is useful for cleaning up flows associated with subscriptions,
+	/// where the flow name is derived from the subscription ID.
+	pub(crate) fn delete_flow_by_name(
+		txn: &mut StandardCommandTransaction,
+		namespace: NamespaceId,
+		name: &str,
+	) -> crate::Result<()> {
+		// Find the flow by name
+		if let Some(flow) = CatalogStore::find_flow_by_name(txn, namespace, name)? {
+			// Delete it using the existing delete_flow function
+			CatalogStore::delete_flow(txn, flow.id)?;
+		}
+		Ok(())
+	}
+
 	pub(crate) fn delete_flow(txn: &mut StandardCommandTransaction, flow_id: FlowId) -> crate::Result<()> {
 		// Get the flow to find namespace for index deletion
 		let flow_def = CatalogStore::find_flow(txn, flow_id)?;

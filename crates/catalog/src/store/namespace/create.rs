@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::namespace::NamespaceDef, key::namespace::NamespaceKey};
+use reifydb_core::{
+	error::diagnostic::catalog::namespace_already_exists, interface::catalog::namespace::NamespaceDef,
+	key::namespace::NamespaceKey,
+};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
-use reifydb_core::error::diagnostic::catalog::namespace_already_exists;
 
 use crate::{
 	CatalogStore,

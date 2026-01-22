@@ -10,7 +10,10 @@ use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, he
 use reifydb_function::{AggregateFunction, AggregateFunctionContext, registry::Functions};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::standard::StandardTransaction;
-use reifydb_type::{fragment::Fragment, value::{Value, r#type::Type}};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{Value, r#type::Type},
+};
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};

@@ -7,16 +7,16 @@ use indexmap::IndexMap;
 use reifydb_core::{
 	encoded::schema::Schema,
 	interface::catalog::flow::FlowNodeId,
+	internal,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
 };
-use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
+use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
-use reifydb_core::internal;
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,

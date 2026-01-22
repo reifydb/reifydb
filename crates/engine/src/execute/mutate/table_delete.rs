@@ -5,6 +5,11 @@ use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_core::{
 	encoded::key::EncodedKeyRange,
+	error::diagnostic::{
+		catalog::{namespace_not_found, table_not_found},
+		engine,
+		internal::internal,
+	},
 	interface::{
 		catalog::id::IndexId,
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
@@ -18,18 +23,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::DeleteTableNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
-use reifydb_core::error::diagnostic::{
-	catalog::{namespace_not_found, table_not_found},
-	engine,
-	internal::internal,
-};
-use reifydb_type::{
-	error,
-	fragment::Fragment,
-	params::Params,
-	return_error,
-	value::Value,
-};
+use reifydb_type::{error, fragment::Fragment, params::Params, return_error, value::Value};
 
 use super::primary_key;
 use crate::{

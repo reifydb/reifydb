@@ -33,7 +33,9 @@ impl<T> MutexInner<T> {
 
 	/// Attempts to acquire the mutex without blocking.
 	pub fn try_lock(&self) -> Option<MutexGuardInner<'_, T>> {
-		self.inner.try_lock().map(|guard| MutexGuardInner { inner: guard })
+		self.inner.try_lock().map(|guard| MutexGuardInner {
+			inner: guard,
+		})
 	}
 }
 

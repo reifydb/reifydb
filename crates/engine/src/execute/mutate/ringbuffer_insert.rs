@@ -4,12 +4,13 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	error::diagnostic::catalog::ringbuffer_not_found,
 	interface::resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+	internal_error,
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::InsertRingBufferNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
-use reifydb_core::{error::diagnostic::catalog::ringbuffer_not_found, internal_error};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,

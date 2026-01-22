@@ -26,16 +26,18 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_runtime::SharedRuntime;
 use reifydb_engine::{EngineVersion, engine::StandardEngine};
 use reifydb_function::{
 	math,
 	registry::{Functions, FunctionsBuilder},
 	series,
 };
-use reifydb_metric::worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
+use reifydb_metric::worker::{
+	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
+};
 use reifydb_rql::RqlVersion;
 use reifydb_rqlv2::{self, compiler::Compiler};
+use reifydb_runtime::SharedRuntime;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;

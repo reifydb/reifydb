@@ -18,10 +18,10 @@ use reifydb_core::{
 		key::EncodedKey,
 		schema::{Schema, SchemaField, fingerprint::SchemaFingerprint},
 	},
+	error::diagnostic::internal::internal,
 	key::schema::{SchemaFieldKey, SchemaKey},
 };
 use reifydb_transaction::{single::TransactionSingle, standard::IntoStandardTransaction};
-use reifydb_core::error::diagnostic::internal::internal;
 use reifydb_type::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},

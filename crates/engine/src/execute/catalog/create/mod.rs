@@ -53,16 +53,21 @@ impl Executor {
 
 	/// Creates a flow for a subscription.
 	///
-	/// The flow entry is created first to obtain a FlowId, then the flow nodes
-	/// and edges are compiled and persisted with that same FlowId.
+	/// Since SubscriptionId == FlowId for subscription flows, we use the subscription ID
+	/// directly as the flow ID, avoiding the O(n) find_flow_by_name check.
 	pub(crate) fn create_subscription_flow(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		subscription: &SubscriptionDef,
 		plan: PhysicalPlan,
 	) -> crate::Result<()> {
-		let flow_def = self.catalog.create_flow(
+		use reifydb_core::interface::catalog::flow::FlowId;
+
+		// FlowId == SubscriptionId for subscription flows
+		let flow_id = FlowId(subscription.id.0);
+		let flow_def = self.catalog.create_flow_with_id(
 			txn,
+			flow_id,
 			FlowToCreate {
 				fragment: None,
 				name: subscription_flow_name(subscription.id),

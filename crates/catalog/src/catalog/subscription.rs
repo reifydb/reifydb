@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	catalog::{
-		change::CatalogTrackSubscriptionChangeOperations, id::SubscriptionId, subscription::SubscriptionDef,
+use reifydb_core::{
+	interface::{
+		catalog::{
+			change::CatalogTrackSubscriptionChangeOperations, id::SubscriptionId,
+			subscription::SubscriptionDef,
+		},
+		resolved::ResolvedSubscription,
 	},
-	resolved::ResolvedSubscription,
+	internal,
 };
 use reifydb_transaction::standard::{
 	IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction,
 };
-use reifydb_core::internal;
 use reifydb_type::{error, fragment::Fragment, value::r#type::Type};
 use tracing::{instrument, warn};
 

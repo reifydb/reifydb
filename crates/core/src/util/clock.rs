@@ -5,7 +5,6 @@
 use std::cell::RefCell;
 
 use reifydb_runtime::time::now_nanos as runtime_now_nanos;
-
 use reifydb_type::value::datetime::DateTime;
 
 #[cfg(debug_assertions)]
@@ -281,12 +280,11 @@ pub fn mock_time_with_control<T>(initial_millis: u64, f: impl FnOnce(&MockTimeCo
 
 #[cfg(test)]
 pub mod tests {
-    use std::thread::sleep;
-    use std::time::Duration;
+	use std::{thread::sleep, time::Duration};
 
-    use super::*;
+	use super::*;
 
-    #[test]
+	#[test]
 	fn test_system_time() {
 		mock_time_clear(); // Ensure no mock time is set
 

@@ -4,6 +4,7 @@
 use std::{cmp::Ordering, collections::BinaryHeap};
 
 use reifydb_core::{
+	error::diagnostic::query,
 	sort::{
 		SortDirection,
 		SortDirection::{Asc, Desc},
@@ -13,7 +14,6 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::StandardTransaction;
 use reifydb_type::{error, util::cowvec::CowVec, value::Value};
-use reifydb_core::error::diagnostic::query;
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};

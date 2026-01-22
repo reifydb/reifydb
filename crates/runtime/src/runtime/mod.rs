@@ -11,8 +11,8 @@ pub mod wasm;
 
 cfg_if::cfg_if! {
     if #[cfg(reifydb_target = "native")] {
-        pub(crate) use native::NativeRuntime;
+	pub(crate) use native::NativeRuntime;
     } else {
-        pub(crate) use wasm::{WasmHandle, WasmJoinError, WasmJoinHandle, WasmRuntime};
+	pub(crate) use wasm::{WasmHandle, WasmJoinError, WasmJoinHandle, WasmRuntime};
     }
 }

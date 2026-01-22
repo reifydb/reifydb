@@ -8,8 +8,8 @@ use reifydb_type::{
 		utf8::Utf8Container, uuid::UuidContainer,
 	},
 };
-use crate::error::diagnostic::internal::internal;
-use crate::value::column::ColumnData;
+
+use crate::{error::diagnostic::internal::internal, value::column::ColumnData};
 
 impl ColumnData {
 	pub fn extend(&mut self, other: ColumnData) -> reifydb_type::Result<()> {

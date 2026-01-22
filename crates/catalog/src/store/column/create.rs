@@ -2,11 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	error::diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
 	interface::catalog::{id::DictionaryId, policy::ColumnPolicyKind, primitive::PrimitiveId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_core::error::diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists};
 use reifydb_type::{
 	fragment::Fragment,
 	return_error,

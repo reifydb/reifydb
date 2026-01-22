@@ -4,8 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::r#type::Type;
-use crate::error;
-use crate::error::diagnostic::dictionary::dictionary_entry_id_capacity_exceeded;
+use crate::{error, error::diagnostic::dictionary::dictionary_entry_id_capacity_exceeded};
 
 /// A dictionary entry ID that can be one of several unsigned integer sizes.
 /// The variant used depends on the dictionary's `id_type` configuration.

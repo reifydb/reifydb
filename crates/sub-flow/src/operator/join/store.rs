@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{encoded::schema::Schema, interface::catalog::flow::FlowNodeId};
+use reifydb_core::{encoded::schema::Schema, interface::catalog::flow::FlowNodeId, internal};
 use reifydb_runtime::hash::Hash128;
-use reifydb_core::internal;
 use reifydb_type::{
 	error::Error,
 	value::{blob::Blob, r#type::Type},

@@ -3,20 +3,15 @@
 
 //! Native timer implementation using std::thread.
 
-use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::{sync::atomic::Ordering, time::Duration};
 
+use super::{TimerHandle, next_timer_id};
 use crate::actor::mailbox::ActorRef;
-use super::{next_timer_id, TimerHandle};
 
 /// Schedule a message to be sent after a delay.
 ///
 /// Returns a handle that can be used to cancel the timer.
-pub fn schedule_once<M: Send + Clone + 'static>(
-	actor_ref: ActorRef<M>,
-	delay: Duration,
-	msg: M,
-) -> TimerHandle {
+pub fn schedule_once<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, delay: Duration, msg: M) -> TimerHandle {
 	let handle = TimerHandle::new(next_timer_id());
 	let cancelled = handle.cancelled_flag();
 
@@ -34,11 +29,7 @@ pub fn schedule_once<M: Send + Clone + 'static>(
 /// Schedule a message to be sent repeatedly at an interval.
 ///
 /// Returns a handle that can be used to cancel the timer.
-pub fn schedule_repeat<M: Send + Clone + 'static>(
-	actor_ref: ActorRef<M>,
-	interval: Duration,
-	msg: M,
-) -> TimerHandle {
+pub fn schedule_repeat<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, interval: Duration, msg: M) -> TimerHandle {
 	let handle = TimerHandle::new(next_timer_id());
 	let cancelled = handle.cancelled_flag();
 

@@ -28,11 +28,7 @@ use reifydb_runtime::actor::{
 use reifydb_type::Result;
 use tracing::{debug, error};
 
-use super::{
-	checkpoint::CdcCheckpoint,
-	consumer::CdcConsume,
-	host::CdcHost,
-};
+use super::{checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost};
 use crate::storage::CdcStore;
 
 /// Messages for the poll actor
@@ -57,8 +53,7 @@ pub struct PollActorConfig {
 ///
 /// Uses self-messaging for the polling loop:
 /// - On startup, sends initial Poll message
-/// - After processing, either sends immediate Poll (more data likely)
-///   or schedules delayed Poll (no data or error)
+/// - After processing, either sends immediate Poll (more data likely) or schedules delayed Poll (no data or error)
 pub struct PollActor<H: CdcHost, C: CdcConsume> {
 	config: PollActorConfig,
 	host: H,
@@ -97,19 +92,16 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> Actor for PollActor<H, C> {
 	}
 
 	fn pre_start(&self, _state: &mut Self::State, ctx: &Context<Self::Message>) {
-		debug!("[Consumer {:?}] Started polling with interval {:?}",
-			self.config.consumer_id, self.config.poll_interval);
+		debug!(
+			"[Consumer {:?}] Started polling with interval {:?}",
+			self.config.consumer_id, self.config.poll_interval
+		);
 
 		// Send initial poll message to start the loop
 		let _ = ctx.self_ref().send(PollMsg::Poll);
 	}
 
-	fn handle(
-		&self,
-		_state: &mut Self::State,
-		msg: Self::Message,
-		ctx: &Context<Self::Message>,
-	) -> Flow {
+	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Flow {
 		match msg {
 			PollMsg::Poll => {
 				// Check if we should stop
@@ -125,21 +117,15 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> Actor for PollActor<H, C> {
 					}
 					Ok(_) => {
 						// No data - schedule delayed poll
-						schedule_once(
-							ctx.self_ref(),
-							self.config.poll_interval,
-							PollMsg::Poll,
-						);
+						schedule_once(ctx.self_ref(), self.config.poll_interval, PollMsg::Poll);
 					}
 					Err(e) => {
-						error!("[Consumer {:?}] Error consuming events: {}",
-							self.config.consumer_id, e);
-						// Sleep before retrying on error
-						schedule_once(
-							ctx.self_ref(),
-							self.config.poll_interval,
-							PollMsg::Poll,
+						error!(
+							"[Consumer {:?}] Error consuming events: {}",
+							self.config.consumer_id, e
 						);
+						// Sleep before retrying on error
+						schedule_once(ctx.self_ref(), self.config.poll_interval, PollMsg::Poll);
 					}
 				}
 			}
@@ -186,19 +172,25 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			.into_iter()
 			.filter(|cdc| {
 				cdc.changes.iter().any(|change| match &change.change {
-					CdcChange::Insert { key, .. }
-					| CdcChange::Update { key, .. }
-					| CdcChange::Delete { key, .. } => {
+					CdcChange::Insert {
+						key,
+						..
+					}
+					| CdcChange::Update {
+						key,
+						..
+					}
+					| CdcChange::Delete {
+						key,
+						..
+					} => {
 						if let Some(kind) = Key::kind(key) {
 							matches!(
 								kind,
 								KeyKind::Row
-									| KeyKind::Flow
-									| KeyKind::FlowNode
-									| KeyKind::FlowNodeByFlow
-									| KeyKind::FlowEdge
-									| KeyKind::FlowEdgeByFlow
-									| KeyKind::NamespaceFlow
+									| KeyKind::Flow | KeyKind::FlowNode
+									| KeyKind::FlowNodeByFlow | KeyKind::FlowEdge
+									| KeyKind::FlowEdgeByFlow | KeyKind::NamespaceFlow
 							)
 						} else {
 							false
@@ -218,11 +210,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		Ok(count)
 	}
 
-	fn fetch_cdcs_until(
-		&self,
-		since_version: CommitVersion,
-		until_version: CommitVersion,
-	) -> Result<Vec<Cdc>> {
+	fn fetch_cdcs_until(&self, since_version: CommitVersion, until_version: CommitVersion) -> Result<Vec<Cdc>> {
 		let batch_size = self.config.max_batch_size.unwrap_or(1024);
 		let batch = self.store.read_range(
 			Bound::Excluded(since_version),

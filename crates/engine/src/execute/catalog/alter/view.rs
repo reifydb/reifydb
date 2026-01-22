@@ -2,13 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::catalog::primary_key::PrimaryKeyToCreate;
-use reifydb_core::{interface::catalog::primitive::PrimitiveId, value::column::columns::Columns};
+use reifydb_core::{
+	error::diagnostic::{
+		catalog::{namespace_not_found, view_not_found},
+		query::column_not_found,
+	},
+	interface::catalog::primitive::PrimitiveId,
+	value::column::columns::Columns,
+};
 use reifydb_rql::plan::{logical::alter::view::AlterViewOperation, physical::alter::view::AlterViewNode};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_core::error::diagnostic::{
-	catalog::{namespace_not_found, view_not_found},
-	query::column_not_found,
-};
 use reifydb_type::{return_error, value::Value};
 
 use crate::execute::Executor;

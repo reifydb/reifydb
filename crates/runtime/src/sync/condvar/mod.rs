@@ -58,7 +58,9 @@ impl Condvar {
 	#[inline]
 	pub fn wait_for<'a, T>(&self, guard: &mut MutexGuard<'a, T>, timeout: Duration) -> WaitTimeoutResult {
 		let timed_out = self.inner.wait_for(guard, timeout);
-		WaitTimeoutResult { timed_out }
+		WaitTimeoutResult {
+			timed_out,
+		}
 	}
 
 	/// Wakes up one blocked thread.

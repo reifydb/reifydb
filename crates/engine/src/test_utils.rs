@@ -4,38 +4,40 @@
 use std::sync::Arc;
 
 use reifydb_catalog::{
-    catalog::{
-        namespace::NamespaceToCreate,
-        table::{TableColumnToCreate, TableToCreate},
-        Catalog,
-    },
-    materialized::MaterializedCatalog,
-    schema::SchemaRegistry,
+	catalog::{
+		Catalog,
+		namespace::NamespaceToCreate,
+		table::{TableColumnToCreate, TableToCreate},
+	},
+	materialized::MaterializedCatalog,
+	schema::SchemaRegistry,
 };
 use reifydb_cdc::{
-    produce::{listener::CdcEventListener, worker::CdcWorker},
-    storage::CdcStore,
+	produce::{listener::CdcEventListener, worker::CdcWorker},
+	storage::CdcStore,
 };
 #[cfg(debug_assertions)]
 use reifydb_core::util::clock::mock_time_set;
 use reifydb_core::{
 	event::{
+		EventBus,
 		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
 		transaction::PostCommitEvent,
-		EventBus,
 	},
 	util::ioc::IocContainer,
 };
-use reifydb_metric::worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, actor::runtime::ActorRuntime};
+use reifydb_metric::worker::{
+	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
+};
 use reifydb_rqlv2::compiler::Compiler;
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, actor::runtime::ActorRuntime};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
-    interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
-    multi::transaction::TransactionMulti,
-    single::{svl::TransactionSvl, TransactionSingle},
-    standard::command::StandardCommandTransaction,
+	interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
+	multi::transaction::TransactionMulti,
+	single::{TransactionSingle, svl::TransactionSvl},
+	standard::command::StandardCommandTransaction,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -123,7 +125,8 @@ pub fn create_test_engine() -> StandardEngine {
 	let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 	let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 	let single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
-	let multi = TransactionMulti::new(multi_store.clone(), single.clone(), eventbus.clone(), actor_runtime).unwrap();
+	let multi =
+		TransactionMulti::new(multi_store.clone(), single.clone(), eventbus.clone(), actor_runtime).unwrap();
 
 	let mut ioc = IocContainer::new();
 

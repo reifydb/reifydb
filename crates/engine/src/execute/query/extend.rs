@@ -4,13 +4,13 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	error::diagnostic::query::extend_duplicate_column,
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_transaction::standard::StandardTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
-use reifydb_core::error::diagnostic::query::extend_duplicate_column;
 use tracing::instrument;
 
 use crate::{

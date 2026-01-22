@@ -67,13 +67,7 @@ pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
 }
 
 impl<H: CdcHost, C: CdcConsume + Send + 'static> PollConsumer<H, C> {
-	pub fn new(
-		config: PollConsumerConfig,
-		host: H,
-		consume: C,
-		store: CdcStore,
-		runtime: ActorRuntime,
-	) -> Self {
+	pub fn new(config: PollConsumerConfig, host: H, consume: C, store: CdcStore, runtime: ActorRuntime) -> Self {
 		Self {
 			config,
 			host: Some(host),

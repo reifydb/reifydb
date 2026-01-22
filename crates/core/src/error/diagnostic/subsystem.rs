@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::error::diagnostic::Diagnostic;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 /// Subsystem initialization failed
 pub fn init_failed(subsystem: impl std::fmt::Display, reason: impl std::fmt::Display) -> Diagnostic {

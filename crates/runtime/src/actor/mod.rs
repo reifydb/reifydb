@@ -8,10 +8,9 @@
 //!
 //! # Execution Model
 //!
-//! - **Native**: Each actor runs on its own OS thread using `std::thread::spawn`.
-//!   Messages are sent via `crossbeam-channel` and received with blocking `recv()`.
-//! - **WASM**: Messages are processed inline (synchronously) when sent.
-//!   No separate thread or task is created.
+//! - **Native**: Each actor runs on its own OS thread using `std::thread::spawn`. Messages are sent via
+//!   `crossbeam-channel` and received with blocking `recv()`.
+//! - **WASM**: Messages are processed inline (synchronously) when sent. No separate thread or task is created.
 //!
 //! # Design Goals
 //!

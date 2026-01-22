@@ -9,11 +9,12 @@
 //! - Cancellation status for graceful shutdown
 //! - Timer scheduling (when enabled)
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{
+	Arc,
+	atomic::{AtomicBool, Ordering},
+};
 
-use crate::actor::mailbox::ActorRef;
-use crate::actor::runtime::ActorRuntime;
+use crate::actor::{mailbox::ActorRef, runtime::ActorRuntime};
 
 /// A cancellation token for signaling shutdown.
 ///

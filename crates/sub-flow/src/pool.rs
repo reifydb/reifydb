@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use crossbeam_channel::{bounded, Sender};
+use crossbeam_channel::{Sender, bounded};
 use reifydb_core::internal;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::actor::{
@@ -66,7 +66,9 @@ pub struct PoolActor {
 impl PoolActor {
 	/// Create a new pool actor with the given worker refs.
 	pub fn new(worker_refs: Vec<ActorRef<FlowMsg>>) -> Self {
-		Self { worker_refs }
+		Self {
+			worker_refs,
+		}
 	}
 }
 
@@ -81,18 +83,19 @@ impl Actor for PoolActor {
 		PoolState
 	}
 
-	fn handle(
-		&self,
-		_state: &mut Self::State,
-		msg: Self::Message,
-		_ctx: &Context<Self::Message>,
-	) -> Flow {
+	fn handle(&self, _state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
 		match msg {
-			PoolMsg::RegisterFlow { flow, reply } => {
+			PoolMsg::RegisterFlow {
+				flow,
+				reply,
+			} => {
 				let resp = self.handle_register_flow(flow);
 				let _ = reply.send(resp);
 			}
-			PoolMsg::Submit { batches, reply } => {
+			PoolMsg::Submit {
+				batches,
+				reply,
+			} => {
 				let resp = self.handle_submit(batches);
 				let _ = reply.send(resp);
 			}
@@ -179,11 +182,9 @@ impl PoolActor {
 			match reply_rx.recv() {
 				Ok(FlowResponse::Success(pending)) => results.push(pending),
 				Ok(FlowResponse::Error(e)) => {
-					return PoolResponse::Error(format!("Worker {} error: {}", worker_id, e))
+					return PoolResponse::Error(format!("Worker {} error: {}", worker_id, e));
 				}
-				Err(_) => {
-					return PoolResponse::Error(format!("Worker {} response error", worker_id))
-				}
+				Err(_) => return PoolResponse::Error(format!("Worker {} response error", worker_id)),
 			}
 		}
 
@@ -233,7 +234,8 @@ impl PoolActor {
 					return Err(internal!(
 						"keyspace overlap detected during worker aggregation: {}",
 						encode(key.as_ref())
-					).to_string());
+					)
+					.to_string());
 				}
 
 				// Safe to merge - disjoint keyspaces

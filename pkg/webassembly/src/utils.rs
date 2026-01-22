@@ -3,10 +3,12 @@
 
 //! Utility functions for WASM bindings
 
+use reifydb_type::{
+	params::Params,
+	value::{Value, frame::frame::Frame},
+};
 use wasm_bindgen::prelude::*;
-use reifydb_type::value::frame::frame::Frame;
-use reifydb_type::value::Value;
-use reifydb_type::params::Params;
+
 use crate::error::JsError;
 
 /// Convert Frames to JavaScript array of objects
@@ -31,11 +33,7 @@ pub fn frames_to_js(frames: &[Frame]) -> Result<JsValue, JsValue> {
 				let js_value = value_to_js(&value)?;
 
 				// Set property on object
-				js_sys::Reflect::set(
-					&row_obj,
-					&JsValue::from_str(&column.name),
-					&js_value,
-				)?;
+				js_sys::Reflect::set(&row_obj, &JsValue::from_str(&column.name), &js_value)?;
 			}
 
 			all_results.push(row_obj);
@@ -114,14 +112,13 @@ pub fn parse_params(params_js: JsValue) -> Result<Params, JsValue> {
 	}
 
 	// Try to parse as JSON
-	let json_str = js_sys::JSON::stringify(&params_js)
-		.map_err(|_| JsError::from_str("Failed to stringify params"))?;
+	let json_str =
+		js_sys::JSON::stringify(&params_js).map_err(|_| JsError::from_str("Failed to stringify params"))?;
 
 	let json_str: String = json_str.into();
 
 	// Parse JSON string to serde_json::Value
-	let _json_value: serde_json::Value = serde_json::from_str(&json_str)
-		.map_err(|e| JsError::from_error(&e))?;
+	let _json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| JsError::from_error(&e))?;
 
 	// Convert to Params
 	// For now, we'll use Params::None if conversion is complex

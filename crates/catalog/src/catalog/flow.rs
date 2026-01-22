@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	change::CatalogTrackFlowChangeOperations,
-	flow::{FlowDef, FlowId, FlowStatus},
-	id::NamespaceId,
+use reifydb_core::{
+	interface::catalog::{
+		change::CatalogTrackFlowChangeOperations,
+		flow::{FlowDef, FlowId, FlowStatus},
+		id::NamespaceId,
+	},
+	internal,
 };
 use reifydb_transaction::{
 	change::TransactionalFlowChanges,
 	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
 };
-use reifydb_core::internal;
 use reifydb_type::{error, fragment::Fragment};
 use tracing::{instrument, warn};
 
@@ -160,6 +162,20 @@ impl Catalog {
 		to_create: FlowToCreate,
 	) -> crate::Result<FlowDef> {
 		let flow = CatalogStore::create_flow(txn, to_create.into())?;
+		txn.track_flow_def_created(flow.clone())?;
+		Ok(flow)
+	}
+
+	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
+	/// This skips the name uniqueness check since the ID is guaranteed unique by the sequence.
+	#[instrument(name = "catalog::flow::create_with_id", level = "debug", skip(self, txn, to_create))]
+	pub fn create_flow_with_id(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		flow_id: FlowId,
+		to_create: FlowToCreate,
+	) -> crate::Result<FlowDef> {
+		let flow = CatalogStore::create_flow_with_id(txn, flow_id, to_create.into())?;
 		txn.track_flow_def_created(flow.clone())?;
 		Ok(flow)
 	}

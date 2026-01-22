@@ -3,24 +3,17 @@
 
 //! WASM timer implementation using setTimeout/setInterval.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::{cell::RefCell, rc::Rc, sync::atomic::Ordering, time::Duration};
 
 use wasm_bindgen::prelude::*;
 
+use super::{TimerHandle, next_timer_id};
 use crate::actor::mailbox::ActorRef;
-use super::{next_timer_id, TimerHandle};
 
 /// Schedule a message to be sent after a delay.
 ///
 /// Returns a handle that can be used to cancel the timer.
-pub fn schedule_once<M: Send + Clone + 'static>(
-	actor_ref: ActorRef<M>,
-	delay: Duration,
-	msg: M,
-) -> TimerHandle {
+pub fn schedule_once<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, delay: Duration, msg: M) -> TimerHandle {
 	let handle = TimerHandle::new(next_timer_id());
 	let cancelled = handle.cancelled_flag();
 	let delay_ms = delay.as_millis() as i32;
@@ -33,10 +26,8 @@ pub fn schedule_once<M: Send + Clone + 'static>(
 	}) as Box<dyn FnOnce()>);
 
 	let window = web_sys::window().expect("no global `window` exists");
-	let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
-		closure.as_ref().unchecked_ref(),
-		delay_ms,
-	);
+	let _ = window
+		.set_timeout_with_callback_and_timeout_and_arguments_0(closure.as_ref().unchecked_ref(), delay_ms);
 
 	// Prevent closure from being dropped
 	closure.forget();
@@ -47,11 +38,7 @@ pub fn schedule_once<M: Send + Clone + 'static>(
 /// Schedule a message to be sent repeatedly at an interval.
 ///
 /// Returns a handle that can be used to cancel the timer.
-pub fn schedule_repeat<M: Send + Clone + 'static>(
-	actor_ref: ActorRef<M>,
-	interval: Duration,
-	msg: M,
-) -> TimerHandle {
+pub fn schedule_repeat<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, interval: Duration, msg: M) -> TimerHandle {
 	let handle = TimerHandle::new(next_timer_id());
 	let cancelled = handle.cancelled_flag();
 

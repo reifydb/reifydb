@@ -4,8 +4,8 @@
 use reifydb_core::{
 	interface::catalog::id::{NamespaceId, SequenceId},
 	key::system_sequence::SystemSequenceKey,
+	return_internal_error,
 };
-use reifydb_core::return_internal_error;
 use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{

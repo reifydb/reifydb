@@ -34,12 +34,16 @@ impl<T> RwLockInner<T> {
 
 	/// Attempts to acquire a read lock without blocking.
 	pub fn try_read(&self) -> Option<RwLockReadGuardInner<'_, T>> {
-		self.inner.try_read().map(|guard| RwLockReadGuardInner { inner: guard })
+		self.inner.try_read().map(|guard| RwLockReadGuardInner {
+			inner: guard,
+		})
 	}
 
 	/// Attempts to acquire a write lock without blocking.
 	pub fn try_write(&self) -> Option<RwLockWriteGuardInner<'_, T>> {
-		self.inner.try_write().map(|guard| RwLockWriteGuardInner { inner: guard })
+		self.inner.try_write().map(|guard| RwLockWriteGuardInner {
+			inner: guard,
+		})
 	}
 }
 

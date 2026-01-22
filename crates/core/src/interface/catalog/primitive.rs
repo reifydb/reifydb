@@ -3,18 +3,18 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{
-    flow::{FlowDef, FlowId},
-    id::{DictionaryId, RingBufferId, TableId, ViewId},
-    table::TableDef,
-    view::ViewDef,
-    vtable::{VTableDef, VTableId},
+use crate::{
+	interface::catalog::{
+		flow::{FlowDef, FlowId},
+		id::{DictionaryId, RingBufferId, TableId, ViewId},
+		table::TableDef,
+		view::ViewDef,
+		vtable::{VTableDef, VTableId},
+	},
+	return_internal_error,
 };
-use crate::return_internal_error;
 
 /// PrimitiveId represents identifiers for catalog primitives that use u64-based IDs.
-/// Note: SubscriptionId is NOT included here because it uses UUID v7 which is a
-/// different type. Subscriptions are handled separately.
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum PrimitiveId {
 	Table(TableId),

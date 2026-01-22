@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef}, internal};
+use reifydb_core::{
+	interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef},
+	internal,
+};
 use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::error::Error;
 
@@ -48,7 +51,7 @@ pub mod tests {
 	fn test_get_subscription_not_found() {
 		let mut txn = create_test_command_transaction();
 
-		let non_existent = SubscriptionId::new();
+		let non_existent = SubscriptionId(999999);
 		let err = CatalogStore::get_subscription(&mut txn, non_existent).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");

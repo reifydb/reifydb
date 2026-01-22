@@ -14,8 +14,7 @@ use std::sync::{
 	atomic::{AtomicUsize, Ordering},
 };
 
-use reifydb_runtime::sync::condvar::Condvar;
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::sync::{condvar::Condvar, mutex::Mutex};
 
 struct Inner {
 	count: AtomicUsize,

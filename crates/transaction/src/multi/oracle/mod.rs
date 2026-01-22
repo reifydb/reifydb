@@ -6,13 +6,9 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_runtime::time::Instant;
-
 use cleanup::cleanup_old_windows;
-
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
-use reifydb_runtime::actor::runtime::ActorRuntime;
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::{actor::runtime::ActorRuntime, sync::rwlock::RwLock, time::Instant};
 use reifydb_type::Result;
 use tracing::{Span, instrument};
 

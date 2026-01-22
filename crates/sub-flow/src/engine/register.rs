@@ -3,9 +3,12 @@
 
 use std::rc::Rc;
 
-use reifydb_core::interface::catalog::{
-	flow::{FlowId, FlowNodeId},
-	primitive::PrimitiveId,
+use reifydb_core::{
+	interface::catalog::{
+		flow::{FlowId, FlowNodeId},
+		primitive::PrimitiveId,
+	},
+	internal,
 };
 use reifydb_rql::flow::{
 	flow::FlowDag,
@@ -20,7 +23,7 @@ use reifydb_rql::flow::{
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::error::Error;
 use tracing::instrument;
-use reifydb_core::internal;
+
 use super::eval::evaluate_operator_config;
 use crate::{
 	engine::FlowEngine,
@@ -126,6 +129,12 @@ impl FlowEngine {
 			SinkSubscription {
 				subscription,
 			} => {
+				// Guard against race condition: flow may have been deleted during loading
+				if node.inputs.is_empty() {
+					return Err(Error(internal!(
+						"SinkSubscription node has no inputs - flow may have been deleted during loading"
+					)));
+				}
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
@@ -319,7 +328,9 @@ impl FlowEngine {
 
 					self.operators.insert(
 						node.id,
-						Rc::new(Operators::Apply(ApplyOperator::new(parent, node.id, operator))),
+						Rc::new(Operators::Apply(ApplyOperator::new(
+							parent, node.id, operator,
+						))),
 					);
 				}
 				#[cfg(not(reifydb_target = "native"))]

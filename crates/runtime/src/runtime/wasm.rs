@@ -20,11 +20,7 @@ impl WasmRuntime {
 	/// Create a new WASM runtime.
 	///
 	/// Thread configuration parameters are ignored in WASM builds.
-	pub(crate) fn new(
-		_async_threads: usize,
-		_compute_threads: usize,
-		_compute_max_in_flight: usize,
-	) -> Self {
+	pub(crate) fn new(_async_threads: usize, _compute_threads: usize, _compute_max_in_flight: usize) -> Self {
 		Self {
 			compute_pool: WasmComputePool::new(),
 		}

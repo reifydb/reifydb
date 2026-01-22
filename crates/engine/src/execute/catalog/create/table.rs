@@ -3,13 +3,13 @@
 
 use reifydb_catalog::catalog::{primary_key::PrimaryKeyToCreate, table::TableToCreate};
 use reifydb_core::{
+	error::diagnostic::query::column_not_found,
 	interface::catalog::{change::CatalogTrackTableChangeOperations, primitive::PrimitiveId},
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::CreateTableNode;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{return_error, value::Value};
-use reifydb_core::error::diagnostic::query::column_not_found;
 
 use crate::execute::Executor;
 

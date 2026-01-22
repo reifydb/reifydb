@@ -7,19 +7,18 @@
 //! writing tombstones or generating CDC events. It's used for internal cleanup
 //! operations like maintaining single-version semantics for flow node state.
 
-use std::ops::Bound;
-
 use reifydb_core::common::CommitVersion;
 use reifydb_type::util::cowvec::CowVec;
 
-use super::version::{encode_versioned_key, extract_version, key_version_range};
-use crate::tier::{EntryKind, RangeCursor, TierStorage};
+use crate::tier::{EntryKind, TierStorage};
 
 /// Information about an entry to be dropped.
 #[derive(Debug, Clone)]
 pub struct DropEntry {
-	/// The versioned key to delete
-	pub versioned_key: CowVec<u8>,
+	/// The logical key to delete
+	pub key: CowVec<u8>,
+	/// The specific version to delete
+	pub version: CommitVersion,
 	/// The size of the value being dropped (for metrics tracking)
 	pub value_bytes: u64,
 }
@@ -32,6 +31,7 @@ pub struct DropEntry {
 /// - `key`: The logical key (without version suffix)
 /// - `up_to_version`: If Some(v), candidate versions where version < v
 /// - `keep_last_versions`: If Some(n), protect n most recent versions from being dropped
+/// - `pending_version`: Version being written in the same batch (to avoid race)
 pub(crate) fn find_keys_to_drop<S: TierStorage>(
 	storage: &S,
 	table: EntryKind,
@@ -40,49 +40,37 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 	keep_last_versions: Option<usize>,
 	pending_version: Option<CommitVersion>,
 ) -> crate::Result<Vec<DropEntry>> {
-	let (start, end) = key_version_range(key);
+	// Get all versions of this key directly (bypasses MVCC resolution)
+	let all_versions = storage.get_all_versions(table, key)?;
 
-	// Collect all versioned keys for this logical key, including value sizes
-	let mut versioned_entries: Vec<(CowVec<u8>, CommitVersion, u64)> = Vec::new();
-
-	let mut cursor = RangeCursor::new();
-	loop {
-		let batch = storage.range_next(
-			table,
-			&mut cursor,
-			Bound::Included(start.as_slice()),
-			Bound::Included(end.as_slice()),
-			1024,
-		)?;
-
-		for entry in batch.entries {
-			if let Some(entry_version) = extract_version(&entry.key) {
-				let value_bytes = entry.value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
-				versioned_entries.push((entry.key, entry_version, value_bytes));
-			}
-		}
-
-		if cursor.exhausted {
-			break;
-		}
-	}
+	// Collect all versions with their value sizes
+	let mut versioned_entries: Vec<(CommitVersion, u64)> = all_versions
+		.into_iter()
+		.map(|(version, value)| {
+			let value_bytes = value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
+			(version, value_bytes)
+		})
+		.collect();
 
 	// Include pending version if provided (version being written in current batch)
 	// This prevents a race where Drop scans storage before Set is written
 	if let Some(pending_ver) = pending_version {
-		// Add a placeholder entry for the pending version
-		// value_bytes=0 is fine since this entry will never be dropped (it's the newest)
-		let pending_key = CowVec::new(encode_versioned_key(key, pending_ver));
-		versioned_entries.push((pending_key, pending_ver, 0));
+		// Check if pending version already exists (avoid duplicates)
+		if !versioned_entries.iter().any(|(v, _)| *v == pending_ver) {
+			// Add a placeholder entry for the pending version
+			// value_bytes=0 is fine since this entry will never be dropped (it's the newest)
+			versioned_entries.push((pending_ver, 0));
+		}
 	}
 
 	// Sort by version descending (most recent first) for keep_last_versions logic
-	versioned_entries.sort_by(|a, b| b.1.cmp(&a.1));
+	versioned_entries.sort_by(|a, b| b.0.cmp(&a.0));
 
 	// Determine which entries to drop
 	let mut entries_to_drop = Vec::new();
+	let key_cow = CowVec::new(key.to_vec());
 
-	for (idx, (versioned_key, entry_version, value_bytes)) in versioned_entries.into_iter().enumerate() {
+	for (idx, (entry_version, value_bytes)) in versioned_entries.into_iter().enumerate() {
 		// Use AND logic for combined constraints:
 		// - keep_last_versions protects the N most recent versions
 		// - up_to_version only drops versions < threshold IF not protected
@@ -105,7 +93,8 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 			}
 
 			entries_to_drop.push(DropEntry {
-				versioned_key,
+				key: key_cow.clone(),
+				version: entry_version,
 				value_bytes,
 			});
 		}
@@ -118,28 +107,20 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 pub mod tests {
 	use std::collections::HashMap;
 
-	use super::{
-		super::version::{encode_versioned_key, extract_key},
-		*,
-	};
+	use super::*;
 	use crate::hot::storage::HotStorage;
 
 	/// Create versioned test entries for a key
 	fn setup_versioned_entries(storage: &HotStorage, table: EntryKind, key: &[u8], versions: &[u64]) {
-		let entries: Vec<_> = versions
-			.iter()
-			.map(|v| {
-				let versioned_key = CowVec::new(encode_versioned_key(key, CommitVersion(*v)));
-				(versioned_key, Some(CowVec::new(vec![*v as u8]))) // value = version byte
-			})
-			.collect();
-
-		storage.set(HashMap::from([(table, entries)])).unwrap();
+		for v in versions {
+			let entries = vec![(CowVec::new(key.to_vec()), Some(CowVec::new(vec![*v as u8])))];
+			storage.set(CommitVersion(*v), HashMap::from([(table, entries)])).unwrap();
+		}
 	}
 
 	/// Extract version numbers from the drop entries
 	fn extract_dropped_versions(entries: &[DropEntry]) -> Vec<u64> {
-		entries.iter().filter_map(|e| extract_version(&e.versioned_key).map(|v| v.0)).collect()
+		entries.iter().map(|e| e.version.0).collect()
 	}
 
 	#[test]
@@ -397,8 +378,7 @@ pub mod tests {
 		assert_eq!(to_drop.len(), 3);
 		// Verify all dropped keys are for key_a, not key_b
 		for entry in &to_drop {
-			let original = extract_key(&entry.versioned_key).unwrap();
-			assert_eq!(original, b"key_a");
+			assert_eq!(entry.key.as_slice(), b"key_a");
 		}
 	}
 

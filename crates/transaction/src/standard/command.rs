@@ -9,6 +9,7 @@ use reifydb_core::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},
+	error::diagnostic::transaction,
 	event::EventBus,
 	interface::{
 		WithEventBus,
@@ -16,7 +17,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::{Result, return_error};
-use reifydb_core::error::diagnostic::transaction;
 use tracing::instrument;
 
 use crate::{

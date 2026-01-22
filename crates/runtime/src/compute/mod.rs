@@ -12,8 +12,8 @@ pub mod wasm;
 
 cfg_if::cfg_if! {
     if #[cfg(reifydb_target = "native")] {
-        pub type ComputePool = native::NativeComputePool;
+	pub type ComputePool = native::NativeComputePool;
     } else {
-        pub type ComputePool = wasm::WasmComputePool;
+	pub type ComputePool = wasm::WasmComputePool;
     }
 }

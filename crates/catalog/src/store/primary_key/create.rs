@@ -2,21 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	error::diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
 	interface::catalog::{
 		id::{ColumnId, PrimaryKeyId},
 		primitive::PrimitiveId,
 	},
 	key::primary_key::PrimaryKeyKey,
-};
-use reifydb_transaction::standard::command::StandardCommandTransaction;
-use reifydb_core::{
-	error::diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
 	return_internal_error,
 };
-use reifydb_type::{
-	fragment::Fragment,
-	return_error,
-};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
 	CatalogStore,

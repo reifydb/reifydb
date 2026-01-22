@@ -7,9 +7,11 @@
 
 use std::time::Duration;
 
-use crate::actor::context::Context;
-use crate::actor::mailbox::{Mailbox, RecvTimeoutError};
-use crate::actor::traits::{Actor, Flow};
+use crate::actor::{
+	context::Context,
+	mailbox::{Mailbox, RecvTimeoutError},
+	traits::{Actor, Flow},
+};
 
 /// Interval for checking cancellation during blocked recv.
 const SHUTDOWN_CHECK_INTERVAL: Duration = Duration::from_millis(10);
@@ -50,7 +52,11 @@ pub(crate) struct ActorRunner<A: Actor> {
 impl<A: Actor> ActorRunner<A> {
 	/// Create a new actor runner.
 	pub fn new(actor: A, mailbox: Mailbox<A::Message>, ctx: Context<A::Message>) -> Self {
-		Self { actor, mailbox, ctx }
+		Self {
+			actor,
+			mailbox,
+			ctx,
+		}
 	}
 
 	/// Run the actor to completion.

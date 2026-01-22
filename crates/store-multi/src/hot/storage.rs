@@ -8,6 +8,7 @@
 
 use std::{collections::HashMap, ops::Bound};
 
+use reifydb_core::common::CommitVersion;
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryPrimitiveStorage;
@@ -50,29 +51,33 @@ impl HotStorage {
 
 impl TierStorage for HotStorage {
 	#[inline]
-	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<CowVec<u8>>> {
+	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
 		match self {
-			Self::Memory(s) => s.get(table, key),
+			Self::Memory(s) => s.get(table, key, version),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.get(table, key),
+			Self::Sqlite(s) => s.get(table, key, version),
 		}
 	}
 
 	#[inline]
-	fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
+	fn contains(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<bool> {
 		match self {
-			Self::Memory(s) => s.contains(table, key),
+			Self::Memory(s) => s.contains(table, key, version),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.contains(table, key),
+			Self::Sqlite(s) => s.contains(table, key, version),
 		}
 	}
 
 	#[inline]
-	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
+	fn set(
+		&self,
+		version: CommitVersion,
+		batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>,
+	) -> Result<()> {
 		match self {
-			Self::Memory(s) => s.set(batches),
+			Self::Memory(s) => s.set(version, batches),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.set(batches),
+			Self::Sqlite(s) => s.set(version, batches),
 		}
 	}
 
@@ -83,12 +88,13 @@ impl TierStorage for HotStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
+		version: CommitVersion,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => s.range_next(table, cursor, start, end, batch_size),
+			Self::Memory(s) => s.range_next(table, cursor, start, end, version, batch_size),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.range_next(table, cursor, start, end, batch_size),
+			Self::Sqlite(s) => s.range_next(table, cursor, start, end, version, batch_size),
 		}
 	}
 
@@ -99,12 +105,13 @@ impl TierStorage for HotStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
+		version: CommitVersion,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => s.range_rev_next(table, cursor, start, end, batch_size),
+			Self::Memory(s) => s.range_rev_next(table, cursor, start, end, version, batch_size),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, batch_size),
+			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, version, batch_size),
 		}
 	}
 
@@ -127,11 +134,20 @@ impl TierStorage for HotStorage {
 	}
 
 	#[inline]
-	fn drop(&self, batches: HashMap<EntryKind, Vec<CowVec<u8>>>) -> Result<()> {
+	fn drop(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.drop(batches),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.drop(batches),
+		}
+	}
+
+	#[inline]
+	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
+		match self {
+			Self::Memory(s) => s.get_all_versions(table, key),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => s.get_all_versions(table, key),
 		}
 	}
 }
@@ -146,43 +162,53 @@ pub mod tests {
 	fn test_memory_backend() {
 		let storage = HotStorage::memory();
 
-		storage.set(HashMap::from([(
-			EntryKind::Multi,
-			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))],
-		)]))
+		let key = CowVec::new(b"key".to_vec());
+		let version = CommitVersion(1);
+
+		storage.set(
+			version,
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"value".to_vec())))])]),
+		)
 		.unwrap();
-		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap().as_deref(), Some(b"value".as_slice()));
+		assert_eq!(storage.get(EntryKind::Multi, &key, version).unwrap().as_deref(), Some(b"value".as_slice()));
 	}
 
 	#[test]
 	fn test_sqlite_backend() {
 		let storage = HotStorage::sqlite_in_memory();
 
-		storage.set(HashMap::from([(
-			EntryKind::Multi,
-			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))],
-		)]))
+		let key = CowVec::new(b"key".to_vec());
+		let version = CommitVersion(1);
+
+		storage.set(
+			version,
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"value".to_vec())))])]),
+		)
 		.unwrap();
-		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap().as_deref(), Some(b"value".as_slice()));
+		assert_eq!(storage.get(EntryKind::Multi, &key, version).unwrap().as_deref(), Some(b"value".as_slice()));
 	}
 
 	#[test]
 	fn test_range_next_memory() {
 		let storage = HotStorage::memory();
 
-		storage.set(HashMap::from([(
-			EntryKind::Multi,
-			vec![
-				(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-				(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-				(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
-			],
-		)]))
+		let version = CommitVersion(1);
+		storage.set(
+			version,
+			HashMap::from([(
+				EntryKind::Multi,
+				vec![
+					(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
+					(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
+					(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+				],
+			)]),
+		)
 		.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 100)
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
@@ -194,19 +220,23 @@ pub mod tests {
 	fn test_range_next_sqlite() {
 		let storage = HotStorage::sqlite_in_memory();
 
-		storage.set(HashMap::from([(
-			EntryKind::Multi,
-			vec![
-				(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-				(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-				(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
-			],
-		)]))
+		let version = CommitVersion(1);
+		storage.set(
+			version,
+			HashMap::from([(
+				EntryKind::Multi,
+				vec![
+					(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
+					(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
+					(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+				],
+			)]),
+		)
 		.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 100)
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);

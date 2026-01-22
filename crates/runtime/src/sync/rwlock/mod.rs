@@ -4,6 +4,7 @@
 //! RwLock synchronization primitive.
 
 use std::ops::{Deref, DerefMut};
+
 use cfg_if::cfg_if;
 
 #[cfg(reifydb_target = "native")]
@@ -60,13 +61,17 @@ impl<T> RwLock<T> {
 	/// Attempts to acquire a read lock without blocking.
 	#[inline]
 	pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
-		self.inner.try_read().map(|inner| RwLockReadGuard { inner })
+		self.inner.try_read().map(|inner| RwLockReadGuard {
+			inner,
+		})
 	}
 
 	/// Attempts to acquire a write lock without blocking.
 	#[inline]
 	pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T>> {
-		self.inner.try_write().map(|inner| RwLockWriteGuard { inner })
+		self.inner.try_write().map(|inner| RwLockWriteGuard {
+			inner,
+		})
 	}
 }
 

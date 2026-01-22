@@ -5,14 +5,14 @@
 //!
 //! Sets up inline message processing for actors (no threads).
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use crate::actor::context::Context;
-use crate::actor::mailbox::{create_actor_ref, ActorRef};
-use crate::actor::traits::{Actor, Flow};
+use std::{cell::RefCell, rc::Rc};
 
 use super::ActorRuntime;
+use crate::actor::{
+	context::Context,
+	mailbox::{ActorRef, create_actor_ref},
+	traits::{Actor, Flow},
+};
 
 impl ActorRuntime {
 	/// Spawn an actor for WASM (sets up inline message processing).
@@ -48,8 +48,7 @@ impl ActorRuntime {
 
 		// Queue for messages sent during initialization
 		// Some(vec) = initializing (queue messages), None = ready (process normally)
-		let init_queue: Rc<RefCell<Option<Vec<A::Message>>>> =
-			Rc::new(RefCell::new(Some(Vec::new())));
+		let init_queue: Rc<RefCell<Option<Vec<A::Message>>>> = Rc::new(RefCell::new(Some(Vec::new())));
 		let init_queue_for_processor = init_queue.clone();
 
 		// Create the processor that handles messages inline
@@ -121,7 +120,9 @@ impl ActorRuntime {
 			let _ = actor_ref_for_drain.send(msg);
 		}
 
-		ActorHandleInner { actor_ref }
+		ActorHandleInner {
+			actor_ref,
+		}
 	}
 }
 

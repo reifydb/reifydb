@@ -3,8 +3,7 @@
 
 //! Native mailbox implementation using crossbeam-channel.
 
-use std::fmt;
-use std::time::Duration;
+use std::{fmt, time::Duration};
 
 use super::{ActorRef, RecvError, RecvTimeoutError, SendError, TryRecvError};
 
@@ -17,22 +16,24 @@ pub struct ActorRefInner<M> {
 
 impl<M> Clone for ActorRefInner<M> {
 	fn clone(&self) -> Self {
-		Self { tx: self.tx.clone() }
+		Self {
+			tx: self.tx.clone(),
+		}
 	}
 }
 
 impl<M> fmt::Debug for ActorRefInner<M> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("ActorRefInner")
-			.field("capacity", &self.tx.capacity())
-			.finish()
+		f.debug_struct("ActorRefInner").field("capacity", &self.tx.capacity()).finish()
 	}
 }
 
 impl<M: Send> ActorRefInner<M> {
 	/// Create a new ActorRefInner from a sender.
 	pub(crate) fn new(tx: crossbeam_channel::Sender<M>) -> Self {
-		Self { tx }
+		Self {
+			tx,
+		}
 	}
 
 	/// Send a message (non-blocking, may fail if mailbox full).
@@ -101,5 +102,10 @@ pub(crate) fn create_mailbox<M: Send>(capacity: usize) -> (ActorRef<M>, Mailbox<
 		crossbeam_channel::bounded(capacity)
 	};
 
-	(ActorRef::from_inner(ActorRefInner::new(tx)), Mailbox { rx })
+	(
+		ActorRef::from_inner(ActorRefInner::new(tx)),
+		Mailbox {
+			rx,
+		},
+	)
 }

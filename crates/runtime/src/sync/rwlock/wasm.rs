@@ -5,8 +5,10 @@
 //!
 //! Since WASM is single-threaded, this is a simple wrapper around RefCell.
 
-use std::cell::{Ref, RefMut};
-use std::ops::{Deref, DerefMut};
+use std::{
+	cell::{Ref, RefMut},
+	ops::{Deref, DerefMut},
+};
 
 /// WASM reader-writer lock implementation using RefCell (no actual locking needed).
 pub struct RwLockInner<T> {
@@ -37,12 +39,16 @@ impl<T> RwLockInner<T> {
 
 	/// Attempts to acquire a read lock.
 	pub fn try_read(&self) -> Option<RwLockReadGuardInner<'_, T>> {
-		self.inner.try_borrow().ok().map(|inner| RwLockReadGuardInner { inner })
+		self.inner.try_borrow().ok().map(|inner| RwLockReadGuardInner {
+			inner,
+		})
 	}
 
 	/// Attempts to acquire a write lock.
 	pub fn try_write(&self) -> Option<RwLockWriteGuardInner<'_, T>> {
-		self.inner.try_borrow_mut().ok().map(|inner| RwLockWriteGuardInner { inner })
+		self.inner.try_borrow_mut().ok().map(|inner| RwLockWriteGuardInner {
+			inner,
+		})
 	}
 }
 

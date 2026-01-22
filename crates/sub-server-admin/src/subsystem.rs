@@ -12,10 +12,12 @@ use std::{
 	},
 };
 
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_core::{
+	error::diagnostic::subsystem::{address_unavailable, bind_failed},
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+};
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_core::error::diagnostic::subsystem::{address_unavailable, bind_failed};
 use reifydb_type::error;
 use tokio::{net::TcpListener, sync::oneshot};
 

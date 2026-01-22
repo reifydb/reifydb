@@ -3,10 +3,11 @@
 
 use std::{collections::BTreeMap, rc::Rc};
 
-use reifydb_core::{encoded::schema::Schema, interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_core::{
+	encoded::schema::Schema, interface::catalog::flow::FlowNodeId, internal, value::column::columns::Columns,
+};
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
-use reifydb_core::internal;
 use reifydb_type::{
 	error::Error,
 	value::{blob::Blob, row_number::RowNumber, r#type::Type},

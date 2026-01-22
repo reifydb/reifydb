@@ -300,7 +300,7 @@ pub mod tests {
 			identifier::{ColumnIdentifier, ColumnPrimitive},
 		},
 		sort::{SortDirection, SortKey},
-		value::column::{columns::Columns, data::ColumnData, Column},
+		value::column::{Column, columns::Columns, data::ColumnData},
 	};
 	use reifydb_rql::{
 		expression::{

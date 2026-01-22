@@ -19,12 +19,10 @@ use std::{
 };
 
 use reifydb_core::common::CommitVersion;
-use reifydb_runtime::actor::mailbox::ActorRef;
-use reifydb_runtime::actor::runtime::ActorRuntime;
-
-use reifydb_runtime::sync::condvar::Condvar;
-use reifydb_runtime::sync::mutex::Mutex;
-
+use reifydb_runtime::{
+	actor::{mailbox::ActorRef, runtime::ActorRuntime},
+	sync::{condvar::Condvar, mutex::Mutex},
+};
 use tracing::instrument;
 
 use super::actor::{WatermarkActor, WatermarkMsg, WatermarkShared};
@@ -164,9 +162,7 @@ impl WaterMark {
 pub mod tests {
 	use std::{sync::atomic::AtomicUsize, thread::sleep, time::Duration};
 
-	use reifydb_runtime::time::Instant;
-
-	use reifydb_runtime::actor::runtime::ActorRuntime;
+	use reifydb_runtime::{actor::runtime::ActorRuntime, time::Instant};
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;
