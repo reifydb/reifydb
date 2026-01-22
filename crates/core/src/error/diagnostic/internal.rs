@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_runtime::time::now_millis;
+use reifydb_runtime::clock::Clock;
 use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 /// Creates a detailed internal error diagnostic with source location and
@@ -18,7 +18,7 @@ pub fn internal_with_context(
 
 	// Generate a unique error ID based on timestamp and location
 	let error_id =
-		format!("ERR-{}-{}:{}", now_millis(), file.rsplit('/').next().unwrap_or(file).replace(".rs", ""), line);
+		format!("ERR-{}-{}:{}", Clock::default().now_millis(), file.rsplit('/').next().unwrap_or(file).replace(".rs", ""), line);
 
 	let detailed_message = format!("Internal error [{}]: {}", error_id, reason);
 

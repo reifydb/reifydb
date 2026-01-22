@@ -40,20 +40,21 @@
 
 #![allow(dead_code)]
 
+pub mod clock;
+
 pub mod hash;
 
 pub mod sync;
-
-pub mod time;
 
 pub mod actor;
 
 use std::{future::Future, sync::Arc};
 
 use crate::actor::system::{ActorSystem, ActorSystemConfig};
+use crate::clock::{Clock, MockClock};
 
 /// Configuration for creating a [`SharedRuntime`].
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SharedRuntimeConfig {
 	/// Number of worker threads for async runtime (ignored in WASM)
 	pub async_threads: usize,
@@ -61,6 +62,8 @@ pub struct SharedRuntimeConfig {
 	pub compute_threads: usize,
 	/// Maximum concurrent compute tasks (ignored in WASM)
 	pub compute_max_in_flight: usize,
+	/// Clock for time operations (defaults to real system clock)
+	pub clock: Clock,
 }
 
 impl Default for SharedRuntimeConfig {
@@ -69,6 +72,7 @@ impl Default for SharedRuntimeConfig {
 			async_threads: 1,
 			compute_threads: 1,
 			compute_max_in_flight: 32,
+			clock: Clock::Real,
 		}
 	}
 }
@@ -89,6 +93,18 @@ impl SharedRuntimeConfig {
 	/// Set the maximum number of in-flight compute tasks.
 	pub fn compute_max_in_flight(mut self, max: usize) -> Self {
 		self.compute_max_in_flight = max;
+		self
+	}
+
+	/// Use a mock clock starting at the given milliseconds.
+	pub fn mock_clock(mut self, initial_millis: u64) -> Self {
+		self.clock = Clock::Mock(MockClock::from_millis(initial_millis));
+		self
+	}
+
+	/// Use a custom clock.
+	pub fn clock(mut self, clock: Clock) -> Self {
+		self.clock = clock;
 		self
 	}
 }
@@ -145,12 +161,14 @@ impl std::error::Error for WasmJoinError {}
 struct SharedRuntimeInner {
 	tokio: tokio::runtime::Runtime,
 	system: ActorSystem,
+	clock: Clock,
 }
 
 /// Inner shared state for the runtime (WASM).
 #[cfg(target_arch = "wasm32")]
 struct SharedRuntimeInner {
 	system: ActorSystem,
+	clock: Clock,
 }
 
 /// Shared runtime that can be cloned and passed across subsystems.
@@ -185,7 +203,7 @@ impl SharedRuntime {
 				.max_in_flight(config.compute_max_in_flight),
 		);
 
-		Self(Arc::new(SharedRuntimeInner { tokio, system }))
+		Self(Arc::new(SharedRuntimeInner { tokio, system, clock: config.clock }))
 	}
 
 	/// Create a new shared runtime from configuration.
@@ -197,12 +215,17 @@ impl SharedRuntime {
 				.max_in_flight(config.compute_max_in_flight),
 		);
 
-		Self(Arc::new(SharedRuntimeInner { system }))
+		Self(Arc::new(SharedRuntimeInner { system, clock: config.clock }))
 	}
 
 	/// Get the unified actor system for spawning actors and compute.
 	pub fn actor_system(&self) -> ActorSystem {
 		self.0.system.clone()
+	}
+
+	/// Get the clock for this runtime (shared across all threads).
+	pub fn clock(&self) -> &Clock {
+		&self.0.clock
 	}
 
 	/// Get a handle to the async runtime.

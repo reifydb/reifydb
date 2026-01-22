@@ -15,9 +15,12 @@ use reifydb_cdc::{
 };
 use reifydb_core::internal;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::{
-	mailbox::ActorRef,
-	system::{ActorHandle, ActorSystem},
+use reifydb_runtime::{
+	actor::{
+		mailbox::ActorRef,
+		system::{ActorHandle, ActorSystem},
+	},
+	clock::Clock,
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{Result, error::Error};
@@ -40,13 +43,11 @@ use crate::{
 pub(crate) struct FlowCoordinator {
 	catalog: FlowCatalog,
 	actor_ref: ActorRef<CoordinatorMsg>,
-	/// Worker handles for proper cleanup - must be joined on shutdown
 	worker_handles: Vec<ActorHandle<FlowMsg>>,
-	/// Pool handle for proper cleanup - must be joined on shutdown
 	pool_handle: Option<ActorHandle<PoolMsg>>,
-	/// Coordinator handle for proper cleanup - must be joined on shutdown
 	coordinator_handle: Option<ActorHandle<CoordinatorMsg>>,
 	actor_system: ActorSystem,
+	clock: Clock,
 }
 
 impl FlowCoordinator {
@@ -63,6 +64,7 @@ impl FlowCoordinator {
 		factory_builder: F,
 		cdc_store: CdcStore,
 		actor_system: ActorSystem,
+		clock: Clock,
 	) -> Self
 	where
 		F: Fn() -> Fac + Send + 'static,
@@ -80,7 +82,7 @@ impl FlowCoordinator {
 			worker_handles.push(handle);
 		}
 
-		let pool_actor = PoolActor::new(worker_refs);
+		let pool_actor = PoolActor::new(worker_refs, clock.clone());
 		let pool_handle = actor_system.spawn("flow-pool", pool_actor);
 		let pool_ref = pool_handle.actor_ref().clone();
 
@@ -91,6 +93,7 @@ impl FlowCoordinator {
 			tracker,
 			cdc_store,
 			num_workers,
+			clock.clone(),
 		);
 
 		let coordinator_handle = actor_system.spawn("flow-coordinator", coordinator_actor);
@@ -103,6 +106,7 @@ impl FlowCoordinator {
 			pool_handle: Some(pool_handle),
 			coordinator_handle: Some(coordinator_handle),
 			actor_system,
+			clock,
 		}
 	}
 
@@ -160,7 +164,7 @@ impl CdcConsume for FlowCoordinator {
 		txn: &mut StandardCommandTransaction,
 		cdcs: Vec<reifydb_core::interface::cdc::Cdc>,
 	) -> Result<()> {
-		let consume_start = reifydb_runtime::time::Instant::now();
+		let consume_start = self.clock.instant();
 
 		// Record version range
 		if let Some(first) = cdcs.first() {

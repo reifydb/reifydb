@@ -8,7 +8,7 @@ use std::{
 
 use cleanup::cleanup_old_windows;
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
-use reifydb_runtime::{sync::rwlock::RwLock, actor::system::ActorSystem, time::Instant};
+use reifydb_runtime::{sync::rwlock::RwLock, actor::system::ActorSystem, clock::Clock};
 use reifydb_type::Result;
 use tracing::{Span, instrument};
 
@@ -112,25 +112,19 @@ pub(crate) struct Oracle<L>
 where
 	L: VersionProvider,
 {
-	// Using RwLock allows multiple concurrent readers during conflict detection
 	pub(crate) inner: RwLock<OracleInner<L>>,
-	/// Used by DB
 	pub(crate) query: WaterMark,
-	/// Used to block new transaction, so all previous commits are visible
-	/// to a new query.
 	pub(crate) command: WaterMark,
-	/// Shutdown signal for cleanup thread
 	shutdown_signal: Arc<RwLock<bool>>,
-	/// Actor system for watermark actors
 	actor_system: ActorSystem,
+	metrics_clock: Clock,
 }
 
 impl<L> Oracle<L>
 where
 	L: VersionProvider,
 {
-	/// Create a new oracle with efficient conflict detection
-	pub fn new(clock: L, actor_system: ActorSystem) -> Self {
+	pub fn new(clock: L, actor_system: ActorSystem, metrics_clock: Clock) -> Self {
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
 		Self {
@@ -145,6 +139,7 @@ where
 			command: WaterMark::new("txn-mark-cmd".into(), &actor_system),
 			shutdown_signal,
 			actor_system,
+			metrics_clock,
 		}
 	}
 
@@ -178,7 +173,7 @@ where
 	) -> reifydb_type::Result<CreateCommitResult> {
 		// First, perform conflict detection with read lock for better
 		// concurrency
-		let lock_start = Instant::now();
+		let lock_start = self.metrics_clock.instant();
 		let inner = self.inner.read();
 		Span::current().record("inner_read_lock_us", lock_start.elapsed().as_micros() as u64);
 
@@ -191,7 +186,7 @@ where
 		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
 
 		// Only check conflicts in windows that contain relevant keys
-		let find_start = Instant::now();
+		let find_start = self.metrics_clock.instant();
 		let relevant_windows: Vec<CommitVersion> = if !has_keys {
 			// If no specific keys, we need to check recent windows
 			// for range/all operations
@@ -226,7 +221,7 @@ where
 		Span::current().record("relevant_windows", relevant_windows.len());
 
 		// Check for conflicts only in relevant windows
-		let conflict_start = Instant::now();
+		let conflict_start = self.metrics_clock.instant();
 		let mut windows_checked = 0u64;
 		let mut txns_checked = 0u64;
 		for window_version in &relevant_windows {
@@ -304,7 +299,7 @@ where
 				inner.clock.clone()
 			};
 
-			let clock_start = Instant::now();
+			let clock_start = self.metrics_clock.instant();
 			let version = clock.next()?;
 			Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
 
@@ -317,11 +312,11 @@ where
 
 		// Add this transaction to the appropriate window with write lock
 		let needs_cleanup = {
-			let write_lock_start = Instant::now();
+			let write_lock_start = self.metrics_clock.instant();
 			let mut inner = self.inner.write();
 			Span::current().record("inner_write_lock_us", write_lock_start.elapsed().as_micros() as u64);
 
-			let add_start = Instant::now();
+			let add_start = self.metrics_clock.instant();
 			inner.add_committed_transaction(commit_version, conflicts);
 			Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
 			// Check if cleanup is needed
@@ -329,7 +324,7 @@ where
 		};
 
 		if needs_cleanup {
-			let cleanup_start = Instant::now();
+			let cleanup_start = self.metrics_clock.instant();
 			let mut inner = self.inner.write();
 			let inner = &mut *inner;
 			cleanup_old_windows(&mut inner.time_windows, &mut inner.key_to_windows);
@@ -449,7 +444,7 @@ pub mod tests {
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
 		let actor_system = ActorSystem::new(ActorSystemConfig::default());
-		Oracle::new(clock, actor_system)
+		Oracle::new(clock, actor_system, Clock::default())
 	}
 
 	#[test]

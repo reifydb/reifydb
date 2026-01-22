@@ -28,7 +28,7 @@ use reifydb_runtime::{
 		traits::{Actor, ActorConfig, Flow},
 		system::ActorSystem,
 	},
-	time::Instant,
+	clock::{Clock, Instant},
 };
 use reifydb_type::util::cowvec::CowVec;
 use tracing::{Span, debug, error, instrument};
@@ -88,13 +88,11 @@ pub enum DropMessage {
 }
 
 /// Actor that processes drop operations asynchronously.
-///
-/// Receives drop requests and batches them for efficient processing.
-/// Uses the shared ActorRuntime, so it works in both native and WASM.
 pub struct DropActor {
 	storage: HotStorage,
 	event_bus: EventBus,
 	config: DropWorkerConfig,
+	clock: Clock,
 }
 
 /// State for the drop actor.
@@ -108,25 +106,23 @@ pub struct DropActorState {
 }
 
 impl DropActor {
-	/// Create a new drop actor.
-	pub fn new(config: DropWorkerConfig, storage: HotStorage, event_bus: EventBus) -> Self {
+	pub fn new(config: DropWorkerConfig, storage: HotStorage, event_bus: EventBus, clock: Clock) -> Self {
 		Self {
 			storage,
 			event_bus,
 			config,
+			clock,
 		}
 	}
 
-	/// Spawn a drop actor on the given system.
-	///
-	/// Returns the ActorRef for sending messages.
 	pub fn spawn(
 		system: &ActorSystem,
 		config: DropWorkerConfig,
 		storage: HotStorage,
 		event_bus: EventBus,
+		clock: Clock,
 	) -> ActorRef<DropMessage> {
-		let actor = Self::new(config, storage, event_bus);
+		let actor = Self::new(config, storage, event_bus, clock);
 		system.spawn("drop-worker", actor).actor_ref().clone()
 	}
 
@@ -144,7 +140,7 @@ impl DropActor {
 		}
 
 		Self::process_batch(&self.storage, &mut state.pending_requests, &self.event_bus);
-		state.last_flush = Instant::now();
+		state.last_flush = self.clock.instant();
 	}
 
 	#[instrument(name = "drop_actor::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
@@ -213,7 +209,7 @@ impl Actor for DropActor {
 
 		DropActorState {
 			pending_requests: Vec::with_capacity(self.config.batch_size),
-			last_flush: Instant::now(),
+			last_flush: self.clock.instant(),
 			_timer_handle: Some(timer_handle),
 		}
 	}

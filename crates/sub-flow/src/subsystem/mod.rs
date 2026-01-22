@@ -26,6 +26,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, evaluate::column::StandardColumnEvaluator};
+use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
 use tracing::info;
@@ -55,12 +56,17 @@ impl FlowSubsystem {
 			}
 		}
 
+		let runtime = ioc.resolve::<SharedRuntime>().expect("SharedRuntime must be registered");
+		let clock = runtime.clock().clone();
+		let clock_for_factory = clock.clone();
+
 		let factory_builder = move || {
 			let cat = catalog.clone();
 			let exec = executor.clone();
 			let bus = event_bus.clone();
+			let clk = clock_for_factory.clone();
 
-			move || FlowEngine::new(cat, StandardColumnEvaluator::default(), exec, bus)
+			move || FlowEngine::new(cat, StandardColumnEvaluator::default(), exec, bus, clk)
 		};
 
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
@@ -70,8 +76,6 @@ impl FlowSubsystem {
 		let num_workers = config.num_workers;
 		info!(num_workers, "initializing flow coordinator with {} workers", num_workers);
 
-		// Use the engine's actor system instead of creating a new one
-		// This is critical for WASM where actors on different systems cannot communicate
 		let actor_system = engine.actor_system();
 
 		let coordinator = FlowCoordinator::new(
@@ -81,6 +85,7 @@ impl FlowSubsystem {
 			factory_builder,
 			cdc_store.clone(),
 			actor_system.clone(),
+			clock,
 		);
 
 		// Register FlowLags with access to the flow catalog

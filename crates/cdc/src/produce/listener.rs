@@ -7,10 +7,8 @@
 //! for background processing.
 
 use crossbeam_channel::Sender;
-use reifydb_core::{
-	event::{EventListener, transaction::PostCommitEvent},
-	util::clock::now_millis,
-};
+use reifydb_core::event::{EventListener, transaction::PostCommitEvent};
+use reifydb_runtime::clock::Clock;
 
 use super::worker::CdcWorkItem;
 
@@ -22,6 +20,7 @@ use super::worker::CdcWorkItem;
 /// channel send.
 pub struct CdcEventListener {
 	sender: Sender<CdcWorkItem>,
+	clock: Clock,
 }
 
 impl CdcEventListener {
@@ -29,9 +28,11 @@ impl CdcEventListener {
 	///
 	/// # Arguments
 	/// - `sender`: The channel sender to forward work items to the CdcWorker
-	pub fn new(sender: Sender<CdcWorkItem>) -> Self {
+	/// - `clock`: The clock to use for timestamps
+	pub fn new(sender: Sender<CdcWorkItem>, clock: Clock) -> Self {
 		Self {
 			sender,
+			clock,
 		}
 	}
 }
@@ -40,7 +41,7 @@ impl EventListener<PostCommitEvent> for CdcEventListener {
 	fn on(&self, event: &PostCommitEvent) {
 		let item = CdcWorkItem {
 			version: *event.version(),
-			timestamp: now_millis(),
+			timestamp: self.clock.now_millis(),
 			deltas: event.deltas().iter().cloned().collect(),
 		};
 
@@ -56,6 +57,7 @@ pub mod tests {
 		delta::Delta,
 		encoded::{encoded::EncodedValues, key::EncodedKey},
 	};
+	use reifydb_runtime::clock::MockClock;
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
@@ -71,7 +73,8 @@ pub mod tests {
 	#[test]
 	fn test_listener_forwards_event() {
 		let (sender, receiver) = unbounded();
-		let listener = CdcEventListener::new(sender);
+		let clock = Clock::Mock(MockClock::from_millis(1000));
+		let listener = CdcEventListener::new(sender, clock);
 
 		let deltas = CowVec::new(vec![
 			Delta::Set {
@@ -90,5 +93,6 @@ pub mod tests {
 		let item = receiver.try_recv().unwrap();
 		assert_eq!(item.version, CommitVersion(42));
 		assert_eq!(item.deltas.len(), 2);
+		assert_eq!(item.timestamp, 1000);
 	}
 }

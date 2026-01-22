@@ -27,7 +27,11 @@ pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
 pub use reifydb_rql as rql;
-pub use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, actor::system::ActorSystem};
+pub use reifydb_runtime::{
+	SharedRuntime, SharedRuntimeConfig,
+	actor::system::ActorSystem,
+	clock::{Clock, MockClock},
+};
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_multi::hot::{sqlite::config::SqliteConfig, storage::HotStorage};
 pub use reifydb_store_single as single_storage;

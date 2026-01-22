@@ -24,7 +24,7 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
+use reifydb_runtime::{actor::system::{ActorSystem, ActorSystemConfig}, clock::Clock};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_testing::testscript::{
@@ -56,6 +56,7 @@ fn test_serializable(path: &Path) {
 		TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, bus.clone())),
 		bus,
 		actor_system,
+		Clock::default(),
 	)
 	.unwrap();
 

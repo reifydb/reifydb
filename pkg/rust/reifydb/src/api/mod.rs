@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
 use reifydb_store_multi::{
 	MultiStore,
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
@@ -128,7 +128,8 @@ fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, Transa
 pub(crate) fn transaction(
 	input: (MultiStore, SingleStore, TransactionSingle, EventBus),
 	actor_system: ActorSystem,
+	clock: Clock,
 ) -> (TransactionMulti, TransactionSingle, EventBus) {
-	let multi = TransactionMulti::new(input.0, input.2.clone(), input.3.clone(), actor_system).unwrap();
+	let multi = TransactionMulti::new(input.0, input.2.clone(), input.3.clone(), actor_system, clock).unwrap();
 	(multi, input.2, input.3)
 }

@@ -163,7 +163,7 @@ impl WaterMark {
 pub mod tests {
 	use std::{sync::atomic::AtomicUsize, thread::sleep, time::Duration};
 
-	use reifydb_runtime::{actor::system::{ActorSystem, ActorSystemConfig}, time::Instant};
+	use reifydb_runtime::{actor::system::{ActorSystem, ActorSystemConfig}, clock::Clock};
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;
@@ -312,7 +312,8 @@ pub mod tests {
 
 			// Try to wait for a very old version (should return immediately)
 			let very_old = done_until.0.saturating_sub(OLD_VERSION_THRESHOLD + 10);
-			let start = Instant::now();
+			let clock = Clock::default();
+			let start = clock.instant();
 			watermark.wait_for_mark(very_old);
 			let elapsed = start.elapsed();
 
@@ -328,7 +329,8 @@ pub mod tests {
 			watermark.begin(CommitVersion(1));
 
 			// Wait with short timeout
-			let start = Instant::now();
+			let clock = Clock::default();
+			let start = clock.instant();
 			let result = watermark.wait_for_mark_timeout(CommitVersion(1), Duration::from_millis(100));
 			let elapsed = start.elapsed();
 

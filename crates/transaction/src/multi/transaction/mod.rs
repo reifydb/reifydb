@@ -17,7 +17,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::store::{MultiVersionContains, MultiVersionGet},
 };
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
 use reifydb_store_multi::MultiStore;
 use reifydb_type::{Result, util::hex};
 use tracing::instrument;
@@ -88,10 +88,10 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock, actor_system))]
-	pub fn new(clock: L, actor_system: ActorSystem) -> Result<Self> {
+	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock, actor_system, metrics_clock))]
+	pub fn new(clock: L, actor_system: ActorSystem, metrics_clock: Clock) -> Result<Self> {
 		let version = clock.next()?;
-		let oracle = Oracle::new(clock, actor_system);
+		let oracle = Oracle::new(clock, actor_system, metrics_clock);
 		oracle.query.done(version);
 		oracle.command.done(version);
 		Ok(Self {
@@ -174,9 +174,10 @@ impl Inner {
 		single: TransactionSingle,
 		event_bus: EventBus,
 		actor_system: ActorSystem,
+		metrics_clock: Clock,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
-		let tm = TransactionManager::new(version_provider, actor_system)?;
+		let tm = TransactionManager::new(version_provider, actor_system, metrics_clock)?;
 
 		Ok(Self {
 			tm,
@@ -206,20 +207,22 @@ impl TransactionMulti {
 			TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, event_bus.clone())),
 			event_bus,
 			actor_system,
+			Clock::default(),
 		)
 		.unwrap()
 	}
 }
 
 impl TransactionMulti {
-	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus, actor_system))]
+	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus, actor_system, metrics_clock))]
 	pub fn new(
 		store: MultiStore,
 		single: TransactionSingle,
 		event_bus: EventBus,
 		actor_system: ActorSystem,
+		metrics_clock: Clock,
 	) -> Result<Self> {
-		Ok(Self(Arc::new(Inner::new(store, single, event_bus, actor_system)?)))
+		Ok(Self(Arc::new(Inner::new(store, single, event_bus, actor_system, metrics_clock)?)))
 	}
 
 	/// Get the actor system

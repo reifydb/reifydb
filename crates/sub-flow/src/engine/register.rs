@@ -368,6 +368,7 @@ impl FlowEngine {
 					min_events.clone(),
 					max_window_count.clone(),
 					max_window_age.clone(),
+					self.clock.clone(),
 				);
 				self.operators.insert(node.id, Rc::new(Operators::Window(operator)));
 			}

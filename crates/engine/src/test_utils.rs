@@ -16,8 +16,6 @@ use reifydb_cdc::{
 	produce::{listener::CdcEventListener, worker::CdcWorker},
 	storage::CdcStore,
 };
-#[cfg(debug_assertions)]
-use reifydb_core::util::clock::mock_time_set;
 use reifydb_core::{
 	event::{
 		EventBus,
@@ -30,7 +28,7 @@ use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_rqlv2::compiler::Compiler;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, actor::system::{ActorSystem, ActorSystemConfig}};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, actor::system::{ActorSystem, ActorSystemConfig}, clock::Clock};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
@@ -51,7 +49,7 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction {
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let single_svl = TransactionSvl::new(single_store, event_bus.clone());
 	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
-	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system).unwrap();
+	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default()).unwrap();
 
 	StandardCommandTransaction::new(multi, single, event_bus, Interceptors::new()).unwrap()
 }
@@ -64,7 +62,7 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let single_svl = TransactionSvl::new(single_store, event_bus.clone());
 	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
-	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system).unwrap();
+	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default()).unwrap();
 	let mut result =
 		StandardCommandTransaction::new(multi, single.clone(), event_bus.clone(), Interceptors::new()).unwrap();
 
@@ -117,16 +115,20 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 
 /// Create a test StandardEngine with all required dependencies registered.
 pub fn create_test_engine() -> StandardEngine {
-	#[cfg(debug_assertions)]
-	mock_time_set(1000);
-
 	let eventbus = EventBus::new();
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 	let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 	let single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
+	let runtime = SharedRuntime::from_config(
+		SharedRuntimeConfig::default()
+			.async_threads(2)
+			.compute_threads(2)
+			.compute_max_in_flight(32)
+			.mock_clock(1000),
+	);
 	let multi =
-		TransactionMulti::new(multi_store.clone(), single.clone(), eventbus.clone(), actor_system).unwrap();
+		TransactionMulti::new(multi_store.clone(), single.clone(), eventbus.clone(), actor_system, runtime.clock().clone()).unwrap();
 
 	let mut ioc = IocContainer::new();
 
@@ -136,9 +138,6 @@ pub fn create_test_engine() -> StandardEngine {
 	let schema_registry = SchemaRegistry::new(single.clone());
 	ioc = ioc.register(schema_registry.clone());
 
-	let runtime = SharedRuntime::from_config(
-		SharedRuntimeConfig::default().async_threads(2).compute_threads(2).compute_max_in_flight(32),
-	);
 	ioc = ioc.register(runtime.clone());
 
 	let compiler = Compiler::new(materialized_catalog.clone());
@@ -175,7 +174,7 @@ pub fn create_test_engine() -> StandardEngine {
 	);
 
 	let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, multi_store.clone(), eventbus.clone(), engine.clone()));
-	eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender()));
+	eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender(), runtime.clock().clone()));
 	ioc_for_cdc.register_service::<Arc<CdcWorker>>(cdc_worker);
 
 	engine

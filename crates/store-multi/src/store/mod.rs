@@ -7,6 +7,7 @@ use reifydb_core::event::EventBus;
 use reifydb_runtime::{
 	actor::mailbox::ActorRef,
 	actor::system::{ActorSystem, ActorSystemConfig},
+	clock::Clock,
 };
 use tracing::instrument;
 
@@ -55,7 +56,7 @@ impl StandardMultiStore {
 		// Spawn drop actor
 		let storage = hot.as_ref().expect("hot tier is required");
 		let drop_config = DropWorkerConfig::default();
-		let drop_actor = DropActor::spawn(&actor_system, drop_config, storage.clone(), config.event_bus.clone());
+		let drop_actor = DropActor::spawn(&actor_system, drop_config, storage.clone(), config.event_bus.clone(), Clock::default());
 
 		Ok(Self(Arc::new(StandardMultiStoreInner {
 			hot,

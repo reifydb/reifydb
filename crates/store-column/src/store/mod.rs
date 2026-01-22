@@ -10,7 +10,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	value::column::{compressed::CompressedColumn, data::ColumnData},
 };
-use reifydb_runtime::time::Instant;
+use reifydb_runtime::clock::{Clock, Instant};
 use reifydb_type::Result;
 
 use crate::{ColumnStatistics, ColumnStore, backend::Backend, config::ColumnStoreConfig, statistics::merge};
@@ -21,38 +21,30 @@ pub struct StandardColumnStore {
 	pub(crate) warm: Option<Backend>,
 	pub(crate) cold: Option<Backend>,
 	_config: ColumnStoreConfig,
-	/// Tier eviction state protected by std::sync::Mutex.
-	/// Using std::sync::Mutex is intentional here because:
-	/// 1. The ColumnStore trait methods are synchronous
-	/// 2. Lock hold times are very brief (just reading timestamps)
-	/// 3. This avoids async overhead for simple state checks
 	tier_state: Arc<Mutex<TierState>>,
+	_clock: Clock,
 }
 
 struct TierState {
-	_hot_evicted_version: CommitVersion,  // Last version evicted from hot to warm
-	_warm_evicted_version: CommitVersion, // Last version evicted from warm to cold
+	_hot_evicted_version: CommitVersion,
+	_warm_evicted_version: CommitVersion,
 	_last_eviction_time: Instant,
 }
 
-impl Default for TierState {
-	fn default() -> Self {
-		Self {
+impl StandardColumnStore {
+	pub fn new(config: ColumnStoreConfig, clock: Clock) -> Result<Self> {
+		let tier_state = TierState {
 			_hot_evicted_version: CommitVersion(0),
 			_warm_evicted_version: CommitVersion(0),
-			_last_eviction_time: Instant::now(),
-		}
-	}
-}
-
-impl StandardColumnStore {
-	pub fn new(config: ColumnStoreConfig) -> Result<Self> {
+			_last_eviction_time: clock.instant(),
+		};
 		Ok(Self {
 			hot: config.hot.as_ref().map(|c| c.backend.clone()),
 			warm: config.warm.as_ref().map(|c| c.backend.clone()),
 			cold: config.cold.as_ref().map(|c| c.backend.clone()),
 			_config: config,
-			tier_state: Arc::new(Mutex::new(TierState::default())),
+			tier_state: Arc::new(Mutex::new(tier_state)),
+			_clock: clock,
 		})
 	}
 

@@ -22,6 +22,7 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_engine::{evaluate::column::StandardColumnEvaluator, execute::Executor};
+use reifydb_runtime::clock::Clock;
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
@@ -45,15 +46,17 @@ pub struct FlowEngine {
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: HashMap<FlowId, CommitVersion>,
+	pub(crate) clock: Clock,
 }
 
 impl FlowEngine {
-	#[instrument(name = "flow::engine::new", level = "debug", skip(catalog, evaluator, executor, event_bus))]
+	#[instrument(name = "flow::engine::new", level = "debug", skip(catalog, evaluator, executor, event_bus, clock))]
 	pub fn new(
 		catalog: Catalog,
 		evaluator: StandardColumnEvaluator,
 		executor: Executor,
 		event_bus: EventBus,
+		clock: Clock,
 	) -> Self {
 		Self {
 			catalog,
@@ -66,6 +69,7 @@ impl FlowEngine {
 			analyzer: FlowGraphAnalyzer::new(),
 			event_bus,
 			flow_creation_versions: HashMap::new(),
+			clock,
 		}
 	}
 

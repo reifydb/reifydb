@@ -24,6 +24,7 @@ use reifydb_type::{
 	util::cowvec::CowVec,
 	value::{Value, dictionary::DictionaryEntryId, row_number::RowNumber},
 };
+use reifydb_runtime::clock::Clock;
 use tracing::{Span, instrument, warn};
 
 use crate::catalog::FlowCatalog;
@@ -174,7 +175,7 @@ pub(crate) fn create_row(
 ///
 /// Processes all row changes from the CDC batch, skipping non-row changes
 /// and delete events without pre-images.
-#[instrument(name = "flow::convert::to_flow_change", level = "debug", skip(engine, catalog_cache, cdc), fields(
+#[instrument(name = "flow::convert::to_flow_change", level = "debug", skip(engine, catalog_cache, cdc, clock), fields(
 	input = cdc.changes.len(),
 	output = tracing::field::Empty,
 	elapsed_us = tracing::field::Empty
@@ -184,8 +185,9 @@ pub(crate) fn to_flow_change(
 	catalog_cache: &FlowCatalog,
 	cdc: &Cdc,
 	version: CommitVersion,
+	clock: &Clock,
 ) -> Result<Vec<FlowChange>> {
-	let start = reifydb_runtime::time::Instant::now();
+	let start = clock.instant();
 	let mut changes = Vec::new();
 
 	let mut query_txn = engine.begin_query_at_version(version)?;

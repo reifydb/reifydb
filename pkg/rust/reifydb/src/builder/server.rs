@@ -158,6 +158,7 @@ impl ServerBuilder {
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			actor_system,
+			runtime.clock().clone(),
 		);
 
 		let mut database_builder = DatabaseBuilder::new(multi, single, eventbus)

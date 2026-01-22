@@ -13,10 +13,13 @@ use std::collections::HashMap;
 use crossbeam_channel::{Sender, bounded};
 use reifydb_core::internal;
 use reifydb_rql::flow::flow::FlowDag;
-use reifydb_runtime::actor::{
-	context::Context,
-	mailbox::ActorRef,
-	traits::{Actor, ActorConfig, Flow},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		mailbox::ActorRef,
+		traits::{Actor, ActorConfig, Flow},
+	},
+	clock::Clock,
 };
 use reifydb_type::util::hex::encode;
 use tracing::{Span, instrument};
@@ -59,15 +62,15 @@ pub enum PoolResponse {
 
 /// Pool actor - supervises worker actors and routes work.
 pub struct PoolActor {
-	/// References to child FlowActors
 	worker_refs: Vec<ActorRef<FlowMsg>>,
+	clock: Clock,
 }
 
 impl PoolActor {
-	/// Create a new pool actor with the given worker refs.
-	pub fn new(worker_refs: Vec<ActorRef<FlowMsg>>) -> Self {
+	pub fn new(worker_refs: Vec<ActorRef<FlowMsg>>, clock: Clock) -> Self {
 		Self {
 			worker_refs,
+			clock,
 		}
 	}
 }
@@ -148,7 +151,7 @@ impl PoolActor {
 		elapsed_us = tracing::field::Empty
 	))]
 	fn handle_submit(&self, batches: HashMap<usize, WorkerBatch>) -> PoolResponse {
-		let start = reifydb_runtime::time::Instant::now();
+		let start = self.clock.instant();
 		let total_instructions: usize = batches.values().map(|b| b.instructions.len()).sum();
 		Span::current().record("instructions", total_instructions);
 

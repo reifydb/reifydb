@@ -22,10 +22,13 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag};
-use reifydb_runtime::actor::{
-	context::Context,
-	mailbox::ActorRef,
-	traits::{Actor, ActorConfig, Flow},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		mailbox::ActorRef,
+		traits::{Actor, ActorConfig, Flow},
+	},
+	clock::Clock,
 };
 use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin::External};
 use tracing::{Span, debug, info, instrument};
@@ -78,10 +81,10 @@ pub struct CoordinatorActor {
 	tracker: Arc<PrimitiveVersionTracker>,
 	cdc_store: CdcStore,
 	num_workers: usize,
+	clock: Clock,
 }
 
 impl CoordinatorActor {
-	/// Create a new coordinator actor.
 	pub fn new(
 		engine: StandardEngine,
 		catalog: FlowCatalog,
@@ -89,6 +92,7 @@ impl CoordinatorActor {
 		tracker: Arc<PrimitiveVersionTracker>,
 		cdc_store: CdcStore,
 		num_workers: usize,
+		clock: Clock,
 	) -> Self {
 		Self {
 			engine,
@@ -97,6 +101,7 @@ impl CoordinatorActor {
 			tracker,
 			cdc_store,
 			num_workers,
+			clock,
 		}
 	}
 }
@@ -156,7 +161,7 @@ impl CoordinatorActor {
 		new_flows: Vec<FlowDag>,
 		current_version: CommitVersion,
 	) -> CoordinatorResponse {
-		let consume_start = reifydb_runtime::time::Instant::now();
+		let consume_start = self.clock.instant();
 
 		// Record version range
 		if let Some(first) = cdcs.first() {
@@ -192,7 +197,7 @@ impl CoordinatorActor {
 			}
 
 			// Convert CDC to flow changes
-			match convert::to_flow_change(&self.engine, &self.catalog, cdc, version) {
+			match convert::to_flow_change(&self.engine, &self.catalog, cdc, version, &self.clock) {
 				Ok(changes) => all_changes.extend(changes),
 				Err(e) => return CoordinatorResponse::Error(e.to_string()),
 			}
@@ -369,7 +374,7 @@ impl CoordinatorActor {
 		to_version: CommitVersion,
 		state_version: CommitVersion,
 	) -> HashMap<usize, WorkerBatch> {
-		let start = reifydb_runtime::time::Instant::now();
+		let start = self.clock.instant();
 		let mut worker_batches: HashMap<usize, WorkerBatch> = HashMap::new();
 
 		let active_flow_ids: Vec<_> = state.states.active_flow_ids();
@@ -406,7 +411,7 @@ impl CoordinatorActor {
 		current_version: CommitVersion,
 		state_version: CommitVersion,
 	) -> Result<(PendingWrites, Vec<(FlowId, CommitVersion)>), String> {
-		let start = reifydb_runtime::time::Instant::now();
+		let start = self.clock.instant();
 		const BACKFILL_CHUNK_SIZE: u64 = 1_000;
 
 		let backfilling_flows: Vec<_> = state.states.backfilling_flow_ids();
@@ -461,7 +466,7 @@ impl CoordinatorActor {
 			// Convert CDC to flow changes
 			let mut chunk_changes = Vec::new();
 			for cdc in &batch.items {
-				match convert::to_flow_change(&self.engine, &self.catalog, cdc, cdc.version) {
+				match convert::to_flow_change(&self.engine, &self.catalog, cdc, cdc.version, &self.clock) {
 					Ok(changes) => chunk_changes.extend(changes),
 					Err(e) => return Err(e.to_string()),
 				}

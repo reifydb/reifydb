@@ -18,8 +18,8 @@ use reifydb_core::{
 		store::MultiVersionGetPrevious,
 	},
 	key::{Key, cdc_exclude::should_exclude_from_cdc},
-	util::clock::now_millis,
 };
+use reifydb_runtime::clock::Clock;
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
@@ -185,12 +185,14 @@ where
 /// Event listener that forwards PostCommitEvent to the CDC producer actor.
 pub struct CdcProducerEventListener {
 	actor_ref: ActorRef<CdcProduceMsg>,
+	clock: Clock,
 }
 
 impl CdcProducerEventListener {
-	pub fn new(actor_ref: ActorRef<CdcProduceMsg>) -> Self {
+	pub fn new(actor_ref: ActorRef<CdcProduceMsg>, clock: Clock) -> Self {
 		Self {
 			actor_ref,
+			clock,
 		}
 	}
 }
@@ -199,7 +201,7 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	fn on(&self, event: &PostCommitEvent) {
 		let msg = CdcProduceMsg {
 			version: *event.version(),
-			timestamp: now_millis(),
+			timestamp: self.clock.now_millis(),
 			deltas: event.deltas().iter().cloned().collect(),
 		};
 

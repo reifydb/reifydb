@@ -34,9 +34,10 @@ use reifydb_core::{
 		schema::Schema,
 	},
 	row::Row,
-	util::{clock, encoding::keycode::serializer::KeySerializer},
+	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
+use reifydb_runtime::clock::Clock;
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
@@ -148,6 +149,7 @@ pub struct WindowOperator {
 	pub min_events: usize,               // Minimum events required before window becomes visible
 	pub max_window_count: Option<usize>, // Maximum number of windows to keep per group
 	pub max_window_age: Option<std::time::Duration>, // Maximum age of windows before expiration
+	pub clock: Clock,
 }
 
 impl WindowOperator {
@@ -162,6 +164,7 @@ impl WindowOperator {
 		min_events: usize,
 		max_window_count: Option<usize>,
 		max_window_age: Option<std::time::Duration>,
+		clock: Clock,
 	) -> Self {
 		Self {
 			parent,
@@ -177,12 +180,13 @@ impl WindowOperator {
 			min_events: min_events.max(1), // Ensure at least 1 event is required
 			max_window_count,
 			max_window_age,
+			clock,
 		}
 	}
 
 	/// Get the current timestamp in milliseconds
 	pub fn current_timestamp(&self) -> u64 {
-		clock::now_millis()
+		self.clock.now_millis()
 	}
 
 	/// Compute group keys for all rows in Columns

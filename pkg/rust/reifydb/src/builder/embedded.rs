@@ -82,11 +82,12 @@ impl EmbeddedBuilder {
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			actor_system,
+			runtime.clock().clone(),
 		);
 
 		let mut builder = DatabaseBuilder::new(multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)
-			.with_runtime(runtime)
+			.with_runtime(runtime.clone())
 			.with_stores(multi_store, single_store);
 
 		if let Some(configurator) = self.functions_configurator {

@@ -93,11 +93,11 @@ impl FlowEngine {
 		node: &FlowNode,
 		change: FlowChange,
 	) -> reifydb_type::Result<FlowChange> {
-		let lock_start = reifydb_runtime::time::Instant::now();
+		let lock_start = self.clock.instant();
 		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
-		let apply_start = reifydb_runtime::time::Instant::now();
+		let apply_start = self.clock.instant();
 		let result = operator.apply(txn, change, &self.evaluator)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
@@ -131,7 +131,7 @@ impl FlowEngine {
 			}
 		};
 
-		let propagation_start = reifydb_runtime::time::Instant::now();
+		let propagation_start = self.clock.instant();
 		if changes.is_empty() {
 		} else if changes.len() == 1 {
 			let output_id = changes[0];
