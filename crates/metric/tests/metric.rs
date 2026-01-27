@@ -29,6 +29,7 @@ use reifydb_metric::{
 	multi::{MultiStorageStats, StorageStatsReader, Tier},
 	worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener},
 };
+use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
 use reifydb_store_multi::{
 	config::{HotConfig, MultiStoreConfig},
 	hot::storage::HotStorage,
@@ -45,12 +46,17 @@ use reifydb_testing::{
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
+fn test_actor_system() -> ActorSystem {
+	ActorSystem::new(ActorSystemConfig::default().pool_threads(2))
+}
+
 test_each_path! { in "crates/metric/tests/scripts/integration" as metric_memory => test_memory }
 test_each_path! { in "crates/metric/tests/scripts/integration" as metric_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
+	let actor_system = test_actor_system();
 	let data_storage = HotStorage::memory();
-	let event_bus = EventBus::new();
+	let event_bus = EventBus::new(actor_system);
 	let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 	let stats_waiter = StatsWaiter::new();
 	event_bus.register::<StatsProcessedEvent, _>(stats_waiter.clone());
@@ -60,8 +66,9 @@ fn test_memory(path: &Path) {
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
+		let actor_system = test_actor_system();
 		let data_storage = HotStorage::sqlite_in_memory();
-		let event_bus = EventBus::new();
+		let event_bus = EventBus::new(actor_system);
 		let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 		let stats_waiter = StatsWaiter::new();
 		event_bus.register::<StatsProcessedEvent, _>(stats_waiter.clone());

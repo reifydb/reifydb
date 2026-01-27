@@ -20,7 +20,8 @@ use std::{
 
 use reifydb_runtime::actor::{
 	context::Context,
-	traits::{Actor, ActorConfig, Flow},
+	system::config::ActorConfig,
+	traits::{Actor, Flow},
 };
 
 use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD, watermark::WaiterHandle};

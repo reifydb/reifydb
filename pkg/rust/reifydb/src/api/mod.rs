@@ -36,18 +36,21 @@ pub enum StorageFactory {
 }
 
 impl StorageFactory {
-	/// Create the storage.
-	pub(crate) fn create(&self) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
+	/// Create the storage with the given actor system.
+	pub(crate) fn create(
+		&self,
+		actor_system: ActorSystem,
+	) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
 		match self {
-			StorageFactory::Memory => create_memory_store(),
-			StorageFactory::Sqlite(config) => create_sqlite_store(config.clone()),
+			StorageFactory::Memory => create_memory_store(actor_system),
+			StorageFactory::Sqlite(config) => create_sqlite_store(config.clone(), actor_system),
 		}
 	}
 }
 
 /// Internal: Create in-memory storage.
-fn create_memory_store() -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
-	let eventbus = EventBus::new();
+fn create_memory_store(actor_system: ActorSystem) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
+	let eventbus = EventBus::new(actor_system);
 
 	// Create multi-version store
 	let multi_storage = HotStorage::memory();
@@ -77,8 +80,11 @@ fn create_memory_store() -> (MultiStore, SingleStore, TransactionSingle, EventBu
 }
 
 /// Internal: Create SQLite storage with the given configuration.
-fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
-	let eventbus = EventBus::new();
+fn create_sqlite_store(
+	config: SqliteConfig,
+	actor_system: ActorSystem,
+) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
+	let eventbus = EventBus::new(actor_system);
 
 	// Modify config to use multi.db in a directory named after the UUID
 	let multi_path = match &config.path {

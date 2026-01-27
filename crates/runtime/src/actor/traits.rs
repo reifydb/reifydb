@@ -6,12 +6,8 @@
 //! This module defines the fundamental abstractions for the actor model:
 //! - [`Actor`]: The trait that all actors must implement
 //! - [`Flow`]: Control flow for actor scheduling
-//! - [`ActorConfig`]: Configuration for actor behavior (re-exported from system)
 
-use crate::actor::context::Context;
-
-// Re-export config types from system module
-pub use crate::actor::system::config::{ActorConfig, ThreadingModel};
+use crate::actor::{context::Context, system::config::ActorConfig};
 
 /// What the actor wants to do after handling a message.
 ///

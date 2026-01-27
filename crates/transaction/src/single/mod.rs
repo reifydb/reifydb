@@ -20,7 +20,13 @@ impl TransactionSingle {
 	}
 
 	pub fn testing() -> Self {
-		Self::SingleVersionLock(TransactionSvl::new(SingleStore::testing_memory(), EventBus::default()))
+		use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
+		let actor_system = ActorSystem::new(ActorSystemConfig::default().pool_threads(2));
+		let event_bus = EventBus::new(actor_system);
+		Self::SingleVersionLock(TransactionSvl::new(
+			SingleStore::testing_memory_with_eventbus(event_bus.clone()),
+			event_bus,
+		))
 	}
 
 	/// Helper for single-version queries.

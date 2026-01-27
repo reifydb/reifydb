@@ -242,7 +242,10 @@ impl DatabaseBuilder {
 		// The worker is stored in IoC to keep it alive for the database lifetime
 		// Engine is passed for periodic cleanup based on consumer watermarks
 		let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, multi_store, eventbus.clone(), engine.clone()));
-		eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender(), runtime.clock().clone()));
+		eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(
+			cdc_worker.sender(),
+			runtime.clock().clone(),
+		));
 		self.ioc.register_service::<Arc<CdcWorker>>(cdc_worker);
 
 		// Collect all versions

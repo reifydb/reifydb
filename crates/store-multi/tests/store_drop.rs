@@ -16,6 +16,7 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
+use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
 use reifydb_store_multi::{
 	config::{HotConfig, MultiStoreConfig},
 	hot::storage::HotStorage,
@@ -28,6 +29,10 @@ use reifydb_testing::{
 };
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
+
+fn test_actor_system() -> ActorSystem {
+	ActorSystem::new(ActorSystemConfig::default().pool_threads(2))
+}
 
 test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_memory => test_memory }
 test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_sqlite => test_sqlite }
@@ -53,6 +58,8 @@ pub struct Runner {
 
 impl Runner {
 	fn new(storage: HotStorage) -> Self {
+		let actor_system = test_actor_system();
+		let event_bus = reifydb_core::event::EventBus::new(actor_system);
 		let store = StandardMultiStore::new(MultiStoreConfig {
 			hot: Some(HotConfig {
 				storage,
@@ -62,7 +69,7 @@ impl Runner {
 			cold: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
-			event_bus: reifydb_core::event::EventBus::new(),
+			event_bus,
 		})
 		.unwrap();
 		Self {

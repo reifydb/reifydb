@@ -119,9 +119,14 @@ pub mod tests {
 		time::Duration,
 	};
 
+	use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
+
+	fn test_actor_system() -> ActorSystem {
+		ActorSystem::new(ActorSystemConfig::default().pool_threads(2))
+	}
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
@@ -132,7 +137,12 @@ pub mod tests {
 	}
 
 	fn create_test_svl() -> TransactionSvl {
-		TransactionSvl::new(reifydb_store_single::SingleStore::testing_memory(), EventBus::default())
+		let actor_system = test_actor_system();
+		let event_bus = EventBus::new(actor_system);
+		TransactionSvl::new(
+			reifydb_store_single::SingleStore::testing_memory_with_eventbus(event_bus.clone()),
+			event_bus,
+		)
 	}
 
 	#[test]

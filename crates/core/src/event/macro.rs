@@ -136,9 +136,22 @@ macro_rules! define_event {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::{Arc, Mutex};
+	use std::{
+		sync::{Arc, Mutex},
+		time::Duration,
+	};
+
+	use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
 
 	use crate::event::{Event, EventBus, EventListener};
+
+	fn test_actor_system() -> ActorSystem {
+		ActorSystem::new(ActorSystemConfig::default().pool_threads(2))
+	}
+
+	fn wait_for_processing() {
+		std::thread::sleep(Duration::from_millis(50));
+	}
 
 	define_event! {
 		pub struct DefineTestEvent {
@@ -224,7 +237,8 @@ mod tests {
 
 	#[test]
 	fn test_define_event_with_event_bus() {
-		let event_bus = EventBus::new();
+		let actor_system = test_actor_system();
+		let event_bus = EventBus::new(actor_system);
 
 		// Create a listener for DefineTestEvent
 		#[derive(Clone)]
@@ -247,10 +261,12 @@ mod tests {
 
 		// Emit event
 		event_bus.emit(DefineTestEvent::new(vec![1, 2, 3], "test".to_string()));
+		wait_for_processing();
 		assert_eq!(*listener.counter.lock().unwrap(), 3);
 
 		// Emit another
 		event_bus.emit(DefineTestEvent::new(vec![1, 2, 3, 4, 5], "test2".to_string()));
+		wait_for_processing();
 		assert_eq!(*listener.counter.lock().unwrap(), 8);
 	}
 }

@@ -50,8 +50,10 @@ pub mod actor;
 
 use std::{future::Future, sync::Arc};
 
-use crate::actor::system::{ActorSystem, ActorSystemConfig};
-use crate::clock::{Clock, MockClock};
+use crate::{
+	actor::system::{ActorSystem, ActorSystemConfig},
+	clock::{Clock, MockClock},
+};
 
 /// Configuration for creating a [`SharedRuntime`].
 #[derive(Clone)]
@@ -203,7 +205,11 @@ impl SharedRuntime {
 				.max_in_flight(config.compute_max_in_flight),
 		);
 
-		Self(Arc::new(SharedRuntimeInner { tokio, system, clock: config.clock }))
+		Self(Arc::new(SharedRuntimeInner {
+			tokio,
+			system,
+			clock: config.clock,
+		}))
 	}
 
 	/// Create a new shared runtime from configuration.
@@ -215,7 +221,10 @@ impl SharedRuntime {
 				.max_in_flight(config.compute_max_in_flight),
 		);
 
-		Self(Arc::new(SharedRuntimeInner { system, clock: config.clock }))
+		Self(Arc::new(SharedRuntimeInner {
+			system,
+			clock: config.clock,
+		}))
 	}
 
 	/// Get the unified actor system for spawning actors and compute.

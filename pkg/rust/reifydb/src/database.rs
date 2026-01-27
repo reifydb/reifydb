@@ -10,10 +10,7 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{
-	event::lifecycle::OnStartEvent,
-	interface::{WithEventBus, auth::Identity},
-};
+use reifydb_core::interface::auth::Identity;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::HealthStatus;
@@ -28,7 +25,6 @@ use reifydb_type::{Result, params::Params, value::frame::frame::Frame};
 use tracing::{debug, error, instrument, warn};
 
 use crate::{
-	boot::Bootloader,
 	health::{ComponentHealth, HealthMonitor},
 	session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session},
 	subsystem::Subsystems,
@@ -36,7 +32,6 @@ use crate::{
 
 pub struct Database {
 	engine: StandardEngine,
-	bootloader: Bootloader,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	shared_runtime: SharedRuntime,
@@ -76,7 +71,6 @@ impl Database {
 	) -> Self {
 		Self {
 			engine: engine.clone(),
-			bootloader: Bootloader::new(engine),
 			subsystems: subsystem_manager,
 			health_monitor,
 			shared_runtime,
@@ -106,11 +100,7 @@ impl Database {
 			return Ok(()); // Already running
 		}
 
-		self.bootloader.load()?;
-
 		debug!("Starting system with {} subsystems", self.subsystem_count());
-
-		self.engine.event_bus().emit(OnStartEvent::new());
 
 		// Start all subsystems
 		match self.subsystems.start_all() {
