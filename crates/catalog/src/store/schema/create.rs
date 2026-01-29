@@ -7,7 +7,7 @@ use reifydb_core::{
 	encoded::schema::Schema,
 	key::schema::{SchemaFieldKey, SchemaKey},
 };
-use reifydb_transaction::single::svl::write::SvlCommandTransaction;
+use reifydb_transaction::single::svl::write::SingleWriteTransaction;
 use tracing::instrument;
 
 use super::schema::{schema_field, schema_header};
@@ -18,7 +18,7 @@ use super::schema::{schema_field, schema_header};
 	skip(cmd, schema),
 	fields(fingerprint = ?schema.fingerprint(), field_count = schema.field_count())
 )]
-pub(crate) fn create_schema(cmd: &mut SvlCommandTransaction, schema: &Schema) -> crate::Result<()> {
+pub(crate) fn create_schema(cmd: &mut SingleWriteTransaction, schema: &Schema) -> crate::Result<()> {
 	let fingerprint = schema.fingerprint();
 
 	let mut header_row = schema_header::SCHEMA.allocate();

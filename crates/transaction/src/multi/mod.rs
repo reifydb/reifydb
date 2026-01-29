@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use reifydb_core::common::CommitVersion;
 
-use crate::multi::transaction::{TransactionMulti, command::CommandTransaction, query::QueryTransaction};
+use crate::multi::transaction::{TransactionMulti, read::MultiReadTransaction, write::MultiWriteTransaction};
 
 pub mod conflict;
 pub mod marker;

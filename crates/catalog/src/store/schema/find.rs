@@ -11,7 +11,7 @@ use reifydb_core::{
 		schema::{SchemaFieldKey, SchemaKey},
 	},
 };
-use reifydb_transaction::{single::svl::write::SvlCommandTransaction, standard::IntoStandardTransaction};
+use reifydb_transaction::{single::svl::write::SingleWriteTransaction, standard::IntoStandardTransaction};
 use reifydb_type::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
@@ -34,7 +34,7 @@ use super::schema::{schema_field, schema_header};
 	)
 )]
 pub(crate) fn find_schema_by_fingerprint(
-	txn: &mut SvlCommandTransaction,
+	txn: &mut SingleWriteTransaction,
 	fingerprint: SchemaFingerprint,
 ) -> crate::Result<Option<Schema>> {
 	// Read schema header

@@ -44,13 +44,13 @@ impl KeyReadLock {
 	}
 }
 
-pub struct SvlQueryTransaction<'a> {
+pub struct SingleReadTransaction<'a> {
 	pub(super) inner: &'a TransactionSvlInner,
 	pub(super) keys: Vec<EncodedKey>,
 	pub(super) _key_locks: Vec<KeyReadLock>,
 }
 
-impl<'a> SvlQueryTransaction<'a> {
+impl<'a> SingleReadTransaction<'a> {
 	#[inline]
 	fn check_key_allowed(&self, key: &EncodedKey) -> reifydb_type::Result<()> {
 		if self.keys.iter().any(|k| k == key) {

@@ -55,11 +55,11 @@ use crate::{
 	},
 	multi::{
 		pending::PendingWrites,
-		transaction::{TransactionMulti, command::CommandTransaction},
+		transaction::{TransactionMulti, write::MultiWriteTransaction},
 	},
 	single::{
 		TransactionSingle,
-		svl::{read::SvlQueryTransaction, write::SvlCommandTransaction},
+		svl::{read::SingleReadTransaction, write::SingleWriteTransaction},
 	},
 	standard::query::StandardQueryTransaction,
 };
@@ -73,7 +73,7 @@ pub struct StandardCommandTransaction {
 	pub single: TransactionSingle,
 	state: TransactionState,
 
-	pub cmd: Option<CommandTransaction>,
+	pub cmd: Option<MultiWriteTransaction>,
 	pub event_bus: EventBus,
 	pub changes: TransactionalDefChanges,
 
@@ -189,7 +189,7 @@ impl StandardCommandTransaction {
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut SvlQueryTransaction<'_>) -> Result<R> + Send,
+		F: FnOnce(&mut SingleReadTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
 		self.check_active()?;
@@ -205,7 +205,7 @@ impl StandardCommandTransaction {
 	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut SvlCommandTransaction<'_>) -> Result<R> + Send,
+		F: FnOnce(&mut SingleWriteTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
 		self.check_active()?;
@@ -265,7 +265,7 @@ impl StandardCommandTransaction {
 
 	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::standard::command::begin_single_query", level = "trace", skip(self, keys))]
-	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
+	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -275,7 +275,7 @@ impl StandardCommandTransaction {
 
 	/// Begin a single-version command transaction for specific keys
 	#[instrument(name = "transaction::standard::command::begin_single_command", level = "trace", skip(self, keys))]
-	pub fn begin_single_command<'a, I>(&self, keys: I) -> Result<SvlCommandTransaction<'_>>
+	pub fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{

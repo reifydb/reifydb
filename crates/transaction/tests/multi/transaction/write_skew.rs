@@ -10,7 +10,7 @@
 // http: //www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::encoded::key::{EncodedKey, EncodedKeyRange};
-use reifydb_transaction::multi::transaction::command::CommandTransaction;
+use reifydb_transaction::multi::transaction::write::MultiWriteTransaction;
 
 use super::test_multi;
 use crate::{
@@ -33,7 +33,7 @@ fn test_write_skew() {
 	txn.commit().unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
-	fn get_bal(txn: &mut CommandTransaction, k: &EncodedKey) -> u64 {
+	fn get_bal(txn: &mut MultiWriteTransaction, k: &EncodedKey) -> u64 {
 		let sv = txn.get(k).unwrap().unwrap();
 		let val = sv.values();
 		from_values!(u64, val)
