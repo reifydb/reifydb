@@ -19,12 +19,12 @@ use reifydb_type::Result;
 use super::{TransactionMulti, manager::TransactionManagerQuery, version::StandardVersionProvider};
 use crate::multi::types::TransactionValue;
 
-pub struct QueryTransaction {
+pub struct MultiReadTransaction {
 	pub(crate) engine: TransactionMulti,
 	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider>,
 }
 
-impl QueryTransaction {
+impl MultiReadTransaction {
 	pub fn new(engine: TransactionMulti, version: Option<CommitVersion>) -> Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
@@ -34,7 +34,7 @@ impl QueryTransaction {
 	}
 }
 
-impl QueryTransaction {
+impl MultiReadTransaction {
 	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}

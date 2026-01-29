@@ -6,7 +6,7 @@ pub mod svl;
 use reifydb_core::{encoded::key::EncodedKey, event::EventBus, interface::WithEventBus};
 use reifydb_store_single::SingleStore;
 
-use crate::single::svl::{TransactionSvl, read::SvlQueryTransaction, write::SvlCommandTransaction};
+use crate::single::svl::{TransactionSvl, read::SingleReadTransaction, write::SingleWriteTransaction};
 
 #[repr(u8)]
 #[derive(Clone)]
@@ -22,14 +22,17 @@ impl TransactionSingle {
 	pub fn testing() -> Self {
 		use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
 		let actor_system = ActorSystem::new(ActorSystemConfig::default());
-		Self::SingleVersionLock(TransactionSvl::new(SingleStore::testing_memory(), EventBus::new(&actor_system)))
+		Self::SingleVersionLock(TransactionSvl::new(
+			SingleStore::testing_memory(),
+			EventBus::new(&actor_system),
+		))
 	}
 
 	/// Helper for single-version queries.
 	pub fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> reifydb_type::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut SvlQueryTransaction<'_>) -> reifydb_type::Result<R>,
+		F: FnOnce(&mut SingleReadTransaction<'_>) -> reifydb_type::Result<R>,
 	{
 		let mut tx = self.begin_query(keys)?;
 		f(&mut tx)
@@ -39,7 +42,7 @@ impl TransactionSingle {
 	pub fn with_command<'a, I, F, R>(&self, keys: I, f: F) -> reifydb_type::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut SvlCommandTransaction<'_>) -> reifydb_type::Result<R>,
+		F: FnOnce(&mut SingleWriteTransaction<'_>) -> reifydb_type::Result<R>,
 	{
 		let mut tx = self.begin_command(keys)?;
 		let result = f(&mut tx)?;
@@ -48,7 +51,7 @@ impl TransactionSingle {
 	}
 
 	#[inline]
-	pub fn begin_query<'a, I>(&self, keys: I) -> reifydb_type::Result<SvlQueryTransaction<'_>>
+	pub fn begin_query<'a, I>(&self, keys: I) -> reifydb_type::Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -58,7 +61,7 @@ impl TransactionSingle {
 	}
 
 	#[inline]
-	pub fn begin_command<'a, I>(&self, keys: I) -> reifydb_type::Result<SvlCommandTransaction<'_>>
+	pub fn begin_command<'a, I>(&self, keys: I) -> reifydb_type::Result<SingleWriteTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{

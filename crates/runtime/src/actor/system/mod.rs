@@ -46,9 +46,7 @@ pub mod native;
 pub mod wasm;
 
 pub use config::{ActorConfig, ThreadingModel};
-
 #[cfg(reifydb_target = "native")]
 pub use native::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};
-
 #[cfg(reifydb_target = "wasm")]
 pub use wasm::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};

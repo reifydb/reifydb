@@ -116,7 +116,8 @@ impl WasmDB {
 		let cdc_producer_handle = spawn_cdc_producer(&actor_system, cdc_store, multi_store.clone());
 
 		// Register event listener to forward PostCommitEvent to CDC producer
-		let cdc_listener = CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), runtime.clock().clone());
+		let cdc_listener =
+			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), runtime.clock().clone());
 		eventbus.register::<PostCommitEvent, _>(cdc_listener);
 		console_log("[WASM] CDC producer actor registered!");
 

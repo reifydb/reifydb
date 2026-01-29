@@ -29,14 +29,14 @@ use crate::{
 	single::TransactionSingle,
 };
 
-pub mod command;
 pub mod manager;
-pub mod query;
+pub mod read;
 pub(crate) mod version;
+pub mod write;
 
 use crate::{
 	multi::{
-		CommandTransaction, QueryTransaction,
+		MultiReadTransaction, MultiWriteTransaction,
 		conflict::ConflictManager,
 		pending::PendingWrites,
 		transaction::manager::{TransactionManagerCommand, TransactionManagerQuery},
@@ -214,7 +214,11 @@ impl TransactionMulti {
 }
 
 impl TransactionMulti {
-	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus, actor_system, metrics_clock))]
+	#[instrument(
+		name = "transaction::new",
+		level = "debug",
+		skip(store, single, event_bus, actor_system, metrics_clock)
+	)]
 	pub fn new(
 		store: MultiStore,
 		single: TransactionSingle,
@@ -238,8 +242,8 @@ impl TransactionMulti {
 	}
 
 	#[instrument(name = "transaction::begin_query", level = "debug", skip(self))]
-	pub fn begin_query(&self) -> Result<QueryTransaction> {
-		QueryTransaction::new(self.clone(), None)
+	pub fn begin_query(&self) -> Result<MultiReadTransaction> {
+		MultiReadTransaction::new(self.clone(), None)
 	}
 
 	/// Begin a query transaction at a specific version.
@@ -247,21 +251,21 @@ impl TransactionMulti {
 	/// This is used for parallel query execution where multiple tasks need to
 	/// read from the same snapshot (same CommitVersion) for consistency.
 	#[instrument(name = "transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0))]
-	pub fn begin_query_at_version(&self, version: CommitVersion) -> Result<QueryTransaction> {
-		QueryTransaction::new(self.clone(), Some(version))
+	pub fn begin_query_at_version(&self, version: CommitVersion) -> Result<MultiReadTransaction> {
+		MultiReadTransaction::new(self.clone(), Some(version))
 	}
 }
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self) -> Result<CommandTransaction> {
-		CommandTransaction::new(self.clone())
+	pub fn begin_command(&self) -> Result<MultiWriteTransaction> {
+		MultiWriteTransaction::new(self.clone())
 	}
 }
 
 pub enum TransactionType {
-	Query(QueryTransaction),
-	Command(CommandTransaction),
+	Query(MultiReadTransaction),
+	Command(MultiWriteTransaction),
 }
 
 impl TransactionMulti {

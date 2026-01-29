@@ -16,10 +16,12 @@
 //! [`Context::schedule_once`]: crate::actor::context::Context::schedule_once
 //! [`Context::schedule_repeat`]: crate::actor::context::Context::schedule_repeat
 
-use std::fmt::Debug;
-use std::sync::{
-	Arc,
-	atomic::{AtomicBool, AtomicU64, Ordering},
+use std::{
+	fmt::Debug,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, AtomicU64, Ordering},
+	},
 };
 
 #[cfg(reifydb_target = "native")]

@@ -37,13 +37,15 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_runtime::clock::Clock;
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
 };
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
-use reifydb_runtime::hash::{Hash128, xxh3_128};
+use reifydb_runtime::{
+	clock::Clock,
+	hash::{Hash128, xxh3_128},
+};
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 use reifydb_type::{
 	error::Error,

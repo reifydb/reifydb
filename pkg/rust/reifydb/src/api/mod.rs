@@ -4,7 +4,10 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
-use reifydb_runtime::{actor::system::{ActorSystem, ActorSystemConfig}, clock::Clock};
+use reifydb_runtime::{
+	actor::system::{ActorSystem, ActorSystemConfig},
+	clock::Clock,
+};
 use reifydb_store_multi::{
 	MultiStore,
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},

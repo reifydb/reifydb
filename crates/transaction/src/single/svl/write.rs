@@ -51,7 +51,7 @@ impl KeyWriteLock {
 	}
 }
 
-pub struct SvlCommandTransaction<'a> {
+pub struct SingleWriteTransaction<'a> {
 	pub(super) inner: &'a TransactionSvlInner,
 	pub(super) keys: Vec<EncodedKey>,
 	pub(super) _key_locks: Vec<KeyWriteLock>,
@@ -59,7 +59,7 @@ pub struct SvlCommandTransaction<'a> {
 	pub(super) completed: bool,
 }
 
-impl<'a> SvlCommandTransaction<'a> {
+impl<'a> SingleWriteTransaction<'a> {
 	pub(super) fn new(inner: &'a TransactionSvlInner, keys: Vec<EncodedKey>, key_locks: Vec<KeyWriteLock>) -> Self {
 		Self {
 			inner,

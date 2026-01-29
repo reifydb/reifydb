@@ -10,7 +10,7 @@ use reifydb_type::Result;
 
 use crate::{
 	TransactionId,
-	single::svl::read::SvlQueryTransaction,
+	single::svl::read::SingleReadTransaction,
 	standard::{command::StandardCommandTransaction, query::StandardQueryTransaction},
 };
 
@@ -217,7 +217,7 @@ impl<'a> StandardTransaction<'a> {
 	}
 
 	/// Begin a single-version query transaction for specific keys
-	pub fn begin_single_query<'b, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
+	pub fn begin_single_query<'b, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'b EncodedKey>,
 	{

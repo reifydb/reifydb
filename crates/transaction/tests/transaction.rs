@@ -24,7 +24,10 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::{actor::system::{ActorSystem, ActorSystemConfig}, clock::Clock};
+use reifydb_runtime::{
+	actor::system::{ActorSystem, ActorSystemConfig},
+	clock::Clock,
+};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_testing::testscript::{
@@ -32,14 +35,14 @@ use reifydb_testing::testscript::{
 	runner::{Runner, run_path},
 };
 use reifydb_transaction::{
-	multi::transaction::{TransactionMulti, command::CommandTransaction, query::QueryTransaction},
+	multi::transaction::{TransactionMulti, read::MultiReadTransaction, write::MultiWriteTransaction},
 	single::{TransactionSingle, svl::TransactionSvl},
 };
 
-/// A handle to either a query or command transaction for test tracking
+/// A handle to either a read or write transaction for test tracking
 enum TransactionHandle {
-	Query(QueryTransaction),
-	Command(CommandTransaction),
+	Read(MultiReadTransaction),
+	Write(MultiWriteTransaction),
 }
 use test_each_file::test_each_path;
 
@@ -120,11 +123,11 @@ impl<'a> Runner for MvccRunner {
 				let version = args.lookup_parse("version")?;
 				args.reject_rest()?;
 				let t = match readonly {
-					true => TransactionHandle::Query(
-						QueryTransaction::new(self.engine.clone(), version).unwrap(),
+					true => TransactionHandle::Read(
+						MultiReadTransaction::new(self.engine.clone(), version).unwrap(),
 					),
-					false => TransactionHandle::Command(
-						CommandTransaction::new(self.engine.clone()).unwrap(),
+					false => TransactionHandle::Write(
+						MultiWriteTransaction::new(self.engine.clone()).unwrap(),
 					),
 				};
 
@@ -138,10 +141,10 @@ impl<'a> Runner for MvccRunner {
 				command.consume_args().reject_rest()?;
 
 				match t {
-					TransactionHandle::Query(_) => {
+					TransactionHandle::Read(_) => {
 						unreachable!("can not call commit on rx")
 					}
-					TransactionHandle::Command(mut tx) => {
+					TransactionHandle::Write(mut tx) => {
 						tx.commit()?;
 					}
 				}
@@ -155,10 +158,10 @@ impl<'a> Runner for MvccRunner {
 					let key = EncodedKey(decode_binary(&arg.value));
 
 					match t {
-						TransactionHandle::Query(_) => {
+						TransactionHandle::Read(_) => {
 							unreachable!("can not call remove on rx")
 						}
-						TransactionHandle::Command(tx) => {
+						TransactionHandle::Write(tx) => {
 							tx.remove(&key).unwrap();
 						}
 					}
@@ -174,10 +177,10 @@ impl<'a> Runner for MvccRunner {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
 					let values = EncodedValues(decode_binary(&kv.value));
 					match t {
-						TransactionHandle::Query(_) => {
+						TransactionHandle::Read(_) => {
 							unreachable!("can not call unset on rx")
 						}
-						TransactionHandle::Command(tx) => {
+						TransactionHandle::Write(tx) => {
 							tx.unset(&key, values).unwrap();
 						}
 					}
@@ -189,8 +192,8 @@ impl<'a> Runner for MvccRunner {
 				command.consume_args().reject_rest()?;
 				let t = self.get_transaction(&command.prefix)?;
 				let version = match t {
-					TransactionHandle::Query(rx) => rx.version(),
-					TransactionHandle::Command(tx) => tx.version(),
+					TransactionHandle::Read(rx) => rx.version(),
+					TransactionHandle::Write(tx) => tx.version(),
 				};
 				writeln!(output, "{}", version)?;
 			}
@@ -206,10 +209,10 @@ impl<'a> Runner for MvccRunner {
 					let key = EncodedKey(decode_binary(&arg.value));
 
 					let value = match &mut t {
-						TransactionHandle::Query(rx) => rx
+						TransactionHandle::Read(rx) => rx
 							.get(&key)
 							.map(|r| r.and_then(|tv| Some(tv.values().to_vec()))),
-						TransactionHandle::Command(tx) => tx
+						TransactionHandle::Write(tx) => tx
 							.get(&key)
 							.map(|r| r.and_then(|tv| Some(tv.values().to_vec()))),
 					}
@@ -227,7 +230,7 @@ impl<'a> Runner for MvccRunner {
 				Self::no_tx(command)?;
 				let mut args = command.consume_args();
 
-				let mut tx = CommandTransaction::new(self.engine.clone()).unwrap();
+				let mut tx = MultiWriteTransaction::new(self.engine.clone()).unwrap();
 
 				for kv in args.rest_key() {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
@@ -249,10 +252,10 @@ impl<'a> Runner for MvccRunner {
 				command.consume_args().reject_rest()?;
 
 				match t {
-					TransactionHandle::Query(_) => {
+					TransactionHandle::Read(_) => {
 						unreachable!("can not call rollback on rx")
 					}
-					TransactionHandle::Command(mut tx) => {
+					TransactionHandle::Write(mut tx) => {
 						tx.rollback()?;
 					}
 				}
@@ -268,7 +271,7 @@ impl<'a> Runner for MvccRunner {
 
 				let mut kvs: Vec<(EncodedKey, Vec<u8>)> = Vec::new();
 				match &mut t {
-					TransactionHandle::Query(rx) => {
+					TransactionHandle::Read(rx) => {
 						let items: Vec<_> = rx
 							.range(EncodedKeyRange::all(), 1024)
 							.collect::<Result<Vec<_>, _>>()
@@ -277,7 +280,7 @@ impl<'a> Runner for MvccRunner {
 							kvs.push((multi.key.clone(), multi.values.to_vec()));
 						}
 					}
-					TransactionHandle::Command(tx) => {
+					TransactionHandle::Write(tx) => {
 						let items: Vec<_> = tx
 							.range(EncodedKeyRange::all(), 1024)
 							.collect::<Result<Vec<_>, _>>()
@@ -308,7 +311,7 @@ impl<'a> Runner for MvccRunner {
 				args.reject_rest()?;
 
 				match &mut t {
-					TransactionHandle::Query(rx) => {
+					TransactionHandle::Read(rx) => {
 						if !reverse {
 							let items: Vec<_> = rx
 								.range(range, 1024)
@@ -323,7 +326,7 @@ impl<'a> Runner for MvccRunner {
 							print_rx(&mut output, items.into_iter())
 						}
 					}
-					TransactionHandle::Command(tx) => {
+					TransactionHandle::Write(tx) => {
 						if !reverse {
 							let items: Vec<_> = tx
 								.range(range, 1024)
@@ -355,7 +358,7 @@ impl<'a> Runner for MvccRunner {
 				args.reject_rest()?;
 
 				match &mut t {
-					TransactionHandle::Query(rx) => {
+					TransactionHandle::Read(rx) => {
 						if !reverse {
 							let batch = rx.prefix(&prefix).unwrap();
 							print_rx(&mut output, batch.items.into_iter())
@@ -364,7 +367,7 @@ impl<'a> Runner for MvccRunner {
 							print_rx(&mut output, batch.items.into_iter())
 						}
 					}
-					TransactionHandle::Command(tx) => {
+					TransactionHandle::Write(tx) => {
 						if !reverse {
 							let batch = tx.prefix(&prefix).unwrap();
 							print_rx(&mut output, batch.items.into_iter())
@@ -385,10 +388,10 @@ impl<'a> Runner for MvccRunner {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
 					let values = EncodedValues(decode_binary(&kv.value));
 					match t {
-						TransactionHandle::Query(_) => {
+						TransactionHandle::Read(_) => {
 							unreachable!("can not call set on rx")
 						}
-						TransactionHandle::Command(tx) => {
+						TransactionHandle::Write(tx) => {
 							tx.set(&key, values).unwrap();
 						}
 					}
@@ -410,10 +413,10 @@ impl<'a> Runner for MvccRunner {
 				args.reject_rest()?;
 
 				match t {
-					TransactionHandle::Query(rx) => {
+					TransactionHandle::Read(rx) => {
 						rx.read_as_of_version_inclusive(version);
 					}
-					TransactionHandle::Command(tx) => {
+					TransactionHandle::Write(tx) => {
 						tx.read_as_of_version_inclusive(version)?;
 					}
 				}
@@ -433,10 +436,10 @@ impl<'a> Runner for MvccRunner {
 				args.reject_rest()?;
 
 				match t {
-					TransactionHandle::Query(rx) => {
+					TransactionHandle::Read(rx) => {
 						rx.read_as_of_version_exclusive(version);
 					}
-					TransactionHandle::Command(tx) => {
+					TransactionHandle::Write(tx) => {
 						tx.read_as_of_version_exclusive(version);
 					}
 				}

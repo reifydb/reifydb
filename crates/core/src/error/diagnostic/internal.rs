@@ -17,8 +17,12 @@ pub fn internal_with_context(
 	let reason = reason.into();
 
 	// Generate a unique error ID based on timestamp and location
-	let error_id =
-		format!("ERR-{}-{}:{}", Clock::default().now_millis(), file.rsplit('/').next().unwrap_or(file).replace(".rs", ""), line);
+	let error_id = format!(
+		"ERR-{}-{}:{}",
+		Clock::default().now_millis(),
+		file.rsplit('/').next().unwrap_or(file).replace(".rs", ""),
+		line
+	);
 
 	let detailed_message = format!("Internal error [{}]: {}", error_id, reason);
 

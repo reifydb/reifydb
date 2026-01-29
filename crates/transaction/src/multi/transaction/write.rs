@@ -29,12 +29,12 @@ use tracing::instrument;
 use super::{TransactionManagerCommand, TransactionMulti, version::StandardVersionProvider};
 use crate::{delta::optimize_deltas, multi::types::TransactionValue};
 
-pub struct CommandTransaction {
+pub struct MultiWriteTransaction {
 	engine: TransactionMulti,
 	pub(crate) tm: TransactionManagerCommand<StandardVersionProvider>,
 }
 
-impl CommandTransaction {
+impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::new", level = "debug", skip(engine))]
 	pub fn new(engine: TransactionMulti) -> reifydb_type::Result<Self> {
 		let tm = engine.tm.write()?;
@@ -45,7 +45,7 @@ impl CommandTransaction {
 	}
 }
 
-impl CommandTransaction {
+impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::commit", level = "debug", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		// For read-only transactions (no pending writes), skip conflict detection
@@ -82,7 +82,7 @@ impl CommandTransaction {
 	}
 }
 
-impl CommandTransaction {
+impl MultiWriteTransaction {
 	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}

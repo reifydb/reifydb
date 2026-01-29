@@ -24,12 +24,12 @@ use reifydb_core::{
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
-use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
 use reifydb_metric::{
 	cdc::{CdcStats, CdcStatsReader},
 	multi::{MultiStorageStats, StorageStatsReader, Tier},
 	worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener},
 };
+use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
 use reifydb_store_multi::{
 	config::{HotConfig, MultiStoreConfig},
 	hot::storage::HotStorage,

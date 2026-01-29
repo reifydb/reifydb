@@ -466,7 +466,13 @@ impl CoordinatorActor {
 			// Convert CDC to flow changes
 			let mut chunk_changes = Vec::new();
 			for cdc in &batch.items {
-				match convert::to_flow_change(&self.engine, &self.catalog, cdc, cdc.version, &self.clock) {
+				match convert::to_flow_change(
+					&self.engine,
+					&self.catalog,
+					cdc,
+					cdc.version,
+					&self.clock,
+				) {
 					Ok(changes) => chunk_changes.extend(changes),
 					Err(e) => return Err(e.to_string()),
 				}

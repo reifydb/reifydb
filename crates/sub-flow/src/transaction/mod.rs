@@ -4,7 +4,9 @@
 use pending::{Pending, PendingWrites};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::CommitVersion;
-use reifydb_transaction::{multi::transaction::query::QueryTransaction, standard::command::StandardCommandTransaction};
+use reifydb_transaction::{
+	multi::transaction::read::MultiReadTransaction, standard::command::StandardCommandTransaction,
+};
 use tracing::instrument;
 
 pub mod pending;
@@ -126,14 +128,14 @@ pub struct FlowTransaction {
 	///
 	/// Provides snapshot reads at `version`. Used for reading storage primitives tables/views
 	/// to ensure consistent view of the data being processed by the flow.
-	pub(crate) primitive_query: QueryTransaction,
+	pub(crate) primitive_query: MultiReadTransaction,
 
 	/// Read-only query transaction for accessing flow state at latest version.
 	///
 	/// Reads at the latest committed version. Used for reading flow state
 	/// (join tables, distinct values, counters) that must be visible across
 	/// all CDC versions to maintain continuity.
-	pub(crate) state_query: QueryTransaction,
+	pub(crate) state_query: MultiReadTransaction,
 
 	/// Catalog for metadata access (cloned from parent, Arc-based so cheap)
 	pub(crate) catalog: Catalog,

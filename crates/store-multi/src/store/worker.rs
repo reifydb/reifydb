@@ -24,9 +24,9 @@ use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
+		system::ActorSystem,
 		timers::TimerHandle,
 		traits::{Actor, ActorConfig, Flow},
-		system::ActorSystem,
 	},
 	clock::{Clock, Instant},
 };

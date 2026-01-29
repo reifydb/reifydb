@@ -16,8 +16,8 @@ use reifydb_store_single::SingleStore;
 pub mod read;
 pub mod write;
 
-use read::{KeyReadLock, SvlQueryTransaction};
-use write::{KeyWriteLock, SvlCommandTransaction};
+use read::{KeyReadLock, SingleReadTransaction};
+use write::{KeyWriteLock, SingleWriteTransaction};
 
 #[derive(Clone)]
 pub struct TransactionSvl {
@@ -55,7 +55,7 @@ impl TransactionSvl {
 		}
 	}
 
-	pub fn begin_query<'a, I>(&self, keys: I) -> reifydb_type::Result<SvlQueryTransaction<'_>>
+	pub fn begin_query<'a, I>(&self, keys: I) -> reifydb_type::Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -75,14 +75,14 @@ impl TransactionSvl {
 			locks.push(KeyReadLock::new(arc));
 		}
 
-		Ok(SvlQueryTransaction {
+		Ok(SingleReadTransaction {
 			inner: &self.inner,
 			keys: keys_vec,
 			_key_locks: locks,
 		})
 	}
 
-	pub fn begin_command<'a, I>(&self, keys: I) -> reifydb_type::Result<SvlCommandTransaction<'_>>
+	pub fn begin_command<'a, I>(&self, keys: I) -> reifydb_type::Result<SingleWriteTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -102,7 +102,7 @@ impl TransactionSvl {
 			locks.push(KeyWriteLock::new(arc));
 		}
 
-		Ok(SvlCommandTransaction::new(&self.inner, keys_vec, locks))
+		Ok(SingleWriteTransaction::new(&self.inner, keys_vec, locks))
 	}
 }
 

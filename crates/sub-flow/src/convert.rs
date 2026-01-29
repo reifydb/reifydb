@@ -16,6 +16,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::clock::Clock;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 use reifydb_transaction::standard::query::StandardQueryTransaction;
 use reifydb_type::{
@@ -24,7 +25,6 @@ use reifydb_type::{
 	util::cowvec::CowVec,
 	value::{Value, dictionary::DictionaryEntryId, row_number::RowNumber},
 };
-use reifydb_runtime::clock::Clock;
 use tracing::{Span, instrument, warn};
 
 use crate::catalog::FlowCatalog;

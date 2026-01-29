@@ -28,21 +28,21 @@ use crate::{
 		TransactionalNamespaceChanges, TransactionalRingBufferChanges, TransactionalSubscriptionChanges,
 		TransactionalTableChanges, TransactionalViewChanges,
 	},
-	multi::transaction::query::QueryTransaction,
-	single::{TransactionSingle, svl::read::SvlQueryTransaction},
+	multi::transaction::read::MultiReadTransaction,
+	single::{TransactionSingle, svl::read::SingleReadTransaction},
 };
 
 /// An active query transaction that holds a multi query transaction
 /// and provides query-only access to single storage.
 pub struct StandardQueryTransaction {
-	pub(crate) multi: QueryTransaction,
+	pub(crate) multi: MultiReadTransaction,
 	pub(crate) single: TransactionSingle,
 }
 
 impl StandardQueryTransaction {
 	/// Creates a new active query transaction
 	#[instrument(name = "transaction::standard::query::new", level = "debug", skip_all)]
-	pub fn new(multi: QueryTransaction, single: TransactionSingle) -> Self {
+	pub fn new(multi: MultiReadTransaction, single: TransactionSingle) -> Self {
 		Self {
 			multi,
 			single,
@@ -117,7 +117,7 @@ impl StandardQueryTransaction {
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut SvlQueryTransaction<'_>) -> Result<R> + Send,
+		F: FnOnce(&mut SingleReadTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
 		self.single.with_query(keys, f)
@@ -128,14 +128,14 @@ impl StandardQueryTransaction {
 	#[instrument(name = "transaction::standard::query::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&mut self, f: F) -> Result<R>
 	where
-		F: FnOnce(&mut QueryTransaction) -> Result<R>,
+		F: FnOnce(&mut MultiReadTransaction) -> Result<R>,
 	{
 		f(&mut self.multi)
 	}
 
 	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::standard::query::begin_single_query", level = "trace", skip(self, keys))]
-	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
+	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
