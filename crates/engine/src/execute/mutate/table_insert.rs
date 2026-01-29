@@ -15,7 +15,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::InsertTableNode;
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -38,7 +38,7 @@ impl Executor {
 	#[instrument(name = "mutate::table::insert", level = "trace", skip_all)]
 	pub(crate) fn insert_table<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: InsertTableNode,
 		stack: &mut Stack,
 	) -> crate::Result<Columns> {
@@ -109,7 +109,7 @@ impl Executor {
 					// Handle auto-increment columns
 					if table_column.auto_increment && matches!(value, Value::Undefined) {
 						value = self.catalog.column_sequence_next_value(
-							std_txn.command_mut(),
+							std_txn.admin_mut(),
 							table.id,
 							table_column.id,
 						)?;
@@ -139,7 +139,7 @@ impl Executor {
 					let value = if let Some(dict_id) = table_column.dictionary_id {
 						let dictionary = self
 							.catalog
-							.find_dictionary(std_txn.command_mut(), dict_id)?
+							.find_dictionary(std_txn.admin_mut(), dict_id)?
 							.ok_or_else(|| {
 								internal_error!(
 									"Dictionary {:?} not found for column {}",
@@ -148,7 +148,7 @@ impl Executor {
 								)
 							})?;
 						let entry_id = std_txn
-							.command_mut()
+							.admin_mut()
 							.insert_into_dictionary(&dictionary, &value)?;
 						entry_id.to_value()
 					} else {
@@ -175,25 +175,24 @@ impl Executor {
 		}
 
 		let row_numbers =
-			self.catalog.next_row_number_batch(std_txn.command_mut(), table.id, total_rows as u64)?;
+			self.catalog.next_row_number_batch(std_txn.admin_mut(), table.id, total_rows as u64)?;
 
 		assert_eq!(row_numbers.len(), validated_rows.len());
 
 		// PASS 2: Insert all validated rows using the pre-allocated row numbers
 		for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
 			// Insert the row directly into storage
-			std_txn.command_mut().insert_table(table.clone(), row.clone(), row_number)?;
+			std_txn.admin_mut().insert_table(table.clone(), row.clone(), row_number)?;
 
 			// Store primary key index entry if table has one
-			if let Some(pk_def) =
-				primary_key::get_primary_key(&self.catalog, std_txn.command_mut(), &table)?
+			if let Some(pk_def) = primary_key::get_primary_key(&self.catalog, std_txn.admin_mut(), &table)?
 			{
 				let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &schema)?;
 
 				// Check if primary key already exists
 				let index_entry_key =
 					IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key.clone());
-				if std_txn.command_mut().contains_key(&index_entry_key.encode())? {
+				if std_txn.admin_mut().contains_key(&index_entry_key.encode())? {
 					let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
 					return_error!(primary_key_violation(
 						plan.target.identifier().clone(),
@@ -207,7 +206,7 @@ impl Executor {
 				let mut row_number_encoded = row_number_schema.allocate();
 				row_number_schema.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
-				std_txn.command_mut().set(&index_entry_key.encode(), row_number_encoded)?;
+				std_txn.admin_mut().set(&index_entry_key.encode(), row_number_encoded)?;
 			}
 		}
 

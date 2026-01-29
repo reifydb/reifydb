@@ -18,7 +18,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -39,7 +39,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn update_table<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: UpdateTableNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -136,7 +136,7 @@ impl Executor {
 						let value = if let Some(dict_id) = table_column.dictionary_id {
 							let dictionary = self
 								.catalog
-								.find_dictionary(wrapped_txn.command_mut(), dict_id)?
+								.find_dictionary(wrapped_txn.admin_mut(), dict_id)?
 								.ok_or_else(|| {
 									internal_error!(
 										"Dictionary {:?} not found for column {}",
@@ -145,7 +145,7 @@ impl Executor {
 									)
 								})?;
 							let entry_id = wrapped_txn
-								.command_mut()
+								.admin_mut()
 								.insert_into_dictionary(&dictionary, &value)?;
 							entry_id.to_value()
 						} else {
@@ -161,16 +161,16 @@ impl Executor {
 
 					if let Some(pk_def) = primary_key::get_primary_key(
 						&self.catalog,
-						wrapped_txn.command_mut(),
+						wrapped_txn.admin_mut(),
 						&table,
 					)? {
-						if let Some(old_row_data) = wrapped_txn.command_mut().get(&row_key)? {
+						if let Some(old_row_data) = wrapped_txn.admin_mut().get(&row_key)? {
 							let old_row = old_row_data.values;
 							let old_key = primary_key::encode_primary_key(
 								&pk_def, &old_row, &table, &schema,
 							)?;
 
-							wrapped_txn.command_mut().remove(&IndexEntryKey::new(
+							wrapped_txn.admin_mut().remove(&IndexEntryKey::new(
 								table.id,
 								IndexId::primary(pk_def.id),
 								old_key,
@@ -190,7 +190,7 @@ impl Executor {
 							u64::from(row_number),
 						);
 
-						wrapped_txn.command_mut().set(
+						wrapped_txn.admin_mut().set(
 							&IndexEntryKey::new(
 								table.id,
 								IndexId::primary(pk_def.id),
@@ -201,7 +201,7 @@ impl Executor {
 						)?;
 					}
 
-					wrapped_txn.command_mut().set(&row_key, row)?;
+					wrapped_txn.admin_mut().set(&row_key, row)?;
 
 					updated_count += 1;
 				}

@@ -14,7 +14,7 @@ use reifydb_core::{
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
 
 use crate::{CatalogStore, store::sequence::system::SystemSequence};
@@ -40,7 +40,7 @@ pub struct RingBufferToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_ringbuffer(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
 	) -> crate::Result<RingBufferDef> {
 		let namespace_id = to_create.namespace;
@@ -70,7 +70,7 @@ impl CatalogStore {
 	}
 
 	fn store_ringbuffer(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		ringbuffer: RingBufferId,
 		namespace: NamespaceId,
 		to_create: &RingBufferToCreate,
@@ -91,7 +91,7 @@ impl CatalogStore {
 	}
 
 	fn link_ringbuffer_to_namespace(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		namespace: NamespaceId,
 		ringbuffer: RingBufferId,
 		name: &str,
@@ -108,7 +108,7 @@ impl CatalogStore {
 	}
 
 	fn insert_ringbuffer_columns(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
 	) -> crate::Result<()> {
@@ -136,7 +136,7 @@ impl CatalogStore {
 	}
 
 	fn initialize_ringbuffer_metadata(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
 	) -> crate::Result<()> {
@@ -158,7 +158,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::key::namespace_ringbuffer::NamespaceRingBufferKey;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use super::*;
@@ -166,7 +166,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_simple_ringbuffer() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = RingBufferToCreate {
@@ -208,7 +208,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_ringbuffer_empty_columns() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = RingBufferToCreate {
@@ -230,7 +230,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_duplicate_ringbuffer() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = RingBufferToCreate {
@@ -254,7 +254,7 @@ pub mod tests {
 
 	#[test]
 	fn test_ringbuffer_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = RingBufferToCreate {
@@ -302,7 +302,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_ringbuffer_with_metadata() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = RingBufferToCreate {
@@ -329,7 +329,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_multiple_ringbuffers_with_different_capacities() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		// Create small buffer
@@ -373,7 +373,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_ringbuffer_preserves_column_order() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let columns = vec![

@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::plan::physical::InsertDictionaryNode;
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -25,7 +25,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn insert_dictionary<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: InsertDictionaryNode,
 		stack: &mut Stack,
 	) -> crate::Result<Columns> {
@@ -88,7 +88,7 @@ impl Executor {
 
 				// Insert into dictionary
 				let entry_id =
-					std_txn.command_mut().insert_into_dictionary(&dictionary, &coerced_value)?;
+					std_txn.admin_mut().insert_into_dictionary(&dictionary, &coerced_value)?;
 
 				let id_value = match entry_id {
 					DictionaryEntryId::U1(v) => Value::Uint1(v),

@@ -2,19 +2,19 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::flow::{FlowEdgeDef, FlowEdgeId, FlowId};
-use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{AsTransaction, admin::AdminTransaction};
 use tracing::instrument;
 
 use crate::{CatalogStore, catalog::Catalog};
 
 impl Catalog {
 	#[instrument(name = "catalog::flow_edge::create", level = "debug", skip(self, txn, edge_def))]
-	pub fn create_flow_edge(&self, txn: &mut CommandTransaction, edge_def: &FlowEdgeDef) -> crate::Result<()> {
+	pub fn create_flow_edge(&self, txn: &mut AdminTransaction, edge_def: &FlowEdgeDef) -> crate::Result<()> {
 		CatalogStore::create_flow_edge(txn, edge_def)
 	}
 
 	#[instrument(name = "catalog::flow_edge::delete", level = "debug", skip(self, txn))]
-	pub fn delete_flow_edge(&self, txn: &mut CommandTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
+	pub fn delete_flow_edge(&self, txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
 		CatalogStore::delete_flow_edge(txn, edge_id)
 	}
 

@@ -4,7 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb_catalog::catalog::{Catalog, namespace::NamespaceToCreate, table::TableToCreate};
-use reifydb_engine::test_utils::create_test_command_transaction;
+use reifydb_engine::test_utils::create_test_admin_transaction;
 use reifydb_rql::explain::{
 	ast::explain_ast, logical::explain_logical_plan, physical::explain_physical_plan, tokenize::explain_tokenize,
 };
@@ -59,7 +59,7 @@ impl Runner for TestRunner {
 
 				let rt = tokio::runtime::Runtime::new().unwrap();
 				let result = rt.block_on(async {
-					let mut dummy_tx = create_test_command_transaction();
+					let mut dummy_tx = create_test_admin_transaction();
 					let catalog = Catalog::testing();
 
 					let default_namespace = catalog
@@ -135,7 +135,7 @@ impl Runner for TestRunner {
 
 				let rt = tokio::runtime::Runtime::new().unwrap();
 				let result = rt.block_on(async {
-					let mut dummy_tx = create_test_command_transaction();
+					let mut dummy_tx = create_test_admin_transaction();
 					let catalog = Catalog::testing();
 
 					let namespace = catalog

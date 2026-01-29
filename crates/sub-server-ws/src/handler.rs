@@ -194,7 +194,7 @@ fn cleanup_subscription_from_db_sync(
 	engine: &reifydb_engine::engine::StandardEngine,
 	subscription_id: DbSubscriptionId,
 ) -> reifydb_type::Result<()> {
-	let mut txn = engine.begin_command()?;
+	let mut txn = engine.begin_admin()?;
 
 	// Delete the associated flow (named after the subscription ID)
 	let flow_name = subscription_flow_name(subscription_id);

@@ -13,7 +13,7 @@ use reifydb_rql::{
 	},
 	plan::physical::{PhysicalPlan, WindowNode},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
@@ -47,7 +47,7 @@ impl From<WindowNode> for WindowCompiler {
 }
 
 impl CompileOperator for WindowCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut CommandTransaction) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
 		// Compile input first if present
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(txn, *input)?)

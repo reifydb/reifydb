@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -27,7 +27,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn delete_ringbuffer<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: DeleteRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -157,7 +157,7 @@ impl Executor {
 		}
 
 		// Save updated metadata
-		self.catalog.update_ringbuffer_metadata(txn, metadata)?;
+		self.catalog.update_ringbuffer_metadata_admin(txn, metadata)?;
 
 		// Return summary
 		Ok(Columns::single_row([

@@ -10,7 +10,7 @@ pub mod test {
 	};
 	use reifydb_engine::{evaluate::column::StandardColumnEvaluator, test_utils::create_test_engine};
 	use reifydb_sdk::flow::FlowChange;
-	use reifydb_transaction::transaction::command::CommandTransaction;
+	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_type::{
 		util::cowvec::CowVec,
 		value::{row_number::RowNumber, r#type::Type},
@@ -89,8 +89,8 @@ pub mod test {
 	}
 
 	/// Helper to create a test transaction
-	pub fn create_test_transaction() -> CommandTransaction {
+	pub fn create_test_transaction() -> AdminTransaction {
 		let engine = create_test_engine();
-		engine.begin_command().unwrap()
+		engine.begin_admin().unwrap()
 	}
 }

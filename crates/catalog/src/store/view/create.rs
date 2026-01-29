@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
 
 use crate::{
@@ -42,24 +42,20 @@ pub struct ViewToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_deferred_view(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		Self::create_view(txn, to_create, Deferred)
 	}
 
 	pub(crate) fn create_transactional_view(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		Self::create_view(txn, to_create, Transactional)
 	}
 
-	fn create_view(
-		txn: &mut CommandTransaction,
-		to_create: ViewToCreate,
-		kind: ViewKind,
-	) -> crate::Result<ViewDef> {
+	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> crate::Result<ViewDef> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(table) = CatalogStore::find_view_by_name(txn, namespace_id, &to_create.name)? {
@@ -81,7 +77,7 @@ impl CatalogStore {
 	}
 
 	fn store_view(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		view: ViewId,
 		namespace: NamespaceId,
 		to_create: &ViewToCreate,
@@ -107,7 +103,7 @@ impl CatalogStore {
 	}
 
 	fn link_view_to_namespace(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		namespace: NamespaceId,
 		view: ViewId,
 		name: &str,
@@ -120,7 +116,7 @@ impl CatalogStore {
 	}
 
 	fn insert_columns_for_view(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		view: ViewId,
 		to_create: ViewToCreate,
 	) -> crate::Result<()> {
@@ -154,7 +150,7 @@ pub mod tests {
 		interface::catalog::id::{NamespaceId, ViewId},
 		key::namespace_view::NamespaceViewKey,
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -164,7 +160,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_deferred_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -187,7 +183,7 @@ pub mod tests {
 
 	#[test]
 	fn test_view_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = ViewToCreate {
@@ -228,7 +224,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_deferred_view_missing_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let to_create = ViewToCreate {
 			namespace: NamespaceId(999), // Non-existent namespace

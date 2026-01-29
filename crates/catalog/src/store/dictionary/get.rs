@@ -27,14 +27,14 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::DictionaryId;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::r#type::Type;
 
 	use crate::{CatalogStore, store::dictionary::create::DictionaryToCreate, test_utils::ensure_test_namespace};
 
 	#[test]
 	fn test_get_dictionary_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
@@ -57,7 +57,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_dictionary_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::get_dictionary(&mut txn, DictionaryId(999));
 

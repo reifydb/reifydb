@@ -6,13 +6,13 @@ use reifydb_core::{
 	key::retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use super::encode_retention_policy;
 
 /// Store a retention policy for a source (table, view, or ring buffer)
 pub(crate) fn create_primitive_retention_policy(
-	txn: &mut CommandTransaction,
+	txn: &mut AdminTransaction,
 	source: PrimitiveId,
 	retention_policy: &RetentionPolicy,
 ) -> crate::Result<()> {
@@ -24,7 +24,7 @@ pub(crate) fn create_primitive_retention_policy(
 
 /// Store a retention policy for an operator (flow node)
 pub(crate) fn _create_operator_retention_policy(
-	txn: &mut CommandTransaction,
+	txn: &mut AdminTransaction,
 	operator: FlowNodeId,
 	retention_policy: &RetentionPolicy,
 ) -> crate::Result<()> {
@@ -40,14 +40,14 @@ pub mod tests {
 		interface::catalog::id::{RingBufferId, TableId, ViewId},
 		retention::{CleanupMode, RetentionPolicy},
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use super::*;
 	use crate::CatalogStore;
 
 	#[test]
 	fn test_create_primitive_retention_policy_for_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table_id = TableId(42);
 		let source = PrimitiveId::Table(table_id);
 
@@ -68,7 +68,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primitive_retention_policy_for_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let view_id = ViewId(100);
 		let source = PrimitiveId::View(view_id);
 
@@ -86,7 +86,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primitive_retention_policy_for_ringbuffer() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let ringbuffer_id = RingBufferId(200);
 		let source = PrimitiveId::RingBuffer(ringbuffer_id);
 
@@ -107,7 +107,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_operator_retention_policy() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let operator = FlowNodeId(999);
 
 		let policy = RetentionPolicy::KeepVersions {
@@ -127,7 +127,7 @@ pub mod tests {
 
 	#[test]
 	fn test_overwrite_primitive_retention_policy() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table_id = TableId(42);
 		let source = PrimitiveId::Table(table_id);
 
@@ -152,7 +152,7 @@ pub mod tests {
 
 	#[test]
 	fn test_overwrite_operator_retention_policy() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let operator = FlowNodeId(999);
 
 		// Create initial policy
@@ -176,7 +176,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_nonexistent_primitive_retention_policy() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let source = PrimitiveId::Table(TableId(9999));
 
 		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source).unwrap();
@@ -186,7 +186,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_nonexistent_operator_retention_policy() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let operator = FlowNodeId(9999);
 
 		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();

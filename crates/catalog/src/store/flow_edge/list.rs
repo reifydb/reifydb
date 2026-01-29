@@ -78,7 +78,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -87,7 +87,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_flow_edges_by_flow() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
@@ -102,7 +102,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_flow_edges_by_flow_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
@@ -112,7 +112,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_flow_edges_by_flow_multiple() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
@@ -134,7 +134,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_flow_edges_all() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
@@ -149,7 +149,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_flow_edges_all_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let edges = CatalogStore::list_flow_edges_all(&mut txn).unwrap();
 		assert!(edges.is_empty());
@@ -157,7 +157,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_flow_edges_all_multiple_flows() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 
 		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one");

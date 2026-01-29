@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::TransactionalNamespaceChanges,
-	transaction::{AsTransaction, Transaction, command::CommandTransaction},
+	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{error, fragment::Fragment};
 use tracing::{instrument, warn};
@@ -40,23 +40,40 @@ impl Catalog {
 	) -> crate::Result<Option<NamespaceDef>> {
 		match txn.as_transaction() {
 			Transaction::Command(cmd) => {
-				// 1. Check transactional changes first
-				if let Some(namespace) = TransactionalNamespaceChanges::find_namespace(cmd, id) {
-					return Ok(Some(namespace.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalNamespaceChanges::is_namespace_deleted(cmd, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
+				// 1. Check MaterializedCatalog
 				if let Some(namespace) = self.materialized.find_namespace_at(id, cmd.version()) {
 					return Ok(Some(namespace));
 				}
 
-				// 4. Fall back to storage as defensive measure
+				// 2. Fall back to storage as defensive measure
 				if let Some(namespace) = CatalogStore::find_namespace(cmd, id)? {
+					warn!(
+						"Namespace with ID {:?} found in storage but not in MaterializedCatalog",
+						id
+					);
+					return Ok(Some(namespace));
+				}
+
+				Ok(None)
+			}
+			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(namespace) = TransactionalNamespaceChanges::find_namespace(admin, id) {
+					return Ok(Some(namespace.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalNamespaceChanges::is_namespace_deleted(admin, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(namespace) = self.materialized.find_namespace_at(id, admin.version()) {
+					return Ok(Some(namespace));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(namespace) = CatalogStore::find_namespace(admin, id)? {
 					warn!(
 						"Namespace with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -94,27 +111,43 @@ impl Catalog {
 	) -> crate::Result<Option<NamespaceDef>> {
 		match txn.as_transaction() {
 			Transaction::Command(cmd) => {
-				// 1. Check transactional changes first
-				if let Some(namespace) =
-					TransactionalNamespaceChanges::find_namespace_by_name(cmd, name)
-				{
-					return Ok(Some(namespace.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalNamespaceChanges::is_namespace_deleted_by_name(cmd, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
+				// 1. Check MaterializedCatalog
 				if let Some(namespace) =
 					self.materialized.find_namespace_by_name_at(name, cmd.version())
 				{
 					return Ok(Some(namespace));
 				}
 
-				// 4. Fall back to storage as defensive measure
+				// 2. Fall back to storage as defensive measure
 				if let Some(namespace) = CatalogStore::find_namespace_by_name(cmd, name)? {
+					warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
+					return Ok(Some(namespace));
+				}
+
+				Ok(None)
+			}
+			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(namespace) =
+					TransactionalNamespaceChanges::find_namespace_by_name(admin, name)
+				{
+					return Ok(Some(namespace.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalNamespaceChanges::is_namespace_deleted_by_name(admin, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(namespace) =
+					self.materialized.find_namespace_by_name_at(name, admin.version())
+				{
+					return Ok(Some(namespace));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(namespace) = CatalogStore::find_namespace_by_name(admin, name)? {
 					warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
 					return Ok(Some(namespace));
 				}
@@ -164,7 +197,7 @@ impl Catalog {
 	#[instrument(name = "catalog::namespace::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_namespace(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: NamespaceToCreate,
 	) -> crate::Result<NamespaceDef> {
 		let namespace = CatalogStore::create_namespace(txn, to_create.into())?;
@@ -173,7 +206,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::delete", level = "debug", skip(self, txn))]
-	pub fn delete_namespace(&self, txn: &mut CommandTransaction, namespace: NamespaceDef) -> crate::Result<()> {
+	pub fn delete_namespace(&self, txn: &mut AdminTransaction, namespace: NamespaceDef) -> crate::Result<()> {
 		CatalogStore::delete_namespace(txn, namespace.id)?;
 		txn.track_namespace_def_deleted(namespace)?;
 		Ok(())

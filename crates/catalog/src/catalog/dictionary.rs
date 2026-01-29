@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_transaction::{
 	change::TransactionalDictionaryChanges,
-	transaction::{AsTransaction, Transaction, command::CommandTransaction},
+	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 use tracing::{instrument, warn};
@@ -45,23 +45,40 @@ impl Catalog {
 	) -> crate::Result<Option<DictionaryDef>> {
 		match txn.as_transaction() {
 			Transaction::Command(cmd) => {
-				// 1. Check transactional changes first
-				if let Some(dict) = TransactionalDictionaryChanges::find_dictionary(cmd, id) {
-					return Ok(Some(dict.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalDictionaryChanges::is_dictionary_deleted(cmd, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
+				// 1. Check MaterializedCatalog
 				if let Some(dict) = self.materialized.find_dictionary_at(id, cmd.version()) {
 					return Ok(Some(dict));
 				}
 
-				// 4. Fall back to storage as defensive measure
+				// 2. Fall back to storage as defensive measure
 				if let Some(dict) = CatalogStore::find_dictionary(cmd, id)? {
+					warn!(
+						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
+						id
+					);
+					return Ok(Some(dict));
+				}
+
+				Ok(None)
+			}
+			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(dict) = TransactionalDictionaryChanges::find_dictionary(admin, id) {
+					return Ok(Some(dict.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalDictionaryChanges::is_dictionary_deleted(admin, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(dict) = self.materialized.find_dictionary_at(id, admin.version()) {
+					return Ok(Some(dict));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(dict) = CatalogStore::find_dictionary(admin, id)? {
 					warn!(
 						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -100,27 +117,47 @@ impl Catalog {
 	) -> crate::Result<Option<DictionaryDef>> {
 		match txn.as_transaction() {
 			Transaction::Command(cmd) => {
-				// 1. Check transactional changes first
-				if let Some(dict) =
-					TransactionalDictionaryChanges::find_dictionary_by_name(cmd, namespace, name)
-				{
-					return Ok(Some(dict.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalDictionaryChanges::is_dictionary_deleted_by_name(cmd, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
+				// 1. Check MaterializedCatalog
 				if let Some(dict) =
 					self.materialized.find_dictionary_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(dict));
 				}
 
-				// 4. Fall back to storage as defensive measure
+				// 2. Fall back to storage as defensive measure
 				if let Some(dict) = CatalogStore::find_dictionary_by_name(cmd, namespace, name)? {
+					warn!(
+						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(dict));
+				}
+
+				Ok(None)
+			}
+			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(dict) =
+					TransactionalDictionaryChanges::find_dictionary_by_name(admin, namespace, name)
+				{
+					return Ok(Some(dict.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalDictionaryChanges::is_dictionary_deleted_by_name(admin, namespace, name)
+				{
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(dict) =
+					self.materialized.find_dictionary_by_name_at(namespace, name, admin.version())
+				{
+					return Ok(Some(dict));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(dict) = CatalogStore::find_dictionary_by_name(admin, namespace, name)? {
 					warn!(
 						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -160,7 +197,7 @@ impl Catalog {
 	#[instrument(name = "catalog::dictionary::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_dictionary(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: DictionaryToCreate,
 	) -> crate::Result<DictionaryDef> {
 		let dictionary = CatalogStore::create_dictionary(txn, to_create.into())?;

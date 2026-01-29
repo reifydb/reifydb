@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::ringbuffer::RingBufferKey,
 	return_internal_error,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
 
@@ -14,7 +14,7 @@ impl CatalogStore {
 	/// Set the primary key ID for a ring buffer
 	/// Returns an internal error if the ring buffer doesn't exist
 	pub(crate) fn set_ringbuffer_primary_key(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
@@ -38,13 +38,13 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{PrimaryKeyId, RingBufferId};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};
 
 	#[test]
 	fn test_set_ringbuffer_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		// Set primary key
@@ -58,7 +58,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_ringbuffer_primary_key_nonexistent() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::set_ringbuffer_primary_key(&mut txn, RingBufferId(999), PrimaryKeyId(1));
 
@@ -70,7 +70,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_ringbuffer_primary_key_overwrites() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		// Set first primary key

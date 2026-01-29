@@ -10,7 +10,7 @@ use reifydb_core::interface::{
 	},
 	version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{AsTransaction, admin::AdminTransaction};
 
 pub mod catalog;
 pub mod materialized;
@@ -36,7 +36,7 @@ pub fn find_subscription(txn: &mut impl AsTransaction, id: SubscriptionId) -> Re
 ///
 /// This is a low-level function that performs complete cleanup of a subscription.
 /// Use this when cleaning up subscriptions after a WebSocket connection closes.
-pub fn delete_subscription(txn: &mut CommandTransaction, id: SubscriptionId) -> Result<()> {
+pub fn delete_subscription(txn: &mut AdminTransaction, id: SubscriptionId) -> Result<()> {
 	CatalogStore::delete_subscription(txn, id)
 }
 
@@ -44,7 +44,7 @@ pub fn delete_subscription(txn: &mut CommandTransaction, id: SubscriptionId) -> 
 ///
 /// This is useful for cleaning up flows associated with subscriptions,
 /// where the flow name is derived from the subscription ID.
-pub fn delete_flow_by_name(txn: &mut CommandTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
+pub fn delete_flow_by_name(txn: &mut AdminTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
 	CatalogStore::delete_flow_by_name(txn, namespace, name)
 }
 

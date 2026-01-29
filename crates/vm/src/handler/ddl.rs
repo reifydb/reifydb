@@ -36,7 +36,7 @@ pub fn create_namespace(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			operation: "Operation requires a catalog".into(),
 		})?;
 		let tx = ctx.tx.as_mut().ok_or(VmError::TransactionRequired)?;
-		let cmd_tx = tx.command_mut();
+		let cmd_tx = tx.admin_mut();
 
 		// Check if namespace already exists
 		if let Some(_) =
@@ -99,7 +99,7 @@ pub fn create_table(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			operation: "Operation requires a catalog".into(),
 		})?;
 		let tx = ctx.tx.as_mut().ok_or(VmError::TransactionRequired)?;
-		let cmd_tx = tx.command_mut();
+		let cmd_tx = tx.admin_mut();
 
 		// Get namespace
 		let namespace_name = table_def.namespace.as_deref().unwrap_or("default");
@@ -200,7 +200,7 @@ pub fn drop_object(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			operation: "Operation requires a catalog".into(),
 		})?;
 		let tx = ctx.tx.as_mut().ok_or(VmError::TransactionRequired)?;
-		let cmd_tx = tx.command_mut();
+		let cmd_tx = tx.admin_mut();
 
 		match drop_def.object_type {
 			ObjectType::Table => {

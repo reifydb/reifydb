@@ -2,19 +2,19 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::flow::{FlowId, FlowNodeDef, FlowNodeId};
-use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{AsTransaction, admin::AdminTransaction};
 use tracing::instrument;
 
 use crate::{CatalogStore, catalog::Catalog};
 
 impl Catalog {
 	#[instrument(name = "catalog::flow_node::create", level = "debug", skip(self, txn, node_def))]
-	pub fn create_flow_node(&self, txn: &mut CommandTransaction, node_def: &FlowNodeDef) -> crate::Result<()> {
+	pub fn create_flow_node(&self, txn: &mut AdminTransaction, node_def: &FlowNodeDef) -> crate::Result<()> {
 		CatalogStore::create_flow_node(txn, node_def)
 	}
 
 	#[instrument(name = "catalog::flow_node::delete", level = "debug", skip(self, txn))]
-	pub fn delete_flow_node(&self, txn: &mut CommandTransaction, node_id: FlowNodeId) -> crate::Result<()> {
+	pub fn delete_flow_node(&self, txn: &mut AdminTransaction, node_id: FlowNodeId) -> crate::Result<()> {
 		CatalogStore::delete_flow_node(txn, node_id)
 	}
 

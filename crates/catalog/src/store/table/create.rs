@@ -13,7 +13,7 @@ use reifydb_core::{
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
 
 use crate::{
@@ -46,7 +46,7 @@ pub struct TableToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_table(txn: &mut CommandTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
+	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(table) = CatalogStore::find_table_by_name(txn, namespace_id, &to_create.table)? {
@@ -72,7 +72,7 @@ impl CatalogStore {
 	}
 
 	fn store_table(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		table: TableId,
 		namespace: NamespaceId,
 		to_create: &TableToCreate,
@@ -91,7 +91,7 @@ impl CatalogStore {
 	}
 
 	fn link_table_to_namespace(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		namespace: NamespaceId,
 		table: TableId,
 		name: &str,
@@ -103,7 +103,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn insert_columns(txn: &mut CommandTransaction, table: TableId, to_create: TableToCreate) -> crate::Result<()> {
+	fn insert_columns(txn: &mut AdminTransaction, table: TableId, to_create: TableToCreate) -> crate::Result<()> {
 		// Look up namespace name for error messages
 		let namespace_name = Self::find_namespace(txn, to_create.namespace)?
 			.map(|s| s.name)
@@ -136,7 +136,7 @@ pub mod tests {
 		interface::catalog::id::{NamespaceId, TableId},
 		key::namespace_table::NamespaceTableKey,
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -146,7 +146,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let test_namespace = ensure_test_namespace(&mut txn);
 
@@ -170,7 +170,7 @@ pub mod tests {
 
 	#[test]
 	fn test_table_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = TableToCreate {

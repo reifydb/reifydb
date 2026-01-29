@@ -42,13 +42,13 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::RingBufferId;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};
 
 	#[test]
 	fn test_get_ringbuffer_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		let result = CatalogStore::get_ringbuffer(&mut txn, ringbuffer.id).unwrap();
@@ -59,7 +59,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_ringbuffer_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::get_ringbuffer(&mut txn, RingBufferId(999));
 
@@ -72,7 +72,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_ringbuffer_metadata_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		let result = CatalogStore::get_ringbuffer_metadata(&mut txn, ringbuffer.id).unwrap();
@@ -83,7 +83,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_ringbuffer_metadata_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::get_ringbuffer_metadata(&mut txn, RingBufferId(999));
 

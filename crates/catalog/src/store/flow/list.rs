@@ -50,7 +50,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowStatus;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -59,7 +59,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_flows_all() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
@@ -96,7 +96,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_flows_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
 		assert_eq!(result.len(), 0);
@@ -104,7 +104,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_flows_all_with_different_statuses() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test_namespace");
 
 		// Create flows with different statuses

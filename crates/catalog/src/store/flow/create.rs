@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -29,7 +29,7 @@ pub struct FlowToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_flow(txn: &mut CommandTransaction, to_create: FlowToCreate) -> crate::Result<FlowDef> {
+	pub(crate) fn create_flow(txn: &mut AdminTransaction, to_create: FlowToCreate) -> crate::Result<FlowDef> {
 		let namespace_id = to_create.namespace;
 
 		// Check if flow already exists
@@ -52,7 +52,7 @@ impl CatalogStore {
 	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
 	/// This skips the name uniqueness check since the ID is guaranteed unique by the sequence.
 	pub(crate) fn create_flow_with_id(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		to_create: FlowToCreate,
 	) -> crate::Result<FlowDef> {
@@ -64,7 +64,7 @@ impl CatalogStore {
 	}
 
 	fn store_flow(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		flow: FlowId,
 		namespace: NamespaceId,
 		to_create: &FlowToCreate,
@@ -82,7 +82,7 @@ impl CatalogStore {
 	}
 
 	fn link_flow_to_namespace(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		namespace: NamespaceId,
 		flow: FlowId,
 		name: &str,
@@ -105,7 +105,7 @@ pub mod tests {
 		},
 		key::namespace_flow::NamespaceFlowKey,
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -115,7 +115,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_flow() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = FlowToCreate {
@@ -139,7 +139,7 @@ pub mod tests {
 
 	#[test]
 	fn test_flow_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		// Create two flows
@@ -195,7 +195,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_flow_multiple_namespaces() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 

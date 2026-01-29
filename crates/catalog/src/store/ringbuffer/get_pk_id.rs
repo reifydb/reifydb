@@ -35,13 +35,13 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{PrimaryKeyId, RingBufferId};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};
 
 	#[test]
 	fn test_get_ringbuffer_pk_id_without_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).unwrap();
@@ -51,7 +51,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_ringbuffer_pk_id_with_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		// Set primary key
@@ -66,7 +66,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_ringbuffer_pk_id_nonexistent_ringbuffer() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut txn, RingBufferId(999)).unwrap();
 

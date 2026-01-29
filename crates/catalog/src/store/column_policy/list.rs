@@ -68,14 +68,14 @@ pub mod tests {
 		id::{ColumnId, TableId},
 		policy::{ColumnPolicyKind, ColumnSaturationPolicy},
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
 
 	#[test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
 		CatalogStore::create_column(

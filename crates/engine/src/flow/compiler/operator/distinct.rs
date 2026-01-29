@@ -11,7 +11,7 @@ use reifydb_rql::{
 	flow::{conversion::to_owned_physical_plan, node::FlowNodeType::Distinct},
 	plan::physical::{DistinctNode, PhysicalPlan},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{Result, fragment::Fragment};
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
@@ -55,7 +55,7 @@ fn resolved_to_column_identifier(resolved: ResolvedColumn) -> ColumnIdentifier {
 }
 
 impl CompileOperator for DistinctCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut CommandTransaction) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 
 		// Convert resolved columns to column expressions via ColumnIdentifier

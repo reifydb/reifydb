@@ -69,7 +69,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -78,7 +78,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_flow_by_name_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
@@ -92,7 +92,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_flow_by_name_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let result = CatalogStore::find_flow_by_name(&mut txn, test_namespace.id, "some_flow").unwrap();
@@ -101,7 +101,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_flow_by_name_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		create_flow(&mut txn, "test_namespace", "flow_one");
@@ -113,7 +113,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_flow_by_name_different_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
@@ -126,7 +126,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_flow_by_name_case_sensitive() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		create_flow(&mut txn, "test_namespace", "MyFlow");
@@ -141,7 +141,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_flow_by_id() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_namespace(&mut txn);
 
 		let flow = create_flow(&mut txn, "test_namespace", "test_flow");
@@ -153,7 +153,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_flow_by_id_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::find_flow(&mut txn, 999.into()).unwrap();
 		assert!(result.is_none());

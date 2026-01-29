@@ -5,7 +5,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::namespace_already_exists, interface::catalog::namespace::NamespaceDef,
 	key::namespace::NamespaceKey,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -24,7 +24,7 @@ pub struct NamespaceToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_namespace(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: NamespaceToCreate,
 	) -> crate::Result<NamespaceDef> {
 		if let Some(namespace) = Self::find_namespace_by_name(txn, &to_create.name)? {
@@ -49,13 +49,13 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{CatalogStore, store::namespace::create::NamespaceToCreate};
 
 	#[test]
 	fn test_create_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let to_create = NamespaceToCreate {
 			namespace_fragment: None,

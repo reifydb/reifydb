@@ -47,7 +47,7 @@ pub mod tests {
 		interface::catalog::id::{RingBufferId, ViewId},
 		retention::{CleanupMode, RetentionPolicy},
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use super::*;
 	use crate::store::retention_policy::create::{
@@ -56,7 +56,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_primitive_retention_policy_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let source = PrimitiveId::View(ViewId(100));
 
 		let policy = RetentionPolicy::KeepForever;
@@ -69,7 +69,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_primitive_retention_policy_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let source = PrimitiveId::RingBuffer(RingBufferId(9999));
 
 		let err = CatalogStore::get_primitive_retention_policy(&mut txn, source).unwrap_err();
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_operator_retention_policy_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let operator = FlowNodeId(777);
 
 		let policy = RetentionPolicy::KeepVersions {
@@ -97,7 +97,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_operator_retention_policy_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let operator = FlowNodeId(9999);
 
 		let err = CatalogStore::get_operator_retention_policy(&mut txn, operator).unwrap_err();

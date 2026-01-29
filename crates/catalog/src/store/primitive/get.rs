@@ -44,7 +44,7 @@ pub mod tests {
 		id::{TableId, ViewId},
 		primitive::{PrimitiveDef, PrimitiveId},
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
@@ -55,7 +55,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_primitive_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Get primitive by TableId
@@ -82,7 +82,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_primitive_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let view = CatalogStore::create_deferred_view(
@@ -124,7 +124,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_primitive_not_found_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Non-existent table should error
 		let result = CatalogStore::get_primitive(&mut txn, TableId(999));
@@ -137,7 +137,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_primitive_not_found_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Non-existent view should error
 		let result = CatalogStore::get_primitive(&mut txn, ViewId(999));

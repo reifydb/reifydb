@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::column_policy::ColumnPolicyKey,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::return_error;
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn create_column_policy(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		column: ColumnId,
 		policy: ColumnPolicyKind,
 	) -> crate::Result<ColumnPolicy> {
@@ -64,7 +64,7 @@ pub mod tests {
 		id::{ColumnId, TableId},
 		policy::{ColumnPolicyKind, ColumnSaturationPolicy},
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
@@ -75,7 +75,7 @@ pub mod tests {
 
 	#[test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int2), vec![]);
 
@@ -88,7 +88,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_column_policy_duplicate_error() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
 		CatalogStore::create_column(

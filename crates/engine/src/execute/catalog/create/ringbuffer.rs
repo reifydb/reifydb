@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::change::CatalogTrackRingBufferChangeOperations, value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::CreateRingBufferNode;
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
 use crate::execute::Executor;
@@ -14,7 +14,7 @@ use crate::execute::Executor;
 impl Executor {
 	pub(crate) fn create_ringbuffer(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: CreateRingBufferNode,
 	) -> crate::Result<Columns> {
 		// Check if ring buffer already exists using the catalog
@@ -65,13 +65,13 @@ pub mod tests {
 	use crate::{
 		execute::{Executor, catalog::create::ringbuffer::CreateRingBufferNode},
 		stack::Stack,
-		test_utils::create_test_command_transaction,
+		test_utils::create_test_admin_transaction,
 	};
 
 	#[test]
 	fn test_create_ringbuffer() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -135,7 +135,7 @@ pub mod tests {
 	#[test]
 	fn test_create_same_ringbuffer_in_different_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let namespace = ensure_test_namespace(&mut txn);
 		let another_schema = create_namespace(&mut txn, "another_schema");
@@ -192,7 +192,7 @@ pub mod tests {
 	#[test]
 	fn test_create_ringbuffer_missing_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let namespace_ident = Fragment::internal("missing_schema");
 		let namespace_def = NamespaceDef {

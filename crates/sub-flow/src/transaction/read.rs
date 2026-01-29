@@ -394,13 +394,13 @@ pub mod tests {
 
 		// Set value in first transaction and commit
 		{
-			let mut cmd_txn = engine.begin_command().unwrap();
+			let mut cmd_txn = engine.begin_admin().unwrap();
 			cmd_txn.set(&key, value.clone()).unwrap();
 			cmd_txn.commit().unwrap();
 		}
 
 		// Create new command transaction to read committed data
-		let parent = engine.begin_command().unwrap();
+		let parent = engine.begin_admin().unwrap();
 		let version = parent.version();
 
 		// Create FlowTransaction - should see committed value
@@ -476,13 +476,13 @@ pub mod tests {
 
 		// Set value in first transaction and commit
 		{
-			let mut cmd_txn = engine.begin_command().unwrap();
+			let mut cmd_txn = engine.begin_admin().unwrap();
 			cmd_txn.set(&key, make_value("value1")).unwrap();
 			cmd_txn.commit().unwrap();
 		}
 
 		// Create new command transaction
-		let parent = engine.begin_command().unwrap();
+		let parent = engine.begin_admin().unwrap();
 		let version = parent.version();
 		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing());
 

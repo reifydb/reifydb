@@ -6,8 +6,37 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, schema::Schema},
 	error::diagnostic::sequence::sequence_exhausted,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
-use reifydb_type::{return_error, value::r#type::Type};
+use reifydb_transaction::{
+	single::write::SingleWriteTransaction,
+	transaction::{AsTransaction, admin::AdminTransaction, command::CommandTransaction},
+};
+use reifydb_type::{Result as TxResult, return_error, value::r#type::Type};
+
+/// Trait abstracting over write-capable transaction types (CommandTransaction, AdminTransaction).
+/// Both types share the same write API but have no common trait in the transaction crate.
+pub trait SequenceTransaction: AsTransaction {
+	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>;
+}
+
+impl SequenceTransaction for CommandTransaction {
+	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
+		CommandTransaction::begin_single_command(self, keys)
+	}
+}
+
+impl SequenceTransaction for AdminTransaction {
+	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
+		AdminTransaction::begin_single_command(self, keys)
+	}
+}
 
 macro_rules! impl_generator {
 	(
@@ -29,7 +58,7 @@ macro_rules! impl_generator {
 
 			impl $generator {
 				pub(crate) fn next(
-					txn: &mut CommandTransaction,
+					txn: &mut impl SequenceTransaction,
 					key: &EncodedKey,
 					default: Option<$prim>,
 				) -> crate::Result<$prim> {
@@ -37,7 +66,7 @@ macro_rules! impl_generator {
 				}
 
 				pub(crate) fn next_batched(
-					txn: &mut CommandTransaction,
+					txn: &mut impl SequenceTransaction,
 					key: &EncodedKey,
 					default: Option<$prim>,
 					incr: $prim,
@@ -89,7 +118,7 @@ macro_rules! impl_generator {
 				}
 
 				pub(crate) fn set(
-					txn: &mut CommandTransaction,
+					txn: &mut impl SequenceTransaction,
 					key: &EncodedKey,
 					value: $prim,
 				) -> crate::Result<()> {
@@ -110,14 +139,14 @@ macro_rules! impl_generator {
 				use reifydb_core::{
 					encoded::key::EncodedKey, error::diagnostic::sequence::sequence_exhausted,
 				};
-				use reifydb_engine::test_utils::create_test_command_transaction;
+				use reifydb_engine::test_utils::create_test_admin_transaction;
 				use reifydb_type::value::r#type::Type;
 
 				use super::{SCHEMA, $generator};
 
 				#[test]
 				fn test_ok() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_admin_transaction();
 					let iterations =
 						999u32.min(($max as u128).saturating_sub($start as u128) as u32);
 					let count = ($start as u128).saturating_add(iterations as u128) as $prim;
@@ -139,7 +168,7 @@ macro_rules! impl_generator {
 
 				#[test]
 				fn test_exhaustion() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_admin_transaction();
 
 					let mut row = SCHEMA.allocate();
 					SCHEMA.$setter(&mut row, 0, $max);
@@ -154,7 +183,7 @@ macro_rules! impl_generator {
 
 				#[test]
 				fn test_default() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_admin_transaction();
 
 					let default_val = ($start as u32).saturating_add(99).min($max as u32) as $prim;
 					let got = $generator::next(
@@ -181,7 +210,7 @@ macro_rules! impl_generator {
 
 				#[test]
 				fn test_batched_ok() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_admin_transaction();
 
 					// Determine appropriate batch size and iteration count based on type range
 					let type_range = ($max as u128).saturating_sub($start as u128);
@@ -244,7 +273,7 @@ macro_rules! impl_generator {
 
 				#[test]
 				fn test_batched_exhaustion() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_admin_transaction();
 
 					let mut row = SCHEMA.allocate();
 					// Choose batch size and initial value that will cause saturation to MAX
@@ -300,7 +329,7 @@ macro_rules! impl_generator {
 
 				#[test]
 				fn test_batched_default() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_admin_transaction();
 
 					let type_range = ($max as u128).saturating_sub($start as u128);
 					let default_val =

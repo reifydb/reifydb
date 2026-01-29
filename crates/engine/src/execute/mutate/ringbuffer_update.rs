@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, params::Params, return_error, value::Value};
 
 use super::coerce::coerce_value_to_column_type;
@@ -23,7 +23,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn update_ringbuffer<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: UpdateRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -132,7 +132,7 @@ impl Executor {
 						let value = if let Some(dict_id) = rb_column.dictionary_id {
 							let dictionary = self
 								.catalog
-								.find_dictionary(wrapped_txn.command_mut(), dict_id)?
+								.find_dictionary(wrapped_txn.admin_mut(), dict_id)?
 								.ok_or_else(|| {
 									internal_error!(
 										"Dictionary {:?} not found for column {}",
@@ -141,7 +141,7 @@ impl Executor {
 									)
 								})?;
 							let entry_id = wrapped_txn
-								.command_mut()
+								.admin_mut()
 								.insert_into_dictionary(&dictionary, &value)?;
 							entry_id.to_value()
 						} else {
@@ -183,7 +183,7 @@ impl Executor {
 					}
 
 					// Update the encoded using interceptors
-					wrapped_txn.command_mut().update_ringbuffer(
+					wrapped_txn.admin_mut().update_ringbuffer(
 						ringbuffer.clone(),
 						row_number,
 						row,

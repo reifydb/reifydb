@@ -56,13 +56,13 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{CatalogStore, store::namespace::NamespaceId, test_utils::create_namespace};
 
 	#[test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		create_namespace(&mut txn, "test_namespace");
 
@@ -74,7 +74,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
 
@@ -83,7 +83,7 @@ pub mod tests {
 
 	#[test]
 	fn test_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		create_namespace(&mut txn, "another_namespace");
 

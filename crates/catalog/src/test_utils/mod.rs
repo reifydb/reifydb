@@ -11,7 +11,7 @@ use reifydb_core::interface::catalog::{
 	table::TableDef,
 	view::ViewDef,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::{blob::Blob, constraint::TypeConstraint};
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
 	},
 };
 
-pub fn create_namespace(txn: &mut CommandTransaction, namespace: &str) -> NamespaceDef {
+pub fn create_namespace(txn: &mut AdminTransaction, namespace: &str) -> NamespaceDef {
 	CatalogStore::create_namespace(
 		txn,
 		NamespaceToCreate {
@@ -37,14 +37,14 @@ pub fn create_namespace(txn: &mut CommandTransaction, namespace: &str) -> Namesp
 	.unwrap()
 }
 
-pub fn ensure_test_namespace(txn: &mut CommandTransaction) -> NamespaceDef {
+pub fn ensure_test_namespace(txn: &mut AdminTransaction) -> NamespaceDef {
 	if let Some(result) = CatalogStore::find_namespace_by_name(txn, "test_namespace").unwrap() {
 		return result;
 	}
 	create_namespace(txn, "test_namespace")
 }
 
-pub fn ensure_test_table(txn: &mut CommandTransaction) -> TableDef {
+pub fn ensure_test_table(txn: &mut AdminTransaction) -> TableDef {
 	let namespace = ensure_test_namespace(txn);
 
 	if let Some(result) = CatalogStore::find_table_by_name(txn, namespace.id, "test_table").unwrap() {
@@ -54,7 +54,7 @@ pub fn ensure_test_table(txn: &mut CommandTransaction) -> TableDef {
 }
 
 pub fn create_table(
-	txn: &mut CommandTransaction,
+	txn: &mut AdminTransaction,
 	namespace: &str,
 	table: &str,
 	columns: &[TableColumnToCreate],
@@ -76,7 +76,7 @@ pub fn create_table(
 }
 
 pub fn create_test_column(
-	txn: &mut CommandTransaction,
+	txn: &mut AdminTransaction,
 	name: &str,
 	constraint: TypeConstraint,
 	policies: Vec<ColumnPolicyKind>,
@@ -103,12 +103,7 @@ pub fn create_test_column(
 	.unwrap();
 }
 
-pub fn create_view(
-	txn: &mut CommandTransaction,
-	namespace: &str,
-	view: &str,
-	columns: &[ViewColumnToCreate],
-) -> ViewDef {
+pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, columns: &[ViewColumnToCreate]) -> ViewDef {
 	// First look up the namespace to get its ID
 	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
 
@@ -124,7 +119,7 @@ pub fn create_view(
 	.unwrap()
 }
 
-pub fn ensure_test_ringbuffer(txn: &mut CommandTransaction) -> RingBufferDef {
+pub fn ensure_test_ringbuffer(txn: &mut AdminTransaction) -> RingBufferDef {
 	let namespace = ensure_test_namespace(txn);
 
 	if let Some(result) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, "test_ringbuffer").unwrap() {
@@ -134,7 +129,7 @@ pub fn ensure_test_ringbuffer(txn: &mut CommandTransaction) -> RingBufferDef {
 }
 
 pub fn create_ringbuffer(
-	txn: &mut CommandTransaction,
+	txn: &mut AdminTransaction,
 	namespace: &str,
 	ringbuffer: &str,
 	capacity: u64,
@@ -157,7 +152,7 @@ pub fn create_ringbuffer(
 }
 
 pub fn create_test_ringbuffer_column(
-	txn: &mut CommandTransaction,
+	txn: &mut AdminTransaction,
 	ringbuffer_id: RingBufferId,
 	name: &str,
 	constraint: TypeConstraint,
@@ -183,7 +178,7 @@ pub fn create_test_ringbuffer_column(
 	.unwrap();
 }
 
-pub fn create_flow(txn: &mut CommandTransaction, namespace: &str, flow: &str) -> FlowDef {
+pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> FlowDef {
 	// First look up the namespace to get its ID
 	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
 
@@ -199,7 +194,7 @@ pub fn create_flow(txn: &mut CommandTransaction, namespace: &str, flow: &str) ->
 	.unwrap()
 }
 
-pub fn ensure_test_flow(txn: &mut CommandTransaction) -> FlowDef {
+pub fn ensure_test_flow(txn: &mut AdminTransaction) -> FlowDef {
 	let namespace = ensure_test_namespace(txn);
 
 	if let Some(result) = CatalogStore::find_flow_by_name(txn, namespace.id, "test_flow").unwrap() {
@@ -208,7 +203,7 @@ pub fn ensure_test_flow(txn: &mut CommandTransaction) -> FlowDef {
 	create_flow(txn, "test_namespace", "test_flow")
 }
 
-pub fn create_flow_node(txn: &mut CommandTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> FlowNodeDef {
+pub fn create_flow_node(txn: &mut AdminTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> FlowNodeDef {
 	use crate::store::sequence::flow::next_flow_node_id;
 
 	let node_id = next_flow_node_id(txn).unwrap();
@@ -224,7 +219,7 @@ pub fn create_flow_node(txn: &mut CommandTransaction, flow_id: FlowId, node_type
 }
 
 pub fn create_flow_edge(
-	txn: &mut CommandTransaction,
+	txn: &mut AdminTransaction,
 	flow_id: FlowId,
 	source: FlowNodeId,
 	target: FlowNodeId,

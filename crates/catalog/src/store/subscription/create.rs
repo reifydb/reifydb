@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey},
 };
-use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{AsTransaction, admin::AdminTransaction};
 use reifydb_type::value::r#type::Type;
 
 use crate::{
@@ -32,7 +32,7 @@ pub struct SubscriptionToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_subscription(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: SubscriptionToCreate,
 	) -> crate::Result<SubscriptionDef> {
 		// Use the flow sequence to generate subscription ID (FlowId == SubscriptionId for subscription flows)
@@ -44,7 +44,7 @@ impl CatalogStore {
 		Ok(Self::get_subscription(txn, subscription_id)?)
 	}
 
-	fn store_subscription(txn: &mut CommandTransaction, subscription: SubscriptionId) -> crate::Result<()> {
+	fn store_subscription(txn: &mut AdminTransaction, subscription: SubscriptionId) -> crate::Result<()> {
 		let mut row = subscription::SCHEMA.allocate();
 		subscription::SCHEMA.set_u64(&mut row, subscription::ID, subscription.0);
 		subscription::SCHEMA.set_u64(&mut row, subscription::ACKNOWLEDGED_VERSION, 0u64);
@@ -56,7 +56,7 @@ impl CatalogStore {
 	}
 
 	fn insert_columns_for_subscription(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		subscription: SubscriptionId,
 		to_create: &SubscriptionToCreate,
 	) -> crate::Result<()> {
@@ -115,7 +115,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::SubscriptionColumnId;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::r#type::Type;
 
 	use crate::{
@@ -125,7 +125,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let to_create = SubscriptionToCreate {
 			columns: vec![],
@@ -139,7 +139,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_with_columns() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let to_create = SubscriptionToCreate {
 			columns: vec![
@@ -169,7 +169,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_multiple_subscriptions() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let sub1 = CatalogStore::create_subscription(
 			&mut txn,

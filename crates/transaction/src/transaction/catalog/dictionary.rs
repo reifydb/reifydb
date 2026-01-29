@@ -13,10 +13,10 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalDictionaryChanges,
 	},
-	transaction::CommandTransaction,
+	transaction::admin::AdminTransaction,
 };
 
-impl CatalogTrackDictionaryChangeOperations for CommandTransaction {
+impl CatalogTrackDictionaryChangeOperations for AdminTransaction {
 	fn track_dictionary_def_created(&mut self, dictionary: DictionaryDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
@@ -52,7 +52,7 @@ impl CatalogTrackDictionaryChangeOperations for CommandTransaction {
 	}
 }
 
-impl TransactionalDictionaryChanges for CommandTransaction {
+impl TransactionalDictionaryChanges for AdminTransaction {
 	fn find_dictionary(&self, id: DictionaryId) -> Option<&DictionaryDef> {
 		for change in self.changes.dictionary_def.iter().rev() {
 			if let Some(dictionary) = &change.post {

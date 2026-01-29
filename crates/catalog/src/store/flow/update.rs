@@ -5,14 +5,14 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowStatus},
 	key::flow::FlowKey,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{CatalogStore, store::flow::schema::flow};
 
 impl CatalogStore {
 	/// Update the name of a flow
 	pub(crate) fn update_flow_name(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		new_name: String,
 	) -> crate::Result<()> {
@@ -33,7 +33,7 @@ impl CatalogStore {
 
 	/// Update the status of a flow
 	pub(crate) fn update_flow_status(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		status: FlowStatus,
 	) -> crate::Result<()> {
@@ -56,14 +56,14 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowStatus;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use super::*;
 	use crate::test_utils::ensure_test_flow;
 
 	#[test]
 	fn test_update_flow_name() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let flow = ensure_test_flow(&mut txn);
 
 		// Update the name
@@ -78,7 +78,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_flow_status() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let flow = ensure_test_flow(&mut txn);
 
 		// Initial status should be Active

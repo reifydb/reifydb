@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::{logical::alter::view::AlterViewOperation, physical::alter::view::AlterViewNode};
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{return_error, value::Value};
 
 use crate::execute::Executor;
@@ -19,7 +19,7 @@ use crate::execute::Executor;
 impl Executor {
 	pub(crate) fn execute_alter_view<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: AlterViewNode,
 	) -> crate::Result<Columns> {
 		// Get namespace and view names from MaybeQualified type

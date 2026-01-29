@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::ringbuffer::RingBufferDef, key::row::RowKey};
-use reifydb_transaction::{interceptor::ringbuffer::RingBufferInterceptor, transaction::command::CommandTransaction};
+use reifydb_transaction::{
+	interceptor::ringbuffer::RingBufferInterceptor,
+	transaction::{admin::AdminTransaction, command::CommandTransaction},
+};
 use reifydb_type::value::row_number::RowNumber;
 
 pub(crate) trait RingBufferOperations {
@@ -97,6 +100,76 @@ impl RingBufferOperations for CommandTransaction {
 		RingBufferInterceptor::pre_delete(self, &ringbuffer, id)?;
 
 		// Remove the encoded from the database
+		self.unset(&key, deleted_row.clone())?;
+
+		RingBufferInterceptor::post_delete(self, &ringbuffer, id, &deleted_row)?;
+
+		Ok(())
+	}
+}
+
+impl RingBufferOperations for AdminTransaction {
+	fn insert_ringbuffer(&mut self, _ringbuffer: RingBufferDef, _row: EncodedValues) -> crate::Result<RowNumber> {
+		unimplemented!(
+			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
+		)
+	}
+
+	fn insert_ringbuffer_at(
+		&mut self,
+		ringbuffer: RingBufferDef,
+		row_number: RowNumber,
+		row: EncodedValues,
+	) -> crate::Result<()> {
+		let key = RowKey::encoded(ringbuffer.id, row_number);
+
+		let old_row = self.get(&key)?.map(|v| v.values);
+
+		if let Some(ref existing) = old_row {
+			RingBufferInterceptor::pre_delete(self, &ringbuffer, row_number)?;
+			RingBufferInterceptor::post_delete(self, &ringbuffer, row_number, existing)?;
+		}
+
+		RingBufferInterceptor::pre_insert(self, &ringbuffer, &row)?;
+
+		self.set(&key, row.clone())?;
+
+		RingBufferInterceptor::post_insert(self, &ringbuffer, row_number, &row)?;
+
+		Ok(())
+	}
+
+	fn update_ringbuffer(
+		&mut self,
+		ringbuffer: RingBufferDef,
+		id: RowNumber,
+		row: EncodedValues,
+	) -> crate::Result<()> {
+		let key = RowKey::encoded(ringbuffer.id, id);
+
+		let old_row = self.get(&key)?.map(|v| v.values);
+
+		RingBufferInterceptor::pre_update(self, &ringbuffer, id, &row)?;
+
+		self.set(&key, row.clone())?;
+
+		if let Some(ref old) = old_row {
+			RingBufferInterceptor::post_update(self, &ringbuffer, id, &row, old)?;
+		}
+
+		Ok(())
+	}
+
+	fn remove_from_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber) -> crate::Result<()> {
+		let key = RowKey::encoded(ringbuffer.id, id);
+
+		let deleted_row = match self.get(&key)? {
+			Some(v) => v.values,
+			None => return Ok(()),
+		};
+
+		RingBufferInterceptor::pre_delete(self, &ringbuffer, id)?;
+
 		self.unset(&key, deleted_row.clone())?;
 
 		RingBufferInterceptor::post_delete(self, &ringbuffer, id, &deleted_row)?;

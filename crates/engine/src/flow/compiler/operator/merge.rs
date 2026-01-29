@@ -6,7 +6,7 @@ use reifydb_rql::{
 	flow::{conversion::to_owned_physical_plan, node::FlowNodeType},
 	plan::physical::{MergeNode, PhysicalPlan},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
@@ -26,7 +26,7 @@ impl From<MergeNode> for MergeCompiler {
 }
 
 impl CompileOperator for MergeCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut CommandTransaction) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
 		let left_node = compiler.compile_plan(txn, *self.left)?;
 		let right_node = compiler.compile_plan(txn, *self.right)?;
 

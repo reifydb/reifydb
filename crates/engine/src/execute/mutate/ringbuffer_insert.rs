@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::InsertRingBufferNode;
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -30,7 +30,7 @@ impl Executor {
 	#[instrument(name = "mutate::ringbuffer::insert", level = "trace", skip_all)]
 	pub(crate) fn insert_ringbuffer<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: InsertRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -124,7 +124,7 @@ impl Executor {
 					let value = if let Some(dict_id) = rb_column.dictionary_id {
 						let dictionary = self
 							.catalog
-							.find_dictionary(std_txn.command_mut(), dict_id)?
+							.find_dictionary(std_txn.admin_mut(), dict_id)?
 							.ok_or_else(|| {
 								internal_error!(
 									"Dictionary {:?} not found for column {}",
@@ -133,7 +133,7 @@ impl Executor {
 								)
 							})?;
 						let entry_id = std_txn
-							.command_mut()
+							.admin_mut()
 							.insert_into_dictionary(&dictionary, &value)?;
 						entry_id.to_value()
 					} else {
@@ -148,7 +148,7 @@ impl Executor {
 				// If buffer is full, delete the oldest entry first
 				if metadata.is_full() {
 					let oldest_row = RowNumber(metadata.head);
-					std_txn.command_mut().remove_from_ringbuffer(ringbuffer.clone(), oldest_row)?;
+					std_txn.admin_mut().remove_from_ringbuffer(ringbuffer.clone(), oldest_row)?;
 					// Advance head to next oldest item
 					metadata.head += 1;
 					metadata.count -= 1;
@@ -157,10 +157,10 @@ impl Executor {
 				// Get next row number from sequence (monotonically increasing)
 				let row_number = self
 					.catalog
-					.next_row_number_for_ringbuffer(std_txn.command_mut(), ringbuffer.id)?;
+					.next_row_number_for_ringbuffer(std_txn.admin_mut(), ringbuffer.id)?;
 
 				// Store the row
-				std_txn.command_mut().insert_ringbuffer_at(ringbuffer.clone(), row_number, row)?;
+				std_txn.admin_mut().insert_ringbuffer_at(ringbuffer.clone(), row_number, row)?;
 
 				// Update metadata
 				if metadata.is_empty() {
@@ -174,7 +174,7 @@ impl Executor {
 		}
 
 		// Save updated metadata
-		self.catalog.update_ringbuffer_metadata(std_txn.command_mut(), metadata)?;
+		self.catalog.update_ringbuffer_metadata_admin(std_txn.admin_mut(), metadata)?;
 
 		// Return summary
 		Ok(Columns::single_row([

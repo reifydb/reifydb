@@ -95,14 +95,14 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
 
 	#[test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
 		// Create columns out of order
@@ -155,7 +155,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
 		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
@@ -164,7 +164,7 @@ pub mod tests {
 
 	#[test]
 	fn test_table_does_not_exist() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
 		assert!(columns.is_empty());

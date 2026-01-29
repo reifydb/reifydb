@@ -13,10 +13,10 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalRingBufferChanges,
 	},
-	transaction::CommandTransaction,
+	transaction::admin::AdminTransaction,
 };
 
-impl CatalogTrackRingBufferChangeOperations for CommandTransaction {
+impl CatalogTrackRingBufferChangeOperations for AdminTransaction {
 	fn track_ringbuffer_def_created(&mut self, ringbuffer: RingBufferDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
@@ -52,7 +52,7 @@ impl CatalogTrackRingBufferChangeOperations for CommandTransaction {
 	}
 }
 
-impl TransactionalRingBufferChanges for CommandTransaction {
+impl TransactionalRingBufferChanges for AdminTransaction {
 	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBufferDef> {
 		for change in self.changes.ringbuffer_def.iter().rev() {
 			if let Some(ringbuffer) = &change.post {

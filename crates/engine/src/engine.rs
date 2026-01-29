@@ -37,7 +37,7 @@ use reifydb_transaction::{
 	interceptor::factory::InterceptorFactory,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	transaction::{command::CommandTransaction, query::QueryTransaction},
+	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_type::{
 	error::{Error, diagnostic},
@@ -78,6 +78,17 @@ impl StandardEngine {
 		CommandTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
 	}
 
+	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
+	pub fn begin_admin(&self) -> crate::Result<AdminTransaction> {
+		let mut interceptors = self.interceptors.create();
+
+		interceptors
+			.post_commit
+			.add(Arc::new(MaterializedCatalogInterceptor::new(self.catalog.materialized.clone())));
+
+		AdminTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
+	}
+
 	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
 	pub fn begin_query(&self) -> crate::Result<QueryTransaction> {
 		Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
@@ -86,7 +97,7 @@ impl StandardEngine {
 	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
-			let mut txn = self.begin_command()?;
+			let mut txn = self.begin_admin()?;
 			let frames = self.executor.execute_command(
 				&mut txn,
 				Command {
@@ -373,7 +384,7 @@ impl StandardEngine {
 
 impl ExecuteCommand for StandardEngine {
 	#[inline]
-	fn execute_command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+	fn execute_command(&self, txn: &mut AdminTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_command(txn, cmd)
 	}
 }

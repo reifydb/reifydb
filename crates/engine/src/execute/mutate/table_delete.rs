@@ -22,7 +22,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::DeleteTableNode;
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{error, fragment::Fragment, params::Params, return_error, value::Value};
 
 use super::primary_key;
@@ -34,7 +34,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn delete<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: DeleteTableNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -115,9 +115,9 @@ impl Executor {
 			}
 
 			// Get primary key info if table has one
-			let pk_def = primary_key::get_primary_key(&self.catalog, std_txn.command_mut(), &table)?;
+			let pk_def = primary_key::get_primary_key(&self.catalog, std_txn.admin_mut(), &table)?;
 
-			let cmd = std_txn.command();
+			let cmd = std_txn.admin();
 			for row_number in row_numbers_to_delete {
 				let row_key = RowKey::encoded(table.id, row_number);
 

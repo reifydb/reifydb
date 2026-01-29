@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 	view::ViewDef,
 };
 use reifydb_rql::plan::physical::PhysicalPlan;
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{
 	execute::Executor,
@@ -33,7 +33,7 @@ impl Executor {
 	/// and edges are compiled and persisted with that same FlowId.
 	pub(crate) fn create_deferred_view_flow(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		view: &ViewDef,
 		plan: Box<PhysicalPlan>,
 	) -> crate::Result<()> {
@@ -57,7 +57,7 @@ impl Executor {
 	/// directly as the flow ID, avoiding the O(n) find_flow_by_name check.
 	pub(crate) fn create_subscription_flow(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		subscription: &SubscriptionDef,
 		plan: PhysicalPlan,
 	) -> crate::Result<()> {

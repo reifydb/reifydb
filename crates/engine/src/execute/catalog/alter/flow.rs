@@ -7,7 +7,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::alter::flow::{AlterFlowAction, AlterFlowNode};
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
 use crate::execute::Executor;
@@ -15,7 +15,7 @@ use crate::execute::Executor;
 impl Executor {
 	pub(crate) fn execute_alter_flow<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: AlterFlowNode,
 	) -> crate::Result<Columns> {
 		// Get namespace and flow names from MaybeQualified type

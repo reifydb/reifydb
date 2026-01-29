@@ -27,13 +27,13 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::SubscriptionId;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{CatalogStore, store::subscription::create::SubscriptionToCreate};
 
 	#[test]
 	fn test_get_subscription_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let created = CatalogStore::create_subscription(
 			&mut txn,
@@ -49,7 +49,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_subscription_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let non_existent = SubscriptionId(999999);
 		let err = CatalogStore::get_subscription(&mut txn, non_existent).unwrap_err();

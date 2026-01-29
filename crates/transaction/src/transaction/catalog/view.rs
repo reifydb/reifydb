@@ -13,10 +13,10 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalViewChanges,
 	},
-	transaction::CommandTransaction,
+	transaction::admin::AdminTransaction,
 };
 
-impl CatalogTrackViewChangeOperations for CommandTransaction {
+impl CatalogTrackViewChangeOperations for AdminTransaction {
 	fn track_view_def_created(&mut self, view: ViewDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
@@ -48,7 +48,7 @@ impl CatalogTrackViewChangeOperations for CommandTransaction {
 	}
 }
 
-impl TransactionalViewChanges for CommandTransaction {
+impl TransactionalViewChanges for AdminTransaction {
 	fn find_view(&self, id: ViewId) -> Option<&ViewDef> {
 		for change in self.changes.view_def.iter().rev() {
 			if let Some(view) = &change.post {

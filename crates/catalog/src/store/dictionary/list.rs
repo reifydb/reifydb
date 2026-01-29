@@ -76,7 +76,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::r#type::Type;
 
 	use crate::{
@@ -87,7 +87,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_dictionaries_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).unwrap();
@@ -97,7 +97,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_dictionaries_multiple() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		// Create multiple dictionaries
@@ -119,7 +119,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_dictionaries_different_namespaces() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace1 = ensure_test_namespace(&mut txn);
 
 		let namespace2 = CatalogStore::create_namespace(
@@ -166,7 +166,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_all_dictionaries() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace1 = ensure_test_namespace(&mut txn);
 
 		let namespace2 = CatalogStore::create_namespace(

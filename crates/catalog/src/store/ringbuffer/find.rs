@@ -104,7 +104,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::RingBufferId;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
@@ -119,7 +119,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_ringbuffer_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		let found = CatalogStore::find_ringbuffer(&mut txn, ringbuffer.id)
@@ -134,7 +134,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_ringbuffer_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::find_ringbuffer(&mut txn, RingBufferId(999)).unwrap();
 
@@ -143,7 +143,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_ringbuffer_metadata() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		let metadata = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
@@ -159,7 +159,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_ringbuffer_metadata_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::find_ringbuffer_metadata(&mut txn, RingBufferId(999)).unwrap();
 
@@ -168,7 +168,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_ringbuffer_by_name_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		// Create a ring buffer with specific name
@@ -202,7 +202,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_ringbuffer_by_name_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let result =
@@ -213,7 +213,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_ringbuffer_by_name_different_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace1 = ensure_test_namespace(&mut txn);
 
 		// Create namespace2
@@ -250,7 +250,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_ringbuffer_with_columns_and_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		// Create ring buffer with columns

@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::flow::FlowToCreate;
 use reifydb_core::{interface::catalog::flow::FlowStatus, value::column::columns::Columns};
 use reifydb_rql::plan::physical::CreateFlowNode;
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
 use crate::{execute::Executor, flow::compiler::compile_flow};
@@ -12,7 +12,7 @@ use crate::{execute::Executor, flow::compiler::compile_flow};
 impl Executor {
 	pub(crate) fn create_flow<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: CreateFlowNode,
 	) -> crate::Result<Columns> {
 		if let Some(_) = self.catalog.find_flow_by_name(txn, plan.namespace.id, plan.flow.text())? {

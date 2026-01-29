@@ -17,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::TransactionalTableChanges,
-	transaction::{AsTransaction, Transaction, command::CommandTransaction},
+	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::{instrument, warn};
@@ -89,23 +89,37 @@ impl Catalog {
 	pub fn find_table<T: AsTransaction>(&self, txn: &mut T, id: TableId) -> crate::Result<Option<TableDef>> {
 		match txn.as_transaction() {
 			Transaction::Command(cmd) => {
-				// 1. Check transactional changes first
-				if let Some(table) = TransactionalTableChanges::find_table(cmd, id) {
-					return Ok(Some(table.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalTableChanges::is_table_deleted(cmd, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
+				// 1. Check MaterializedCatalog
 				if let Some(table) = self.materialized.find_table_at(id, cmd.version()) {
 					return Ok(Some(table));
 				}
 
-				// 4. Fall back to storage as defensive measure
+				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table(cmd, id)? {
+					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					return Ok(Some(table));
+				}
+
+				Ok(None)
+			}
+			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(table) = TransactionalTableChanges::find_table(admin, id) {
+					return Ok(Some(table.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalTableChanges::is_table_deleted(admin, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(table) = self.materialized.find_table_at(id, admin.version()) {
+					return Ok(Some(table));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(table) = CatalogStore::find_table(admin, id)? {
 					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(table));
 				}
@@ -138,26 +152,46 @@ impl Catalog {
 	) -> crate::Result<Option<TableDef>> {
 		match txn.as_transaction() {
 			Transaction::Command(cmd) => {
-				// 1. Check transactional changes first
-				if let Some(table) = TransactionalTableChanges::find_table_by_name(cmd, namespace, name)
-				{
-					return Ok(Some(table.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalTableChanges::is_table_deleted_by_name(cmd, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
+				// 1. Check MaterializedCatalog
 				if let Some(table) =
 					self.materialized.find_table_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(table));
 				}
 
-				// 4. Fall back to storage as defensive measure
+				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(cmd, namespace, name)? {
+					warn!(
+						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(table));
+				}
+
+				Ok(None)
+			}
+			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(table) =
+					TransactionalTableChanges::find_table_by_name(admin, namespace, name)
+				{
+					return Ok(Some(table.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalTableChanges::is_table_deleted_by_name(admin, namespace, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(table) =
+					self.materialized.find_table_by_name_at(namespace, name, admin.version())
+				{
+					return Ok(Some(table));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(table) = CatalogStore::find_table_by_name(admin, namespace, name)? {
 					warn!(
 						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -219,7 +253,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_table(&self, txn: &mut CommandTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
+	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
 		let pk_columns = to_create.primary_key_columns.clone();
 
 		let table = CatalogStore::create_table(txn, to_create.into())?;
@@ -260,7 +294,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::delete", level = "debug", skip(self, txn))]
-	pub fn delete_table(&self, txn: &mut CommandTransaction, table: TableDef) -> crate::Result<()> {
+	pub fn delete_table(&self, txn: &mut AdminTransaction, table: TableDef) -> crate::Result<()> {
 		CatalogStore::delete_table(txn, table.id)?;
 		txn.track_table_def_deleted(table)?;
 		Ok(())
@@ -282,7 +316,7 @@ impl Catalog {
 	#[instrument(name = "catalog::table::set_primary_key", level = "debug", skip(self, txn))]
 	pub fn set_table_primary_key(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {

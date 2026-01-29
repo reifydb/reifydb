@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::system_sequence::SystemSequenceKey,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{
 	store::sequence::generator::u64::GeneratorU64,
@@ -35,35 +35,35 @@ static PRIMARY_KEY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encod
 pub(crate) struct SystemSequence {}
 
 impl SystemSequence {
-	pub(crate) fn next_namespace_id(txn: &mut CommandTransaction) -> crate::Result<NamespaceId> {
+	pub(crate) fn next_namespace_id(txn: &mut AdminTransaction) -> crate::Result<NamespaceId> {
 		GeneratorU64::next(txn, &NAMESPACE_KEY, Some(1025)).map(NamespaceId)
 	}
 
-	pub(crate) fn next_table_id(txn: &mut CommandTransaction) -> crate::Result<TableId> {
+	pub(crate) fn next_table_id(txn: &mut AdminTransaction) -> crate::Result<TableId> {
 		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(TableId)
 	}
 
-	pub(crate) fn next_column_id(txn: &mut CommandTransaction) -> crate::Result<ColumnId> {
+	pub(crate) fn next_column_id(txn: &mut AdminTransaction) -> crate::Result<ColumnId> {
 		GeneratorU64::next(txn, &COLUMN_KEY, Some(8193)).map(ColumnId)
 	}
 
-	pub(crate) fn next_column_policy_id(txn: &mut CommandTransaction) -> crate::Result<ColumnPolicyId> {
+	pub(crate) fn next_column_policy_id(txn: &mut AdminTransaction) -> crate::Result<ColumnPolicyId> {
 		GeneratorU64::next(txn, &COLUMN_POLICY_KEY, Some(1025)).map(ColumnPolicyId)
 	}
 
-	pub(crate) fn next_view_id(txn: &mut CommandTransaction) -> crate::Result<ViewId> {
+	pub(crate) fn next_view_id(txn: &mut AdminTransaction) -> crate::Result<ViewId> {
 		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(ViewId)
 	}
 
-	pub(crate) fn next_primary_key_id(txn: &mut CommandTransaction) -> crate::Result<PrimaryKeyId> {
+	pub(crate) fn next_primary_key_id(txn: &mut AdminTransaction) -> crate::Result<PrimaryKeyId> {
 		GeneratorU64::next(txn, &PRIMARY_KEY_KEY, None).map(PrimaryKeyId)
 	}
 
-	pub(crate) fn next_ringbuffer_id(txn: &mut CommandTransaction) -> crate::Result<RingBufferId> {
+	pub(crate) fn next_ringbuffer_id(txn: &mut AdminTransaction) -> crate::Result<RingBufferId> {
 		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(RingBufferId)
 	}
 
-	pub(crate) fn next_dictionary_id(txn: &mut CommandTransaction) -> crate::Result<DictionaryId> {
+	pub(crate) fn next_dictionary_id(txn: &mut AdminTransaction) -> crate::Result<DictionaryId> {
 		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(DictionaryId)
 	}
 }

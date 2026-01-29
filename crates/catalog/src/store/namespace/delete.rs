@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::id::NamespaceId, key::namespace::NamespaceKey};
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn delete_namespace(txn: &mut CommandTransaction, namespace: NamespaceId) -> crate::Result<()> {
+	pub(crate) fn delete_namespace(txn: &mut AdminTransaction, namespace: NamespaceId) -> crate::Result<()> {
 		// Delete the namespace metadata
 		txn.remove(&NamespaceKey::encoded(namespace))?;
 
@@ -20,14 +20,14 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::fragment::Fragment;
 
 	use crate::{CatalogStore, store::namespace::create::NamespaceToCreate};
 
 	#[test]
 	fn test_delete_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let created = CatalogStore::create_namespace(
 			&mut txn,
@@ -52,7 +52,7 @@ pub mod tests {
 
 	#[test]
 	fn test_delete_nonexistent_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		use reifydb_core::interface::catalog::id::NamespaceId;
 		// Deleting a non-existent namespace should not error

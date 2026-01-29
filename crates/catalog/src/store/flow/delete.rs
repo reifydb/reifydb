@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{flow::FlowId, id::NamespaceId},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::CatalogStore;
 
@@ -15,7 +15,7 @@ impl CatalogStore {
 	/// This is useful for cleaning up flows associated with subscriptions,
 	/// where the flow name is derived from the subscription ID.
 	pub(crate) fn delete_flow_by_name(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		namespace: NamespaceId,
 		name: &str,
 	) -> crate::Result<()> {
@@ -27,7 +27,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	pub(crate) fn delete_flow(txn: &mut CommandTransaction, flow_id: FlowId) -> crate::Result<()> {
+	pub(crate) fn delete_flow(txn: &mut AdminTransaction, flow_id: FlowId) -> crate::Result<()> {
 		// Get the flow to find namespace for index deletion
 		let flow_def = CatalogStore::find_flow(txn, flow_id)?;
 

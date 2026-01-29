@@ -24,7 +24,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowId;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -33,7 +33,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_flow_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace_one = create_namespace(&mut txn, "namespace_one");
 		let _namespace_two = create_namespace(&mut txn, "namespace_two");
 
@@ -48,7 +48,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_flow_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let err = CatalogStore::get_flow(&mut txn, FlowId(42)).unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");

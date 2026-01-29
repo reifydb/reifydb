@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::primary_key::PrimaryKeyKey,
 	return_internal_error,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -31,7 +31,7 @@ pub struct PrimaryKeyToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_primary_key(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: PrimaryKeyToCreate,
 	) -> crate::Result<PrimaryKeyId> {
 		// Validate that primary key has at least one column
@@ -104,7 +104,7 @@ pub mod tests {
 		id::{ColumnId, PrimaryKeyId, TableId, ViewId},
 		primitive::PrimitiveId,
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use super::PrimaryKeyToCreate;
@@ -120,7 +120,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primary_key_for_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Create columns for the table
@@ -185,7 +185,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primary_key_for_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		// Create a view
@@ -240,7 +240,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_composite_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Create multiple columns
@@ -289,7 +289,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primary_key_updates_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Initially, table does not have primary key
@@ -333,7 +333,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primary_key_on_nonexistent_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Try to create primary key on non-existent table
 		// list_table_columns will return empty list for non-existent
@@ -355,7 +355,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primary_key_on_nonexistent_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Try to create primary key on non-existent view
 		// list_table_columns will return empty list for non-existent
@@ -377,7 +377,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_empty_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Try to create primary key with no columns - should fail
@@ -396,7 +396,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primary_key_with_nonexistent_column() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Try to create primary key with non-existent column ID
@@ -415,7 +415,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primary_key_with_column_from_different_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table1 = ensure_test_table(&mut txn);
 
 		// Create a column for table1

@@ -5,12 +5,12 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::flow_node::{FlowNodeByFlowKey, FlowNodeKey},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn delete_flow_node(txn: &mut CommandTransaction, node_id: FlowNodeId) -> crate::Result<()> {
+	pub(crate) fn delete_flow_node(txn: &mut AdminTransaction, node_id: FlowNodeId) -> crate::Result<()> {
 		// First, get the node to find the flow ID for index deletion
 		let node = CatalogStore::find_flow_node(txn, node_id)?;
 
@@ -29,7 +29,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -38,7 +38,7 @@ pub mod tests {
 
 	#[test]
 	fn test_delete_flow_node() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
@@ -56,7 +56,7 @@ pub mod tests {
 
 	#[test]
 	fn test_delete_node_removes_from_index() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
@@ -76,7 +76,7 @@ pub mod tests {
 
 	#[test]
 	fn test_delete_nonexistent_node() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Deleting a non-existent node should succeed silently
 		CatalogStore::delete_flow_node(&mut txn, FlowNodeId(999)).unwrap();
@@ -84,7 +84,7 @@ pub mod tests {
 
 	#[test]
 	fn test_delete_one_node_keeps_others() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 

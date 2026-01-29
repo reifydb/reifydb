@@ -69,7 +69,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -79,7 +79,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_ringbuffers_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_namespace(&mut txn);
 
 		let buffers = CatalogStore::list_ringbuffers_all(&mut txn).unwrap();
@@ -89,7 +89,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_ringbuffers_multiple() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		// Create first ring buffer
@@ -121,7 +121,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_ringbuffers_different_namespaces() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace1 = ensure_test_namespace(&mut txn);
 
 		// Create second namespace

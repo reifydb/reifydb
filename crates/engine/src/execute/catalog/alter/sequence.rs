@@ -7,7 +7,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::AlterSequenceNode;
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{params::Params, return_error, value::Value};
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn alter_table_sequence<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: AlterSequenceNode,
 	) -> crate::Result<Columns> {
 		// let namespace_name = plan.sequence.namespace().name();

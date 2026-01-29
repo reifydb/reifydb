@@ -44,14 +44,14 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{ColumnId, TableId};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{CatalogStore, test_utils::create_test_column};
 
 	#[test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
 		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
 		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
@@ -66,7 +66,7 @@ pub mod tests {
 
 	#[test]
 	fn test_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
 
 		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "not_found").unwrap();

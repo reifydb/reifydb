@@ -69,7 +69,7 @@ pub struct Query<'a> {
 /// Trait for executing commands (write operations)
 
 pub trait ExecuteCommand {
-	fn execute_command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>>;
+	fn execute_command(&self, txn: &mut AdminTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>>;
 }
 
 /// Trait for executing queries (read operations)
@@ -83,7 +83,7 @@ use reifydb_rql::{
 	plan::{physical::PhysicalPlan, plan},
 };
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use tracing::instrument;
 
 use crate::{
@@ -375,7 +375,7 @@ impl Executor {
 
 impl ExecuteCommand for Executor {
 	#[instrument(name = "executor::execute_command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	fn execute_command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+	fn execute_command(&self, txn: &mut AdminTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(cmd.rql)?;
 
@@ -559,7 +559,7 @@ impl Executor {
 	#[instrument(name = "executor::plan::command", level = "debug", skip(self, txn, plan, params, stack))]
 	pub fn execute_command_plan<'a>(
 		&self,
-		txn: &'a mut CommandTransaction,
+		txn: &'a mut AdminTransaction,
 		plan: PhysicalPlan,
 		params: Params,
 		stack: &mut Stack,

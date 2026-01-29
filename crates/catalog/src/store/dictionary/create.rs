@@ -13,7 +13,7 @@ use reifydb_core::{
 		namespace_dictionary::NamespaceDictionaryKey,
 	},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error, util::cowvec::CowVec, value::r#type::Type};
 
 use crate::{CatalogStore, store::sequence::system::SystemSequence};
@@ -29,7 +29,7 @@ pub struct DictionaryToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_dictionary(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: DictionaryToCreate,
 	) -> crate::Result<DictionaryDef> {
 		let namespace_id = to_create.namespace;
@@ -62,7 +62,7 @@ impl CatalogStore {
 	}
 
 	fn store_dictionary(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		dictionary: DictionaryId,
 		namespace: NamespaceId,
 		to_create: &DictionaryToCreate,
@@ -82,7 +82,7 @@ impl CatalogStore {
 	}
 
 	fn link_dictionary_to_namespace(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		namespace: NamespaceId,
 		dictionary: DictionaryId,
 		name: &str,
@@ -98,7 +98,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn initialize_dictionary_sequence(txn: &mut CommandTransaction, dictionary: DictionaryId) -> crate::Result<()> {
+	fn initialize_dictionary_sequence(txn: &mut AdminTransaction, dictionary: DictionaryId) -> crate::Result<()> {
 		// Initialize sequence counter to 0
 		// This ensures StorageTracker begins tracking the dictionary immediately
 		let seq_key = DictionarySequenceKey::encoded(dictionary);
@@ -112,7 +112,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
@@ -120,7 +120,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_simple_dictionary() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
@@ -142,7 +142,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_duplicate_dictionary() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
@@ -166,7 +166,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create1 = DictionaryToCreate {
@@ -214,7 +214,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_dictionary_with_various_types() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		// Test with Uint1 ID type

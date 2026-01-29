@@ -38,7 +38,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -47,7 +47,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_flow_node_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
@@ -63,7 +63,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_flow_node_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::find_flow_node(&mut txn, FlowNodeId(999)).unwrap();
 		assert!(result.is_none());

@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	key::PrimaryKeyDef,
 	primitive::PrimitiveId,
 };
-use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{AsTransaction, admin::AdminTransaction};
 use tracing::instrument;
 
 use crate::{
@@ -32,7 +32,7 @@ impl Catalog {
 	#[instrument(name = "catalog::primary_key::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_primary_key(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: PrimaryKeyToCreate,
 	) -> crate::Result<PrimaryKeyId> {
 		CatalogStore::create_primary_key(txn, to_create.into())

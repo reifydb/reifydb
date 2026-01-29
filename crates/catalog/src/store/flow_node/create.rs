@@ -5,12 +5,12 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeDef,
 	key::flow_node::{FlowNodeByFlowKey, FlowNodeKey},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::store::flow_node::schema::{flow_node, flow_node_by_flow};
 
 impl crate::CatalogStore {
-	pub(crate) fn create_flow_node(txn: &mut CommandTransaction, node_def: &FlowNodeDef) -> crate::Result<()> {
+	pub(crate) fn create_flow_node(txn: &mut AdminTransaction, node_def: &FlowNodeDef) -> crate::Result<()> {
 		// Write to main flow_node table
 		let mut row = flow_node::SCHEMA.allocate();
 		flow_node::SCHEMA.set_u64(&mut row, flow_node::ID, node_def.id);
@@ -34,7 +34,7 @@ impl crate::CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowNodeDef;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::blob::Blob;
 
 	use crate::{
@@ -45,7 +45,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_flow_node() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
@@ -69,7 +69,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_multiple_nodes_same_flow() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
@@ -103,7 +103,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_nodes_different_flows() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 
 		// Create two flows
@@ -140,7 +140,7 @@ pub mod tests {
 
 	#[test]
 	fn test_node_appears_in_index() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 

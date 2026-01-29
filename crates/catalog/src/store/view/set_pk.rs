@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::view::ViewKey,
 	return_internal_error,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{CatalogStore, store::view::schema::view};
 
@@ -14,7 +14,7 @@ impl CatalogStore {
 	/// Set the primary key ID for a view
 	/// Returns an internal error if the view doesn't exist
 	pub(crate) fn set_view_primary_key(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
@@ -38,7 +38,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{PrimaryKeyId, ViewId};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
@@ -49,7 +49,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_view_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let view = CatalogStore::create_deferred_view(
@@ -78,7 +78,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_view_primary_key_nonexistent() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Try to set primary key on non-existent view
 		let result = CatalogStore::set_view_primary_key(&mut txn, ViewId(999), PrimaryKeyId(1));

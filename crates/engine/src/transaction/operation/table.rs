@@ -5,7 +5,7 @@ use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::table::T
 use reifydb_transaction::{
 	change::{RowChange, TableRowInsertion},
 	interceptor::table::TableInterceptor,
-	transaction::command::CommandTransaction,
+	transaction::{admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_type::value::row_number::RowNumber;
 
@@ -72,6 +72,50 @@ impl TableOperations for CommandTransaction {
 		TableInterceptor::pre_delete(self, &table, id)?;
 
 		// Remove the encoded from the database
+		self.unset(&key, deleted_values)?;
+
+		Ok(())
+	}
+}
+
+impl TableOperations for AdminTransaction {
+	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()> {
+		TableInterceptor::pre_insert(self, &table, row_number, &row)?;
+
+		self.set(&RowKey::encoded(table.id, row_number), row.clone())?;
+
+		TableInterceptor::post_insert(self, &table, row_number, &row)?;
+
+		// Track insertion for post-commit event emission
+		self.track_row_change(RowChange::TableInsert(TableRowInsertion {
+			table_id: table.id,
+			row_number,
+			encoded: row,
+		}));
+
+		Ok(())
+	}
+
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
+		let key = RowKey::encoded(table.id, id);
+
+		TableInterceptor::pre_update(self, &table, id, &row)?;
+
+		self.set(&key, row.clone())?;
+
+		Ok(())
+	}
+
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
+		let key = RowKey::encoded(table.id, id);
+
+		let deleted_values = match self.get(&key)? {
+			Some(v) => v.values,
+			None => return Ok(()),
+		};
+
+		TableInterceptor::pre_delete(self, &table, id)?;
+
 		self.unset(&key, deleted_values)?;
 
 		Ok(())

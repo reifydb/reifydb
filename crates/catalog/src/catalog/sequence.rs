@@ -5,14 +5,14 @@ use reifydb_core::interface::catalog::{
 	id::{ColumnId, RingBufferId, SequenceId, TableId},
 	primitive::PrimitiveId,
 };
-use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction};
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::value::{Value, row_number::RowNumber};
 use tracing::instrument;
 
 use crate::{
 	CatalogStore,
 	catalog::Catalog,
-	store::sequence::{Sequence, column::ColumnSequence, row::RowSequence},
+	store::sequence::{Sequence, column::ColumnSequence, generator::SequenceTransaction, row::RowSequence},
 };
 
 impl Catalog {
@@ -32,14 +32,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::sequence::next_row_number", level = "trace", skip(self, txn))]
-	pub fn next_row_number(&self, txn: &mut CommandTransaction, table: TableId) -> crate::Result<RowNumber> {
+	pub fn next_row_number(&self, txn: &mut impl SequenceTransaction, table: TableId) -> crate::Result<RowNumber> {
 		RowSequence::next_row_number(txn, table)
 	}
 
 	#[instrument(name = "catalog::sequence::next_row_number_batch", level = "trace", skip(self, txn))]
 	pub fn next_row_number_batch(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut impl SequenceTransaction,
 		table: TableId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
@@ -49,7 +49,7 @@ impl Catalog {
 	#[instrument(name = "catalog::sequence::next_row_number_for_ringbuffer", level = "trace", skip(self, txn))]
 	pub fn next_row_number_for_ringbuffer(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RowNumber> {
 		RowSequence::next_row_number_for_ringbuffer(txn, ringbuffer)
@@ -62,7 +62,7 @@ impl Catalog {
 	)]
 	pub fn next_row_number_batch_for_ringbuffer(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
@@ -72,7 +72,7 @@ impl Catalog {
 	#[instrument(name = "catalog::sequence::column_sequence_next_value", level = "trace", skip(self, txn, source))]
 	pub fn column_sequence_next_value(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut impl SequenceTransaction,
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,
 	) -> crate::Result<Value> {
@@ -82,7 +82,7 @@ impl Catalog {
 	#[instrument(name = "catalog::sequence::column_sequence_set_value", level = "trace", skip(self, txn, source))]
 	pub fn column_sequence_set_value(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut impl SequenceTransaction,
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,
 		value: Value,

@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::TransactionalViewChanges,
-	transaction::{AsTransaction, Transaction, command::CommandTransaction},
+	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::{instrument, warn};
@@ -64,23 +64,37 @@ impl Catalog {
 	pub fn find_view<T: AsTransaction>(&self, txn: &mut T, id: ViewId) -> crate::Result<Option<ViewDef>> {
 		match txn.as_transaction() {
 			Transaction::Command(cmd) => {
-				// 1. Check transactional changes first
-				if let Some(view) = TransactionalViewChanges::find_view(cmd, id) {
-					return Ok(Some(view.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalViewChanges::is_view_deleted(cmd, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
+				// 1. Check MaterializedCatalog
 				if let Some(view) = self.materialized.find_view_at(id, cmd.version()) {
 					return Ok(Some(view));
 				}
 
-				// 4. Fall back to storage as defensive measure
+				// 2. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view(cmd, id)? {
+					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+					return Ok(Some(view));
+				}
+
+				Ok(None)
+			}
+			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(view) = TransactionalViewChanges::find_view(admin, id) {
+					return Ok(Some(view.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalViewChanges::is_view_deleted(admin, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(view) = self.materialized.find_view_at(id, admin.version()) {
+					return Ok(Some(view));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(view) = CatalogStore::find_view(admin, id)? {
 					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(view));
 				}
@@ -113,25 +127,45 @@ impl Catalog {
 	) -> crate::Result<Option<ViewDef>> {
 		match txn.as_transaction() {
 			Transaction::Command(cmd) => {
-				// 1. Check transactional changes first
-				if let Some(view) = TransactionalViewChanges::find_view_by_name(cmd, namespace, name) {
-					return Ok(Some(view.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalViewChanges::is_view_deleted_by_name(cmd, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
+				// 1. Check MaterializedCatalog
 				if let Some(view) =
 					self.materialized.find_view_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(view));
 				}
 
-				// 4. Fall back to storage as defensive measure
+				// 2. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view_by_name(cmd, namespace, name)? {
+					warn!(
+						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(view));
+				}
+
+				Ok(None)
+			}
+			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(view) = TransactionalViewChanges::find_view_by_name(admin, namespace, name)
+				{
+					return Ok(Some(view.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalViewChanges::is_view_deleted_by_name(admin, namespace, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(view) =
+					self.materialized.find_view_by_name_at(namespace, name, admin.version())
+				{
+					return Ok(Some(view));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(view) = CatalogStore::find_view_by_name(admin, namespace, name)? {
 					warn!(
 						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -176,7 +210,7 @@ impl Catalog {
 	#[instrument(name = "catalog::view::create_deferred", level = "debug", skip(self, txn, to_create))]
 	pub fn create_deferred_view(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
@@ -191,7 +225,7 @@ impl Catalog {
 	#[instrument(name = "catalog::view::create_transactional", level = "debug", skip(self, txn, to_create))]
 	pub fn create_transactional_view(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
@@ -211,7 +245,7 @@ impl Catalog {
 	#[instrument(name = "catalog::view::set_primary_key", level = "debug", skip(self, txn))]
 	pub fn set_view_primary_key(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {

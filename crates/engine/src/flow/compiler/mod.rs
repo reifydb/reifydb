@@ -3,8 +3,8 @@
 
 //! Flow compilation - compiles RQL physical plans into Flows
 //!
-//! This module uses CommandTransaction directly instead of being generic
-//! over MultiVersionCommandTransaction to avoid lifetime issues with async recursion.
+//! This module uses AdminTransaction directly instead of being generic
+//! over MultiVersionAdminTransaction to avoid lifetime issues with async recursion.
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::{
@@ -24,7 +24,7 @@ use reifydb_type::{Result, value::blob::Blob};
 pub mod operator;
 pub mod primitive;
 
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::flow::compiler::{
 	operator::{
@@ -41,7 +41,7 @@ use crate::flow::compiler::{
 /// Public API for compiling logical plans to Flows with an existing flow ID.
 pub fn compile_flow(
 	catalog: &Catalog,
-	txn: &mut CommandTransaction,
+	txn: &mut AdminTransaction,
 	plan: PhysicalPlan,
 	sink: Option<&ViewDef>,
 	flow_id: FlowId,
@@ -52,7 +52,7 @@ pub fn compile_flow(
 
 pub fn compile_subscription_flow(
 	catalog: &Catalog,
-	txn: &mut CommandTransaction,
+	txn: &mut AdminTransaction,
 	plan: PhysicalPlan,
 	subscription: &SubscriptionDef,
 	flow_id: FlowId,
@@ -82,19 +82,19 @@ impl FlowCompiler {
 	}
 
 	/// Gets the next available operator ID
-	fn next_node_id(&mut self, txn: &mut CommandTransaction) -> Result<FlowNodeId> {
+	fn next_node_id(&mut self, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
 		self.catalog.next_flow_node_id(txn).map_err(Into::into)
 	}
 
 	/// Gets the next available edge ID
-	fn next_edge_id(&mut self, txn: &mut CommandTransaction) -> Result<FlowEdgeId> {
+	fn next_edge_id(&mut self, txn: &mut AdminTransaction) -> Result<FlowEdgeId> {
 		self.catalog.next_flow_edge_id(txn).map_err(Into::into)
 	}
 
 	/// Adds an edge between two nodes
 	pub(crate) fn add_edge(
 		&mut self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		from: &FlowNodeId,
 		to: &FlowNodeId,
 	) -> Result<()> {
@@ -118,7 +118,7 @@ impl FlowCompiler {
 	}
 
 	/// Adds a operator to the flow graph
-	pub(crate) fn add_node(&mut self, txn: &mut CommandTransaction, node_type: FlowNodeType) -> Result<FlowNodeId> {
+	pub(crate) fn add_node(&mut self, txn: &mut AdminTransaction, node_type: FlowNodeType) -> Result<FlowNodeId> {
 		let node_id = self.next_node_id(txn)?;
 		let flow_id = self.builder.id();
 
@@ -146,7 +146,7 @@ impl FlowCompiler {
 	/// Compiles a physical plan into a FlowGraph
 	pub(crate) fn compile(
 		mut self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: PhysicalPlan,
 		sink: Option<&ViewDef>,
 	) -> Result<FlowDag> {
@@ -172,7 +172,7 @@ impl FlowCompiler {
 	/// Compiles a physical plan into a FlowGraph with a subscription sink
 	pub(crate) fn compile_with_subscription(
 		mut self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: PhysicalPlan,
 		subscription: &SubscriptionDef,
 	) -> Result<FlowDag> {
@@ -194,9 +194,9 @@ impl FlowCompiler {
 	/// Compiles a physical plan operator into the FlowGraph
 	///
 	/// Uses async_recursion to handle the recursive async calls.
-	/// With the concrete CommandTransaction type, the future is Send.
+	/// With the concrete AdminTransaction type, the future is Send.
 
-	pub(crate) fn compile_plan(&mut self, txn: &mut CommandTransaction, plan: PhysicalPlan) -> Result<FlowNodeId> {
+	pub(crate) fn compile_plan(&mut self, txn: &mut AdminTransaction, plan: PhysicalPlan) -> Result<FlowNodeId> {
 		match plan {
 			PhysicalPlan::IndexScan(_index_scan) => {
 				// TODO: Implement IndexScanCompiler for flow
@@ -308,5 +308,5 @@ impl FlowCompiler {
 /// Trait for compiling operator from physical plans to flow nodes
 pub(crate) trait CompileOperator {
 	/// Compiles this operator into a flow operator
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut CommandTransaction) -> Result<FlowNodeId>;
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut AdminTransaction) -> Result<FlowNodeId>;
 }

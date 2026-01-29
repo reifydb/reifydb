@@ -69,7 +69,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, TableId};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{
 		CatalogStore,
@@ -78,7 +78,7 @@ pub mod tests {
 
 	#[test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_namespace(&mut txn);
 		create_namespace(&mut txn, "namespace_one");
 		create_namespace(&mut txn, "namespace_two");
@@ -97,7 +97,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "some_table").unwrap();
 		assert!(result.is_none());
@@ -105,7 +105,7 @@ pub mod tests {
 
 	#[test]
 	fn test_not_found_different_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_namespace(&mut txn);
 		create_namespace(&mut txn, "namespace_one");
 		create_namespace(&mut txn, "namespace_two");
@@ -121,7 +121,7 @@ pub mod tests {
 
 	#[test]
 	fn test_not_found_different_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_namespace(&mut txn);
 		create_namespace(&mut txn, "namespace_one");
 		create_namespace(&mut txn, "namespace_two");

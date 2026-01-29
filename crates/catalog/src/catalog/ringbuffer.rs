@@ -11,7 +11,9 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_transaction::transaction::{AsTransaction, Transaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{
+	AsTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
+};
 use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::instrument;
 
@@ -77,6 +79,7 @@ impl Catalog {
 	) -> crate::Result<Option<RingBufferDef>> {
 		match txn.as_transaction() {
 			Transaction::Command(cmd) => CatalogStore::find_ringbuffer(cmd, id),
+			Transaction::Admin(admin) => CatalogStore::find_ringbuffer(admin, id),
 			Transaction::Query(qry) => CatalogStore::find_ringbuffer(qry, id),
 		}
 	}
@@ -90,6 +93,7 @@ impl Catalog {
 	) -> crate::Result<Option<RingBufferDef>> {
 		match txn.as_transaction() {
 			Transaction::Command(cmd) => CatalogStore::find_ringbuffer_by_name(cmd, namespace, name),
+			Transaction::Admin(admin) => CatalogStore::find_ringbuffer_by_name(admin, namespace, name),
 			Transaction::Query(qry) => CatalogStore::find_ringbuffer_by_name(qry, namespace, name),
 		}
 	}
@@ -107,7 +111,7 @@ impl Catalog {
 	#[instrument(name = "catalog::ringbuffer::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_ringbuffer(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
 	) -> crate::Result<RingBufferDef> {
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
@@ -151,10 +155,19 @@ impl Catalog {
 		CatalogStore::update_ringbuffer_metadata(txn, metadata)
 	}
 
+	#[instrument(name = "catalog::ringbuffer::update_metadata_admin", level = "debug", skip(self, txn))]
+	pub fn update_ringbuffer_metadata_admin(
+		&self,
+		txn: &mut AdminTransaction,
+		metadata: RingBufferMetadata,
+	) -> crate::Result<()> {
+		CatalogStore::update_ringbuffer_metadata_admin(txn, metadata)
+	}
+
 	#[instrument(name = "catalog::ringbuffer::set_primary_key", level = "debug", skip(self, txn))]
 	pub fn set_ringbuffer_primary_key(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {

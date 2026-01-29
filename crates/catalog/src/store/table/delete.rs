@@ -5,12 +5,12 @@ use reifydb_core::{
 	interface::catalog::id::TableId,
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn delete_table(txn: &mut CommandTransaction, table: TableId) -> crate::Result<()> {
+	pub(crate) fn delete_table(txn: &mut AdminTransaction, table: TableId) -> crate::Result<()> {
 		// First, find the table to get its namespace
 		if let Some(table_def) = Self::find_table(txn, table)? {
 			// Delete the namespace-table link (secondary index)
@@ -30,7 +30,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::fragment::Fragment;
 
 	use crate::{
@@ -40,7 +40,7 @@ pub mod tests {
 
 	#[test]
 	fn test_delete_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Create a namespace first
 		let namespace = CatalogStore::create_namespace(
@@ -79,7 +79,7 @@ pub mod tests {
 
 	#[test]
 	fn test_delete_nonexistent_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		use reifydb_core::interface::catalog::id::TableId;
 		// Deleting a non-existent table should not error

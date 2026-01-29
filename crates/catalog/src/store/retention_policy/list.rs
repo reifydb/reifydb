@@ -87,7 +87,7 @@ pub mod tests {
 		interface::catalog::id::{RingBufferId, TableId, ViewId},
 		retention::{CleanupMode, RetentionPolicy},
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use super::*;
 	use crate::store::retention_policy::create::{
@@ -96,7 +96,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_primitive_retention_policies_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let policies = CatalogStore::list_primitive_retention_policies(&mut txn).unwrap();
 
@@ -105,7 +105,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_primitive_retention_policies_multiple() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Create policies for different sources
 		let table_source = PrimitiveId::Table(TableId(1));
@@ -139,7 +139,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_operator_retention_policies_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
 
@@ -148,7 +148,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_operator_retention_policies_multiple() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Create policies for different operators
 		let operator1 = FlowNodeId(100);
@@ -182,7 +182,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_primitive_retention_policies_after_updates() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let source = PrimitiveId::Table(TableId(42));
 
@@ -209,7 +209,7 @@ pub mod tests {
 
 	#[test]
 	fn test_list_operator_retention_policies_after_updates() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let operator = FlowNodeId(999);
 

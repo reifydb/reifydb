@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::table::TableKey,
 	return_internal_error,
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{CatalogStore, store::table::schema::table};
 
@@ -14,7 +14,7 @@ impl CatalogStore {
 	/// Set the primary key ID for a table
 	/// Returns an internal error if the table doesn't exist
 	pub(crate) fn set_table_primary_key(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
@@ -38,13 +38,13 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{PrimaryKeyId, TableId};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::{CatalogStore, test_utils::ensure_test_table};
 
 	#[test]
 	fn test_set_table_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Set primary key
@@ -58,7 +58,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_table_primary_key_nonexistent() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Try to set primary key on non-existent table
 		let result = CatalogStore::set_table_primary_key(&mut txn, TableId(999), PrimaryKeyId(1));

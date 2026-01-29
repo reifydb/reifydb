@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::change::CatalogTrackSubscriptionChangeOperations, value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::CreateSubscriptionNode;
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
 use crate::execute::Executor;
@@ -14,7 +14,7 @@ use crate::execute::Executor;
 impl Executor {
 	pub(crate) fn create_subscription<'a>(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		plan: CreateSubscriptionNode,
 	) -> crate::Result<Columns> {
 		let result = self.catalog.create_subscription(

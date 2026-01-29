@@ -77,7 +77,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::DictionaryId;
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::r#type::Type;
 
 	use crate::{
@@ -88,7 +88,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_dictionary_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
@@ -113,7 +113,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_dictionary_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::find_dictionary(&mut txn, DictionaryId(999)).unwrap();
 
@@ -122,7 +122,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_dictionary_by_name_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
@@ -147,7 +147,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_dictionary_by_name_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let result = CatalogStore::find_dictionary_by_name(&mut txn, namespace.id, "nonexistent_dict").unwrap();
@@ -157,7 +157,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_dictionary_by_name_different_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace1 = ensure_test_namespace(&mut txn);
 
 		// Create namespace2

@@ -72,7 +72,7 @@ pub mod tests {
 		primitive::{PrimitiveDef, PrimitiveId},
 		vtable::VTableId,
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
@@ -83,7 +83,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_primitive_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Find primitive by TableId
@@ -113,7 +113,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_primitive_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let view = CatalogStore::create_deferred_view(
@@ -158,7 +158,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_primitive_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Non-existent table
 		let primitive = CatalogStore::find_primitive(&mut txn, TableId(999)).unwrap();
@@ -175,7 +175,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_primitive_vtable() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Find the sequences virtual table
 		let sequences_id = crate::system::ids::vtable::SEQUENCES;

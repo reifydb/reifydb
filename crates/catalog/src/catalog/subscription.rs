@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_transaction::transaction::{AsTransaction, Transaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{AsTransaction, Transaction, admin::AdminTransaction};
 use reifydb_type::{error, fragment::Fragment, value::r#type::Type};
 use tracing::{instrument, warn};
 
@@ -78,6 +78,23 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Admin(admin) => {
+				// 1. Check MaterializedCatalog
+				if let Some(subscription) = self.materialized.find_subscription(id, admin.version()) {
+					return Ok(Some(subscription));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(subscription) = CatalogStore::find_subscription(admin, id)? {
+					warn!(
+						"Subscription with ID {:?} found in storage but not in MaterializedCatalog",
+						id
+					);
+					return Ok(Some(subscription));
+				}
+
+				Ok(None)
+			}
 			Transaction::Query(qry) => {
 				// 1. Check MaterializedCatalog
 				if let Some(subscription) = self.materialized.find_subscription(id, qry.version()) {
@@ -130,7 +147,7 @@ impl Catalog {
 	#[instrument(name = "catalog::subscription::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_subscription(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		to_create: SubscriptionToCreate,
 	) -> crate::Result<SubscriptionDef> {
 		let subscription = CatalogStore::create_subscription(txn, to_create.into())?;
@@ -141,7 +158,7 @@ impl Catalog {
 	#[instrument(name = "catalog::subscription::delete", level = "debug", skip(self, txn))]
 	pub fn delete_subscription(
 		&self,
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		subscription: SubscriptionDef,
 	) -> crate::Result<()> {
 		CatalogStore::delete_subscription(txn, subscription.id)?;

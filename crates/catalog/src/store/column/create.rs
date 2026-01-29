@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{id::DictionaryId, policy::ColumnPolicyKind, primitive::PrimitiveId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{
 	fragment::Fragment,
 	return_error,
@@ -61,7 +61,7 @@ pub(crate) struct ColumnToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_column(
-		txn: &mut CommandTransaction,
+		txn: &mut AdminTransaction,
 		source: impl Into<PrimitiveId>,
 		column_to_create: ColumnToCreate,
 	) -> crate::Result<ColumnDef> {
@@ -146,14 +146,14 @@ pub mod test {
 		column::ColumnIndex,
 		id::{ColumnId, TableId},
 	};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
 
 	#[test]
 	fn test_create_column() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
 		CatalogStore::create_column(
@@ -207,7 +207,7 @@ pub mod test {
 
 	#[test]
 	fn test_create_column_with_auto_increment() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
 		CatalogStore::create_column(
@@ -237,7 +237,7 @@ pub mod test {
 
 	#[test]
 	fn test_auto_increment_invalid_type() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
 		// Try to create a text column with auto_increment
@@ -306,7 +306,7 @@ pub mod test {
 
 	#[test]
 	fn test_column_already_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
 		CatalogStore::create_column(

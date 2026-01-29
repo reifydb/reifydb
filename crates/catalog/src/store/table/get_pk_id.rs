@@ -35,7 +35,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId, primitive::PrimitiveId};
-	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
@@ -46,7 +46,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_table_pk_id_with_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Create a column
@@ -87,7 +87,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_table_pk_id_without_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
 		// Get the primary key ID - should be None
@@ -98,7 +98,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_table_pk_id_nonexistent_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_admin_transaction();
 
 		// Get the primary key ID for non-existent table - should be
 		// None
