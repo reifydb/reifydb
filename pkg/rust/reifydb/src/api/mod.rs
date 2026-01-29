@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
-use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
+use reifydb_runtime::{actor::system::{ActorSystem, ActorSystemConfig}, clock::Clock};
 use reifydb_store_multi::{
 	MultiStore,
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
@@ -47,7 +47,8 @@ impl StorageFactory {
 
 /// Internal: Create in-memory storage.
 fn create_memory_store() -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
-	let eventbus = EventBus::new();
+	let actor_system = ActorSystem::new(ActorSystemConfig::default());
+	let eventbus = EventBus::new(&actor_system);
 
 	// Create multi-version store
 	let multi_storage = HotStorage::memory();
@@ -78,7 +79,8 @@ fn create_memory_store() -> (MultiStore, SingleStore, TransactionSingle, EventBu
 
 /// Internal: Create SQLite storage with the given configuration.
 fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
-	let eventbus = EventBus::new();
+	let actor_system = ActorSystem::new(ActorSystemConfig::default());
+	let eventbus = EventBus::new(&actor_system);
 
 	// Modify config to use multi.db in a directory named after the UUID
 	let multi_path = match &config.path {

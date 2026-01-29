@@ -45,8 +45,8 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let event_bus = EventBus::new();
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
+	let event_bus = EventBus::new(&actor_system);
 	let single_svl = TransactionSvl::new(single_store, event_bus.clone());
 	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
 	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default()).unwrap();
@@ -58,8 +58,8 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let event_bus = EventBus::new();
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
+	let event_bus = EventBus::new(&actor_system);
 	let single_svl = TransactionSvl::new(single_store, event_bus.clone());
 	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
 	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default()).unwrap();
@@ -115,8 +115,8 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 
 /// Create a test StandardEngine with all required dependencies registered.
 pub fn create_test_engine() -> StandardEngine {
-	let eventbus = EventBus::new();
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
+	let eventbus = EventBus::new(&actor_system);
 	let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 	let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 	let single = TransactionSingle::svl(single_store.clone(), eventbus.clone());

@@ -10,10 +10,7 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{
-	event::lifecycle::OnStartEvent,
-	interface::{WithEventBus, auth::Identity},
-};
+use reifydb_core::interface::auth::Identity;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::HealthStatus;
@@ -109,8 +106,6 @@ impl Database {
 		self.bootloader.load()?;
 
 		debug!("Starting system with {} subsystems", self.subsystem_count());
-
-		self.engine.event_bus().emit(OnStartEvent::new());
 
 		// Start all subsystems
 		match self.subsystems.start_all() {

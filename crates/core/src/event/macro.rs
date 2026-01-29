@@ -224,7 +224,10 @@ mod tests {
 
 	#[test]
 	fn test_define_event_with_event_bus() {
-		let event_bus = EventBus::new();
+		let actor_system = reifydb_runtime::actor::system::ActorSystem::new(
+			reifydb_runtime::actor::system::ActorSystemConfig::default(),
+		);
+		let event_bus = EventBus::new(&actor_system);
 
 		// Create a listener for DefineTestEvent
 		#[derive(Clone)]
@@ -247,10 +250,12 @@ mod tests {
 
 		// Emit event
 		event_bus.emit(DefineTestEvent::new(vec![1, 2, 3], "test".to_string()));
+		event_bus.wait_for_completion();
 		assert_eq!(*listener.counter.lock().unwrap(), 3);
 
 		// Emit another
 		event_bus.emit(DefineTestEvent::new(vec![1, 2, 3, 4, 5], "test2".to_string()));
+		event_bus.wait_for_completion();
 		assert_eq!(*listener.counter.lock().unwrap(), 8);
 	}
 }

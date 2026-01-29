@@ -132,7 +132,9 @@ pub mod tests {
 	}
 
 	fn create_test_svl() -> TransactionSvl {
-		TransactionSvl::new(reifydb_store_single::SingleStore::testing_memory(), EventBus::default())
+		use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
+		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		TransactionSvl::new(reifydb_store_single::SingleStore::testing_memory(), EventBus::new(&actor_system))
 	}
 
 	#[test]

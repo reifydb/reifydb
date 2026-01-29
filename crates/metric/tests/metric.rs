@@ -24,6 +24,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
+use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
 use reifydb_metric::{
 	cdc::{CdcStats, CdcStatsReader},
 	multi::{MultiStorageStats, StorageStatsReader, Tier},
@@ -50,7 +51,8 @@ test_each_path! { in "crates/metric/tests/scripts/integration" as metric_sqlite 
 
 fn test_memory(path: &Path) {
 	let data_storage = HotStorage::memory();
-	let event_bus = EventBus::new();
+	let actor_system = ActorSystem::new(ActorSystemConfig::default());
+	let event_bus = EventBus::new(&actor_system);
 	let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 	let stats_waiter = StatsWaiter::new();
 	event_bus.register::<StatsProcessedEvent, _>(stats_waiter.clone());
@@ -61,7 +63,8 @@ fn test_memory(path: &Path) {
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
 		let data_storage = HotStorage::sqlite_in_memory();
-		let event_bus = EventBus::new();
+		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		let event_bus = EventBus::new(&actor_system);
 		let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 		let stats_waiter = StatsWaiter::new();
 		event_bus.register::<StatsProcessedEvent, _>(stats_waiter.clone());

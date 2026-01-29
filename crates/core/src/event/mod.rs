@@ -7,7 +7,12 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::actor::{
+	context::Context,
+	mailbox::ActorRef,
+	system::ActorSystem,
+	traits::{Actor, Flow},
+};
 
 pub mod flow;
 pub mod lifecycle;
@@ -35,7 +40,7 @@ trait EventListenerList: Any + Send + Sync {
 }
 
 struct EventListenerListImpl<E> {
-	listeners: RwLock<Vec<Arc<dyn EventListener<E>>>>,
+	listeners: Vec<Arc<dyn EventListener<E>>>,
 }
 
 impl<E> EventListenerListImpl<E>
@@ -44,12 +49,12 @@ where
 {
 	fn new() -> Self {
 		Self {
-			listeners: RwLock::new(Vec::new()),
+			listeners: Vec::new(),
 		}
 	}
 
-	fn add(&self, listener: Arc<dyn EventListener<E>>) {
-		self.listeners.write().push(listener);
+	fn add(&mut self, listener: Arc<dyn EventListener<E>>) {
+		self.listeners.push(listener);
 	}
 }
 
@@ -59,14 +64,7 @@ where
 {
 	fn on_any(&self, event: Box<dyn Any + Send>) {
 		if let Ok(event) = event.downcast::<E>() {
-			// Get a snapshot of listeners (hold lock briefly)
-			let listeners: Vec<_> = {
-				let guard = self.listeners.read();
-				guard.iter().cloned().collect()
-			};
-
-			// Call listeners without holding the lock
-			for listener in listeners {
+			for listener in &self.listeners {
 				listener.on(&*event);
 			}
 		}
@@ -77,21 +75,61 @@ where
 	}
 }
 
-#[derive(Clone)]
-pub struct EventBus {
-	listeners: Arc<RwLock<HashMap<TypeId, Box<dyn EventListenerList>>>>,
+// --- Actor-based EventBus ---
+
+struct EventEnvelope {
+	type_id: TypeId,
+	event: Box<dyn Any + Send>,
 }
 
-impl Default for EventBus {
-	fn default() -> Self {
-		Self::new()
+enum EventBusMsg {
+	Emit(EventEnvelope),
+	Register {
+		installer: Box<dyn FnOnce(&mut HashMap<TypeId, Box<dyn EventListenerList>>) + Send>,
+	},
+	WaitForCompletion(std::sync::mpsc::Sender<()>),
+}
+
+struct EventBusActor;
+
+impl Actor for EventBusActor {
+	type State = HashMap<TypeId, Box<dyn EventListenerList>>;
+	type Message = EventBusMsg;
+
+	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
+		HashMap::new()
+	}
+
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
+		match msg {
+			EventBusMsg::Emit(envelope) => {
+				if let Some(list) = state.get(&envelope.type_id) {
+					list.on_any(envelope.event);
+				}
+			}
+			EventBusMsg::Register { installer } => {
+				installer(state);
+			}
+			EventBusMsg::WaitForCompletion(tx) => {
+				let _ = tx.send(());
+			}
+		}
+		Flow::Continue
 	}
 }
 
+#[derive(Clone)]
+pub struct EventBus {
+	actor_ref: ActorRef<EventBusMsg>,
+	_actor_system: ActorSystem,
+}
+
 impl EventBus {
-	pub fn new() -> Self {
+	pub fn new(actor_system: &ActorSystem) -> Self {
+		let handle = actor_system.spawn("event-bus", EventBusActor);
 		Self {
-			listeners: Arc::new(RwLock::new(HashMap::new())),
+			actor_ref: handle.actor_ref().clone(),
+			_actor_system: actor_system.clone(),
 		}
 	}
 
@@ -101,11 +139,20 @@ impl EventBus {
 		L: EventListener<E>,
 	{
 		let type_id = TypeId::of::<E>();
+		let listener = Arc::new(listener);
 
-		let mut listeners = self.listeners.write();
-		let list = listeners.entry(type_id).or_insert_with(|| Box::new(EventListenerListImpl::<E>::new()));
+		let installer: Box<dyn FnOnce(&mut HashMap<TypeId, Box<dyn EventListenerList>>) + Send> =
+			Box::new(move |map| {
+				let list = map
+					.entry(type_id)
+					.or_insert_with(|| Box::new(EventListenerListImpl::<E>::new()));
+				list.as_any_mut()
+					.downcast_mut::<EventListenerListImpl<E>>()
+					.unwrap()
+					.add(listener);
+			});
 
-		list.as_any_mut().downcast_mut::<EventListenerListImpl<E>>().unwrap().add(Arc::new(listener));
+		let _ = self.actor_ref.send(EventBusMsg::Register { installer });
 	}
 
 	pub fn emit<E>(&self, event: E)
@@ -113,20 +160,16 @@ impl EventBus {
 		E: Event,
 	{
 		let type_id = TypeId::of::<E>();
+		let _ = self.actor_ref.send(EventBusMsg::Emit(EventEnvelope {
+			type_id,
+			event: event.into_any(),
+		}));
+	}
 
-		// Get a clone of the listener list pointer
-		let listener_list = {
-			let listeners = self.listeners.read();
-			listeners.get(&type_id).map(|l| l.as_ref() as *const dyn EventListenerList)
-		};
-
-		// Now call on_any without holding the lock
-		if let Some(listener_list_ptr) = listener_list {
-			// SAFETY: The listener_list is stored in an Arc inside self.listeners,
-			// so it remains valid as long as self exists
-			let listener_list = unsafe { &*listener_list_ptr };
-			listener_list.on_any(event.into_any());
-		}
+	pub fn wait_for_completion(&self) {
+		let (tx, rx) = std::sync::mpsc::channel();
+		let _ = self.actor_ref.send(EventBusMsg::WaitForCompletion(tx));
+		let _ = rx.recv();
 	}
 }
 
@@ -134,7 +177,13 @@ impl EventBus {
 pub mod tests {
 	use std::sync::{Arc, Mutex};
 
+	use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
+
 	use crate::event::{Event, EventBus, EventListener};
+
+	fn test_actor_system() -> ActorSystem {
+		ActorSystem::new(ActorSystemConfig::default())
+	}
 
 	define_event! {
 		pub struct TestEvent{}
@@ -168,35 +217,36 @@ pub mod tests {
 
 	#[test]
 	fn test_event_bus_new() {
-		let event_bus = EventBus::new();
+		let actor_system = test_actor_system();
+		let event_bus = EventBus::new(&actor_system);
 		event_bus.emit(TestEvent::new());
-	}
-
-	#[test]
-	fn test_event_bus_default() {
-		let event_bus = EventBus::default();
-		event_bus.emit(TestEvent::new());
+		event_bus.wait_for_completion();
 	}
 
 	#[test]
 	fn test_register_single_listener() {
-		let event_bus = EventBus::new();
+		let actor_system = test_actor_system();
+		let event_bus = EventBus::new(&actor_system);
 		let listener = TestEventListener::default();
 
 		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
 		event_bus.emit(TestEvent::new());
+		event_bus.wait_for_completion();
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 	}
 
 	#[test]
 	fn test_emit_unregistered_event() {
-		let event_bus = EventBus::new();
+		let actor_system = test_actor_system();
+		let event_bus = EventBus::new(&actor_system);
 		event_bus.emit(TestEvent::new());
+		event_bus.wait_for_completion();
 	}
 
 	#[test]
 	fn test_multiple_listeners_same_event() {
-		let event_bus = EventBus::new();
+		let actor_system = test_actor_system();
+		let event_bus = EventBus::new(&actor_system);
 		let listener1 = TestEventListener::default();
 		let listener2 = TestEventListener::default();
 
@@ -204,24 +254,28 @@ pub mod tests {
 		event_bus.register::<TestEvent, TestEventListener>(listener2.clone());
 
 		event_bus.emit(TestEvent::new());
+		event_bus.wait_for_completion();
 		assert_eq!(*listener1.0.counter.lock().unwrap(), 1);
 		assert_eq!(*listener2.0.counter.lock().unwrap(), 1);
 	}
 
 	#[test]
 	fn test_event_bus_clone() {
-		let event_bus1 = EventBus::new();
+		let actor_system = test_actor_system();
+		let event_bus1 = EventBus::new(&actor_system);
 		let listener = TestEventListener::default();
 		event_bus1.register::<TestEvent, TestEventListener>(listener.clone());
 
 		let event_bus2 = event_bus1.clone();
 		event_bus2.emit(TestEvent::new());
+		event_bus2.wait_for_completion();
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 	}
 
 	#[test]
 	fn test_concurrent_registration() {
-		let event_bus = Arc::new(EventBus::new());
+		let actor_system = test_actor_system();
+		let event_bus = Arc::new(EventBus::new(&actor_system));
 		let mut handles = Vec::new();
 
 		for _ in 0..10 {
@@ -237,13 +291,16 @@ pub mod tests {
 		}
 
 		event_bus.emit(TestEvent::new());
+		event_bus.wait_for_completion();
 	}
 
 	#[test]
 	fn test_concurrent_emitting() {
-		let event_bus = Arc::new(EventBus::new());
+		let actor_system = test_actor_system();
+		let event_bus = Arc::new(EventBus::new(&actor_system));
 		let listener = TestEventListener::default();
 		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
+		event_bus.wait_for_completion();
 
 		let mut handles = Vec::new();
 
@@ -258,7 +315,8 @@ pub mod tests {
 			handle.join().unwrap();
 		}
 
-		assert!(*listener.0.counter.lock().unwrap() >= 10);
+		event_bus.wait_for_completion();
+		assert_eq!(*listener.0.counter.lock().unwrap(), 10);
 	}
 
 	define_event! {
@@ -277,7 +335,8 @@ pub mod tests {
 
 	#[test]
 	fn test_multi_event_listener() {
-		let event_bus = EventBus::default();
+		let actor_system = test_actor_system();
+		let event_bus = EventBus::new(&actor_system);
 		let listener = TestEventListener::default();
 
 		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
@@ -285,12 +344,15 @@ pub mod tests {
 
 		// Each event type triggers only its own listeners
 		event_bus.emit(TestEvent::new());
+		event_bus.wait_for_completion();
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 
 		event_bus.emit(TestEvent::new());
+		event_bus.wait_for_completion();
 		assert_eq!(*listener.0.counter.lock().unwrap(), 2);
 
 		event_bus.emit(AnotherEvent::new());
+		event_bus.wait_for_completion();
 		assert_eq!(*listener.0.counter.lock().unwrap(), 4); // 2 * 2
 	}
 }

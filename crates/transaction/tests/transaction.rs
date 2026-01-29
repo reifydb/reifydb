@@ -49,7 +49,7 @@ test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all 
 fn test_serializable(path: &Path) {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
-	let bus = EventBus::default();
+	let bus = EventBus::new(&ActorSystem::new(ActorSystemConfig::default()));
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let engine = TransactionMulti::new(
 		multi_store,

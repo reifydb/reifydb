@@ -200,8 +200,8 @@ impl TransactionMulti {
 		use reifydb_runtime::actor::system::ActorSystemConfig;
 		let multi_store = reifydb_store_multi::MultiStore::testing_memory();
 		let single_store = reifydb_store_single::SingleStore::testing_memory();
-		let event_bus = EventBus::new();
 		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		let event_bus = EventBus::new(&actor_system);
 		Self::new(
 			multi_store,
 			TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, event_bus.clone())),

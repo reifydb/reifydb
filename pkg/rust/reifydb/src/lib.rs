@@ -17,7 +17,6 @@ pub use api::*;
 pub use builder::{DatabaseBuilder, EmbeddedBuilder, ServerBuilder, WithInterceptorBuilder, WithSubsystem};
 pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::Database;
-pub use event::{OnCreateContext, WithEventBus};
 pub use health::HealthMonitor;
 pub use reifydb_auth as auth;
 pub use reifydb_cdc as cdc;

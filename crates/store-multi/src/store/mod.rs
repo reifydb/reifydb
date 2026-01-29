@@ -86,7 +86,7 @@ impl Deref for StandardMultiStore {
 
 impl StandardMultiStore {
 	pub fn testing_memory() -> Self {
-		Self::testing_memory_with_eventbus(EventBus::new())
+		Self::testing_memory_with_eventbus(EventBus::new(&ActorSystem::new(ActorSystemConfig::default())))
 	}
 
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {

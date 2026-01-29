@@ -321,8 +321,8 @@ pub mod tests {
 		fn new() -> Self {
 			let multi_store = MultiStore::testing_memory();
 			let single_store = SingleStore::testing_memory();
-			let event_bus = EventBus::new();
 			let actor_system = ActorSystem::new(ActorSystemConfig::default());
+			let event_bus = EventBus::new(&actor_system);
 			let single = TransactionSingle::svl(single_store, event_bus.clone());
 			let multi =
 				TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default())
@@ -363,7 +363,8 @@ pub mod tests {
 		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let resolver = store;
-		let event_bus = EventBus::new();
+		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::new();
 		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus, host);
 
@@ -404,7 +405,8 @@ pub mod tests {
 		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let resolver = store;
-		let event_bus = EventBus::new();
+		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::new();
 		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus, host);
 
