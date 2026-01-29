@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	ast::ast::AstCreateFlow,
@@ -9,7 +9,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_flow<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_flow<T: AsTransaction>(
 		&self,
 		ast: AstCreateFlow,
 		tx: &mut T,

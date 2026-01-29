@@ -5,12 +5,12 @@ use reifydb_core::{
 	interface::catalog::id::TableId,
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn delete_table(txn: &mut StandardCommandTransaction, table: TableId) -> crate::Result<()> {
+	pub(crate) fn delete_table(txn: &mut CommandTransaction, table: TableId) -> crate::Result<()> {
 		// First, find the table to get its namespace
 		if let Some(table_def) = Self::find_table(txn, table)? {
 			// Delete the namespace-table link (secondary index)

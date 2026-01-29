@@ -11,10 +11,10 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalSubscriptionChanges,
 	},
-	standard::StandardCommandTransaction,
+	transaction::CommandTransaction,
 };
 
-impl CatalogTrackSubscriptionChangeOperations for StandardCommandTransaction {
+impl CatalogTrackSubscriptionChangeOperations for CommandTransaction {
 	fn track_subscription_def_created(&mut self, subscription: SubscriptionDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
@@ -50,7 +50,7 @@ impl CatalogTrackSubscriptionChangeOperations for StandardCommandTransaction {
 	}
 }
 
-impl TransactionalSubscriptionChanges for StandardCommandTransaction {
+impl TransactionalSubscriptionChanges for CommandTransaction {
 	fn find_subscription(&self, id: SubscriptionId) -> Option<&SubscriptionDef> {
 		for change in self.changes.subscription_def.iter().rev() {
 			if let Some(subscription) = &change.post {

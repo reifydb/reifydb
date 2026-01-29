@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::{id::IndexId, table::TableDef},
 	value::column::headers::ColumnHeaders,
 };
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
@@ -46,16 +46,12 @@ impl IndexScanNode {
 }
 
 impl QueryNode for IndexScanNode {
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
-	fn next<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		unimplemented!()
 		// let ctx = self.context.as_ref().unwrap();

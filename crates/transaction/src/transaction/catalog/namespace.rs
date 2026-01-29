@@ -11,10 +11,10 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalNamespaceChanges,
 	},
-	standard::StandardCommandTransaction,
+	transaction::CommandTransaction,
 };
 
-impl CatalogTrackNamespaceChangeOperations for StandardCommandTransaction {
+impl CatalogTrackNamespaceChangeOperations for CommandTransaction {
 	fn track_namespace_def_created(&mut self, namespace: NamespaceDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
@@ -46,7 +46,7 @@ impl CatalogTrackNamespaceChangeOperations for StandardCommandTransaction {
 	}
 }
 
-impl TransactionalNamespaceChanges for StandardCommandTransaction {
+impl TransactionalNamespaceChanges for CommandTransaction {
 	fn find_namespace(&self, id: NamespaceId) -> Option<&NamespaceDef> {
 		for change in self.changes.namespace_def.iter().rev() {
 			if let Some(namespace) = &change.post {

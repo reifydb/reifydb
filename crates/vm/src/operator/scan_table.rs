@@ -19,7 +19,7 @@ use reifydb_core::{
 		lazy::{LazyBatch, LazyColumnMeta},
 	},
 };
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 use crate::error::{Result, VmError};
@@ -56,7 +56,7 @@ impl ScanTableOp {
 	///
 	/// Called once by the VM when executing a Source instruction.
 	/// The returned ScanState is stored in the VM's active_scans map.
-	pub fn initialize<'a>(&self, catalog: &Catalog, tx: &mut StandardTransaction<'a>) -> Result<ScanState> {
+	pub fn initialize<'a>(&self, catalog: &Catalog, tx: &mut Transaction<'a>) -> Result<ScanState> {
 		// Resolve namespace and table name
 		let (namespace_id, table_name) = if let Some((ns, tbl)) = self.table_name.split_once('.') {
 			// Qualified name: look up namespace by name
@@ -103,7 +103,7 @@ impl ScanTableOp {
 	pub fn next_batch<'a>(
 		catalog: &Catalog,
 		state: &mut ScanState,
-		tx: &mut StandardTransaction<'a>,
+		tx: &mut Transaction<'a>,
 		batch_size: u64,
 	) -> Result<Option<Batch>> {
 		if state.exhausted {
@@ -159,7 +159,7 @@ fn build_lazy_batch(
 	schema_cache: &mut Option<Schema>,
 	storage_types: &[Type],
 	last_key: &mut Option<EncodedKey>,
-	tx: &mut StandardTransaction,
+	tx: &mut Transaction,
 ) -> Result<LazyBatch> {
 	let mut rows = Vec::new();
 	let mut row_numbers = Vec::new();

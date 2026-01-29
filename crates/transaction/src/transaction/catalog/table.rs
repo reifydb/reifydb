@@ -13,10 +13,10 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalTableChanges,
 	},
-	standard::StandardCommandTransaction,
+	transaction::CommandTransaction,
 };
 
-impl CatalogTrackTableChangeOperations for StandardCommandTransaction {
+impl CatalogTrackTableChangeOperations for CommandTransaction {
 	fn track_table_def_created(&mut self, table: TableDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
@@ -48,7 +48,7 @@ impl CatalogTrackTableChangeOperations for StandardCommandTransaction {
 	}
 }
 
-impl TransactionalTableChanges for StandardCommandTransaction {
+impl TransactionalTableChanges for CommandTransaction {
 	fn find_table(&self, id: TableId) -> Option<&TableDef> {
 		for change in self.changes.table_def.iter().rev() {
 			if let Some(table) = &change.post {

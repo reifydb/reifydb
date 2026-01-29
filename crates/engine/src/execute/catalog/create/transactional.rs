@@ -7,7 +7,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::CreateTransactionalViewNode;
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{return_error, value::Value};
 
 use crate::execute::Executor;
@@ -15,7 +15,7 @@ use crate::execute::Executor;
 impl Executor {
 	pub(crate) fn create_transactional_view(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: CreateTransactionalViewNode,
 	) -> crate::Result<Columns> {
 		if let Some(view) = self.catalog.find_view_by_name(txn, plan.namespace.id, plan.view.text())? {

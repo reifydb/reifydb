@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::TransactionalNamespaceChanges,
-	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
+	transaction::{AsTransaction, Transaction, command::CommandTransaction},
 };
 use reifydb_type::{error, fragment::Fragment};
 use tracing::{instrument, warn};
@@ -33,13 +33,13 @@ impl From<NamespaceToCreate> for StoreNamespaceToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::namespace::find", level = "trace", skip(self, txn))]
-	pub fn find_namespace<T: IntoStandardTransaction>(
+	pub fn find_namespace<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		id: NamespaceId,
 	) -> crate::Result<Option<NamespaceDef>> {
-		match txn.into_standard_transaction() {
-			StandardTransaction::Command(cmd) => {
+		match txn.as_transaction() {
+			Transaction::Command(cmd) => {
 				// 1. Check transactional changes first
 				if let Some(namespace) = TransactionalNamespaceChanges::find_namespace(cmd, id) {
 					return Ok(Some(namespace.clone()));
@@ -66,7 +66,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			StandardTransaction::Query(qry) => {
+			Transaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(namespace) = self.materialized.find_namespace_at(id, qry.version()) {
 					return Ok(Some(namespace));
@@ -87,13 +87,13 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_namespace_by_name<T: IntoStandardTransaction>(
+	pub fn find_namespace_by_name<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		name: &str,
 	) -> crate::Result<Option<NamespaceDef>> {
-		match txn.into_standard_transaction() {
-			StandardTransaction::Command(cmd) => {
+		match txn.as_transaction() {
+			Transaction::Command(cmd) => {
 				// 1. Check transactional changes first
 				if let Some(namespace) =
 					TransactionalNamespaceChanges::find_namespace_by_name(cmd, name)
@@ -121,7 +121,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			StandardTransaction::Query(qry) => {
+			Transaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(namespace) =
 					self.materialized.find_namespace_by_name_at(name, qry.version())
@@ -141,11 +141,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::get", level = "trace", skip(self, txn))]
-	pub fn get_namespace<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-		id: NamespaceId,
-	) -> crate::Result<NamespaceDef> {
+	pub fn get_namespace<T: AsTransaction>(&self, txn: &mut T, id: NamespaceId) -> crate::Result<NamespaceDef> {
 		self.find_namespace(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Namespace with ID {} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -155,7 +151,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::get_by_name", level = "trace", skip(self, txn, name))]
-	pub fn get_namespace_by_name<T: IntoStandardTransaction>(
+	pub fn get_namespace_by_name<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		name: impl Into<Fragment> + Send,
@@ -168,7 +164,7 @@ impl Catalog {
 	#[instrument(name = "catalog::namespace::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_namespace(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		to_create: NamespaceToCreate,
 	) -> crate::Result<NamespaceDef> {
 		let namespace = CatalogStore::create_namespace(txn, to_create.into())?;
@@ -177,18 +173,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::delete", level = "debug", skip(self, txn))]
-	pub fn delete_namespace(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		namespace: NamespaceDef,
-	) -> crate::Result<()> {
+	pub fn delete_namespace(&self, txn: &mut CommandTransaction, namespace: NamespaceDef) -> crate::Result<()> {
 		CatalogStore::delete_namespace(txn, namespace.id)?;
 		txn.track_namespace_def_deleted(namespace)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::namespace::list_all", level = "debug", skip(self, txn))]
-	pub fn list_namespaces_all<T: IntoStandardTransaction>(&self, txn: &mut T) -> crate::Result<Vec<NamespaceDef>> {
+	pub fn list_namespaces_all<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<NamespaceDef>> {
 		CatalogStore::list_namespaces_all(txn)
 	}
 }

@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
@@ -37,18 +37,14 @@ impl MapNode {
 
 impl QueryNode for MapNode {
 	#[instrument(name = "query::map::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(name = "query::map::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "MapNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -141,17 +137,13 @@ impl MapWithoutInputNode {
 
 impl QueryNode for MapWithoutInputNode {
 	#[instrument(name = "query::map::noinput::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
 	#[instrument(name = "query::map::noinput::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 

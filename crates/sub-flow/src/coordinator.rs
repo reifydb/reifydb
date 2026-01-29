@@ -22,7 +22,7 @@ use reifydb_runtime::{
 	},
 	clock::Clock,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{Result, error::Error};
 use tracing::{Span, instrument};
 
@@ -111,10 +111,7 @@ impl FlowCoordinator {
 	}
 
 	/// Get the parent transaction's snapshot version for state reads.
-	fn get_parent_snapshot_version(
-		&self,
-		txn: &StandardCommandTransaction,
-	) -> Result<reifydb_core::common::CommitVersion> {
+	fn get_parent_snapshot_version(&self, txn: &CommandTransaction) -> Result<reifydb_core::common::CommitVersion> {
 		let query_txn = txn.multi.begin_query()?;
 		Ok(query_txn.version())
 	}
@@ -159,11 +156,7 @@ impl CdcConsume for FlowCoordinator {
 		version_end = tracing::field::Empty,
 		elapsed_us = tracing::field::Empty
 	))]
-	fn consume(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		cdcs: Vec<reifydb_core::interface::cdc::Cdc>,
-	) -> Result<()> {
+	fn consume(&self, txn: &mut CommandTransaction, cdcs: Vec<reifydb_core::interface::cdc::Cdc>) -> Result<()> {
 		let consume_start = self.clock.instant();
 
 		// Record version range

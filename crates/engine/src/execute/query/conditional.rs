@@ -8,7 +8,7 @@ use reifydb_rql::{
 	expression::Expression,
 	plan::physical::{self, PhysicalPlan},
 };
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	evaluate::{ColumnEvaluationContext, column::evaluate},
@@ -102,16 +102,12 @@ impl<'a> ConditionalNode {
 }
 
 impl QueryNode for ConditionalNode {
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "ConditionalNode::next() called before initialize()");
 
 		// Conditional statements execute once

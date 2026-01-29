@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::id::{PrimaryKeyId, TableId},
 	key::table::TableKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::table::schema::table};
 
@@ -13,10 +13,10 @@ impl CatalogStore {
 	/// Get the primary key ID for a table
 	/// Returns None if the table doesn't exist or has no primary key
 	pub(crate) fn get_table_pk_id(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let multi = match txn.get(&TableKey::encoded(table_id))? {
 			Some(v) => v,
 			None => return Ok(None),

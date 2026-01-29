@@ -26,7 +26,7 @@ pub mod tests {
 		common::CommitVersion,
 		encoded::{encoded::EncodedValues, key::EncodedKey},
 	};
-	use reifydb_transaction::standard::command::StandardCommandTransaction;
+	use reifydb_transaction::transaction::command::CommandTransaction;
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
@@ -40,7 +40,7 @@ pub mod tests {
 		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn get_values(parent: &mut StandardCommandTransaction, key: &EncodedKey) -> Option<EncodedValues> {
+	fn get_values(parent: &mut CommandTransaction, key: &EncodedKey) -> Option<EncodedValues> {
 		parent.get(key).unwrap().map(|m| m.values.clone())
 	}
 

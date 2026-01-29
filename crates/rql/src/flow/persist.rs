@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::flow::{FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId};
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::value::blob::Blob;
 
 use super::plan::{CompiledFlowPlan, LocalNodeId};
@@ -41,7 +41,7 @@ use crate::flow::{
 /// calling this function. This function only persists nodes and edges.
 pub fn persist_flow(
 	catalog: &Catalog,
-	txn: &mut StandardCommandTransaction,
+	txn: &mut CommandTransaction,
 	plan: CompiledFlowPlan,
 	flow_id: FlowId,
 ) -> crate::Result<FlowDag> {

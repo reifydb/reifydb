@@ -16,7 +16,7 @@ use reifydb_core::{
 		column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 	},
 };
-use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
+use reifydb_transaction::transaction::{AsTransaction, Transaction};
 use reifydb_type::{
 	error,
 	fragment::Fragment,
@@ -45,7 +45,7 @@ pub(crate) struct TableScanNode {
 }
 
 impl TableScanNode {
-	pub fn new<Rx: IntoStandardTransaction>(
+	pub fn new<Rx: AsTransaction>(
 		table: ResolvedTable,
 		context: Arc<ExecutionContext>,
 		rx: &mut Rx,
@@ -88,7 +88,7 @@ impl TableScanNode {
 
 	fn get_or_load_schema<'a>(
 		&mut self,
-		rx: &mut StandardTransaction<'a>,
+		rx: &mut Transaction<'a>,
 		first_row: &reifydb_core::encoded::encoded::EncodedValues,
 	) -> crate::Result<Schema> {
 		if let Some(schema) = &self.schema {
@@ -114,17 +114,13 @@ impl TableScanNode {
 
 impl QueryNode for TableScanNode {
 	#[instrument(level = "trace", skip_all, name = "query::scan::table::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::scan::table::next")]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "TableScanNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -206,7 +202,7 @@ impl QueryNode for TableScanNode {
 	#[instrument(level = "trace", skip_all, name = "query::scan::table::next_lazy")]
 	fn next_lazy<'a>(
 		&mut self,
-		rx: &mut StandardTransaction<'a>,
+		rx: &mut Transaction<'a>,
 		_ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<LazyBatch>> {
 		debug_assert!(self.context.is_some(), "TableScanNode::next_lazy() called before initialize()");
@@ -274,11 +270,7 @@ impl QueryNode for TableScanNode {
 
 impl<'a> TableScanNode {
 	/// Decode dictionary columns by replacing dictionary IDs with actual values
-	fn decode_dictionary_columns(
-		&self,
-		columns: &mut Columns,
-		rx: &mut StandardTransaction<'a>,
-	) -> crate::Result<()> {
+	fn decode_dictionary_columns(&self, columns: &mut Columns, rx: &mut Transaction<'a>) -> crate::Result<()> {
 		for (col_idx, dict_opt) in self.dictionaries.iter().enumerate() {
 			if let Some(dictionary) = dict_opt {
 				let col = &columns[col_idx];

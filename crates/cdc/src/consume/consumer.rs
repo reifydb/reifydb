@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::cdc::Cdc;
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::Result;
 
 /// Trait for CDC transaction processing functions
 pub trait CdcConsume {
-	fn consume(&self, txn: &mut StandardCommandTransaction, transactions: Vec<Cdc>) -> Result<()>;
+	fn consume(&self, txn: &mut CommandTransaction, transactions: Vec<Cdc>) -> Result<()>;
 }
 
 /// Trait for CDC event stream consumers

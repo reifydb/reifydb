@@ -9,7 +9,7 @@ use reifydb_core::{
 		flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey},
 	},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	CatalogStore,
@@ -18,10 +18,10 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn list_flow_edges_by_flow(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowEdgeDef>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 
 		// Collect edge IDs first to avoid holding stream borrow
 		let mut edge_ids = Vec::new();
@@ -47,8 +47,8 @@ impl CatalogStore {
 		Ok(edges)
 	}
 
-	pub(crate) fn list_flow_edges_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowEdgeDef>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_flow_edges_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<FlowEdgeDef>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		let mut stream = txn.range(FlowEdgeKey::full_scan(), 1024)?;

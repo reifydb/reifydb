@@ -5,16 +5,13 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowNodeDef, FlowNodeId},
 	internal,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_flow_node(
-		txn: &mut impl IntoStandardTransaction,
-		node_id: FlowNodeId,
-	) -> crate::Result<FlowNodeDef> {
+	pub(crate) fn get_flow_node(txn: &mut impl AsTransaction, node_id: FlowNodeId) -> crate::Result<FlowNodeDef> {
 		CatalogStore::find_flow_node(txn, node_id)?.ok_or_else(|| {
 			Error(internal!(
 				"Flow node with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

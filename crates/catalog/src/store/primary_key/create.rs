@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::primary_key::PrimaryKeyKey,
 	return_internal_error,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -31,7 +31,7 @@ pub struct PrimaryKeyToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_primary_key(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		to_create: PrimaryKeyToCreate,
 	) -> crate::Result<PrimaryKeyId> {
 		// Validate that primary key has at least one column

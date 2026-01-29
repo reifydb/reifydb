@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
 use reifydb_rql::expression::VariableExpression;
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error::diagnostic::runtime::variable_not_found, fragment::Fragment, return_error};
 
 use crate::{
@@ -30,16 +30,12 @@ impl VariableNode {
 }
 
 impl QueryNode for VariableNode {
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "VariableNode::next() called before initialize()");
 
 		// Variables execute once and return their data

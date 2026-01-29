@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_transaction::{
 	change::TransactionalDictionaryChanges,
-	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
+	transaction::{AsTransaction, Transaction, command::CommandTransaction},
 };
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 use tracing::{instrument, warn};
@@ -38,13 +38,13 @@ impl From<DictionaryToCreate> for StoreDictionaryToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self, txn))]
-	pub fn find_dictionary<T: IntoStandardTransaction>(
+	pub fn find_dictionary<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		id: DictionaryId,
 	) -> crate::Result<Option<DictionaryDef>> {
-		match txn.into_standard_transaction() {
-			StandardTransaction::Command(cmd) => {
+		match txn.as_transaction() {
+			Transaction::Command(cmd) => {
 				// 1. Check transactional changes first
 				if let Some(dict) = TransactionalDictionaryChanges::find_dictionary(cmd, id) {
 					return Ok(Some(dict.clone()));
@@ -71,7 +71,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			StandardTransaction::Query(qry) => {
+			Transaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(dict) = self.materialized.find_dictionary_at(id, qry.version()) {
 					return Ok(Some(dict));
@@ -92,14 +92,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::dictionary::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_dictionary_by_name<T: IntoStandardTransaction>(
+	pub fn find_dictionary_by_name<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		namespace: NamespaceId,
 		name: &str,
 	) -> crate::Result<Option<DictionaryDef>> {
-		match txn.into_standard_transaction() {
-			StandardTransaction::Command(cmd) => {
+		match txn.as_transaction() {
+			Transaction::Command(cmd) => {
 				// 1. Check transactional changes first
 				if let Some(dict) =
 					TransactionalDictionaryChanges::find_dictionary_by_name(cmd, namespace, name)
@@ -130,7 +130,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			StandardTransaction::Query(qry) => {
+			Transaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(dict) =
 					self.materialized.find_dictionary_by_name_at(namespace, name, qry.version())
@@ -153,18 +153,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::dictionary::get", level = "trace", skip(self, txn))]
-	pub fn get_dictionary<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-		id: DictionaryId,
-	) -> crate::Result<DictionaryDef> {
+	pub fn get_dictionary<T: AsTransaction>(&self, txn: &mut T, id: DictionaryId) -> crate::Result<DictionaryDef> {
 		CatalogStore::get_dictionary(txn, id)
 	}
 
 	#[instrument(name = "catalog::dictionary::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_dictionary(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		to_create: DictionaryToCreate,
 	) -> crate::Result<DictionaryDef> {
 		let dictionary = CatalogStore::create_dictionary(txn, to_create.into())?;
@@ -173,7 +169,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::dictionary::list", level = "debug", skip(self, txn))]
-	pub fn list_dictionaries<T: IntoStandardTransaction>(
+	pub fn list_dictionaries<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		namespace: NamespaceId,
@@ -182,10 +178,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::dictionary::list_all", level = "debug", skip(self, txn))]
-	pub fn list_all_dictionaries<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-	) -> crate::Result<Vec<DictionaryDef>> {
+	pub fn list_all_dictionaries<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<DictionaryDef>> {
 		CatalogStore::list_all_dictionaries(txn)
 	}
 }

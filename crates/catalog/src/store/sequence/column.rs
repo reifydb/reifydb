@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{id::ColumnId, primitive::PrimitiveId},
 	key::column_sequence::ColumnSequenceKey,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::value::{Value, r#type::Type};
 
 use crate::{
@@ -20,7 +20,7 @@ pub struct ColumnSequence {}
 
 impl ColumnSequence {
 	pub(crate) fn next_value(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,
 	) -> crate::Result<Value> {
@@ -43,7 +43,7 @@ impl ColumnSequence {
 	}
 
 	pub(crate) fn set_value(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,
 		value: Value,

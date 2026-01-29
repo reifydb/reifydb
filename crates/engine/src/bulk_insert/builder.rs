@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::{auth::Identity, catalog::id::IndexId},
 	key::{EncodableKey, index_entry::IndexEntryKey},
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{
 	fragment::Fragment,
 	value::{Value, row_number::RowNumber, r#type::Type},
@@ -153,7 +153,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 /// Execute a table insert within a transaction
 fn execute_table_insert<V: ValidationMode>(
 	catalog: &Catalog,
-	txn: &mut StandardCommandTransaction,
+	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
 	type_id: std::any::TypeId,
 ) -> crate::Result<TableInsertResult> {
@@ -271,7 +271,7 @@ fn execute_table_insert<V: ValidationMode>(
 /// Execute a ring buffer insert within a transaction
 fn execute_ringbuffer_insert<V: ValidationMode>(
 	catalog: &Catalog,
-	txn: &mut StandardCommandTransaction,
+	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,
 	type_id: std::any::TypeId,
 ) -> crate::Result<RingBufferInsertResult> {

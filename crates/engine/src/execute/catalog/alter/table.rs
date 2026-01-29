@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::{logical::alter::table::AlterTableOperation, physical::alter::table::AlterTableNode};
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
 use crate::execute::Executor;
@@ -19,7 +19,7 @@ use crate::execute::Executor;
 impl Executor {
 	pub(crate) fn alter_table<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: AlterTableNode,
 	) -> crate::Result<Columns> {
 		// Get namespace and table names from MaybeQualified type

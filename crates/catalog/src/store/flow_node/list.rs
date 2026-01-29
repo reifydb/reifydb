@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowNodeDef, FlowNodeId},
 	key::{EncodableKey, flow_node::FlowNodeKey},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	CatalogStore,
@@ -14,10 +14,10 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn list_flow_nodes_by_flow(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowNodeDef>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 
 		// First collect all node IDs to avoid holding stream borrow
 		let mut node_ids = Vec::new();
@@ -43,8 +43,8 @@ impl CatalogStore {
 		Ok(nodes)
 	}
 
-	pub(crate) fn list_flow_nodes_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowNodeDef>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_flow_nodes_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<FlowNodeDef>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		let mut stream = txn.range(FlowNodeKey::full_scan(), 1024)?;

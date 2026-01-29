@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::InsertRingBufferNode;
-use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -30,7 +30,7 @@ impl Executor {
 	#[instrument(name = "mutate::ringbuffer::insert", level = "trace", skip_all)]
 	pub(crate) fn insert_ringbuffer<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: InsertRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -68,7 +68,7 @@ impl Executor {
 			stack: Stack::new(),
 		});
 
-		let mut std_txn = StandardTransaction::from(txn);
+		let mut std_txn = Transaction::from(txn);
 		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
 
 		let mut inserted_count = 0;

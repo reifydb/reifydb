@@ -10,7 +10,7 @@ use reifydb_core::interface::{
 	},
 	version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_transaction::standard::{IntoStandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction};
 
 pub mod catalog;
 pub mod materialized;
@@ -28,10 +28,7 @@ pub(crate) struct CatalogStore;
 ///
 /// This is a low-level function that bypasses the MaterializedCatalog cache.
 /// For most use cases, prefer using `Catalog::find_subscription` instead.
-pub fn find_subscription(
-	txn: &mut impl IntoStandardTransaction,
-	id: SubscriptionId,
-) -> Result<Option<SubscriptionDef>> {
+pub fn find_subscription(txn: &mut impl AsTransaction, id: SubscriptionId) -> Result<Option<SubscriptionDef>> {
 	CatalogStore::find_subscription(txn, id)
 }
 
@@ -39,7 +36,7 @@ pub fn find_subscription(
 ///
 /// This is a low-level function that performs complete cleanup of a subscription.
 /// Use this when cleaning up subscriptions after a WebSocket connection closes.
-pub fn delete_subscription(txn: &mut StandardCommandTransaction, id: SubscriptionId) -> Result<()> {
+pub fn delete_subscription(txn: &mut CommandTransaction, id: SubscriptionId) -> Result<()> {
 	CatalogStore::delete_subscription(txn, id)
 }
 
@@ -47,7 +44,7 @@ pub fn delete_subscription(txn: &mut StandardCommandTransaction, id: Subscriptio
 ///
 /// This is useful for cleaning up flows associated with subscriptions,
 /// where the flow name is derived from the subscription ID.
-pub fn delete_flow_by_name(txn: &mut StandardCommandTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
+pub fn delete_flow_by_name(txn: &mut CommandTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
 	CatalogStore::delete_flow_by_name(txn, namespace, name)
 }
 

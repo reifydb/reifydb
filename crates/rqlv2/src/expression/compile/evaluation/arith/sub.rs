@@ -225,7 +225,7 @@ pub(crate) fn eval_sub(left: &Column, right: &Column) -> EvalResult<Column> {
 				..
 			},
 		) => sub_numeric_clone(l, r, target),
-		// Int with standard numeric types
+		// Int with transaction numeric types
 		(
 			ColumnData::Int {
 				container: l,
@@ -342,7 +342,7 @@ pub(crate) fn eval_sub(left: &Column, right: &Column) -> EvalResult<Column> {
 				..
 			},
 		) => sub_numeric_clone(l, r, target),
-		// Uint with standard numeric types
+		// Uint with transaction numeric types
 		(
 			ColumnData::Uint {
 				container: l,
@@ -459,7 +459,7 @@ pub(crate) fn eval_sub(left: &Column, right: &Column) -> EvalResult<Column> {
 				..
 			},
 		) => sub_numeric_clone(l, r, target),
-		// Decimal with standard numeric types
+		// Decimal with transaction numeric types
 		(
 			ColumnData::Decimal {
 				container: l,
@@ -545,7 +545,7 @@ pub(crate) fn eval_sub(left: &Column, right: &Column) -> EvalResult<Column> {
 			ColumnData::Uint16(r),
 		) => sub_numeric_clone(l, r, target),
 
-		// Reverse operations for standard types with Int, Uint, Decimal
+		// Reverse operations for transaction types with Int, Uint, Decimal
 		// Float4 with Int, Uint, Decimal
 		(
 			ColumnData::Float4(l),

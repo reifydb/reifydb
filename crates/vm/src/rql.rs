@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_rqlv2::bytecode::program::CompiledProgram;
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	error::VmError,
@@ -59,7 +59,7 @@ use crate::{
 ///     &mut tx
 /// )?;
 /// ```
-pub fn execute_program<T: IntoStandardTransaction>(
+pub fn execute_program<T: AsTransaction>(
 	program: CompiledProgram,
 	catalog: Catalog,
 	tx: &mut T,

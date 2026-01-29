@@ -17,7 +17,7 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	value::{row_number::RowNumber, r#type::Type},
@@ -50,11 +50,7 @@ impl<'a> RowPointLookupNode {
 		})
 	}
 
-	fn get_or_load_schema(
-		&mut self,
-		rx: &mut StandardTransaction,
-		first_row: &EncodedValues,
-	) -> crate::Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> crate::Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -77,16 +73,12 @@ impl<'a> RowPointLookupNode {
 
 impl QueryNode for RowPointLookupNode {
 	#[instrument(name = "query::lookup::point::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		Ok(())
 	}
 
 	#[instrument(name = "query::lookup::point::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -147,11 +139,7 @@ impl<'a> RowListLookupNode {
 		})
 	}
 
-	fn get_or_load_schema(
-		&mut self,
-		rx: &mut StandardTransaction,
-		first_row: &EncodedValues,
-	) -> crate::Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> crate::Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -174,16 +162,12 @@ impl<'a> RowListLookupNode {
 
 impl QueryNode for RowListLookupNode {
 	#[instrument(name = "query::lookup::list::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		Ok(())
 	}
 
 	#[instrument(name = "query::lookup::list::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
 
@@ -267,11 +251,7 @@ impl<'a> RowRangeScanNode {
 		})
 	}
 
-	fn get_or_load_schema(
-		&mut self,
-		rx: &mut StandardTransaction,
-		first_row: &EncodedValues,
-	) -> crate::Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> crate::Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -291,16 +271,12 @@ impl<'a> RowRangeScanNode {
 
 impl QueryNode for RowRangeScanNode {
 	#[instrument(name = "query::scan::range::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		Ok(())
 	}
 
 	#[instrument(name = "query::scan::range::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
 

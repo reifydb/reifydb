@@ -13,7 +13,7 @@ use reifydb_core::{
 		namespace_dictionary::NamespaceDictionaryKey,
 	},
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{fragment::Fragment, return_error, util::cowvec::CowVec, value::r#type::Type};
 
 use crate::{CatalogStore, store::sequence::system::SystemSequence};
@@ -29,7 +29,7 @@ pub struct DictionaryToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_dictionary(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		to_create: DictionaryToCreate,
 	) -> crate::Result<DictionaryDef> {
 		let namespace_id = to_create.namespace;
@@ -62,7 +62,7 @@ impl CatalogStore {
 	}
 
 	fn store_dictionary(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		dictionary: DictionaryId,
 		namespace: NamespaceId,
 		to_create: &DictionaryToCreate,
@@ -82,7 +82,7 @@ impl CatalogStore {
 	}
 
 	fn link_dictionary_to_namespace(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		namespace: NamespaceId,
 		dictionary: DictionaryId,
 		name: &str,
@@ -98,10 +98,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn initialize_dictionary_sequence(
-		txn: &mut StandardCommandTransaction,
-		dictionary: DictionaryId,
-	) -> crate::Result<()> {
+	fn initialize_dictionary_sequence(txn: &mut CommandTransaction, dictionary: DictionaryId) -> crate::Result<()> {
 		// Initialize sequence counter to 0
 		// This ensures StorageTracker begins tracking the dictionary immediately
 		let seq_key = DictionarySequenceKey::encoded(dictionary);

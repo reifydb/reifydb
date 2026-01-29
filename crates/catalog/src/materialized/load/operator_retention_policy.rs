@@ -5,16 +5,16 @@ use reifydb_core::key::{
 	EncodableKey,
 	retention_policy::{OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use super::MaterializedCatalog;
 use crate::store::retention_policy::decode_retention_policy;
 
 pub(crate) fn load_operator_retention_policies(
-	rx: &mut impl IntoStandardTransaction,
+	rx: &mut impl AsTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
-	let mut txn = rx.into_standard_transaction();
+	let mut txn = rx.as_transaction();
 	let range = OperatorRetentionPolicyKeyRange::full_scan();
 	let mut stream = txn.range(range, 1024)?;
 

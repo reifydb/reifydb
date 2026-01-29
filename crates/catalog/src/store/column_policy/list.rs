@@ -8,16 +8,16 @@ use reifydb_core::{
 	},
 	key::column_policy::ColumnPolicyKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::column_policy::schema::column_policy};
 
 impl CatalogStore {
 	pub(crate) fn list_column_policies(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let mut stream = txn.range(ColumnPolicyKey::full_scan(column), 1024)?;
 		let mut result = Vec::new();
 
@@ -42,10 +42,8 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_column_policies_all(
-		rx: &mut impl IntoStandardTransaction,
-	) -> crate::Result<Vec<ColumnPolicy>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_column_policies_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<ColumnPolicy>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		// Get all columns from tables and views

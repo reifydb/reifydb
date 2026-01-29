@@ -16,16 +16,16 @@ use reifydb_core::{
 };
 use reifydb_type::Result;
 
-use super::{TransactionMulti, manager::TransactionManagerQuery, version::StandardVersionProvider};
+use super::{MultiTransaction, manager::TransactionManagerQuery, version::StandardVersionProvider};
 use crate::multi::types::TransactionValue;
 
 pub struct MultiReadTransaction {
-	pub(crate) engine: TransactionMulti,
+	pub(crate) engine: MultiTransaction,
 	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider>,
 }
 
 impl MultiReadTransaction {
-	pub fn new(engine: TransactionMulti, version: Option<CommitVersion>) -> Result<Self> {
+	pub fn new(engine: MultiTransaction, version: Option<CommitVersion>) -> Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
 			engine,

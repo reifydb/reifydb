@@ -5,7 +5,7 @@ use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::table::T
 use reifydb_transaction::{
 	change::{RowChange, TableRowInsertion},
 	interceptor::table::TableInterceptor,
-	standard::command::StandardCommandTransaction,
+	transaction::command::CommandTransaction,
 };
 use reifydb_type::value::row_number::RowNumber;
 
@@ -17,7 +17,7 @@ pub(crate) trait TableOperations {
 	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()>;
 }
 
-impl TableOperations for StandardCommandTransaction {
+impl TableOperations for CommandTransaction {
 	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()> {
 		TableInterceptor::pre_insert(self, &table, row_number, &row)?;
 

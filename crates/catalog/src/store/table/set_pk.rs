@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::table::TableKey,
 	return_internal_error,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 
 use crate::{CatalogStore, store::table::schema::table};
 
@@ -14,7 +14,7 @@ impl CatalogStore {
 	/// Set the primary key ID for a table
 	/// Returns an internal error if the table doesn't exist
 	pub(crate) fn set_table_primary_key(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {

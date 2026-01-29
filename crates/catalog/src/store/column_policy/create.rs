@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::column_policy::ColumnPolicyKey,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::return_error;
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn create_column_policy(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		column: ColumnId,
 		policy: ColumnPolicyKind,
 	) -> crate::Result<ColumnPolicy> {

@@ -5,7 +5,7 @@ use std::fmt::Write;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::JoinType;
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	ast::parse_str,
@@ -16,11 +16,7 @@ use crate::{
 	},
 };
 
-pub fn explain_physical_plan<T: IntoStandardTransaction>(
-	catalog: &Catalog,
-	rx: &mut T,
-	query: &str,
-) -> crate::Result<String> {
+pub fn explain_physical_plan<T: AsTransaction>(catalog: &Catalog, rx: &mut T, query: &str) -> crate::Result<String> {
 	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();

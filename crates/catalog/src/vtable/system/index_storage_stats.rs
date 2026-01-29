@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_metric::metric::MetricReader;
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
@@ -39,7 +39,7 @@ impl IndexStorageStats {
 	}
 }
 
-impl<T: IntoStandardTransaction> VTable<T> for IndexStorageStats {
+impl<T: AsTransaction> VTable<T> for IndexStorageStats {
 	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())

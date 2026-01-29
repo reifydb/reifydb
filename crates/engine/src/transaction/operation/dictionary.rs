@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::hash::xxh3_128;
-use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{
 	util::cowvec::CowVec,
 	value::{Value, dictionary::DictionaryEntryId},
@@ -46,7 +46,7 @@ pub(crate) trait DictionaryOperations {
 	) -> crate::Result<Option<DictionaryEntryId>>;
 }
 
-impl DictionaryOperations for StandardCommandTransaction {
+impl DictionaryOperations for CommandTransaction {
 	fn insert_into_dictionary(
 		&mut self,
 		dictionary: &DictionaryDef,
@@ -131,9 +131,9 @@ impl DictionaryOperations for StandardCommandTransaction {
 	}
 }
 
-/// Implementation for StandardTransaction (both Command and Query)
+/// Implementation for Transaction (both Command and Query)
 /// This provides read-only access to dictionaries for query operations.
-impl DictionaryOperations for StandardTransaction<'_> {
+impl DictionaryOperations for Transaction<'_> {
 	fn insert_into_dictionary(
 		&mut self,
 		dictionary: &DictionaryDef,
@@ -141,8 +141,8 @@ impl DictionaryOperations for StandardTransaction<'_> {
 	) -> crate::Result<DictionaryEntryId> {
 		// Only command transactions can insert
 		match self {
-			StandardTransaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
-			StandardTransaction::Query(_) => {
+			Transaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
+			Transaction::Query(_) => {
 				Err(internal_error!("Cannot insert into dictionary during a query transaction").into())
 			}
 		}

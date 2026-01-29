@@ -18,7 +18,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
-use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -39,7 +39,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn update_table<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: UpdateTableNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -83,7 +83,7 @@ impl Executor {
 		let mut updated_count = 0;
 
 		{
-			let mut wrapped_txn = StandardTransaction::from(txn);
+			let mut wrapped_txn = Transaction::from(txn);
 			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
 
 			input_node.initialize(&mut wrapped_txn, &context)?;

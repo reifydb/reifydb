@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
-use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
+use reifydb_transaction::transaction::{AsTransaction, Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	value::{dictionary::DictionaryEntryId, row_number::RowNumber, r#type::Type},
@@ -40,7 +40,7 @@ pub struct RingBufferScan {
 }
 
 impl RingBufferScan {
-	pub fn new<Rx: IntoStandardTransaction>(
+	pub fn new<Rx: AsTransaction>(
 		ringbuffer: ResolvedRingBuffer,
 		context: Arc<ExecutionContext>,
 		rx: &mut Rx,
@@ -86,7 +86,7 @@ impl RingBufferScan {
 
 	fn get_or_load_schema(
 		&mut self,
-		rx: &mut StandardTransaction,
+		rx: &mut Transaction,
 		first_row: &reifydb_core::encoded::encoded::EncodedValues,
 	) -> crate::Result<Schema> {
 		if let Some(schema) = &self.schema {
@@ -112,7 +112,7 @@ impl RingBufferScan {
 
 impl QueryNode for RingBufferScan {
 	#[instrument(name = "query::scan::ringbuffer::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, txn: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, txn: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		if !self.initialized {
 			// Get ring buffer metadata from the catalog
 			let metadata = ctx.executor.catalog.find_ringbuffer_metadata(txn, self.ringbuffer.def().id)?;
@@ -130,11 +130,7 @@ impl QueryNode for RingBufferScan {
 	}
 
 	#[instrument(name = "query::scan::ringbuffer::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		txn: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 
 		// Get metadata or return empty
@@ -219,11 +215,7 @@ impl QueryNode for RingBufferScan {
 
 impl<'a> RingBufferScan {
 	/// Decode dictionary columns by replacing dictionary IDs with actual values
-	fn decode_dictionary_columns(
-		&self,
-		columns: &mut Columns,
-		txn: &mut StandardTransaction<'a>,
-	) -> crate::Result<()> {
+	fn decode_dictionary_columns(&self, columns: &mut Columns, txn: &mut Transaction<'a>) -> crate::Result<()> {
 		for (col_idx, dict_opt) in self.dictionaries.iter().enumerate() {
 			if let Some(dictionary) = dict_opt {
 				let col = &columns[col_idx];

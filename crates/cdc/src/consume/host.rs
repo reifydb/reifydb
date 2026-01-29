@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use reifydb_core::common::CommitVersion;
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::Result;
 
 /// Trait for engine operations needed by CDC consumers.
@@ -18,7 +18,7 @@ use reifydb_type::Result;
 /// without creating a cyclic dependency between cdc and engine crates.
 pub trait CdcHost: Clone + Send + Sync + 'static {
 	/// Begin a new command transaction.
-	fn begin_command(&self) -> Result<StandardCommandTransaction>;
+	fn begin_command(&self) -> Result<CommandTransaction>;
 
 	/// Get the current committed version.
 	fn current_version(&self) -> Result<CommitVersion>;

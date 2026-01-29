@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use super::decode_retention_policy;
 use crate::CatalogStore;
@@ -34,9 +34,9 @@ pub struct OperatorRetentionPolicyEntry {
 impl CatalogStore {
 	/// List all retention policies for primitives (tables, views, ring buffers)
 	pub(crate) fn list_primitive_retention_policies(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 	) -> crate::Result<Vec<PrimitiveRetentionPolicyEntry>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		let mut stream = txn.range(PrimitiveRetentionPolicyKeyRange::full_scan(), 1024)?;
@@ -58,9 +58,9 @@ impl CatalogStore {
 
 	/// List all retention policies for operators
 	pub(crate) fn list_operator_retention_policies(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 	) -> crate::Result<Vec<OperatorRetentionPolicyEntry>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		let mut stream = txn.range(OperatorRetentionPolicyKeyRange::full_scan(), 1024)?;

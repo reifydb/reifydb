@@ -11,9 +11,7 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_transaction::standard::{
-	IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction,
-};
+use reifydb_transaction::transaction::{AsTransaction, Transaction, command::CommandTransaction};
 use reifydb_type::{error, fragment::Fragment, value::r#type::Type};
 use tracing::{instrument, warn};
 
@@ -57,13 +55,13 @@ impl From<SubscriptionToCreate> for StoreSubscriptionToCreate {
 impl Catalog {
 	/// Find a subscription by ID
 	#[instrument(name = "catalog::subscription::find", level = "trace", skip(self, txn))]
-	pub fn find_subscription<T: IntoStandardTransaction>(
+	pub fn find_subscription<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		id: SubscriptionId,
 	) -> crate::Result<Option<SubscriptionDef>> {
-		match txn.into_standard_transaction() {
-			StandardTransaction::Command(cmd) => {
+		match txn.as_transaction() {
+			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(subscription) = self.materialized.find_subscription(id, cmd.version()) {
 					return Ok(Some(subscription));
@@ -80,7 +78,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			StandardTransaction::Query(qry) => {
+			Transaction::Query(qry) => {
 				// 1. Check MaterializedCatalog
 				if let Some(subscription) = self.materialized.find_subscription(id, qry.version()) {
 					return Ok(Some(subscription));
@@ -102,7 +100,7 @@ impl Catalog {
 
 	/// Get a subscription by ID, error if not found
 	#[instrument(name = "catalog::subscription::get", level = "trace", skip(self, txn))]
-	pub fn get_subscription<T: IntoStandardTransaction>(
+	pub fn get_subscription<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		id: SubscriptionId,
@@ -117,7 +115,7 @@ impl Catalog {
 
 	/// Resolve a subscription ID to a fully resolved subscription
 	#[instrument(name = "catalog::resolve::subscription", level = "trace", skip(self, txn))]
-	pub fn resolve_subscription<T: IntoStandardTransaction>(
+	pub fn resolve_subscription<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		subscription_id: SubscriptionId,
@@ -132,7 +130,7 @@ impl Catalog {
 	#[instrument(name = "catalog::subscription::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_subscription(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		to_create: SubscriptionToCreate,
 	) -> crate::Result<SubscriptionDef> {
 		let subscription = CatalogStore::create_subscription(txn, to_create.into())?;
@@ -143,7 +141,7 @@ impl Catalog {
 	#[instrument(name = "catalog::subscription::delete", level = "debug", skip(self, txn))]
 	pub fn delete_subscription(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		subscription: SubscriptionDef,
 	) -> crate::Result<()> {
 		CatalogStore::delete_subscription(txn, subscription.id)?;
@@ -152,10 +150,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::subscription::list_all", level = "debug", skip(self, txn))]
-	pub fn list_subscriptions_all<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-	) -> crate::Result<Vec<SubscriptionDef>> {
+	pub fn list_subscriptions_all<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<SubscriptionDef>> {
 		CatalogStore::list_subscriptions_all(txn)
 	}
 }

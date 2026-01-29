@@ -11,7 +11,7 @@ use reifydb_core::{
 		schema::{SchemaFieldKey, SchemaKey},
 	},
 };
-use reifydb_transaction::{single::svl::write::SingleWriteTransaction, standard::IntoStandardTransaction};
+use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::AsTransaction};
 use reifydb_type::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
@@ -98,8 +98,8 @@ pub(crate) fn find_schema_by_fingerprint(
 		total_fields = tracing::field::Empty
 	)
 )]
-pub fn load_all_schemas(txn: &mut impl IntoStandardTransaction) -> crate::Result<Vec<Schema>> {
-	let mut std_txn = txn.into_standard_transaction();
+pub fn load_all_schemas(txn: &mut impl AsTransaction) -> crate::Result<Vec<Schema>> {
+	let mut std_txn = txn.as_transaction();
 
 	// First pass: collect all schema headers (fingerprint, field_count)
 	let mut schema_headers: Vec<(SchemaFingerprint, usize)> = Vec::new();

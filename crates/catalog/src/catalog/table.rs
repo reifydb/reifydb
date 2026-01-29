@@ -17,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::TransactionalTableChanges,
-	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
+	transaction::{AsTransaction, Transaction, command::CommandTransaction},
 };
 use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::{instrument, warn};
@@ -86,13 +86,9 @@ impl From<TableToCreate> for StoreTableToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self, txn))]
-	pub fn find_table<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-		id: TableId,
-	) -> crate::Result<Option<TableDef>> {
-		match txn.into_standard_transaction() {
-			StandardTransaction::Command(cmd) => {
+	pub fn find_table<T: AsTransaction>(&self, txn: &mut T, id: TableId) -> crate::Result<Option<TableDef>> {
+		match txn.as_transaction() {
+			Transaction::Command(cmd) => {
 				// 1. Check transactional changes first
 				if let Some(table) = TransactionalTableChanges::find_table(cmd, id) {
 					return Ok(Some(table.clone()));
@@ -116,7 +112,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			StandardTransaction::Query(qry) => {
+			Transaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(table) = self.materialized.find_table_at(id, qry.version()) {
 					return Ok(Some(table));
@@ -134,14 +130,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_table_by_name<T: IntoStandardTransaction>(
+	pub fn find_table_by_name<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		namespace: NamespaceId,
 		name: &str,
 	) -> crate::Result<Option<TableDef>> {
-		match txn.into_standard_transaction() {
-			StandardTransaction::Command(cmd) => {
+		match txn.as_transaction() {
+			Transaction::Command(cmd) => {
 				// 1. Check transactional changes first
 				if let Some(table) = TransactionalTableChanges::find_table_by_name(cmd, namespace, name)
 				{
@@ -171,7 +167,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			StandardTransaction::Query(qry) => {
+			Transaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(table) =
 					self.materialized.find_table_by_name_at(namespace, name, qry.version())
@@ -194,7 +190,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::get", level = "trace", skip(self, txn))]
-	pub fn get_table<T: IntoStandardTransaction>(&self, txn: &mut T, id: TableId) -> crate::Result<TableDef> {
+	pub fn get_table<T: AsTransaction>(&self, txn: &mut T, id: TableId) -> crate::Result<TableDef> {
 		self.find_table(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -204,7 +200,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::get_by_name", level = "trace", skip(self, txn, name))]
-	pub fn get_table_by_name<T: IntoStandardTransaction>(
+	pub fn get_table_by_name<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		namespace: NamespaceId,
@@ -223,11 +219,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_table(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		to_create: TableToCreate,
-	) -> crate::Result<TableDef> {
+	pub fn create_table(&self, txn: &mut CommandTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
 		let pk_columns = to_create.primary_key_columns.clone();
 
 		let table = CatalogStore::create_table(txn, to_create.into())?;
@@ -268,7 +260,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::delete", level = "debug", skip(self, txn))]
-	pub fn delete_table(&self, txn: &mut StandardCommandTransaction, table: TableDef) -> crate::Result<()> {
+	pub fn delete_table(&self, txn: &mut CommandTransaction, table: TableDef) -> crate::Result<()> {
 		CatalogStore::delete_table(txn, table.id)?;
 		txn.track_table_def_deleted(table)?;
 		Ok(())
@@ -276,17 +268,13 @@ impl Catalog {
 
 	/// Lists all tables in the catalog.
 	#[instrument(name = "catalog::table::list_all", level = "debug", skip(self, txn))]
-	pub fn list_tables_all<T: IntoStandardTransaction>(&self, txn: &mut T) -> crate::Result<Vec<TableDef>> {
+	pub fn list_tables_all<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<TableDef>> {
 		CatalogStore::list_tables_all(txn)
 	}
 
 	/// Lists all columns for a given table.
 	#[instrument(name = "catalog::table::list_columns", level = "debug", skip(self, txn))]
-	pub fn list_columns<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-		table_id: TableId,
-	) -> crate::Result<Vec<ColumnDef>> {
+	pub fn list_columns<T: AsTransaction>(&self, txn: &mut T, table_id: TableId) -> crate::Result<Vec<ColumnDef>> {
 		CatalogStore::list_columns(txn, table_id)
 	}
 
@@ -294,7 +282,7 @@ impl Catalog {
 	#[instrument(name = "catalog::table::set_primary_key", level = "debug", skip(self, txn))]
 	pub fn set_table_primary_key(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
@@ -303,7 +291,7 @@ impl Catalog {
 
 	/// Gets the primary key ID for a table.
 	#[instrument(name = "catalog::table::get_pk_id", level = "trace", skip(self, txn))]
-	pub fn get_table_pk_id<T: IntoStandardTransaction>(
+	pub fn get_table_pk_id<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		table_id: TableId,

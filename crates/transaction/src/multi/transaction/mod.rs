@@ -26,7 +26,7 @@ use version::{StandardVersionProvider, VersionProvider};
 use crate::{
 	TransactionId,
 	multi::{oracle::*, types::*},
-	single::TransactionSingle,
+	single::SingleTransaction,
 };
 
 pub mod manager;
@@ -34,14 +34,11 @@ pub mod read;
 pub(crate) mod version;
 pub mod write;
 
-use crate::{
-	multi::{
-		MultiReadTransaction, MultiWriteTransaction,
-		conflict::ConflictManager,
-		pending::PendingWrites,
-		transaction::manager::{TransactionManagerCommand, TransactionManagerQuery},
-	},
-	single::svl::TransactionSvl,
+use crate::multi::{
+	MultiReadTransaction, MultiWriteTransaction,
+	conflict::ConflictManager,
+	pending::PendingWrites,
+	transaction::manager::{TransactionManagerCommand, TransactionManagerQuery},
 };
 
 pub struct TransactionManager<L>
@@ -146,7 +143,7 @@ where
 // Transaction - The main multi-version transaction type
 // ============================================================================
 
-pub struct TransactionMulti(Arc<Inner>);
+pub struct MultiTransaction(Arc<Inner>);
 
 pub struct Inner {
 	pub(crate) tm: TransactionManager<StandardVersionProvider>,
@@ -154,7 +151,7 @@ pub struct Inner {
 	pub(crate) event_bus: EventBus,
 }
 
-impl Deref for TransactionMulti {
+impl Deref for MultiTransaction {
 	type Target = Inner;
 
 	fn deref(&self) -> &Self::Target {
@@ -162,7 +159,7 @@ impl Deref for TransactionMulti {
 	}
 }
 
-impl Clone for TransactionMulti {
+impl Clone for MultiTransaction {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
@@ -171,7 +168,7 @@ impl Clone for TransactionMulti {
 impl Inner {
 	fn new(
 		store: MultiStore,
-		single: TransactionSingle,
+		single: SingleTransaction,
 		event_bus: EventBus,
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
@@ -195,7 +192,7 @@ impl Inner {
 	}
 }
 
-impl TransactionMulti {
+impl MultiTransaction {
 	pub fn testing() -> Self {
 		use reifydb_runtime::actor::system::ActorSystemConfig;
 		let multi_store = reifydb_store_multi::MultiStore::testing_memory();
@@ -204,7 +201,7 @@ impl TransactionMulti {
 		let event_bus = EventBus::new(&actor_system);
 		Self::new(
 			multi_store,
-			TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, event_bus.clone())),
+			SingleTransaction::new(single_store, event_bus.clone()),
 			event_bus,
 			actor_system,
 			Clock::default(),
@@ -213,7 +210,7 @@ impl TransactionMulti {
 	}
 }
 
-impl TransactionMulti {
+impl MultiTransaction {
 	#[instrument(
 		name = "transaction::new",
 		level = "debug",
@@ -221,7 +218,7 @@ impl TransactionMulti {
 	)]
 	pub fn new(
 		store: MultiStore,
-		single: TransactionSingle,
+		single: SingleTransaction,
 		event_bus: EventBus,
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
@@ -235,7 +232,7 @@ impl TransactionMulti {
 	}
 }
 
-impl TransactionMulti {
+impl MultiTransaction {
 	#[instrument(name = "transaction::version", level = "trace", skip(self))]
 	pub fn version(&self) -> Result<CommitVersion> {
 		self.0.version()
@@ -256,7 +253,7 @@ impl TransactionMulti {
 	}
 }
 
-impl TransactionMulti {
+impl MultiTransaction {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
 	pub fn begin_command(&self) -> Result<MultiWriteTransaction> {
 		MultiWriteTransaction::new(self.clone())
@@ -268,7 +265,7 @@ pub enum TransactionType {
 	Command(MultiWriteTransaction),
 }
 
-impl TransactionMulti {
+impl MultiTransaction {
 	#[instrument(name = "transaction::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>> {
 		Ok(MultiVersionGet::get(&self.store, key, version)?.map(|sv| sv.into()))

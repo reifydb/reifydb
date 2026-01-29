@@ -11,7 +11,7 @@ use reifydb_core::{
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	CatalogStore,
@@ -20,10 +20,10 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_ringbuffer(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferDef>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let Some(multi) = txn.get(&RingBufferKey::encoded(ringbuffer))? else {
 			return Ok(None);
 		};
@@ -45,10 +45,10 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_ringbuffer_metadata(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferMetadata>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let Some(multi) = txn.get(&RingBufferMetadataKey::encoded(ringbuffer))? else {
 			return Ok(None);
 		};
@@ -70,12 +70,12 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_ringbuffer_by_name(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<RingBufferDef>> {
 		let name = name.as_ref();
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let mut stream = txn.range(NamespaceRingBufferKey::full_scan(namespace), 1024)?;
 
 		let mut found_ringbuffer = None;

@@ -19,7 +19,7 @@
 //! - `subquery`: ExecSubqueryExists, ExecSubqueryIn, ExecSubqueryScalar
 
 use reifydb_rqlv2::bytecode::instruction::BytecodeReader;
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	error::Result,
@@ -33,7 +33,7 @@ pub struct HandlerContext<'vm, 'tx, 'a> {
 	/// Bytecode reader positioned after the opcode byte.
 	pub reader: &'vm mut BytecodeReader<'a>,
 	/// Optional transaction for storage operations.
-	pub tx: Option<&'vm mut StandardTransaction<'tx>>,
+	pub tx: Option<&'vm mut Transaction<'tx>>,
 }
 
 impl<'vm, 'tx, 'a> HandlerContext<'vm, 'tx, 'a> {
@@ -41,7 +41,7 @@ impl<'vm, 'tx, 'a> HandlerContext<'vm, 'tx, 'a> {
 	pub fn new(
 		vm: &'vm mut VmState,
 		reader: &'vm mut BytecodeReader<'a>,
-		tx: Option<&'vm mut StandardTransaction<'tx>>,
+		tx: Option<&'vm mut Transaction<'tx>>,
 	) -> Self {
 		Self {
 			vm,
@@ -85,7 +85,7 @@ impl<'vm, 'tx, 'a> HandlerContext<'vm, 'tx, 'a> {
 	}
 
 	/// Get a mutable reference to the transaction, or error if not available.
-	pub fn require_tx(&mut self) -> Result<&mut StandardTransaction<'tx>> {
+	pub fn require_tx(&mut self) -> Result<&mut Transaction<'tx>> {
 		match &mut self.tx {
 			Some(tx) => Ok(*tx),
 			None => Err(crate::error::VmError::UnsupportedOperation {

@@ -8,13 +8,13 @@ use reifydb_core::{
 	},
 	key::{Key, flow::FlowKey},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::flow::schema::flow};
 
 impl CatalogStore {
-	pub(crate) fn list_flows_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowDef>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_flows_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<FlowDef>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		let mut stream = txn.range(FlowKey::full_scan(), 1024)?;

@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::change::CatalogTrackDictionaryChangeOperations, value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::CreateDictionaryNode;
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::value::Value;
 
 use crate::execute::Executor;
@@ -14,7 +14,7 @@ use crate::execute::Executor;
 impl Executor {
 	pub(crate) fn create_dictionary(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: CreateDictionaryNode,
 	) -> crate::Result<Columns> {
 		if let Some(_) = self.catalog.find_dictionary_by_name(txn, plan.namespace.id, plan.dictionary.text())? {

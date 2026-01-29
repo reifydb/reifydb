@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::error::diagnostic::catalog::namespace_not_found;
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_dictionary<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_dictionary<T: AsTransaction>(
 		&self,
 		rx: &mut T,
 		create: logical::CreateDictionaryNode,

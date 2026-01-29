@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::view::ViewToCreate;
 use reifydb_core::{interface::catalog::change::CatalogTrackViewChangeOperations, value::column::columns::Columns};
 use reifydb_rql::plan::physical::CreateDeferredViewNode;
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::value::Value;
 
 use crate::execute::Executor;
@@ -12,7 +12,7 @@ use crate::execute::Executor;
 impl Executor {
 	pub(crate) fn create_deferred_view<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: CreateDeferredViewNode,
 	) -> crate::Result<Columns> {
 		if let Some(_) = self.catalog.find_view_by_name(txn, plan.namespace.id, plan.view.text())? {

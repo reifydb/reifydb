@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::id::DictionaryId, internal, key::columns::ColumnsKey};
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{
 	error::Error,
 	value::{
@@ -47,8 +47,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn get_column(rx: &mut impl IntoStandardTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn get_column(rx: &mut impl AsTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
+		let mut txn = rx.as_transaction();
 		let multi = txn.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
 			Error(internal!(
 				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

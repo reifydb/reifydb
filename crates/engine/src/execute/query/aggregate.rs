@@ -9,7 +9,7 @@ use std::{
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
 use reifydb_function::{AggregateFunction, AggregateFunctionContext, registry::Functions};
 use reifydb_rql::expression::Expression;
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	value::{Value, r#type::Type},
@@ -57,18 +57,14 @@ impl AggregateNode {
 
 impl QueryNode for AggregateNode {
 	#[instrument(level = "trace", skip_all, name = "query::aggregate::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::aggregate::next")]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 

@@ -9,7 +9,7 @@ use reifydb_rql::{
 	flow::{conversion::to_owned_expression, node::FlowNodeType},
 	plan::physical::InlineDataNode,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
@@ -44,7 +44,7 @@ impl From<InlineDataNode> for InlineDataCompiler {
 }
 
 impl CompileOperator for InlineDataCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut CommandTransaction) -> Result<FlowNodeId> {
 		compiler.add_node(txn, FlowNodeType::SourceInlineData {})
 	}
 }

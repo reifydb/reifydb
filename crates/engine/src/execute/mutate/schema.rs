@@ -6,7 +6,7 @@ use reifydb_core::{
 	encoded::schema::{Schema, SchemaField},
 	interface::catalog::{ringbuffer::RingBufferDef, table::TableDef},
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::value::constraint::TypeConstraint;
 
 /// Get or create a schema for a table, properly handling dictionary-encoded columns
@@ -18,7 +18,7 @@ use reifydb_type::value::constraint::TypeConstraint;
 pub fn get_or_create_table_schema(
 	catalog: &Catalog,
 	table: &TableDef,
-	txn: &mut StandardCommandTransaction,
+	txn: &mut CommandTransaction,
 ) -> crate::Result<Schema> {
 	let mut fields = Vec::with_capacity(table.columns.len());
 
@@ -49,7 +49,7 @@ pub fn get_or_create_table_schema(
 pub fn get_or_create_ringbuffer_schema(
 	catalog: &Catalog,
 	ringbuffer: &RingBufferDef,
-	txn: &mut StandardCommandTransaction,
+	txn: &mut CommandTransaction,
 ) -> crate::Result<Schema> {
 	let mut fields = Vec::with_capacity(ringbuffer.columns.len());
 

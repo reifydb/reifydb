@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::vtable::{VTableContext, tables::VTables};
 use reifydb_core::value::column::headers::ColumnHeaders;
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
@@ -41,7 +41,7 @@ impl VirtualScanNode {
 
 impl QueryNode for VirtualScanNode {
 	#[instrument(name = "query::scan::virtual::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		let ctx = self.table_context.take().unwrap_or_else(|| VTableContext::Basic {
 			params: self.context.as_ref().unwrap().params.clone(),
 		});
@@ -50,11 +50,7 @@ impl QueryNode for VirtualScanNode {
 	}
 
 	#[instrument(name = "query::scan::virtual::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
 		match self.virtual_table.next(rx)? {
 			Some(vtable_batch) => Ok(Some(Batch {

@@ -3,7 +3,7 @@
 
 use PhysicalPlan::CreateRingBuffer;
 use reifydb_core::{error::diagnostic::catalog::namespace_not_found, interface::resolved::ResolvedNamespace};
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::plan::{
@@ -12,7 +12,7 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_ringbuffer<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_ringbuffer<T: AsTransaction>(
 		&self,
 		rx: &mut T,
 		create: logical::CreateRingBufferNode,

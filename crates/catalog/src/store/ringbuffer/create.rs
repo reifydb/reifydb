@@ -14,7 +14,7 @@ use reifydb_core::{
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
 
 use crate::{CatalogStore, store::sequence::system::SystemSequence};
@@ -40,7 +40,7 @@ pub struct RingBufferToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_ringbuffer(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		to_create: RingBufferToCreate,
 	) -> crate::Result<RingBufferDef> {
 		let namespace_id = to_create.namespace;
@@ -70,7 +70,7 @@ impl CatalogStore {
 	}
 
 	fn store_ringbuffer(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		ringbuffer: RingBufferId,
 		namespace: NamespaceId,
 		to_create: &RingBufferToCreate,
@@ -91,7 +91,7 @@ impl CatalogStore {
 	}
 
 	fn link_ringbuffer_to_namespace(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		namespace: NamespaceId,
 		ringbuffer: RingBufferId,
 		name: &str,
@@ -108,7 +108,7 @@ impl CatalogStore {
 	}
 
 	fn insert_ringbuffer_columns(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
 	) -> crate::Result<()> {
@@ -136,7 +136,7 @@ impl CatalogStore {
 	}
 
 	fn initialize_ringbuffer_metadata(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
 	) -> crate::Result<()> {

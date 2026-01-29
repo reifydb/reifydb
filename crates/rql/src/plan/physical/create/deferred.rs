@@ -3,7 +3,7 @@
 
 use PhysicalPlan::CreateDeferredView;
 use reifydb_core::error::diagnostic::catalog::namespace_not_found;
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::plan::{
@@ -12,7 +12,7 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_deferred<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_deferred<T: AsTransaction>(
 		&self,
 		rx: &mut T,
 		create: logical::CreateDeferredViewNode,

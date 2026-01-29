@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_type::{Result, value::r#type::Type};
 
-use crate::single::TransactionSingle;
+use crate::single::SingleTransaction;
 
 const BLOCK_SIZE: u64 = 100_000;
 
@@ -41,7 +41,7 @@ impl VersionBlock {
 
 #[derive(Clone)]
 pub struct StandardVersionProvider {
-	single: TransactionSingle,
+	single: SingleTransaction,
 	// Lock-free atomic counter for fast-path version allocation
 	next_version: Arc<AtomicU64>,
 	// Block boundary tracking (only accessed when crossing block boundaries)
@@ -52,7 +52,7 @@ pub struct StandardVersionProvider {
 }
 
 impl StandardVersionProvider {
-	pub fn new(single: TransactionSingle) -> Result<Self> {
+	pub fn new(single: SingleTransaction) -> Result<Self> {
 		let schema = Schema::new(vec![SchemaField::unconstrained("version", Type::Uint8)]);
 
 		// Load current version and allocate first block
@@ -71,7 +71,7 @@ impl StandardVersionProvider {
 		})
 	}
 
-	fn load_current_version(schema: &Schema, single: &TransactionSingle) -> Result<u64> {
+	fn load_current_version(schema: &Schema, single: &SingleTransaction) -> Result<u64> {
 		let key = TransactionVersionKey {}.encode();
 
 		let mut tx = single.begin_query([&key])?;
@@ -81,7 +81,7 @@ impl StandardVersionProvider {
 		}
 	}
 
-	fn persist_version(schema: &Schema, single: &TransactionSingle, version: u64) -> Result<()> {
+	fn persist_version(schema: &Schema, single: &SingleTransaction, version: u64) -> Result<()> {
 		let key = TransactionVersionKey {}.encode();
 		let mut values = schema.allocate();
 		schema.set_u64(&mut values, 0, version);
@@ -141,7 +141,7 @@ pub mod tests {
 
 	#[test]
 	fn test_new_version_provider() {
-		let single = TransactionSingle::testing();
+		let single = SingleTransaction::testing();
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		// Should start at version 0
@@ -150,7 +150,7 @@ pub mod tests {
 
 	#[test]
 	fn test_next_version_sequential() {
-		let single = TransactionSingle::testing();
+		let single = SingleTransaction::testing();
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		assert_eq!(provider.next().unwrap(), 1);
@@ -165,7 +165,7 @@ pub mod tests {
 
 	#[test]
 	fn test_version_persistence() {
-		let single = TransactionSingle::testing();
+		let single = SingleTransaction::testing();
 
 		// Create first provider and get some versions
 		{
@@ -184,7 +184,7 @@ pub mod tests {
 
 	#[test]
 	fn test_block_exhaustion_and_allocation() {
-		let single = TransactionSingle::testing();
+		let single = SingleTransaction::testing();
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		// Exhaust the first block
@@ -204,7 +204,7 @@ pub mod tests {
 
 	#[test]
 	fn test_concurrent_version_allocation() {
-		let single = TransactionSingle::testing();
+		let single = SingleTransaction::testing();
 		let provider = Arc::new(StandardVersionProvider::new(single).unwrap());
 
 		let mut handles = vec![];
@@ -262,7 +262,7 @@ pub mod tests {
 
 	#[test]
 	fn test_load_existing_version() {
-		let single = TransactionSingle::testing();
+		let single = SingleTransaction::testing();
 
 		// Manually set a version in storage
 		let schema = Schema::testing(&[Type::Uint8]);

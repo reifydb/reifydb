@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::clock::Clock;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
-use reifydb_transaction::standard::query::StandardQueryTransaction;
+use reifydb_transaction::transaction::query::QueryTransaction;
 use reifydb_type::{
 	Result,
 	error::Error,
@@ -31,7 +31,7 @@ use crate::catalog::FlowCatalog;
 
 /// Convert CDC change format to FlowChange format.
 pub(crate) fn convert_cdc_to_flow_change(
-	txn: &mut StandardQueryTransaction,
+	txn: &mut QueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: PrimitiveId,
 	row_number: RowNumber,
@@ -85,7 +85,7 @@ pub(crate) fn convert_cdc_to_flow_change(
 
 /// Create a Row from encoded bytes, handling dictionary decoding.
 pub(crate) fn create_row(
-	txn: &mut StandardQueryTransaction,
+	txn: &mut QueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: PrimitiveId,
 	row_number: RowNumber,

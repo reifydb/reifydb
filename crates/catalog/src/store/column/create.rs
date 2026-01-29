@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{id::DictionaryId, policy::ColumnPolicyKind, primitive::PrimitiveId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{
 	fragment::Fragment,
 	return_error,
@@ -61,7 +61,7 @@ pub(crate) struct ColumnToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_column(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		source: impl Into<PrimitiveId>,
 		column_to_create: ColumnToCreate,
 	) -> crate::Result<ColumnDef> {

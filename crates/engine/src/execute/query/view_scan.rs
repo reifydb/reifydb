@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
@@ -45,7 +45,7 @@ impl ViewScanNode {
 
 	fn get_or_load_schema<'a>(
 		&mut self,
-		rx: &mut StandardTransaction<'a>,
+		rx: &mut Transaction<'a>,
 		first_row: &reifydb_core::encoded::encoded::EncodedValues,
 	) -> crate::Result<Schema> {
 		if let Some(schema) = &self.schema {
@@ -71,17 +71,13 @@ impl ViewScanNode {
 
 impl QueryNode for ViewScanNode {
 	#[instrument(name = "query::scan::view::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(name = "query::scan::view::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 

@@ -297,8 +297,8 @@ pub mod tests {
 	use reifydb_store_multi::MultiStore;
 	use reifydb_store_single::SingleStore;
 	use reifydb_transaction::{
-		interceptor::interceptors::Interceptors, multi::transaction::TransactionMulti,
-		single::TransactionSingle, standard::command::StandardCommandTransaction,
+		interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction,
+		single::SingleTransaction, transaction::command::CommandTransaction,
 	};
 	use reifydb_type::util::cowvec::CowVec;
 
@@ -315,8 +315,8 @@ pub mod tests {
 
 	#[derive(Clone)]
 	struct TestCdcHost {
-		multi: TransactionMulti,
-		single: TransactionSingle,
+		multi: MultiTransaction,
+		single: SingleTransaction,
 		event_bus: EventBus,
 	}
 
@@ -326,8 +326,8 @@ pub mod tests {
 			let single_store = SingleStore::testing_memory();
 			let actor_system = ActorSystem::new(ActorSystemConfig::default());
 			let event_bus = EventBus::new(&actor_system);
-			let single = TransactionSingle::svl(single_store, event_bus.clone());
-			let multi = TransactionMulti::new(
+			let single = SingleTransaction::new(single_store, event_bus.clone());
+			let multi = MultiTransaction::new(
 				multi_store,
 				single.clone(),
 				event_bus.clone(),
@@ -344,8 +344,8 @@ pub mod tests {
 	}
 
 	impl CdcHost for TestCdcHost {
-		fn begin_command(&self) -> reifydb_type::Result<StandardCommandTransaction> {
-			StandardCommandTransaction::new(
+		fn begin_command(&self) -> reifydb_type::Result<CommandTransaction> {
+			CommandTransaction::new(
 				self.multi.clone(),
 				self.single.clone(),
 				self.event_bus.clone(),

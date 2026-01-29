@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::JoinType;
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::parse_str,
@@ -19,7 +19,7 @@ use crate::{
 	},
 };
 
-pub fn explain_logical_plan(catalog: &Catalog, rx: &mut StandardTransaction<'_>, query: &str) -> crate::Result<String> {
+pub fn explain_logical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query: &str) -> crate::Result<String> {
 	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();

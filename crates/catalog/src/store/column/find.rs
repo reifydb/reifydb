@@ -5,17 +5,17 @@ use reifydb_core::{
 	interface::catalog::{column::ColumnDef, id::ColumnId, primitive::PrimitiveId},
 	key::column::ColumnKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::column::schema::primitive_column};
 
 impl CatalogStore {
 	pub(crate) fn find_column_by_name(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		source: impl Into<PrimitiveId>,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let mut stream = txn.range(ColumnKey::full_scan(source), 1024)?;
 
 		let mut found_id = None;

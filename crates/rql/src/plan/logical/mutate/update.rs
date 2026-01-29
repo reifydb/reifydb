@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	ast::{
@@ -12,7 +12,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_update<T: IntoStandardTransaction>(
+	pub(crate) fn compile_update<T: AsTransaction>(
 		&self,
 		ast: AstUpdate,
 		tx: &mut T,

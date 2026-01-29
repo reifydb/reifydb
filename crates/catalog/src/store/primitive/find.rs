@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::interface::catalog::primitive::{PrimitiveDef, PrimitiveId};
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, vtable::VTableRegistry};
 
@@ -12,11 +12,11 @@ impl CatalogStore {
 	/// Find a primitive (table, store::view, or virtual table) by its PrimitiveId
 	/// Returns None if the primitive doesn't exist
 	pub(crate) fn find_primitive(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<Option<PrimitiveDef>> {
 		let primitive_id = primitive.into();
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 
 		match primitive_id {
 			PrimitiveId::Table(table_id) => {

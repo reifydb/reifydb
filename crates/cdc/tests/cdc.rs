@@ -24,7 +24,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{engine::StandardEngine, test_utils::create_test_engine};
 use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{
 	error::{Error, diagnostic::Diagnostic},
 	fragment::Fragment,
@@ -671,7 +671,7 @@ impl Clone for TestConsumer {
 }
 
 impl CdcConsume for TestConsumer {
-	fn consume(&self, _txn: &mut StandardCommandTransaction, transactions: Vec<Cdc>) -> reifydb_type::Result<()> {
+	fn consume(&self, _txn: &mut CommandTransaction, transactions: Vec<Cdc>) -> reifydb_type::Result<()> {
 		if self.should_fail.load(Ordering::SeqCst) {
 			return Err(Error(Diagnostic {
 				code: "TEST_ERROR".to_string(),

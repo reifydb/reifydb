@@ -407,7 +407,7 @@ impl ResolvedSubscription {
 	}
 }
 
-/// Resolved standard view
+/// Resolved transaction view
 #[derive(Debug, Clone)]
 pub struct ResolvedView(Arc<ResolvedViewInner>);
 

@@ -6,15 +6,13 @@ use reifydb_core::{
 	interface::catalog::subscription::SubscriptionDef,
 	key::{Key, subscription::SubscriptionKey},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::subscription::schema::subscription};
 
 impl CatalogStore {
-	pub(crate) fn list_subscriptions_all(
-		rx: &mut impl IntoStandardTransaction,
-	) -> crate::Result<Vec<SubscriptionDef>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_subscriptions_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<SubscriptionDef>> {
+		let mut txn = rx.as_transaction();
 
 		// First, collect all subscription IDs and metadata
 		let mut subscription_data = Vec::new();

@@ -29,20 +29,20 @@ use crate::{
 		TransactionalTableChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
-	single::{TransactionSingle, svl::read::SingleReadTransaction},
+	single::{SingleTransaction, read::SingleReadTransaction},
 };
 
 /// An active query transaction that holds a multi query transaction
 /// and provides query-only access to single storage.
-pub struct StandardQueryTransaction {
+pub struct QueryTransaction {
 	pub(crate) multi: MultiReadTransaction,
-	pub(crate) single: TransactionSingle,
+	pub(crate) single: SingleTransaction,
 }
 
-impl StandardQueryTransaction {
+impl QueryTransaction {
 	/// Creates a new active query transaction
-	#[instrument(name = "transaction::standard::query::new", level = "debug", skip_all)]
-	pub fn new(multi: MultiReadTransaction, single: TransactionSingle) -> Self {
+	#[instrument(name = "transaction::query::new", level = "debug", skip_all)]
+	pub fn new(multi: MultiReadTransaction, single: SingleTransaction) -> Self {
 		Self {
 			multi,
 			single,
@@ -113,7 +113,7 @@ impl StandardQueryTransaction {
 	}
 
 	/// Execute a function with query access to the single transaction.
-	#[instrument(name = "transaction::standard::query::with_single_query", level = "trace", skip(self, keys, f))]
+	#[instrument(name = "transaction::query::with_single_query", level = "trace", skip(self, keys, f))]
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
@@ -125,7 +125,7 @@ impl StandardQueryTransaction {
 
 	/// Execute a function with access to the multi query transaction.
 	/// This operates within the same transaction context.
-	#[instrument(name = "transaction::standard::query::with_multi_query", level = "trace", skip(self, f))]
+	#[instrument(name = "transaction::query::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&mut self, f: F) -> Result<R>
 	where
 		F: FnOnce(&mut MultiReadTransaction) -> Result<R>,
@@ -134,7 +134,7 @@ impl StandardQueryTransaction {
 	}
 
 	/// Begin a single-version query transaction for specific keys
-	#[instrument(name = "transaction::standard::query::begin_single_query", level = "trace", skip(self, keys))]
+	#[instrument(name = "transaction::query::begin_single_query", level = "trace", skip(self, keys))]
 	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
@@ -143,10 +143,10 @@ impl StandardQueryTransaction {
 	}
 }
 
-// No-op implementations of TransactionalChanges for StandardQueryTransaction.
+// No-op implementations of TransactionalChanges for QueryTransaction.
 // Query transactions don't track changes, so all methods return None/false.
 
-impl TransactionalDictionaryChanges for StandardQueryTransaction {
+impl TransactionalDictionaryChanges for QueryTransaction {
 	fn find_dictionary(&self, _id: DictionaryId) -> Option<&DictionaryDef> {
 		None
 	}
@@ -164,7 +164,7 @@ impl TransactionalDictionaryChanges for StandardQueryTransaction {
 	}
 }
 
-impl TransactionalFlowChanges for StandardQueryTransaction {
+impl TransactionalFlowChanges for QueryTransaction {
 	fn find_flow(&self, _id: FlowId) -> Option<&FlowDef> {
 		None
 	}
@@ -182,7 +182,7 @@ impl TransactionalFlowChanges for StandardQueryTransaction {
 	}
 }
 
-impl TransactionalNamespaceChanges for StandardQueryTransaction {
+impl TransactionalNamespaceChanges for QueryTransaction {
 	fn find_namespace(&self, _id: NamespaceId) -> Option<&NamespaceDef> {
 		None
 	}
@@ -200,7 +200,7 @@ impl TransactionalNamespaceChanges for StandardQueryTransaction {
 	}
 }
 
-impl TransactionalRingBufferChanges for StandardQueryTransaction {
+impl TransactionalRingBufferChanges for QueryTransaction {
 	fn find_ringbuffer(&self, _id: RingBufferId) -> Option<&RingBufferDef> {
 		None
 	}
@@ -218,7 +218,7 @@ impl TransactionalRingBufferChanges for StandardQueryTransaction {
 	}
 }
 
-impl TransactionalTableChanges for StandardQueryTransaction {
+impl TransactionalTableChanges for QueryTransaction {
 	fn find_table(&self, _id: TableId) -> Option<&TableDef> {
 		None
 	}
@@ -236,7 +236,7 @@ impl TransactionalTableChanges for StandardQueryTransaction {
 	}
 }
 
-impl TransactionalViewChanges for StandardQueryTransaction {
+impl TransactionalViewChanges for QueryTransaction {
 	fn find_view(&self, _id: ViewId) -> Option<&ViewDef> {
 		None
 	}
@@ -254,7 +254,7 @@ impl TransactionalViewChanges for StandardQueryTransaction {
 	}
 }
 
-impl TransactionalSubscriptionChanges for StandardQueryTransaction {
+impl TransactionalSubscriptionChanges for QueryTransaction {
 	fn find_subscription(&self, _id: SubscriptionId) -> Option<&SubscriptionDef> {
 		None
 	}
@@ -264,4 +264,4 @@ impl TransactionalSubscriptionChanges for StandardQueryTransaction {
 	}
 }
 
-impl TransactionalChanges for StandardQueryTransaction {}
+impl TransactionalChanges for QueryTransaction {}

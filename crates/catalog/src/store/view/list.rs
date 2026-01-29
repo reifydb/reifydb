@@ -8,13 +8,13 @@ use reifydb_core::{
 	},
 	key::{Key, view::ViewKey},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::view::schema::view};
 
 impl CatalogStore {
-	pub(crate) fn list_views_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ViewDef>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_views_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<ViewDef>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		// Collect view data first to avoid holding stream borrow

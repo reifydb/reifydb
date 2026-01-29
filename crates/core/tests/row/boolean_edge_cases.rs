@@ -11,7 +11,7 @@ fn test_boolean_bit_patterns() {
 	let schema = Schema::testing(&[Type::Boolean]);
 	let mut row = schema.allocate();
 
-	// Test standard values
+	// Test transaction values
 	schema.set_bool(&mut row, 0, true);
 	assert_eq!(schema.get_bool(&row, 0), true);
 

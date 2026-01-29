@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	value::{Value, dictionary::DictionaryEntryId, r#type::Type},
@@ -46,17 +46,13 @@ impl DictionaryScanNode {
 
 impl QueryNode for DictionaryScanNode {
 	#[instrument(name = "query::scan::dictionary::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(name = "query::scan::dictionary::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "DictionaryScan::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 

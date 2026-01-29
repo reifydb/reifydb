@@ -13,16 +13,13 @@ use reifydb_core::{
 	},
 	key::subscription::SubscriptionKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use super::MaterializedCatalog;
 use crate::store::subscription::schema::subscription::{self, ACKNOWLEDGED_VERSION, ID, PRIMARY_KEY};
 
-pub(crate) fn load_subscriptions(
-	rx: &mut impl IntoStandardTransaction,
-	catalog: &MaterializedCatalog,
-) -> crate::Result<()> {
-	let mut txn = rx.into_standard_transaction();
+pub(crate) fn load_subscriptions(rx: &mut impl AsTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
+	let mut txn = rx.as_transaction();
 	let range = SubscriptionKey::full_scan();
 	let mut stream = txn.range(range, 1024)?;
 

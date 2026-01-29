@@ -7,7 +7,7 @@ use reifydb_core::{
 	encoded::schema::Schema,
 	key::schema::{SchemaFieldKey, SchemaKey},
 };
-use reifydb_transaction::single::svl::write::SingleWriteTransaction;
+use reifydb_transaction::single::write::SingleWriteTransaction;
 use tracing::instrument;
 
 use super::schema::{schema_field, schema_header};

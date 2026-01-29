@@ -3,9 +3,9 @@
 
 use reifydb_core::{event::EventBus, interface::WithEventBus};
 
-use crate::multi::transaction::TransactionMulti;
+use crate::multi::transaction::MultiTransaction;
 
-impl WithEventBus for TransactionMulti {
+impl WithEventBus for MultiTransaction {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}

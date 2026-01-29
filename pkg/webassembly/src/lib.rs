@@ -59,8 +59,8 @@ impl WasmDB {
 		use reifydb_rqlv2::compiler::Compiler;
 		use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 		use reifydb_transaction::{
-			interceptor::factory::StandardInterceptorFactory, multi::transaction::TransactionMulti,
-			single::TransactionSingle,
+			interceptor::factory::StandardInterceptorFactory, multi::transaction::MultiTransaction,
+			single::SingleTransaction,
 		};
 
 		// Set panic hook for better error messages in browser console
@@ -83,8 +83,8 @@ impl WasmDB {
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 
 		// Create transactions
-		let single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
-		let multi = TransactionMulti::new(
+		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
+		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
 			eventbus.clone(),

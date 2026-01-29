@@ -12,7 +12,7 @@ use reifydb_rqlv2::{
 	},
 	expression::eval::{context::EvalContext, value::EvalValue},
 };
-use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
+use reifydb_transaction::transaction::{AsTransaction, Transaction};
 
 use super::{
 	dispatch::{self, DispatchResult},
@@ -29,8 +29,8 @@ use crate::{
 
 impl VmState {
 	/// Execute the program until halt or yield.
-	pub fn execute<T: IntoStandardTransaction + ?Sized>(&mut self, tx: &mut T) -> Result<Option<Pipeline>> {
-		let mut std_tx = tx.into_standard_transaction();
+	pub fn execute<T: AsTransaction + ?Sized>(&mut self, tx: &mut T) -> Result<Option<Pipeline>> {
+		let mut std_tx = tx.as_transaction();
 
 		loop {
 			let result = self.step(Some(&mut std_tx))?;
@@ -48,7 +48,7 @@ impl VmState {
 	/// Execute a single instruction using the dispatch table.
 	///
 	/// The transaction is optional - if None, only in-memory sources can be used.
-	pub fn step<'a>(&mut self, rx: Option<&mut StandardTransaction<'a>>) -> Result<DispatchResult> {
+	pub fn step<'a>(&mut self, rx: Option<&mut Transaction<'a>>) -> Result<DispatchResult> {
 		// Clone bytecode to avoid borrow conflict with HandlerContext
 		let bytecode = self.program.bytecode.clone();
 		let mut reader = BytecodeReader::new(&bytecode);
@@ -142,7 +142,7 @@ impl VmState {
 	pub fn execute_subquery<'a>(
 		&self,
 		subquery_def: &SubqueryDef,
-		rx: Option<&mut StandardTransaction<'a>>,
+		rx: Option<&mut Transaction<'a>>,
 	) -> Result<Columns> {
 		let mut builder = CompiledProgramBuilder::new();
 		builder.bytecode = subquery_def.bytecode.clone();

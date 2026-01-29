@@ -5,13 +5,13 @@ use reifydb_core::{
 	interface::catalog::{dictionary::DictionaryDef, id::DictionaryId},
 	return_internal_error,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn get_dictionary(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		dictionary: DictionaryId,
 	) -> crate::Result<DictionaryDef> {
 		match Self::find_dictionary(rx, dictionary)? {

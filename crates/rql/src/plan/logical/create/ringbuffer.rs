@@ -6,7 +6,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch},
 	interface::catalog::policy::ColumnPolicyKind,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_ringbuffer<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_ringbuffer<T: AsTransaction>(
 		&self,
 		ast: AstCreateRingBuffer,
 		tx: &mut T,

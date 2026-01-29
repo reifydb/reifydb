@@ -8,13 +8,13 @@ use reifydb_core::{
 	},
 	key::{Key, ringbuffer::RingBufferKey},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
 
 impl CatalogStore {
-	pub(crate) fn list_ringbuffers_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<RingBufferDef>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_ringbuffers_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<RingBufferDef>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		// Collect ringbuffer data first to avoid holding stream borrow

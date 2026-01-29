@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::CreateTableNode;
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{return_error, value::Value};
 
 use crate::execute::Executor;
@@ -16,7 +16,7 @@ use crate::execute::Executor;
 impl Executor {
 	pub(crate) fn create_table<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: CreateTableNode,
 	) -> crate::Result<Columns> {
 		// Check if table already exists using the catalog

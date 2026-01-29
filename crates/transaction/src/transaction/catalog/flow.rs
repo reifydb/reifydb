@@ -13,10 +13,10 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalFlowChanges,
 	},
-	standard::StandardCommandTransaction,
+	transaction::CommandTransaction,
 };
 
-impl CatalogTrackFlowChangeOperations for StandardCommandTransaction {
+impl CatalogTrackFlowChangeOperations for CommandTransaction {
 	fn track_flow_def_created(&mut self, flow: FlowDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
@@ -48,7 +48,7 @@ impl CatalogTrackFlowChangeOperations for StandardCommandTransaction {
 	}
 }
 
-impl TransactionalFlowChanges for StandardCommandTransaction {
+impl TransactionalFlowChanges for CommandTransaction {
 	fn find_flow(&self, id: FlowId) -> Option<&FlowDef> {
 		for change in self.changes.flow_def.iter().rev() {
 			if let Some(flow) = &change.post {

@@ -5,7 +5,7 @@
 //!
 //! This crate provides a tokio-tungstenite-based WebSocket server for handling
 //! persistent query connections. It integrates with the shared tokio runtime and
-//! implements the standard ReifyDB `Subsystem` trait for lifecycle management.
+//! implements the transaction ReifyDB `Subsystem` trait for lifecycle management.
 //!
 //! # Features
 //!

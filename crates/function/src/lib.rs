@@ -7,7 +7,7 @@ use reifydb_core::value::column::{
 	data::ColumnData,
 	view::group_by::{GroupByView, GroupKey},
 };
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::Result;
 
 pub mod blob;
@@ -20,7 +20,7 @@ pub mod text;
 
 pub struct GeneratorContext<'a> {
 	pub params: Columns,
-	pub txn: &'a mut StandardTransaction<'a>,
+	pub txn: &'a mut Transaction<'a>,
 	pub catalog: &'a reifydb_catalog::catalog::Catalog,
 }
 

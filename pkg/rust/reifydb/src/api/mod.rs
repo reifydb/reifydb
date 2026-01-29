@@ -21,7 +21,7 @@ use reifydb_store_single::{
 	config::{HotConfig as SingleHotConfig, SingleStoreConfig},
 	hot::sqlite::config::SqliteConfig as SingleSqliteConfig,
 };
-use reifydb_transaction::{multi::transaction::TransactionMulti, single::TransactionSingle};
+use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 
 pub mod embedded;
 pub mod server;
@@ -40,7 +40,7 @@ pub enum StorageFactory {
 
 impl StorageFactory {
 	/// Create the storage.
-	pub(crate) fn create(&self) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
+	pub(crate) fn create(&self) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 		match self {
 			StorageFactory::Memory => create_memory_store(),
 			StorageFactory::Sqlite(config) => create_sqlite_store(config.clone()),
@@ -49,7 +49,7 @@ impl StorageFactory {
 }
 
 /// Internal: Create in-memory storage.
-fn create_memory_store() -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
+fn create_memory_store() -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let eventbus = EventBus::new(&actor_system);
 
@@ -76,12 +76,12 @@ fn create_memory_store() -> (MultiStore, SingleStore, TransactionSingle, EventBu
 		event_bus: eventbus.clone(),
 	});
 
-	let transaction_single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
+	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 	(multi_store, single_store, transaction_single, eventbus)
 }
 
 /// Internal: Create SQLite storage with the given configuration.
-fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
+fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let eventbus = EventBus::new(&actor_system);
 
@@ -125,16 +125,16 @@ fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, Transa
 		event_bus: eventbus.clone(),
 	});
 
-	let transaction_single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
+	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 	(multi_store, single_store, transaction_single, eventbus)
 }
 
 /// Convenience function to create a transaction layer
 pub(crate) fn transaction(
-	input: (MultiStore, SingleStore, TransactionSingle, EventBus),
+	input: (MultiStore, SingleStore, SingleTransaction, EventBus),
 	actor_system: ActorSystem,
 	clock: Clock,
-) -> (TransactionMulti, TransactionSingle, EventBus) {
-	let multi = TransactionMulti::new(input.0, input.2.clone(), input.3.clone(), actor_system, clock).unwrap();
+) -> (MultiTransaction, SingleTransaction, EventBus) {
+	let multi = MultiTransaction::new(input.0, input.2.clone(), input.3.clone(), actor_system, clock).unwrap();
 	(multi, input.2, input.3)
 }

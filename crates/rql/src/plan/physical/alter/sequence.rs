@@ -7,7 +7,7 @@ use reifydb_core::{
 		ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedSequence, ResolvedTable, SequenceDef,
 	},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::plan::{
@@ -16,7 +16,7 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence<T: IntoStandardTransaction>(
+	pub(crate) fn compile_alter_sequence<T: AsTransaction>(
 		&self,
 		rx: &mut T,
 		alter: logical::AlterSequenceNode,

@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	key::flow::FlowKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use super::MaterializedCatalog;
 use crate::store::flow::schema::{
@@ -19,8 +19,8 @@ use crate::store::flow::schema::{
 	flow::{ID, NAME, NAMESPACE, STATUS},
 };
 
-pub(crate) fn load_flows(rx: &mut impl IntoStandardTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
-	let mut txn = rx.into_standard_transaction();
+pub(crate) fn load_flows(rx: &mut impl AsTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
+	let mut txn = rx.as_transaction();
 	let range = FlowKey::full_scan();
 	let mut stream = txn.range(range, 1024)?;
 

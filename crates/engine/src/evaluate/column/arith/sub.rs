@@ -837,7 +837,7 @@ impl StandardColumnEvaluator {
 				ColumnData::Uint16(r),
 			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
 
-			// Reverse operations - standard types with Int,
+			// Reverse operations - transaction types with Int,
 			// Uint, Decimal
 			(
 				ColumnData::Float4(l),

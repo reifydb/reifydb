@@ -8,14 +8,14 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn get_ringbuffer(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RingBufferDef> {
 		Self::find_ringbuffer(rx, ringbuffer)?.ok_or_else(|| {
@@ -27,7 +27,7 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn get_ringbuffer_metadata(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RingBufferMetadata> {
 		Self::find_ringbuffer_metadata(rx, ringbuffer)?.ok_or_else(|| {

@@ -55,22 +55,19 @@ use crate::{
 	},
 	multi::{
 		pending::PendingWrites,
-		transaction::{TransactionMulti, write::MultiWriteTransaction},
+		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
-	single::{
-		TransactionSingle,
-		svl::{read::SingleReadTransaction, write::SingleWriteTransaction},
-	},
-	standard::query::StandardQueryTransaction,
+	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
+	transaction::query::QueryTransaction,
 };
 
 /// An active command transaction that holds a multi command transaction
 /// and provides query/command access to single storage.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
-pub struct StandardCommandTransaction {
-	pub multi: TransactionMulti,
-	pub single: TransactionSingle,
+pub struct CommandTransaction {
+	pub multi: MultiTransaction,
+	pub single: SingleTransaction,
 	state: TransactionState,
 
 	pub cmd: Option<MultiWriteTransaction>,
@@ -89,12 +86,12 @@ enum TransactionState {
 	RolledBack,
 }
 
-impl StandardCommandTransaction {
+impl CommandTransaction {
 	/// Creates a new active command transaction with a pre-commit callback
-	#[instrument(name = "transaction::standard::command::new", level = "debug", skip_all)]
+	#[instrument(name = "transaction::command::new", level = "debug", skip_all)]
 	pub fn new(
-		multi: TransactionMulti,
-		single: TransactionSingle,
+		multi: MultiTransaction,
+		single: SingleTransaction,
 		event_bus: EventBus,
 		interceptors: Interceptors,
 	) -> Result<Self> {
@@ -112,7 +109,7 @@ impl StandardCommandTransaction {
 		})
 	}
 
-	#[instrument(name = "transaction::standard::command::event_bus", level = "trace", skip(self))]
+	#[instrument(name = "transaction::command::event_bus", level = "trace", skip(self))]
 	pub fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
@@ -134,7 +131,7 @@ impl StandardCommandTransaction {
 	/// Commit the transaction.
 	/// Since single transactions are short-lived and auto-commit,
 	/// this only commits the multi transaction.
-	#[instrument(name = "transaction::standard::command::commit", level = "debug", skip(self))]
+	#[instrument(name = "transaction::command::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 
@@ -163,7 +160,7 @@ impl StandardCommandTransaction {
 	}
 
 	/// Rollback the transaction.
-	#[instrument(name = "transaction::standard::command::rollback", level = "debug", skip(self))]
+	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> Result<()> {
 		self.check_active()?;
 		if let Some(mut multi) = self.cmd.take() {
@@ -179,13 +176,13 @@ impl StandardCommandTransaction {
 	///
 	/// This allows checking for key conflicts when committing FlowTransactions
 	/// to ensure they operate on non-overlapping keyspaces.
-	#[instrument(name = "transaction::standard::command::pending_writes", level = "trace", skip(self))]
+	#[instrument(name = "transaction::command::pending_writes", level = "trace", skip(self))]
 	pub fn pending_writes(&self) -> &PendingWrites {
 		self.cmd.as_ref().unwrap().pending_writes()
 	}
 
 	/// Execute a function with query access to the single transaction.
-	#[instrument(name = "transaction::standard::command::with_single_query", level = "trace", skip(self, keys, f))]
+	#[instrument(name = "transaction::command::with_single_query", level = "trace", skip(self, keys, f))]
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
@@ -197,11 +194,7 @@ impl StandardCommandTransaction {
 	}
 
 	/// Execute a function with query access to the single transaction.
-	#[instrument(
-		name = "transaction::standard::command::with_single_command",
-		level = "trace",
-		skip(self, keys, f)
-	)]
+	#[instrument(name = "transaction::command::with_single_command", level = "trace", skip(self, keys, f))]
 	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
@@ -215,48 +208,40 @@ impl StandardCommandTransaction {
 	/// Execute a function with a query transaction view.
 	/// This creates a new query transaction using the stored multi-version storage.
 	/// The query transaction will operate independently but share the same single/CDC storage.
-	#[instrument(name = "transaction::standard::command::with_multi_query", level = "trace", skip(self, f))]
+	#[instrument(name = "transaction::command::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&self, f: F) -> Result<R>
 	where
-		F: FnOnce(&mut StandardQueryTransaction) -> Result<R>,
+		F: FnOnce(&mut QueryTransaction) -> Result<R>,
 	{
 		self.check_active()?;
 
-		let mut query_txn = StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone());
 
 		f(&mut query_txn)
 	}
 
-	#[instrument(
-		name = "transaction::standard::command::with_multi_query_as_of_exclusive",
-		level = "trace",
-		skip(self, f)
-	)]
+	#[instrument(name = "transaction::command::with_multi_query_as_of_exclusive", level = "trace", skip(self, f))]
 	pub fn with_multi_query_as_of_exclusive<F, R>(&self, version: CommitVersion, f: F) -> Result<R>
 	where
-		F: FnOnce(&mut StandardQueryTransaction) -> Result<R>,
+		F: FnOnce(&mut QueryTransaction) -> Result<R>,
 	{
 		self.check_active()?;
 
-		let mut query_txn = StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone());
 
 		query_txn.read_as_of_version_exclusive(version)?;
 
 		f(&mut query_txn)
 	}
 
-	#[instrument(
-		name = "transaction::standard::command::with_multi_query_as_of_inclusive",
-		level = "trace",
-		skip(self, f)
-	)]
+	#[instrument(name = "transaction::command::with_multi_query_as_of_inclusive", level = "trace", skip(self, f))]
 	pub fn with_multi_query_as_of_inclusive<F, R>(&self, version: CommitVersion, f: F) -> Result<R>
 	where
-		F: FnOnce(&mut StandardQueryTransaction) -> Result<R>,
+		F: FnOnce(&mut QueryTransaction) -> Result<R>,
 	{
 		self.check_active()?;
 
-		let mut query_txn = StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone());
 
 		query_txn.multi.read_as_of_version_inclusive(version);
 
@@ -264,7 +249,7 @@ impl StandardCommandTransaction {
 	}
 
 	/// Begin a single-version query transaction for specific keys
-	#[instrument(name = "transaction::standard::command::begin_single_query", level = "trace", skip(self, keys))]
+	#[instrument(name = "transaction::command::begin_single_query", level = "trace", skip(self, keys))]
 	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
@@ -274,7 +259,7 @@ impl StandardCommandTransaction {
 	}
 
 	/// Begin a single-version command transaction for specific keys
-	#[instrument(name = "transaction::standard::command::begin_single_command", level = "trace", skip(self, keys))]
+	#[instrument(name = "transaction::command::begin_single_command", level = "trace", skip(self, keys))]
 	pub fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
@@ -389,13 +374,13 @@ impl StandardCommandTransaction {
 	}
 }
 
-impl WithEventBus for StandardCommandTransaction {
+impl WithEventBus for CommandTransaction {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
 }
 
-impl WithInterceptors for StandardCommandTransaction {
+impl WithInterceptors for CommandTransaction {
 	fn table_pre_insert_interceptors(&mut self) -> &mut Chain<dyn TablePreInsertInterceptor + Send + Sync> {
 		&mut self.interceptors.table_pre_insert
 	}
@@ -549,9 +534,9 @@ impl WithInterceptors for StandardCommandTransaction {
 	}
 }
 
-impl TransactionalChanges for StandardCommandTransaction {}
+impl TransactionalChanges for CommandTransaction {}
 
-impl Drop for StandardCommandTransaction {
+impl Drop for CommandTransaction {
 	fn drop(&mut self) {
 		if let Some(mut multi) = self.cmd.take() {
 			// Auto-rollback if still active (not committed or rolled back)

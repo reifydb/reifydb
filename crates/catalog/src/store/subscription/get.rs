@@ -5,14 +5,14 @@ use reifydb_core::{
 	interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef},
 	internal,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn get_subscription(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		subscription: SubscriptionId,
 	) -> crate::Result<SubscriptionDef> {
 		CatalogStore::find_subscription(rx, subscription)?.ok_or_else(|| {

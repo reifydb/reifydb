@@ -13,7 +13,7 @@ use reifydb_core::{
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
 
 use crate::{
@@ -46,10 +46,7 @@ pub struct TableToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_table(
-		txn: &mut StandardCommandTransaction,
-		to_create: TableToCreate,
-	) -> crate::Result<TableDef> {
+	pub(crate) fn create_table(txn: &mut CommandTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(table) = CatalogStore::find_table_by_name(txn, namespace_id, &to_create.table)? {
@@ -75,7 +72,7 @@ impl CatalogStore {
 	}
 
 	fn store_table(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		table: TableId,
 		namespace: NamespaceId,
 		to_create: &TableToCreate,
@@ -94,7 +91,7 @@ impl CatalogStore {
 	}
 
 	fn link_table_to_namespace(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		namespace: NamespaceId,
 		table: TableId,
 		name: &str,
@@ -106,11 +103,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn insert_columns(
-		txn: &mut StandardCommandTransaction,
-		table: TableId,
-		to_create: TableToCreate,
-	) -> crate::Result<()> {
+	fn insert_columns(txn: &mut CommandTransaction, table: TableId, to_create: TableToCreate) -> crate::Result<()> {
 		// Look up namespace name for error messages
 		let namespace_name = Self::find_namespace(txn, to_create.namespace)?
 			.map(|s| s.name)

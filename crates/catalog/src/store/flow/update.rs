@@ -5,14 +5,14 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowStatus},
 	key::flow::FlowKey,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 
 use crate::{CatalogStore, store::flow::schema::flow};
 
 impl CatalogStore {
 	/// Update the name of a flow
 	pub(crate) fn update_flow_name(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		flow_id: FlowId,
 		new_name: String,
 	) -> crate::Result<()> {
@@ -33,7 +33,7 @@ impl CatalogStore {
 
 	/// Update the status of a flow
 	pub(crate) fn update_flow_status(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		flow_id: FlowId,
 		status: FlowStatus,
 	) -> crate::Result<()> {

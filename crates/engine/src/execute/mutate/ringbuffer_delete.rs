@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
-use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -27,7 +27,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn delete_ringbuffer<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: DeleteRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -62,7 +62,7 @@ impl Executor {
 			let mut row_numbers_to_delete = std::collections::HashSet::new();
 
 			{
-				let mut std_txn = StandardTransaction::from(&mut *txn);
+				let mut std_txn = Transaction::from(&mut *txn);
 				let mut input_node = compile(
 					*input_plan,
 					&mut std_txn,

@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	CatalogStore,
@@ -16,11 +16,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_table(
-		rx: &mut impl IntoStandardTransaction,
-		table: TableId,
-	) -> crate::Result<Option<TableDef>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn find_table(rx: &mut impl AsTransaction, table: TableId) -> crate::Result<Option<TableDef>> {
+		let mut txn = rx.as_transaction();
 		let Some(multi) = txn.get(&TableKey::encoded(table))? else {
 			return Ok(None);
 		};
@@ -40,12 +37,12 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_table_by_name(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<TableDef>> {
 		let name = name.as_ref();
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let mut stream = txn.range(NamespaceTableKey::full_scan(namespace), 1024)?;
 
 		let mut found_table = None;

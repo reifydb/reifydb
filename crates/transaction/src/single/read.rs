@@ -45,7 +45,7 @@ impl KeyReadLock {
 }
 
 pub struct SingleReadTransaction<'a> {
-	pub(super) inner: &'a TransactionSvlInner,
+	pub(super) inner: &'a SingleTransactionInner,
 	pub(super) keys: Vec<EncodedKey>,
 	pub(super) _key_locks: Vec<KeyReadLock>,
 }

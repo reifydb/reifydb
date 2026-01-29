@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::AliasExpression;
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	value::{Value, r#type::Type},
@@ -55,16 +55,12 @@ impl InlineDataNode {
 }
 
 impl QueryNode for InlineDataNode {
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
-	fn next<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap().clone();
 

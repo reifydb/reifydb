@@ -35,9 +35,9 @@ use reifydb_rqlv2::compiler::Compiler;
 use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_transaction::{
 	interceptor::factory::InterceptorFactory,
-	multi::transaction::TransactionMulti,
-	single::TransactionSingle,
-	standard::{command::StandardCommandTransaction, query::StandardQueryTransaction},
+	multi::transaction::MultiTransaction,
+	single::SingleTransaction,
+	transaction::{command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_type::{
 	error::{Error, diagnostic},
@@ -68,24 +68,19 @@ impl WithEventBus for StandardEngine {
 // Engine methods (formerly from Engine trait in reifydb-core)
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self) -> crate::Result<StandardCommandTransaction> {
+	pub fn begin_command(&self) -> crate::Result<CommandTransaction> {
 		let mut interceptors = self.interceptors.create();
 
 		interceptors
 			.post_commit
 			.add(Arc::new(MaterializedCatalogInterceptor::new(self.catalog.materialized.clone())));
 
-		StandardCommandTransaction::new(
-			self.multi.clone(),
-			self.single.clone(),
-			self.event_bus.clone(),
-			interceptors,
-		)
+		CommandTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
 	}
 
 	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
-	pub fn begin_query(&self) -> crate::Result<StandardQueryTransaction> {
-		Ok(StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
+	pub fn begin_query(&self) -> crate::Result<QueryTransaction> {
+		Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
 	}
 
 	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
@@ -378,13 +373,13 @@ impl StandardEngine {
 
 impl ExecuteCommand for StandardEngine {
 	#[inline]
-	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+	fn execute_command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_command(txn, cmd)
 	}
 }
 
 impl CdcHost for StandardEngine {
-	fn begin_command(&self) -> reifydb_type::Result<StandardCommandTransaction> {
+	fn begin_command(&self) -> reifydb_type::Result<CommandTransaction> {
 		StandardEngine::begin_command(self)
 	}
 
@@ -403,7 +398,7 @@ impl CdcHost for StandardEngine {
 
 impl ExecuteQuery for StandardEngine {
 	#[inline]
-	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
+	fn execute_query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_query(txn, qry)
 	}
 }
@@ -423,8 +418,8 @@ impl Deref for StandardEngine {
 }
 
 pub struct Inner {
-	multi: TransactionMulti,
-	single: TransactionSingle,
+	multi: MultiTransaction,
+	single: SingleTransaction,
 	event_bus: EventBus,
 	executor: Executor,
 	interceptors: Box<dyn InterceptorFactory>,
@@ -435,8 +430,8 @@ pub struct Inner {
 
 impl StandardEngine {
 	pub fn new(
-		multi: TransactionMulti,
-		single: TransactionSingle,
+		multi: MultiTransaction,
+		single: SingleTransaction,
 		event_bus: EventBus,
 		interceptors: Box<dyn InterceptorFactory>,
 		catalog: Catalog,
@@ -497,17 +492,17 @@ impl StandardEngine {
 	/// read from the same snapshot (same CommitVersion) for consistency.
 	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0
     ))]
-	pub fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<StandardQueryTransaction> {
-		Ok(StandardQueryTransaction::new(self.multi.begin_query_at_version(version)?, self.single.clone()))
+	pub fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<QueryTransaction> {
+		Ok(QueryTransaction::new(self.multi.begin_query_at_version(version)?, self.single.clone()))
 	}
 
 	#[inline]
-	pub fn multi(&self) -> &TransactionMulti {
+	pub fn multi(&self) -> &MultiTransaction {
 		&self.multi
 	}
 
 	#[inline]
-	pub fn multi_owned(&self) -> TransactionMulti {
+	pub fn multi_owned(&self) -> MultiTransaction {
 		self.multi.clone()
 	}
 
@@ -518,12 +513,12 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn single(&self) -> &TransactionSingle {
+	pub fn single(&self) -> &SingleTransaction {
 		&self.single
 	}
 
 	#[inline]
-	pub fn single_owned(&self) -> TransactionSingle {
+	pub fn single_owned(&self) -> SingleTransaction {
 		self.single.clone()
 	}
 

@@ -5,7 +5,7 @@
 //!
 //! This crate provides an Axum-based HTTP server for web-based administration
 //! of ReifyDB. It integrates with the shared tokio runtime and implements the
-//! standard ReifyDB `Subsystem` trait for lifecycle management.
+//! transaction ReifyDB `Subsystem` trait for lifecycle management.
 //!
 //! # Features
 //!

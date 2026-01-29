@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -29,10 +29,7 @@ pub struct FlowToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_flow(
-		txn: &mut StandardCommandTransaction,
-		to_create: FlowToCreate,
-	) -> crate::Result<FlowDef> {
+	pub(crate) fn create_flow(txn: &mut CommandTransaction, to_create: FlowToCreate) -> crate::Result<FlowDef> {
 		let namespace_id = to_create.namespace;
 
 		// Check if flow already exists
@@ -55,7 +52,7 @@ impl CatalogStore {
 	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
 	/// This skips the name uniqueness check since the ID is guaranteed unique by the sequence.
 	pub(crate) fn create_flow_with_id(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		flow_id: FlowId,
 		to_create: FlowToCreate,
 	) -> crate::Result<FlowDef> {
@@ -67,7 +64,7 @@ impl CatalogStore {
 	}
 
 	fn store_flow(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		flow: FlowId,
 		namespace: NamespaceId,
 		to_create: &FlowToCreate,
@@ -85,7 +82,7 @@ impl CatalogStore {
 	}
 
 	fn link_flow_to_namespace(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		namespace: NamespaceId,
 		flow: FlowId,
 		name: &str,

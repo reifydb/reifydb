@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
-use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{fragment::Fragment, params::Params, return_error, value::Value};
 
 use super::coerce::coerce_value_to_column_type;
@@ -23,7 +23,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn update_ringbuffer<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: UpdateRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -67,7 +67,7 @@ impl Executor {
 		// Process all input batches - we need to handle compilation and
 		// execution with proper transaction borrowing
 		{
-			let mut wrapped_txn = StandardTransaction::from(&mut *txn);
+			let mut wrapped_txn = Transaction::from(&mut *txn);
 			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
 
 			// Initialize the operator before execution

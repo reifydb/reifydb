@@ -24,7 +24,7 @@ use reifydb_catalog::vtable::{
 };
 use reifydb_core::interface::catalog::id::{IndexId, NamespaceId};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
@@ -75,7 +75,7 @@ fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan) -> Option<Fragment
 #[instrument(name = "query::compile", level = "trace", skip(plan, rx, context))]
 pub(crate) fn compile<'a>(
 	plan: PhysicalPlan,
-	rx: &mut StandardTransaction<'a>,
+	rx: &mut Transaction<'a>,
 	context: Arc<ExecutionContext>,
 ) -> ExecutionPlan {
 	match plan {

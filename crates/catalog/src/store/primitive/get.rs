@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::primitive::{PrimitiveDef, PrimitiveId},
 	internal,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
@@ -14,7 +14,7 @@ impl CatalogStore {
 	/// Get a primitive (table or view) by its PrimitiveId
 	/// Returns an error if the primitive doesn't exist
 	pub(crate) fn get_primitive(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<PrimitiveDef> {
 		let primitive_id = primitive.into();

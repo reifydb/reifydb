@@ -8,13 +8,13 @@ use reifydb_core::{
 		subscription_row::SubscriptionRowKey,
 	},
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn delete_subscription(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		subscription: SubscriptionId,
 	) -> crate::Result<()> {
 		// Step 1: Delete subscription columns

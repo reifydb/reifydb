@@ -13,7 +13,7 @@ use reifydb_core::interface::{
 	},
 	resolved::{ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedView},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
@@ -22,7 +22,7 @@ use super::Catalog;
 impl Catalog {
 	/// Resolve a namespace ID to a fully resolved namespace with identifier
 	#[instrument(name = "catalog::resolve::namespace", level = "trace", skip(self, txn))]
-	pub fn resolve_namespace<T: IntoStandardTransaction>(
+	pub fn resolve_namespace<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		namespace_id: NamespaceId,
@@ -34,11 +34,7 @@ impl Catalog {
 
 	/// Resolve a table ID to a fully resolved table with namespace and identifiers
 	#[instrument(name = "catalog::resolve::table", level = "trace", skip(self, txn))]
-	pub fn resolve_table<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-		table_id: TableId,
-	) -> crate::Result<ResolvedTable> {
+	pub fn resolve_table<T: AsTransaction>(&self, txn: &mut T, table_id: TableId) -> crate::Result<ResolvedTable> {
 		let table_def = self.get_table(txn, table_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, table_def.namespace)?;
 		let table_ident = Fragment::internal(table_def.name.clone());
@@ -48,11 +44,7 @@ impl Catalog {
 
 	/// Resolve a view ID to a fully resolved view with namespace and identifiers
 	#[instrument(name = "catalog::resolve::view", level = "trace", skip(self, txn))]
-	pub fn resolve_view<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-		view_id: ViewId,
-	) -> crate::Result<ResolvedView> {
+	pub fn resolve_view<T: AsTransaction>(&self, txn: &mut T, view_id: ViewId) -> crate::Result<ResolvedView> {
 		let view_def = self.get_view(txn, view_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, view_def.namespace)?;
 		let view_ident = Fragment::internal(view_def.name.clone());
@@ -62,11 +54,7 @@ impl Catalog {
 
 	/// Resolve a flow ID to a fully resolved flow with namespace and identifiers
 	#[instrument(name = "catalog::resolve::flow", level = "trace", skip(self, txn))]
-	pub fn resolve_flow<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-		flow_id: FlowId,
-	) -> crate::Result<ResolvedFlow> {
+	pub fn resolve_flow<T: AsTransaction>(&self, txn: &mut T, flow_id: FlowId) -> crate::Result<ResolvedFlow> {
 		let flow_def = self.get_flow(txn, flow_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, flow_def.namespace)?;
 		let flow_ident = Fragment::internal(flow_def.name.clone());
@@ -76,7 +64,7 @@ impl Catalog {
 
 	/// Resolve a ring buffer ID to a fully resolved ring buffer with namespace and identifiers
 	#[instrument(name = "catalog::resolve::ringbuffer", level = "trace", skip(self, txn))]
-	pub fn resolve_ringbuffer<T: IntoStandardTransaction>(
+	pub fn resolve_ringbuffer<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		ringbuffer_id: RingBufferId,

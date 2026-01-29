@@ -2,9 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::ringbuffer::RingBufferDef, key::row::RowKey};
-use reifydb_transaction::{
-	interceptor::ringbuffer::RingBufferInterceptor, standard::command::StandardCommandTransaction,
-};
+use reifydb_transaction::{interceptor::ringbuffer::RingBufferInterceptor, transaction::command::CommandTransaction};
 use reifydb_type::value::row_number::RowNumber;
 
 pub(crate) trait RingBufferOperations {
@@ -27,7 +25,7 @@ pub(crate) trait RingBufferOperations {
 	fn remove_from_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber) -> crate::Result<()>;
 }
 
-impl RingBufferOperations for StandardCommandTransaction {
+impl RingBufferOperations for CommandTransaction {
 	fn insert_ringbuffer(&mut self, _ringbuffer: RingBufferDef, _row: EncodedValues) -> crate::Result<RowNumber> {
 		// For ring buffers, the row_number is determined by the caller based on ring buffer metadata
 		// This is different from tables which use RowSequence::next_row_number

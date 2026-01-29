@@ -246,7 +246,7 @@ fn test_subscription_uuid() {
 		let u4_val = &find_column(frame, "u4").unwrap().data[0];
 		let u7_val = &find_column(frame, "u7").unwrap().data[0];
 
-		// UUIDs should have the standard format with hyphens
+		// UUIDs should have the transaction format with hyphens
 		assert!(u4_val.contains("-"), "UUID4 should contain hyphens");
 		assert!(u7_val.contains("-"), "UUID7 should contain hyphens");
 		assert_eq!(u4_val.len(), 36, "UUID should be 36 chars");

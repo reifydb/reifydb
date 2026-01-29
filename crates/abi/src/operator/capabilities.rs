@@ -19,7 +19,7 @@ pub const CAPABILITY_DROP: u32 = 1 << 4; // 0x10
 /// Capability: Operator wants periodic tick() callbacks
 pub const CAPABILITY_TICK: u32 = 1 << 5; // 0x20
 
-/// All standard capabilities (Insert + Update + Delete + Pull)
+/// All transaction capabilities (Insert + Update + Delete + Pull)
 pub const CAPABILITY_ALL_STANDARD: u32 = CAPABILITY_INSERT | CAPABILITY_UPDATE | CAPABILITY_DELETE | CAPABILITY_PULL;
 
 #[inline]

@@ -26,7 +26,7 @@ use reifydb_core::{
 	},
 	sort::SortKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{
 	error::diagnostic::function::internal_error,
 	fragment::Fragment,
@@ -52,7 +52,7 @@ pub(crate) struct Compiler {
 }
 
 #[instrument(name = "rql::compile::physical", level = "trace", skip(catalog, rx, logical))]
-pub fn compile_physical<T: IntoStandardTransaction>(
+pub fn compile_physical<T: AsTransaction>(
 	catalog: &Catalog,
 	rx: &mut T,
 	logical: Vec<LogicalPlan>,
@@ -64,7 +64,7 @@ pub fn compile_physical<T: IntoStandardTransaction>(
 }
 
 impl Compiler {
-	pub fn compile<T: IntoStandardTransaction>(
+	pub fn compile<T: AsTransaction>(
 		&self,
 		rx: &mut T,
 		logical: Vec<LogicalPlan>,

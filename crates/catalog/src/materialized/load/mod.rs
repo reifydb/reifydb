@@ -18,7 +18,7 @@ use namespace::load_namespaces;
 use operator_retention_policy::load_operator_retention_policies;
 use primary_key::load_primary_keys;
 use primitive_retention_policy::load_source_retention_policies;
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use ringbuffer::load_ringbuffers;
 use subscription::load_subscriptions;
 use table::load_tables;
@@ -31,8 +31,8 @@ pub struct MaterializedCatalogLoader;
 
 impl MaterializedCatalogLoader {
 	/// Load all catalog data from storage into the MaterializedCatalog
-	pub fn load_all(rx: &mut impl IntoStandardTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
-		let mut txn = rx.into_standard_transaction();
+	pub fn load_all(rx: &mut impl AsTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
+		let mut txn = rx.as_transaction();
 		load_namespaces(&mut txn, catalog)?;
 		// Load primary keys first so they're available when loading
 		// tables/views

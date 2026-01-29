@@ -12,7 +12,7 @@ pub mod subscription;
 pub mod table;
 pub mod transactional;
 
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	ast::ast::AstCreate,
@@ -20,7 +20,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create<T: AsTransaction>(
 		&self,
 		ast: AstCreate,
 		tx: &mut T,

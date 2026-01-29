@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::TransactionalViewChanges,
-	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
+	transaction::{AsTransaction, Transaction, command::CommandTransaction},
 };
 use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::{instrument, warn};
@@ -61,9 +61,9 @@ impl From<ViewToCreate> for StoreViewToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::view::find", level = "trace", skip(self, txn))]
-	pub fn find_view<T: IntoStandardTransaction>(&self, txn: &mut T, id: ViewId) -> crate::Result<Option<ViewDef>> {
-		match txn.into_standard_transaction() {
-			StandardTransaction::Command(cmd) => {
+	pub fn find_view<T: AsTransaction>(&self, txn: &mut T, id: ViewId) -> crate::Result<Option<ViewDef>> {
+		match txn.as_transaction() {
+			Transaction::Command(cmd) => {
 				// 1. Check transactional changes first
 				if let Some(view) = TransactionalViewChanges::find_view(cmd, id) {
 					return Ok(Some(view.clone()));
@@ -87,7 +87,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			StandardTransaction::Query(qry) => {
+			Transaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(view) = self.materialized.find_view_at(id, qry.version()) {
 					return Ok(Some(view));
@@ -105,14 +105,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_view_by_name<T: IntoStandardTransaction>(
+	pub fn find_view_by_name<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		namespace: NamespaceId,
 		name: &str,
 	) -> crate::Result<Option<ViewDef>> {
-		match txn.into_standard_transaction() {
-			StandardTransaction::Command(cmd) => {
+		match txn.as_transaction() {
+			Transaction::Command(cmd) => {
 				// 1. Check transactional changes first
 				if let Some(view) = TransactionalViewChanges::find_view_by_name(cmd, namespace, name) {
 					return Ok(Some(view.clone()));
@@ -141,7 +141,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			StandardTransaction::Query(qry) => {
+			Transaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(view) =
 					self.materialized.find_view_by_name_at(namespace, name, qry.version())
@@ -164,7 +164,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::get", level = "trace", skip(self, txn))]
-	pub fn get_view<T: IntoStandardTransaction>(&self, txn: &mut T, id: ViewId) -> crate::Result<ViewDef> {
+	pub fn get_view<T: AsTransaction>(&self, txn: &mut T, id: ViewId) -> crate::Result<ViewDef> {
 		self.find_view(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -176,7 +176,7 @@ impl Catalog {
 	#[instrument(name = "catalog::view::create_deferred", level = "debug", skip(self, txn, to_create))]
 	pub fn create_deferred_view(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
@@ -191,7 +191,7 @@ impl Catalog {
 	#[instrument(name = "catalog::view::create_transactional", level = "debug", skip(self, txn, to_create))]
 	pub fn create_transactional_view(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
@@ -204,14 +204,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::list_all", level = "debug", skip(self, txn))]
-	pub fn list_views_all<T: IntoStandardTransaction>(&self, txn: &mut T) -> crate::Result<Vec<ViewDef>> {
+	pub fn list_views_all<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<ViewDef>> {
 		CatalogStore::list_views_all(txn)
 	}
 
 	#[instrument(name = "catalog::view::set_primary_key", level = "debug", skip(self, txn))]
 	pub fn set_view_primary_key(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
@@ -219,7 +219,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::get_pk_id", level = "trace", skip(self, txn))]
-	pub fn get_view_pk_id<T: IntoStandardTransaction>(
+	pub fn get_view_pk_id<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		view_id: ViewId,

@@ -69,13 +69,13 @@ pub struct Query<'a> {
 /// Trait for executing commands (write operations)
 
 pub trait ExecuteCommand {
-	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>>;
+	fn execute_command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>>;
 }
 
 /// Trait for executing queries (read operations)
 
 pub trait ExecuteQuery {
-	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>>;
+	fn execute_query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>>;
 }
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::{
@@ -83,9 +83,7 @@ use reifydb_rql::{
 	plan::{physical::PhysicalPlan, plan},
 };
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::standard::{
-	StandardTransaction, command::StandardCommandTransaction, query::StandardQueryTransaction,
-};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
 use tracing::instrument;
 
 use crate::{
@@ -102,22 +100,18 @@ pub mod query;
 pub(crate) trait QueryNode {
 	/// Initialize the operator with execution context
 	/// Called once before iteration begins
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()>;
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
 	/// Returns None when exhausted
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>>;
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>>;
 
 	/// Get the next batch as a LazyBatch for deferred materialization
 	/// Returns None if this node doesn't support lazy evaluation or is exhausted
 	/// Default implementation returns None (falls back to materialized evaluation)
 	fn next_lazy<'a>(
 		&mut self,
-		_rx: &mut StandardTransaction<'a>,
+		_rx: &mut Transaction<'a>,
 		_ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<LazyBatch>> {
 		Ok(None)
@@ -172,21 +166,17 @@ pub(crate) enum ExecutionPlan {
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
 
 impl QueryNode for Box<ExecutionPlan> {
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		(**self).initialize(rx, ctx)
 	}
 
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		(**self).next(rx, ctx)
 	}
 
 	fn next_lazy<'a>(
 		&mut self,
-		rx: &mut StandardTransaction<'a>,
+		rx: &mut Transaction<'a>,
 		ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<LazyBatch>> {
 		(**self).next_lazy(rx, ctx)
@@ -198,7 +188,7 @@ impl QueryNode for Box<ExecutionPlan> {
 }
 
 impl QueryNode for ExecutionPlan {
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.initialize(rx, ctx),
 			ExecutionPlan::DictionaryScan(node) => node.initialize(rx, ctx),
@@ -232,11 +222,7 @@ impl QueryNode for ExecutionPlan {
 		}
 	}
 
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.next(rx, ctx),
 			ExecutionPlan::DictionaryScan(node) => node.next(rx, ctx),
@@ -272,7 +258,7 @@ impl QueryNode for ExecutionPlan {
 
 	fn next_lazy<'a>(
 		&mut self,
-		rx: &mut StandardTransaction<'a>,
+		rx: &mut Transaction<'a>,
 		ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<LazyBatch>> {
 		match self {
@@ -389,7 +375,7 @@ impl Executor {
 
 impl ExecuteCommand for Executor {
 	#[instrument(name = "executor::execute_command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+	fn execute_command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(cmd.rql)?;
 
@@ -432,7 +418,7 @@ impl ExecuteCommand for Executor {
 
 impl ExecuteQuery for Executor {
 	#[instrument(name = "executor::execute_query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
-	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
+	fn execute_query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(qry.rql)?;
 
@@ -477,7 +463,7 @@ impl Executor {
 	#[instrument(name = "executor::plan::query", level = "debug", skip(self, rx, plan, params, stack))]
 	pub(crate) fn execute_query_plan<'a>(
 		&self,
-		rx: &'a mut StandardQueryTransaction,
+		rx: &'a mut QueryTransaction,
 		plan: PhysicalPlan,
 		params: Params,
 		stack: &mut Stack,
@@ -509,7 +495,7 @@ impl Executor {
 			| PhysicalPlan::RowPointLookup(_)
 			| PhysicalPlan::RowListLookup(_)
 			| PhysicalPlan::RowRangeScan(_) => {
-				let mut std_txn = StandardTransaction::from(rx);
+				let mut std_txn = Transaction::from(rx);
 				self.query(&mut std_txn, plan, params, stack)
 			}
 			// Mutations - should not be in query transactions
@@ -530,7 +516,7 @@ impl Executor {
 				))
 			}
 			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
-				let mut std_txn = StandardTransaction::from(rx);
+				let mut std_txn = Transaction::from(rx);
 				self.query(&mut std_txn, plan, params, stack)?;
 				Ok(None)
 			}
@@ -573,7 +559,7 @@ impl Executor {
 	#[instrument(name = "executor::plan::command", level = "debug", skip(self, txn, plan, params, stack))]
 	pub fn execute_command_plan<'a>(
 		&self,
-		txn: &'a mut StandardCommandTransaction,
+		txn: &'a mut CommandTransaction,
 		plan: PhysicalPlan,
 		params: Params,
 		stack: &mut Stack,
@@ -625,20 +611,20 @@ impl Executor {
 			| PhysicalPlan::RowPointLookup(_)
 			| PhysicalPlan::RowListLookup(_)
 			| PhysicalPlan::RowRangeScan(_) => {
-				let mut std_txn = StandardTransaction::from(txn);
+				let mut std_txn = Transaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}
 			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
-				let mut std_txn = StandardTransaction::from(txn);
+				let mut std_txn = Transaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)?;
 				Ok(None)
 			}
 			PhysicalPlan::Window(_) => {
-				let mut std_txn = StandardTransaction::from(txn);
+				let mut std_txn = Transaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}
 			PhysicalPlan::Merge(_) => {
-				let mut std_txn = StandardTransaction::from(txn);
+				let mut std_txn = Transaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}
 
@@ -651,7 +637,7 @@ impl Executor {
 	#[instrument(name = "executor::query", level = "debug", skip(self, rx, plan, params, stack))]
 	fn query<'a>(
 		&self,
-		rx: &mut StandardTransaction<'a>,
+		rx: &mut Transaction<'a>,
 		plan: PhysicalPlan,
 		params: Params,
 		stack: &mut Stack,

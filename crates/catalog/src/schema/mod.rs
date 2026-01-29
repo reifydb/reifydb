@@ -21,7 +21,7 @@ use reifydb_core::{
 	error::diagnostic::internal::internal,
 	key::schema::{SchemaFieldKey, SchemaKey},
 };
-use reifydb_transaction::{single::TransactionSingle, standard::IntoStandardTransaction};
+use reifydb_transaction::{single::SingleTransaction, transaction::AsTransaction};
 use reifydb_type::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
@@ -43,7 +43,7 @@ use crate::store::schema::{
 pub struct SchemaRegistry(Arc<SchemaRegistryInner>);
 
 struct SchemaRegistryInner {
-	single: TransactionSingle,
+	single: SingleTransaction,
 	/// Cache of schemas by fingerprint
 	cache: SkipMap<SchemaFingerprint, Schema>,
 }
@@ -74,7 +74,7 @@ fn compute_schema_keys(fingerprint: SchemaFingerprint, field_count: usize) -> Ve
 
 impl SchemaRegistry {
 	/// Create a new empty schema registry.
-	pub fn new(single: TransactionSingle) -> Self {
+	pub fn new(single: SingleTransaction) -> Self {
 		Self(Arc::new(SchemaRegistryInner {
 			single,
 			cache: SkipMap::new(),
@@ -82,7 +82,7 @@ impl SchemaRegistry {
 	}
 
 	pub fn testing() -> Self {
-		Self::new(TransactionSingle::testing())
+		Self::new(SingleTransaction::testing())
 	}
 
 	/// Get an existing schema by fingerprint, or create and persist a new one.
@@ -160,7 +160,7 @@ impl SchemaRegistry {
 	pub fn get_or_load(
 		&self,
 		fingerprint: SchemaFingerprint,
-		txn: &mut impl IntoStandardTransaction,
+		txn: &mut impl AsTransaction,
 	) -> crate::Result<Option<Schema>> {
 		// Check cache first
 		if let Some(entry) = self.0.cache.get(&fingerprint) {
@@ -170,8 +170,8 @@ impl SchemaRegistry {
 			return Ok(Some(schema));
 		}
 
-		// Check storage (inlined from find_schema_by_fingerprint for StandardTransaction)
-		let mut std_txn = txn.into_standard_transaction();
+		// Check storage (inlined from find_schema_by_fingerprint for Transaction)
+		let mut std_txn = txn.as_transaction();
 
 		// Read schema header
 		let header_key = SchemaKey::encoded(fingerprint);
@@ -280,7 +280,7 @@ mod tests {
 
 	#[test]
 	fn test_schema_registry_caching() {
-		let registry = SchemaRegistry::new(TransactionSingle::testing());
+		let registry = SchemaRegistry::new(SingleTransaction::testing());
 
 		let fields = vec![
 			SchemaField::unconstrained("id", Type::Int8),
@@ -302,7 +302,7 @@ mod tests {
 
 	#[test]
 	fn test_schema_registry_get() {
-		let registry = SchemaRegistry::new(TransactionSingle::testing());
+		let registry = SchemaRegistry::new(SingleTransaction::testing());
 
 		let fields = vec![SchemaField::unconstrained("x", Type::Float8)];
 		let schema = Schema::new(fields);

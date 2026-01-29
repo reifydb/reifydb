@@ -22,9 +22,7 @@ use reifydb_core::{
 	},
 	sort::{SortDirection, SortKey},
 };
-use reifydb_transaction::standard::{
-	IntoStandardTransaction, command::StandardCommandTransaction, query::StandardQueryTransaction,
-};
+use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction, query::QueryTransaction};
 use reifydb_type::{error::diagnostic::ast::unsupported_ast_node, fragment::Fragment, return_error};
 use tracing::instrument;
 
@@ -55,9 +53,9 @@ pub(crate) struct Compiler {
 	pub catalog: Catalog,
 }
 
-/// Compile AST to logical plan using any transaction type that implements IntoStandardTransaction
+/// Compile AST to logical plan using any transaction type that implements IntoTransaction
 #[instrument(name = "rql::compile::logical", level = "trace", skip(catalog, tx, ast))]
-pub fn compile_logical<T: IntoStandardTransaction>(
+pub fn compile_logical<T: AsTransaction>(
 	catalog: &Catalog,
 	tx: &mut T,
 	ast: AstStatement,
@@ -71,7 +69,7 @@ pub fn compile_logical<T: IntoStandardTransaction>(
 #[instrument(name = "rql::compile::logical_query", level = "trace", skip(catalog, tx, ast))]
 pub fn compile_logical_query(
 	catalog: &Catalog,
-	tx: &mut StandardQueryTransaction,
+	tx: &mut QueryTransaction,
 	ast: AstStatement,
 ) -> crate::Result<Vec<LogicalPlan>> {
 	compile_logical(catalog, tx, ast)
@@ -80,18 +78,14 @@ pub fn compile_logical_query(
 #[instrument(name = "rql::compile::logical_command", level = "trace", skip(catalog, tx, ast))]
 pub fn compile_logical_command(
 	catalog: &Catalog,
-	tx: &mut StandardCommandTransaction,
+	tx: &mut CommandTransaction,
 	ast: AstStatement,
 ) -> crate::Result<Vec<LogicalPlan>> {
 	compile_logical(catalog, tx, ast)
 }
 
 impl Compiler {
-	pub fn compile<T: IntoStandardTransaction>(
-		&self,
-		ast: AstStatement,
-		tx: &mut T,
-	) -> crate::Result<Vec<LogicalPlan>> {
+	pub fn compile<T: AsTransaction>(&self, ast: AstStatement, tx: &mut T) -> crate::Result<Vec<LogicalPlan>> {
 		if ast.is_empty() {
 			return Ok(vec![]);
 		}
@@ -307,7 +301,7 @@ impl Compiler {
 	}
 
 	// Helper to compile a single AST operator
-	pub fn compile_single<T: IntoStandardTransaction>(&self, node: Ast, tx: &mut T) -> crate::Result<LogicalPlan> {
+	pub fn compile_single<T: AsTransaction>(&self, node: Ast, tx: &mut T) -> crate::Result<LogicalPlan> {
 		match node {
 			Ast::Create(node) => self.compile_create(node, tx),
 			Ast::Alter(node) => self.compile_alter(node, tx),

@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::ringbuffer::RingBufferKey,
 	return_internal_error,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 
 use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
 
@@ -14,7 +14,7 @@ impl CatalogStore {
 	/// Set the primary key ID for a ring buffer
 	/// Returns an internal error if the ring buffer doesn't exist
 	pub(crate) fn set_ringbuffer_primary_key(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		ringbuffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {

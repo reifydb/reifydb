@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::plan::{physical, physical::AssignValue};
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	evaluate::{ColumnEvaluationContext, column::evaluate},
@@ -40,16 +40,12 @@ impl AssignNode {
 }
 
 impl QueryNode for AssignNode {
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "AssignNode::next() called before initialize()");
 
 		// Assignment statements execute once and return no data
@@ -122,7 +118,7 @@ impl<'a> AssignNode {
 	/// Execute a pipeline of physical plans and return the final result
 	fn execute_statement_pipeline(
 		&self,
-		rx: &mut StandardTransaction<'a>,
+		rx: &mut Transaction<'a>,
 		ctx: &mut ExecutionContext,
 		physical_plans: &[physical::PhysicalPlan],
 	) -> crate::Result<Columns> {

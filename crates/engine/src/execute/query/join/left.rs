@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 use tracing::instrument;
 
@@ -42,7 +42,7 @@ impl LeftJoinNode {
 
 impl QueryNode for LeftJoinNode {
 	#[instrument(name = "query::join::left::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
@@ -50,11 +50,7 @@ impl QueryNode for LeftJoinNode {
 	}
 
 	#[instrument(name = "query::join::left::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_initialized(), "LeftJoinNode::next() called before initialize()");
 		let _stored_ctx = self.context.get();
 

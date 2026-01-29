@@ -3,7 +3,7 @@
 
 //! Schema Registry loading from storage.
 
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use tracing::instrument;
 
 use super::SchemaRegistry;
@@ -23,8 +23,8 @@ impl SchemaRegistryLoader {
 		skip(rx, registry),
 		fields(schema_count = tracing::field::Empty)
 	)]
-	pub fn load_all(rx: &mut impl IntoStandardTransaction, registry: &SchemaRegistry) -> crate::Result<()> {
-		let mut txn = rx.into_standard_transaction();
+	pub fn load_all(rx: &mut impl AsTransaction, registry: &SchemaRegistry) -> crate::Result<()> {
+		let mut txn = rx.as_transaction();
 		let schemas = load_all_schemas(&mut txn)?;
 
 		tracing::Span::current().record("schema_count", schemas.len());

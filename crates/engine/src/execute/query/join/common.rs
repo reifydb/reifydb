@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
@@ -12,7 +12,7 @@ use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 /// Load and merge all batches from a node into a single Columns
 pub(crate) fn load_and_merge_all<'a>(
 	node: &mut Box<ExecutionPlan>,
-	rx: &mut StandardTransaction<'a>,
+	rx: &mut Transaction<'a>,
 	ctx: &mut ExecutionContext,
 ) -> crate::Result<Columns> {
 	let mut result: Option<Columns> = None;

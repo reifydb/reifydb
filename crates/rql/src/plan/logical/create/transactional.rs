@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::catalog::view::ViewColumnToCreate;
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_transactional_view<T: IntoStandardTransaction>(
+	pub(crate) fn compile_transactional_view<T: AsTransaction>(
 		&self,
 		ast: AstCreateTransactionalView,
 		tx: &mut T,

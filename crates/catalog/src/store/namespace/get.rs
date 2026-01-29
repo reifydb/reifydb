@@ -5,14 +5,14 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
 	internal,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn get_namespace(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		namespace: NamespaceId,
 	) -> crate::Result<NamespaceDef> {
 		CatalogStore::find_namespace(rx, namespace)?.ok_or_else(|| {

@@ -309,7 +309,7 @@ pub mod tests {
 	async fn test_blob_b64url_invalid_input_should_error() {
 		let function = BlobB64url::new();
 
-		// Using standard base64 characters that are invalid in
+		// Using transaction base64 characters that are invalid in
 		// base64url
 		let b64url_data = vec!["invalid+base64/chars".to_string()];
 		let bitvec = vec![true];

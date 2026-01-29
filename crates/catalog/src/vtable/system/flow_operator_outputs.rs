@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::vtable::VTableDef,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use super::flow_operator_store::FlowOperatorStore;
@@ -33,7 +33,7 @@ impl FlowOperatorOutputs {
 	}
 }
 
-impl<T: IntoStandardTransaction> VTable<T> for FlowOperatorOutputs {
+impl<T: AsTransaction> VTable<T> for FlowOperatorOutputs {
 	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())

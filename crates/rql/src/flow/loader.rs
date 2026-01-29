@@ -5,7 +5,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{interface::catalog::flow::FlowId, internal};
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::error::Error;
 
 use crate::flow::{
@@ -14,11 +14,7 @@ use crate::flow::{
 };
 
 /// Loads a Flow from the catalog by reconstructing it from nodes and edges
-pub fn load_flow_dag<T: IntoStandardTransaction>(
-	catalog: &Catalog,
-	txn: &mut T,
-	flow_id: FlowId,
-) -> crate::Result<FlowDag> {
+pub fn load_flow_dag<T: AsTransaction>(catalog: &Catalog, txn: &mut T, flow_id: FlowId) -> crate::Result<FlowDag> {
 	let node_defs = catalog.list_flow_nodes_by_flow(txn, flow_id)?;
 	let edge_defs = catalog.list_flow_edges_by_flow(txn, flow_id)?;
 

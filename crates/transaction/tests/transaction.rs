@@ -35,8 +35,8 @@ use reifydb_testing::testscript::{
 	runner::{Runner, run_path},
 };
 use reifydb_transaction::{
-	multi::transaction::{TransactionMulti, read::MultiReadTransaction, write::MultiWriteTransaction},
-	single::{TransactionSingle, svl::TransactionSvl},
+	multi::transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
+	single::SingleTransaction,
 };
 
 /// A handle to either a read or write transaction for test tracking
@@ -54,9 +54,9 @@ fn test_serializable(path: &Path) {
 	let single_store = SingleStore::testing_memory();
 	let bus = EventBus::new(&ActorSystem::new(ActorSystemConfig::default()));
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
-	let engine = TransactionMulti::new(
+	let engine = MultiTransaction::new(
 		multi_store,
-		TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, bus.clone())),
+		SingleTransaction::new(single_store, bus.clone()),
 		bus,
 		actor_system,
 		Clock::default(),
@@ -67,12 +67,12 @@ fn test_serializable(path: &Path) {
 }
 
 pub struct MvccRunner {
-	engine: TransactionMulti,
+	engine: MultiTransaction,
 	transactions: HashMap<String, TransactionHandle>,
 }
 
 impl MvccRunner {
-	fn new(engine: TransactionMulti) -> Self {
+	fn new(engine: MultiTransaction) -> Self {
 		Self {
 			engine,
 			transactions: HashMap::new(),

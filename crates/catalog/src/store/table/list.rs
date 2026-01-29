@@ -5,13 +5,13 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, table::TableDef},
 	key::{Key, table::TableKey},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::table::schema::table};
 
 impl CatalogStore {
-	pub(crate) fn list_tables_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<TableDef>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_tables_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<TableDef>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		// Collect table IDs first, then fetch details (to avoid holding stream borrow)

@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::{column::ColumnDef, id::PrimaryKeyId, key::PrimaryKeyDef},
 	key::{Key, primary_key::PrimaryKeyKey},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	CatalogStore,
@@ -21,8 +21,8 @@ pub struct PrimaryKeyInfo {
 }
 
 impl CatalogStore {
-	pub(crate) fn list_primary_keys(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_primary_keys(rx: &mut impl AsTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		// Scan all primary key entries from storage
@@ -89,10 +89,8 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_primary_key_columns(
-		rx: &mut impl IntoStandardTransaction,
-	) -> crate::Result<Vec<(u64, u64, usize)>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_primary_key_columns(rx: &mut impl AsTransaction) -> crate::Result<Vec<(u64, u64, usize)>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		// Scan all primary key entries from storage using same approach

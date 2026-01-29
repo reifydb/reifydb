@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
@@ -14,11 +14,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_let<T: IntoStandardTransaction>(
-		&self,
-		ast: AstLet,
-		tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_let<T: AsTransaction>(&self, ast: AstLet, tx: &mut T) -> crate::Result<LogicalPlan> {
 		let value = match ast.value {
 			AstLetValue::Expression(expr) => LetValue::Expression(ExpressionCompiler::compile(*expr)?),
 			AstLetValue::Statement(statement) => {
@@ -33,11 +29,7 @@ impl Compiler {
 		}))
 	}
 
-	pub(crate) fn compile_if<T: IntoStandardTransaction>(
-		&self,
-		ast: AstIf,
-		tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_if<T: AsTransaction>(&self, ast: AstIf, tx: &mut T) -> crate::Result<LogicalPlan> {
 		// Compile the condition expression
 		let condition = ExpressionCompiler::compile(*ast.condition)?;
 

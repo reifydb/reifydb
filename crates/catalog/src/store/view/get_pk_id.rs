@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::id::{PrimaryKeyId, ViewId},
 	key::view::ViewKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::view::schema::view};
 
@@ -13,10 +13,10 @@ impl CatalogStore {
 	/// Get the primary key ID for a view
 	/// Returns None if the view doesn't exist or has no primary key
 	pub(crate) fn get_view_pk_id(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		view_id: ViewId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let multi = match txn.get(&ViewKey::encoded(view_id))? {
 			Some(v) => v,
 			None => return Ok(None),

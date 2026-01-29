@@ -60,11 +60,11 @@
 //! * [testscript parser](https://github.com/erikgrinaker/testscript/tree/main/tests/scripts): testscript uses itself to
 //!   test its parser and runner.
 //!
-//! Below is a basic example, testing the Rust standard library's
+//! Below is a basic example, testing the Rust transaction library's
 //! [`BTreeMap`](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html).
 //!
 //! ```yaml
-//! # Tests the Rust standard library BTreeMap.
+//! # Tests the Rust transaction library BTreeMap.
 //!
 //! # Get and range returns nothing for an empty map.
 //! get foo

@@ -6,16 +6,16 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeId},
 	key::flow_edge::FlowEdgeKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::flow_edge::schema::flow_edge};
 
 impl CatalogStore {
 	pub(crate) fn find_flow_edge(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		edge: FlowEdgeId,
 	) -> crate::Result<Option<FlowEdgeDef>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let Some(multi) = txn.get(&FlowEdgeKey::encoded(edge))? else {
 			return Ok(None);
 		};

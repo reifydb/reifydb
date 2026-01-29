@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::change::CatalogTrackNamespaceChangeOperations, value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::CreateNamespaceNode;
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::value::Value;
 
 use crate::execute::Executor;
@@ -14,7 +14,7 @@ use crate::execute::Executor;
 impl Executor {
 	pub(crate) fn create_namespace<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: CreateNamespaceNode,
 	) -> crate::Result<Columns> {
 		// Check if namespace already exists using the catalog

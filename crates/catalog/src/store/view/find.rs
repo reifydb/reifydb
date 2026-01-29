@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	CatalogStore,
@@ -16,8 +16,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_view(rx: &mut impl IntoStandardTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn find_view(rx: &mut impl AsTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
+		let mut txn = rx.as_transaction();
 		let Some(multi) = txn.get(&ViewKey::encoded(id))? else {
 			return Ok(None);
 		};
@@ -44,12 +44,12 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_view_by_name(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let mut stream = txn.range(NamespaceViewKey::full_scan(namespace), 1024)?;
 
 		let mut found_view = None;

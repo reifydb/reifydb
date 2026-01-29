@@ -6,7 +6,7 @@ use reifydb_core::{
 	internal,
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
@@ -15,7 +15,7 @@ impl CatalogStore {
 	/// Get a retention policy for a source (table, view, or ring buffer)
 	/// Returns an error if no retention policy is set
 	pub(crate) fn get_primitive_retention_policy(
-		txn: &mut impl IntoStandardTransaction,
+		txn: &mut impl AsTransaction,
 		source: PrimitiveId,
 	) -> crate::Result<RetentionPolicy> {
 		Self::find_primitive_retention_policy(txn, source)?.ok_or_else(|| {
@@ -29,7 +29,7 @@ impl CatalogStore {
 	/// Get a retention policy for an operator (flow node)
 	/// Returns an error if no retention policy is set
 	pub(crate) fn get_operator_retention_policy(
-		txn: &mut impl IntoStandardTransaction,
+		txn: &mut impl AsTransaction,
 		operator: FlowNodeId,
 	) -> crate::Result<RetentionPolicy> {
 		Self::find_operator_retention_policy(txn, operator)?.ok_or_else(|| {

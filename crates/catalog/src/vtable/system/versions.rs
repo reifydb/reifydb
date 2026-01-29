@@ -8,7 +8,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
@@ -33,7 +33,7 @@ impl Versions {
 	}
 }
 
-impl<T: IntoStandardTransaction> VTable<T> for Versions {
+impl<T: AsTransaction> VTable<T> for Versions {
 	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())

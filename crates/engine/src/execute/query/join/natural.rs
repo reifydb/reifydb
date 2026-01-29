@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::JoinType,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 use tracing::instrument;
 
@@ -57,7 +57,7 @@ impl NaturalJoinNode {
 
 impl QueryNode for NaturalJoinNode {
 	#[instrument(name = "query::join::natural::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
@@ -65,11 +65,7 @@ impl QueryNode for NaturalJoinNode {
 	}
 
 	#[instrument(name = "query::join::natural::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_initialized(), "NaturalJoinNode::next() called before initialize()");
 
 		if self.headers.is_some() {

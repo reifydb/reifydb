@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::headers::ColumnHeaders;
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	environment::create_env_columns,
@@ -26,17 +26,13 @@ impl EnvironmentNode {
 }
 
 impl QueryNode for EnvironmentNode {
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		// Store context for environment access
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "EnvironmentNode::next() called before initialize()");
 
 		// Environment executes once and returns environment dataframe

@@ -22,7 +22,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::DeleteTableNode;
-use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{error, fragment::Fragment, params::Params, return_error, value::Value};
 
 use super::primary_key;
@@ -34,7 +34,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn delete<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: DeleteTableNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -71,7 +71,7 @@ impl Executor {
 			// First collect all encoded numbers to delete
 			let mut row_numbers_to_delete = Vec::new();
 
-			let mut std_txn = StandardTransaction::from(txn);
+			let mut std_txn = Transaction::from(txn);
 			let mut input_node = compile(
 				*input_plan,
 				&mut std_txn,

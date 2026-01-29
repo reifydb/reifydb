@@ -11,17 +11,14 @@ use reifydb_core::{
 	},
 	key::dictionary::DictionaryKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::value::r#type::Type;
 
 use super::MaterializedCatalog;
 use crate::store::dictionary::schema::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SCHEMA, VALUE_TYPE};
 
-pub(crate) fn load_dictionaries(
-	rx: &mut impl IntoStandardTransaction,
-	catalog: &MaterializedCatalog,
-) -> crate::Result<()> {
-	let mut txn = rx.into_standard_transaction();
+pub(crate) fn load_dictionaries(rx: &mut impl AsTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
+	let mut txn = rx.as_transaction();
 	let range = DictionaryKey::full_scan();
 	let mut stream = txn.range(range, 1024)?;
 

@@ -12,7 +12,7 @@ impl Blob {
 	pub fn from_b64(fragment: Fragment) -> Result<Self, Error> {
 		let fragment = fragment;
 		let b64_str = fragment.text();
-		// Try standard base64 first, then without padding if it fails
+		// Try transaction base64 first, then without padding if it fails
 		match general_purpose::STANDARD.decode(b64_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
 			Err(_) => {

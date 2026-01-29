@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::plan::physical::InsertDictionaryNode;
-use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -25,7 +25,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn insert_dictionary<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		plan: InsertDictionaryNode,
 		stack: &mut Stack,
 	) -> crate::Result<Columns> {
@@ -48,7 +48,7 @@ impl Executor {
 			stack: stack.clone(),
 		});
 
-		let mut std_txn = StandardTransaction::from(txn);
+		let mut std_txn = Transaction::from(txn);
 		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
 
 		// Initialize the operator before execution

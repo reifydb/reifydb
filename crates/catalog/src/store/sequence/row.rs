@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::row_sequence::RowSequenceKey,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::store::sequence::generator::u64::GeneratorU64;
@@ -16,17 +16,14 @@ use crate::store::sequence::generator::u64::GeneratorU64;
 pub struct RowSequence {}
 
 impl RowSequence {
-	pub(crate) fn next_row_number(
-		txn: &mut StandardCommandTransaction,
-		table: TableId,
-	) -> crate::Result<RowNumber> {
+	pub(crate) fn next_row_number(txn: &mut CommandTransaction, table: TableId) -> crate::Result<RowNumber> {
 		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(table)), None).map(RowNumber)
 	}
 
 	/// Allocates a batch of contiguous row numbers for a table.
 	/// Returns a vector containing all allocated row numbers.
 	pub(crate) fn next_row_number_batch(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		table: TableId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
@@ -35,7 +32,7 @@ impl RowSequence {
 
 	/// Allocates the next row number for a ring buffer.
 	pub(crate) fn next_row_number_for_ringbuffer(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RowNumber> {
 		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(ringbuffer)), None).map(RowNumber)
@@ -44,7 +41,7 @@ impl RowSequence {
 	/// Allocates a batch of contiguous row numbers for a ring buffer.
 	/// Returns a vector containing all allocated row numbers.
 	pub(crate) fn next_row_number_batch_for_ringbuffer(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		ringbuffer: RingBufferId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
@@ -53,7 +50,7 @@ impl RowSequence {
 
 	/// Allocates a batch of contiguous row numbers for any source.
 	fn next_row_number_batch_for_source(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		source: PrimitiveId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {

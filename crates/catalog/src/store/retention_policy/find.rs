@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use super::decode_retention_policy;
 use crate::CatalogStore;
@@ -15,10 +15,10 @@ impl CatalogStore {
 	/// Find a retention policy for a source (table, view, or ring buffer)
 	/// Returns None if no retention policy is set
 	pub(crate) fn find_primitive_retention_policy(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		source: PrimitiveId,
 	) -> crate::Result<Option<RetentionPolicy>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let value = txn.get(&PrimitiveRetentionPolicyKey::encoded(source))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
@@ -26,10 +26,10 @@ impl CatalogStore {
 	/// Find a retention policy for an operator
 	/// Returns None if no retention policy is set
 	pub(crate) fn find_operator_retention_policy(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		operator: FlowNodeId,
 	) -> crate::Result<Option<RetentionPolicy>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let value = txn.get(&OperatorRetentionPolicyKey::encoded(operator))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}

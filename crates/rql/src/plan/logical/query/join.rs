@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::common::JoinType;
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
@@ -73,11 +73,7 @@ fn build_join_expressions(using: &AstUsingClause, alias: &Fragment) -> crate::Re
 }
 
 impl Compiler {
-	pub(crate) fn compile_join<T: IntoStandardTransaction>(
-		&self,
-		ast: AstJoin,
-		tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_join<T: AsTransaction>(&self, ast: AstJoin, tx: &mut T) -> crate::Result<LogicalPlan> {
 		match ast {
 			AstJoin::InnerJoin {
 				with,
@@ -130,7 +126,7 @@ impl Compiler {
 		}
 	}
 
-	fn compile_join_subquery<T: IntoStandardTransaction>(
+	fn compile_join_subquery<T: AsTransaction>(
 		&self,
 		with: &crate::ast::ast::AstSubQuery,
 		alias: &Fragment,
@@ -201,7 +197,7 @@ impl Compiler {
 		}
 	}
 
-	fn compile_natural_join_subquery<T: IntoStandardTransaction>(
+	fn compile_natural_join_subquery<T: AsTransaction>(
 		&self,
 		with: &crate::ast::ast::AstSubQuery,
 		alias: &Fragment,

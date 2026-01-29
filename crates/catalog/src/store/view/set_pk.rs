@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::view::ViewKey,
 	return_internal_error,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 
 use crate::{CatalogStore, store::view::schema::view};
 
@@ -14,7 +14,7 @@ impl CatalogStore {
 	/// Set the primary key ID for a view
 	/// Returns an internal error if the view doesn't exist
 	pub(crate) fn set_view_primary_key(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {

@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{column::ColumnDef, id::PrimaryKeyId, key::PrimaryKeyDef},
 	key::primary_key::PrimaryKeyKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use super::MaterializedCatalog;
 use crate::{
@@ -17,8 +17,8 @@ use crate::{
 };
 
 /// Load all primary keys from storage
-pub fn load_primary_keys(rx: &mut impl IntoStandardTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
-	let mut txn = rx.into_standard_transaction();
+pub fn load_primary_keys(rx: &mut impl AsTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
+	let mut txn = rx.as_transaction();
 	let range = PrimaryKeyKey::full_scan();
 
 	// Collect entries first to avoid borrow issues with nested async calls

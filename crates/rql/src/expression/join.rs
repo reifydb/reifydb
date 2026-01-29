@@ -36,7 +36,7 @@ impl JoinConditionCompiler {
 			Ast::Infix(ast_infix) if matches!(ast_infix.operator, InfixOperator::AccessTable(_)) => {
 				self.compile_qualified_column(ast_infix)
 			}
-			// For all other expressions, delegate to the standard compiler
+			// For all other expressions, delegate to the transaction compiler
 			// but recursively handle any infix operations that might contain qualified columns
 			Ast::Infix(ast_infix) => self.compile_infix(ast_infix),
 			// Handle tuples (parenthesized expressions) - need to recursively compile with
@@ -246,7 +246,7 @@ impl JoinConditionCompiler {
 				}))
 			}
 			_ => {
-				// For any other operators, use the standard expression compiler
+				// For any other operators, use the transaction expression compiler
 				ExpressionCompiler::compile(Ast::Infix(ast))
 			}
 		}

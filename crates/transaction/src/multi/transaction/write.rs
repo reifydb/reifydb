@@ -26,17 +26,17 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use super::{TransactionManagerCommand, TransactionMulti, version::StandardVersionProvider};
+use super::{MultiTransaction, TransactionManagerCommand, version::StandardVersionProvider};
 use crate::{delta::optimize_deltas, multi::types::TransactionValue};
 
 pub struct MultiWriteTransaction {
-	engine: TransactionMulti,
+	engine: MultiTransaction,
 	pub(crate) tm: TransactionManagerCommand<StandardVersionProvider>,
 }
 
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::new", level = "debug", skip(engine))]
-	pub fn new(engine: TransactionMulti) -> reifydb_type::Result<Self> {
+	pub fn new(engine: MultiTransaction) -> reifydb_type::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
 			engine,

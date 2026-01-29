@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey},
 };
-use reifydb_transaction::standard::{IntoStandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction};
 use reifydb_type::value::r#type::Type;
 
 use crate::{
@@ -32,7 +32,7 @@ pub struct SubscriptionToCreate {
 
 impl CatalogStore {
 	pub(crate) fn create_subscription(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		to_create: SubscriptionToCreate,
 	) -> crate::Result<SubscriptionDef> {
 		// Use the flow sequence to generate subscription ID (FlowId == SubscriptionId for subscription flows)
@@ -44,7 +44,7 @@ impl CatalogStore {
 		Ok(Self::get_subscription(txn, subscription_id)?)
 	}
 
-	fn store_subscription(txn: &mut StandardCommandTransaction, subscription: SubscriptionId) -> crate::Result<()> {
+	fn store_subscription(txn: &mut CommandTransaction, subscription: SubscriptionId) -> crate::Result<()> {
 		let mut row = subscription::SCHEMA.allocate();
 		subscription::SCHEMA.set_u64(&mut row, subscription::ID, subscription.0);
 		subscription::SCHEMA.set_u64(&mut row, subscription::ACKNOWLEDGED_VERSION, 0u64);
@@ -56,7 +56,7 @@ impl CatalogStore {
 	}
 
 	fn insert_columns_for_subscription(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		subscription: SubscriptionId,
 		to_create: &SubscriptionToCreate,
 	) -> crate::Result<()> {
@@ -82,10 +82,10 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn list_subscription_columns(
-		txn: &mut impl IntoStandardTransaction,
+		txn: &mut impl AsTransaction,
 		subscription: SubscriptionId,
 	) -> crate::Result<Vec<SubscriptionColumnDef>> {
-		let mut std_txn = txn.into_standard_transaction();
+		let mut std_txn = txn.as_transaction();
 		let mut stream = std_txn.range(SubscriptionColumnKey::subscription_range(subscription), 256)?;
 
 		let mut columns = Vec::new();

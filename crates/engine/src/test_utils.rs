@@ -37,42 +37,40 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
-	multi::transaction::TransactionMulti,
-	single::{TransactionSingle, svl::TransactionSvl},
-	standard::command::StandardCommandTransaction,
+	multi::transaction::MultiTransaction,
+	single::SingleTransaction,
+	transaction::command::CommandTransaction,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use crate::engine::StandardEngine;
 
-pub fn create_test_command_transaction() -> StandardCommandTransaction {
+pub fn create_test_command_transaction() -> CommandTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let event_bus = EventBus::new(&actor_system);
-	let single_svl = TransactionSvl::new(single_store, event_bus.clone());
-	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
+	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi =
-		TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default())
+		MultiTransaction::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default())
 			.unwrap();
 
-	StandardCommandTransaction::new(multi, single, event_bus, Interceptors::new()).unwrap()
+	CommandTransaction::new(multi, single, event_bus, Interceptors::new()).unwrap()
 }
 
-pub fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction {
+pub fn create_test_command_transaction_with_internal_schema() -> CommandTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
 	let event_bus = EventBus::new(&actor_system);
-	let single_svl = TransactionSvl::new(single_store, event_bus.clone());
-	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
+	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi =
-		TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default())
+		MultiTransaction::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default())
 			.unwrap();
 	let mut result =
-		StandardCommandTransaction::new(multi, single.clone(), event_bus.clone(), Interceptors::new()).unwrap();
+		CommandTransaction::new(multi, single.clone(), event_bus.clone(), Interceptors::new()).unwrap();
 
 	let materialized_catalog = MaterializedCatalog::new();
 	let schema_registry = SchemaRegistry::new(single);
@@ -127,7 +125,7 @@ pub fn create_test_engine() -> StandardEngine {
 	let eventbus = EventBus::new(&actor_system);
 	let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 	let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
-	let single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
+	let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 	let runtime = SharedRuntime::from_config(
 		SharedRuntimeConfig::default()
 			.async_threads(2)
@@ -135,7 +133,7 @@ pub fn create_test_engine() -> StandardEngine {
 			.compute_max_in_flight(32)
 			.mock_clock(1000),
 	);
-	let multi = TransactionMulti::new(
+	let multi = MultiTransaction::new(
 		multi_store.clone(),
 		single.clone(),
 		eventbus.clone(),

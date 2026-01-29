@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{internal, value::column::headers::ColumnHeaders};
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
@@ -23,18 +23,14 @@ impl<'a> ScalarizeNode {
 }
 
 impl QueryNode for ScalarizeNode {
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		self.frame_consumed = false;
 		Ok(())
 	}
 
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.initialized.is_some(), "ScalarizeNode::next() called before initialize()");
 
 		// Scalarize nodes should only produce one result

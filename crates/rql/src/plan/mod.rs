@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use tracing::instrument;
 
 use crate::{
@@ -20,7 +20,7 @@ pub mod physical;
 pub type RowToInsert = Vec<Expression>;
 
 #[instrument(name = "rql::plan", level = "trace", skip(catalog, rx, statement))]
-pub fn plan<T: IntoStandardTransaction>(
+pub fn plan<T: AsTransaction>(
 	catalog: &Catalog,
 	rx: &mut T,
 	statement: AstStatement,

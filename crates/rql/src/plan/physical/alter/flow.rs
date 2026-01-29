@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
@@ -31,7 +31,7 @@ pub enum AlterFlowAction {
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_flow<T: IntoStandardTransaction>(
+	pub(crate) fn compile_alter_flow<T: AsTransaction>(
 		&self,
 		rx: &mut T,
 		alter: logical::alter::flow::AlterFlowNode,

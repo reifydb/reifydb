@@ -14,7 +14,7 @@ use reifydb_core::interface::catalog::{
 	column::ColumnDef, dictionary::DictionaryDef, flow::FlowId, primitive::PrimitiveId,
 };
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{Result, value::r#type::Type};
 
 /// Pre-computed metadata for a source, avoiding repeated catalog lookups.
@@ -57,7 +57,7 @@ impl FlowCatalog {
 	/// Uses double-check locking pattern:
 	/// 1. Fast path: read lock check for cached entry
 	/// 2. Slow path: write lock, re-check, then load and cache
-	pub fn get_or_load<T: IntoStandardTransaction>(
+	pub fn get_or_load<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		source: PrimitiveId,
@@ -76,7 +76,7 @@ impl FlowCatalog {
 		Ok(Arc::clone(cache.entry(source).or_insert(metadata)))
 	}
 
-	fn load_primitive_metadata<T: IntoStandardTransaction>(
+	fn load_primitive_metadata<T: AsTransaction>(
 		&self,
 		txn: &mut T,
 		source: PrimitiveId,
@@ -131,11 +131,7 @@ impl FlowCatalog {
 
 	/// Get or load flow from catalog with caching (double-check locking pattern).
 	/// Returns (FlowDag, is_new) where is_new is true if the flow was newly cached.
-	pub fn get_or_load_flow<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-		flow_id: FlowId,
-	) -> Result<(FlowDag, bool)> {
+	pub fn get_or_load_flow<T: AsTransaction>(&self, txn: &mut T, flow_id: FlowId) -> Result<(FlowDag, bool)> {
 		// Fast path: read lock - flow already cached
 		{
 			let cache = self.flows.read();

@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 use tracing::instrument;
 
@@ -38,18 +38,14 @@ impl ExtendNode {
 
 impl QueryNode for ExtendNode {
 	#[instrument(name = "query::extend::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(name = "query::extend::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "ExtendNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -170,17 +166,13 @@ impl ExtendWithoutInputNode {
 
 impl QueryNode for ExtendWithoutInputNode {
 	#[instrument(name = "query::extend::noinput::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
 	#[instrument(name = "query::extend::noinput::next", level = "trace", skip_all)]
-	fn next<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "ExtendWithoutInputNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 

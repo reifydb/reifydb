@@ -6,16 +6,16 @@ use reifydb_core::{
 	interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef},
 	key::subscription::SubscriptionKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::subscription::schema::subscription};
 
 impl CatalogStore {
 	pub(crate) fn find_subscription(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		id: SubscriptionId,
 	) -> crate::Result<Option<SubscriptionDef>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let Some(multi) = txn.get(&SubscriptionKey::encoded(id))? else {
 			return Ok(None);
 		};

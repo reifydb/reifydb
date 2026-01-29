@@ -20,7 +20,7 @@ use reifydb_rql::flow::{
 		},
 	},
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::error::Error;
 use tracing::instrument;
 
@@ -46,7 +46,7 @@ use crate::{
 
 impl FlowEngine {
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register(&mut self, txn: &mut StandardCommandTransaction, flow: FlowDag) -> reifydb_type::Result<()> {
+	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> reifydb_type::Result<()> {
 		debug_assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.topological_order()? {
@@ -61,12 +61,7 @@ impl FlowEngine {
 	}
 
 	#[instrument(name = "flow::register::add_node", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?std::mem::discriminant(&node.ty)))]
-	fn add(
-		&mut self,
-		txn: &mut StandardCommandTransaction,
-		flow: &FlowDag,
-		node: &FlowNode,
-	) -> reifydb_type::Result<()> {
+	fn add(&mut self, txn: &mut CommandTransaction, flow: &FlowDag, node: &FlowNode) -> reifydb_type::Result<()> {
 		debug_assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
 

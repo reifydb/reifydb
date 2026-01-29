@@ -8,7 +8,7 @@ use reifydb_core::value::{
 	column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::Expression;
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{Value, dictionary::DictionaryEntryId},
@@ -39,18 +39,14 @@ impl FilterNode {
 
 impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "query::filter::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::filter::next")]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -154,7 +150,7 @@ impl FilterNode {
 	fn decode_dictionary_columns<'a>(
 		columns: &mut Columns,
 		column_metas: &[LazyColumnMeta],
-		rx: &mut StandardTransaction<'a>,
+		rx: &mut Transaction<'a>,
 	) -> crate::Result<()> {
 		for (col_idx, meta) in column_metas.iter().enumerate() {
 			if let Some(dictionary) = &meta.dictionary {
@@ -192,7 +188,7 @@ impl FilterNode {
 		&self,
 		lazy_batch: &LazyBatch,
 		ctx: &ExecutionContext,
-		rx: &mut StandardTransaction<'a>,
+		rx: &mut Transaction<'a>,
 	) -> crate::Result<Option<BitVec>> {
 		// Materialize to columns for column-oriented evaluation
 		let mut columns = lazy_batch.clone().into_columns();

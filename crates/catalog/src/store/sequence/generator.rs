@@ -6,7 +6,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, schema::Schema},
 	error::diagnostic::sequence::sequence_exhausted,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{return_error, value::r#type::Type};
 
 macro_rules! impl_generator {
@@ -29,7 +29,7 @@ macro_rules! impl_generator {
 
 			impl $generator {
 				pub(crate) fn next(
-					txn: &mut StandardCommandTransaction,
+					txn: &mut CommandTransaction,
 					key: &EncodedKey,
 					default: Option<$prim>,
 				) -> crate::Result<$prim> {
@@ -37,7 +37,7 @@ macro_rules! impl_generator {
 				}
 
 				pub(crate) fn next_batched(
-					txn: &mut StandardCommandTransaction,
+					txn: &mut CommandTransaction,
 					key: &EncodedKey,
 					default: Option<$prim>,
 					incr: $prim,
@@ -89,7 +89,7 @@ macro_rules! impl_generator {
 				}
 
 				pub(crate) fn set(
-					txn: &mut StandardCommandTransaction,
+					txn: &mut CommandTransaction,
 					key: &EncodedKey,
 					value: $prim,
 				) -> crate::Result<()> {

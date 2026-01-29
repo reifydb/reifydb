@@ -52,7 +52,7 @@ pub use reifydb_sub_task as sub_task;
 #[cfg(feature = "sub_tracing")]
 pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_transaction as transaction;
-pub use reifydb_transaction::{multi::transaction::TransactionMulti, single::svl::TransactionSvl};
+pub use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 pub use reifydb_type as r#type;
 pub use reifydb_type::{
 	Result,

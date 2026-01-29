@@ -16,7 +16,7 @@
 // 	interface::{Engine, Identity},
 // 	ioc::IocContainer,
 // };
-// use reifydb_engine::{StandardEngine, StandardTransaction};
+// use reifydb_engine::{StandardEngine, Transaction};
 // use reifydb_store_transaction::TransactionStore;
 // use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::TransactionSingle};
 // use reifydb_vm::{
@@ -95,7 +95,7 @@
 //
 // 	// Get a query transaction
 // 	let mut query_txn = engine.begin_query().unwrap();
-// 	let mut tx: StandardTransaction = (&mut query_txn).into();
+// 	let mut tx: Transaction = (&mut query_txn).into();
 //
 // 	// Compile script and create VM
 // 	let sources = Arc::new(InMemorySourceRegistry::new());
@@ -144,7 +144,7 @@
 //
 // 	// Get transaction
 // 	let mut query_txn = engine.begin_query().unwrap();
-// 	let mut tx: StandardTransaction = (&mut query_txn).into();
+// 	let mut tx: Transaction = (&mut query_txn).into();
 //
 // 	// Compile and execute: filter price > 100
 // 	let sources = Arc::new(InMemorySourceRegistry::new());
@@ -193,7 +193,7 @@
 //
 // 	// Get transaction
 // 	let mut query_txn = engine.begin_query().unwrap();
-// 	let mut tx: StandardTransaction = (&mut query_txn).into();
+// 	let mut tx: Transaction = (&mut query_txn).into();
 //
 // 	// Compile and execute: top 3 scores (sort descending then take 3)
 // 	let sources = Arc::new(InMemorySourceRegistry::new());

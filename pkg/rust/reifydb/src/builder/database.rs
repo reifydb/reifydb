@@ -49,8 +49,8 @@ use reifydb_sub_tracing::builder::TracingBuilder;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
-	TransactionVersion, interceptor::builder::StandardInterceptorBuilder, multi::transaction::TransactionMulti,
-	single::TransactionSingle, standard::query::StandardQueryTransaction,
+	TransactionVersion, interceptor::builder::StandardInterceptorBuilder, multi::transaction::MultiTransaction,
+	single::SingleTransaction, transaction::query::QueryTransaction,
 };
 use tracing::debug;
 
@@ -72,7 +72,7 @@ pub struct DatabaseBuilder {
 
 impl DatabaseBuilder {
 	#[allow(unused_mut)]
-	pub fn new(multi: TransactionMulti, single: TransactionSingle, eventbus: EventBus) -> Self {
+	pub fn new(multi: MultiTransaction, single: SingleTransaction, eventbus: EventBus) -> Self {
 		let ioc = IocContainer::new()
 			.register(MaterializedCatalog::new())
 			.register(SchemaRegistry::new(single.clone()))
@@ -174,8 +174,8 @@ impl DatabaseBuilder {
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
 		let schema_registry = self.ioc.resolve::<SchemaRegistry>()?;
-		let multi = self.ioc.resolve::<TransactionMulti>()?;
-		let single = self.ioc.resolve::<TransactionSingle>()?;
+		let multi = self.ioc.resolve::<MultiTransaction>()?;
+		let single = self.ioc.resolve::<SingleTransaction>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
 		Self::load_materialized_catalog(&multi, &single, &catalog)?;
@@ -319,11 +319,11 @@ impl DatabaseBuilder {
 
 	/// Load the materialized catalog from storage
 	fn load_materialized_catalog(
-		multi: &TransactionMulti,
-		single: &TransactionSingle,
+		multi: &MultiTransaction,
+		single: &SingleTransaction,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {
-		let mut qt = StandardQueryTransaction::new(multi.begin_query()?, single.clone());
+		let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone());
 
 		debug!("Loading materialized catalog");
 		MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
@@ -333,11 +333,11 @@ impl DatabaseBuilder {
 
 	/// Load the schema registry from storage
 	fn load_schema_registry(
-		multi: &TransactionMulti,
-		single: &TransactionSingle,
+		multi: &MultiTransaction,
+		single: &SingleTransaction,
 		registry: &SchemaRegistry,
 	) -> crate::Result<()> {
-		let mut qt = StandardQueryTransaction::new(multi.begin_query()?, single.clone());
+		let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone());
 
 		debug!("Loading schema registry");
 		SchemaRegistryLoader::load_all(&mut qt, registry)?;

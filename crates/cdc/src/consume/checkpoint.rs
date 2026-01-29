@@ -2,19 +2,20 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{common::CommitVersion, encoded::encoded::EncodedValues, key::cdc_consumer::ToConsumerKey};
-use reifydb_transaction::standard::{IntoStandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction};
 use reifydb_type::util::cowvec::CowVec;
 
 pub struct CdcCheckpoint {}
 
 impl CdcCheckpoint {
 	pub fn fetch<K: ToConsumerKey>(
-		txn: &mut impl IntoStandardTransaction,
+		txn: &mut impl AsTransaction,
 		consumer: &K,
 	) -> reifydb_type::Result<CommitVersion> {
 		let key = consumer.to_consumer_key();
 
-		txn.get(&key)?
+		txn.as_transaction()
+			.get(&key)?
 			.and_then(|multi| {
 				if multi.values.len() >= 8 {
 					let mut buffer = [0u8; 8];
@@ -29,7 +30,7 @@ impl CdcCheckpoint {
 	}
 
 	pub fn persist<K: ToConsumerKey>(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		consumer: &K,
 		version: CommitVersion,
 	) -> reifydb_type::Result<()> {

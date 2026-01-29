@@ -5,13 +5,13 @@ use reifydb_core::{
 	interface::catalog::namespace::NamespaceDef,
 	key::{Key, namespace::NamespaceKey},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::namespace::schema::namespace};
 
 impl CatalogStore {
-	pub(crate) fn list_namespaces_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<NamespaceDef>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_namespaces_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<NamespaceDef>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		let namespace_range = NamespaceKey::full_scan();

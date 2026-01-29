@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{column::ColumnDef, id::ColumnId, primitive::PrimitiveId},
 	key::column::ColumnKey,
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{CatalogStore, store::column::schema::primitive_column};
 
@@ -18,10 +18,10 @@ pub struct ColumnInfo {
 
 impl CatalogStore {
 	pub(crate) fn list_columns(
-		rx: &mut impl IntoStandardTransaction,
+		rx: &mut impl AsTransaction,
 		source: impl Into<PrimitiveId>,
 	) -> crate::Result<Vec<ColumnDef>> {
-		let mut txn = rx.into_standard_transaction();
+		let mut txn = rx.as_transaction();
 		let source = source.into();
 		let mut result = vec![];
 
@@ -45,8 +45,8 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_columns_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ColumnInfo>> {
-		let mut txn = rx.into_standard_transaction();
+	pub(crate) fn list_columns_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<ColumnInfo>> {
+		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
 		// Get all tables

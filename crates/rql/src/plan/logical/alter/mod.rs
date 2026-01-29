@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	ast::ast::AstAlter,
@@ -14,11 +14,7 @@ pub mod table;
 pub mod view;
 
 impl Compiler {
-	pub(crate) fn compile_alter<T: IntoStandardTransaction>(
-		&self,
-		ast: AstAlter,
-		tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_alter<T: AsTransaction>(&self, ast: AstAlter, tx: &mut T) -> crate::Result<LogicalPlan> {
 		match ast {
 			AstAlter::Sequence(node) => self.compile_alter_sequence(node),
 			AstAlter::Table(node) => self.compile_alter_table(node),

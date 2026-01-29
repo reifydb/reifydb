@@ -2,13 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::ringbuffer::RingBufferMetadata, key::ringbuffer::RingBufferMetadataKey};
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 
 use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer_metadata};
 
 impl CatalogStore {
 	pub(crate) fn update_ringbuffer_metadata(
-		txn: &mut StandardCommandTransaction,
+		txn: &mut CommandTransaction,
 		metadata: RingBufferMetadata,
 	) -> crate::Result<()> {
 		let mut row = ringbuffer_metadata::SCHEMA.allocate();

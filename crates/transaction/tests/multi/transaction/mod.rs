@@ -14,11 +14,11 @@ use reifydb_core::{
 	encoded::{encoded::EncodedValues, key::EncodedKey},
 	util::encoding::keycode,
 };
-use reifydb_transaction::multi::transaction::TransactionMulti;
+use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_type::util::cowvec::CowVec;
 
-pub fn test_multi() -> TransactionMulti {
-	TransactionMulti::testing()
+pub fn test_multi() -> MultiTransaction {
+	MultiTransaction::testing()
 }
 
 pub trait IntoValues {

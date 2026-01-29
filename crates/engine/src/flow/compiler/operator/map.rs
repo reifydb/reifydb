@@ -10,7 +10,7 @@ use reifydb_rql::{
 	},
 	plan::physical::{MapNode, PhysicalPlan},
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
@@ -30,7 +30,7 @@ impl From<MapNode> for MapCompiler {
 }
 
 impl CompileOperator for MapCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut CommandTransaction) -> Result<FlowNodeId> {
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(txn, *input)?)
 		} else {

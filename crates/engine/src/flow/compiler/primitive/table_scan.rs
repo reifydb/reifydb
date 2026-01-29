@@ -5,7 +5,7 @@
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{flow::node::FlowNodeType::SourceTable, plan::physical::TableScanNode};
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
@@ -23,7 +23,7 @@ impl From<TableScanNode> for TableScanCompiler {
 }
 
 impl CompileOperator for TableScanCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut CommandTransaction) -> Result<FlowNodeId> {
 		let table_id = self.table_scan.source.def().id;
 		compiler.add_node(
 			txn,

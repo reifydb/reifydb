@@ -13,7 +13,7 @@ use reifydb_metric::{
 	multi::Tier,
 };
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
@@ -47,7 +47,7 @@ fn tier_to_str(tier: Tier) -> &'static str {
 	}
 }
 
-impl<T: IntoStandardTransaction> VTable<T> for FlowStorageStats {
+impl<T: AsTransaction> VTable<T> for FlowStorageStats {
 	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())

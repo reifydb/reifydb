@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, util::cowvec::CowVec};
 use tracing::instrument;
 
@@ -35,18 +35,14 @@ impl<'a> SortNode {
 
 impl QueryNode for SortNode {
 	#[instrument(level = "trace", skip_all, name = "query::sort::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::sort::next")]
-	fn next<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 
 		let mut columns_opt: Option<Columns> = None;

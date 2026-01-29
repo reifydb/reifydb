@@ -4,9 +4,7 @@
 use pending::{Pending, PendingWrites};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::CommitVersion;
-use reifydb_transaction::{
-	multi::transaction::read::MultiReadTransaction, standard::command::StandardCommandTransaction,
-};
+use reifydb_transaction::{multi::transaction::read::MultiReadTransaction, transaction::command::CommandTransaction};
 use tracing::instrument;
 
 pub mod pending;
@@ -153,7 +151,7 @@ impl FlowTransaction {
 	/// * `version` - The CDC event version for snapshot isolation (NOT parent.version())
 	/// * `catalog` - The catalog for metadata access
 	#[instrument(name = "flow::transaction::new", level = "debug", skip(parent, catalog), fields(version = version.0))]
-	pub fn new(parent: &StandardCommandTransaction, version: CommitVersion, catalog: Catalog) -> Self {
+	pub fn new(parent: &CommandTransaction, version: CommitVersion, catalog: Catalog) -> Self {
 		let mut primitive_query = parent.multi.begin_query().unwrap();
 		primitive_query.read_as_of_version_inclusive(version);
 

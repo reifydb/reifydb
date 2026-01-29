@@ -52,7 +52,7 @@ impl KeyWriteLock {
 }
 
 pub struct SingleWriteTransaction<'a> {
-	pub(super) inner: &'a TransactionSvlInner,
+	pub(super) inner: &'a SingleTransactionInner,
 	pub(super) keys: Vec<EncodedKey>,
 	pub(super) _key_locks: Vec<KeyWriteLock>,
 	pub(super) pending: IndexMap<EncodedKey, Delta>,
@@ -60,7 +60,11 @@ pub struct SingleWriteTransaction<'a> {
 }
 
 impl<'a> SingleWriteTransaction<'a> {
-	pub(super) fn new(inner: &'a TransactionSvlInner, keys: Vec<EncodedKey>, key_locks: Vec<KeyWriteLock>) -> Self {
+	pub(super) fn new(
+		inner: &'a SingleTransactionInner,
+		keys: Vec<EncodedKey>,
+		key_locks: Vec<KeyWriteLock>,
+	) -> Self {
 		Self {
 			inner,
 			keys,

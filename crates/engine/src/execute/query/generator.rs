@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_function::{GeneratorContext, GeneratorFunction};
 use reifydb_rql::expression::Expression;
-use reifydb_transaction::standard::StandardTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, error::diagnostic::function::generator_not_found, fragment::Fragment, params::Params};
 
 use crate::{
@@ -35,7 +35,7 @@ impl GeneratorNode {
 }
 
 impl QueryNode for GeneratorNode {
-	fn initialize<'a>(&mut self, _txn: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _txn: &mut Transaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 
 		let generator = ctx
@@ -49,11 +49,7 @@ impl QueryNode for GeneratorNode {
 		Ok(())
 	}
 
-	fn next<'a>(
-		&mut self,
-		txn: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext,
-	) -> crate::Result<Option<Batch>> {
+	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut ExecutionContext) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -84,9 +80,7 @@ impl QueryNode for GeneratorNode {
 
 		let columns = generator.generate(GeneratorContext {
 			params: evaluated_params,
-			txn: unsafe {
-				std::mem::transmute::<&mut StandardTransaction, &'a mut StandardTransaction<'a>>(txn)
-			},
+			txn: unsafe { std::mem::transmute::<&mut Transaction, &'a mut Transaction<'a>>(txn) },
 			catalog: unsafe {
 				std::mem::transmute::<
 					&reifydb_catalog::catalog::Catalog,

@@ -9,7 +9,7 @@ use reifydb_core::interface::{
 		ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 	},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{Result, fragment::Fragment};
 
 use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
@@ -19,7 +19,7 @@ pub const DEFAULT_NAMESPACE: &str = "default";
 
 /// Resolve an unresolved source identifier to a ResolvedPrimitive
 /// This is used when processing From clauses and joins
-pub fn resolve_unresolved_source<T: IntoStandardTransaction>(
+pub fn resolve_unresolved_source<T: AsTransaction>(
 	catalog: &Catalog,
 	tx: &mut T,
 	unresolved: &UnresolvedPrimitiveIdentifier,

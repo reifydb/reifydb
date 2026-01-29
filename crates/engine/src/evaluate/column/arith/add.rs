@@ -520,7 +520,7 @@ impl StandardColumnEvaluator {
 					..
 				},
 			) => add_numeric_clone(ctx, l, r, target, || add.full_fragment_owned()),
-			// Int with standard numeric types
+			// Int with transaction numeric types
 			(
 				ColumnData::Int {
 					container: l,
@@ -637,7 +637,7 @@ impl StandardColumnEvaluator {
 					..
 				},
 			) => add_numeric_clone(ctx, l, r, target, || add.full_fragment_owned()),
-			// Uint with standard numeric types
+			// Uint with transaction numeric types
 			(
 				ColumnData::Uint {
 					container: l,
@@ -754,7 +754,7 @@ impl StandardColumnEvaluator {
 					..
 				},
 			) => add_numeric_clone(ctx, l, r, target, || add.full_fragment_owned()),
-			// Decimal with standard numeric types
+			// Decimal with transaction numeric types
 			(
 				ColumnData::Decimal {
 					container: l,
@@ -840,7 +840,7 @@ impl StandardColumnEvaluator {
 				ColumnData::Uint16(r),
 			) => add_numeric_clone(ctx, l, r, target, || add.full_fragment_owned()),
 
-			// Reverse operations for standard types with Int,
+			// Reverse operations for transaction types with Int,
 			// Uint, Decimal Float4 with Int, Uint,
 			// Decimal
 			(
