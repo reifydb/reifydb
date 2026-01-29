@@ -4,21 +4,13 @@
 //! Unified actor system for ReifyDB.
 //!
 //! This module provides a unified system for all concurrent work:
-//! - **Actor spawning** with configurable threading models
+//! - **Actor spawning** on a shared work-stealing pool
 //! - **CPU-bound compute** with admission control
 //!
 //! # Platform Differences
 //!
-//! - **Native**: Rayon thread pool + optional dedicated threads for non-Send actors
+//! - **Native**: Rayon thread pool for all actors (requires `State: Send`)
 //! - **WASM**: All operations execute inline (synchronously)
-//!
-//! # Threading Models
-//!
-//! Actors can be configured with different threading models:
-//! - [`ThreadingModel::SharedPool`]: Run on shared work-stealing pool (requires `State: Send`)
-//! - [`ThreadingModel::DedicatedThread`]: Run on dedicated OS thread (allows non-Send state)
-//!
-//! In WASM, both models degrade to inline processing.
 //!
 //! # Example
 //!
@@ -27,7 +19,7 @@
 //!
 //! let system = ActorSystem::new(ActorSystemConfig::default());
 //!
-//! // Spawn an actor with default (shared pool) threading
+//! // Spawn an actor on the shared pool
 //! let counter_ref = system.spawn("counter", CounterActor::new());
 //!
 //! // Run CPU-bound work
@@ -45,7 +37,7 @@ pub mod native;
 #[cfg(reifydb_target = "wasm")]
 pub mod wasm;
 
-pub use config::{ActorConfig, ThreadingModel};
+pub use config::ActorConfig;
 
 #[cfg(reifydb_target = "native")]
 pub use native::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};

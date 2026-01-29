@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{rc::Rc, sync::LazyLock};
+use std::sync::{Arc, LazyLock};
 
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
@@ -22,14 +22,14 @@ static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
 pub struct MapOperator {
-	parent: Rc<Operators>,
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression>,
 	column_evaluator: StandardColumnEvaluator,
 }
 
 impl MapOperator {
-	pub fn new(parent: Rc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,

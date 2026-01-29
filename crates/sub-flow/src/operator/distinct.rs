@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{rc::Rc, sync::LazyLock};
+use std::sync::{Arc, LazyLock};
 
 use indexmap::IndexMap;
 use reifydb_core::{
@@ -163,7 +163,7 @@ impl Default for DistinctState {
 }
 
 pub struct DistinctOperator {
-	parent: Rc<Operators>,
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression>,
 	schema: Schema,
@@ -171,7 +171,7 @@ pub struct DistinctOperator {
 }
 
 impl DistinctOperator {
-	pub fn new(parent: Rc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,

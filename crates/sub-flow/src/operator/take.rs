@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::BTreeMap, rc::Rc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{
 	encoded::schema::Schema, interface::catalog::flow::FlowNodeId, internal, value::column::columns::Columns,
@@ -38,14 +38,14 @@ impl Default for TakeState {
 }
 
 pub struct TakeOperator {
-	parent: Rc<Operators>,
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	limit: usize,
 	schema: Schema,
 }
 
 impl TakeOperator {
-	pub fn new(parent: Rc<Operators>, node: FlowNodeId, limit: usize) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, limit: usize) -> Self {
 		Self {
 			parent,
 			node,

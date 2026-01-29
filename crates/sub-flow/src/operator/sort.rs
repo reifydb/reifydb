@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
@@ -15,13 +15,13 @@ use crate::{
 };
 
 pub struct SortOperator {
-	parent: Rc<Operators>,
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	_expressions: Vec<Expression>,
 }
 
 impl SortOperator {
-	pub fn new(parent: Rc<Operators>, node: FlowNodeId, _expressions: Vec<Expression>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, _expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,

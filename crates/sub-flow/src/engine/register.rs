@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{
@@ -84,7 +84,7 @@ impl FlowEngine {
 				self.add_source(flow.id, node.id, PrimitiveId::table(table.id));
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::SourceTable(PrimitiveTableOperator::new(node.id, table))),
+					Arc::new(Operators::SourceTable(PrimitiveTableOperator::new(node.id, table))),
 				);
 			}
 			SourceView {
@@ -94,7 +94,7 @@ impl FlowEngine {
 				self.add_source(flow.id, node.id, PrimitiveId::view(view.id));
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))),
+					Arc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))),
 				);
 			}
 			SourceFlow {
@@ -104,7 +104,7 @@ impl FlowEngine {
 				self.add_source(flow.id, node.id, PrimitiveId::flow(source_flow_def.id));
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::SourceFlow(PrimitiveFlowOperator::new(
+					Arc::new(Operators::SourceFlow(PrimitiveFlowOperator::new(
 						node.id,
 						source_flow_def,
 					))),
@@ -123,7 +123,7 @@ impl FlowEngine {
 				let resolved = self.catalog.resolve_view(txn, view)?;
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::SinkView(SinkViewOperator::new(parent, node.id, resolved))),
+					Arc::new(Operators::SinkView(SinkViewOperator::new(parent, node.id, resolved))),
 				);
 			}
 			SinkSubscription {
@@ -146,7 +146,7 @@ impl FlowEngine {
 				let resolved = self.catalog.resolve_subscription(txn, subscription)?;
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::SinkSubscription(SinkSubscriptionOperator::new(
+					Arc::new(Operators::SinkSubscription(SinkSubscriptionOperator::new(
 						parent, node.id, resolved,
 					))),
 				);
@@ -161,7 +161,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::Filter(FilterOperator::new(parent, node.id, conditions))),
+					Arc::new(Operators::Filter(FilterOperator::new(parent, node.id, conditions))),
 				);
 			}
 			Map {
@@ -174,7 +174,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::Map(MapOperator::new(parent, node.id, expressions))),
+					Arc::new(Operators::Map(MapOperator::new(parent, node.id, expressions))),
 				);
 			}
 			Extend {
@@ -187,7 +187,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::Extend(ExtendOperator::new(parent, node.id, expressions))),
+					Arc::new(Operators::Extend(ExtendOperator::new(parent, node.id, expressions))),
 				);
 			}
 			Sort {
@@ -200,7 +200,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::Sort(SortOperator::new(parent, node.id, Vec::new()))),
+					Arc::new(Operators::Sort(SortOperator::new(parent, node.id, Vec::new()))),
 				);
 			}
 			Take {
@@ -213,7 +213,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::Take(TakeOperator::new(parent, node.id, limit))),
+					Arc::new(Operators::Take(TakeOperator::new(parent, node.id, limit))),
 				);
 			}
 			Join {
@@ -245,7 +245,7 @@ impl FlowEngine {
 
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::Join(JoinOperator::new(
+					Arc::new(Operators::Join(JoinOperator::new(
 						left_parent,
 						right_parent,
 						node.id,
@@ -269,7 +269,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::Distinct(DistinctOperator::new(
+					Arc::new(Operators::Distinct(DistinctOperator::new(
 						parent,
 						node.id,
 						expressions,
@@ -300,7 +300,7 @@ impl FlowEngine {
 
 				self.operators.insert(
 					node.id,
-					Rc::new(Operators::Merge(MergeOperator::new(
+					Arc::new(Operators::Merge(MergeOperator::new(
 						node.id,
 						parents,
 						node.inputs.clone(),
@@ -328,7 +328,7 @@ impl FlowEngine {
 
 					self.operators.insert(
 						node.id,
-						Rc::new(Operators::Apply(ApplyOperator::new(
+						Arc::new(Operators::Apply(ApplyOperator::new(
 							parent, node.id, operator,
 						))),
 					);
@@ -370,7 +370,7 @@ impl FlowEngine {
 					max_window_age.clone(),
 					self.clock.clone(),
 				);
-				self.operators.insert(node.id, Rc::new(Operators::Window(operator)));
+				self.operators.insert(node.id, Arc::new(Operators::Window(operator)));
 			}
 		}
 

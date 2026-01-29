@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
@@ -12,14 +12,14 @@ use reifydb_type::value::row_number::RowNumber;
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
 pub struct ExtendOperator {
-	parent: Rc<Operators>,
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	#[allow(dead_code)]
 	expressions: Vec<Expression>,
 }
 
 impl ExtendOperator {
-	pub fn new(parent: Rc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,

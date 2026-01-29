@@ -7,7 +7,7 @@ pub mod register;
 
 use std::{
 	collections::{HashMap, HashSet},
-	rc::Rc,
+	sync::Arc,
 };
 
 use reifydb_catalog::catalog::Catalog;
@@ -38,7 +38,7 @@ pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
 	pub(crate) evaluator: StandardColumnEvaluator,
 	pub(crate) executor: Executor,
-	pub(crate) operators: HashMap<FlowNodeId, Rc<Operators>>,
+	pub(crate) operators: HashMap<FlowNodeId, Arc<Operators>>,
 	pub(crate) flows: HashMap<FlowId, FlowDag>,
 	pub(crate) sources: HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
 	pub(crate) sinks: HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,

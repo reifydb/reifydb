@@ -77,7 +77,7 @@ impl FlowCoordinator {
 		for i in 0..num_workers {
 			let worker_factory = factory_builder();
 			let actor = FlowActor::new(worker_factory, engine.clone(), engine.catalog());
-			let handle = actor_system.spawn_dedicated(&format!("flow-worker-{}", i), actor);
+			let handle = actor_system.spawn(&format!("flow-worker-{}", i), actor);
 			worker_refs.push(handle.actor_ref().clone());
 			worker_handles.push(handle);
 		}

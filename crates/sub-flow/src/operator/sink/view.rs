@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::schema::Schema,
@@ -21,13 +21,13 @@ use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
 pub struct SinkViewOperator {
 	#[allow(dead_code)]
-	parent: Rc<Operators>,
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	view: ResolvedView,
 }
 
 impl SinkViewOperator {
-	pub fn new(parent: Rc<Operators>, node: FlowNodeId, view: ResolvedView) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, view: ResolvedView) -> Self {
 		Self {
 			parent,
 			node,

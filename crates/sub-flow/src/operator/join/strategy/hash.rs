@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_runtime::hash::Hash128;
@@ -121,7 +121,7 @@ pub(crate) fn pull_from_store(
 	txn: &mut FlowTransaction,
 	store: &Store,
 	key_hash: &Hash128,
-	parent: &Rc<Operators>,
+	parent: &Arc<Operators>,
 ) -> reifydb_type::Result<Columns> {
 	if let Some(entry) = store.get(txn, key_hash)? {
 		parent.pull(txn, &entry.rows)
@@ -140,7 +140,7 @@ pub(crate) fn emit_joined_columns(
 	opposite_store: &Store,
 	key_hash: &Hash128,
 	operator: &JoinOperator,
-	opposite_parent: &Rc<Operators>,
+	opposite_parent: &Arc<Operators>,
 ) -> reifydb_type::Result<Option<FlowDiff>> {
 	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
 	if opposite.is_empty() {
@@ -170,7 +170,7 @@ pub(crate) fn emit_remove_joined_columns(
 	opposite_store: &Store,
 	key_hash: &Hash128,
 	operator: &JoinOperator,
-	opposite_parent: &Rc<Operators>,
+	opposite_parent: &Arc<Operators>,
 ) -> reifydb_type::Result<Option<FlowDiff>> {
 	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
 	if opposite.is_empty() {
@@ -201,7 +201,7 @@ pub(crate) fn emit_update_joined_columns(
 	opposite_store: &Store,
 	key_hash: &Hash128,
 	operator: &JoinOperator,
-	opposite_parent: &Rc<Operators>,
+	opposite_parent: &Arc<Operators>,
 ) -> reifydb_type::Result<Option<FlowDiff>> {
 	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
 	if opposite.is_empty() {
@@ -238,7 +238,7 @@ pub(crate) fn emit_joined_columns_batch(
 	opposite_store: &Store,
 	key_hash: &Hash128,
 	operator: &JoinOperator,
-	opposite_parent: &Rc<Operators>,
+	opposite_parent: &Arc<Operators>,
 ) -> reifydb_type::Result<Option<FlowDiff>> {
 	if primary_indices.is_empty() {
 		return Ok(None);
@@ -278,7 +278,7 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	opposite_store: &Store,
 	key_hash: &Hash128,
 	operator: &JoinOperator,
-	opposite_parent: &Rc<Operators>,
+	opposite_parent: &Arc<Operators>,
 ) -> reifydb_type::Result<Option<FlowDiff>> {
 	if primary_indices.is_empty() {
 		return Ok(None);
@@ -311,7 +311,7 @@ pub(crate) fn pull_left_columns(
 	txn: &mut FlowTransaction,
 	left_store: &Store,
 	key_hash: &Hash128,
-	left_parent: &Rc<Operators>,
+	left_parent: &Arc<Operators>,
 ) -> reifydb_type::Result<Columns> {
 	pull_from_store(txn, left_store, key_hash, left_parent)
 }

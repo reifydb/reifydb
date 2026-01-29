@@ -3,26 +3,6 @@
 
 //! Configuration types for the unified actor system.
 
-/// Threading model for an actor.
-///
-/// Determines how the actor is scheduled in the native runtime.
-/// In WASM, both models degrade to inline processing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ThreadingModel {
-	/// Run on shared work-stealing pool (default).
-	///
-	/// Requires `State: Send`. Multiple actors share the same rayon thread pool,
-	/// with work-stealing for good CPU utilization.
-	#[default]
-	SharedPool,
-
-	/// Run on a dedicated OS thread.
-	///
-	/// Allows non-Send state (Rc, RefCell, etc.). Each actor gets its own
-	/// OS thread with a blocking message receive loop.
-	DedicatedThread,
-}
-
 /// Configuration for actor behavior.
 #[derive(Debug, Clone)]
 pub struct ActorConfig {
@@ -30,18 +10,12 @@ pub struct ActorConfig {
 	///
 	/// Default: 0 (unbounded)
 	pub mailbox_capacity: usize,
-
-	/// Threading model for this actor.
-	///
-	/// Default: SharedPool
-	pub threading: ThreadingModel,
 }
 
 impl Default for ActorConfig {
 	fn default() -> Self {
 		Self {
 			mailbox_capacity: 0,
-			threading: ThreadingModel::default(),
 		}
 	}
 }
@@ -55,12 +29,6 @@ impl ActorConfig {
 	/// Set the mailbox capacity. 0 = unbounded.
 	pub fn mailbox_capacity(mut self, capacity: usize) -> Self {
 		self.mailbox_capacity = capacity;
-		self
-	}
-
-	/// Set the threading model.
-	pub fn threading(mut self, threading: ThreadingModel) -> Self {
-		self.threading = threading;
 		self
 	}
 }

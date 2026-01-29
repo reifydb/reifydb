@@ -8,20 +8,15 @@
 //!
 //! # Execution Model
 //!
-//! - **Native SharedPool**: Actors run on threads with shared rayon pool for compute
-//! - **Native DedicatedThread**: Each actor runs on its own OS thread
+//! - **Native**: Actors run on threads with shared rayon pool for compute
 //! - **WASM**: Messages are processed inline (synchronously) when sent
 //!
-//! # Threading Models
-//!
-//! Actors can be configured with different threading models via [`ActorConfig`]:
-//! - `ThreadingModel::SharedPool`: Run on shared pool (requires `State: Send`)
-//! - `ThreadingModel::DedicatedThread`: Run on dedicated thread (allows non-Send state)
+//! All actor states must be `Send`.
 //!
 //! # Example
 //!
 //! ```ignore
-//! use reifydb_runtime::{system::ActorSystem, actor::{Actor, Context, Flow, ActorConfig, ThreadingModel}};
+//! use reifydb_runtime::{system::ActorSystem, actor::{Actor, Context, Flow, ActorConfig}};
 //!
 //! struct Counter;
 //!
@@ -49,10 +44,6 @@
 //!             CounterMsg::Get(tx) => { let _ = tx.send(*state); }
 //!         }
 //!         Flow::Continue
-//!     }
-//!
-//!     fn config(&self) -> ActorConfig {
-//!         ActorConfig::new().threading(ThreadingModel::SharedPool)
 //!     }
 //! }
 //!

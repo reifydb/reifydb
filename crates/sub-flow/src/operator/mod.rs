@@ -37,7 +37,7 @@ use sort::SortOperator;
 use take::TakeOperator;
 use window::WindowOperator;
 
-pub trait Operator {
+pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId;
 
 	fn apply(
@@ -50,7 +50,7 @@ pub trait Operator {
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns>;
 }
 
-pub type BoxedOperator = Box<dyn Operator>;
+pub type BoxedOperator = Box<dyn Operator + Send + Sync>;
 
 pub enum Operators {
 	SourceTable(PrimitiveTableOperator),

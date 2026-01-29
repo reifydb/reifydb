@@ -63,6 +63,11 @@ impl FFIOperator {
 	}
 }
 
+// SAFETY: FFIOperator is only accessed from a single actor at a time.
+// The raw pointer and RefCell<Arena> are not shared across threads.
+unsafe impl Send for FFIOperator {}
+unsafe impl Sync for FFIOperator {}
+
 impl Drop for FFIOperator {
 	fn drop(&mut self) {
 		// Call the destroy function from the vtable to clean up the FFI operator instance

@@ -11,13 +11,13 @@
 use crate::actor::context::Context;
 
 // Re-export config types from system module
-pub use crate::actor::system::config::{ActorConfig, ThreadingModel};
+pub use crate::actor::system::config::ActorConfig;
 
 /// What the actor wants to do after handling a message.
 ///
 /// This enum controls actor behavior after processing each message.
 ///
-/// - **Native SharedPool/DedicatedThread**: `Yield` and `Park` are no-ops since actors have their own threads
+/// - **Native**: `Yield` and `Park` are no-ops since actors have their own threads
 /// - **WASM**: Messages are processed inline (synchronously), so `Yield` and `Park` are no-ops
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Flow {
@@ -90,7 +90,7 @@ pub enum Flow {
 /// ```
 pub trait Actor: Send + 'static {
 	/// The actor's internal state (owned, not shared).
-	type State: 'static;
+	type State: Send + 'static;
 
 	/// Messages this actor can receive.
 	type Message: Send + 'static;

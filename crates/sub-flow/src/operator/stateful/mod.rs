@@ -16,15 +16,7 @@ pub mod test_utils;
 pub mod utils;
 pub mod window;
 
-use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey};
-
-// All types are accessed directly from their submodules:
-// - crate::operator::stateful::keyed::KeyedStateful
-// - crate::operator::stateful::raw::RawStatefulOperator
-// - crate::operator::stateful::row::RowNumberProvider
-// - crate::operator::stateful::single::SingleStateful
-// - crate::operator::stateful::utils::*
-// - crate::operator::stateful::window::WindowStateful
+use reifydb_core::key::{flow_node_state::FlowNodeStateKey, EncodableKey};
 
 /// Iterator wrapper for state entries
 ///

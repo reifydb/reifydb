@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use reifydb_abi::flow::diff::FlowDiffType;
 use reifydb_catalog::catalog::Catalog;
@@ -34,14 +34,14 @@ use crate::{
 
 pub struct SinkSubscriptionOperator {
 	#[allow(dead_code)]
-	parent: Rc<Operators>,
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	subscription: ResolvedSubscription,
 	counter: Counter,
 }
 
 impl SinkSubscriptionOperator {
-	pub fn new(parent: Rc<Operators>, node: FlowNodeId, subscription: ResolvedSubscription) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, subscription: ResolvedSubscription) -> Self {
 		let counter_key = {
 			let mut serializer = KeySerializer::new();
 			serializer.extend_u64(subscription.def().id.0);

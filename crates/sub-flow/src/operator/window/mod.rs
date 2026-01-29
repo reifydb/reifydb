@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::{WindowSize, WindowSlide, WindowTimeMode, WindowType},
@@ -136,7 +136,7 @@ impl Default for WindowState {
 
 /// The main window operator
 pub struct WindowOperator {
-	pub parent: Rc<Operators>,
+	pub parent: Arc<Operators>,
 	pub node: FlowNodeId,
 	pub window_type: WindowType,
 	pub size: WindowSize,
@@ -154,7 +154,7 @@ pub struct WindowOperator {
 
 impl WindowOperator {
 	pub fn new(
-		parent: Rc<Operators>,
+		parent: Arc<Operators>,
 		node: FlowNodeId,
 		window_type: WindowType,
 		size: WindowSize,

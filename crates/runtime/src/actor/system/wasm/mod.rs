@@ -82,19 +82,7 @@ impl ActorSystem {
 	}
 
 	/// Spawn an actor (processes messages inline in WASM).
-	///
-	/// Threading model is ignored - all actors process messages synchronously.
 	pub fn spawn<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.spawn_inner(name, actor)
-	}
-
-	/// Spawn an actor that requires a dedicated thread (same as spawn in WASM).
-	pub fn spawn_dedicated<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.spawn_inner(name, actor)
-	}
-
-	/// Internal spawn implementation.
-	fn spawn_inner<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
 		let actor_ref = create_actor_ref::<A::Message>();
 
 		// Wrap actor and state in Rc for sharing between processor and eager init

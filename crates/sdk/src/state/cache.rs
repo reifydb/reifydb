@@ -54,17 +54,14 @@
 
 use std::hash::Hash;
 
-use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::IntoEncodedKey},
-	util::lru::LruCache,
-};
-use reifydb_type::util::cowvec::CowVec;
-use serde::{Serialize, de::DeserializeOwned};
-
 use crate::{
 	error::{FFIError, Result},
 	operator::context::OperatorContext,
 };
+use reifydb_core::encoded::{encoded::EncodedValues, key::IntoEncodedKey};
+use reifydb_core::util::lru::ConcurrentLruCache;
+use reifydb_type::util::cowvec::CowVec;
+use serde::{de::DeserializeOwned, Serialize};
 
 /// Generic LRU cache for operator state - caches deserialized domain types.
 ///
@@ -73,7 +70,7 @@ use crate::{
 ///
 /// The cache is thread-safe (`Send + Sync`) using `ConcurrentLruCache` internally.
 pub struct StateCache<K, V> {
-	cache: LruCache<K, V>,
+	cache: ConcurrentLruCache<K, V>,
 }
 
 impl<K, V> StateCache<K, V>
@@ -85,7 +82,7 @@ where
 	/// Create a new state cache with default capacity (1000 entries).
 	pub fn new(capacity: usize) -> Self {
 		Self {
-			cache: LruCache::new(capacity),
+			cache: ConcurrentLruCache::new(capacity),
 		}
 	}
 	/// Get a value - checks cache first, falls back to FFI + deserialize.

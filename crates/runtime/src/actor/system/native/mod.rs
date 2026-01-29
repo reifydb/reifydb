@@ -3,10 +3,9 @@
 
 //! Native actor system implementation.
 //!
-//! Uses rayon for shared pool actors and dedicated OS threads for non-Send actors.
+//! Uses rayon for all actors on a shared work-stealing pool.
 
 mod pool;
-mod thread;
 
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
@@ -16,15 +15,11 @@ use tokio::{sync::Semaphore, task};
 
 use crate::actor::{
 	context::CancellationToken,
-	mailbox::ActorRef,
 	timers::scheduler::SchedulerHandle,
 	traits::Actor,
 };
 
-use super::config::ThreadingModel;
-
 pub use pool::PoolActorHandle;
-pub use thread::ThreadActorHandle;
 
 /// Configuration for the actor system.
 #[derive(Debug, Clone)]
@@ -71,7 +66,7 @@ struct ActorSystemInner {
 /// Unified system for all concurrent work.
 ///
 /// Provides:
-/// - Actor spawning with configurable threading models
+/// - Actor spawning on a shared work-stealing pool
 /// - CPU-bound compute with admission control
 /// - Graceful shutdown via cancellation token
 #[derive(Clone)]
@@ -115,8 +110,6 @@ impl ActorSystem {
 	/// Signal shutdown to all actors and the timer scheduler.
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
-		// Note: The scheduler will be fully shutdown when ActorSystem is dropped
-		// This just signals cancellation to actors
 	}
 
 	/// Get the timer scheduler for scheduling delayed/periodic callbacks.
@@ -124,49 +117,14 @@ impl ActorSystem {
 		&self.inner.scheduler
 	}
 
-	/// Spawn an actor with the configured threading model.
-	///
-	/// - `SharedPool`: Actor runs on shared rayon pool (requires `State: Send`)
-	/// - `DedicatedThread`: Actor runs on its own OS thread (allows non-Send state)
+	/// Spawn an actor on the shared work-stealing pool.
 	///
 	/// Returns a handle to the spawned actor.
 	pub fn spawn<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
 	{
-		let config = actor.config();
-
-		match config.threading {
-			ThreadingModel::SharedPool => {
-				let inner = self.spawn_on_pool(name, actor);
-				ActorHandle::Pool(inner)
-			}
-			ThreadingModel::DedicatedThread => {
-				let inner = self.spawn_on_thread(name, actor);
-				ActorHandle::Thread(inner)
-			}
-		}
-	}
-
-	/// Spawn an actor that requires a dedicated thread (non-Send state).
-	///
-	/// Use this for actors with non-Send state like `Rc`, `RefCell`, etc.
-	pub fn spawn_dedicated<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		let inner = self.spawn_on_thread(name, actor);
-		ActorHandle::Thread(inner)
-	}
-
-	/// Spawn an actor on the shared pool.
-	fn spawn_on_pool<A: Actor>(&self, name: &str, actor: A) -> PoolActorHandle<A::Message>
-	where
-		A::State: Send,
-	{
 		pool::spawn_on_pool(self, name, actor)
-	}
-
-	/// Spawn an actor on a dedicated thread.
-	fn spawn_on_thread<A: Actor>(&self, name: &str, actor: A) -> ThreadActorHandle<A::Message> {
-		thread::spawn_on_thread(self, name, actor)
 	}
 
 	/// Executes a closure on the rayon thread pool directly.
@@ -217,30 +175,7 @@ impl Debug for ActorSystem {
 }
 
 /// Handle to a spawned actor.
-pub enum ActorHandle<M> {
-	/// Actor running on the shared pool.
-	Pool(PoolActorHandle<M>),
-	/// Actor running on a dedicated thread.
-	Thread(ThreadActorHandle<M>),
-}
-
-impl<M> ActorHandle<M> {
-	/// Get the actor reference for sending messages.
-	pub fn actor_ref(&self) -> &ActorRef<M> {
-		match self {
-			ActorHandle::Pool(h) => &h.actor_ref,
-			ActorHandle::Thread(h) => &h.actor_ref,
-		}
-	}
-
-	/// Wait for the actor to complete.
-	pub fn join(self) -> Result<(), JoinError> {
-		match self {
-			ActorHandle::Pool(h) => h.join(),
-			ActorHandle::Thread(h) => h.join(),
-		}
-	}
-}
+pub type ActorHandle<M> = PoolActorHandle<M>;
 
 /// Error returned when joining an actor fails.
 #[derive(Debug)]

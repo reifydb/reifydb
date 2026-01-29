@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{rc::Rc, sync::LazyLock};
+use std::sync::{Arc, LazyLock};
 
 use indexmap::IndexMap;
 use reifydb_core::{
@@ -45,8 +45,8 @@ static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
 pub struct JoinOperator {
-	pub(crate) left_parent: Rc<Operators>,
-	pub(crate) right_parent: Rc<Operators>,
+	pub(crate) left_parent: Arc<Operators>,
+	pub(crate) right_parent: Arc<Operators>,
 	node: FlowNodeId,
 	strategy: JoinStrategy,
 	left_node: FlowNodeId,
@@ -62,8 +62,8 @@ pub struct JoinOperator {
 
 impl JoinOperator {
 	pub fn new(
-		left_parent: Rc<Operators>,
-		right_parent: Rc<Operators>,
+		left_parent: Arc<Operators>,
+		right_parent: Arc<Operators>,
 		node: FlowNodeId,
 		join_type: JoinType,
 		left_node: FlowNodeId,
