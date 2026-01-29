@@ -8,33 +8,40 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```
 //! #[test]
 //! fn test_counter() {
-//!     struct Counter;
+//! 	struct Counter;
 //!
-//!     impl Actor for Counter {
-//!         type State = i64;
-//!         type Message = i64;
+//! 	impl Actor for Counter {
+//! 		type State = i64;
+//! 		type Message = i64;
 //!
-//!         fn init(&self, _ctx: &Context<Self::Message>) -> Self::State { 0 }
+//! 		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
+//! 			0
+//! 		}
 //!
-//!         fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
-//!             *state += msg;
-//!             Flow::Continue
-//!         }
-//!     }
+//! 		fn handle(
+//! 			&self,
+//! 			state: &mut Self::State,
+//! 			msg: Self::Message,
+//! 			_ctx: &Context<Self::Message>,
+//! 		) -> Directive {
+//! 			*state += msg;
+//! 			Directive::Continue
+//! 		}
+//! 	}
 //!
-//!     let mut harness = TestHarness::new(Counter);
-//!     harness.send(5);
-//!     harness.send(3);
-//!     harness.process_all();
+//! 	let mut harness = TestHarness::new(Counter);
+//! 	harness.send(5);
+//! 	harness.send(3);
+//! 	harness.process_all();
 //!
-//!     assert_eq!(*harness.state(), 8);
+//! 	assert_eq!(*harness.state(), 8);
 //! }
 //! ```
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, marker::PhantomData};
 
 #[cfg(reifydb_target = "native")]
 use crate::actor::mailbox::ActorRef;
@@ -43,7 +50,7 @@ use crate::{
 	actor::{
 		context::{CancellationToken, Context},
 		system::ActorSystem,
-		traits::{Actor, Flow},
+		traits::{Actor, Directive},
 	},
 };
 
@@ -101,7 +108,7 @@ impl<A: Actor> TestHarness<A> {
 	///
 	/// Returns `Some(flow)` if a message was processed,
 	/// or `None` if the mailbox was empty.
-	pub fn process_one(&mut self) -> Option<Flow> {
+	pub fn process_one(&mut self) -> Option<Directive> {
 		let msg = self.mailbox.pop_front()?;
 		let flow = self.actor.handle(&mut self.state, msg, &self.ctx.to_context());
 		Some(flow)
@@ -109,14 +116,14 @@ impl<A: Actor> TestHarness<A> {
 
 	/// Process all messages in the mailbox.
 	///
-	/// Returns a Vec of all Flow values returned by handle().
-	/// Processing stops early if any handler returns `Flow::Stop`.
-	pub fn process_all(&mut self) -> Vec<Flow> {
+	/// Returns a Vec of all Directive values returned by handle().
+	/// Processing stops early if any handler returns `Directive::Stop`.
+	pub fn process_all(&mut self) -> Vec<Directive> {
 		let mut flows = Vec::new();
 
 		while let Some(flow) = self.process_one() {
 			flows.push(flow);
-			if flow == Flow::Stop {
+			if flow == Directive::Stop {
 				break;
 			}
 		}
@@ -127,7 +134,7 @@ impl<A: Actor> TestHarness<A> {
 	/// Process messages until the mailbox is empty or a condition is met.
 	///
 	/// Returns the flows from all processed messages.
-	pub fn process_until<F>(&mut self, mut condition: F) -> Vec<Flow>
+	pub fn process_until<F>(&mut self, mut condition: F) -> Vec<Directive>
 	where
 		F: FnMut(&A::State) -> bool,
 	{
@@ -140,7 +147,7 @@ impl<A: Actor> TestHarness<A> {
 
 			if let Some(flow) = self.process_one() {
 				flows.push(flow);
-				if flow == Flow::Stop {
+				if flow == Directive::Stop {
 					break;
 				}
 			}
@@ -152,18 +159,13 @@ impl<A: Actor> TestHarness<A> {
 	/// Call the actor's idle hook.
 	///
 	/// This is useful for testing background work behavior.
-	pub fn idle(&mut self) -> Flow {
-		self.actor.idle(&mut self.state, &self.ctx.to_context())
-	}
-
-	/// Call the actor's pre_start hook.
-	pub fn pre_start(&mut self) {
-		self.actor.pre_start(&mut self.state, &self.ctx.to_context());
+	pub fn idle(&mut self) -> Directive {
+		self.actor.idle(&self.ctx.to_context())
 	}
 
 	/// Call the actor's post_stop hook.
 	pub fn post_stop(&mut self) {
-		self.actor.post_stop(&mut self.state);
+		self.actor.post_stop();
 	}
 
 	/// Get a reference to the actor's state.
@@ -200,14 +202,14 @@ impl<A: Actor> TestHarness<A> {
 /// Test context that doesn't require a real runtime.
 struct TestContext<M> {
 	cancel: CancellationToken,
-	_marker: std::marker::PhantomData<M>,
+	_marker: PhantomData<M>,
 }
 
 impl<M: Send + 'static> TestContext<M> {
 	fn new() -> Self {
 		Self {
 			cancel: CancellationToken::new(),
-			_marker: std::marker::PhantomData,
+			_marker: PhantomData,
 		}
 	}
 
@@ -255,18 +257,23 @@ mod tests {
 			0
 		}
 
-		fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
+		fn handle(
+			&self,
+			state: &mut Self::State,
+			msg: Self::Message,
+			_ctx: &Context<Self::Message>,
+		) -> Directive {
 			match msg {
 				CounterMsg::Inc => *state += 1,
 				CounterMsg::Dec => *state -= 1,
 				CounterMsg::Set(v) => *state = v,
-				CounterMsg::Stop => return Flow::Stop,
+				CounterMsg::Stop => return Directive::Stop,
 			}
-			Flow::Continue
+			Directive::Continue
 		}
 
-		fn idle(&self, _state: &mut Self::State, _ctx: &Context<Self::Message>) -> Flow {
-			Flow::Park
+		fn idle(&self, _ctx: &Context<Self::Message>) -> Directive {
+			Directive::Park
 		}
 	}
 
@@ -291,7 +298,7 @@ mod tests {
 		let flows = harness.process_all();
 
 		assert_eq!(flows.len(), 3);
-		assert!(flows.iter().all(|f| *f == Flow::Continue));
+		assert!(flows.iter().all(|f| *f == Directive::Continue));
 		assert_eq!(*harness.state(), 3);
 	}
 
@@ -306,7 +313,7 @@ mod tests {
 		let flows = harness.process_all();
 
 		assert_eq!(flows.len(), 2);
-		assert_eq!(flows[1], Flow::Stop);
+		assert_eq!(flows[1], Directive::Stop);
 		assert_eq!(*harness.state(), 1);
 		assert_eq!(harness.mailbox_len(), 1); // One message left
 	}
@@ -318,10 +325,10 @@ mod tests {
 		harness.send(CounterMsg::Set(42));
 		harness.send(CounterMsg::Inc);
 
-		assert_eq!(harness.process_one(), Some(Flow::Continue));
+		assert_eq!(harness.process_one(), Some(Directive::Continue));
 		assert_eq!(*harness.state(), 42);
 
-		assert_eq!(harness.process_one(), Some(Flow::Continue));
+		assert_eq!(harness.process_one(), Some(Directive::Continue));
 		assert_eq!(*harness.state(), 43);
 
 		assert_eq!(harness.process_one(), None);
@@ -332,6 +339,6 @@ mod tests {
 		let mut harness = TestHarness::new(CounterActor);
 
 		let flow = harness.idle();
-		assert_eq!(flow, Flow::Park);
+		assert_eq!(flow, Directive::Park);
 	}
 }

@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Actor-based CDC producer.
-//!
-//! This module provides an actor that processes CDC work items. Unlike `CdcWorker`
-//! which spawns its own thread, `CdcProducerActor` uses the shared `ActorRuntime`
-//! which works in both native (thread-per-actor) and WASM (inline processing) environments.
-
 use std::sync::Arc;
 
 use reifydb_core::{
@@ -23,8 +17,8 @@ use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
-		system::{ActorHandle, ActorSystem},
-		traits::{Actor, ActorConfig, Flow},
+		system::{ActorConfig, ActorHandle, ActorSystem},
+		traits::{Actor, Directive},
 	},
 	clock::Clock,
 };
@@ -145,7 +139,6 @@ where
 	}
 }
 
-/// Actor state (empty - all state is in the actor itself)
 pub struct CdcProducerState;
 
 impl<S, T> Actor for CdcProducerActor<S, T>
@@ -157,24 +150,21 @@ where
 	type Message = CdcProduceMsg;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
+		debug!("CDC producer actor started");
 		CdcProducerState
 	}
 
-	fn pre_start(&self, _state: &mut Self::State, _ctx: &Context<Self::Message>) {
-		debug!("CDC producer actor started");
-	}
-
-	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Flow {
+	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		if ctx.is_cancelled() {
 			debug!("CDC producer actor stopping");
-			return Flow::Stop;
+			return Directive::Stop;
 		}
 
 		self.process(msg.version, msg.timestamp, msg.deltas);
-		Flow::Continue
+		Directive::Continue
 	}
 
-	fn post_stop(&self, _state: &mut Self::State) {
+	fn post_stop(&self) {
 		debug!("CDC producer actor stopped");
 	}
 

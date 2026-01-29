@@ -272,10 +272,6 @@ impl<M> ActorRef<M> {
 	}
 }
 
-// =============================================================================
-// Re-exports for native mailbox
-// =============================================================================
-
 #[cfg(reifydb_target = "native")]
 pub(crate) use native::create_mailbox;
 #[cfg(reifydb_target = "wasm")]

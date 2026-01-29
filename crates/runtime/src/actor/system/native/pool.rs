@@ -13,12 +13,13 @@ use std::sync::{
 
 use crossbeam_channel::Receiver;
 use rayon::ThreadPool;
+use tracing::debug;
 
 use super::{ActorSystem, JoinError};
 use crate::actor::{
 	context::{CancellationToken, Context},
 	mailbox::{ActorRef, create_mailbox},
-	traits::{Actor, Flow},
+	traits::{Actor, Directive},
 };
 
 /// Maximum messages to process in one batch before yielding.
@@ -71,12 +72,12 @@ where
 	};
 
 	let mut processed = 0;
-	let mut flow = Flow::Continue;
+	let mut flow = Directive::Continue;
 
 	while processed < BATCH_SIZE {
 		// Check cancellation
 		if cell.cancel.is_cancelled() {
-			flow = Flow::Stop;
+			flow = Directive::Stop;
 			break;
 		}
 
@@ -85,32 +86,32 @@ where
 				processed += 1;
 				flow = cell.actor.handle(state, msg, &cell.ctx);
 				match flow {
-					Flow::Continue => continue,
-					Flow::Yield | Flow::Park | Flow::Stop => break,
+					Directive::Continue => continue,
+					Directive::Yield | Directive::Park | Directive::Stop => break,
 				}
 			}
 			Err(crossbeam_channel::TryRecvError::Empty) => {
 				// No messages — run idle handler
-				flow = cell.actor.idle(state, &cell.ctx);
+				flow = cell.actor.idle(&cell.ctx);
 				break;
 			}
 			Err(crossbeam_channel::TryRecvError::Disconnected) => {
 				// All senders dropped
-				tracing::debug!("Pool actor mailbox closed, stopping");
-				flow = Flow::Stop;
+				debug!("Pool actor mailbox closed, stopping");
+				flow = Directive::Stop;
 				break;
 			}
 		}
 	}
 
 	match flow {
-		Flow::Stop => {
-			cell.actor.post_stop(state);
+		Directive::Stop => {
+			cell.actor.post_stop();
 			*guard = None;
 			cell.schedule_state.store(IDLE, Ordering::Release);
 			let _ = cell.completion_tx.send(());
 		}
-		Flow::Park => {
+		Directive::Park => {
 			// Go idle — consume zero pool resources until next send()
 			cell.schedule_state.store(IDLE, Ordering::Release);
 			drop(guard);
@@ -123,7 +124,7 @@ where
 				notify(&cell);
 			}
 		}
-		Flow::Yield | Flow::Continue => {
+		Directive::Yield | Directive::Continue => {
 			// End of batch or explicit yield — check if we should reschedule
 			drop(guard);
 
@@ -224,17 +225,14 @@ where
 	let actor_name = name.to_string();
 	let cell_for_init = Arc::clone(&cell);
 	cell.pool.spawn(move || {
-		tracing::debug!(actor = %actor_name, "Pool actor starting");
+		debug!(actor = %actor_name, "Pool actor starting");
 
-		// Initialize state
 		{
 			let mut guard = cell_for_init.state.lock().unwrap();
 			let state_val = cell_for_init.actor.init(&cell_for_init.ctx);
 			*guard = Some(state_val);
-			cell_for_init.actor.pre_start(guard.as_mut().unwrap(), &cell_for_init.ctx);
 		}
 
-		// Run first batch
 		run_batch(cell_for_init);
 	});
 

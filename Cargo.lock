@@ -1954,12 +1954,10 @@ dependencies = [
 name = "reifydb-sub-flow"
 version = "0.2.0"
 dependencies = [
- "crossbeam-channel",
  "dashmap",
  "indexmap",
  "libloading",
  "num_cpus",
- "parking_lot",
  "postcard",
  "reifydb-abi",
  "reifydb-build",

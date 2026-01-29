@@ -95,24 +95,26 @@ impl<M: Send + 'static> Context<M> {
 	}
 }
 
-impl<M: Send + Clone + 'static> Context<M> {
+impl<M: Send + 'static> Context<M> {
 	/// Schedule a message to be sent to this actor after a delay.
 	///
+	/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
 	/// Returns a handle that can be used to cancel the timer.
 	#[cfg(reifydb_target = "native")]
-	pub fn schedule_once(&self, delay: Duration, msg: M) -> TimerHandle {
+	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(&self, delay: Duration, factory: F) -> TimerHandle {
 		let actor_ref = self.self_ref.clone();
 		self.system.scheduler().schedule_once(delay, move || {
-			let _ = actor_ref.send(msg);
+			let _ = actor_ref.send(factory());
 		})
 	}
 
 	/// Schedule a message to be sent to this actor after a delay.
 	///
+	/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
 	/// Returns a handle that can be used to cancel the timer.
 	#[cfg(reifydb_target = "wasm")]
-	pub fn schedule_once(&self, delay: Duration, msg: M) -> TimerHandle {
-		crate::actor::timers::wasm::schedule_once(self.self_ref.clone(), delay, msg)
+	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(&self, delay: Duration, factory: F) -> TimerHandle {
+		crate::actor::timers::wasm::schedule_once_fn(self.self_ref.clone(), delay, factory)
 	}
 }
 

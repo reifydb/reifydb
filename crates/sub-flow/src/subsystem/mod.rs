@@ -23,22 +23,32 @@ use reifydb_core::{
 		flow::FlowLagsProvider,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
+	key::{EncodableKey, cdc_consumer::CdcConsumerKey},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, evaluate::column::StandardColumnEvaluator};
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, actor::system::ActorHandle};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
 use tracing::info;
 
 use crate::{
-	FlowEngine, builder::FlowBuilderConfig, coordinator::FlowCoordinator, lag::FlowLags,
+	FlowEngine,
+	builder::FlowBuilderConfig,
+	catalog::FlowCatalog,
+	coordinator::{CoordinatorActor, CoordinatorMsg, FlowConsumeRef},
+	lag::FlowLags,
+	pool::{PoolActor, PoolMsg},
 	tracker::PrimitiveVersionTracker,
+	worker::{FlowMsg, FlowWorkerActor},
 };
 
 /// Flow subsystem - single-threaded flow processing.
 pub struct FlowSubsystem {
-	consumer: PollConsumer<StandardEngine, FlowCoordinator>,
+	consumer: PollConsumer<StandardEngine, FlowConsumeRef>,
+	worker_handles: Vec<ActorHandle<FlowMsg>>,
+	pool_handle: Option<ActorHandle<PoolMsg>>,
+	coordinator_handle: Option<ActorHandle<CoordinatorMsg>>,
 	running: bool,
 }
 
@@ -54,6 +64,7 @@ impl FlowSubsystem {
 			if let Err(e) = load_ffi_operators(operators_dir, &event_bus) {
 				panic!("Failed to load FFI operators from {:?}: {}", operators_dir, e);
 			}
+			event_bus.wait_for_completion();
 		}
 
 		let runtime = ioc.resolve::<SharedRuntime>().expect("SharedRuntime must be registered");
@@ -78,37 +89,65 @@ impl FlowSubsystem {
 
 		let actor_system = engine.actor_system();
 
-		let coordinator = FlowCoordinator::new(
+		// Spawn worker
+		let mut worker_refs = Vec::with_capacity(num_workers);
+		let mut worker_handles = Vec::with_capacity(num_workers);
+		for i in 0..num_workers {
+			let worker_factory = factory_builder();
+			let worker = FlowWorkerActor::new(worker_factory, engine.clone(), engine.catalog());
+			let handle = actor_system.spawn(&format!("flow-worker-{}", i), worker);
+			worker_refs.push(handle.actor_ref().clone());
+			worker_handles.push(handle);
+		}
+
+		// Spawn pool
+		let pool = PoolActor::new(worker_refs, clock.clone());
+		let pool_handle = actor_system.spawn("flow-pool", pool);
+		let pool_ref = pool_handle.actor_ref().clone();
+
+		let flow_catalog = FlowCatalog::new(engine.catalog());
+
+		// Spawn coordinator actor
+		let coordinator = CoordinatorActor::new(
 			engine.clone(),
+			flow_catalog.clone(),
+			pool_ref,
 			primitive_tracker.clone(),
-			num_workers,
-			factory_builder,
 			cdc_store.clone(),
-			actor_system.clone(),
+			num_workers,
 			clock,
 		);
+		let coordinator_handle = actor_system.spawn("flow-coordinator", coordinator);
+		let actor_ref = coordinator_handle.actor_ref().clone();
+
+		// Create the thin CdcConsume impl
+		let consumer_id = CdcConsumerId::new("flow-coordinator");
+		let consumer_key = CdcConsumerKey {
+			consumer: consumer_id.clone(),
+		}
+		.encode();
+		let consume_ref = FlowConsumeRef {
+			actor_ref,
+			consumer_key,
+		};
 
 		// Register FlowLags with access to the flow catalog
-		let catalog = coordinator.catalog();
 		ioc.register_service::<Arc<dyn FlowLagsProvider>>(Arc::new(FlowLags::new(
 			primitive_tracker,
 			engine.clone(),
-			catalog,
+			flow_catalog,
 		)));
 
-		let poll_config = PollConsumerConfig::new(
-			CdcConsumerId::new("flow-coordinator"),
-			"flow-cdc-poll",
-			Duration::from_millis(10),
-			Some(100),
-		);
+		let poll_config =
+			PollConsumerConfig::new(consumer_id, "flow-cdc-poll", Duration::from_millis(10), Some(100));
 
-		// Pass the same shared actor system to PollConsumer so PollActor can communicate
-		// with the coordinator and worker actors
-		let consumer = PollConsumer::new(poll_config, engine, coordinator, cdc_store, actor_system);
+		let consumer = PollConsumer::new(poll_config, engine, consume_ref, cdc_store, actor_system);
 
 		Self {
 			consumer,
+			worker_handles,
+			pool_handle: Some(pool_handle),
+			coordinator_handle: Some(coordinator_handle),
 			running: false,
 		}
 	}
@@ -134,7 +173,24 @@ impl Subsystem for FlowSubsystem {
 			return Ok(());
 		}
 
+		// Stop the poll consumer first (signals PollActor to stop)
 		self.consumer.stop()?;
+
+		// Join coordinator (it sends messages to pool and workers)
+		if let Some(handle) = self.coordinator_handle.take() {
+			let _ = handle.join();
+		}
+
+		// Join pool (it sends messages to workers)
+		if let Some(handle) = self.pool_handle.take() {
+			let _ = handle.join();
+		}
+
+		// Join workers last
+		for handle in self.worker_handles.drain(..) {
+			let _ = handle.join();
+		}
+
 		self.running = false;
 		Ok(())
 	}
@@ -174,7 +230,7 @@ impl HasVersion for FlowSubsystem {
 impl Drop for FlowSubsystem {
 	fn drop(&mut self) {
 		if self.running {
-			self.running = false;
+			let _ = self.shutdown();
 		}
 	}
 }

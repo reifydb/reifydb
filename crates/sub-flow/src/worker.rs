@@ -4,19 +4,19 @@
 //! Flow actor that handles flow processing logic.
 //!
 //! This module provides an actor-based implementation of flow processing:
-//! - [`FlowActor`]: The actor definition with init/handle methods
+//! - [`FlowWorkerActor`]: The actor definition with init/handle methods
 //! - [`FlowMsg`]: Messages the actor can receive (Process, Register)
-//! - [`FlowResponse`]: Response sent back through reply channels
+//! - [`FlowResponse`]: Response sent back through callbacks
 
 use std::{mem::take, sync::Mutex};
 
-use crossbeam_channel::Sender;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::actor::{
 	context::Context,
-	traits::{Actor, ActorConfig, Flow},
+	system::ActorConfig,
+	traits::{Actor, Directive},
 };
 use tracing::{Span, error, instrument};
 
@@ -31,12 +31,12 @@ pub enum FlowMsg {
 	/// Process a batch of flow instructions
 	Process {
 		batch: WorkerBatch,
-		reply: Sender<FlowResponse>,
+		reply: Box<dyn FnOnce(FlowResponse) + Send>,
 	},
 	/// Register a new flow
 	Register {
 		flow: FlowDag,
-		reply: Sender<FlowResponse>,
+		reply: Box<dyn FnOnce(FlowResponse) + Send>,
 	},
 }
 
@@ -50,13 +50,13 @@ pub enum FlowResponse {
 
 pub type FlowEngineFactory = Box<dyn FnOnce() -> FlowEngine + Send>;
 
-pub struct FlowActor {
+pub struct FlowWorkerActor {
 	engine: StandardEngine,
 	catalog: Catalog,
 	engine_factory: Mutex<Option<FlowEngineFactory>>,
 }
 
-impl FlowActor {
+impl FlowWorkerActor {
 	pub fn new<F>(engine_factory: F, engine: StandardEngine, catalog: Catalog) -> Self
 	where
 		F: FnOnce() -> FlowEngine + Send + 'static,
@@ -73,7 +73,7 @@ pub struct FlowState {
 	flow_engine: FlowEngine,
 }
 
-impl Actor for FlowActor {
+impl Actor for FlowWorkerActor {
 	type State = FlowState;
 	type Message = FlowMsg;
 
@@ -85,7 +85,7 @@ impl Actor for FlowActor {
 		}
 	}
 
-	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
 			FlowMsg::Process {
 				batch,
@@ -96,7 +96,7 @@ impl Actor for FlowActor {
 					Ok(pending) => FlowResponse::Success(pending),
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
-				let _ = reply.send(resp);
+				(reply)(resp);
 			}
 			FlowMsg::Register {
 				flow,
@@ -111,18 +111,18 @@ impl Actor for FlowActor {
 					Ok(_) => FlowResponse::Success(PendingWrites::new()),
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
-				let _ = reply.send(resp);
+				(reply)(resp);
 			}
 		}
-		Flow::Continue
+		Directive::Continue
 	}
 
 	fn config(&self) -> ActorConfig {
-		ActorConfig::new().mailbox_capacity(0) // unbounded
+		ActorConfig::new()
 	}
 }
 
-impl FlowActor {
+impl FlowWorkerActor {
 	#[instrument(name = "flow::actor::process", level = "debug", skip(self, flow_engine, batch), fields(
 		instructions = batch.instructions.len(),
 		total_changes = tracing::field::Empty

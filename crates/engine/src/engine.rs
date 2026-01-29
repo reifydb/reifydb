@@ -394,16 +394,16 @@ impl CdcHost for StandardEngine {
 		StandardEngine::begin_command(self)
 	}
 
+	fn begin_query(&self) -> reifydb_type::Result<QueryTransaction> {
+		StandardEngine::begin_query(self)
+	}
+
 	fn current_version(&self) -> reifydb_type::Result<CommitVersion> {
 		StandardEngine::current_version(self)
 	}
 
 	fn done_until(&self) -> CommitVersion {
 		StandardEngine::done_until(self)
-	}
-
-	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
-		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}
 }
 

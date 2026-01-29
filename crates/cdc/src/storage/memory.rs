@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! In-memory CDC storage implementation.
-//!
-//! This implementation stores CDC entries in a thread-safe BTreeMap.
-//! It is suitable for testing and development, but not for production
-//! use where persistence is required.
-
 use std::{
 	collections::{BTreeMap, Bound},
 	sync::Arc,
@@ -20,24 +14,18 @@ use reifydb_core::{
 
 use super::{CdcStorage, CdcStorageResult, DropBeforeResult, DroppedCdcEntry};
 
-/// In-memory CDC storage backed by a BTreeMap.
-///
-/// This implementation is thread-safe and can be cloned (clones share
-/// the same underlying storage).
 #[derive(Clone)]
 pub struct MemoryCdcStorage {
 	inner: Arc<RwLock<BTreeMap<CommitVersion, Cdc>>>,
 }
 
 impl MemoryCdcStorage {
-	/// Create a new empty in-memory CDC storage.
 	pub fn new() -> Self {
 		Self {
 			inner: Arc::new(RwLock::new(BTreeMap::new())),
 		}
 	}
 
-	/// Create a new in-memory CDC storage with pre-populated entries.
 	pub fn with_entries(entries: impl IntoIterator<Item = Cdc>) -> Self {
 		let map: BTreeMap<CommitVersion, Cdc> = entries.into_iter().map(|cdc| (cdc.version, cdc)).collect();
 		Self {
@@ -45,24 +33,16 @@ impl MemoryCdcStorage {
 		}
 	}
 
-	/// Get the number of CDC entries in storage.
 	pub fn len(&self) -> usize {
 		self.inner.read().len()
 	}
 
-	/// Check if storage is empty.
 	pub fn is_empty(&self) -> bool {
 		self.inner.read().is_empty()
 	}
 
-	/// Clear all entries from storage.
 	pub fn clear(&self) {
 		self.inner.write().clear();
-	}
-
-	/// Get all versions in storage (for debugging).
-	pub fn versions(&self) -> Vec<CommitVersion> {
-		self.inner.read().keys().copied().collect()
 	}
 }
 

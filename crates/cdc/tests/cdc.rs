@@ -11,6 +11,7 @@ use std::{
 };
 
 use reifydb_cdc::consume::{
+	checkpoint::CdcCheckpoint,
 	consumer::{CdcConsume, CdcConsumer},
 	poll::{PollConsumer, PollConsumerConfig},
 };
@@ -24,7 +25,6 @@ use reifydb_core::{
 };
 use reifydb_engine::{engine::StandardEngine, test_utils::create_test_engine};
 use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
-use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_type::{
 	error::{Error, diagnostic::Diagnostic},
 	fragment::Fragment,
@@ -36,8 +36,8 @@ use reifydb_type::{
 fn test_consumer_lifecycle() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(100), None);
@@ -63,9 +63,10 @@ fn test_consumer_lifecycle() {
 fn test_event_processing() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
+
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	insert_test_events(&engine, 5);
@@ -109,9 +110,9 @@ fn test_event_processing() {
 fn test_checkpoint_persistence() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	insert_test_events(&engine, 3);
@@ -128,7 +129,7 @@ fn test_checkpoint_persistence() {
 
 	insert_test_events(&engine, 2);
 
-	let consumer2 = TestConsumer::new();
+	let consumer2 = TestConsumer::new(engine.clone(), consumer_id.clone());
 	let consumer2_clone = consumer2.clone();
 	let config2 = PollConsumerConfig::new(consumer_id.clone(), "cdc-poll-test", Duration::from_millis(50), None);
 	let runtime2 = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
@@ -160,9 +161,9 @@ fn test_checkpoint_persistence() {
 fn test_error_handling() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	insert_test_events(&engine, 3);
@@ -197,9 +198,9 @@ fn test_error_handling() {
 fn test_empty_events_handling() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), None);
@@ -229,13 +230,13 @@ fn test_multiple_consumers() {
 	let cdc_store = engine.cdc_store();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
-	let consumer1 = TestConsumer::new();
-	let consumer1_clone = consumer1.clone();
 	let consumer_id1 = CdcConsumerId::new("consumer-1");
+	let consumer1 = TestConsumer::new(engine.clone(), consumer_id1.clone());
+	let consumer1_clone = consumer1.clone();
 
-	let consumer2 = TestConsumer::new();
-	let consumer2_clone = consumer2.clone();
 	let consumer_id2 = CdcConsumerId::new("consumer-2");
+	let consumer2 = TestConsumer::new(engine.clone(), consumer_id2.clone());
+	let consumer2_clone = consumer2.clone();
 
 	insert_test_events(&engine, 3);
 
@@ -305,9 +306,9 @@ fn test_multiple_consumers() {
 fn test_non_table_events_filtered() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
 
 	let mut txn = engine.begin_command().expect("Failed to begin transaction");
 
@@ -361,8 +362,8 @@ fn test_non_table_events_filtered() {
 fn test_rapid_start_stop() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	for _ in 0..5 {
@@ -385,9 +386,9 @@ fn test_rapid_start_stop() {
 fn test_batch_size_limits_processing() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	// Insert 25 events
@@ -415,9 +416,9 @@ fn test_batch_size_limits_processing() {
 fn test_batch_size_one_processes_sequentially() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	// Insert 5 events
@@ -445,9 +446,9 @@ fn test_batch_size_one_processes_sequentially() {
 fn test_batch_size_none_processes_all_at_once() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	// Insert 20 events
@@ -475,9 +476,9 @@ fn test_batch_size_none_processes_all_at_once() {
 fn test_batch_size_larger_than_events() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	// Insert 5 events
@@ -505,9 +506,9 @@ fn test_batch_size_larger_than_events() {
 fn test_batch_size_with_checkpoint_resume() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	// Insert 15 events
@@ -530,7 +531,7 @@ fn test_batch_size_with_checkpoint_resume() {
 	insert_test_events(&engine, 3);
 
 	// Start a new consumer with same ID and batch size
-	let consumer2 = TestConsumer::new();
+	let consumer2 = TestConsumer::new(engine.clone(), consumer_id.clone());
 	let consumer2_clone = consumer2.clone();
 	let config2 = PollConsumerConfig::new(consumer_id.clone(), "cdc-poll-test", Duration::from_millis(50), Some(5));
 	let runtime2 = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
@@ -551,9 +552,9 @@ fn test_batch_size_with_checkpoint_resume() {
 fn test_batch_size_exact_match() {
 	let engine = create_test_engine();
 	let cdc_store = engine.cdc_store();
-	let consumer = TestConsumer::new();
-	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
 	// Insert exactly 10 events
@@ -583,13 +584,13 @@ fn test_multiple_consumers_different_batch_sizes() {
 	let cdc_store = engine.cdc_store();
 	let runtime = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 
-	let consumer1 = TestConsumer::new();
-	let consumer1_clone = consumer1.clone();
 	let consumer_id1 = CdcConsumerId::new("consumer-batch-3");
+	let consumer1 = TestConsumer::new(engine.clone(), consumer_id1.clone());
+	let consumer1_clone = consumer1.clone();
 
-	let consumer2 = TestConsumer::new();
-	let consumer2_clone = consumer2.clone();
 	let consumer_id2 = CdcConsumerId::new("consumer-unbounded");
+	let consumer2 = TestConsumer::new(engine.clone(), consumer_id2.clone());
+	let consumer2_clone = consumer2.clone();
 
 	// Insert 10 events
 	insert_test_events(&engine, 10);
@@ -629,14 +630,22 @@ fn test_multiple_consumers_different_batch_sizes() {
 }
 
 struct TestConsumer {
+	host: StandardEngine,
+	consumer_key: EncodedKey,
 	cdc_received: Arc<Mutex<Vec<Cdc>>>,
 	process_count: Arc<AtomicUsize>,
 	should_fail: Arc<AtomicBool>,
 }
 
 impl TestConsumer {
-	fn new() -> Self {
+	fn new(host: StandardEngine, consumer_id: CdcConsumerId) -> Self {
+		let consumer_key = CdcConsumerKey {
+			consumer: consumer_id,
+		}
+		.encode();
 		Self {
+			host,
+			consumer_key,
 			cdc_received: Arc::new(Mutex::new(Vec::new())),
 			process_count: Arc::new(AtomicUsize::new(0)),
 			should_fail: Arc::new(AtomicBool::new(false)),
@@ -663,6 +672,8 @@ impl TestConsumer {
 impl Clone for TestConsumer {
 	fn clone(&self) -> Self {
 		Self {
+			host: self.host.clone(),
+			consumer_key: self.consumer_key.clone(),
 			cdc_received: Arc::clone(&self.cdc_received),
 			process_count: Arc::clone(&self.process_count),
 			should_fail: Arc::clone(&self.should_fail),
@@ -671,9 +682,9 @@ impl Clone for TestConsumer {
 }
 
 impl CdcConsume for TestConsumer {
-	fn consume(&self, _txn: &mut CommandTransaction, transactions: Vec<Cdc>) -> reifydb_type::Result<()> {
+	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_type::Result<()>) + Send>) {
 		if self.should_fail.load(Ordering::SeqCst) {
-			return Err(Error(Diagnostic {
+			(reply)(Err(Error(Diagnostic {
 				code: "TEST_ERROR".to_string(),
 				statement: None,
 				message: "Test failure".to_string(),
@@ -684,13 +695,35 @@ impl CdcConsume for TestConsumer {
 				notes: vec![],
 				cause: None,
 				operator_chain: None,
-			}));
+			})));
+			return;
+		}
+
+		// Persist consumer checkpoint (so PollActor sees progress)
+		let latest_version = transactions.last().map(|c| c.version);
+		if let Some(version) = latest_version {
+			match self.host.begin_command() {
+				Ok(mut txn) => {
+					if let Err(e) = CdcCheckpoint::persist(&mut txn, &self.consumer_key, version) {
+						(reply)(Err(e));
+						return;
+					}
+					if let Err(e) = txn.commit() {
+						(reply)(Err(e));
+						return;
+					}
+				}
+				Err(e) => {
+					(reply)(Err(e));
+					return;
+				}
+			}
 		}
 
 		let mut received = self.cdc_received.lock().unwrap();
 		received.extend(transactions);
 		self.process_count.fetch_add(1, Ordering::SeqCst);
-		Ok(())
+		(reply)(Ok(()));
 	}
 }
 

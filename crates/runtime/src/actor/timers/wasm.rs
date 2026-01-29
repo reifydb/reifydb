@@ -13,15 +13,18 @@ use crate::actor::mailbox::ActorRef;
 /// Schedule a message to be sent after a delay.
 ///
 /// Returns a handle that can be used to cancel the timer.
-pub fn schedule_once<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, delay: Duration, msg: M) -> TimerHandle {
+pub fn schedule_once_fn<M: Send + 'static, F: FnOnce() -> M + Send + 'static>(
+	actor_ref: ActorRef<M>,
+	delay: Duration,
+	factory: F,
+) -> TimerHandle {
 	let handle = TimerHandle::new(next_timer_id());
 	let cancelled = handle.cancelled_flag();
 	let delay_ms = delay.as_millis() as i32;
 
-	// In WASM, we use setTimeout via wasm-bindgen
 	let closure = Closure::once(Box::new(move || {
 		if !cancelled.load(Ordering::SeqCst) {
-			let _ = actor_ref.send(msg);
+			let _ = actor_ref.send(factory());
 		}
 	}) as Box<dyn FnOnce()>);
 
@@ -29,7 +32,6 @@ pub fn schedule_once<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, delay: D
 	let _ = window
 		.set_timeout_with_callback_and_timeout_and_arguments_0(closure.as_ref().unchecked_ref(), delay_ms);
 
-	// Prevent closure from being dropped
 	closure.forget();
 
 	handle

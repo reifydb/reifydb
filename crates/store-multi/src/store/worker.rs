@@ -24,9 +24,9 @@ use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
-		system::ActorSystem,
+		system::{ActorConfig, ActorSystem},
 		timers::TimerHandle,
-		traits::{Actor, ActorConfig, Flow},
+		traits::{Actor, Directive},
 	},
 	clock::{Clock, Instant},
 };
@@ -143,7 +143,7 @@ impl DropActor {
 		state.last_flush = self.clock.instant();
 	}
 
-	#[instrument(name = "drop_actor::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
+	#[instrument(name = "drop::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
 	fn process_batch(storage: &HotStorage, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
 		// Collect all keys to drop, grouped by table: (key, version) pairs
 		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>> = HashMap::new();
@@ -204,6 +204,8 @@ impl Actor for DropActor {
 	type Message = DropMessage;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
+		debug!("Drop actor started");
+
 		// Schedule periodic tick for flushing partial batches
 		let timer_handle = ctx.schedule_repeat(Duration::from_millis(10), DropMessage::Tick);
 
@@ -214,16 +216,12 @@ impl Actor for DropActor {
 		}
 	}
 
-	fn pre_start(&self, _state: &mut Self::State, _ctx: &Context<Self::Message>) {
-		debug!("Drop actor started");
-	}
-
-	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Flow {
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		// Check for cancellation
 		if ctx.is_cancelled() {
 			// Flush remaining requests before stopping
 			self.flush(state);
-			return Flow::Stop;
+			return Directive::Stop;
 		}
 
 		match msg {
@@ -246,14 +244,14 @@ impl Actor for DropActor {
 				debug!("Drop actor received shutdown signal");
 				// Process any remaining requests before shutdown
 				self.flush(state);
-				return Flow::Stop;
+				return Directive::Stop;
 			}
 		}
 
-		Flow::Continue
+		Directive::Continue
 	}
 
-	fn post_stop(&self, _state: &mut Self::State) {
+	fn post_stop(&self) {
 		debug!("Drop actor stopped");
 	}
 

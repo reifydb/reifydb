@@ -12,11 +12,13 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-pub use pool::PoolActorHandle;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use tokio::{sync::Semaphore, task};
 
-use crate::actor::{context::CancellationToken, timers::scheduler::SchedulerHandle, traits::Actor};
+use crate::actor::{
+	context::CancellationToken, system::native::pool::PoolActorHandle, timers::scheduler::SchedulerHandle,
+	traits::Actor,
+};
 
 /// Configuration for the actor system.
 #[derive(Debug, Clone)]
@@ -25,20 +27,6 @@ pub struct ActorSystemConfig {
 	pub pool_threads: usize,
 	/// Maximum concurrent compute tasks (admission control).
 	pub max_in_flight: usize,
-}
-
-impl ActorSystemConfig {
-	/// Set the number of pool threads.
-	pub fn pool_threads(mut self, threads: usize) -> Self {
-		self.pool_threads = threads;
-		self
-	}
-
-	/// Set the maximum number of in-flight compute tasks.
-	pub fn max_in_flight(mut self, max: usize) -> Self {
-		self.max_in_flight = max;
-		self
-	}
 }
 
 /// Inner shared state for the actor system.
@@ -201,7 +189,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		SharedRuntimeConfig,
-		actor::{context::Context, traits::Flow},
+		actor::{context::Context, traits::Directive},
 	};
 
 	struct CounterActor;
@@ -221,15 +209,20 @@ mod tests {
 			0
 		}
 
-		fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
+		fn handle(
+			&self,
+			state: &mut Self::State,
+			msg: Self::Message,
+			_ctx: &Context<Self::Message>,
+		) -> Directive {
 			match msg {
 				CounterMsg::Inc => *state += 1,
 				CounterMsg::Get(tx) => {
 					let _ = tx.send(*state);
 				}
-				CounterMsg::Stop => return Flow::Stop,
+				CounterMsg::Stop => return Directive::Stop,
 			}
-			Flow::Continue
+			Directive::Continue
 		}
 	}
 

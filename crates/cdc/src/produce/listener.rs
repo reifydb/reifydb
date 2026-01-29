@@ -1,34 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! CDC event listener for PostCommitEvent.
-//!
-//! Listens to transaction commit events and forwards them to the CDC worker
-//! for background processing.
-
 use crossbeam_channel::Sender;
 use reifydb_core::event::{EventListener, transaction::PostCommitEvent};
 use reifydb_runtime::clock::Clock;
 
 use super::worker::CdcWorkItem;
 
-/// Listens to PostCommitEvent and forwards to CdcWorker.
-///
-/// This listener implements the EventListener trait and can be registered
-/// on an EventBus. When a transaction commits, it creates a CdcWorkItem
-/// from the commit deltas and sends it to the worker via a non-blocking
-/// channel send.
 pub struct CdcEventListener {
 	sender: Sender<CdcWorkItem>,
 	clock: Clock,
 }
 
 impl CdcEventListener {
-	/// Create a new CDC event listener.
-	///
-	/// # Arguments
-	/// - `sender`: The channel sender to forward work items to the CdcWorker
-	/// - `clock`: The clock to use for timestamps
 	pub fn new(sender: Sender<CdcWorkItem>, clock: Clock) -> Self {
 		Self {
 			sender,

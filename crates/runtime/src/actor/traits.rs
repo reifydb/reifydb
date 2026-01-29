@@ -5,12 +5,10 @@
 //!
 //! This module defines the fundamental abstractions for the actor model:
 //! - [`Actor`]: The trait that all actors must implement
-//! - [`Flow`]: Control flow for actor scheduling
-//! - [`ActorConfig`]: Configuration for actor behavior (re-exported from system)
+//! - [`Directive`]: Control flow for actor scheduling
+//! - [`ActorConfig`]: Configuration for actor behavior
 
-use crate::actor::context::Context;
-// Re-export config types from system module
-pub use crate::actor::system::config::ActorConfig;
+use crate::actor::{context::Context, system::ActorConfig};
 
 /// What the actor wants to do after handling a message.
 ///
@@ -20,7 +18,7 @@ pub use crate::actor::system::config::ActorConfig;
 ///   the back of the pool queue. `Park` goes idle until a new message arrives (zero pool resource usage).
 /// - **WASM**: Messages are processed inline (synchronously), so `Yield` and `Park` are no-ops.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Flow {
+pub enum Directive {
 	/// Keep processing messages immediately (up to batch limit).
 	Continue,
 
@@ -38,57 +36,6 @@ pub enum Flow {
 	Stop,
 }
 
-/// The core actor abstraction.
-///
-/// Actors are isolated units of computation that:
-/// - Own their state exclusively (no shared mutable state)
-/// - Process messages one at a time (no internal concurrency)
-/// - Communicate with other actors only via message passing
-/// - Yield cooperatively to allow fair scheduling
-///
-/// # Lifecycle
-///
-/// 1. `init()` - Create initial state
-/// 2. `pre_start()` - Called before processing begins
-/// 3. Loop: `handle()` messages, `idle()` when empty
-/// 4. `post_stop()` - Cleanup after actor stops
-///
-/// # Example
-///
-/// ```ignore
-/// struct Counter {
-///     name: String,
-/// }
-///
-/// enum CounterMsg {
-///     Increment,
-///     Decrement,
-///     Get { reply: oneshot::Sender<i64> },
-/// }
-///
-/// impl Actor for Counter {
-///     type State = i64;
-///     type Message = CounterMsg;
-///
-///     fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
-///         0
-///     }
-///
-///     fn handle(
-///         &self,
-///         state: &mut Self::State,
-///         msg: Self::Message,
-///         _ctx: &Context<Self::Message>,
-///     ) -> Flow {
-///         match msg {
-///             CounterMsg::Increment => *state += 1,
-///             CounterMsg::Decrement => *state -= 1,
-///             CounterMsg::Get { reply } => { let _ = reply.send(*state); }
-///         }
-///         Flow::Continue
-///     }
-/// }
-/// ```
 pub trait Actor: Send + Sync + 'static {
 	/// The actor's internal state (owned, not shared).
 	type State: Send + 'static;
@@ -101,12 +48,12 @@ pub trait Actor: Send + Sync + 'static {
 
 	/// Handle a single message. This is the core of the actor.
 	///
-	/// Return `Flow` to control scheduling:
+	/// Return `Directive` to control scheduling:
 	/// - `Continue`: Process next message immediately
 	/// - `Yield`: Give other actors a chance to run
 	/// - `Park`: Sleep until a message arrives
 	/// - `Stop`: Terminate this actor
-	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Flow;
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive;
 
 	/// Called when the mailbox is empty.
 	///
@@ -117,17 +64,12 @@ pub trait Actor: Send + Sync + 'static {
 	///
 	/// Default: Park (sleep until message arrives)
 	#[allow(unused_variables)]
-	fn idle(&self, state: &mut Self::State, ctx: &Context<Self::Message>) -> Flow {
-		Flow::Park
+	fn idle(&self, ctx: &Context<Self::Message>) -> Directive {
+		Directive::Park
 	}
 
-	/// Called once before message processing begins.
-	#[allow(unused_variables)]
-	fn pre_start(&self, state: &mut Self::State, ctx: &Context<Self::Message>) {}
-
 	/// Called once after actor stops (always called, even on panic).
-	#[allow(unused_variables)]
-	fn post_stop(&self, state: &mut Self::State) {}
+	fn post_stop(&self) {}
 
 	/// Actor configuration. Override for custom settings.
 	fn config(&self) -> ActorConfig {

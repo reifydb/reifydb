@@ -6,8 +6,6 @@
 //! This crate provides JavaScript-compatible bindings for running ReifyDB
 //! queries in a browser or Node.js environment with in-memory storage.
 
-use std::time::Duration;
-
 use reifydb_catalog::schema::SchemaRegistry;
 use reifydb_engine::engine::StandardEngine;
 use wasm_bindgen::prelude::*;
@@ -17,7 +15,7 @@ fn console_log(msg: &str) {
 	web_sys::console::log_1(&msg.into());
 }
 use reifydb_cdc::{
-	produce::actor::{CdcProducerEventListener, spawn_cdc_producer},
+	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
 	storage::CdcStore,
 };
 use reifydb_core::{event::transaction::PostCommitEvent, interface::auth::Identity};

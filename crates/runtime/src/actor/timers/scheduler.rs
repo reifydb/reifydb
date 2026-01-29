@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Centralized timer scheduler using a BinaryHeap min-heap.
-//!
-//! This module provides an efficient timer implementation that uses a single
-//! coordinator thread instead of spawning one OS thread per timer.
-//!
-//! # Architecture
-//!
-//! - Single coordinator thread with a `BinaryHeap` for timer management
-//! - Timer callbacks are dispatched to the rayon thread pool
-//! - Commands (schedule, shutdown) are sent via crossbeam channel
-//!
-//! # Memory Efficiency
-//!
-//! | Metric | Thread-per-timer | Scheduler |
-//! |--------|------------------|-----------|
-//! | Memory per timer | ~8KB stack | ~100 bytes |
-//! | 100 timers | 100 threads | 1 coordinator |
-
 use std::{
 	cmp::Ordering as CmpOrdering,
 	collections::BinaryHeap,
@@ -30,24 +12,22 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
 use rayon::ThreadPool;
 
 use super::{TimerHandle, next_timer_id};
 
-/// Internal timer entry stored in the heap.
 struct TimerEntry {
 	/// Unique timer ID.
 	id: u64,
 	/// When the timer should fire.
 	deadline: Instant,
-	/// The kind of timer (once or repeat).
+	/// The kind of timer
 	kind: TimerKind,
 	/// Shared flag to check if cancelled.
 	cancelled: Arc<AtomicBool>,
 }
 
-/// The kind of timer - either fires once or repeats.
 enum TimerKind {
 	/// Fire once and remove.
 	Once {
@@ -60,7 +40,6 @@ enum TimerKind {
 	},
 }
 
-// BinaryHeap is a max-heap, so we reverse the ordering to get a min-heap by deadline.
 impl Eq for TimerEntry {}
 
 impl PartialEq for TimerEntry {
@@ -70,6 +49,7 @@ impl PartialEq for TimerEntry {
 }
 
 impl Ord for TimerEntry {
+	// BinaryHeap is a max-heap, so we reverse the ordering to get a min-heap by deadline.
 	fn cmp(&self, other: &Self) -> CmpOrdering {
 		// Reverse ordering for min-heap behavior
 		other.deadline.cmp(&self.deadline).then_with(|| other.id.cmp(&self.id))
@@ -218,8 +198,8 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 				// Wait until next timer or command
 				match command_rx.recv_timeout(dur) {
 					Ok(cmd) => Some(cmd),
-					Err(crossbeam_channel::RecvTimeoutError::Timeout) => None,
-					Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+					Err(RecvTimeoutError::Timeout) => None,
+					Err(RecvTimeoutError::Disconnected) => {
 						// Channel closed, exit
 						return;
 					}

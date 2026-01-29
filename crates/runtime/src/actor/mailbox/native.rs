@@ -5,7 +5,7 @@
 
 use std::{fmt, sync::Arc, time::Duration};
 
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, bounded, unbounded};
 
 use super::{ActorRef, RecvError, RecvTimeoutError, SendError, TryRecvError};
 
@@ -115,14 +115,10 @@ impl<M> Mailbox<M> {
 	}
 }
 
-/// Create a mailbox channel pair with the given capacity.
-///
-/// If capacity is 0, creates an unbounded channel.
-pub(crate) fn create_mailbox<M: Send>(capacity: usize) -> (ActorRef<M>, Mailbox<M>) {
-	let (tx, rx) = if capacity == 0 {
-		crossbeam_channel::unbounded()
-	} else {
-		crossbeam_channel::bounded(capacity)
+pub(crate) fn create_mailbox<M: Send>(capacity: Option<usize>) -> (ActorRef<M>, Mailbox<M>) {
+	let (tx, rx) = match capacity {
+		None => unbounded(),
+		Some(n) => bounded(n),
 	};
 
 	(

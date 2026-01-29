@@ -20,7 +20,8 @@ use std::{
 
 use reifydb_runtime::actor::{
 	context::Context,
-	traits::{Actor, ActorConfig, Flow},
+	system::ActorConfig,
+	traits::{Actor, Directive},
 };
 
 use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD, watermark::WaiterHandle};
@@ -79,7 +80,7 @@ impl Actor for WatermarkActor {
 		}
 	}
 
-	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
 			WatermarkMsg::Begin {
 				version,
@@ -98,7 +99,7 @@ impl Actor for WatermarkActor {
 				state.register_waiter(version, waiter, &self.shared.done_until);
 			}
 		}
-		Flow::Continue
+		Directive::Continue
 	}
 
 	fn config(&self) -> ActorConfig {

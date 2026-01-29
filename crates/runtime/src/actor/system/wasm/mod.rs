@@ -14,7 +14,7 @@ use std::{
 use crate::actor::{
 	context::{CancellationToken, Context},
 	mailbox::ActorRef,
-	traits::{Actor, Flow},
+	traits::{Actor, Directive},
 };
 
 /// Configuration for the actor system (mostly ignored in WASM).
@@ -137,29 +137,28 @@ impl ActorSystem {
 			// Handle the message
 			if let Some(ref mut s) = *state_ref {
 				match actor_for_processor.handle(s, msg, &ctx_for_processor) {
-					Flow::Stop => {
-						tracing::debug!(actor = %_name, "Actor returned Flow::Stop");
-						actor_for_processor.post_stop(s);
+					Directive::Stop => {
+						tracing::debug!(actor = %_name, "Actor returned Directive::Stop");
+						actor_for_processor.post_stop();
 						actor_ref_for_closure.mark_stopped();
 					}
 					// Continue, Yield, Park are all no-ops in WASM
-					Flow::Continue | Flow::Yield | Flow::Park => {}
+					Directive::Continue | Directive::Yield | Directive::Park => {}
 				}
 			}
 		};
 
-		// Install the processor FIRST (so pre_start can send messages - they'll be queued)
+		// Install the processor FIRST (so init can send messages - they'll be queued)
 		{
 			let mut processor_ref = actor_ref.processor().borrow_mut();
 			*processor_ref = Some(Box::new(processor));
 		}
 
-		// EAGERLY initialize actor and call pre_start (matches native behavior)
+		// EAGERLY initialize actor (matches native behavior)
 		// This must happen AFTER processor is installed so messages can be sent
 		{
 			let mut state_ref = state.borrow_mut();
-			let mut initial_state = actor.init(&ctx_for_init);
-			actor.pre_start(&mut initial_state, &ctx_for_init);
+			let initial_state = actor.init(&ctx_for_init);
 			*state_ref = Some(initial_state);
 		}
 

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Poll-based CDC consumer that wraps the PollActor with the CdcConsumer interface.
-
 use std::{
 	sync::{
 		Arc,
@@ -121,7 +119,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollCons
 		self.actor_system.shutdown();
 
 		// Join the poll actor thread to ensure proper cleanup
-		// This ensures the PollActor (and its consumer, e.g. FlowCoordinator)
+		// This ensures the PollActor (and its consumer)
 		// are dropped cleanly before we return
 		if let Some(handle) = self.handle.take() {
 			let _ = handle.join();

@@ -14,7 +14,6 @@ mod native;
 #[cfg(reifydb_target = "wasm")]
 mod wasm;
 
-// Re-export Clock, MockClock, and Instant from platform-specific modules
 #[cfg(reifydb_target = "native")]
 pub use native::{Clock, Instant, MockClock};
 #[cfg(reifydb_target = "wasm")]

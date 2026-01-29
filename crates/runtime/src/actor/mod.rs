@@ -12,63 +12,6 @@
 //! - **WASM**: Messages are processed inline (synchronously) when sent
 //!
 //! All actor states must be `Send`.
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reifydb_runtime::{system::ActorSystem, actor::{Actor, Context, Flow, ActorConfig}};
-//!
-//! struct Counter;
-//!
-//! enum CounterMsg {
-//!     Inc,
-//!     Get(std::sync::mpsc::Sender<i64>),
-//! }
-//!
-//! impl Actor for Counter {
-//!     type State = i64;
-//!     type Message = CounterMsg;
-//!
-//!     fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
-//!         0
-//!     }
-//!
-//!     fn handle(
-//!         &self,
-//!         state: &mut Self::State,
-//!         msg: Self::Message,
-//!         _ctx: &Context<Self::Message>,
-//!     ) -> Flow {
-//!         match msg {
-//!             CounterMsg::Inc => *state += 1,
-//!             CounterMsg::Get(tx) => { let _ = tx.send(*state); }
-//!         }
-//!         Flow::Continue
-//!     }
-//! }
-//!
-//! // Create system and spawn actor
-//! let system = ActorSystem::new(Default::default());
-//! let handle = system.spawn("counter", Counter);
-//!
-//! // Send messages
-//! handle.actor_ref().send(CounterMsg::Inc).unwrap();
-//! ```
-//!
-//! # Testing
-//!
-//! Actors can be tested synchronously using the [`TestHarness`]:
-//!
-//! ```ignore
-//! use reifydb_runtime::actor::{TestHarness, Flow};
-//!
-//! let mut harness = TestHarness::new(Counter);
-//! harness.send(CounterMsg::Inc);
-//! harness.send(CounterMsg::Inc);
-//! harness.process_all();
-//!
-//! assert_eq!(*harness.state(), 2);
-//! ```
 
 pub mod context;
 pub mod mailbox;

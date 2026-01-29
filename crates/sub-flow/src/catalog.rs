@@ -8,12 +8,12 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use parking_lot::RwLock;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::{
 	column::ColumnDef, dictionary::DictionaryDef, flow::FlowId, primitive::PrimitiveId,
 };
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{Result, value::r#type::Type};
 
@@ -31,12 +31,6 @@ pub struct PrimitiveMetadata {
 /// Thread-safe cache for source metadata.
 ///
 /// Caches column definitions, type layouts, and dictionary info per PrimitiveId.
-///
-/// # Thread Safety
-///
-/// Uses `tokio::sync::RwLock` for async-safe concurrent access:
-/// - Read path: Multiple tasks can read cached metadata concurrently
-/// - Write path: Single writer for cache updates
 pub struct FlowCatalog {
 	catalog: Catalog,
 	sources: RwLock<HashMap<PrimitiveId, Arc<PrimitiveMetadata>>>,

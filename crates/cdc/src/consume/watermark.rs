@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Consumer watermark tracking for CDC retention coordination
-//!
-//! This module provides functionality to compute the minimum checkpoint version
-//! across all CDC consumers. This watermark serves as a safety floor for retention
-//! policies - versions at or above the watermark cannot be cleaned up because
-//! consumers still need them.
-
 use reifydb_core::{common::CommitVersion, key::cdc_consumer::CdcConsumerKeyRange};
 use reifydb_transaction::transaction::AsTransaction;
 
@@ -17,25 +10,6 @@ use reifydb_transaction::transaction::AsTransaction;
 /// The watermark represents the lowest commit version that any consumer has
 /// checkpointed. Retention policies must not clean up versions at or above
 /// this watermark, as consumers still need them.
-///
-/// # Consumer Discovery
-///
-/// Consumers are discovered by scanning checkpoint keys. A consumer exists
-/// if and only if it has written a checkpoint. Consumers without checkpoints
-/// are not considered.
-///
-/// # Return Value
-///
-/// Returns the minimum `CommitVersion` across all consumer checkpoints.
-/// If no consumers exist (no checkpoints found), returns `CommitVersion(1)`
-/// as a safe default (prevents cleanup of all versions).
-///
-/// # Example
-///
-/// ```ignore
-/// let watermark = compute_watermark(&mut txn)?;
-/// // Now retention can safely cleanup versions < watermark
-/// ```
 pub fn compute_watermark(txn: &mut impl AsTransaction) -> reifydb_type::Result<CommitVersion> {
 	let mut min_version: Option<CommitVersion> = None;
 

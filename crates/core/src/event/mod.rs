@@ -11,7 +11,7 @@ use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
 	system::ActorSystem,
-	traits::{Actor, Flow},
+	traits::{Actor, Directive},
 };
 
 pub mod flow;
@@ -100,7 +100,7 @@ impl Actor for EventBusActor {
 		HashMap::new()
 	}
 
-	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Flow {
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
 			EventBusMsg::Emit(envelope) => {
 				if let Some(list) = state.get(&envelope.type_id) {
@@ -116,7 +116,7 @@ impl Actor for EventBusActor {
 				let _ = tx.send(());
 			}
 		}
-		Flow::Continue
+		Directive::Continue
 	}
 }
 

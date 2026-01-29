@@ -350,16 +350,21 @@ pub mod tests {
 			)
 		}
 
+		fn begin_query(
+			&self,
+		) -> reifydb_type::Result<reifydb_transaction::transaction::query::QueryTransaction> {
+			Ok(reifydb_transaction::transaction::query::QueryTransaction::new(
+				self.multi.begin_query()?,
+				self.single.clone(),
+			))
+		}
+
 		fn current_version(&self) -> reifydb_type::Result<CommitVersion> {
 			Ok(CommitVersion(1))
 		}
 
 		fn done_until(&self) -> CommitVersion {
 			CommitVersion(1)
-		}
-
-		fn wait_for_mark_timeout(&self, _version: CommitVersion, _timeout: Duration) -> bool {
-			true
 		}
 	}
 

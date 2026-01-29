@@ -11,6 +11,6 @@
 //! - `CdcWorker`: Single-threaded worker for background CDC generation
 //! - `CdcEventListener`: Listens to PostCommitEvent and forwards to worker
 
-pub mod actor;
 pub mod listener;
+pub mod producer;
 pub mod worker;
