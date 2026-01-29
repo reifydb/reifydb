@@ -18,7 +18,7 @@ use crate::actor::{
 };
 
 /// Configuration for the actor system (mostly ignored in WASM).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ActorSystemConfig {
 	/// Number of worker threads (ignored in WASM).
 	pub pool_threads: usize,

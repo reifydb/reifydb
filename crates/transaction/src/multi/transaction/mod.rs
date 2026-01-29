@@ -194,10 +194,10 @@ impl Inner {
 
 impl MultiTransaction {
 	pub fn testing() -> Self {
-		use reifydb_runtime::actor::system::ActorSystemConfig;
+		use reifydb_runtime::SharedRuntimeConfig;
 		let multi_store = reifydb_store_multi::MultiStore::testing_memory();
 		let single_store = reifydb_store_single::SingleStore::testing_memory();
-		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let event_bus = EventBus::new(&actor_system);
 		Self::new(
 			multi_store,

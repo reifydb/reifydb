@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
+use reifydb_runtime::actor::system::ActorSystem;
 
 use crate::hot::storage::HotStorage;
 
@@ -15,12 +16,12 @@ pub struct MultiStoreConfig {
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
 	pub event_bus: EventBus,
+	pub actor_system: ActorSystem,
 }
 
 #[derive(Clone)]
 pub struct HotConfig {
 	pub storage: HotStorage,
-	pub retention_period: Duration,
 }
 
 /// Warm tier configuration.

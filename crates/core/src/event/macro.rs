@@ -225,7 +225,7 @@ mod tests {
 	#[test]
 	fn test_define_event_with_event_bus() {
 		let actor_system = reifydb_runtime::actor::system::ActorSystem::new(
-			reifydb_runtime::actor::system::ActorSystemConfig::default(),
+			reifydb_runtime::SharedRuntimeConfig::default().actor_system_config(),
 		);
 		let event_bus = EventBus::new(&actor_system);
 

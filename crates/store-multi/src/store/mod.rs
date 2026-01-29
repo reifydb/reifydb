@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::event::EventBus;
 use reifydb_runtime::{
-	actor::{
-		mailbox::ActorRef,
-		system::{ActorSystem, ActorSystemConfig},
-	},
+	SharedRuntimeConfig,
+	actor::{mailbox::ActorRef, system::ActorSystem},
 	clock::Clock,
 };
 use tracing::instrument;
@@ -52,8 +50,8 @@ impl StandardMultiStore {
 		let _ = config.warm;
 		let _ = config.cold;
 
-		// Create actor system for the drop actor
-		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		// Use the provided actor system for the drop actor
+		let actor_system = config.actor_system.clone();
 
 		// Spawn drop actor
 		let storage = hot.as_ref().expect("hot tier is required");
@@ -94,20 +92,22 @@ impl Deref for StandardMultiStore {
 
 impl StandardMultiStore {
 	pub fn testing_memory() -> Self {
-		Self::testing_memory_with_eventbus(EventBus::new(&ActorSystem::new(ActorSystemConfig::default())))
+		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		Self::testing_memory_with_eventbus(EventBus::new(&actor_system))
 	}
 
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
+		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		Self::new(MultiStoreConfig {
 			hot: Some(HotConfig {
 				storage: HotStorage::memory(),
-				retention_period: Duration::from_millis(100),
 			}),
 			warm: None,
 			cold: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
+			actor_system,
 		})
 		.unwrap()
 	}

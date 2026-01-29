@@ -109,6 +109,14 @@ impl SharedRuntimeConfig {
 		self.clock = clock;
 		self
 	}
+
+	/// Derive an [`ActorSystemConfig`] from this runtime config.
+	pub fn actor_system_config(&self) -> ActorSystemConfig {
+		ActorSystemConfig {
+			pool_threads: self.compute_threads,
+			max_in_flight: self.compute_max_in_flight,
+		}
+	}
 }
 
 // WASM runtime types - single-threaded execution support
@@ -117,6 +125,7 @@ use std::{pin::Pin, task::Poll};
 
 #[cfg(target_arch = "wasm32")]
 use futures_util::future::LocalBoxFuture;
+use tokio::runtime::Runtime;
 
 /// WASM-compatible handle (placeholder).
 #[cfg(target_arch = "wasm32")]
@@ -161,7 +170,7 @@ impl std::error::Error for WasmJoinError {}
 /// Inner shared state for the runtime (native).
 #[cfg(not(target_arch = "wasm32"))]
 struct SharedRuntimeInner {
-	tokio: tokio::runtime::Runtime,
+	tokio: Runtime,
 	system: ActorSystem,
 	clock: Clock,
 }
@@ -199,11 +208,7 @@ impl SharedRuntime {
 			.build()
 			.expect("Failed to create tokio runtime");
 
-		let system = ActorSystem::new(
-			ActorSystemConfig::default()
-				.pool_threads(config.compute_threads)
-				.max_in_flight(config.compute_max_in_flight),
-		);
+		let system = ActorSystem::new(config.actor_system_config());
 
 		Self(Arc::new(SharedRuntimeInner {
 			tokio,
@@ -215,11 +220,7 @@ impl SharedRuntime {
 	/// Create a new shared runtime from configuration.
 	#[cfg(target_arch = "wasm32")]
 	pub fn from_config(config: SharedRuntimeConfig) -> Self {
-		let system = ActorSystem::new(
-			ActorSystemConfig::default()
-				.pool_threads(config.compute_threads)
-				.max_in_flight(config.compute_max_in_flight),
-		);
+		let system = ActorSystem::new(config.actor_system_config());
 
 		Self(Arc::new(SharedRuntimeInner {
 			system,

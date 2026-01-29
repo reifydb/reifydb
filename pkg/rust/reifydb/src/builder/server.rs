@@ -149,11 +149,10 @@ impl ServerBuilder {
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		let runtime = SharedRuntime::from_config(runtime_config);
 
-		// Create storage
-		let (multi_store, single_store, transaction_single, eventbus) = self.storage_factory.create();
-
-		// Create transaction layer using the runtime's actor system
+		// Create storage using the runtime's actor system
 		let actor_system = runtime.actor_system();
+		let (multi_store, single_store, transaction_single, eventbus) =
+			self.storage_factory.create(&actor_system);
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			actor_system,

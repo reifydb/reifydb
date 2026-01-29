@@ -31,13 +31,29 @@ where
 	F: Fn() -> bool,
 {
 	let start = Instant::now();
+	let mut poll_count = 0u64;
 
 	while !condition() {
 		if start.elapsed() > timeout {
+			println!(
+				"[DEBUG:await] TIMEOUT elapsed={:.1}s polls={poll_count} msg={timeout_message}",
+				start.elapsed().as_secs_f64()
+			);
 			panic!("Timeout after {:?}: {}", timeout, timeout_message);
+		}
+		poll_count += 1;
+		if poll_count % 1000 == 0 {
+			println!(
+				"[DEBUG:await] poll #{poll_count} elapsed={:.1}s msg={timeout_message}",
+				start.elapsed().as_secs_f64()
+			);
 		}
 		sleep(poll_interval).await;
 	}
+	println!(
+		"[DEBUG:await] condition met after {poll_count} polls elapsed={:.3}s msg={timeout_message}",
+		start.elapsed().as_secs_f64()
+	);
 }
 
 /// Wait for a condition with default timeout and poll interval

@@ -178,12 +178,12 @@ impl EventBus {
 pub mod tests {
 	use std::sync::{Arc, Mutex};
 
-	use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
+	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
 
 	use crate::event::{Event, EventBus, EventListener};
 
 	fn test_actor_system() -> ActorSystem {
-		ActorSystem::new(ActorSystemConfig::default())
+		ActorSystem::new(SharedRuntimeConfig::default().actor_system_config())
 	}
 
 	define_event! {

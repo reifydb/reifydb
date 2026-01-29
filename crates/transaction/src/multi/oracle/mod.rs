@@ -408,7 +408,7 @@ pub mod tests {
 		atomic::{AtomicU64, Ordering},
 	};
 
-	use reifydb_runtime::actor::system::ActorSystemConfig;
+	use reifydb_runtime::SharedRuntimeConfig;
 
 	use super::*;
 	use crate::multi::transaction::version::VersionProvider;
@@ -443,7 +443,7 @@ pub mod tests {
 
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
-		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		Oracle::new(clock, actor_system, Clock::default())
 	}
 

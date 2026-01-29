@@ -16,7 +16,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::store::SingleVersionValues,
 };
-use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
+use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
 use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
 
@@ -65,7 +65,7 @@ impl Deref for StandardSingleStore {
 
 impl StandardSingleStore {
 	pub fn testing_memory() -> Self {
-		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		Self::testing_memory_with_eventbus(EventBus::new(&actor_system))
 	}
 

@@ -3,11 +3,16 @@
 
 //! Pool-based scheduler for actors with Send-compatible state.
 //!
-//! Actors run on the shared rayon thread pool with work-stealing.
+//! Each actor is a self-scheduling state machine on the shared rayon pool.
+//! No dedicated OS thread per actor — idle actors consume zero pool resources.
 
-use std::{thread, time::Duration};
+use std::sync::{
+	Arc, Mutex,
+	atomic::{AtomicU8, Ordering},
+};
 
 use crossbeam_channel::Receiver;
+use rayon::ThreadPool;
 
 use super::{ActorSystem, JoinError};
 use crate::actor::{
@@ -16,17 +21,154 @@ use crate::actor::{
 	traits::{Actor, Flow},
 };
 
-/// Interval for checking cancellation during blocked recv.
-const SHUTDOWN_CHECK_INTERVAL: Duration = Duration::from_millis(10);
-
 /// Maximum messages to process in one batch before yielding.
 const BATCH_SIZE: usize = 64;
+
+// Schedule states
+const IDLE: u8 = 0;
+const SCHEDULED: u8 = 1;
+const NOTIFIED: u8 = 2;
+
+/// Per-actor cell holding all state needed for pool-based scheduling.
+struct ActorCell<A: Actor> {
+	actor: A,
+	state: Mutex<Option<A::State>>,
+	rx: Receiver<A::Message>,
+	ctx: Context<A::Message>,
+	cancel: CancellationToken,
+	schedule_state: AtomicU8,
+	completion_tx: crossbeam_channel::Sender<()>,
+	pool: Arc<ThreadPool>,
+}
+
+/// Transition the actor to SCHEDULED and submit a task to the pool if it was IDLE.
+fn notify<A: Actor>(cell: &Arc<ActorCell<A>>)
+where
+	A::State: Send,
+{
+	// IDLE → SCHEDULED: we must submit. SCHEDULED → NOTIFIED: already queued. NOTIFIED → NOTIFIED: no-op.
+	let prev = cell.schedule_state.fetch_max(SCHEDULED, Ordering::AcqRel);
+	if prev == IDLE {
+		let cell = Arc::clone(cell);
+		let pool = Arc::clone(&cell.pool);
+		pool.spawn(move || run_batch(cell));
+	}
+}
+
+/// Process up to BATCH_SIZE messages, then decide whether to reschedule or go idle.
+fn run_batch<A: Actor>(cell: Arc<ActorCell<A>>)
+where
+	A::State: Send,
+{
+	let mut guard = cell.state.lock().unwrap();
+	let state = match guard.as_mut() {
+		Some(s) => s,
+		None => {
+			// Actor was already stopped (shouldn't happen, but be safe)
+			cell.schedule_state.store(IDLE, Ordering::Release);
+			return;
+		}
+	};
+
+	let mut processed = 0;
+	let mut flow = Flow::Continue;
+
+	while processed < BATCH_SIZE {
+		// Check cancellation
+		if cell.cancel.is_cancelled() {
+			flow = Flow::Stop;
+			break;
+		}
+
+		match cell.rx.try_recv() {
+			Ok(msg) => {
+				processed += 1;
+				flow = cell.actor.handle(state, msg, &cell.ctx);
+				match flow {
+					Flow::Continue => continue,
+					Flow::Yield | Flow::Park | Flow::Stop => break,
+				}
+			}
+			Err(crossbeam_channel::TryRecvError::Empty) => {
+				// No messages — run idle handler
+				flow = cell.actor.idle(state, &cell.ctx);
+				break;
+			}
+			Err(crossbeam_channel::TryRecvError::Disconnected) => {
+				// All senders dropped
+				tracing::debug!("Pool actor mailbox closed, stopping");
+				flow = Flow::Stop;
+				break;
+			}
+		}
+	}
+
+	match flow {
+		Flow::Stop => {
+			cell.actor.post_stop(state);
+			*guard = None;
+			cell.schedule_state.store(IDLE, Ordering::Release);
+			let _ = cell.completion_tx.send(());
+		}
+		Flow::Park => {
+			// Go idle — consume zero pool resources until next send()
+			cell.schedule_state.store(IDLE, Ordering::Release);
+			drop(guard);
+
+			// Check if messages arrived between try_recv and storing IDLE.
+			// If so, re-notify to avoid lost wakeup.
+			let has_msgs = !cell.rx.is_empty();
+			let cancelled = cell.cancel.is_cancelled();
+			if has_msgs || cancelled {
+				notify(&cell);
+			}
+		}
+		Flow::Yield | Flow::Continue => {
+			// End of batch or explicit yield — check if we should reschedule
+			drop(guard);
+
+			// Try NOTIFIED → SCHEDULED (new messages arrived during batch)
+			// or SCHEDULED → IDLE (no new messages, go idle)
+			let prev = cell.schedule_state.compare_exchange(
+				NOTIFIED,
+				SCHEDULED,
+				Ordering::AcqRel,
+				Ordering::Acquire,
+			);
+
+			match prev {
+				Ok(_) => {
+					// Was NOTIFIED, resubmit
+					let cell2 = Arc::clone(&cell);
+					cell.pool.spawn(move || run_batch(cell2));
+				}
+				Err(SCHEDULED) => {
+					// No new notifications — check if there are still messages
+					if !cell.rx.is_empty() || cell.cancel.is_cancelled() {
+						// Messages still pending, resubmit
+						let cell2 = Arc::clone(&cell);
+						cell.pool.spawn(move || run_batch(cell2));
+					} else {
+						// Go idle
+						cell.schedule_state.store(IDLE, Ordering::Release);
+						// Double check for lost wakeup
+						if !cell.rx.is_empty() || cell.cancel.is_cancelled() {
+							notify(&cell);
+						}
+					}
+				}
+				Err(_) => {
+					// IDLE — shouldn't happen during a running batch, but be safe
+				}
+			}
+		}
+	}
+}
 
 /// Handle to an actor running on the shared pool.
 pub struct PoolActorHandle<M> {
 	pub actor_ref: ActorRef<M>,
-	/// Join handle for the worker thread (pool actors still use a thread for their run loop)
-	join_handle: Option<thread::JoinHandle<()>>,
+	completion_rx: crossbeam_channel::Receiver<()>,
 }
 
 impl<M> PoolActorHandle<M> {
@@ -36,19 +178,12 @@ impl<M> PoolActorHandle<M> {
 	}
 
 	/// Wait for the actor to complete.
-	pub fn join(mut self) -> Result<(), JoinError> {
-		if let Some(handle) = self.join_handle.take() {
-			handle.join().map_err(|e| JoinError::new(format!("{:?}", e)))
-		} else {
-			Ok(())
-		}
+	pub fn join(self) -> Result<(), JoinError> {
+		self.completion_rx.recv().map_err(|_| JoinError::new("actor completion channel disconnected"))
 	}
 }
 
 /// Spawn an actor on the shared pool.
-///
-/// The actor runs its own message loop on a dedicated thread, but message
-/// processing can use the shared rayon pool for parallel work via `install()`.
 pub(super) fn spawn_on_pool<A: Actor>(system: &ActorSystem, name: &str, actor: A) -> PoolActorHandle<A::Message>
 where
 	A::State: Send,
@@ -58,68 +193,53 @@ where
 
 	let ctx = Context::new(actor_ref.clone(), system.clone(), system.cancellation_token());
 
-	let thread_name = name.to_string();
 	let cancel = system.cancellation_token();
 	let rx = mailbox.rx;
+	let pool = Arc::clone(system.pool());
 
-	let handle = thread::Builder::new()
-		.name(thread_name.clone())
-		.spawn(move || {
-			tracing::debug!(actor = %thread_name, "Pool actor thread starting");
-			run_actor_loop(actor, rx, ctx, cancel);
-			tracing::debug!(actor = %thread_name, "Pool actor thread stopped");
-		})
-		.expect("Failed to spawn actor thread");
+	let (completion_tx, completion_rx) = crossbeam_channel::bounded(1);
+
+	let cell = Arc::new(ActorCell {
+		actor,
+		state: Mutex::new(None),
+		rx,
+		ctx,
+		cancel,
+		schedule_state: AtomicU8::new(SCHEDULED),
+		completion_tx,
+		pool,
+	});
+
+	// Set up the notify callback so sends wake the actor
+	let cell_for_notify = Arc::clone(&cell);
+	let notify_fn: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+		notify(&cell_for_notify);
+	});
+	actor_ref.set_notify(notify_fn.clone());
+
+	// Register waker with system for cancellation wakeup
+	system.register_waker(notify_fn);
+
+	// Spawn init + first batch on the pool
+	let actor_name = name.to_string();
+	let cell_for_init = Arc::clone(&cell);
+	cell.pool.spawn(move || {
+		tracing::debug!(actor = %actor_name, "Pool actor starting");
+
+		// Initialize state
+		{
+			let mut guard = cell_for_init.state.lock().unwrap();
+			let state_val = cell_for_init.actor.init(&cell_for_init.ctx);
+			*guard = Some(state_val);
+			cell_for_init.actor.pre_start(guard.as_mut().unwrap(), &cell_for_init.ctx);
+		}
+
+		// Run first batch
+		run_batch(cell_for_init);
+	});
 
 	PoolActorHandle {
 		actor_ref,
-		join_handle: Some(handle),
+		completion_rx,
 	}
-}
-
-/// Run the actor's message loop.
-fn run_actor_loop<A: Actor>(actor: A, rx: Receiver<A::Message>, ctx: Context<A::Message>, cancel: CancellationToken)
-where
-	A::State: Send,
-{
-	// Initialize state
-	let mut state = actor.init(&ctx);
-
-	// Pre-start hook
-	actor.pre_start(&mut state, &ctx);
-
-	// Run the main loop
-	loop {
-		// Check for cancellation
-		if cancel.is_cancelled() {
-			tracing::debug!("Pool actor cancelled, stopping");
-			break;
-		}
-
-		// Use timeout to allow periodic cancellation checks
-		match rx.recv_timeout(SHUTDOWN_CHECK_INTERVAL) {
-			Ok(msg) => {
-				match actor.handle(&mut state, msg, &ctx) {
-					Flow::Stop => {
-						tracing::debug!("Pool actor returned Flow::Stop");
-						break;
-					}
-					// Continue, Yield, Park all continue the loop
-					Flow::Continue | Flow::Yield | Flow::Park => continue,
-				}
-			}
-			Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-				// Timeout elapsed, check cancellation on next iteration
-				continue;
-			}
-			Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-				// Channel closed (all senders dropped)
-				tracing::debug!("Pool actor mailbox closed, stopping");
-				break;
-			}
-		}
-	}
-
-	// Post-stop hook (always called)
-	actor.post_stop(&mut state);
 }

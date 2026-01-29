@@ -86,7 +86,7 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> PollConsumer<H, C> {
 	}
 }
 
-impl<H: CdcHost, C: CdcConsume + Send + 'static> CdcConsumer for PollConsumer<H, C> {
+impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollConsumer<H, C> {
 	fn start(&mut self) -> Result<()> {
 		if self.running.swap(true, Ordering::AcqRel) {
 			return Ok(()); // Already running

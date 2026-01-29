@@ -6,6 +6,8 @@
 //! This crate provides JavaScript-compatible bindings for running ReifyDB
 //! queries in a browser or Node.js environment with in-memory storage.
 
+use std::time::Duration;
+
 use reifydb_catalog::schema::SchemaRegistry;
 use reifydb_engine::engine::StandardEngine;
 use wasm_bindgen::prelude::*;
@@ -29,6 +31,10 @@ mod error;
 mod utils;
 
 pub use error::JsError;
+use reifydb_store_multi::{
+	config::{HotConfig, MultiStoreConfig},
+	hot::storage::HotStorage,
+};
 
 /// WebAssembly ReifyDB Engine
 ///
@@ -79,7 +85,17 @@ impl WasmDB {
 
 		// Create event bus and stores
 		let eventbus = EventBus::new(&actor_system);
-		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
+		let multi_store = MultiStore::standard(MultiStoreConfig {
+			hot: Some(HotConfig {
+				storage: HotStorage::memory(),
+			}),
+			warm: None,
+			cold: None,
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus: eventbus.clone(),
+			actor_system: actor_system.clone(),
+		});
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 
 		// Create transactions

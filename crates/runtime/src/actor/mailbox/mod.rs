@@ -172,6 +172,12 @@ impl<M: Send> ActorRef<M> {
 		}
 	}
 
+	/// Set the notify callback, called on successful send to wake the actor.
+	#[inline]
+	pub(crate) fn set_notify(&self, f: std::sync::Arc<dyn Fn() + Send + Sync>) {
+		self.inner.set_notify(f)
+	}
+
 	/// Send a message (non-blocking, may fail if mailbox full).
 	///
 	/// Returns `Ok(())` if the message was queued/processed successfully.

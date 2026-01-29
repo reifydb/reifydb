@@ -27,7 +27,7 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
+use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
 use reifydb_store_single::{
 	config::{HotConfig, SingleStoreConfig},
 	hot::tier::HotTier,
@@ -68,7 +68,9 @@ impl Runner {
 			hot: Some(HotConfig {
 				storage,
 			}),
-			event_bus: EventBus::new(&ActorSystem::new(ActorSystemConfig::default())),
+			event_bus: EventBus::new(&ActorSystem::new(
+				SharedRuntimeConfig::default().actor_system_config(),
+			)),
 		})
 		.unwrap();
 		Self {

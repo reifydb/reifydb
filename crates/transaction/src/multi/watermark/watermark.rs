@@ -118,7 +118,8 @@ impl WaterMark {
 	/// Returns the maximum index that has the property that all indices
 	/// less than or equal to it are done.
 	pub fn done_until(&self) -> CommitVersion {
-		CommitVersion(self.shared.done_until.load(Ordering::SeqCst))
+		let val = CommitVersion(self.shared.done_until.load(Ordering::SeqCst));
+		val
 	}
 
 	/// Returns the last index that was begun.
@@ -136,7 +137,8 @@ impl WaterMark {
 	/// timeout.
 	// #[cfg(feature = "native")]
 	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
-		if self.shared.done_until.load(Ordering::SeqCst) >= index.0 {
+		let current_done = self.shared.done_until.load(Ordering::SeqCst);
+		if current_done >= index.0 {
 			return true;
 		}
 
@@ -154,7 +156,8 @@ impl WaterMark {
 		}
 
 		// Wait with timeout using condvar
-		waiter.wait_timeout(timeout)
+		let result = waiter.wait_timeout(timeout);
+		result
 	}
 }
 
@@ -162,10 +165,7 @@ impl WaterMark {
 pub mod tests {
 	use std::{sync::atomic::AtomicUsize, thread::sleep, time::Duration};
 
-	use reifydb_runtime::{
-		actor::system::{ActorSystem, ActorSystemConfig},
-		clock::Clock,
-	};
+	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, clock::Clock};
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;
@@ -217,7 +217,7 @@ pub mod tests {
 
 	#[test]
 	fn test_high_concurrency() {
-		let system = ActorSystem::new(ActorSystemConfig::default());
+		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let watermark = Arc::new(WaterMark::new("concurrent".into(), &system));
 
 		const NUM_TASKS: usize = 50;
@@ -254,7 +254,7 @@ pub mod tests {
 
 	#[test]
 	fn test_concurrent_wait_for_mark() {
-		let system = ActorSystem::new(ActorSystemConfig::default());
+		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), &system));
 		let success_count = Arc::new(AtomicUsize::new(0));
 
@@ -418,7 +418,7 @@ pub mod tests {
 	where
 		F: FnOnce(Arc<WaterMark>),
 	{
-		let system = ActorSystem::new(ActorSystemConfig::default());
+		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let watermark = Arc::new(WaterMark::new("watermark".into(), &system));
 
 		f(watermark);

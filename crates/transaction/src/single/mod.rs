@@ -56,8 +56,8 @@ impl SingleTransaction {
 	}
 
 	pub fn testing() -> Self {
-		use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
-		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
+		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		Self::new(SingleStore::testing_memory(), EventBus::new(&actor_system))
 	}
 

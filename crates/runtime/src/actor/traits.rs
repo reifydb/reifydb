@@ -16,17 +16,19 @@ pub use crate::actor::system::config::ActorConfig;
 ///
 /// This enum controls actor behavior after processing each message.
 ///
-/// - **Native**: `Yield` and `Park` are no-ops since actors have their own threads
-/// - **WASM**: Messages are processed inline (synchronously), so `Yield` and `Park` are no-ops
+/// - **Native**: Actors run as batched tasks on a shared rayon pool. `Yield` ends the current batch and resubmits to
+///   the back of the pool queue. `Park` goes idle until a new message arrives (zero pool resource usage).
+/// - **WASM**: Messages are processed inline (synchronously), so `Yield` and `Park` are no-ops.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Flow {
-	/// Keep processing messages immediately.
+	/// Keep processing messages immediately (up to batch limit).
 	Continue,
 
-	/// Yield to other actors (no-op in current implementation).
+	/// End current batch, resubmit to back of pool queue.
 	Yield,
 
-	/// Block waiting for message (no-op in current implementation).
+	/// Go idle until a new message arrives. The actor consumes zero pool
+	/// resources while parked.
 	Park,
 
 	/// Stop this actor permanently.
@@ -87,7 +89,7 @@ pub enum Flow {
 ///     }
 /// }
 /// ```
-pub trait Actor: Send + 'static {
+pub trait Actor: Send + Sync + 'static {
 	/// The actor's internal state (owned, not shared).
 	type State: Send + 'static;
 

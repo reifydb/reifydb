@@ -3,7 +3,7 @@
 
 //! Native mailbox implementation using crossbeam-channel.
 
-use std::{fmt, time::Duration};
+use std::{fmt, sync::Arc, time::Duration};
 
 use crossbeam_channel::Receiver;
 
@@ -12,14 +12,18 @@ use super::{ActorRef, RecvError, RecvTimeoutError, SendError, TryRecvError};
 /// Native implementation of ActorRef inner.
 ///
 /// Uses `crossbeam-channel` for lock-free message passing.
+/// The notify callback is shared (via Arc) so that all clones of an ActorRef
+/// see the callback once it is set — even clones created before `set_notify`.
 pub struct ActorRefInner<M> {
 	pub(crate) tx: crossbeam_channel::Sender<M>,
+	notify: Arc<std::sync::OnceLock<Arc<dyn Fn() + Send + Sync>>>,
 }
 
 impl<M> Clone for ActorRefInner<M> {
 	fn clone(&self) -> Self {
 		Self {
 			tx: self.tx.clone(),
+			notify: Arc::clone(&self.notify),
 		}
 	}
 }
@@ -35,13 +39,25 @@ impl<M: Send> ActorRefInner<M> {
 	pub(crate) fn new(tx: crossbeam_channel::Sender<M>) -> Self {
 		Self {
 			tx,
+			notify: Arc::new(std::sync::OnceLock::new()),
 		}
+	}
+
+	/// Set the notify callback, called on successful send to wake the actor.
+	pub(crate) fn set_notify(&self, f: Arc<dyn Fn() + Send + Sync>) {
+		let _ = self.notify.set(f);
 	}
 
 	/// Send a message (non-blocking, may fail if mailbox full).
 	pub fn send(&self, msg: M) -> Result<(), SendError<M>> {
 		match self.tx.try_send(msg) {
-			Ok(()) => Ok(()),
+			Ok(()) => {
+				if let Some(f) = self.notify.get() {
+					f();
+				} else {
+				}
+				Ok(())
+			}
 			Err(crossbeam_channel::TrySendError::Disconnected(m)) => Err(SendError::Closed(m)),
 			Err(crossbeam_channel::TrySendError::Full(m)) => Err(SendError::Full(m)),
 		}
@@ -50,7 +66,12 @@ impl<M: Send> ActorRefInner<M> {
 	/// Send a message, blocking if the mailbox is full.
 	pub fn send_blocking(&self, msg: M) -> Result<(), SendError<M>> {
 		match self.tx.send(msg) {
-			Ok(()) => Ok(()),
+			Ok(()) => {
+				if let Some(f) = self.notify.get() {
+					f();
+				}
+				Ok(())
+			}
 			Err(crossbeam_channel::SendError(m)) => Err(SendError::Closed(m)),
 		}
 	}

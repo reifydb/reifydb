@@ -28,11 +28,7 @@ use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_rqlv2::compiler::Compiler;
-use reifydb_runtime::{
-	SharedRuntime, SharedRuntimeConfig,
-	actor::system::{ActorSystem, ActorSystemConfig},
-	clock::Clock,
-};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, actor::system::ActorSystem, clock::Clock};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
@@ -49,7 +45,7 @@ pub fn create_test_command_transaction() -> CommandTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let actor_system = ActorSystem::new(ActorSystemConfig::default());
+	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi =
@@ -63,7 +59,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let actor_system = ActorSystem::new(ActorSystemConfig::default());
+	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi =
@@ -134,7 +130,7 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 
 /// Create a test StandardEngine with all required dependencies registered.
 pub fn create_test_engine() -> StandardEngine {
-	let actor_system = ActorSystem::new(ActorSystemConfig::default());
+	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 	let eventbus = EventBus::new(&actor_system);
 	let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 	let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());

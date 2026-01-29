@@ -15,9 +15,9 @@
 //! # Example
 //!
 //! ```ignore
-//! use reifydb_runtime::system::{ActorSystem, ActorSystemConfig};
+//! use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
 //!
-//! let system = ActorSystem::new(ActorSystemConfig::default());
+//! let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 //!
 //! // Spawn an actor on the shared pool
 //! let counter_ref = system.spawn("counter", CounterActor::new());

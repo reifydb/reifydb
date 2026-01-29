@@ -82,7 +82,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 /// Actor state - minimal since most state is in the actor itself
 pub struct PollState;
 
-impl<H: CdcHost, C: CdcConsume + Send + 'static> Actor for PollActor<H, C> {
+impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C> {
 	type State = PollState;
 	type Message = PollMsg;
 
@@ -103,8 +103,9 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> Actor for PollActor<H, C> {
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Flow {
 		match msg {
 			PollMsg::Poll => {
+				let is_cancelled = ctx.is_cancelled();
 				// Check if we should stop
-				if ctx.is_cancelled() {
+				if is_cancelled {
 					debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
 					return Flow::Stop;
 				}

@@ -290,10 +290,7 @@ pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
 	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
-	use reifydb_runtime::{
-		actor::system::{ActorSystem, ActorSystemConfig},
-		clock::Clock,
-	};
+	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, clock::Clock};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_store_single::SingleStore;
 	use reifydb_transaction::{
@@ -324,7 +321,7 @@ pub mod tests {
 		fn new() -> Self {
 			let multi_store = MultiStore::testing_memory();
 			let single_store = SingleStore::testing_memory();
-			let actor_system = ActorSystem::new(ActorSystemConfig::default());
+			let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 			let event_bus = EventBus::new(&actor_system);
 			let single = SingleTransaction::new(single_store, event_bus.clone());
 			let multi = MultiTransaction::new(
@@ -371,7 +368,7 @@ pub mod tests {
 		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let resolver = store;
-		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::new();
 		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus, host);
@@ -413,7 +410,7 @@ pub mod tests {
 		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let resolver = store;
-		let actor_system = ActorSystem::new(ActorSystemConfig::default());
+		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::new();
 		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus, host);

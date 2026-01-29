@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
+use std::{error::Error as StdError, fmt::Write, path::Path};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -24,7 +24,7 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
+use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
 use reifydb_store_multi::{
 	config::{HotConfig, MultiStoreConfig},
 	hot::storage::HotStorage,
@@ -59,16 +59,17 @@ pub struct Runner {
 
 impl Runner {
 	fn new(storage: HotStorage) -> Self {
+		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let store = StandardMultiStore::new(MultiStoreConfig {
 			hot: Some(HotConfig {
 				storage,
-				retention_period: Duration::from_millis(200),
 			}),
 			warm: None,
 			cold: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
-			event_bus: reifydb_core::event::EventBus::new(&ActorSystem::new(ActorSystemConfig::default())),
+			event_bus: reifydb_core::event::EventBus::new(&actor_system),
+			actor_system,
 		})
 		.unwrap();
 		Self {

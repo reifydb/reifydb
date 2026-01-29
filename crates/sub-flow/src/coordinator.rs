@@ -124,7 +124,6 @@ impl FlowCoordinator {
 	/// 3. Join pool (it sends messages to workers)
 	/// 4. Join workers last
 	pub fn stop(&mut self) {
-		// Signal shutdown to all actors
 		self.actor_system.shutdown();
 
 		// Join coordinator first (it uses pool and workers)
@@ -132,12 +131,10 @@ impl FlowCoordinator {
 			let _ = handle.join();
 		}
 
-		// Join pool (it uses workers)
 		if let Some(handle) = self.pool_handle.take() {
 			let _ = handle.join();
 		}
 
-		// Join workers last
 		for handle in self.worker_handles.drain(..) {
 			let _ = handle.join();
 		}

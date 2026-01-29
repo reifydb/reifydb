@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_core::event::EventBus;
-use reifydb_runtime::{
-	actor::system::{ActorSystem, ActorSystemConfig},
-	clock::Clock,
-};
+use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
 use reifydb_store_multi::{
 	MultiStore,
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
@@ -40,31 +35,33 @@ pub enum StorageFactory {
 
 impl StorageFactory {
 	/// Create the storage.
-	pub(crate) fn create(&self) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
+	pub(crate) fn create(
+		&self,
+		actor_system: &ActorSystem,
+	) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 		match self {
-			StorageFactory::Memory => create_memory_store(),
-			StorageFactory::Sqlite(config) => create_sqlite_store(config.clone()),
+			StorageFactory::Memory => create_memory_store(actor_system),
+			StorageFactory::Sqlite(config) => create_sqlite_store(config.clone(), actor_system),
 		}
 	}
 }
 
 /// Internal: Create in-memory storage.
-fn create_memory_store() -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
-	let actor_system = ActorSystem::new(ActorSystemConfig::default());
-	let eventbus = EventBus::new(&actor_system);
+fn create_memory_store(actor_system: &ActorSystem) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
+	let eventbus = EventBus::new(actor_system);
 
 	// Create multi-version store
 	let multi_storage = HotStorage::memory();
 	let multi_store = MultiStore::standard(MultiStoreConfig {
 		hot: Some(MultiHotConfig {
 			storage: multi_storage,
-			retention_period: Duration::from_millis(200),
 		}),
 		warm: None,
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
+		actor_system: actor_system.clone(),
 	});
 
 	// Create single-version store
@@ -81,9 +78,11 @@ fn create_memory_store() -> (MultiStore, SingleStore, SingleTransaction, EventBu
 }
 
 /// Internal: Create SQLite storage with the given configuration.
-fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
-	let actor_system = ActorSystem::new(ActorSystemConfig::default());
-	let eventbus = EventBus::new(&actor_system);
+fn create_sqlite_store(
+	config: SqliteConfig,
+	actor_system: &ActorSystem,
+) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
+	let eventbus = EventBus::new(actor_system);
 
 	// Modify config to use multi.db in a directory named after the UUID
 	let multi_path = match &config.path {
@@ -101,13 +100,13 @@ fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, Single
 	let multi_store = MultiStore::standard(MultiStoreConfig {
 		hot: Some(MultiHotConfig {
 			storage: multi_storage,
-			retention_period: Duration::from_millis(200),
 		}),
 		warm: None,
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
+		actor_system: actor_system.clone(),
 	});
 
 	// Create single-version config with single.db in same directory

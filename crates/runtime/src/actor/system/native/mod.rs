@@ -9,8 +9,7 @@ mod pool;
 
 use std::{
 	fmt::{Debug, Formatter},
-	sync::Arc,
-	thread::available_parallelism,
+	sync::{Arc, Mutex},
 };
 
 pub use pool::PoolActorHandle;
@@ -26,15 +25,6 @@ pub struct ActorSystemConfig {
 	pub pool_threads: usize,
 	/// Maximum concurrent compute tasks (admission control).
 	pub max_in_flight: usize,
-}
-
-impl Default for ActorSystemConfig {
-	fn default() -> Self {
-		Self {
-			pool_threads: available_parallelism().map(|p| p.get()).unwrap_or(4),
-			max_in_flight: 32,
-		}
-	}
 }
 
 impl ActorSystemConfig {
@@ -57,6 +47,7 @@ struct ActorSystemInner {
 	permits: Arc<Semaphore>,
 	cancel: CancellationToken,
 	scheduler: SchedulerHandle,
+	wakers: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
 }
 
 /// Unified system for all concurrent work.
@@ -89,6 +80,7 @@ impl ActorSystem {
 				permits: Arc::new(Semaphore::new(config.max_in_flight)),
 				cancel: CancellationToken::new(),
 				scheduler,
+				wakers: Mutex::new(Vec::new()),
 			}),
 		}
 	}
@@ -106,6 +98,16 @@ impl ActorSystem {
 	/// Signal shutdown to all actors and the timer scheduler.
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
+		// Wake all parked actors so they see cancellation
+		let wakers = self.inner.wakers.lock().unwrap();
+		for waker in wakers.iter() {
+			waker();
+		}
+	}
+
+	/// Register a waker to be called on shutdown.
+	pub(crate) fn register_waker(&self, f: Arc<dyn Fn() + Send + Sync>) {
+		self.inner.wakers.lock().unwrap().push(f);
 	}
 
 	/// Get the timer scheduler for scheduling delayed/periodic callbacks.
@@ -197,7 +199,10 @@ impl std::error::Error for JoinError {}
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::actor::{context::Context, traits::Flow};
+	use crate::{
+		SharedRuntimeConfig,
+		actor::{context::Context, traits::Flow},
+	};
 
 	struct CounterActor;
 
@@ -230,7 +235,7 @@ mod tests {
 
 	#[test]
 	fn test_spawn_and_send() {
-		let system = ActorSystem::new(ActorSystemConfig::default());
+		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let handle = system.spawn("counter", CounterActor);
 
 		let actor_ref = handle.actor_ref().clone();
@@ -250,14 +255,14 @@ mod tests {
 
 	#[test]
 	fn test_install() {
-		let system = ActorSystem::new(ActorSystemConfig::default());
+		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let result = system.install(|| 42);
 		assert_eq!(result, 42);
 	}
 
 	#[tokio::test]
 	async fn test_compute() {
-		let system = ActorSystem::new(ActorSystemConfig::default());
+		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let result = system.compute(|| 42).await.unwrap();
 		assert_eq!(result, 42);
 	}
