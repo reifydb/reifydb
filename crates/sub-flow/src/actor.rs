@@ -16,8 +16,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::actor::{
 	context::Context,
-	system::config::ActorConfig,
-	traits::{Actor, Flow},
+	traits::{Actor, ActorConfig, Flow},
 };
 use tracing::{Span, error, instrument};
 

@@ -68,20 +68,19 @@ impl WasmDB {
 		#[cfg(feature = "console_error_panic_hook")]
 		console_error_panic_hook::set_once();
 
+		// Create event bus and stores
+		let eventbus = EventBus::new();
+		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
+		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
+
 		// WASM runtime with minimal threads (single-threaded)
 		let runtime = SharedRuntime::from_config(
 			SharedRuntimeConfig::default().async_threads(1).compute_threads(1).compute_max_in_flight(8),
 		);
 
 		// Create actor system at the top level - this will be shared by
-		// the transaction manager (watermark actors), flow subsystem (poll/coordinator actors),
-		// and EventBus (dispatcher actors)
+		// the transaction manager (watermark actors) and flow subsystem (poll/coordinator actors)
 		let actor_system = runtime.actor_system();
-
-		// Create event bus with actor system (WASM actors process inline, so behavior is preserved)
-		let eventbus = EventBus::new(actor_system.clone());
-		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
-		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 
 		// Create transactions
 		let single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
@@ -117,8 +116,7 @@ impl WasmDB {
 		let cdc_producer_handle = spawn_cdc_producer(&actor_system, cdc_store, multi_store.clone());
 
 		// Register event listener to forward PostCommitEvent to CDC producer
-		let cdc_listener =
-			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), runtime.clock().clone());
+		let cdc_listener = CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), runtime.clock().clone());
 		eventbus.register::<PostCommitEvent, _>(cdc_listener);
 		console_log("[WASM] CDC producer actor registered!");
 

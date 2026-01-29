@@ -290,10 +290,7 @@ pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
 	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
-	use reifydb_runtime::{
-		actor::system::{ActorSystem, ActorSystemConfig},
-		clock::Clock,
-	};
+	use reifydb_runtime::{actor::system::{ActorSystem, ActorSystemConfig}, clock::Clock};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_store_single::SingleStore;
 	use reifydb_transaction::{
@@ -304,10 +301,6 @@ pub mod tests {
 
 	use super::*;
 	use crate::storage::memory::MemoryCdcStorage;
-
-	fn test_actor_system() -> ActorSystem {
-		ActorSystem::new(ActorSystemConfig::default().pool_threads(2))
-	}
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
@@ -326,19 +319,14 @@ pub mod tests {
 
 	impl TestCdcHost {
 		fn new() -> Self {
+			let multi_store = MultiStore::testing_memory();
+			let single_store = SingleStore::testing_memory();
+			let event_bus = EventBus::new();
 			let actor_system = ActorSystem::new(ActorSystemConfig::default());
-			let event_bus = EventBus::new(actor_system.clone());
-			let multi_store = MultiStore::testing_memory_with_eventbus(event_bus.clone());
-			let single_store = SingleStore::testing_memory_with_eventbus(event_bus.clone());
 			let single = TransactionSingle::svl(single_store, event_bus.clone());
-			let multi = TransactionMulti::new(
-				multi_store,
-				single.clone(),
-				event_bus.clone(),
-				actor_system,
-				Clock::default(),
-			)
-			.unwrap();
+			let multi =
+				TransactionMulti::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default())
+					.unwrap();
 			Self {
 				multi,
 				single,
@@ -373,10 +361,9 @@ pub mod tests {
 	#[test]
 	fn test_worker_processes_insert() {
 		let storage = MemoryCdcStorage::new();
-		let actor_system = test_actor_system();
-		let event_bus = EventBus::new(actor_system);
-		let store = MultiStore::testing_memory_with_eventbus(event_bus.clone());
+		let store = MultiStore::testing_memory();
 		let resolver = store;
+		let event_bus = EventBus::new();
 		let host = TestCdcHost::new();
 		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus, host);
 
@@ -415,10 +402,9 @@ pub mod tests {
 	#[test]
 	fn test_worker_skips_drop_operations() {
 		let storage = MemoryCdcStorage::new();
-		let actor_system = test_actor_system();
-		let event_bus = EventBus::new(actor_system);
-		let store = MultiStore::testing_memory_with_eventbus(event_bus.clone());
+		let store = MultiStore::testing_memory();
 		let resolver = store;
+		let event_bus = EventBus::new();
 		let host = TestCdcHost::new();
 		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus, host);
 

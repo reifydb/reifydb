@@ -15,3 +15,12 @@ pub struct SingleStoreConfig {
 pub struct HotConfig {
 	pub storage: HotTier,
 }
+
+impl Default for SingleStoreConfig {
+	fn default() -> Self {
+		Self {
+			hot: None,
+			event_bus: EventBus::new(),
+		}
+	}
+}

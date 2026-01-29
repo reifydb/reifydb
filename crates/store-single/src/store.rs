@@ -63,14 +63,10 @@ impl Deref for StandardSingleStore {
 }
 
 impl StandardSingleStore {
-	/// Create a testing in-memory store with its own actor system.
 	pub fn testing_memory() -> Self {
-		use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
-		let actor_system = ActorSystem::new(ActorSystemConfig::default().pool_threads(2));
-		Self::testing_memory_with_eventbus(EventBus::new(actor_system))
+		Self::testing_memory_with_eventbus(EventBus::new())
 	}
 
-	/// Create a testing in-memory store with a provided event bus.
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
 		Self::new(SingleStoreConfig {
 			hot: Some(HotConfig {

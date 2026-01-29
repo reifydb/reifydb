@@ -272,9 +272,7 @@ async fn process_message(
 			let query = q.statements.join("; ");
 			let timeout = state.query_timeout();
 
-			match execute_query(state.actor_system(), state.engine_clone(), query, id, params, timeout)
-				.await
-			{
+			match execute_query(state.actor_system(), state.engine_clone(), query, id, params, timeout).await {
 				Ok(frames) => {
 					let ws_frames = convert_frames(frames);
 					Some(Response::query(&request.id, ws_frames).to_json())
@@ -300,15 +298,8 @@ async fn process_message(
 			let params = c.params.unwrap_or(Params::None);
 			let timeout = state.query_timeout();
 
-			match execute_command(
-				state.actor_system(),
-				state.engine_clone(),
-				c.statements,
-				id,
-				params,
-				timeout,
-			)
-			.await
+			match execute_command(state.actor_system(), state.engine_clone(), c.statements, id, params, timeout)
+				.await
 			{
 				Ok(frames) => {
 					let ws_frames = convert_frames(frames);

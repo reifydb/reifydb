@@ -22,8 +22,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::actor::{
 	context::Context,
-	system::config::ActorConfig,
-	traits::{Actor, Flow},
+	traits::{Actor, ActorConfig, Flow},
 };
 use reifydb_type::Result;
 use tracing::{debug, error};

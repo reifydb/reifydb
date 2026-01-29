@@ -67,15 +67,7 @@ pub(crate) async fn handle_subscribe(
 	debug!("Generated subscription statement: {}", create_sub_statement);
 
 	// Execute CREATE SUBSCRIPTION command
-	match execute_command(
-		state.actor_system(),
-		state.engine_clone(),
-		vec![create_sub_statement],
-		id,
-		params,
-		timeout,
-	)
-	.await
+	match execute_command(state.actor_system(), state.engine_clone(), vec![create_sub_statement], id, params, timeout).await
 	{
 		Ok(cmd_frames) => {
 			// Extract subscription ID

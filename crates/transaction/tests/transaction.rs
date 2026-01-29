@@ -24,10 +24,7 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::{
-	actor::system::{ActorSystem, ActorSystemConfig},
-	clock::Clock,
-};
+use reifydb_runtime::{actor::system::{ActorSystem, ActorSystemConfig}, clock::Clock};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_testing::testscript::{
@@ -50,10 +47,10 @@ test_each_path! { in "crates/transaction/tests/scripts/multi" as serializable_mu
 test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all => test_serializable }
 
 fn test_serializable(path: &Path) {
+	let multi_store = MultiStore::testing_memory();
+	let single_store = SingleStore::testing_memory();
+	let bus = EventBus::default();
 	let actor_system = ActorSystem::new(ActorSystemConfig::default());
-	let bus = EventBus::new(actor_system.clone());
-	let multi_store = MultiStore::testing_memory_with_eventbus(bus.clone());
-	let single_store = SingleStore::testing_memory_with_eventbus(bus.clone());
 	let engine = TransactionMulti::new(
 		multi_store,
 		TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, bus.clone())),

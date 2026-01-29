@@ -36,13 +36,13 @@
 
 use std::collections::VecDeque;
 
-#[cfg(reifydb_target = "native")]
-use crate::actor::mailbox::ActorRef;
 use crate::actor::{
 	context::{CancellationToken, Context},
-	system::{ActorSystem, ActorSystemConfig},
 	traits::{Actor, Flow},
 };
+#[cfg(reifydb_target = "native")]
+use crate::actor::mailbox::ActorRef;
+use crate::actor::system::{ActorSystem, ActorSystemConfig};
 
 /// Test harness for synchronous actor testing.
 ///

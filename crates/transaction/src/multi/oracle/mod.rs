@@ -8,7 +8,7 @@ use std::{
 
 use cleanup::cleanup_old_windows;
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
-use reifydb_runtime::{actor::system::ActorSystem, clock::Clock, sync::rwlock::RwLock};
+use reifydb_runtime::{sync::rwlock::RwLock, actor::system::ActorSystem, clock::Clock};
 use reifydb_type::Result;
 use tracing::{Span, instrument};
 

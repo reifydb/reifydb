@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 mod api;
+mod boot;
 mod builder;
 mod context;
 mod database;

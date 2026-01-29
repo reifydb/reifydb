@@ -49,6 +49,26 @@ pub struct MergeConfig {
 	pub enable_auto_eviction: bool,
 }
 
+impl Default for MultiStoreConfig {
+	fn default() -> Self {
+		Self {
+			hot: None,
+			warm: None,
+			cold: None,
+			retention: RetentionConfig {
+				hot: Duration::from_secs(300),
+				warm: Duration::from_secs(3600),
+			},
+			merge_config: MergeConfig {
+				merge_threshold_rows: 100_000,
+				merge_batch_size: 10_000,
+				enable_auto_eviction: true,
+			},
+			event_bus: EventBus::new(),
+		}
+	}
+}
+
 impl Default for RetentionConfig {
 	fn default() -> Self {
 		Self {

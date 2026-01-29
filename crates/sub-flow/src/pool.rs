@@ -17,8 +17,7 @@ use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
-		system::config::ActorConfig,
-		traits::{Actor, Flow},
+		traits::{Actor, ActorConfig, Flow},
 	},
 	clock::Clock,
 };

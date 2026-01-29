@@ -9,13 +9,13 @@ use std::{thread, time::Duration};
 
 use crossbeam_channel::{Receiver, RecvTimeoutError};
 use tracing::debug;
-
-use super::{ActorSystem, JoinError};
 use crate::actor::{
 	context::{CancellationToken, Context},
 	mailbox::{ActorRef, create_mailbox},
 	traits::{Actor, Flow},
 };
+
+use super::{ActorSystem, JoinError};
 
 /// Interval for checking cancellation during blocked recv.
 const SHUTDOWN_CHECK_INTERVAL: Duration = Duration::from_millis(10);
@@ -84,13 +84,15 @@ fn run_actor_loop<A: Actor>(actor: A, rx: Receiver<A::Message>, ctx: Context<A::
 
 		// Use timeout to allow periodic cancellation checks
 		match rx.recv_timeout(SHUTDOWN_CHECK_INTERVAL) {
-			Ok(msg) => match actor.handle(&mut state, msg, &ctx) {
-				Flow::Stop => {
-					debug!("Dedicated thread actor returned Flow::Stop");
-					break;
+			Ok(msg) => {
+				match actor.handle(&mut state, msg, &ctx) {
+					Flow::Stop => {
+						debug!("Dedicated thread actor returned Flow::Stop");
+						break;
+					}
+					Flow::Continue | Flow::Yield | Flow::Park => continue,
 				}
-				Flow::Continue | Flow::Yield | Flow::Park => continue,
-			},
+			}
 			Err(RecvTimeoutError::Timeout) => {
 				// Timeout elapsed, check cancellation on next iteration
 				continue;

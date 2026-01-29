@@ -198,10 +198,10 @@ impl Inner {
 impl TransactionMulti {
 	pub fn testing() -> Self {
 		use reifydb_runtime::actor::system::ActorSystemConfig;
+		let multi_store = reifydb_store_multi::MultiStore::testing_memory();
+		let single_store = reifydb_store_single::SingleStore::testing_memory();
+		let event_bus = EventBus::new();
 		let actor_system = ActorSystem::new(ActorSystemConfig::default());
-		let event_bus = EventBus::new(actor_system.clone());
-		let multi_store = reifydb_store_multi::MultiStore::testing_memory_with_eventbus(event_bus.clone());
-		let single_store = reifydb_store_single::SingleStore::testing_memory_with_eventbus(event_bus.clone());
 		Self::new(
 			multi_store,
 			TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, event_bus.clone())),
@@ -214,11 +214,7 @@ impl TransactionMulti {
 }
 
 impl TransactionMulti {
-	#[instrument(
-		name = "transaction::new",
-		level = "debug",
-		skip(store, single, event_bus, actor_system, metrics_clock)
-	)]
+	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus, actor_system, metrics_clock))]
 	pub fn new(
 		store: MultiStore,
 		single: TransactionSingle,

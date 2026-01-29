@@ -3,13 +3,9 @@
 
 //! Native clock implementation.
 
-use std::{
-	sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
-	},
-	time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[inline(always)]
 fn platform_now_nanos() -> u128 {
@@ -155,10 +151,7 @@ impl MockClock {
 #[derive(Clone)]
 enum InstantInner {
 	Real(std::time::Instant),
-	Mock {
-		captured_nanos: u128,
-		clock: MockClock,
-	},
+	Mock { captured_nanos: u128, clock: MockClock },
 }
 
 #[derive(Clone)]
@@ -171,10 +164,7 @@ impl Instant {
 	pub fn elapsed(&self) -> Duration {
 		match &self.inner {
 			InstantInner::Real(instant) => instant.elapsed(),
-			InstantInner::Mock {
-				captured_nanos,
-				clock,
-			} => {
+			InstantInner::Mock { captured_nanos, clock } => {
 				let now = clock.now_nanos();
 				let elapsed_nanos = now.saturating_sub(*captured_nanos);
 				Duration::from_nanos(elapsed_nanos as u64)
@@ -187,14 +177,8 @@ impl Instant {
 		match (&self.inner, &earlier.inner) {
 			(InstantInner::Real(this), InstantInner::Real(other)) => this.duration_since(*other),
 			(
-				InstantInner::Mock {
-					captured_nanos: this_nanos,
-					..
-				},
-				InstantInner::Mock {
-					captured_nanos: other_nanos,
-					..
-				},
+				InstantInner::Mock { captured_nanos: this_nanos, .. },
+				InstantInner::Mock { captured_nanos: other_nanos, .. },
 			) => {
 				let elapsed = this_nanos.saturating_sub(*other_nanos);
 				Duration::from_nanos(elapsed as u64)
@@ -208,10 +192,9 @@ impl std::fmt::Debug for Instant {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match &self.inner {
 			InstantInner::Real(instant) => f.debug_tuple("Instant::Real").field(instant).finish(),
-			InstantInner::Mock {
-				captured_nanos,
-				..
-			} => f.debug_tuple("Instant::Mock").field(captured_nanos).finish(),
+			InstantInner::Mock { captured_nanos, .. } => {
+				f.debug_tuple("Instant::Mock").field(captured_nanos).finish()
+			}
 		}
 	}
 }

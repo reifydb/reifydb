@@ -8,19 +8,23 @@
 mod pool;
 mod thread;
 
-use std::{
-	fmt::{Debug, Formatter},
-	sync::Arc,
-	thread::available_parallelism,
-};
-
-use pool::PoolActorHandle;
+use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
+use std::thread::available_parallelism;
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use thread::ThreadActorHandle;
 use tokio::{sync::Semaphore, task};
 
+use crate::actor::{
+	context::CancellationToken,
+	mailbox::ActorRef,
+	timers::scheduler::SchedulerHandle,
+	traits::Actor,
+};
+
 use super::config::ThreadingModel;
-use crate::actor::{context::CancellationToken, mailbox::ActorRef, timers::scheduler::SchedulerHandle, traits::Actor};
+
+pub use pool::PoolActorHandle;
+pub use thread::ThreadActorHandle;
 
 /// Configuration for the actor system.
 #[derive(Debug, Clone)]
@@ -34,7 +38,9 @@ pub struct ActorSystemConfig {
 impl Default for ActorSystemConfig {
 	fn default() -> Self {
 		Self {
-			pool_threads: available_parallelism().map(|p| p.get()).unwrap_or(4),
+			pool_threads: available_parallelism()
+				.map(|p| p.get())
+				.unwrap_or(4),
 			max_in_flight: 32,
 		}
 	}
@@ -204,7 +210,9 @@ impl ActorSystem {
 
 impl Debug for ActorSystem {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("ActorSystem").field("cancelled", &self.is_cancelled()).finish_non_exhaustive()
+		f.debug_struct("ActorSystem")
+			.field("cancelled", &self.is_cancelled())
+			.finish_non_exhaustive()
 	}
 }
 
@@ -260,7 +268,8 @@ impl std::error::Error for JoinError {}
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::actor::{context::Context, traits::Flow};
+	use crate::actor::context::Context;
+	use crate::actor::traits::Flow;
 
 	struct CounterActor;
 

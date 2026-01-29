@@ -9,12 +9,13 @@ use std::{thread, time::Duration};
 
 use crossbeam_channel::Receiver;
 
-use super::{ActorSystem, JoinError};
 use crate::actor::{
 	context::{CancellationToken, Context},
 	mailbox::{ActorRef, create_mailbox},
 	traits::{Actor, Flow},
 };
+
+use super::{ActorSystem, JoinError};
 
 /// Interval for checking cancellation during blocked recv.
 const SHUTDOWN_CHECK_INTERVAL: Duration = Duration::from_millis(10);

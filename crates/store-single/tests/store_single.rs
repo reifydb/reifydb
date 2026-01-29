@@ -27,7 +27,6 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
 use reifydb_store_single::{
 	config::{HotConfig, SingleStoreConfig},
 	hot::tier::HotTier,
@@ -40,10 +39,6 @@ use reifydb_testing::{
 };
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
-
-fn test_actor_system() -> ActorSystem {
-	ActorSystem::new(ActorSystemConfig::default().pool_threads(2))
-}
 
 test_each_path! { in "crates/store-single/tests/scripts/single" as store_single_memory => test_memory }
 test_each_path! { in "crates/store-single/tests/scripts/single" as store_single_sqlite => test_sqlite }
@@ -68,13 +63,11 @@ pub struct Runner {
 
 impl Runner {
 	fn new(storage: HotTier) -> Self {
-		let actor_system = test_actor_system();
-		let event_bus = EventBus::new(actor_system);
 		let store = StandardSingleStore::new(SingleStoreConfig {
 			hot: Some(HotConfig {
 				storage,
 			}),
-			event_bus,
+			event_bus: EventBus::new(),
 		})
 		.unwrap();
 		Self {

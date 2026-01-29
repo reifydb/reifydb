@@ -19,14 +19,12 @@ use reifydb_core::{
 	},
 	key::{Key, cdc_exclude::should_exclude_from_cdc},
 };
-use reifydb_runtime::{
-	actor::{
-		context::Context,
-		mailbox::ActorRef,
-		system::{ActorHandle, ActorSystem, config::ActorConfig},
-		traits::{Actor, Flow},
-	},
-	clock::Clock,
+use reifydb_runtime::clock::Clock;
+use reifydb_runtime::actor::{
+	context::Context,
+	mailbox::ActorRef,
+	traits::{Actor, ActorConfig, Flow},
+	system::{ActorHandle, ActorSystem},
 };
 use tracing::{debug, error, trace};
 
