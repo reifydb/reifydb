@@ -106,8 +106,15 @@ pub async fn handle_query(
 	let params = request.params.unwrap_or(Params::None);
 
 	// Execute with timeout
-	let frames = execute_query(state.actor_system(), state.engine_clone(), query, identity, params, state.query_timeout())
-		.await?;
+	let frames = execute_query(
+		state.actor_system(),
+		state.engine_clone(),
+		query,
+		identity,
+		params,
+		state.query_timeout(),
+	)
+	.await?;
 
 	Ok(Json(QueryResponse {
 		frames: convert_frames(frames),

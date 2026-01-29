@@ -9,7 +9,6 @@
 //! - [`ActorConfig`]: Configuration for actor behavior (re-exported from system)
 
 use crate::actor::context::Context;
-
 // Re-export config types from system module
 pub use crate::actor::system::config::ActorConfig;
 

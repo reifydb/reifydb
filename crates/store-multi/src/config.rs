@@ -49,7 +49,6 @@ pub struct MergeConfig {
 	pub enable_auto_eviction: bool,
 }
 
-
 impl Default for RetentionConfig {
 	fn default() -> Self {
 		Self {

@@ -22,7 +22,10 @@ impl TransactionSingle {
 	pub fn testing() -> Self {
 		use reifydb_runtime::actor::system::{ActorSystem, ActorSystemConfig};
 		let actor_system = ActorSystem::new(ActorSystemConfig::default());
-		Self::SingleVersionLock(TransactionSvl::new(SingleStore::testing_memory(), EventBus::new(&actor_system)))
+		Self::SingleVersionLock(TransactionSvl::new(
+			SingleStore::testing_memory(),
+			EventBus::new(&actor_system),
+		))
 	}
 
 	/// Helper for single-version queries.

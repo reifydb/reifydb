@@ -16,7 +16,7 @@ pub mod test_utils;
 pub mod utils;
 pub mod window;
 
-use reifydb_core::key::{flow_node_state::FlowNodeStateKey, EncodableKey};
+use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey};
 
 /// Iterator wrapper for state entries
 ///

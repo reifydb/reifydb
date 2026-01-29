@@ -9,15 +9,15 @@
 //! - Cancellation status for graceful shutdown
 //! - Timer scheduling (when enabled)
 
-use std::sync::{
-	Arc,
-	atomic::{AtomicBool, Ordering},
+use std::{
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	time::Duration,
 };
-use std::time::Duration;
 
-use crate::actor::mailbox::ActorRef;
-use crate::actor::timers::TimerHandle;
-use crate::actor::system::ActorSystem;
+use crate::actor::{mailbox::ActorRef, system::ActorSystem, timers::TimerHandle};
 
 /// A cancellation token for signaling shutdown.
 ///
@@ -124,9 +124,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	#[cfg(reifydb_target = "native")]
 	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
 		let actor_ref = self.self_ref.clone();
-		self.system.scheduler().schedule_repeat(interval, move || {
-			actor_ref.send(msg.clone()).is_ok()
-		})
+		self.system.scheduler().schedule_repeat(interval, move || actor_ref.send(msg.clone()).is_ok())
 	}
 
 	/// Schedule a message to be sent to this actor repeatedly at an interval.

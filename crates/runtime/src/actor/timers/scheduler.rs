@@ -50,7 +50,9 @@ struct TimerEntry {
 /// The kind of timer - either fires once or repeats.
 enum TimerKind {
 	/// Fire once and remove.
-	Once { callback: Box<dyn FnOnce() + Send> },
+	Once {
+		callback: Box<dyn FnOnce() + Send>,
+	},
 	/// Fire repeatedly until cancelled or callback returns false.
 	Repeat {
 		callback: Arc<dyn Fn() -> bool + Send + Sync>,
@@ -70,10 +72,7 @@ impl PartialEq for TimerEntry {
 impl Ord for TimerEntry {
 	fn cmp(&self, other: &Self) -> CmpOrdering {
 		// Reverse ordering for min-heap behavior
-		other
-			.deadline
-			.cmp(&self.deadline)
-			.then_with(|| other.id.cmp(&self.id))
+		other.deadline.cmp(&self.deadline).then_with(|| other.id.cmp(&self.id))
 	}
 }
 
@@ -257,7 +256,9 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 					heap.push(TimerEntry {
 						id,
 						deadline,
-						kind: TimerKind::Once { callback },
+						kind: TimerKind::Once {
+							callback,
+						},
 						cancelled,
 					});
 				}
@@ -272,7 +273,10 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 					heap.push(TimerEntry {
 						id,
 						deadline,
-						kind: TimerKind::Repeat { callback, interval },
+						kind: TimerKind::Repeat {
+							callback,
+							interval,
+						},
 						cancelled,
 					});
 				}
@@ -297,10 +301,15 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 			}
 
 			match entry.kind {
-				TimerKind::Once { callback } => {
+				TimerKind::Once {
+					callback,
+				} => {
 					pool.spawn(callback);
 				}
-				TimerKind::Repeat { callback, interval } => {
+				TimerKind::Repeat {
+					callback,
+					interval,
+				} => {
 					let cancelled = entry.cancelled.clone();
 					let callback_clone = callback.clone();
 
@@ -319,7 +328,10 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 						heap.push(TimerEntry {
 							id: entry.id,
 							deadline: now + interval,
-							kind: TimerKind::Repeat { callback, interval },
+							kind: TimerKind::Repeat {
+								callback,
+								interval,
+							},
 							cancelled: entry.cancelled,
 						});
 					}
@@ -331,17 +343,12 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 
 #[cfg(test)]
 mod tests {
+	use std::sync::{atomic::AtomicUsize, mpsc};
+
 	use super::*;
-	use std::sync::atomic::AtomicUsize;
-	use std::sync::mpsc;
 
 	fn test_pool() -> Arc<ThreadPool> {
-		Arc::new(
-			rayon::ThreadPoolBuilder::new()
-				.num_threads(2)
-				.build()
-				.unwrap(),
-		)
+		Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap())
 	}
 
 	#[test]

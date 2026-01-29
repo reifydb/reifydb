@@ -74,8 +74,7 @@ impl EmbeddedBuilder {
 		let runtime = SharedRuntime::from_config(runtime_config);
 
 		// Create storage
-		let (multi_store, single_store, transaction_single, eventbus) =
-			self.storage_factory.create();
+		let (multi_store, single_store, transaction_single, eventbus) = self.storage_factory.create();
 
 		// Create transaction layer using the runtime's actor system
 		let actor_system = runtime.actor_system();

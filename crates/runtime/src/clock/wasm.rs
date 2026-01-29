@@ -3,9 +3,13 @@
 
 //! WASM clock implementation.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
+	time::Duration,
+};
 
 #[inline(always)]
 fn platform_now_nanos() -> u128 {
@@ -49,7 +53,9 @@ impl Clock {
 	pub fn instant(&self) -> Instant {
 		match self {
 			Clock::Real => Instant {
-				inner: InstantInner::Real { millis: js_sys::Date::now() },
+				inner: InstantInner::Real {
+					millis: js_sys::Date::now(),
+				},
 			},
 			Clock::Mock(mock) => Instant {
 				inner: InstantInner::Mock {
@@ -151,8 +157,13 @@ impl MockClock {
 
 #[derive(Clone)]
 enum InstantInner {
-	Real { millis: f64 },
-	Mock { captured_nanos: u128, clock: MockClock },
+	Real {
+		millis: f64,
+	},
+	Mock {
+		captured_nanos: u128,
+		clock: MockClock,
+	},
 }
 
 #[derive(Clone)]
@@ -164,12 +175,17 @@ impl Instant {
 	#[inline]
 	pub fn elapsed(&self) -> Duration {
 		match &self.inner {
-			InstantInner::Real { millis } => {
+			InstantInner::Real {
+				millis,
+			} => {
 				let now = js_sys::Date::now();
 				let elapsed_millis = (now - millis).max(0.0);
 				Duration::from_millis(elapsed_millis as u64)
 			}
-			InstantInner::Mock { captured_nanos, clock } => {
+			InstantInner::Mock {
+				captured_nanos,
+				clock,
+			} => {
 				let now = clock.now_nanos();
 				let elapsed_nanos = now.saturating_sub(*captured_nanos);
 				Duration::from_nanos(elapsed_nanos as u64)
@@ -180,13 +196,26 @@ impl Instant {
 	#[inline]
 	pub fn duration_since(&self, earlier: Instant) -> Duration {
 		match (&self.inner, &earlier.inner) {
-			(InstantInner::Real { millis: this }, InstantInner::Real { millis: other }) => {
+			(
+				InstantInner::Real {
+					millis: this,
+				},
+				InstantInner::Real {
+					millis: other,
+				},
+			) => {
 				let elapsed_millis = (this - other).max(0.0);
 				Duration::from_millis(elapsed_millis as u64)
 			}
 			(
-				InstantInner::Mock { captured_nanos: this_nanos, .. },
-				InstantInner::Mock { captured_nanos: other_nanos, .. },
+				InstantInner::Mock {
+					captured_nanos: this_nanos,
+					..
+				},
+				InstantInner::Mock {
+					captured_nanos: other_nanos,
+					..
+				},
 			) => {
 				let elapsed = this_nanos.saturating_sub(*other_nanos);
 				Duration::from_nanos(elapsed as u64)
@@ -199,10 +228,13 @@ impl Instant {
 impl std::fmt::Debug for Instant {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match &self.inner {
-			InstantInner::Real { millis } => f.debug_tuple("Instant::Real").field(millis).finish(),
-			InstantInner::Mock { captured_nanos, .. } => {
-				f.debug_tuple("Instant::Mock").field(captured_nanos).finish()
-			}
+			InstantInner::Real {
+				millis,
+			} => f.debug_tuple("Instant::Real").field(millis).finish(),
+			InstantInner::Mock {
+				captured_nanos,
+				..
+			} => f.debug_tuple("Instant::Mock").field(captured_nanos).finish(),
 		}
 	}
 }

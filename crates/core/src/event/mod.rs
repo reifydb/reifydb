@@ -107,7 +107,9 @@ impl Actor for EventBusActor {
 					list.on_any(envelope.event);
 				}
 			}
-			EventBusMsg::Register { installer } => {
+			EventBusMsg::Register {
+				installer,
+			} => {
 				installer(state);
 			}
 			EventBusMsg::WaitForCompletion(tx) => {
@@ -146,13 +148,12 @@ impl EventBus {
 				let list = map
 					.entry(type_id)
 					.or_insert_with(|| Box::new(EventListenerListImpl::<E>::new()));
-				list.as_any_mut()
-					.downcast_mut::<EventListenerListImpl<E>>()
-					.unwrap()
-					.add(listener);
+				list.as_any_mut().downcast_mut::<EventListenerListImpl<E>>().unwrap().add(listener);
 			});
 
-		let _ = self.actor_ref.send(EventBusMsg::Register { installer });
+		let _ = self.actor_ref.send(EventBusMsg::Register {
+			installer,
+		});
 	}
 
 	pub fn emit<E>(&self, event: E)

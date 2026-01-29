@@ -12,10 +12,9 @@
 //! - **Native**: Uses `crossbeam-channel` for lock-free message passing between threads
 //! - **WASM**: Uses `Rc<RefCell>` processor for inline (synchronous) message handling
 
-use std::fmt;
-
 #[cfg(reifydb_target = "wasm")]
 use std::cell::{Cell, RefCell};
+use std::fmt;
 #[cfg(reifydb_target = "wasm")]
 use std::rc::Rc;
 #[cfg(reifydb_target = "wasm")]

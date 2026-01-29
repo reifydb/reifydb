@@ -24,7 +24,10 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::{actor::system::{ActorSystem, ActorSystemConfig}, clock::Clock};
+use reifydb_runtime::{
+	actor::system::{ActorSystem, ActorSystemConfig},
+	clock::Clock,
+};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_testing::testscript::{

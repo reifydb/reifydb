@@ -214,7 +214,11 @@ impl TransactionMulti {
 }
 
 impl TransactionMulti {
-	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus, actor_system, metrics_clock))]
+	#[instrument(
+		name = "transaction::new",
+		level = "debug",
+		skip(store, single, event_bus, actor_system, metrics_clock)
+	)]
 	pub fn new(
 		store: MultiStore,
 		single: TransactionSingle,
