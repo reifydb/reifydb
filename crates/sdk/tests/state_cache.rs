@@ -10,8 +10,10 @@
 use std::collections::HashMap;
 
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
-use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
-use reifydb_core::interface::change::Change;
+use reifydb_core::{
+	interface::{catalog::flow::FlowNodeId, change::Change},
+	value::column::columns::Columns,
+};
 use reifydb_sdk::{
 	error::Result,
 	operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},

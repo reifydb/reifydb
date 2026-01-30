@@ -13,12 +13,13 @@
 use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
-		id::{DictionaryId, RingBufferId, TableId, ViewId},
+		id::{RingBufferId, TableId, ViewId},
 		primitive::PrimitiveId,
 		vtable::VTableId,
 	},
 	key::kind::KeyKind,
 };
+use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::{
 	MetricId,

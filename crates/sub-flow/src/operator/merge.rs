@@ -4,11 +4,16 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId, internal,
-	util::encoding::keycode::serializer::KeySerializer, value::column::columns::Columns,
+	encoded::key::EncodedKey,
+	interface::{
+		catalog::flow::FlowNodeId,
+		change::{Change, ChangeOrigin, Diff},
+	},
+	internal,
+	util::encoding::keycode::serializer::KeySerializer,
+	value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_core::interface::change::{Change, ChangeOrigin, Diff};
 use reifydb_type::{error::Error, value::row_number::RowNumber};
 
 use crate::{
@@ -44,8 +49,8 @@ impl MergeOperator {
 	/// Find which parent index a change originated from
 	fn determine_parent_index(&self, change: &Change) -> Option<usize> {
 		match &change.origin {
-			ChangeOrigin::Internal(from_node) => self.input_nodes.iter().position(|n| n == from_node),
-			ChangeOrigin::External(_) => None,
+			ChangeOrigin::Flow(from_node) => self.input_nodes.iter().position(|n| n == from_node),
+			ChangeOrigin::Primitive(_) => None,
 		}
 	}
 

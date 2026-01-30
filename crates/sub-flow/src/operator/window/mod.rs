@@ -33,6 +33,7 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 		schema::Schema,
 	},
+	interface::change::{Change, Diff},
 	row::Row,
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{Column, columns::Columns, data::ColumnData},
@@ -46,7 +47,6 @@ use reifydb_runtime::{
 	clock::Clock,
 	hash::{Hash128, xxh3_128},
 };
-use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,

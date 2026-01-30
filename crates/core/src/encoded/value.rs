@@ -172,7 +172,7 @@ pub mod tests {
 		constraint::TypeConstraint,
 		date::Date,
 		datetime::DateTime,
-		dictionary::DictionaryEntryId,
+		dictionary::{DictionaryEntryId, DictionaryId},
 		duration::Duration,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
@@ -181,10 +181,7 @@ pub mod tests {
 		uuid::{Uuid4, Uuid7},
 	};
 
-	use crate::{
-		encoded::schema::{Schema, SchemaField},
-		interface::catalog::id::DictionaryId,
-	};
+	use crate::encoded::schema::{Schema, SchemaField};
 
 	#[test]
 	fn test_set_utf8_with_dynamic_content() {

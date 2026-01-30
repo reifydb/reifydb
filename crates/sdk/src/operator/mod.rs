@@ -12,10 +12,12 @@ pub mod context;
 
 use column::OperatorColumnDef;
 use context::OperatorContext;
-use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_core::{
+	interface::{catalog::flow::FlowNodeId, change::Change},
+	value::column::columns::Columns,
+};
 
 use crate::error::Result;
-use reifydb_core::interface::change::Change;
 
 /// Static metadata about an operator type
 /// This trait provides compile-time constant metadata

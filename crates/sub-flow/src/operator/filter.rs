@@ -3,13 +3,19 @@
 
 use std::sync::{Arc, LazyLock};
 
-use reifydb_core::{interface::catalog::flow::FlowNodeId, internal_err, value::column::columns::Columns};
+use reifydb_core::{
+	interface::{
+		catalog::flow::FlowNodeId,
+		change::{Change, Diff},
+	},
+	internal_err,
+	value::column::columns::Columns,
+};
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
 };
 use reifydb_rql::expression::Expression;
-use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::{
 	params::Params,
 	value::{Value, row_number::RowNumber},

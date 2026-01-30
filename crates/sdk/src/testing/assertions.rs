@@ -3,12 +3,11 @@
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, schema::Schema},
+	interface::change::{Change, Diff},
 	row::Row,
 	value::column::columns::Columns,
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
-
-use reifydb_core::interface::change::{Change, Diff};
 
 use crate::testing::state::TestStateStore;
 

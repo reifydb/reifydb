@@ -12,6 +12,7 @@ use reifydb_core::{
 	},
 	interface::{
 		catalog::{flow::FlowNodeId, subscription::IMPLICIT_COLUMN_OP},
+		change::{Change, Diff},
 		resolved::ResolvedSubscription,
 	},
 	key::subscription_row::SubscriptionRowKey,
@@ -19,7 +20,6 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::{fragment::Fragment, value::row_number::RowNumber};
 
 use super::encode_row_at_index;
@@ -92,7 +92,7 @@ impl Operator for SinkSubscriptionOperator {
 				Diff::Insert {
 					post,
 				} => {
-					// Add implicit _op column
+					// Add implicit _op column (already decoded at source)
 					let with_implicit = Self::add_implicit_columns(post, DiffType::Insert);
 
 					// Derive and persist schema from columns with implicit fields
@@ -121,7 +121,7 @@ impl Operator for SinkSubscriptionOperator {
 					pre: _pre,
 					post,
 				} => {
-					// Add implicit _op column
+					// Add implicit _op column (already decoded at source)
 					let with_implicit = Self::add_implicit_columns(post, DiffType::Update);
 
 					// Derive and persist schema from columns with implicit fields
@@ -149,7 +149,7 @@ impl Operator for SinkSubscriptionOperator {
 				Diff::Remove {
 					pre,
 				} => {
-					// Add implicit _op column
+					// Add implicit _op column (already decoded at source)
 					let with_implicit = Self::add_implicit_columns(pre, DiffType::Remove);
 
 					// Derive and persist schema from columns with implicit fields

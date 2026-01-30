@@ -3,13 +3,10 @@
 
 use std::ops::Deref;
 
-use reifydb_type::value::constraint::TypeConstraint;
+use reifydb_type::value::{constraint::TypeConstraint, dictionary::DictionaryId};
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{
-	id::{ColumnId, DictionaryId},
-	policy::ColumnPolicy,
-};
+use crate::interface::catalog::{id::ColumnId, policy::ColumnPolicy};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnDef {

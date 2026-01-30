@@ -6,11 +6,11 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, CdcBatch},
 };
+use reifydb_runtime::sync::rwlock::RwLock;
 
 use super::{CdcStorage, CdcStorageResult, DropBeforeResult, DroppedCdcEntry};
 

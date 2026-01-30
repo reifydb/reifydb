@@ -4,17 +4,19 @@
 use reifydb_core::{
 	encoded::encoded::EncodedValues,
 	error::diagnostic::catalog::dictionary_already_exists,
-	interface::catalog::{
-		dictionary::DictionaryDef,
-		id::{DictionaryId, NamespaceId},
-	},
+	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
 	key::{
 		dictionary::{DictionaryKey, DictionarySequenceKey},
 		namespace_dictionary::NamespaceDictionaryKey,
 	},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::{fragment::Fragment, return_error, util::cowvec::CowVec, value::r#type::Type};
+use reifydb_type::{
+	fragment::Fragment,
+	return_error,
+	util::cowvec::CowVec,
+	value::{dictionary::DictionaryId, r#type::Type},
+};
 
 use crate::{CatalogStore, store::sequence::system::SystemSequence};
 

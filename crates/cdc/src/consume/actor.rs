@@ -249,32 +249,33 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			.filter(|cdc| {
 				// Pass through if there are decoded row changes (columnar Change objects)
 				!cdc.changes.is_empty()
-				|| cdc.system_changes.iter().any(|sys_change| match sys_change {
-					SystemChange::Insert {
-						key,
-						..
-					}
-					| SystemChange::Update {
-						key,
-						..
-					}
-					| SystemChange::Delete {
-						key,
-						..
-					} => {
-						if let Some(kind) = Key::kind(key) {
-							matches!(
-								kind,
-								KeyKind::Row
-									| KeyKind::Flow | KeyKind::FlowNode
-									| KeyKind::FlowNodeByFlow | KeyKind::FlowEdge
-									| KeyKind::FlowEdgeByFlow | KeyKind::NamespaceFlow
-							)
-						} else {
-							false
+					|| cdc.system_changes.iter().any(|sys_change| match sys_change {
+						SystemChange::Insert {
+							key,
+							..
 						}
-					}
-				})
+						| SystemChange::Update {
+							key,
+							..
+						}
+						| SystemChange::Delete {
+							key,
+							..
+						} => {
+							if let Some(kind) = Key::kind(key) {
+								matches!(
+									kind,
+									KeyKind::Row
+										| KeyKind::Flow | KeyKind::FlowNode
+										| KeyKind::FlowNodeByFlow | KeyKind::FlowEdge
+										| KeyKind::FlowEdgeByFlow
+										| KeyKind::NamespaceFlow
+								)
+							} else {
+								false
+							}
+						}
+					})
 			})
 			.collect::<Vec<_>>();
 

@@ -170,13 +170,11 @@ pub mod tests {
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		encoded::key::EncodedKey,
-		interface::catalog::flow::FlowNodeId,
+		interface::{catalog::flow::FlowNodeId, change::Change},
 		key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 		value::column::columns::Columns,
 	};
 	use reifydb_type::value::{Value, row_number::RowNumber};
-
-	use reifydb_core::interface::change::Change;
 
 	use crate::{
 		error::Result,

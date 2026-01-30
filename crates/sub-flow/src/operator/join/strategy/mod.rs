@@ -3,10 +3,10 @@
 
 use reifydb_core::{
 	common::{CommitVersion, JoinType},
+	interface::change::Diff,
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_core::interface::change::Diff;
 
 use crate::{
 	operator::join::{

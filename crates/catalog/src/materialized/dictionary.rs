@@ -3,11 +3,9 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{
-		dictionary::DictionaryDef,
-		id::{DictionaryId, NamespaceId},
-	},
+	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
 };
+use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::materialized::{MaterializedCatalog, MultiVersionDictionaryDef};
 

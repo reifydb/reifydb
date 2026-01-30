@@ -101,7 +101,12 @@ pub struct Cdc {
 }
 
 impl Cdc {
-	pub fn new(version: CommitVersion, timestamp: u64, changes: Vec<Change>, system_changes: Vec<SystemChange>) -> Self {
+	pub fn new(
+		version: CommitVersion,
+		timestamp: u64,
+		changes: Vec<Change>,
+		system_changes: Vec<SystemChange>,
+	) -> Self {
 		Self {
 			version,
 			timestamp,

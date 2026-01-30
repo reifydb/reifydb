@@ -4,13 +4,14 @@
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::schema::{Schema, SchemaField},
-	interface::catalog::{flow::FlowNodeId, id::TableId, primitive::PrimitiveId},
+	interface::{
+		catalog::{flow::FlowNodeId, id::TableId, primitive::PrimitiveId},
+		change::{Change, ChangeOrigin, Diff},
+	},
 	row::Row,
 	value::column::columns::Columns,
 };
 use reifydb_type::value::{Value, row_number::RowNumber, r#type::Type};
-
-use reifydb_core::interface::change::{Change, ChangeOrigin, Diff};
 
 /// Builder for creating test rows
 pub struct TestRowBuilder {
@@ -85,7 +86,7 @@ impl TestChangeBuilder {
 	/// Create a new flow change builder with default origin and version
 	pub fn new() -> Self {
 		Self {
-			origin: ChangeOrigin::External(PrimitiveId::Table(TableId(1))),
+			origin: ChangeOrigin::Primitive(PrimitiveId::Table(TableId(1))),
 			diffs: Vec::new(),
 			version: CommitVersion(1),
 		}
@@ -93,13 +94,13 @@ impl TestChangeBuilder {
 
 	/// Set the origin as an external source
 	pub fn changed_by_source(mut self, source: PrimitiveId) -> Self {
-		self.origin = ChangeOrigin::External(source);
+		self.origin = ChangeOrigin::Primitive(source);
 		self
 	}
 
 	/// Set the origin as an internal node
 	pub fn changed_by_node(mut self, node: FlowNodeId) -> Self {
-		self.origin = ChangeOrigin::Internal(node);
+		self.origin = ChangeOrigin::Flow(node);
 		self
 	}
 
@@ -208,11 +209,10 @@ impl TestLayoutBuilder {
 
 /// Helper functions for common test data patterns
 pub mod helpers {
-	use reifydb_core::{encoded::schema::Schema, row::Row};
+	use reifydb_core::{encoded::schema::Schema, interface::change::Change, row::Row};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::*;
-	use reifydb_core::interface::change::Change;
 
 	/// Create a simple counter schema (single int8 field)
 	pub fn counter_layout() -> Schema {
@@ -263,11 +263,13 @@ pub mod helpers {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{common::CommitVersion, interface::catalog::primitive::PrimitiveId};
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::{catalog::primitive::PrimitiveId, change::ChangeOrigin},
+	};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::{helpers::*, *};
-	use reifydb_core::interface::change::ChangeOrigin;
 
 	#[test]
 	fn test_row_builder() {
@@ -294,7 +296,7 @@ pub mod tests {
 		assert_eq!(change.diffs.len(), 3);
 
 		match &change.origin {
-			ChangeOrigin::External(source) => {
+			ChangeOrigin::Primitive(source) => {
 				assert_eq!(*source, PrimitiveId::table(100));
 			}
 			_ => panic!("Expected external origin"),

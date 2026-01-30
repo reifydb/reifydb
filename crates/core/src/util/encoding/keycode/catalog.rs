@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::dictionary::DictionaryId;
+
 use crate::{
 	interface::catalog::{
 		flow::FlowId,
-		id::{DictionaryId, IndexId, PrimaryKeyId, RingBufferId, TableId, ViewId},
+		id::{IndexId, PrimaryKeyId, RingBufferId, TableId, ViewId},
 		primitive::PrimitiveId,
 		vtable::VTableId,
 	},

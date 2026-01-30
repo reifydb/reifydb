@@ -7,6 +7,7 @@ use reifydb_type::{
 	value::{
 		Value,
 		blob::Blob,
+		constraint::Constraint,
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
@@ -194,10 +195,20 @@ impl Columns {
 						vec![Decimal::from(0); size],
 						BitVec::repeat(size, false),
 					),
-					Type::DictionaryId => ColumnData::dictionary_id_with_bitvec(
-						vec![Default::default(); size],
-						BitVec::repeat(size, false),
-					),
+					Type::DictionaryId => {
+						let mut col_data = ColumnData::dictionary_id_with_bitvec(
+							vec![Default::default(); size],
+							BitVec::repeat(size, false),
+						);
+						if let ColumnData::DictionaryId(container) = &mut col_data {
+							if let Some(Constraint::Dictionary(dict_id, _)) =
+								field.constraint.constraint()
+							{
+								container.set_dictionary_id(*dict_id);
+							}
+						}
+						col_data
+					}
 					Type::Any => ColumnData::any_with_bitvec(
 						vec![Box::new(Value::Undefined); size],
 						BitVec::repeat(size, false),
@@ -205,6 +216,16 @@ impl Columns {
 				};
 
 				*column = column.with_new_data(new_data);
+			}
+
+			// Set dictionary_id on DictionaryId containers from schema constraint
+			if let ColumnData::DictionaryId(container) = column.data_mut() {
+				if container.dictionary_id().is_none() {
+					if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
+					{
+						container.set_dictionary_id(*dict_id);
+					}
+				}
 			}
 		}
 

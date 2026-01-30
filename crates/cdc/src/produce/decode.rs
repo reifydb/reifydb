@@ -29,7 +29,6 @@ fn decode_row(registry: &SchemaRegistry, row_number: RowNumber, values: EncodedV
 	}
 	let fingerprint = values.fingerprint();
 	let schema = registry.get(fingerprint);
-	println!("[CDC-DECODE] fingerprint={:?} schema_found={}", fingerprint, schema.is_some());
 	match schema {
 		Some(schema) => Some(Row {
 			number: row_number,
@@ -53,7 +52,13 @@ pub(crate) fn build_insert_change(
 ) -> Option<Change> {
 	let row = decode_row(registry, row_number, post)?;
 	let columns = Columns::from_row(&row);
-	Some(Change::from_primitive(source, version, vec![Diff::Insert { post: columns }]))
+	Some(Change::from_primitive(
+		source,
+		version,
+		vec![Diff::Insert {
+			post: columns,
+		}],
+	))
 }
 
 /// Build an update Change from a row delta with pre and post values.
@@ -69,7 +74,14 @@ pub(crate) fn build_update_change(
 	let post_row = decode_row(registry, row_number, post)?;
 	let pre_cols = Columns::from_row(&pre_row);
 	let post_cols = Columns::from_row(&post_row);
-	Some(Change::from_primitive(source, version, vec![Diff::Update { pre: pre_cols, post: post_cols }]))
+	Some(Change::from_primitive(
+		source,
+		version,
+		vec![Diff::Update {
+			pre: pre_cols,
+			post: post_cols,
+		}],
+	))
 }
 
 /// Build a remove Change from a row delta.
@@ -82,5 +94,11 @@ pub(crate) fn build_remove_change(
 ) -> Option<Change> {
 	let row = decode_row(registry, row_number, pre)?;
 	let columns = Columns::from_row(&row);
-	Some(Change::from_primitive(source, version, vec![Diff::Remove { pre: columns }]))
+	Some(Change::from_primitive(
+		source,
+		version,
+		vec![Diff::Remove {
+			pre: columns,
+		}],
+	))
 }

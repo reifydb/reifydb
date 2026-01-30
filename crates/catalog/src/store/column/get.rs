@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::id::DictionaryId, internal, key::columns::ColumnsKey};
+use reifydb_core::{internal, key::columns::ColumnsKey};
 use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{
 	error::Error,
 	value::{
 		constraint::{Constraint, TypeConstraint},
+		dictionary::DictionaryId,
 		r#type::Type,
 	},
 };

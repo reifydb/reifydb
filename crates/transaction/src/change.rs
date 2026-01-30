@@ -5,13 +5,14 @@ use OperationType::Delete;
 use reifydb_core::interface::catalog::{
 	dictionary::DictionaryDef,
 	flow::{FlowDef, FlowId},
-	id::{DictionaryId, NamespaceId, RingBufferId, SubscriptionId, TableId, ViewId},
+	id::{NamespaceId, RingBufferId, SubscriptionId, TableId, ViewId},
 	namespace::NamespaceDef,
 	ringbuffer::RingBufferDef,
 	subscription::SubscriptionDef,
 	table::TableDef,
 	view::ViewDef,
 };
+use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::TransactionId;
 

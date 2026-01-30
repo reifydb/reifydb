@@ -3,9 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::{interface::change::Diff, value::column::columns::Columns};
 use reifydb_runtime::hash::Hash128;
-use reifydb_core::interface::change::Diff;
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{

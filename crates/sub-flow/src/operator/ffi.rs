@@ -17,9 +17,11 @@ use reifydb_abi::{
 	flow::change::ChangeFFI,
 	operator::{descriptor::OperatorDescriptorFFI, vtable::OperatorVTableFFI},
 };
-use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_core::{
+	interface::{catalog::flow::FlowNodeId, change::Change},
+	value::column::columns::Columns,
+};
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_core::interface::change::Change;
 use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
 use reifydb_type::value::row_number::RowNumber;
 use tracing::{Span, error, instrument};

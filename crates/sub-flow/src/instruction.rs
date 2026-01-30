@@ -6,8 +6,10 @@
 //! These types enable the coordinator to send only relevant changes to each worker,
 //! rather than broadcasting all changes to all workers.
 
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
-use reifydb_core::interface::change::Change;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{catalog::flow::FlowId, change::Change},
+};
 
 /// Instructions for processing a single flow within a batch.
 ///

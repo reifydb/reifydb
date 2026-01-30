@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::schema::Schema,
 	interface::catalog::{
 		change::CatalogTrackRingBufferChangeOperations,
-		id::{DictionaryId, NamespaceId, PrimaryKeyId, RingBufferId},
+		id::{NamespaceId, PrimaryKeyId, RingBufferId},
 		policy::ColumnPolicyKind,
 		ringbuffer::{RingBufferDef, RingBufferMetadata},
 	},
@@ -14,7 +14,11 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{
 	AsTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
 };
-use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
+use reifydb_type::{
+	error,
+	fragment::Fragment,
+	value::{constraint::TypeConstraint, dictionary::DictionaryId},
+};
 use tracing::instrument;
 
 use crate::{

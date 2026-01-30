@@ -11,7 +11,10 @@ use indexmap::IndexMap;
 use reifydb_type::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{Value, container::undefined::UndefinedContainer, row_number::RowNumber, r#type::Type},
+	value::{
+		Value, constraint::Constraint, container::undefined::UndefinedContainer, row_number::RowNumber,
+		r#type::Type,
+	},
 };
 
 use crate::{
@@ -394,6 +397,15 @@ impl Columns {
 				ColumnData::with_capacity(column_type, 1)
 			};
 			data.push_value(value);
+
+			if column_type == Type::DictionaryId {
+				if let ColumnData::DictionaryId(container) = &mut data {
+					if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
+					{
+						container.set_dictionary_id(*dict_id);
+					}
+				}
+			}
 
 			let name = row.schema.get_field_name(idx).expect("Schema missing name for field");
 

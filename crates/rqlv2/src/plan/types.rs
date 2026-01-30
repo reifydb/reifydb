@@ -9,10 +9,8 @@
 //! - Output schema tracking for pipeline stages
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
-use reifydb_core::interface::catalog::id::{
-	ColumnId, DictionaryId, IndexId, NamespaceId, RingBufferId, SequenceId, TableId, ViewId,
-};
-use reifydb_type::value::r#type::Type;
+use reifydb_core::interface::catalog::id::{ColumnId, IndexId, NamespaceId, RingBufferId, SequenceId, TableId, ViewId};
+use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use crate::{
 	plan::compile::core::{PlanError, PlanErrorKind},

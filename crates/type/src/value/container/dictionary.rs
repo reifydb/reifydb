@@ -7,13 +7,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	util::{bitvec::BitVec, cowvec::CowVec},
-	value::{Value, dictionary::DictionaryEntryId},
+	value::{
+		Value,
+		dictionary::{DictionaryEntryId, DictionaryId},
+	},
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DictionaryContainer {
 	data: CowVec<DictionaryEntryId>,
 	bitvec: BitVec,
+	dictionary_id: Option<DictionaryId>,
 }
 
 impl DictionaryContainer {
@@ -22,6 +26,7 @@ impl DictionaryContainer {
 		Self {
 			data: CowVec::new(data),
 			bitvec,
+			dictionary_id: None,
 		}
 	}
 
@@ -30,6 +35,7 @@ impl DictionaryContainer {
 		Self {
 			data: CowVec::new(data),
 			bitvec: BitVec::repeat(len, true),
+			dictionary_id: None,
 		}
 	}
 
@@ -37,6 +43,7 @@ impl DictionaryContainer {
 		Self {
 			data: CowVec::with_capacity(capacity),
 			bitvec: BitVec::with_capacity(capacity),
+			dictionary_id: None,
 		}
 	}
 
@@ -104,6 +111,14 @@ impl DictionaryContainer {
 		&self.bitvec
 	}
 
+	pub fn dictionary_id(&self) -> Option<DictionaryId> {
+		self.dictionary_id
+	}
+
+	pub fn set_dictionary_id(&mut self, id: DictionaryId) {
+		self.dictionary_id = Some(id);
+	}
+
 	pub fn is_defined(&self, idx: usize) -> bool {
 		idx < self.len() && self.bitvec.get(idx)
 	}
@@ -162,6 +177,7 @@ impl DictionaryContainer {
 		Self {
 			data: self.data.take(num),
 			bitvec: self.bitvec.take(num),
+			dictionary_id: self.dictionary_id,
 		}
 	}
 
@@ -172,6 +188,7 @@ impl DictionaryContainer {
 		Self {
 			data: CowVec::new(new_data),
 			bitvec: BitVec::from_slice(&new_bitvec),
+			dictionary_id: self.dictionary_id,
 		}
 	}
 

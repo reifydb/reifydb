@@ -2,14 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{
-		dictionary::DictionaryDef,
-		id::{DictionaryId, NamespaceId},
-	},
+	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
 use reifydb_transaction::transaction::AsTransaction;
-use reifydb_type::value::r#type::Type;
+use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use crate::{
 	CatalogStore,

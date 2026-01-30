@@ -13,9 +13,9 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum ChangeOrigin {
 	/// Change originated from an external source (table, view, ring buffer)
-	External(PrimitiveId),
+	Primitive(PrimitiveId),
 	/// Change originated from an internal flow node
-	Internal(FlowNodeId),
+	Flow(FlowNodeId),
 }
 
 /// Represents a single diff (can contain 1 or more rows in columnar format)
@@ -55,7 +55,7 @@ impl Change {
 	/// Create a change from a primitive (external) source
 	pub fn from_primitive(source: PrimitiveId, version: CommitVersion, diffs: Vec<Diff>) -> Self {
 		Self {
-			origin: ChangeOrigin::External(source),
+			origin: ChangeOrigin::Primitive(source),
 			diffs,
 			version,
 		}
@@ -64,7 +64,7 @@ impl Change {
 	/// Create a change from a flow node (internal)
 	pub fn from_flow(from: FlowNodeId, version: CommitVersion, diffs: Vec<Diff>) -> Self {
 		Self {
-			origin: ChangeOrigin::Internal(from),
+			origin: ChangeOrigin::Flow(from),
 			diffs,
 			version,
 		}

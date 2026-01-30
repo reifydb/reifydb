@@ -5,7 +5,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::ringbuffer_already_exists,
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{DictionaryId, NamespaceId, RingBufferId},
+		id::{NamespaceId, RingBufferId},
 		policy::ColumnPolicyKind,
 		ringbuffer::RingBufferDef,
 	},
@@ -15,7 +15,11 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
+use reifydb_type::{
+	fragment::Fragment,
+	return_error,
+	value::{constraint::TypeConstraint, dictionary::DictionaryId},
+};
 
 use crate::{CatalogStore, store::sequence::system::SystemSequence};
 

@@ -72,11 +72,7 @@ fn unmarshal_input<O: FFIOperator>(arena: &mut Arena, input: *const ChangeFFI) -
 /// Apply the operator
 #[inline]
 #[instrument(name = "operator_apply", level = "trace", skip_all)]
-fn apply_operator<O: FFIOperator>(
-	operator: &mut O,
-	ctx: *mut ContextFFI,
-	input_change: Change,
-) -> Result<Change, i32> {
+fn apply_operator<O: FFIOperator>(operator: &mut O, ctx: *mut ContextFFI, input_change: Change) -> Result<Change, i32> {
 	let mut op_ctx = OperatorContext::new(ctx);
 	match operator.apply(&mut op_ctx, input_change) {
 		Ok(change) => Ok(change),

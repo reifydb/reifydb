@@ -79,7 +79,10 @@ where
 				if kind == KeyKind::Row {
 					if let Some(row_key) = RowKey::decode(&key) {
 						let decoded = match &delta {
-							Delta::Set { key, values } => {
+							Delta::Set {
+								key,
+								values,
+							} => {
 								let pre = self
 									.transaction_store
 									.get_previous_version(key, version)
@@ -87,18 +90,34 @@ where
 									.flatten();
 								if let Some(prev) = pre {
 									super::decode::build_update_change(
-										registry, row_key.primitive, row_key.row, prev.values, values.clone(), version,
+										registry,
+										row_key.primitive,
+										row_key.row,
+										prev.values,
+										values.clone(),
+										version,
 									)
 								} else {
 									super::decode::build_insert_change(
-										registry, row_key.primitive, row_key.row, values.clone(), version,
+										registry,
+										row_key.primitive,
+										row_key.row,
+										values.clone(),
+										version,
 									)
 								}
 							}
-							Delta::Unset { values, .. } => {
+							Delta::Unset {
+								values,
+								..
+							} => {
 								if !values.is_empty() {
 									super::decode::build_remove_change(
-										registry, row_key.primitive, row_key.row, values.clone(), version,
+										registry,
+										row_key.primitive,
+										row_key.row,
+										values.clone(),
+										version,
 									)
 								} else {
 									None
@@ -248,7 +267,12 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 ///
 /// Returns a handle to the actor. The actor_ref from this handle should be used
 /// to create a `CdcProducerEventListener` which is then registered on the EventBus.
-pub fn spawn_cdc_producer<S, T, H>(system: &ActorSystem, storage: S, transaction_store: T, host: H) -> ActorHandle<CdcProduceMsg>
+pub fn spawn_cdc_producer<S, T, H>(
+	system: &ActorSystem,
+	storage: S,
+	transaction_store: T,
+	host: H,
+) -> ActorHandle<CdcProduceMsg>
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,

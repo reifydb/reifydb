@@ -8,7 +8,7 @@ use reifydb_core::{
 		catalog::{
 			dictionary::DictionaryDef,
 			flow::{FlowDef, FlowId},
-			id::{DictionaryId, NamespaceId, RingBufferId, SubscriptionId, TableId, ViewId},
+			id::{NamespaceId, RingBufferId, SubscriptionId, TableId, ViewId},
 			namespace::NamespaceDef,
 			ringbuffer::RingBufferDef,
 			subscription::SubscriptionDef,
@@ -18,7 +18,7 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionValues},
 	},
 };
-use reifydb_type::Result;
+use reifydb_type::{Result, value::dictionary::DictionaryId};
 use tracing::instrument;
 
 use crate::{

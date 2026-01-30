@@ -211,22 +211,44 @@ where
 			if kind == KeyKind::Row {
 				if let Some(row_key) = RowKey::decode(&key) {
 					let decoded = match &delta {
-						Delta::Set { key, values } => {
-							let pre = transaction_store.get_previous_version(key, item.version).ok().flatten();
+						Delta::Set {
+							key,
+							values,
+						} => {
+							let pre = transaction_store
+								.get_previous_version(key, item.version)
+								.ok()
+								.flatten();
 							if let Some(prev) = pre {
 								super::decode::build_update_change(
-									registry, row_key.primitive, row_key.row, prev.values, values.clone(), item.version,
+									registry,
+									row_key.primitive,
+									row_key.row,
+									prev.values,
+									values.clone(),
+									item.version,
 								)
 							} else {
 								super::decode::build_insert_change(
-									registry, row_key.primitive, row_key.row, values.clone(), item.version,
+									registry,
+									row_key.primitive,
+									row_key.row,
+									values.clone(),
+									item.version,
 								)
 							}
 						}
-						Delta::Unset { values, .. } => {
+						Delta::Unset {
+							values,
+							..
+						} => {
 							if !values.is_empty() {
 								super::decode::build_remove_change(
-									registry, row_key.primitive, row_key.row, values.clone(), item.version,
+									registry,
+									row_key.primitive,
+									row_key.row,
+									values.clone(),
+									item.version,
 								)
 							} else {
 								None

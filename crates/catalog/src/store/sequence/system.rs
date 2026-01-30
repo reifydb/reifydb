@@ -4,12 +4,11 @@
 use once_cell::sync::Lazy;
 use reifydb_core::{
 	encoded::key::EncodedKey,
-	interface::catalog::id::{
-		ColumnId, ColumnPolicyId, DictionaryId, NamespaceId, PrimaryKeyId, RingBufferId, TableId, ViewId,
-	},
+	interface::catalog::id::{ColumnId, ColumnPolicyId, NamespaceId, PrimaryKeyId, RingBufferId, TableId, ViewId},
 	key::system_sequence::SystemSequenceKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::{
 	store::sequence::generator::u64::GeneratorU64,

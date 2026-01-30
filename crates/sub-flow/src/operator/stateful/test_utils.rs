@@ -5,11 +5,10 @@
 pub mod test {
 	use reifydb_core::{
 		encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
-		interface::catalog::flow::FlowNodeId,
+		interface::{catalog::flow::FlowNodeId, change::Change},
 		value::column::columns::Columns,
 	};
 	use reifydb_engine::{evaluate::column::StandardColumnEvaluator, test_utils::create_test_engine};
-	use reifydb_core::interface::change::Change;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_type::{
 		util::cowvec::CowVec,

@@ -8,10 +8,10 @@
 
 use std::collections::HashMap;
 
-use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::flow::FlowId;
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::Result;
 

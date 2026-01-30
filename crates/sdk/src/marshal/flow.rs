@@ -59,11 +59,11 @@ impl Arena {
 	/// Marshal a change origin to FFI representation
 	fn marshal_origin(origin: &ChangeOrigin) -> OriginFFI {
 		match origin {
-			ChangeOrigin::Internal(node_id) => OriginFFI {
+			ChangeOrigin::Flow(node_id) => OriginFFI {
 				origin: 0,
 				id: node_id.0,
 			},
-			ChangeOrigin::External(source_id) => match source_id {
+			ChangeOrigin::Primitive(source_id) => match source_id {
 				PrimitiveId::Table(id) => OriginFFI {
 					origin: 1,
 					id: id.0,
@@ -144,12 +144,12 @@ impl Arena {
 	/// Unmarshal a change origin from FFI representation
 	fn unmarshal_origin(ffi: &OriginFFI) -> Result<ChangeOrigin, String> {
 		match ffi.origin {
-			0 => Ok(ChangeOrigin::Internal(FlowNodeId(ffi.id))),
-			1 => Ok(ChangeOrigin::External(PrimitiveId::Table(TableId(ffi.id)))),
-			2 => Ok(ChangeOrigin::External(PrimitiveId::View(ViewId(ffi.id)))),
-			3 => Ok(ChangeOrigin::External(PrimitiveId::TableVirtual(VTableId(ffi.id)))),
-			4 => Ok(ChangeOrigin::External(PrimitiveId::RingBuffer(RingBufferId(ffi.id)))),
-			5 => Ok(ChangeOrigin::External(PrimitiveId::Flow(FlowId(ffi.id)))),
+			0 => Ok(ChangeOrigin::Flow(FlowNodeId(ffi.id))),
+			1 => Ok(ChangeOrigin::Primitive(PrimitiveId::Table(TableId(ffi.id)))),
+			2 => Ok(ChangeOrigin::Primitive(PrimitiveId::View(ViewId(ffi.id)))),
+			3 => Ok(ChangeOrigin::Primitive(PrimitiveId::TableVirtual(VTableId(ffi.id)))),
+			4 => Ok(ChangeOrigin::Primitive(PrimitiveId::RingBuffer(RingBufferId(ffi.id)))),
+			5 => Ok(ChangeOrigin::Primitive(PrimitiveId::Flow(FlowId(ffi.id)))),
 			_ => Err(format!("Invalid origin_type: {}", ffi.origin)),
 		}
 	}

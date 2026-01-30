@@ -283,9 +283,10 @@ impl WindowStatefulTestHelper {
 
 /// Common test scenarios for stateful operators
 pub mod scenarios {
+	use reifydb_core::interface::change::Change;
+
 	use super::*;
 	use crate::testing::builders::TestChangeBuilder;
-	use reifydb_core::interface::change::Change;
 
 	/// Create a sequence of inserts for testing counters
 	pub fn counter_inserts(count: usize) -> Vec<Change> {

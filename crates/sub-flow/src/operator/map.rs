@@ -4,7 +4,10 @@
 use std::sync::{Arc, LazyLock};
 
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::{
+		catalog::flow::FlowNodeId,
+		change::{Change, Diff},
+	},
 	value::column::{Column, columns::Columns},
 };
 use reifydb_engine::{
@@ -12,7 +15,6 @@ use reifydb_engine::{
 	stack::Stack,
 };
 use reifydb_rql::expression::Expression;
-use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::{fragment::Fragment, params::Params, value::row_number::RowNumber};
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};

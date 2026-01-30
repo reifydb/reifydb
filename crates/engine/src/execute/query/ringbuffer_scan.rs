@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::schema::Schema,
-	interface::{catalog::ringbuffer::RingBufferMetadata, resolved::ResolvedRingBuffer},
+	interface::{
+		catalog::{dictionary::DictionaryDef, ringbuffer::RingBufferMetadata},
+		resolved::ResolvedRingBuffer,
+	},
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
@@ -25,6 +28,8 @@ pub struct RingBufferScan {
 	schema: Option<Schema>,
 	/// Storage types for each column (Type::DictionaryId for dictionary columns)
 	storage_types: Vec<Type>,
+	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
+	dictionaries: Vec<Option<DictionaryDef>>,
 	current_position: u64,
 	rows_returned: u64,
 	context: Option<Arc<ExecutionContext>>,
@@ -37,19 +42,23 @@ impl RingBufferScan {
 		context: Arc<ExecutionContext>,
 		rx: &mut Rx,
 	) -> crate::Result<Self> {
-		// Build storage types
+		// Build storage types and dictionaries
 		let mut storage_types = Vec::with_capacity(ringbuffer.columns().len());
+		let mut dictionaries = Vec::with_capacity(ringbuffer.columns().len());
 
 		for col in ringbuffer.columns() {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(_dict) = context.executor.catalog.find_dictionary(rx, dict_id)? {
+				if let Some(dict) = context.executor.catalog.find_dictionary(rx, dict_id)? {
 					storage_types.push(Type::DictionaryId);
+					dictionaries.push(Some(dict));
 				} else {
 					// Dictionary not found, fall back to constraint type
 					storage_types.push(col.constraint.get_type());
+					dictionaries.push(None);
 				}
 			} else {
 				storage_types.push(col.constraint.get_type());
+				dictionaries.push(None);
 			}
 		}
 
@@ -64,6 +73,7 @@ impl RingBufferScan {
 			headers,
 			schema: None,
 			storage_types,
+			dictionaries,
 			current_position: 0,
 			rows_returned: 0,
 			context: Some(context),
@@ -185,6 +195,8 @@ impl QueryNode for RingBufferScan {
 
 			// Restore row numbers
 			columns.row_numbers = reifydb_type::util::cowvec::CowVec::new(row_numbers);
+
+			super::decode_dictionary_columns(&mut columns, &self.dictionaries, txn)?;
 
 			Ok(Some(Batch {
 				columns,

@@ -7,7 +7,10 @@ use indexmap::IndexMap;
 use reifydb_core::{
 	common::JoinType,
 	encoded::{key::EncodedKey, schema::Schema},
-	interface::catalog::flow::FlowNodeId,
+	interface::{
+		catalog::flow::FlowNodeId,
+		change::{Change, ChangeOrigin, Diff},
+	},
 	internal,
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{Column, columns::Columns},
@@ -19,7 +22,6 @@ use reifydb_engine::{
 };
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
-use reifydb_core::interface::change::{Change, ChangeOrigin, Diff};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
@@ -408,7 +410,7 @@ impl JoinOperator {
 
 	fn determine_side(&self, change: &Change) -> Option<JoinSide> {
 		match &change.origin {
-			ChangeOrigin::Internal(from_node) => {
+			ChangeOrigin::Flow(from_node) => {
 				if *from_node == self.left_node {
 					Some(JoinSide::Left)
 				} else if *from_node == self.right_node {
@@ -442,7 +444,7 @@ impl Operator for JoinOperator {
 		_evaluator: &StandardColumnEvaluator,
 	) -> reifydb_type::Result<Change> {
 		// Check for self-referential calls (should never happen)
-		if let ChangeOrigin::Internal(from_node) = &change.origin {
+		if let ChangeOrigin::Flow(from_node) = &change.origin {
 			if *from_node == self.node {
 				return Ok(Change::from_flow(self.node, change.version, Vec::new()));
 			}

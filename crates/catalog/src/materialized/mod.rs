@@ -21,7 +21,7 @@ use reifydb_core::{
 	interface::catalog::{
 		dictionary::DictionaryDef,
 		flow::{FlowDef, FlowId, FlowNodeId},
-		id::{DictionaryId, NamespaceId, PrimaryKeyId, RingBufferId, SubscriptionId, TableId, ViewId},
+		id::{NamespaceId, PrimaryKeyId, RingBufferId, SubscriptionId, TableId, ViewId},
 		key::PrimaryKeyDef,
 		namespace::NamespaceDef,
 		primitive::PrimitiveId,
@@ -34,6 +34,7 @@ use reifydb_core::{
 	retention::RetentionPolicy,
 	util::multi::MultiVersionContainer,
 };
+use reifydb_type::value::dictionary::DictionaryId;
 
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{common::CommitVersion, value::column::columns::Columns};
+use reifydb_core::{common::CommitVersion, interface::change::Diff, value::column::columns::Columns};
 use reifydb_runtime::hash::Hash128;
-use reifydb_core::interface::change::Diff;
 
 use super::hash::{
 	add_to_state_entry_batch, emit_joined_columns_batch, emit_remove_joined_columns_batch,

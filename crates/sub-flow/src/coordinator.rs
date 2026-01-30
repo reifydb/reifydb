@@ -256,7 +256,7 @@ impl CoordinatorActor {
 
 			// Update tracker for lag calculation
 			for change in &cdc.changes {
-				if let ChangeOrigin::External(source) = &change.origin {
+				if let ChangeOrigin::Primitive(source) = &change.origin {
 					self.tracker.update(*source, version);
 				}
 			}
@@ -731,12 +731,7 @@ impl CoordinatorActor {
 		input = changes.len(),
 		output = tracing::field::Empty
 	))]
-	fn filter_cdc_for_flow(
-		&self,
-		state: &CoordinatorState,
-		flow_id: FlowId,
-		changes: &[Change],
-	) -> Vec<Change> {
+	fn filter_cdc_for_flow(&self, state: &CoordinatorState, flow_id: FlowId, changes: &[Change]) -> Vec<Change> {
 		let dependency_graph = state.analyzer.get_dependency_graph();
 
 		// Get all sources this flow depends on
@@ -760,7 +755,7 @@ impl CoordinatorActor {
 		let result: Vec<Change> = changes
 			.iter()
 			.filter(|change| {
-				if let ChangeOrigin::External(source) = change.origin {
+				if let ChangeOrigin::Primitive(source) = change.origin {
 					flow_sources.contains(&source)
 				} else {
 					true

@@ -3,15 +3,17 @@
 
 use reifydb_core::{
 	encoded::schema::Schema,
-	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId, table::TableDef},
+	interface::{
+		catalog::{flow::FlowNodeId, primitive::PrimitiveId, table::TableDef},
+		change::{Change, Diff},
+	},
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_core::interface::change::Change;
 use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
 
-use crate::{Operator, transaction::FlowTransaction};
+use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
 
 pub struct PrimitiveTableOperator {
 	node: FlowNodeId,
@@ -34,11 +36,47 @@ impl Operator for PrimitiveTableOperator {
 
 	fn apply(
 		&self,
-		_txn: &mut FlowTransaction,
+		txn: &mut FlowTransaction,
 		change: Change,
 		_evaluator: &StandardColumnEvaluator,
 	) -> reifydb_type::Result<Change> {
-		Ok(change)
+		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
+		for diff in change.diffs {
+			decoded_diffs.push(match diff {
+				Diff::Insert {
+					post,
+				} => {
+					let mut decoded = post;
+					decode_dictionary_columns(&mut decoded, txn)?;
+					Diff::Insert {
+						post: decoded,
+					}
+				}
+				Diff::Update {
+					pre,
+					post,
+				} => {
+					let mut decoded_pre = pre;
+					let mut decoded_post = post;
+					decode_dictionary_columns(&mut decoded_pre, txn)?;
+					decode_dictionary_columns(&mut decoded_post, txn)?;
+					Diff::Update {
+						pre: decoded_pre,
+						post: decoded_post,
+					}
+				}
+				Diff::Remove {
+					pre,
+				} => {
+					let mut decoded = pre;
+					decode_dictionary_columns(&mut decoded, txn)?;
+					Diff::Remove {
+						pre: decoded,
+					}
+				}
+			});
+		}
+		Ok(Change::from_flow(self.node, change.version, decoded_diffs))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	error::diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
-	interface::catalog::{id::DictionaryId, policy::ColumnPolicyKind, primitive::PrimitiveId},
+	interface::catalog::{policy::ColumnPolicyKind, primitive::PrimitiveId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -13,6 +13,7 @@ use reifydb_type::{
 	value::{
 		blob::Blob,
 		constraint::{Constraint, TypeConstraint},
+		dictionary::DictionaryId,
 		r#type::Type,
 	},
 };

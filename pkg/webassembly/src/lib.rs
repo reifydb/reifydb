@@ -142,7 +142,8 @@ impl WasmDB {
 
 		// Spawn CDC producer actor on the shared runtime, passing engine as CdcHost
 		console_log("[WASM] Spawning CDC producer actor...");
-		let cdc_producer_handle = spawn_cdc_producer(&actor_system, cdc_store, multi_store.clone(), inner.clone());
+		let cdc_producer_handle =
+			spawn_cdc_producer(&actor_system, cdc_store, multi_store.clone(), inner.clone());
 
 		// Register event listener to forward PostCommitEvent to CDC producer
 		let cdc_listener =

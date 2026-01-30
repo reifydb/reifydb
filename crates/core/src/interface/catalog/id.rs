@@ -591,8 +591,6 @@ impl<'de> Deserialize<'de> for RingBufferId {
 	}
 }
 
-pub use reifydb_type::value::dictionary::DictionaryId;
-
 /// A unique identifier for a subscription.
 /// Uses u64 for efficient storage and to unify with FlowId (FlowId == SubscriptionId for subscription flows).
 #[repr(transparent)]

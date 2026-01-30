@@ -2,15 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	change::CatalogTrackDictionaryChangeOperations,
-	dictionary::DictionaryDef,
-	id::{DictionaryId, NamespaceId},
+	change::CatalogTrackDictionaryChangeOperations, dictionary::DictionaryDef, id::NamespaceId,
 };
 use reifydb_transaction::{
 	change::TransactionalDictionaryChanges,
 	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{fragment::Fragment, value::r#type::Type};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{dictionary::DictionaryId, r#type::Type},
+};
 use tracing::{instrument, warn};
 
 use crate::{CatalogStore, catalog::Catalog, store::dictionary::create::DictionaryToCreate as StoreDictionaryToCreate};

@@ -180,6 +180,8 @@ impl QueryNode for TableScanNode {
 		// Restore row numbers (they get cleared during column transformation)
 		columns.row_numbers = CowVec::new(row_numbers);
 
+		super::decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
+
 		Ok(Some(Batch {
 			columns,
 		}))

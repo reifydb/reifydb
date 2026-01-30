@@ -4,10 +4,11 @@
 //! Key parsing utilities for extracting Id from encoded keys.
 
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, id::DictionaryId, primitive::PrimitiveId},
+	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId},
 	key::{Key, kind::KeyKind},
 	util::encoding::keycode::deserializer::KeyDeserializer,
 };
+use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::MetricId;
 
@@ -107,10 +108,10 @@ fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::{flow::FlowNodeId, id::DictionaryId, primitive::PrimitiveId},
+		interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId},
 		key::{EncodableKey, dictionary::DictionaryEntryKey, flow_node_state::FlowNodeStateKey, row::RowKey},
 	};
-	use reifydb_type::value::row_number::RowNumber;
+	use reifydb_type::value::{dictionary::DictionaryId, row_number::RowNumber};
 
 	use super::*;
 

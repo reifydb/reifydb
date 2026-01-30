@@ -7,13 +7,11 @@ use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
-	interface::catalog::flow::FlowNodeId,
+	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::EncodableKey,
 	value::column::columns::Columns,
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
-
-use reifydb_core::interface::change::Change;
 
 use crate::{
 	error::Result,
@@ -282,14 +280,15 @@ pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		encoded::{key::IntoEncodedKey, schema::Schema},
-		interface::catalog::flow::FlowNodeId,
+		interface::{
+			catalog::flow::FlowNodeId,
+			change::{Change, Diff},
+		},
 		value::column::columns::Columns,
 	};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::{super::helpers::encode_key, *};
-	use reifydb_core::interface::change::{Change, Diff};
-
 	use crate::{
 		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
 		testing::builders::TestChangeBuilder,

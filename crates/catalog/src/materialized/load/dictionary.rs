@@ -3,16 +3,13 @@
 
 use reifydb_core::{
 	interface::{
-		catalog::{
-			dictionary::DictionaryDef,
-			id::{DictionaryId, NamespaceId},
-		},
+		catalog::{dictionary::DictionaryDef, id::NamespaceId},
 		store::MultiVersionValues,
 	},
 	key::dictionary::DictionaryKey,
 };
 use reifydb_transaction::transaction::AsTransaction;
-use reifydb_type::value::r#type::Type;
+use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use super::MaterializedCatalog;
 use crate::store::dictionary::schema::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SCHEMA, VALUE_TYPE};

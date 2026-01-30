@@ -5,7 +5,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::table_already_exists,
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{DictionaryId, NamespaceId, TableId},
+		id::{NamespaceId, TableId},
 		policy::ColumnPolicyKind,
 		primitive::PrimitiveId,
 		table::TableDef,
@@ -14,7 +14,11 @@ use reifydb_core::{
 	retention::RetentionPolicy,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
+use reifydb_type::{
+	fragment::Fragment,
+	return_error,
+	value::{constraint::TypeConstraint, dictionary::DictionaryId},
+};
 
 use crate::{
 	CatalogStore,

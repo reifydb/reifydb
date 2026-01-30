@@ -3,10 +3,12 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_core::{
+	interface::{catalog::flow::FlowNodeId, change::Change},
+	value::column::columns::Columns,
+};
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_rql::expression::Expression;
-use reifydb_core::interface::change::Change;
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};

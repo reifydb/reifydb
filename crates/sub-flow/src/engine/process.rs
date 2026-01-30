@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowId;
+use reifydb_core::interface::{
+	catalog::flow::FlowId,
+	change::{Change, ChangeOrigin},
+};
 use reifydb_rql::flow::{
 	flow::FlowDag,
 	node::{FlowNode, FlowNodeType::SourceInlineData},
 };
-use reifydb_core::interface::change::{Change, ChangeOrigin};
 use tracing::{Span, instrument};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
@@ -19,16 +21,11 @@ impl FlowEngine {
 		diff_count = change.diffs.len(),
 		nodes_processed = tracing::field::Empty
 	))]
-	pub fn process(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		flow_id: FlowId,
-	) -> reifydb_type::Result<()> {
+	pub fn process(&self, txn: &mut FlowTransaction, change: Change, flow_id: FlowId) -> reifydb_type::Result<()> {
 		let mut nodes_processed = 0;
 
 		match change.origin {
-			ChangeOrigin::External(source) => {
+			ChangeOrigin::Primitive(source) => {
 				let node_registrations = self.sources.get(&source).cloned();
 
 				if let Some(node_registrations) = node_registrations {
@@ -60,7 +57,7 @@ impl FlowEngine {
 					}
 				}
 			}
-			ChangeOrigin::Internal(node_id) => {
+			ChangeOrigin::Flow(node_id) => {
 				// Internal changes are already scoped to a specific node
 				// This path is used by the partition logic to directly process a node's changes
 				// Use the flow_id parameter for direct lookup instead of iterating all flows
@@ -87,12 +84,7 @@ impl FlowEngine {
 		lock_wait_us = tracing::field::Empty,
 		apply_time_us = tracing::field::Empty
 	))]
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		node: &FlowNode,
-		change: Change,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Change) -> reifydb_type::Result<Change> {
 		let lock_start = self.clock.instant();
 		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);

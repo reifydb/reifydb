@@ -3,9 +3,12 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::{
-	batch::lazy::LazyBatch,
-	column::{data::ColumnData, headers::ColumnHeaders},
+use reifydb_core::{
+	interface::catalog::dictionary::DictionaryDef,
+	value::{
+		batch::lazy::LazyBatch,
+		column::{data::ColumnData, headers::ColumnHeaders},
+	},
 };
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
@@ -60,9 +63,15 @@ impl QueryNode for FilterNode {
 					continue; // Skip to next batch
 				}
 
-				// Materialize only surviving rows — columns already carry
-				// DictionaryId natively from the schema, no wrapping needed.
-				let columns = lazy_batch.into_columns();
+				// Save dictionary metadata before consuming the lazy batch
+				let dictionaries: Vec<Option<DictionaryDef>> =
+					lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
+
+				// Materialize surviving rows
+				let mut columns = lazy_batch.into_columns();
+
+				// Decode dictionary columns back to actual values
+				super::decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
 
 				return Ok(Some(Batch {
 					columns,
@@ -143,12 +152,14 @@ impl FilterNode {
 		&self,
 		lazy_batch: &LazyBatch,
 		ctx: &ExecutionContext,
-		_rx: &mut Transaction<'a>,
+		rx: &mut Transaction<'a>,
 	) -> crate::Result<Option<BitVec>> {
-		// Materialize to columns for column-oriented evaluation.
-		// Dictionary columns are already DictionaryId natively from the schema,
-		// so no separate decode step is needed.
-		let columns = lazy_batch.clone().into_columns();
+		// Materialize to columns for column-oriented evaluation,
+		// then decode dictionary columns so filters can compare actual values.
+		let dictionaries: Vec<Option<DictionaryDef>> =
+			lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
+		let mut columns = lazy_batch.clone().into_columns();
+		super::decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
 		let row_count = columns.row_count();
 
 		if row_count == 0 {

@@ -7,13 +7,13 @@ use reifydb_core::{
 	encoded::schema::Schema,
 	interface::{
 		catalog::{flow::FlowNodeId, primitive::PrimitiveId},
+		change::{Change, Diff},
 		resolved::ResolvedView,
 	},
 	key::row::RowKey,
 	value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::value::row_number::RowNumber;
 
 use super::{coerce_columns, encode_row_at_index};
@@ -56,7 +56,7 @@ impl Operator for SinkViewOperator {
 				Diff::Insert {
 					post,
 				} => {
-					// Coerce columns to match view schema types
+					// Coerce columns to match view schema types (already decoded at source)
 					let coerced = coerce_columns(post, &view_def.columns)?;
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
@@ -72,7 +72,7 @@ impl Operator for SinkViewOperator {
 					pre,
 					post,
 				} => {
-					// Coerce columns to match view schema types
+					// Coerce columns to match view schema types (already decoded at source)
 					let coerced_pre = coerce_columns(pre, &view_def.columns)?;
 					let coerced_post = coerce_columns(post, &view_def.columns)?;
 					let row_count = coerced_post.row_count();
@@ -105,7 +105,7 @@ impl Operator for SinkViewOperator {
 				Diff::Remove {
 					pre,
 				} => {
-					// Coerce columns to match view schema types - only need row numbers for remove
+					// Coerce columns to match view schema types (already decoded at source)
 					let coerced = coerce_columns(pre, &view_def.columns)?;
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {

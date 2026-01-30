@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackTableChangeOperations,
 		column::ColumnDef,
-		id::{DictionaryId, NamespaceId, PrimaryKeyId, TableId},
+		id::{NamespaceId, PrimaryKeyId, TableId},
 		policy::ColumnPolicyKind,
 		primitive::PrimitiveId,
 		table::TableDef,
@@ -19,7 +19,11 @@ use reifydb_transaction::{
 	change::TransactionalTableChanges,
 	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
+use reifydb_type::{
+	error,
+	fragment::Fragment,
+	value::{constraint::TypeConstraint, dictionary::DictionaryId},
+};
 use tracing::{instrument, warn};
 
 use crate::{

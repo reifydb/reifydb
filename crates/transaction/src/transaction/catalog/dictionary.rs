@@ -2,10 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	change::CatalogTrackDictionaryChangeOperations,
-	dictionary::DictionaryDef,
-	id::{DictionaryId, NamespaceId},
+	change::CatalogTrackDictionaryChangeOperations, dictionary::DictionaryDef, id::NamespaceId,
 };
+use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::{
 	change::{

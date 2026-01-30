@@ -2,11 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 use reifydb_core::{
 	common::{WindowSize, WindowType},
+	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_runtime::hash::Hash128;
-use reifydb_core::interface::change::{Change, Diff};
 
 use super::{WindowEvent, WindowOperator};
 use crate::transaction::FlowTransaction;

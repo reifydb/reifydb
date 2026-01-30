@@ -11,18 +11,26 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			column::ColumnDef,
+			dictionary::DictionaryDef,
 			policy::{ColumnPolicyKind, ColumnSaturationPolicy},
 			subscription::SubscriptionColumnDef,
 		},
 		evaluate::TargetColumn,
 	},
-	value::column::{Column, columns::Columns},
+	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::cast::cast_column_data},
 	stack::Stack,
 };
-use reifydb_type::{fragment::Fragment, params::Params, value::row_number::RowNumber};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, dictionary::DictionaryEntryId, row_number::RowNumber},
+};
+
+use crate::transaction::FlowTransaction;
 // All types are accessed directly from their submodules:
 // - crate::operator::sink::subscription::SinkSubscriptionOperator
 // - crate::operator::sink::view::SinkViewOperator
@@ -183,4 +191,61 @@ pub(crate) fn encode_row_at_index(
 	schema.set_values(&mut encoded, &values);
 
 	(row_number, encoded)
+}
+
+/// Decode dictionary columns in-place using FlowTransaction for lookups.
+///
+/// For columns that store `DictionaryId` values, reads the embedded `dictionary_id`
+/// from the container metadata, looks up the `DictionaryDef` in the catalog,
+/// then resolves each dictionary entry ID to its actual value.
+pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTransaction) -> reifydb_type::Result<()> {
+	// Collect (col_pos, DictionaryDef) for every DictionaryId column that carries a dictionary_id
+	let dict_columns: Vec<(usize, DictionaryDef)> = {
+		let catalog = txn.catalog();
+		columns.iter()
+			.enumerate()
+			.filter_map(|(pos, col)| {
+				if let ColumnData::DictionaryId(container) = col.data() {
+					let dict_id = container.dictionary_id()?;
+					let dictionary = catalog.materialized.find_dictionary(dict_id)?;
+					Some((pos, dictionary))
+				} else {
+					None
+				}
+			})
+			.collect()
+	};
+
+	for (col_pos, dictionary) in &dict_columns {
+		let col = &columns[*col_pos];
+		let row_count = col.data().len();
+		let mut new_data = ColumnData::with_capacity(dictionary.value_type, row_count);
+
+		for row_idx in 0..row_count {
+			let id_value = col.data().get_value(row_idx);
+			if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
+				let index_key =
+					DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128() as u64).encode();
+				match txn.get(&index_key)? {
+					Some(encoded) => {
+						let value: Value =
+							postcard::from_bytes(&encoded).unwrap_or(Value::Undefined);
+						new_data.push_value(value);
+					}
+					None => {
+						new_data.push_value(Value::Undefined);
+					}
+				}
+			} else {
+				new_data.push_value(Value::Undefined);
+			}
+		}
+
+		columns.columns.make_mut()[*col_pos] = Column {
+			name: columns[*col_pos].name().clone(),
+			data: new_data,
+		};
+	}
+
+	Ok(())
 }
