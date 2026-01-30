@@ -39,7 +39,7 @@ fn main() {
 
 		// Create namespace
 		info!("Creating namespace 'store'...");
-		let result = db.command_as_root("create namespace store", Params::None).unwrap();
+		let result = db.admin_as_root("create namespace store", Params::None).unwrap();
 		for frame in result {
 			info!("{}", frame);
 		}
@@ -48,7 +48,7 @@ fn main() {
 		// Create table
 		info!("Creating table 'products'...");
 		let result = db
-			.command_as_root(
+			.admin_as_root(
 				r#"
 			create table store.products {
 				id: int4,

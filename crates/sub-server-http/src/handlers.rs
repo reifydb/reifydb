@@ -16,7 +16,7 @@ use axum::{
 };
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
-	execute::{execute_command, execute_query},
+	execute::{execute_admin, execute_command, execute_query},
 	response::{ResponseFrame, convert_frames},
 	state::AppState,
 };
@@ -121,9 +121,46 @@ pub async fn handle_query(
 	}))
 }
 
+/// Execute an admin operation.
+///
+/// Admin operations include DDL (CREATE TABLE, ALTER, etc.), DML (INSERT, UPDATE, DELETE),
+/// and read queries. This is the most privileged execution level.
+///
+/// # Authentication
+///
+/// Requires one of:
+/// - `Authorization: Bearer <token>` header
+/// - `X-Api-Key: <key>` header
+pub async fn handle_admin(
+	State(state): State<AppState>,
+	headers: HeaderMap,
+	Json(request): Json<StatementRequest>,
+) -> Result<Json<QueryResponse>, AppError> {
+	// Extract identity from headers
+	let identity = extract_identity(&headers)?;
+
+	// Get params or default
+	let params = request.params.unwrap_or(Params::None);
+
+	// Execute with timeout
+	let frames = execute_admin(
+		state.actor_system(),
+		state.engine_clone(),
+		request.statements,
+		identity,
+		params,
+		state.query_timeout(),
+	)
+	.await?;
+
+	Ok(Json(QueryResponse {
+		frames: convert_frames(frames),
+	}))
+}
+
 /// Execute a write command.
 ///
-/// Commands include INSERT, UPDATE, DELETE, and DDL statements.
+/// Commands include INSERT, UPDATE, and DELETE statements.
 ///
 /// # Authentication
 ///

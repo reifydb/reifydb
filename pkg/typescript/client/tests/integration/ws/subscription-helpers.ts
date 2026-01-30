@@ -22,7 +22,7 @@ export async function createTestTable(
 ): Promise<void> {
     // Ensure namespace exists
     try {
-        await client.command(`create namespace test`, null, []);
+        await client.admin(`create namespace test`, null, []);
     } catch (err) {
         // Ignore if already exists
     }
@@ -32,7 +32,7 @@ export async function createTestTable(
         return `${name}: ${type.toLowerCase()}`;
     }).join(', ');
 
-    await client.command(
+    await client.admin(
         `create table test.${tableName} { ${columnDefs} }`,
         null,
         []

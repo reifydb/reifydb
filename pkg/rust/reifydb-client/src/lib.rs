@@ -32,7 +32,7 @@ pub use reifydb_type::{
 };
 use serde::{Deserialize, Serialize};
 // Re-export result types
-pub use session::{CommandResult, QueryResult};
+pub use session::{AdminResult, CommandResult, QueryResult};
 pub use ws::WsClient;
 
 // ============================================================================
@@ -50,10 +50,17 @@ pub struct Request {
 #[serde(tag = "type", content = "payload")]
 pub enum RequestPayload {
 	Auth(AuthRequest),
+	Admin(AdminRequest),
 	Command(CommandRequest),
 	Query(QueryRequest),
 	Subscribe(SubscribeRequest),
 	Unsubscribe(UnsubscribeRequest),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminRequest {
+	pub statements: Vec<String>,
+	pub params: Option<Params>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -99,10 +106,16 @@ pub struct Response {
 pub enum ResponsePayload {
 	Auth(AuthResponse),
 	Err(ErrResponse),
+	Admin(AdminResponse),
 	Command(CommandResponse),
 	Query(QueryResponse),
 	Subscribed(SubscribedResponse),
 	Unsubscribed(UnsubscribedResponse),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminResponse {
+	pub frames: Vec<WebsocketFrame>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

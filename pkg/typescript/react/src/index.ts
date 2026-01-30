@@ -15,6 +15,8 @@ export {useQueryExecutor, type QueryResult, type QueryState, type QueryExecutorO
 export {useQueryOne, useQueryMany, type QueryOptions} from './hooks/use-query';
 export {useCommandExecutor, type CommandResult, type CommandState, type CommandExecutorOptions} from './hooks/use-command-executor';
 export {useCommandOne, useCommandMany, type CommandOptions} from './hooks/use-command';
+export {useAdminExecutor, type AdminResult, type AdminState, type AdminExecutorOptions} from './hooks/use-admin-executor';
+export {useAdminOne, useAdminMany, type AdminOptions} from './hooks/use-admin';
 export {
     useSubscriptionExecutor,
     type SubscriptionExecutorOptions,

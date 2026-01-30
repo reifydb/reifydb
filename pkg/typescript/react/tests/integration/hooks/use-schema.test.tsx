@@ -28,11 +28,11 @@ describe('useSchema Hook', () => {
         setupClient = await Client.connect_ws(url, {timeoutMs: 10000});
 
         // Create namespace
-        await setupClient.command(`CREATE NAMESPACE ${TEST_NAMESPACE}`, {}, []);
+        await setupClient.admin(`CREATE NAMESPACE ${TEST_NAMESPACE}`, {}, []);
 
         // Create tables with all supported column types
         // Table 1: Integer types
-        await setupClient.command(
+        await setupClient.admin(
             `CREATE TABLE ${TEST_NAMESPACE}.types_integers {
                 col_int1: INT1,
                 col_int2: INT2,
@@ -52,7 +52,7 @@ describe('useSchema Hook', () => {
         );
 
         // Table 2: Float types
-        await setupClient.command(
+        await setupClient.admin(
             `CREATE TABLE ${TEST_NAMESPACE}.types_floats {
                 col_float4: FLOAT4,
                 col_float8: FLOAT8,
@@ -63,7 +63,7 @@ describe('useSchema Hook', () => {
         );
 
         // Table 3: Text and binary types
-        await setupClient.command(
+        await setupClient.admin(
             `CREATE TABLE ${TEST_NAMESPACE}.types_text {
                 col_utf8: UTF8,
                 col_blob: BLOB
@@ -73,7 +73,7 @@ describe('useSchema Hook', () => {
         );
 
         // Table 4: Temporal types
-        await setupClient.command(
+        await setupClient.admin(
             `CREATE TABLE ${TEST_NAMESPACE}.types_temporal {
                 col_date: DATE,
                 col_datetime: DATETIME,
@@ -85,7 +85,7 @@ describe('useSchema Hook', () => {
         );
 
         // Table 5: Identifier types
-        await setupClient.command(
+        await setupClient.admin(
             `CREATE TABLE ${TEST_NAMESPACE}.types_identifiers {
                 col_uuid4: UUID4,
                 col_uuid7: UUID7
@@ -95,7 +95,7 @@ describe('useSchema Hook', () => {
         );
 
         // Table 6: Misc types
-        await setupClient.command(
+        await setupClient.admin(
             `CREATE TABLE ${TEST_NAMESPACE}.types_misc {
                 col_boolean: BOOLEAN
             }`,
@@ -108,7 +108,7 @@ describe('useSchema Hook', () => {
         // Drop test namespace and tables
         if (setupClient) {
             try {
-                await setupClient.command(`DROP NAMESPACE ${TEST_NAMESPACE} CASCADE`, {}, []);
+                await setupClient.admin(`DROP NAMESPACE ${TEST_NAMESPACE} CASCADE`, {}, []);
             } catch (e) {
                 // Ignore cleanup errors
             }

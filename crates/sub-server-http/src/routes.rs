@@ -13,7 +13,7 @@ use reifydb_sub_server::state::AppState;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::trace::TraceLayer;
 
-use crate::handlers::{handle_command, handle_query, health};
+use crate::handlers::{handle_admin, handle_command, handle_query, health};
 
 /// Create the HTTP router with all endpoints and middleware.
 ///
@@ -47,7 +47,9 @@ pub fn router(state: AppState) -> Router {
 		.route("/health", get(health))
 		// Query endpoint (auth required)
 		.route("/v1/query", post(handle_query))
-		// Command endpoint (auth required)
+		// Admin endpoint (auth required, DDL + DML + Query)
+		.route("/v1/admin", post(handle_admin))
+		// Command endpoint (auth required, DML + Query)
 		.route("/v1/command", post(handle_command))
 		// Apply middleware layers - order matters!
 		// TraceLayer must be outermost for proper request/response logging

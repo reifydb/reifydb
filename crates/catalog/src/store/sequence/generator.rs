@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	single::write::SingleWriteTransaction,
-	transaction::{AsTransaction, admin::AdminTransaction, command::CommandTransaction},
+	transaction::{AsTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_type::{Result as TxResult, return_error, value::r#type::Type};
 
@@ -35,6 +35,15 @@ impl SequenceTransaction for AdminTransaction {
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		AdminTransaction::begin_single_command(self, keys)
+	}
+}
+
+impl SequenceTransaction for Transaction<'_> {
+	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
+		Transaction::begin_single_command(self, keys)
 	}
 }
 

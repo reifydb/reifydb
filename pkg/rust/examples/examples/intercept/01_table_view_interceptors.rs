@@ -55,10 +55,10 @@ fn main() {
 
 	// Step 2: Create namespace and table
 	info!("\n--- Creating namespace and table ---");
-	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
+	db.admin_as_root(r#"create namespace test;"#, Params::None).unwrap();
 
 	log_query("create table test.users { id: int4, username: utf8, active: bool }");
-	db.command_as_root(r#"create table test.users { id: int4, username: utf8, active: bool }"#, Params::None)
+	db.admin_as_root(r#"create table test.users { id: int4, username: utf8, active: bool }"#, Params::None)
 		.unwrap();
 
 	// Step 3: Create a deferred view that filters active users
@@ -66,7 +66,7 @@ fn main() {
 	log_query(
 		"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }",
 	);
-	db.command_as_root(
+	db.admin_as_root(
 		r#"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }"#,
 		Params::None,
 	)

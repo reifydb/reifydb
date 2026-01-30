@@ -34,6 +34,17 @@ impl testscript::runner::Runner for WsRunner {
 		let client = self.client.as_ref().ok_or("No client available")?;
 
 		match command.name.as_str() {
+			"admin" => {
+				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+
+				println!("admin: {rql}");
+
+				let result = self.runtime.block_on(client.admin(&rql, None))?;
+				for frame in result.frames {
+					writeln!(output, "{}", frame).unwrap();
+				}
+			}
+
 			"command" => {
 				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 

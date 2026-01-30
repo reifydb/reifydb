@@ -28,6 +28,12 @@ use reifydb_type::{
 	},
 };
 
+/// Result type for admin operations
+#[derive(Debug)]
+pub struct AdminResult {
+	pub frames: Vec<Frame>,
+}
+
 /// Result type for command operations
 #[derive(Debug)]
 pub struct CommandResult {
@@ -41,6 +47,25 @@ pub struct QueryResult {
 }
 
 // Helper functions for parsing responses - made public for ws module
+pub fn parse_admin_response(response: crate::Response) -> Result<AdminResult, Error> {
+	match response.payload {
+		crate::ResponsePayload::Admin(admin_response) => Ok(AdminResult {
+			frames: convert_admin_response(admin_response),
+		}),
+		// Admin responses may come back as Command responses from the server
+		crate::ResponsePayload::Command(cmd_response) => Ok(AdminResult {
+			frames: convert_command_response(cmd_response),
+		}),
+		crate::ResponsePayload::Err(err) => {
+			err!(err.diagnostic)
+		}
+		other => {
+			println!("Unexpected execute response: {:?}", other);
+			panic!("Unexpected execute response type")
+		}
+	}
+}
+
 pub fn parse_command_response(response: crate::Response) -> Result<CommandResult, Error> {
 	match response.payload {
 		crate::ResponsePayload::Command(cmd_response) => Ok(CommandResult {
@@ -72,6 +97,26 @@ pub fn parse_query_response(response: crate::Response) -> Result<QueryResult, Er
 			panic!("Unexpected execute response type")
 		}
 	}
+}
+
+pub fn convert_admin_response(payload: crate::AdminResponse) -> Vec<Frame> {
+	let mut result = Vec::new();
+
+	for frame in payload.frames {
+		let columns = frame
+			.columns
+			.into_iter()
+			.map(|col| FrameColumn {
+				name: col.name,
+				data: convert_column_to_data(col.r#type, col.data),
+			})
+			.collect();
+
+		let row_numbers = frame.row_numbers.into_iter().map(RowNumber::new).collect();
+		result.push(Frame::with_row_numbers(columns, row_numbers))
+	}
+
+	result
 }
 
 pub fn convert_command_response(payload: crate::CommandResponse) -> Vec<Frame> {

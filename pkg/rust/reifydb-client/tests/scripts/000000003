@@ -2,8 +2,8 @@
 # This file is licensed under the MIT
 
 # Test multiple sequential operations
-command 'create namespace ops'
-command 'create table ops.numbers{val: int4}'
+admin 'create namespace ops'
+admin 'create table ops.numbers{val: int4}'
 command 'from [{ val: 10 }, { val: 20 }] insert ops.numbers'
 query 'from ops.numbers'
 ---

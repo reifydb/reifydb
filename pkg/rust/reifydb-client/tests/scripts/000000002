@@ -2,8 +2,8 @@
 # This file is licensed under the MIT
 
 # Test command execution (schema creation and data insertion)
-command 'create namespace test'
-command 'create table test.simple{id: int4, name: text}'
+admin 'create namespace test'
+admin 'create table test.simple{id: int4, name: text}'
 command 'from [{ id: 1, name: "Alice" }] insert test.simple'
 query 'from test.simple'
 ---

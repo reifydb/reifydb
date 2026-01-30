@@ -37,6 +37,33 @@ describe('Concurrent requests', () => {
         }
     });
 
+    describe('admin', () => {
+        it('should handle multiple concurrent requests', async () => {
+            const [result1, result2, result3] = await Promise.all([
+                wsClient.admin(
+                    'MAP 1 as result;',
+                    {},
+                    [Schema.object({result: Schema.int4Value()})]
+                ),
+                wsClient.admin(
+                    'MAP { 2 as a, 3 as b };',
+                    {},
+                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                ),
+                wsClient.admin(
+                    "MAP 'ReifyDB' as result;",
+                    {},
+                    [Schema.object({result: Schema.utf8Value()})]
+                )
+            ]);
+
+            expect(result1[0][0].result.value).toBe(1);
+            expect(result2[0][0].a.value).toBe(2);
+            expect(result2[0][0].b.value).toBe(3);
+            expect(result3[0][0].result.value).toBe('ReifyDB');
+        });
+    });
+
     describe('command', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
@@ -79,6 +106,33 @@ describe('Concurrent requests', () => {
                     [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
                 ),
                 wsClient.query(
+                    "MAP 'ReifyDB' as result;",
+                    {},
+                    [Schema.object({result: Schema.utf8Value()})]
+                )
+            ]);
+
+            expect(result1[0][0].result.value).toBe(1);
+            expect(result2[0][0].a.value).toBe(2);
+            expect(result2[0][0].b.value).toBe(3);
+            expect(result3[0][0].result.value).toBe('ReifyDB');
+        });
+    });
+
+    describe('admin & query mixed', () => {
+        it('should handle multiple concurrent requests', async () => {
+            const [result1, result2, result3] = await Promise.all([
+                wsClient.admin(
+                    'MAP 1 as result;',
+                    {},
+                    [Schema.object({result: Schema.int4Value()})]
+                ),
+                wsClient.query(
+                    'MAP { 2 as a, 3 as b };',
+                    {},
+                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                ),
+                wsClient.admin(
                     "MAP 'ReifyDB' as result;",
                     {},
                     [Schema.object({result: Schema.utf8Value()})]

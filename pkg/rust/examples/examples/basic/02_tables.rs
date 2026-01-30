@@ -23,7 +23,7 @@ fn main() {
 	// Create a namespace to organize our tables
 	info!("Creating namespace...");
 	log_query("create namespace company");
-	db.command_as_root(
+	db.admin_as_root(
 		r#"
 		create namespace company;
 		"#,
@@ -43,7 +43,7 @@ fn main() {
     department: utf8
 }"#,
 	);
-	db.command_as_root(
+	db.admin_as_root(
 		r#"
 		create table company.employees {
 			id: int4,

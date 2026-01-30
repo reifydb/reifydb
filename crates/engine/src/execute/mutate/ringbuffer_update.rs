@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, params::Params, return_error, value::Value};
 
 use super::coerce::coerce_value_to_column_type;
@@ -23,7 +23,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn update_ringbuffer<'a>(
 		&self,
-		txn: &mut AdminTransaction,
+		txn: &mut Transaction<'_>,
 		plan: UpdateRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -64,19 +64,17 @@ impl Executor {
 
 		let mut updated_count = 0;
 
-		// Process all input batches - we need to handle compilation and
-		// execution with proper transaction borrowing
+		// Process all input batches
 		{
-			let mut wrapped_txn = Transaction::from(&mut *txn);
-			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
+			let mut input_node = compile(*plan.input, txn, Arc::new(context.clone()));
 
 			// Initialize the operator before execution
-			input_node.initialize(&mut wrapped_txn, &context)?;
+			input_node.initialize(txn, &context)?;
 
 			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut wrapped_txn, &mut mutable_context)?
+			}) = input_node.next(txn, &mut mutable_context)?
 			{
 				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {
@@ -132,7 +130,7 @@ impl Executor {
 						let value = if let Some(dict_id) = rb_column.dictionary_id {
 							let dictionary = self
 								.catalog
-								.find_dictionary(wrapped_txn.admin_mut(), dict_id)?
+								.find_dictionary(txn, dict_id)?
 								.ok_or_else(|| {
 									internal_error!(
 										"Dictionary {:?} not found for column {}",
@@ -140,9 +138,8 @@ impl Executor {
 										rb_column.name
 									)
 								})?;
-							let entry_id = wrapped_txn
-								.admin_mut()
-								.insert_into_dictionary(&dictionary, &value)?;
+							let entry_id =
+								txn.insert_into_dictionary(&dictionary, &value)?;
 							entry_id.to_value()
 						} else {
 							value
@@ -183,19 +180,12 @@ impl Executor {
 					}
 
 					// Update the encoded using interceptors
-					wrapped_txn.admin_mut().update_ringbuffer(
-						ringbuffer.clone(),
-						row_number,
-						row,
-					)?;
+					txn.update_ringbuffer(ringbuffer.clone(), row_number, row)?;
 
 					updated_count += 1;
 				}
 			}
 		}
-
-		// Note: We don't update metadata because UPDATE doesn't change head, tail, or current_size
-		// The ring buffer structure remains unchanged, only the data is modified
 
 		// Return summary columns
 		Ok(Columns::single_row([

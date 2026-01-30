@@ -27,7 +27,10 @@ use tracing::{debug, error, instrument, warn};
 use crate::{
 	boot::Bootloader,
 	health::{ComponentHealth, HealthMonitor},
-	session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session},
+	session::{
+		AdminSession, CommandSession, IntoAdminSession, IntoCommandSession, IntoQuerySession, QuerySession,
+		Session,
+	},
 	subsystem::Subsystems,
 };
 
@@ -176,7 +179,13 @@ impl Database {
 		self.subsystems.get::<S>()
 	}
 
-	/// Execute a transactional command as root user.
+	/// Execute an admin (DDL + DML + Query) operation as root user.
+	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
+		let identity = Identity::root();
+		self.engine.admin_as(&identity, rql, params.into())
+	}
+
+	/// Execute a transactional command (DML + Query) as root user.
 	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
 		let identity = Identity::root();
 		self.engine.command_as(&identity, rql, params.into())
@@ -262,6 +271,10 @@ impl Drop for Database {
 }
 
 impl Session for Database {
+	fn admin_session(&self, session: impl IntoAdminSession) -> Result<AdminSession> {
+		session.into_admin_session(self.engine.clone())
+	}
+
 	fn command_session(&self, session: impl IntoCommandSession) -> Result<CommandSession> {
 		session.into_command_session(self.engine.clone())
 	}

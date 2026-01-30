@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::plan::physical::InsertDictionaryNode;
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -25,7 +25,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn insert_dictionary<'a>(
 		&self,
-		txn: &mut AdminTransaction,
+		txn: &mut Transaction<'_>,
 		plan: InsertDictionaryNode,
 		stack: &mut Stack,
 	) -> crate::Result<Columns> {
@@ -48,11 +48,10 @@ impl Executor {
 			stack: stack.clone(),
 		});
 
-		let mut std_txn = Transaction::from(txn);
-		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
+		let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
 		// Initialize the operator before execution
-		input_node.initialize(&mut std_txn, &execution_context)?;
+		input_node.initialize(txn, &execution_context)?;
 
 		// Collect all inserted (id, value) pairs
 		let mut ids: Vec<Value> = Vec::new();
@@ -61,7 +60,7 @@ impl Executor {
 
 		while let Some(Batch {
 			columns,
-		}) = input_node.next(&mut std_txn, &mut mutable_context)?
+		}) = input_node.next(txn, &mut mutable_context)?
 		{
 			let row_count = columns.row_count();
 
@@ -87,8 +86,7 @@ impl Executor {
 				let coerced_value = coerce_value_to_dictionary_type(value, dictionary.value_type)?;
 
 				// Insert into dictionary
-				let entry_id =
-					std_txn.admin_mut().insert_into_dictionary(&dictionary, &coerced_value)?;
+				let entry_id = txn.insert_into_dictionary(&dictionary, &coerced_value)?;
 
 				let id_value = match entry_id {
 					DictionaryEntryId::U1(v) => Value::Uint1(v),

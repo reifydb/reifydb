@@ -1,8 +1,8 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-(command 'create namespace test')
-(command 'create table test.item{field: int1}')
+(admin 'create namespace test')
+(admin 'create table test.item{field: int1}')
 (command 'from [{field: -1 -2}] insert test.item')
 command 'from test.item map field'
 ---

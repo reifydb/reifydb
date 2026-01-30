@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -27,7 +27,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn delete_ringbuffer<'a>(
 		&self,
-		txn: &mut AdminTransaction,
+		txn: &mut Transaction<'_>,
 		plan: DeleteRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -62,10 +62,9 @@ impl Executor {
 			let mut row_numbers_to_delete = std::collections::HashSet::new();
 
 			{
-				let mut std_txn = Transaction::from(&mut *txn);
 				let mut input_node = compile(
 					*input_plan,
-					&mut std_txn,
+					txn,
 					Arc::new(ExecutionContext {
 						executor: self.clone(),
 						source: resolved_source.clone(),
@@ -84,12 +83,12 @@ impl Executor {
 				};
 
 				// Initialize the operator before execution
-				input_node.initialize(&mut std_txn, &context)?;
+				input_node.initialize(txn, &context)?;
 
 				let mut mutable_context = context.clone();
 				while let Some(Batch {
 					columns,
-				}) = input_node.next(&mut std_txn, &mut mutable_context)?
+				}) = input_node.next(txn, &mut mutable_context)?
 				{
 					// Get encoded numbers from the Columns structure
 					if columns.row_numbers.is_empty() {
@@ -157,7 +156,7 @@ impl Executor {
 		}
 
 		// Save updated metadata
-		self.catalog.update_ringbuffer_metadata_admin(txn, metadata)?;
+		self.catalog.update_ringbuffer_metadata_txn(txn, metadata)?;
 
 		// Return summary
 		Ok(Columns::single_row([

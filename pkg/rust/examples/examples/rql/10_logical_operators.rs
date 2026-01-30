@@ -58,8 +58,8 @@ fn main() {
 	}
 
 	// Set up sample data
-	db.command_as_root("create namespace inventory", Params::None).unwrap();
-	db.command_as_root(
+	db.admin_as_root("create namespace inventory", Params::None).unwrap();
+	db.admin_as_root(
 		r#"
 		create table inventory.products {
 			id: int4,

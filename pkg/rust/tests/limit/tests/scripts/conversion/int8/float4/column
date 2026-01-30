@@ -1,9 +1,9 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-(command 'create namespace test')
+(admin 'create namespace test')
 
-(command 'create table test.conversion{col: int8}')
+(admin 'create table test.conversion{col: int8}')
 (command 'from [{ col: 0 }] insert test.conversion')
 command 'from test.conversion map cast(col, float4)'
 ---
@@ -38,7 +38,7 @@ command 'from test.conversion map cast(col, float4)'
 > +----------+-------------+
 >
 
-(command 'create table test.conversion_fail{col: int8}')
+(admin 'create table test.conversion_fail{col: int8}')
 (command 'from [{ col: 16777217 }] insert test.conversion_fail')
 !command 'from test.conversion_fail map cast(col, float4)'
 ---

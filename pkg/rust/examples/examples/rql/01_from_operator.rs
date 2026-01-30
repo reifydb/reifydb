@@ -96,9 +96,9 @@ fn main() {
 
 	// First create a namespace and table
 	info!("Creating namespace and table...");
-	db.command_as_root(r#"create namespace demo"#, Params::None).unwrap();
+	db.admin_as_root(r#"create namespace demo"#, Params::None).unwrap();
 
-	db.command_as_root(
+	db.admin_as_root(
 		r#"
 		create table demo.users {
 			id: int4,

@@ -35,6 +35,14 @@ impl testscript::runner::Runner for HttpRunner {
 		let client = self.client.as_ref().ok_or("No client available")?;
 
 		match command.name.as_str() {
+			"admin" => {
+				let rql = parse_rql(command);
+				println!("admin: {rql}");
+
+				let result = self.runtime.block_on(client.admin(&rql, None))?;
+				write_frames(result.frames)
+			}
+
 			"command" => {
 				let rql = parse_rql(command);
 				println!("command: {rql}");

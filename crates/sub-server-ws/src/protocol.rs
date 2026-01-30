@@ -22,7 +22,8 @@ pub struct Request {
 ///
 /// Discriminated by the `type` field in JSON:
 /// - `"Auth"` - Authentication request
-/// - `"Command"` - Write command (INSERT, UPDATE, DELETE, DDL)
+/// - `"Admin"` - Admin operation (DDL + DML + Query)
+/// - `"Command"` - Write command (INSERT, UPDATE, DELETE)
 /// - `"Query"` - Read query (SELECT)
 /// - `"Subscribe"` - Subscribe to real-time changes
 /// - `"Unsubscribe"` - Unsubscribe from a subscription
@@ -30,10 +31,20 @@ pub struct Request {
 #[serde(tag = "type", content = "payload")]
 pub enum RequestPayload {
 	Auth(AuthRequest),
+	Admin(AdminRequest),
 	Command(CommandRequest),
 	Query(QueryRequest),
 	Subscribe(SubscribeRequest),
 	Unsubscribe(UnsubscribeRequest),
+}
+
+/// Admin (DDL + DML + Query) request payload.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AdminRequest {
+	/// RQL statements to execute.
+	pub statements: Vec<String>,
+	/// Optional parameters for the statements.
+	pub params: Option<Params>,
 }
 
 /// Authentication request payload.

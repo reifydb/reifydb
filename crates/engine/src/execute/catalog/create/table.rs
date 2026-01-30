@@ -114,7 +114,7 @@ pub mod tests {
 		// First creation should succeed
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_command_plan(
+			.execute_admin_plan(
 				&mut txn,
 				PhysicalPlan::CreateTable(plan.clone()),
 				Params::default(),
@@ -130,7 +130,7 @@ pub mod tests {
 		// should not error
 		plan.if_not_exists = true;
 		let result = instance
-			.execute_command_plan(
+			.execute_admin_plan(
 				&mut txn,
 				PhysicalPlan::CreateTable(plan.clone()),
 				Params::default(),
@@ -146,7 +146,7 @@ pub mod tests {
 		// should return error
 		plan.if_not_exists = false;
 		let err = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default(), &mut stack)
+			.execute_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default(), &mut stack)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
@@ -171,7 +171,7 @@ pub mod tests {
 
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_command_plan(
+			.execute_admin_plan(
 				&mut txn,
 				PhysicalPlan::CreateTable(plan.clone()),
 				Params::default(),
@@ -193,7 +193,7 @@ pub mod tests {
 		};
 
 		let result = instance
-			.execute_command_plan(
+			.execute_admin_plan(
 				&mut txn,
 				PhysicalPlan::CreateTable(plan.clone()),
 				Params::default(),
@@ -227,7 +227,7 @@ pub mod tests {
 
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default(), &mut stack)
+			.execute_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default(), &mut stack)
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("missing_schema".to_string()));

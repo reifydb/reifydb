@@ -41,6 +41,249 @@ describe('Named Parameters', () => {
         }
     });
 
+    describe('admin', () => {
+
+        it('Boolean', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: true },
+                [Schema.object({result: Schema.boolean()})]
+            );
+
+            expectSingleResult(frames, true, 'boolean');
+        }, 1000);
+
+        it('Int1', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: 42 },
+                [Schema.object({result: Schema.int1()})]
+            );
+
+            expectSingleResult(frames, 42, 'number');
+        }, 1000);
+
+        it('Int2', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: 1234 },
+                [Schema.object({result: Schema.int2()})]
+            );
+
+            expectSingleResult(frames, 1234, 'number');
+        }, 1000);
+
+        it('Int4', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: 12345678 },
+                [Schema.object({result: Schema.int4()})]
+            );
+
+            expectSingleResult(frames, 12345678, 'number');
+        }, 1000);
+
+        it('Int8', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: BigInt("9223372036854775807") },
+                [Schema.object({result: Schema.int8()})]
+            );
+
+            expectSingleResult(frames, BigInt("9223372036854775807"), 'bigint');
+        }, 1000);
+
+        it('Int16', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: BigInt("170141183460469231731687303715884105727") },
+                [Schema.object({result: Schema.int16()})]
+            );
+
+            expectSingleResult(frames, BigInt("170141183460469231731687303715884105727"), 'bigint');
+        }, 1000);
+
+        it('Uint1', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: 255 },
+                [Schema.object({result: Schema.uint1()})]
+            );
+
+            expectSingleResult(frames, 255, 'number');
+        }, 1000);
+
+        it('Uint2', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: 65535 },
+                [Schema.object({result: Schema.uint2()})]
+            );
+
+            expectSingleResult(frames, 65535, 'number');
+        }, 1000);
+
+        it('Uint4', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: 4294967295 },
+                [Schema.object({result: Schema.uint4()})]
+            );
+
+            expectSingleResult(frames, BigInt(4294967295), 'bigint');
+        }, 1000);
+
+        it('Uint8', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: BigInt("18446744073709551615") },
+                [Schema.object({result: Schema.uint8()})]
+            );
+
+            expectSingleResult(frames, BigInt("18446744073709551615"), 'bigint');
+        }, 1000);
+
+        it('Uint16', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: BigInt("340282366920938463463374607431768211455") },
+                [Schema.object({result: Schema.uint16()})]
+            );
+
+            expectSingleResult(frames, BigInt("340282366920938463463374607431768211455"), 'bigint');
+        }, 1000);
+
+        it('Float4', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: 3.14 },
+                [Schema.object({result: Schema.float4()})]
+            );
+
+            expectSingleResult(frames, 3.14, 'number');
+        }, 1000);
+
+        it('Float8', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: 3.141592653589793 },
+                [Schema.object({result: Schema.float8()})]
+            );
+
+            expectSingleResult(frames, 3.141592653589793, 'number');
+        }, 1000);
+
+        it('Decimal', async () => {
+            const decimal = "123.456789";
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: decimal },
+                [Schema.object({result: Schema.decimal()})]
+            );
+
+            expectSingleResult(frames, decimal, 'string');
+        }, 1000);
+
+        it('Utf8', async () => {
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: "Hello, World!" },
+                [Schema.object({result: Schema.utf8()})]
+            );
+
+            expectSingleResult(frames, "Hello, World!", 'string');
+        }, 1000);
+
+        it('Blob', async () => {
+            const data = new Uint8Array([1, 2, 3, 4, 5]);
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: data },
+                [Schema.object({result: Schema.blob()})]
+            );
+
+            expectSingleBlobResult(frames, data);
+        }, 1000);
+
+        it('Date', async () => {
+            const date = new Date('2024-03-15');
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: date },
+                [Schema.object({result: Schema.date()})]
+            );
+
+            expectSingleDateResult(frames, date);
+        }, 1000);
+
+        it('Time', async () => {
+            const time = new Date('1970-01-01T14:30:00.123Z');
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: time },
+                [Schema.object({result: Schema.time()})]
+            );
+
+            expectSingleDateResult(frames, time);
+        }, 1000);
+
+        it('DateTime', async () => {
+            const datetime = new Date('2024-03-15T14:30:00.123Z');
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: datetime },
+                [Schema.object({result: Schema.datetime()})]
+            );
+
+            expectSingleDateResult(frames, datetime);
+        }, 1000);
+
+        it('Duration', async () => {
+            const duration = "P1DT2H30M";
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: duration },
+                [Schema.object({result: Schema.duration()})]
+            );
+
+            expectSingleResult(frames, duration, 'string');
+        }, 1000);
+
+        it('Uuid4', async () => {
+            const uuid = "550e8400-e29b-41d4-a716-446655440000";
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: uuid },
+                [Schema.object({result: Schema.uuid4()})]
+            );
+
+            expectSingleResult(frames, uuid, 'string');
+        }, 1000);
+
+        it('Uuid7', async () => {
+            const uuid = "018fad5d-f37a-7c94-a716-446655440000";
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: uuid },
+                [Schema.object({result: Schema.uuid7()})]
+            );
+
+            expectSingleResult(frames, uuid, 'string');
+        }, 1000);
+
+        it('IdentityId', async () => {
+            const identityId = "018fad5d-f37a-7c94-a716-446655440001";
+            const frames = await wsClient.admin(
+                'MAP $value as result',
+                { value: identityId },
+                [Schema.object({result: Schema.identityid()})]
+            );
+
+            expectSingleResult(frames, identityId, 'string');
+        }, 1000);
+
+    });
+
     describe('command', () => {
 
         it('Boolean', async () => {

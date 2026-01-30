@@ -189,21 +189,35 @@ impl WasmDB {
 		utils::frames_to_js(&frames)
 	}
 
-	/// Execute a command (DDL/DML) and return results
+	/// Execute an admin operation (DDL + DML + Query) and return results
 	///
-	/// Commands include CREATE, INSERT, UPDATE, DELETE, etc.
+	/// Admin operations include CREATE, ALTER, INSERT, UPDATE, DELETE, etc.
 	///
 	/// # Example
 	///
 	/// ```javascript
-	/// await db.command("CREATE NAMESPACE demo");
-	/// await db.command(`
+	/// await db.admin("CREATE NAMESPACE demo");
+	/// await db.admin(`
 	///   CREATE TABLE demo.users {
 	///     id: int4,
 	///     name: utf8
 	///   }
 	/// `);
 	/// ```
+	#[wasm_bindgen]
+	pub fn admin(&self, rql: &str) -> Result<JsValue, JsValue> {
+		let identity = Identity::root();
+		let params = Params::None;
+
+		let frames = self.inner.admin_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+
+		utils::frames_to_js(&frames)
+	}
+
+	/// Execute a command (DML) and return results
+	///
+	/// Commands include INSERT, UPDATE, DELETE, etc.
+	/// For DDL operations (CREATE, ALTER), use `admin()` instead.
 	#[wasm_bindgen]
 	pub fn command(&self, rql: &str) -> Result<JsValue, JsValue> {
 		let identity = Identity::root();
@@ -232,6 +246,18 @@ impl WasmDB {
 		let params = utils::parse_params(params_js)?;
 
 		let frames = self.inner.query_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+
+		utils::frames_to_js(&frames)
+	}
+
+	/// Execute admin with JSON parameters
+	#[wasm_bindgen(js_name = adminWithParams)]
+	pub fn admin_with_params(&self, rql: &str, params_js: JsValue) -> Result<JsValue, JsValue> {
+		let identity = Identity::root();
+
+		let params = utils::parse_params(params_js)?;
+
+		let frames = self.inner.admin_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
 	}

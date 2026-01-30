@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::InsertRingBufferNode;
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -30,7 +30,7 @@ impl Executor {
 	#[instrument(name = "mutate::ringbuffer::insert", level = "trace", skip_all)]
 	pub(crate) fn insert_ringbuffer<'a>(
 		&self,
-		txn: &mut AdminTransaction,
+		txn: &mut Transaction<'_>,
 		plan: InsertRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -68,19 +68,18 @@ impl Executor {
 			stack: Stack::new(),
 		});
 
-		let mut std_txn = Transaction::from(txn);
-		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
+		let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
 		let mut inserted_count = 0;
 
 		// Initialize the operator before execution
-		input_node.initialize(&mut std_txn, &execution_context)?;
+		input_node.initialize(txn, &execution_context)?;
 
 		// Process all input batches
 		let mut mutable_context = (*execution_context).clone();
 		while let Some(Batch {
 			columns,
-		}) = input_node.next(&mut std_txn, &mut mutable_context)?
+		}) = input_node.next(txn, &mut mutable_context)?
 		{
 			let row_count = columns.row_count();
 
@@ -96,9 +95,6 @@ impl Executor {
 					} else {
 						Value::Undefined
 					};
-
-					// No auto-increment for ring buffers currently
-					// TODO: Add support if needed
 
 					// Create a ResolvedColumn for this ring buffer column
 					let column_ident = Fragment::internal(&rb_column.name);
@@ -124,7 +120,7 @@ impl Executor {
 					let value = if let Some(dict_id) = rb_column.dictionary_id {
 						let dictionary = self
 							.catalog
-							.find_dictionary(std_txn.admin_mut(), dict_id)?
+							.find_dictionary(txn, dict_id)?
 							.ok_or_else(|| {
 								internal_error!(
 									"Dictionary {:?} not found for column {}",
@@ -132,9 +128,7 @@ impl Executor {
 									rb_column.name
 								)
 							})?;
-						let entry_id = std_txn
-							.admin_mut()
-							.insert_into_dictionary(&dictionary, &value)?;
+						let entry_id = txn.insert_into_dictionary(&dictionary, &value)?;
 						entry_id.to_value()
 					} else {
 						value
@@ -143,24 +137,20 @@ impl Executor {
 					schema.set_value(&mut row, rb_idx, &value);
 				}
 
-				// TODO: Check for primary key and handle upsert logic if needed
-
 				// If buffer is full, delete the oldest entry first
 				if metadata.is_full() {
 					let oldest_row = RowNumber(metadata.head);
-					std_txn.admin_mut().remove_from_ringbuffer(ringbuffer.clone(), oldest_row)?;
+					txn.remove_from_ringbuffer(ringbuffer.clone(), oldest_row)?;
 					// Advance head to next oldest item
 					metadata.head += 1;
 					metadata.count -= 1;
 				}
 
 				// Get next row number from sequence (monotonically increasing)
-				let row_number = self
-					.catalog
-					.next_row_number_for_ringbuffer(std_txn.admin_mut(), ringbuffer.id)?;
+				let row_number = self.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
 
 				// Store the row
-				std_txn.admin_mut().insert_ringbuffer_at(ringbuffer.clone(), row_number, row)?;
+				txn.insert_ringbuffer_at(ringbuffer.clone(), row_number, row)?;
 
 				// Update metadata
 				if metadata.is_empty() {
@@ -174,7 +164,7 @@ impl Executor {
 		}
 
 		// Save updated metadata
-		self.catalog.update_ringbuffer_metadata_admin(std_txn.admin_mut(), metadata)?;
+		self.catalog.update_ringbuffer_metadata_txn(txn, metadata)?;
 
 		// Return summary
 		Ok(Columns::single_row([

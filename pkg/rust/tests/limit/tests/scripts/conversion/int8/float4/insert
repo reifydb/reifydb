@@ -1,8 +1,8 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
-(command 'create namespace test')
+(admin 'create namespace test')
 
-(command 'create table test.conversion{col: float4}')
+(admin 'create table test.conversion{col: float4}')
 
 (command 'from [{ col: cast(cast(0, int16), float4) }] insert test.conversion')
 command 'from test.conversion map col'
@@ -37,7 +37,7 @@ command 'from test.conversion map col'
 > +----------+-------------+
 >
 
-(command 'create table test.float4_test10{col: float4}')
+(admin 'create table test.float4_test10{col: float4}')
 !command 'from [{ col: cast(cast(16777217, int16), float4) }] insert test.float4_test10'
 ---
 >  Error CAST_002: failed to cast to Float4

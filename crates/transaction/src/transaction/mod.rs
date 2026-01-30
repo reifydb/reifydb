@@ -3,14 +3,18 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::{EncodedKey, EncodedKeyRange},
+	encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 	interface::store::{MultiVersionBatch, MultiVersionValues},
 };
 use reifydb_type::Result;
 
 use crate::{
 	TransactionId,
-	single::read::SingleReadTransaction,
+	change::RowChange,
+	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 
@@ -238,6 +242,55 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.begin_single_query(keys),
 			Transaction::Admin(txn) => txn.begin_single_query(keys),
 			Transaction::Query(txn) => txn.begin_single_query(keys),
+		}
+	}
+
+	/// Begin a single-version write transaction for specific keys.
+	/// Panics on Query transactions.
+	pub fn begin_single_command<'b, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
+	where
+		I: IntoIterator<Item = &'b EncodedKey>,
+	{
+		match self {
+			Transaction::Command(txn) => txn.begin_single_command(keys),
+			Transaction::Admin(txn) => txn.begin_single_command(keys),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
+	}
+
+	/// Set a key-value pair. Panics on Query transactions.
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.set(key, row),
+			Transaction::Admin(txn) => txn.set(key, row),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
+	}
+
+	/// Unset (delete with tombstone) a key-value pair. Panics on Query transactions.
+	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.unset(key, values),
+			Transaction::Admin(txn) => txn.unset(key, values),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
+	}
+
+	/// Remove a key. Panics on Query transactions.
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.remove(key),
+			Transaction::Admin(txn) => txn.remove(key),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
+	}
+
+	/// Track a row change for post-commit event emission. Panics on Query transactions.
+	pub fn track_row_change(&mut self, change: RowChange) {
+		match self {
+			Transaction::Command(txn) => txn.track_row_change(change),
+			Transaction::Admin(txn) => txn.track_row_change(change),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
 }

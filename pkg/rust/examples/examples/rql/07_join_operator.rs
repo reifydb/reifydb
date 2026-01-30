@@ -21,10 +21,10 @@ fn main() {
 	db.start().unwrap();
 
 	// Set up sample data with relationships
-	db.command_as_root("create namespace company", Params::None).unwrap();
+	db.admin_as_root("create namespace company", Params::None).unwrap();
 
 	// Create employees table
-	db.command_as_root(
+	db.admin_as_root(
 		r#"
 		create table company.employees {
 			emp_id: int4,
@@ -38,7 +38,7 @@ fn main() {
 	.unwrap();
 
 	// Create departments table
-	db.command_as_root(
+	db.admin_as_root(
 		r#"
 		create table company.departments {
 			dept_id: int4,
@@ -51,7 +51,7 @@ fn main() {
 	.unwrap();
 
 	// Create projects table
-	db.command_as_root(
+	db.admin_as_root(
 		r#"
 		create table company.projects {
 			project_id: int4,

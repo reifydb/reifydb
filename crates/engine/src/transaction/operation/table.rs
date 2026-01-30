@@ -5,7 +5,7 @@ use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::table::T
 use reifydb_transaction::{
 	change::{RowChange, TableRowInsertion},
 	interceptor::table::TableInterceptor,
-	transaction::{admin::AdminTransaction, command::CommandTransaction},
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_type::value::row_number::RowNumber;
 
@@ -119,5 +119,31 @@ impl TableOperations for AdminTransaction {
 		self.unset(&key, deleted_values)?;
 
 		Ok(())
+	}
+}
+
+impl TableOperations for Transaction<'_> {
+	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.insert_table(table, row, row_number),
+			Transaction::Admin(txn) => txn.insert_table(table, row, row_number),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
+	}
+
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.update_table(table, id, row),
+			Transaction::Admin(txn) => txn.update_table(table, id, row),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
+	}
+
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.remove_from_table(table, id),
+			Transaction::Admin(txn) => txn.remove_from_table(table, id),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
 	}
 }

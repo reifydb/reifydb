@@ -55,7 +55,7 @@
 // /// Create a namespace via RQL command.
 // fn create_namespace(engine: &StandardEngine, name: &str) {
 // 	let identity = test_identity();
-// 	engine.command_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default())
+// 	engine.admin_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default())
 // 		.try_collect::<Vec<_>>()
 //
 // 		.unwrap();
@@ -64,7 +64,7 @@
 // /// Create a table via RQL command.
 // fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
 // 	let identity = test_identity();
-// 	engine.command_as(&identity, &format!("CREATE TABLE {namespace}.{table} {{ {columns} }}"), Default::default())
+// 	engine.admin_as(&identity, &format!("CREATE TABLE {namespace}.{table} {{ {columns} }}"), Default::default())
 // 		.try_collect::<Vec<_>>()
 //
 // 		.unwrap();

@@ -25,7 +25,7 @@ fn main() {
 
 	// Create a namespace
 	info!("Creating namespace 'app'...");
-	let result = db.command_as_root("create namespace app", Params::None).unwrap();
+	let result = db.admin_as_root("create namespace app", Params::None).unwrap();
 	for frame in result {
 		info!("{}", frame);
 	}
@@ -34,7 +34,7 @@ fn main() {
 	// Create a table
 	info!("Creating table 'users'...");
 	let result = db
-		.command_as_root(
+		.admin_as_root(
 			r#"
 		create table app.users {
 			id: int4,

@@ -7,6 +7,23 @@ import { ReifyError } from "@reifydb/core";
 export type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
 export { ReifyError } from "@reifydb/core";
 
+export interface AdminRequest {
+    id: string;
+    type: "Admin";
+    payload: {
+        statements: string[];
+        params?: Params;
+    }
+}
+
+export interface AdminResponse {
+    id: string;
+    type: "Admin";
+    payload: {
+        frames: Frame[];
+    };
+}
+
 export interface CommandRequest {
     id: string;
     type: "Command";

@@ -4,7 +4,7 @@
 use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::ringbuffer::RingBufferDef, key::row::RowKey};
 use reifydb_transaction::{
 	interceptor::ringbuffer::RingBufferInterceptor,
-	transaction::{admin::AdminTransaction, command::CommandTransaction},
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_type::value::row_number::RowNumber;
 
@@ -175,5 +175,47 @@ impl RingBufferOperations for AdminTransaction {
 		RingBufferInterceptor::post_delete(self, &ringbuffer, id, &deleted_row)?;
 
 		Ok(())
+	}
+}
+
+impl RingBufferOperations for Transaction<'_> {
+	fn insert_ringbuffer(&mut self, _ringbuffer: RingBufferDef, _row: EncodedValues) -> crate::Result<RowNumber> {
+		unimplemented!(
+			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
+		)
+	}
+
+	fn insert_ringbuffer_at(
+		&mut self,
+		ringbuffer: RingBufferDef,
+		row_number: RowNumber,
+		row: EncodedValues,
+	) -> crate::Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.insert_ringbuffer_at(ringbuffer, row_number, row),
+			Transaction::Admin(txn) => txn.insert_ringbuffer_at(ringbuffer, row_number, row),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
+	}
+
+	fn update_ringbuffer(
+		&mut self,
+		ringbuffer: RingBufferDef,
+		id: RowNumber,
+		row: EncodedValues,
+	) -> crate::Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, id, row),
+			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, id, row),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
+	}
+
+	fn remove_from_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber) -> crate::Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, id),
+			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, id),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
 	}
 }

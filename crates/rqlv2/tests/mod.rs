@@ -117,7 +117,7 @@ impl testscript::runner::Runner for Runner {
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		if let (Some(_runtime), Some(instance)) = (self.runtime.as_mut(), self.instance.as_mut()) {
 			instance.start()?;
-			instance.command_as_root(
+			instance.admin_as_root(
 				r#"
 				create namespace test;
 				create table test.users{id: int8, name: utf8, age: int4};

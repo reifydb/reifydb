@@ -27,11 +27,11 @@ pub fn unique_table_name(prefix: &str) -> String {
 /// Create a test table with given columns in the 'test' namespace
 pub async fn create_test_table(client: &WsClient, name: &str, columns: &[(&str, &str)]) -> Result<(), Box<dyn Error>> {
 	// Create namespace if needed (ignore error if exists)
-	let _ = client.command("create namespace test", None).await;
+	let _ = client.admin("create namespace test", None).await;
 
 	let cols = columns.iter().map(|(name, typ)| format!("{}: {}", name, typ)).collect::<Vec<_>>().join(", ");
 
-	client.command(&format!("create table test.{} {{ {} }}", name, cols), None).await?;
+	client.admin(&format!("create table test.{} {{ {} }}", name, cols), None).await?;
 	Ok(())
 }
 
@@ -132,8 +132,8 @@ impl TestContext {
 	/// Returns the full table name (with prefix for uniqueness)
 	pub async fn create_table(&self, name: &str, columns: &str) -> Result<String, Box<dyn Error>> {
 		let full_name = format!("{}_{}", self.table_prefix, name);
-		let _ = self.client.command("create namespace test", None).await;
-		self.client.command(&format!("create table test.{} {{ {} }}", full_name, columns), None).await?;
+		let _ = self.client.admin("create namespace test", None).await;
+		self.client.admin(&format!("create table test.{} {{ {} }}", full_name, columns), None).await?;
 		Ok(full_name)
 	}
 

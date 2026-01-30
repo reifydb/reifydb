@@ -53,7 +53,7 @@ use tracing::instrument;
 
 use crate::{
 	bulk_insert::builder::BulkInsertBuilder,
-	execute::{Command, ExecuteCommand, ExecuteQuery, Executor, Query},
+	execute::{Admin, Command, ExecuteAdmin, ExecuteCommand, ExecuteQuery, Executor, Query},
 	interceptor::catalog::MaterializedCatalogInterceptor,
 };
 
@@ -94,10 +94,31 @@ impl StandardEngine {
 		Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
 	}
 
+	#[instrument(name = "engine::admin", level = "debug", skip(self, params), fields(rql = %rql))]
+	pub fn admin_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+		(|| {
+			let mut txn = self.begin_admin()?;
+			let frames = self.executor.execute_admin(
+				&mut txn,
+				Admin {
+					rql,
+					params,
+					identity,
+				},
+			)?;
+			txn.commit()?;
+			Ok(frames)
+		})()
+		.map_err(|mut err: Error| {
+			err.with_statement(rql.to_string());
+			err
+		})
+	}
+
 	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
-			let mut txn = self.begin_admin()?;
+			let mut txn = self.begin_command()?;
 			let frames = self.executor.execute_command(
 				&mut txn,
 				Command {
@@ -382,9 +403,16 @@ impl StandardEngine {
 	}
 }
 
+impl ExecuteAdmin for StandardEngine {
+	#[inline]
+	fn execute_admin(&self, txn: &mut AdminTransaction, cmd: Admin<'_>) -> crate::Result<Vec<Frame>> {
+		self.executor.execute_admin(txn, cmd)
+	}
+}
+
 impl ExecuteCommand for StandardEngine {
 	#[inline]
-	fn execute_command(&self, txn: &mut AdminTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+	fn execute_command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_command(txn, cmd)
 	}
 }

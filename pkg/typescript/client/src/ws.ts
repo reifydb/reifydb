@@ -10,6 +10,8 @@ import type {
 } from "@reifydb/core";
 
 import type {
+    AdminRequest,
+    AdminResponse,
     CommandRequest,
     CommandResponse,
     QueryRequest,
@@ -44,7 +46,7 @@ interface SubscriptionState<T = any> {
     callbacks: SubscriptionCallbacks<T>;
 }
 
-type ResponsePayload = ErrorResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse;
+type ResponsePayload = ErrorResponse | AdminResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse;
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -111,6 +113,49 @@ export class WsClient {
         socket.send("{\"id\":\"auth-1\",\"type\":\"Auth\",\"payload\":{\"token\":\"mysecrettoken\"}}");
 
         return new WsClient(socket, options);
+    }
+
+    /**
+     * Execute admin operation(s) with schemas for each statement for proper type inference.
+     * Admin operations support DDL (CREATE TABLE, ALTER, etc.), DML, and queries.
+     * @param statements - Single statement or array of RQL statements
+     * @param params - Parameters for the statements (use null or {} if no params)
+     * @param schemas - Schema for each statement's result
+     */
+    async admin<const S extends readonly SchemaNode[]>(
+        statements: string | string[],
+        params: any,
+        schemas: S
+    ): Promise<FrameResults<S>> {
+        const id = `req-${this.nextId++}`;
+
+        // Normalize statements to array
+        const statementArray = Array.isArray(statements) ? statements : [statements];
+
+        // Encode params without schema assumptions
+        const encodedParams = params !== undefined && params !== null
+            ? encodeParams(params)
+            : undefined;
+
+        const result = await this.send({
+            id,
+            type: "Admin",
+            payload: {
+                statements: statementArray,
+                params: encodedParams
+            },
+        });
+
+        // Transform each frame with its corresponding schema
+        const transformedFrames = result.map((frame: any, frameIndex: number) => {
+            const frameSchema = schemas[frameIndex];
+            if (!frameSchema) {
+                return frame; // No schema for this frame, return as-is
+            }
+            return frame.map((row: any) => this.transformResult(row, frameSchema));
+        });
+
+        return transformedFrames as FrameResults<S>;
     }
 
     /**
@@ -263,7 +308,7 @@ export class WsClient {
         });
     }
 
-    async send(req: CommandRequest | QueryRequest): Promise<any> {
+    async send(req: AdminRequest | CommandRequest | QueryRequest): Promise<any> {
         const id = req.id;
 
         if (this.socket.readyState !== 1) {

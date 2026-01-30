@@ -8,9 +8,12 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{
-	AuthRequest, ChangePayload, CommandRequest, QueryRequest, Request, RequestPayload, Response, ResponsePayload,
-	ServerPush, SubscribeRequest, UnsubscribeRequest,
-	session::{CommandResult, QueryResult, parse_command_response, parse_query_response},
+	AdminRequest, AuthRequest, ChangePayload, CommandRequest, QueryRequest, Request, RequestPayload, Response,
+	ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest,
+	session::{
+		AdminResult, CommandResult, QueryResult, parse_admin_response, parse_command_response,
+		parse_query_response,
+	},
 	utils::generate_request_id,
 };
 
@@ -182,6 +185,40 @@ impl WsClient {
 			// _ => Err(Error(internal("Unexpected response type for auth"))),
 			_ => panic!("Unexpected response type for auth"), // FIXME better error handling
 		}
+	}
+
+	/// Execute an admin (DDL + DML + Query) statement.
+	///
+	/// # Arguments
+	/// * `rql` - RQL statement to execute
+	/// * `params` - Optional parameters for the statement
+	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Admin(AdminRequest {
+				statements: vec![rql.to_string()],
+				params,
+			}),
+		};
+
+		let response = self.send_request(request).await?;
+		parse_admin_response(response)
+	}
+
+	/// Execute multiple admin statements in a batch.
+	pub async fn admin_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<AdminResult, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Admin(AdminRequest {
+				statements: statements.into_iter().map(String::from).collect(),
+				params,
+			}),
+		};
+
+		let response = self.send_request(request).await?;
+		parse_admin_response(response)
 	}
 
 	/// Execute a command (write) statement.

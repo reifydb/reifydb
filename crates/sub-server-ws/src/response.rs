@@ -25,6 +25,7 @@ pub struct Response {
 pub enum ResponsePayload {
 	Auth(AuthResponse),
 	Err(ErrResponse),
+	Admin(AdminResponse),
 	Command(CommandResponse),
 	Query(QueryResponse),
 	Subscribed(SubscribedResponse),
@@ -37,6 +38,11 @@ pub struct AuthResponse {}
 #[derive(Debug, Serialize)]
 pub struct ErrResponse {
 	pub diagnostic: Diagnostic,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminResponse {
+	pub frames: Vec<ResponseFrame>,
 }
 
 #[derive(Debug, Serialize)]
@@ -78,6 +84,15 @@ impl Response {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Auth(AuthResponse {}),
+		}
+	}
+
+	pub fn admin(id: impl Into<String>, frames: Vec<ResponseFrame>) -> Self {
+		Self {
+			id: id.into(),
+			payload: ResponsePayload::Admin(AdminResponse {
+				frames,
+			}),
 		}
 	}
 

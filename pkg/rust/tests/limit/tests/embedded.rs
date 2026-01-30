@@ -24,6 +24,15 @@ impl testscript::runner::Runner for Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 		match command.name.as_str() {
+			"admin" => {
+				let query = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+
+				println!("admin: {query}");
+
+				for frame in self.instance.admin_as_root(query.as_str(), Params::None)? {
+					writeln!(output, "{}", frame)?;
+				}
+			}
 			"command" => {
 				let query = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 

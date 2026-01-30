@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::ringbuffer::RingBufferMetadata, key::ringbuffer::RingBufferMetadataKey};
-use reifydb_transaction::transaction::{admin::AdminTransaction, command::CommandTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
 
 use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer_metadata};
 
@@ -28,6 +28,15 @@ impl CatalogStore {
 
 	pub(crate) fn update_ringbuffer_metadata_admin(
 		txn: &mut AdminTransaction,
+		metadata: RingBufferMetadata,
+	) -> crate::Result<()> {
+		let row = encode_ringbuffer_metadata(&metadata);
+		txn.set(&RingBufferMetadataKey::encoded(metadata.id), row)?;
+		Ok(())
+	}
+
+	pub(crate) fn update_ringbuffer_metadata_txn(
+		txn: &mut Transaction<'_>,
 		metadata: RingBufferMetadata,
 	) -> crate::Result<()> {
 		let row = encode_ringbuffer_metadata(&metadata);

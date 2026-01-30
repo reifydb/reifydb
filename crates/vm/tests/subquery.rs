@@ -19,12 +19,12 @@ pub fn test_identity() -> Identity {
 
 fn create_namespace(engine: &StandardEngine, name: &str) {
 	let identity = test_identity();
-	engine.command_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default()).unwrap();
+	engine.admin_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default()).unwrap();
 }
 
 fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
 	let identity = test_identity();
-	engine.command_as(&identity, &format!("CREATE TABLE {namespace}.{table} {{ {columns} }}"), Default::default())
+	engine.admin_as(&identity, &format!("CREATE TABLE {namespace}.{table} {{ {columns} }}"), Default::default())
 		.unwrap();
 }
 

@@ -7,10 +7,13 @@
 //! permission levels.
 
 #[allow(dead_code)]
+mod admin;
+#[allow(dead_code)]
 mod command;
 #[allow(dead_code)]
 mod query;
 
+pub use admin::AdminSession;
 pub use command::CommandSession;
 pub use query::QuerySession;
 use reifydb_core::interface::auth::Identity;
@@ -19,9 +22,26 @@ use reifydb_type::{params::Params, value::frame::frame::Frame};
 use tracing::instrument;
 
 pub trait Session {
+	fn admin_session(&self, session: impl IntoAdminSession) -> crate::Result<AdminSession>;
+
 	fn command_session(&self, session: impl IntoCommandSession) -> crate::Result<CommandSession>;
 
 	fn query_session(&self, session: impl IntoQuerySession) -> crate::Result<QuerySession>;
+}
+
+impl AdminSession {
+	#[instrument(name = "api::session::admin::new", level = "debug", skip_all)]
+	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
+		Self {
+			engine,
+			identity,
+		}
+	}
+
+	#[instrument(name = "api::session::admin", level = "debug", skip(self, params), fields(rql = %rql))]
+	pub fn admin(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::error::Error> {
+		self.engine.admin_as(&self.identity, rql, params.into())
+	}
 }
 
 impl CommandSession {
@@ -54,12 +74,22 @@ impl QuerySession {
 	}
 }
 
+pub trait IntoAdminSession {
+	fn into_admin_session(self, engine: StandardEngine) -> crate::Result<AdminSession>;
+}
+
 pub trait IntoCommandSession {
 	fn into_command_session(self, engine: StandardEngine) -> crate::Result<CommandSession>;
 }
 
 pub trait IntoQuerySession {
 	fn into_query_session(self, engine: StandardEngine) -> crate::Result<QuerySession>;
+}
+
+impl IntoAdminSession for Identity {
+	fn into_admin_session(self, engine: StandardEngine) -> crate::Result<AdminSession> {
+		Ok(AdminSession::new(engine, self))
+	}
 }
 
 impl IntoCommandSession for Identity {

@@ -9,8 +9,12 @@ use reifydb_type::{
 use reqwest::Client as ReqwestClient;
 
 use crate::{
-	CommandRequest, CommandResponse, ErrResponse, QueryRequest, QueryResponse, Response, ResponsePayload,
-	session::{CommandResult, QueryResult, parse_command_response, parse_query_response},
+	AdminRequest, AdminResponse, CommandRequest, CommandResponse, ErrResponse, QueryRequest, QueryResponse,
+	Response, ResponsePayload,
+	session::{
+		AdminResult, CommandResult, QueryResult, parse_admin_response, parse_command_response,
+		parse_query_response,
+	},
 };
 
 /// HTTP-specific error response matching the server's format
@@ -83,6 +87,40 @@ impl HttpClient {
 	/// * `token` - Bearer token for authentication
 	pub fn authenticate(&mut self, token: &str) {
 		self.token = Some(token.to_string());
+	}
+
+	/// Execute an admin (DDL + DML + Query) statement.
+	///
+	/// # Arguments
+	/// * `rql` - RQL statement to execute
+	/// * `params` - Optional parameters for the statement
+	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+		let request = AdminRequest {
+			statements: vec![rql.to_string()],
+			params,
+		};
+
+		let response = self.send_admin(&request).await?;
+		let ws_response = Response {
+			id: String::new(),
+			payload: ResponsePayload::Admin(response),
+		};
+		parse_admin_response(ws_response)
+	}
+
+	/// Execute multiple admin statements in a batch.
+	pub async fn admin_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<AdminResult, Error> {
+		let request = AdminRequest {
+			statements: statements.into_iter().map(String::from).collect(),
+			params,
+		};
+
+		let response = self.send_admin(&request).await?;
+		let ws_response = Response {
+			id: String::new(),
+			payload: ResponsePayload::Admin(response),
+		};
+		parse_admin_response(ws_response)
 	}
 
 	/// Execute a command (write) statement.
@@ -186,6 +224,17 @@ impl HttpClient {
 			payload: ResponsePayload::Query(response),
 		};
 		parse_query_response(ws_response)
+	}
+
+	/// Send an admin request to the server.
+	async fn send_admin(&self, request: &AdminRequest) -> Result<AdminResponse, Error> {
+		let url = format!("{}/v1/admin", self.base_url);
+		let response_body = self.send_request(&url, request).await?;
+
+		match serde_json::from_str::<AdminResponse>(&response_body) {
+			Ok(response) => Ok(response),
+			Err(_) => Err(self.parse_error_response(&response_body)),
+		}
 	}
 
 	/// Send a command request to the server.

@@ -49,7 +49,7 @@ fn test_create_table() {
 	let db = WasmDB::new().expect("Failed to create db");
 
 	// Create namespace
-	let result = db.command("CREATE NAMESPACE test");
+	let result = db.admin("CREATE NAMESPACE test");
 	assert!(result.is_ok(), "CREATE NAMESPACE should succeed");
 
 	// Create table
@@ -69,7 +69,7 @@ fn test_insert_and_query() {
 	let db = WasmDB::new().expect("Failed to create db");
 
 	// Create namespace and table
-	db.command("CREATE NAMESPACE test").expect("CREATE NAMESPACE failed");
+	db.admin("CREATE NAMESPACE test").expect("CREATE NAMESPACE failed");
 	db.command(
 		r#"
         CREATE TABLE test.users {

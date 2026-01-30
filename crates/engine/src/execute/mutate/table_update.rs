@@ -18,7 +18,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -39,7 +39,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn update_table<'a>(
 		&self,
-		txn: &mut AdminTransaction,
+		txn: &mut Transaction<'_>,
 		plan: UpdateTableNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -83,15 +83,14 @@ impl Executor {
 		let mut updated_count = 0;
 
 		{
-			let mut wrapped_txn = Transaction::from(txn);
-			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
+			let mut input_node = compile(*plan.input, txn, Arc::new(context.clone()));
 
-			input_node.initialize(&mut wrapped_txn, &context)?;
+			input_node.initialize(txn, &context)?;
 
 			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut wrapped_txn, &mut mutable_context)?
+			}) = input_node.next(txn, &mut mutable_context)?
 			{
 				if columns.row_numbers.is_empty() {
 					return_error!(engine::missing_row_number_column());
@@ -136,7 +135,7 @@ impl Executor {
 						let value = if let Some(dict_id) = table_column.dictionary_id {
 							let dictionary = self
 								.catalog
-								.find_dictionary(wrapped_txn.admin_mut(), dict_id)?
+								.find_dictionary(txn, dict_id)?
 								.ok_or_else(|| {
 									internal_error!(
 										"Dictionary {:?} not found for column {}",
@@ -144,9 +143,8 @@ impl Executor {
 										table_column.name
 									)
 								})?;
-							let entry_id = wrapped_txn
-								.admin_mut()
-								.insert_into_dictionary(&dictionary, &value)?;
+							let entry_id =
+								txn.insert_into_dictionary(&dictionary, &value)?;
 							entry_id.to_value()
 						} else {
 							value
@@ -159,18 +157,15 @@ impl Executor {
 
 					let row_key = RowKey::encoded(table.id, row_number);
 
-					if let Some(pk_def) = primary_key::get_primary_key(
-						&self.catalog,
-						wrapped_txn.admin_mut(),
-						&table,
-					)? {
-						if let Some(old_row_data) = wrapped_txn.admin_mut().get(&row_key)? {
+					if let Some(pk_def) = primary_key::get_primary_key(&self.catalog, txn, &table)?
+					{
+						if let Some(old_row_data) = txn.get(&row_key)? {
 							let old_row = old_row_data.values;
 							let old_key = primary_key::encode_primary_key(
 								&pk_def, &old_row, &table, &schema,
 							)?;
 
-							wrapped_txn.admin_mut().remove(&IndexEntryKey::new(
+							txn.remove(&IndexEntryKey::new(
 								table.id,
 								IndexId::primary(pk_def.id),
 								old_key,
@@ -190,7 +185,7 @@ impl Executor {
 							u64::from(row_number),
 						);
 
-						wrapped_txn.admin_mut().set(
+						txn.set(
 							&IndexEntryKey::new(
 								table.id,
 								IndexId::primary(pk_def.id),
@@ -201,7 +196,7 @@ impl Executor {
 						)?;
 					}
 
-					wrapped_txn.admin_mut().set(&row_key, row)?;
+					txn.set(&row_key, row)?;
 
 					updated_count += 1;
 				}

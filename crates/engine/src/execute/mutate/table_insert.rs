@@ -15,7 +15,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::InsertTableNode;
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -38,7 +38,7 @@ impl Executor {
 	#[instrument(name = "mutate::table::insert", level = "trace", skip_all)]
 	pub(crate) fn insert_table<'a>(
 		&self,
-		txn: &mut AdminTransaction,
+		txn: &mut Transaction<'_>,
 		plan: InsertTableNode,
 		stack: &mut Stack,
 	) -> crate::Result<Columns> {
@@ -71,11 +71,10 @@ impl Executor {
 			stack: stack.clone(),
 		});
 
-		let mut std_txn = Transaction::from(txn);
-		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
+		let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
 		// Initialize the operator before execution
-		input_node.initialize(&mut std_txn, &execution_context)?;
+		input_node.initialize(txn, &execution_context)?;
 
 		// PASS 1: Validate and encode all rows first, before allocating any row numbers
 		// This ensures we only allocate row numbers for valid rows (fail-fast on validation errors)
@@ -84,7 +83,7 @@ impl Executor {
 
 		while let Some(Batch {
 			columns,
-		}) = input_node.next(&mut std_txn, &mut mutable_context)?
+		}) = input_node.next(txn, &mut mutable_context)?
 		{
 			let row_count = columns.row_count();
 
@@ -109,7 +108,7 @@ impl Executor {
 					// Handle auto-increment columns
 					if table_column.auto_increment && matches!(value, Value::Undefined) {
 						value = self.catalog.column_sequence_next_value(
-							std_txn.admin_mut(),
+							txn,
 							table.id,
 							table_column.id,
 						)?;
@@ -139,7 +138,7 @@ impl Executor {
 					let value = if let Some(dict_id) = table_column.dictionary_id {
 						let dictionary = self
 							.catalog
-							.find_dictionary(std_txn.admin_mut(), dict_id)?
+							.find_dictionary(txn, dict_id)?
 							.ok_or_else(|| {
 								internal_error!(
 									"Dictionary {:?} not found for column {}",
@@ -147,9 +146,7 @@ impl Executor {
 									table_column.name
 								)
 							})?;
-						let entry_id = std_txn
-							.admin_mut()
-							.insert_into_dictionary(&dictionary, &value)?;
+						let entry_id = txn.insert_into_dictionary(&dictionary, &value)?;
 						entry_id.to_value()
 					} else {
 						value
@@ -174,25 +171,23 @@ impl Executor {
 			]));
 		}
 
-		let row_numbers =
-			self.catalog.next_row_number_batch(std_txn.admin_mut(), table.id, total_rows as u64)?;
+		let row_numbers = self.catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
 
 		assert_eq!(row_numbers.len(), validated_rows.len());
 
 		// PASS 2: Insert all validated rows using the pre-allocated row numbers
 		for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
 			// Insert the row directly into storage
-			std_txn.admin_mut().insert_table(table.clone(), row.clone(), row_number)?;
+			txn.insert_table(table.clone(), row.clone(), row_number)?;
 
 			// Store primary key index entry if table has one
-			if let Some(pk_def) = primary_key::get_primary_key(&self.catalog, std_txn.admin_mut(), &table)?
-			{
+			if let Some(pk_def) = primary_key::get_primary_key(&self.catalog, txn, &table)? {
 				let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &schema)?;
 
 				// Check if primary key already exists
 				let index_entry_key =
 					IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key.clone());
-				if std_txn.admin_mut().contains_key(&index_entry_key.encode())? {
+				if txn.contains_key(&index_entry_key.encode())? {
 					let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
 					return_error!(primary_key_violation(
 						plan.target.identifier().clone(),
@@ -206,7 +201,7 @@ impl Executor {
 				let mut row_number_encoded = row_number_schema.allocate();
 				row_number_schema.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
-				std_txn.admin_mut().set(&index_entry_key.encode(), row_number_encoded)?;
+				txn.set(&index_entry_key.encode(), row_number_encoded)?;
 			}
 		}
 

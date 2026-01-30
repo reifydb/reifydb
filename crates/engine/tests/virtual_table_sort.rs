@@ -26,9 +26,9 @@ fn test_sort_system_namespaces() {
 	let identity = test_identity();
 
 	// Create some namespaces to have predictable data
-	engine.command_as(&identity, "CREATE NAMESPACE zoo", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE NAMESPACE alpha", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE NAMESPACE beta", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE NAMESPACE zoo", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE NAMESPACE alpha", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE NAMESPACE beta", Default::default()).unwrap();
 
 	// Query system.namespaces with sort
 	let frames: Vec<Frame> =
@@ -70,9 +70,9 @@ fn test_sort_system_namespaces_asc() {
 	let identity = test_identity();
 
 	// Create some namespaces to have predictable data
-	engine.command_as(&identity, "CREATE NAMESPACE zoo", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE NAMESPACE alpha", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE NAMESPACE beta", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE NAMESPACE zoo", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE NAMESPACE alpha", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE NAMESPACE beta", Default::default()).unwrap();
 
 	// Query system.namespaces with explicit ASC sort
 	let frames: Vec<Frame> =
@@ -108,10 +108,10 @@ fn test_sort_system_tables() {
 	let identity = test_identity();
 
 	// Create some tables to have predictable data
-	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.zebra { id: int4 }", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.apple { id: int4 }", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.banana { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.zebra { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.apple { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.banana { id: int4 }", Default::default()).unwrap();
 
 	// Query system.tables with sort
 	let frames: Vec<Frame> =
@@ -147,10 +147,10 @@ fn test_sort_system_tables_with_pipe_syntax() {
 	let identity = test_identity();
 
 	// Create some tables to have predictable data
-	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.zebra { id: int4 }", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.apple { id: int4 }", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.banana { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.zebra { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.apple { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.banana { id: int4 }", Default::default()).unwrap();
 
 	// Query system.tables with pipe syntax
 	let frames: Vec<Frame> =
@@ -186,11 +186,11 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 	let identity = test_identity();
 
 	// Create multiple tables and insert data of varying sizes to ensure different storage sizes
-	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.tiny { id: int4 }", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.small { id: int4, name: text }", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.medium { id: int4, name: text }", Default::default()).unwrap();
-	engine.command_as(
+	engine.admin_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.tiny { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.small { id: int4, name: text }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.medium { id: int4, name: text }", Default::default()).unwrap();
+	engine.admin_as(
 		&identity,
 		"CREATE TABLE test.large { id: int4, name: text, description: text }",
 		Default::default(),
@@ -364,9 +364,9 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 	let identity = test_identity();
 
 	// Create multiple tables with different sizes
-	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.tiny { id: int4 }", Default::default()).unwrap();
-	engine.command_as(
+	engine.admin_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.tiny { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(
 		&identity,
 		"CREATE TABLE test.large { id: int4, name: text, description: text }",
 		Default::default(),
@@ -457,9 +457,9 @@ fn test_asc_is_not_desc() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.a { id: int4 }", Default::default()).unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.b { id: int4, data: text }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.a { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test.b { id: int4, data: text }", Default::default()).unwrap();
 
 	// Insert different amounts to create size difference
 	engine.command_as(&identity, r#"FROM [{ id: 1 }] INSERT test.a"#, Default::default()).unwrap();

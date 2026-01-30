@@ -1,9 +1,9 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-(command 'create namespace test')
-(command 'create table test.a { id: int4, val: utf8 }')
-(command 'create table test.b { id: int4, name: utf8 }')
+(admin 'create namespace test')
+(admin 'create table test.a { id: int4, val: utf8 }')
+(admin 'create table test.b { id: int4, name: utf8 }')
 (command 'from [{ id: 1, val: "x" }, { id: 2, val: "y" }] insert test.a')
 (command 'from [{ id: 1, name: "one" }] insert test.b')
 command 'from test.a left join { from test.b } as t using (id, t.id)'

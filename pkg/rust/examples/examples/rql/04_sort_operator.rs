@@ -21,8 +21,8 @@ fn main() {
 	db.start().unwrap();
 
 	// Set up sample data
-	db.command_as_root("create namespace store", Params::None).unwrap();
-	db.command_as_root(
+	db.admin_as_root("create namespace store", Params::None).unwrap();
+	db.admin_as_root(
 		r#"
 		create table store.products {
 			id: int4,

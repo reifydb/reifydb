@@ -154,8 +154,8 @@ map {
 	info!("\nExample 6: MAP with comptokenize expressions");
 
 	// Create a table for more realistic example
-	db.command_as_root("create namespace sales", Params::None).unwrap();
-	db.command_as_root(
+	db.admin_as_root("create namespace sales", Params::None).unwrap();
+	db.admin_as_root(
 		r#"
 		create table sales.orders {
 			id: int4,

@@ -25,18 +25,18 @@ mod trusted;
 
 pub fn create_namespace(engine: &StandardEngine, name: &str) {
 	let identity = test_identity();
-	engine.command_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default()).unwrap();
+	engine.admin_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default()).unwrap();
 }
 
 pub fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
 	let identity = test_identity();
-	engine.command_as(&identity, &format!("CREATE TABLE {namespace}.{table} {{ {columns} }}"), Default::default())
+	engine.admin_as(&identity, &format!("CREATE TABLE {namespace}.{table} {{ {columns} }}"), Default::default())
 		.unwrap();
 }
 
 pub fn create_ringbuffer(engine: &StandardEngine, namespace: &str, name: &str, capacity: u64, columns: &str) {
 	let identity = test_identity();
-	engine.command_as(
+	engine.admin_as(
 		&identity,
 		&format!("CREATE RINGBUFFER {namespace}.{name} {{ {columns} }} WITH {{ capacity: {capacity} }}"),
 		Default::default(),

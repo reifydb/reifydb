@@ -6,13 +6,12 @@
 
 import {afterAll, beforeAll, afterEach, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useCommandOne, useCommandMany, ConnectionProvider, getConnection, clearConnection, Schema} from '../../../src';
+import {useAdminOne, useAdminMany, ConnectionProvider, getConnection, clearConnection, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 // @ts-ignore
 import React from "react";
 
-describe('useCommand Hooks', () => {
-    // Wrapper to provide ConnectionProvider to all hooks
+describe('useAdmin Hooks', () => {
     const wrapper = ({children}: { children: React.ReactNode }) => (
         <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children}/>
     );
@@ -22,7 +21,6 @@ describe('useCommand Hooks', () => {
     }, 30000);
 
     afterEach(async () => {
-        // Clear all connections after each test to prevent interference
         await clearConnection();
     });
 
@@ -30,11 +28,11 @@ describe('useCommand Hooks', () => {
         await clearConnection();
     });
 
-    describe('useCommandOne', () => {
+    describe('useAdminOne', () => {
         it('should execute a single command and return one result', async () => {
             const schema = Schema.object({answer: Schema.number()});
             const {result} = renderHook(() =>
-                useCommandOne(
+                useAdminOne(
                     `MAP {answer: 42}`,
                     undefined,
                     schema
@@ -58,7 +56,7 @@ describe('useCommand Hooks', () => {
             const schema = Schema.object({result: Schema.string()});
             const params = {value: 'hello'};
             const {result} = renderHook(() =>
-                useCommandOne(
+                useAdminOne(
                     `MAP {result: $value}`,
                     params,
                     schema
@@ -75,7 +73,7 @@ describe('useCommand Hooks', () => {
 
         it('should re-execute when command changes', async () => {
             const {result, rerender} = renderHook(
-                ({command}) => useCommandOne(command, undefined, Schema.object({num: Schema.number()})),
+                ({command}) => useAdminOne(command, undefined, Schema.object({num: Schema.number()})),
                 {initialProps: {command: `MAP {num: 1}`}, wrapper}
             );
 
@@ -85,7 +83,6 @@ describe('useCommand Hooks', () => {
 
             expect(result.current.result!.rows[0]).toEqual({num: 1});
 
-            // Change command
             rerender({command: `MAP {num: 2}`});
 
             await waitFor(() => {
@@ -96,7 +93,7 @@ describe('useCommand Hooks', () => {
         it('should re-execute when params change', async () => {
             const schema = Schema.object({result: Schema.number()});
             const {result, rerender} = renderHook(
-                ({params}) => useCommandOne(`MAP {result: $value}`, params, schema),
+                ({params}) => useAdminOne(`MAP {result: $value}`, params, schema),
                 {initialProps: {params: {value: 10}}, wrapper}
             );
 
@@ -106,7 +103,6 @@ describe('useCommand Hooks', () => {
 
             expect(result.current.result!.rows[0]).toEqual({result: 10});
 
-            // Change params
             rerender({params: {value: 20}});
 
             await waitFor(() => {
@@ -121,7 +117,7 @@ describe('useCommand Hooks', () => {
             });
 
             const {result} = renderHook(() =>
-                useCommandOne(
+                useAdminOne(
                     `MAP {name: 'Alice', age: 30}`,
                     undefined,
                     schema
@@ -138,7 +134,7 @@ describe('useCommand Hooks', () => {
 
         it('should handle errors', async () => {
             const {result} = renderHook(() =>
-                useCommandOne('INVALID COMMAND SYNTAX',
+                useAdminOne('INVALID COMMAND SYNTAX',
                     undefined,
                     Schema.object({nothing: Schema.boolean()})
                 ), {wrapper}
@@ -154,7 +150,7 @@ describe('useCommand Hooks', () => {
 
         it('should handle empty results', async () => {
             const {result} = renderHook(() =>
-                useCommandOne(`FROM [{x:1}] FILTER x > 10`, undefined, Schema.object({x: Schema.number()}))
+                useAdminOne(`FROM [{x:1}] FILTER x > 10`, undefined, Schema.object({x: Schema.number()}))
             , {wrapper});
 
             await waitFor(() => {
@@ -166,7 +162,7 @@ describe('useCommand Hooks', () => {
         });
     });
 
-    describe('useCommandMany', () => {
+    describe('useAdminMany', () => {
         it('should execute multiple queries', async () => {
             const schemas = [
                 Schema.object({first: Schema.number()}),
@@ -180,7 +176,7 @@ describe('useCommand Hooks', () => {
             ];
 
             const {result} = renderHook(() =>
-                useCommandMany(queries, undefined, schemas)
+                useAdminMany(queries, undefined, schemas)
             , {wrapper});
 
             await waitFor(() => {
@@ -196,7 +192,7 @@ describe('useCommand Hooks', () => {
 
         it('should handle single statement as string', async () => {
             const {result} = renderHook(() =>
-                useCommandMany(
+                useAdminMany(
                     `MAP {answer: 42}`,
                     undefined,
                     [Schema.object({answer: Schema.number()})]
@@ -223,7 +219,7 @@ describe('useCommand Hooks', () => {
             const params = {x: 10, y: 20};
 
             const {result} = renderHook(() =>
-                useCommandMany(queries, params, schemas)
+                useAdminMany(queries, params, schemas)
             , {wrapper});
 
             await waitFor(() => {
@@ -246,7 +242,7 @@ describe('useCommand Hooks', () => {
             ];
 
             const {result} = renderHook(() =>
-                useCommandMany(queries, undefined, schemas)
+                useAdminMany(queries, undefined, schemas)
             , {wrapper});
 
             await waitFor(() => {
@@ -259,7 +255,7 @@ describe('useCommand Hooks', () => {
 
         it('should re-execute when statements change', async () => {
             const {result, rerender} = renderHook(
-                ({queries}) => useCommandMany(queries, undefined, [Schema.object({x: Schema.number()})]),
+                ({queries}) => useAdminMany(queries, undefined, [Schema.object({x: Schema.number()})]),
                 {initialProps: {queries: [`MAP {x: 1}`]}, wrapper}
             );
 
@@ -269,7 +265,6 @@ describe('useCommand Hooks', () => {
 
             expect(result.current.results).toHaveLength(1);
 
-            // Change queries
             rerender({queries: [`MAP {x: 1}`, `MAP {y: 2}`]});
 
             await waitFor(() => {
@@ -289,7 +284,7 @@ describe('useCommand Hooks', () => {
                 Schema.object({value: Schema.number()}),
             ];
             const {result} = renderHook(() =>
-                useCommandMany(queries, undefined, schemas)
+                useAdminMany(queries, undefined, schemas)
             , {wrapper});
 
             await waitFor(() => {
@@ -298,7 +293,7 @@ describe('useCommand Hooks', () => {
 
             expect(result.current.results).toHaveLength(3);
             expect(result.current.results![0].rows).toHaveLength(1);
-            expect(result.current.results![1].rows).toHaveLength(0);  // Empty
+            expect(result.current.results![1].rows).toHaveLength(0);
             expect(result.current.results![2].rows).toHaveLength(1);
         });
 
@@ -314,14 +309,13 @@ describe('useCommand Hooks', () => {
                 Schema.object({valid: Schema.number()}),
             ];
             const {result} = renderHook(() =>
-                useCommandMany(queries, undefined, schemas)
+                useAdminMany(queries, undefined, schemas)
             , {wrapper});
 
             await waitFor(() => {
                 expect(result.current.isExecuting).toBe(false);
             });
 
-            // When one command fails, the entire batch fails
             expect(result.current.error).toBeDefined();
             expect(result.current.results).toBeUndefined();
         });
@@ -331,7 +325,7 @@ describe('useCommand Hooks', () => {
         it('should allow multiple hooks to run different queries simultaneously', async () => {
             const schema1 = Schema.object({value: Schema.number()});
             const {result: result1} = renderHook(() =>
-                useCommandOne(`MAP {value: 100}`, undefined, schema1)
+                useAdminOne(`MAP {value: 100}`, undefined, schema1)
             , {wrapper});
 
             const queries2 = [`MAP {x: 200}`, `MAP {y: 300}`];
@@ -340,7 +334,7 @@ describe('useCommand Hooks', () => {
                 Schema.object({y: Schema.number()})
             ] as const;
             const {result: result2} = renderHook(() =>
-                useCommandMany(queries2, undefined, schemas2)
+                useAdminMany(queries2, undefined, schemas2)
             , {wrapper});
 
             await waitFor(() => {
@@ -361,7 +355,7 @@ describe('useCommand Hooks', () => {
 
             const schema = Schema.object({value: Schema.number()});
             const {result} = renderHook(
-                () => useCommandOne(`MAP {value: 999}`, undefined, schema),
+                () => useAdminOne(`MAP {value: 999}`, undefined, schema),
                 {wrapper}
             );
 
@@ -376,9 +370,8 @@ describe('useCommand Hooks', () => {
             const schema = Schema.object({test: Schema.string()});
             const overrideConfig = {url: 'ws://127.0.0.1:8090', options: {timeoutMs: 2000}};
 
-            // Use override config (different timeout to ensure it's treated as a separate connection)
             const {result, unmount} = renderHook(() =>
-                useCommandOne(
+                useAdminOne(
                     `MAP {test: 'override'}`,
                     undefined,
                     schema,
@@ -391,8 +384,7 @@ describe('useCommand Hooks', () => {
             });
 
             expect(result.current.result!.rows[0]).toEqual({test: 'override'});
-            
-            // Clean up the override connection
+
             unmount();
             await clearConnection(overrideConfig);
         });

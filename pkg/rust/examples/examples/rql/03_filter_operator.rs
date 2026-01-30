@@ -22,8 +22,8 @@ fn main() {
 
 	// Set up sample data
 	info!("Setting up sample employee data...");
-	db.command_as_root("create namespace hr", Params::None).unwrap();
-	db.command_as_root(
+	db.admin_as_root("create namespace hr", Params::None).unwrap();
+	db.admin_as_root(
 		r#"
 		create table hr.employees {
 			id: int4,

@@ -120,10 +120,52 @@ pub async fn execute_query(
 	}
 }
 
+/// Execute an admin operation with timeout.
+///
+/// Admin operations include DDL (CREATE TABLE, ALTER, etc.), DML (INSERT, UPDATE, DELETE),
+/// and read queries. This is the most privileged execution level.
+///
+/// # Arguments
+///
+/// * `system` - The actor system to execute the admin operation on
+/// * `engine` - The database engine to execute the admin operation on
+/// * `statements` - The RQL admin statements
+/// * `identity` - The identity context for permission checking
+/// * `params` - Admin parameters
+/// * `timeout` - Maximum time to wait for admin completion
+///
+/// # Returns
+///
+/// * `Ok(Vec<Frame>)` - Admin results on success
+/// * `Err(ExecuteError::Timeout)` - If the admin operation exceeds the timeout
+/// * `Err(ExecuteError::Cancelled)` - If the admin operation was cancelled
+/// * `Err(ExecuteError::Engine)` - If the engine returns an error
+pub async fn execute_admin(
+	system: ActorSystem,
+	engine: StandardEngine,
+	statements: Vec<String>,
+	identity: Identity,
+	params: Params,
+	timeout: Duration,
+) -> ExecuteResult<Vec<Frame>> {
+	let combined = statements.join("; ");
+
+	// Execute synchronous admin operation on actor system's compute pool with timeout
+	let task = system.compute(move || engine.admin_as(&identity, &combined, params));
+
+	let result = time::timeout(timeout, task).await;
+
+	match result {
+		Err(_elapsed) => Err(ExecuteError::Timeout),
+		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
+	}
+}
+
 /// Execute a command with timeout.
 ///
-/// Commands are write operations (INSERT, UPDATE, DELETE, DDL) that modify
-/// the database state.
+/// Commands are write operations (INSERT, UPDATE, DELETE) that modify
+/// the database state. DDL operations are not allowed in command transactions.
 ///
 /// # Arguments
 ///

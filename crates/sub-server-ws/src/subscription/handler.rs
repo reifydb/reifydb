@@ -7,7 +7,7 @@
 //! and registering them with the registry and poller for real-time updates.
 
 use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId as DbSubscriptionId};
-use reifydb_sub_server::{execute::execute_command, state::AppState};
+use reifydb_sub_server::{execute::execute_admin, state::AppState};
 use reifydb_type::{
 	params::Params,
 	value::{Value, uuid::Uuid7},
@@ -67,15 +67,8 @@ pub(crate) async fn handle_subscribe(
 	debug!("Generated subscription statement: {}", create_sub_statement);
 
 	// Execute CREATE SUBSCRIPTION command
-	match execute_command(
-		state.actor_system(),
-		state.engine_clone(),
-		vec![create_sub_statement],
-		id,
-		params,
-		timeout,
-	)
-	.await
+	match execute_admin(state.actor_system(), state.engine_clone(), vec![create_sub_statement], id, params, timeout)
+		.await
 	{
 		Ok(cmd_frames) => {
 			// Extract subscription ID

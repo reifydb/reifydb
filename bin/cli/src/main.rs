@@ -32,7 +32,9 @@ struct WsCommand {
 enum WsAction {
 	/// Execute query statements (SELECT, FROM, etc.)
 	Query(QueryArgs),
-	/// Execute command statements (CREATE, INSERT, UPDATE, etc.)
+	/// Execute admin statements (DDL + DML + Query)
+	Admin(AdminArgs),
+	/// Execute command statements (INSERT, UPDATE, DELETE)
 	Command(CommandArgs),
 	/// Start interactive REPL session
 	Repl(ReplArgs),
@@ -107,6 +109,40 @@ impl CommandArgs {
 }
 
 #[derive(Parser)]
+struct AdminArgs {
+	/// Server host
+	#[arg(long, env = "REIFYDB_HOST", default_value = "127.0.0.1")]
+	host: String,
+
+	/// Server port
+	#[arg(long, env = "REIFYDB_PORT", default_value = "8090")]
+	port: u16,
+
+	/// Authentication token
+	#[arg(long, short, env = "REIFYDB_TOKEN")]
+	token: Option<String>,
+
+	/// Statement(s) to execute (optional -c flag for quoting)
+	#[arg(short, long)]
+	c: Option<String>,
+
+	/// Statement(s) as trailing arguments (no quotes needed)
+	/// Example: reifydb ws admin CREATE TABLE users { id: int4 }
+	#[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+	statement: Vec<String>,
+}
+
+impl AdminArgs {
+	fn get_statements(&self) -> String {
+		if let Some(ref stmt) = self.c {
+			stmt.clone()
+		} else {
+			self.statement.join(" ")
+		}
+	}
+}
+
+#[derive(Parser)]
 struct ReplArgs {
 	/// Server host
 	#[arg(long, env = "REIFYDB_HOST", default_value = "127.0.0.1")]
@@ -135,6 +171,10 @@ async fn handle_ws(ws_cmd: WsCommand) -> Result<()> {
 		WsAction::Query(args) => {
 			let statements = args.get_statements();
 			ws::query::execute_query(&args.host, args.port, args.token, &statements).await
+		}
+		WsAction::Admin(args) => {
+			let statements = args.get_statements();
+			ws::admin::execute_admin(&args.host, args.port, args.token, &statements).await
 		}
 		WsAction::Command(args) => {
 			let statements = args.get_statements();

@@ -22,7 +22,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::DeleteTableNode;
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, fragment::Fragment, params::Params, return_error, value::Value};
 
 use super::primary_key;
@@ -34,7 +34,7 @@ use crate::{
 impl Executor {
 	pub(crate) fn delete<'a>(
 		&self,
-		txn: &mut AdminTransaction,
+		txn: &mut Transaction<'_>,
 		plan: DeleteTableNode,
 		params: Params,
 	) -> crate::Result<Columns> {
@@ -71,10 +71,9 @@ impl Executor {
 			// First collect all encoded numbers to delete
 			let mut row_numbers_to_delete = Vec::new();
 
-			let mut std_txn = Transaction::from(txn);
 			let mut input_node = compile(
 				*input_plan,
-				&mut std_txn,
+				txn,
 				Arc::new(ExecutionContext {
 					executor: self.clone(),
 					source: resolved_source.clone(),
@@ -93,12 +92,12 @@ impl Executor {
 			};
 
 			// Initialize the operator before execution
-			input_node.initialize(&mut std_txn, &context)?;
+			input_node.initialize(txn, &context)?;
 
 			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut std_txn, &mut mutable_context)?
+			}) = input_node.next(txn, &mut mutable_context)?
 			{
 				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {
@@ -115,14 +114,13 @@ impl Executor {
 			}
 
 			// Get primary key info if table has one
-			let pk_def = primary_key::get_primary_key(&self.catalog, std_txn.admin_mut(), &table)?;
+			let pk_def = primary_key::get_primary_key(&self.catalog, txn, &table)?;
 
-			let cmd = std_txn.admin();
 			for row_number in row_numbers_to_delete {
 				let row_key = RowKey::encoded(table.id, row_number);
 
 				// Get row values for metrics tracking (and for primary key encoding)
-				let row_values = match cmd.get(&row_key)? {
+				let row_values = match txn.get(&row_key)? {
 					Some(v) => v.values,
 					None => continue, // Row doesn't exist, skip
 				};
@@ -132,7 +130,7 @@ impl Executor {
 					// Load schema from the row data
 					let fingerprint = row_values.fingerprint();
 					let schema =
-						self.catalog.schema.get_or_load(fingerprint, cmd)?.ok_or_else(
+						self.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(
 							|| {
 								error!(reifydb_core::error::diagnostic::internal::internal(
 								format!("Schema with fingerprint {:?} not found for table {}", fingerprint, table.name)
@@ -142,7 +140,7 @@ impl Executor {
 					let index_key =
 						primary_key::encode_primary_key(pk_def, &row_values, &table, &schema)?;
 
-					cmd.remove(&IndexEntryKey::new(
+					txn.remove(&IndexEntryKey::new(
 						table.id,
 						IndexId::primary(pk_def.id),
 						index_key,
@@ -151,7 +149,7 @@ impl Executor {
 				}
 
 				// Now remove the row
-				cmd.unset(&row_key, row_values)?;
+				txn.unset(&row_key, row_values)?;
 				deleted_count += 1;
 			}
 		} else {

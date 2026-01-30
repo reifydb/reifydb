@@ -88,7 +88,7 @@ describe('Schema Type Conversion', () => {
                 float_val: Schema.float8()
             });
 
-            const result = await wsClient.command(
+            const result = await wsClient.admin(
                 "MAP { 'test' as str_val, 42 as int_val, true as bool_val, 3.14 as float_val }",
                 null,
                 [schema]
@@ -119,7 +119,7 @@ describe('Schema Type Conversion', () => {
                 another_val: Schema.int8()
             });
 
-            const result = await wsClient.command(
+            const result = await wsClient.admin(
                 "MAP { 9223372036854775807 as big_val, 1 as another_val }",
                 null,
                 [schema]
@@ -146,7 +146,7 @@ describe('Schema Type Conversion', () => {
                 count: Schema.int4Value()
             });
 
-            const result = await wsClient.command(
+            const result = await wsClient.admin(
                 "MAP { 'test' as name, 42 as count }",
                 null,
                 [valueSchema]

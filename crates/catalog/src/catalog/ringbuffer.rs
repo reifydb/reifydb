@@ -164,6 +164,15 @@ impl Catalog {
 		CatalogStore::update_ringbuffer_metadata_admin(txn, metadata)
 	}
 
+	#[instrument(name = "catalog::ringbuffer::update_metadata_txn", level = "debug", skip(self, txn))]
+	pub fn update_ringbuffer_metadata_txn(
+		&self,
+		txn: &mut Transaction<'_>,
+		metadata: RingBufferMetadata,
+	) -> crate::Result<()> {
+		CatalogStore::update_ringbuffer_metadata_txn(txn, metadata)
+	}
+
 	#[instrument(name = "catalog::ringbuffer::set_primary_key", level = "debug", skip(self, txn))]
 	pub fn set_ringbuffer_primary_key(
 		&self,

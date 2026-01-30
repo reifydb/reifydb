@@ -17,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
-	execute::{ExecuteError, execute_command, execute_query},
+	execute::{ExecuteError, execute_admin, execute_command, execute_query},
 	response::convert_frames,
 	state::AppState,
 };
@@ -251,6 +251,41 @@ async fn process_message(
 					Some(Response::auth(&request.id).to_json())
 				}
 				Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
+			}
+		}
+
+		RequestPayload::Admin(a) => {
+			use crate::response::Response;
+
+			let id = match identity.as_ref() {
+				Some(id) => id.clone(),
+				None => {
+					return Some(build_error(
+						&request.id,
+						"AUTH_REQUIRED",
+						"Authentication required",
+					));
+				}
+			};
+
+			let params = a.params.unwrap_or(Params::None);
+			let timeout = state.query_timeout();
+
+			match execute_admin(
+				state.actor_system(),
+				state.engine_clone(),
+				a.statements,
+				id,
+				params,
+				timeout,
+			)
+			.await
+			{
+				Ok(frames) => {
+					let ws_frames = convert_frames(frames);
+					Some(Response::admin(&request.id, ws_frames).to_json())
+				}
+				Err(e) => Some(error_to_response(&request.id, e)),
 			}
 		}
 
