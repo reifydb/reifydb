@@ -16,7 +16,7 @@ use reifydb_engine::{
 };
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
-use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
@@ -262,7 +262,7 @@ impl DistinctOperator {
 	}
 
 	/// Process inserts - operates directly on Columns without Row conversion
-	fn process_insert(&self, state: &mut DistinctState, columns: &Columns) -> reifydb_type::Result<Vec<FlowDiff>> {
+	fn process_insert(&self, state: &mut DistinctState, columns: &Columns) -> reifydb_type::Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -301,7 +301,7 @@ impl DistinctOperator {
 		// Emit all new distinct rows in a single batch if possible
 		if !new_distinct_indices.is_empty() {
 			let output = columns.extract_by_indices(&new_distinct_indices);
-			result.push(FlowDiff::Insert {
+			result.push(Diff::Insert {
 				post: output,
 			});
 		}
@@ -315,7 +315,7 @@ impl DistinctOperator {
 		state: &mut DistinctState,
 		pre_columns: &Columns,
 		post_columns: &Columns,
-	) -> reifydb_type::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = post_columns.row_count();
 		if row_count == 0 {
@@ -380,7 +380,7 @@ impl DistinctOperator {
 		if !same_key_update_indices.is_empty() {
 			let pre_output = pre_columns.extract_by_indices(&same_key_update_indices);
 			let post_output = post_columns.extract_by_indices(&same_key_update_indices);
-			result.push(FlowDiff::Update {
+			result.push(Diff::Update {
 				pre: pre_output,
 				post: post_output,
 			});
@@ -389,7 +389,7 @@ impl DistinctOperator {
 		// Emit batched removes
 		if !removed_indices.is_empty() {
 			let output = pre_columns.extract_by_indices(&removed_indices);
-			result.push(FlowDiff::Remove {
+			result.push(Diff::Remove {
 				pre: output,
 			});
 		}
@@ -397,7 +397,7 @@ impl DistinctOperator {
 		// Emit batched inserts
 		if !inserted_indices.is_empty() {
 			let output = post_columns.extract_by_indices(&inserted_indices);
-			result.push(FlowDiff::Insert {
+			result.push(Diff::Insert {
 				post: output,
 			});
 		}
@@ -406,7 +406,7 @@ impl DistinctOperator {
 	}
 
 	/// Process removes - operates directly on Columns without Row conversion
-	fn process_remove(&self, state: &mut DistinctState, columns: &Columns) -> reifydb_type::Result<Vec<FlowDiff>> {
+	fn process_remove(&self, state: &mut DistinctState, columns: &Columns) -> reifydb_type::Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -434,7 +434,7 @@ impl DistinctOperator {
 		for hash in removed_hashes {
 			if let Some(entry) = state.entries.shift_remove(&hash) {
 				let stored_columns = entry.first_row.to_columns(&state.layout);
-				result.push(FlowDiff::Remove {
+				result.push(Diff::Remove {
 					pre: stored_columns,
 				});
 			}
@@ -460,28 +460,28 @@ impl Operator for DistinctOperator {
 	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		let mut state = self.load_distinct_state(txn)?;
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
 			match diff {
-				FlowDiff::Insert {
+				Diff::Insert {
 					post,
 				} => {
 					let insert_result = self.process_insert(&mut state, &post)?;
 					result.extend(insert_result);
 				}
-				FlowDiff::Update {
+				Diff::Update {
 					pre,
 					post,
 				} => {
 					let update_result = self.process_update(&mut state, &pre, &post)?;
 					result.extend(update_result);
 				}
-				FlowDiff::Remove {
+				Diff::Remove {
 					pre,
 				} => {
 					let remove_result = self.process_remove(&mut state, &pre)?;
@@ -492,7 +492,7 @@ impl Operator for DistinctOperator {
 
 		self.save_distinct_state(txn, &state)?;
 
-		Ok(FlowChange::internal(self.node, change.version, result))
+		Ok(Change::from_flow(self.node, change.version, result))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {

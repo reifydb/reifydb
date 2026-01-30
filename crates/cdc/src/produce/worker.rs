@@ -26,10 +26,11 @@ use reifydb_core::{
 		metric::{CdcEntryDrop, CdcEntryStats, CdcStatsDroppedEvent, CdcStatsRecordedEvent},
 	},
 	interface::{
-		cdc::{Cdc, CdcChange, CdcSequencedChange},
+		cdc::{Cdc, SystemChange},
+		change::Change,
 		store::MultiVersionGetPrevious,
 	},
-	key::{Key, cdc_exclude::should_exclude_from_cdc},
+	key::{EncodableKey, Key, cdc_exclude::should_exclude_from_cdc, kind::KeyKind, row::RowKey},
 };
 use tracing::{debug, error, info, trace};
 
@@ -149,7 +150,7 @@ fn worker_loop<S, T, H>(
 
 		match receiver.recv_timeout(RECV_TIMEOUT) {
 			Ok(item) => {
-				process_work_item(&storage, &transaction_store, item, &event_bus);
+				process_work_item(&storage, &transaction_store, &host, item, &event_bus);
 			}
 			Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
 				// Just check the running flag and continue
@@ -185,13 +186,15 @@ fn try_cleanup<S: CdcStorage, H: CdcHost>(storage: &S, host: &H, event_bus: &Eve
 	Ok(())
 }
 
-fn process_work_item<S, T>(storage: &S, transaction_store: &T, item: CdcWorkItem, event_bus: &EventBus)
+fn process_work_item<S, T, H>(storage: &S, transaction_store: &T, host: &H, item: CdcWorkItem, event_bus: &EventBus)
 where
 	S: CdcStorage,
 	T: MultiVersionGetPrevious,
+	H: CdcHost,
 {
-	let mut changes = Vec::new();
-	let mut seq = 0u16;
+	let mut changes: Vec<Change> = Vec::new();
+	let mut system_changes: Vec<SystemChange> = Vec::new();
+	let registry = host.schema_registry();
 
 	trace!(version = item.version.0, delta_count = item.deltas.len(), "Processing CDC work item");
 
@@ -203,10 +206,45 @@ where
 			if should_exclude_from_cdc(kind) {
 				continue;
 			}
+
+			// Row deltas → try to decode into columnar Change, fall back to SystemChange
+			if kind == KeyKind::Row {
+				if let Some(row_key) = RowKey::decode(&key) {
+					let decoded = match &delta {
+						Delta::Set { key, values } => {
+							let pre = transaction_store.get_previous_version(key, item.version).ok().flatten();
+							if let Some(prev) = pre {
+								super::decode::build_update_change(
+									registry, row_key.primitive, row_key.row, prev.values, values.clone(), item.version,
+								)
+							} else {
+								super::decode::build_insert_change(
+									registry, row_key.primitive, row_key.row, values.clone(), item.version,
+								)
+							}
+						}
+						Delta::Unset { values, .. } => {
+							if !values.is_empty() {
+								super::decode::build_remove_change(
+									registry, row_key.primitive, row_key.row, values.clone(), item.version,
+								)
+							} else {
+								None
+							}
+						}
+						_ => None,
+					};
+
+					if let Some(change) = decoded {
+						changes.push(change);
+						continue;
+					}
+				}
+				// Fall through to SystemChange if decode failed
+			}
 		}
 
-		seq += 1;
-
+		// Non-row deltas (or row deltas that failed to decode) → SystemChange
 		let change = match delta {
 			Delta::Set {
 				key,
@@ -216,15 +254,13 @@ where
 				let pre = transaction_store.get_previous_version(&key, item.version).ok().flatten();
 
 				if let Some(prev_values) = pre {
-					// Has previous version - this is an update
-					CdcChange::Update {
+					SystemChange::Update {
 						key,
 						pre: prev_values.values,
 						post: values,
 					}
 				} else {
-					// No previous version - this is an insert
-					CdcChange::Insert {
+					SystemChange::Insert {
 						key,
 						post: values,
 					}
@@ -239,7 +275,7 @@ where
 				} else {
 					Some(values)
 				};
-				CdcChange::Delete {
+				SystemChange::Delete {
 					key,
 					pre,
 				}
@@ -250,30 +286,26 @@ where
 			| Delta::Drop {
 				..
 			} => {
-				// Remove (untracked) and Drop operations never generate CDC
 				continue;
 			}
 		};
 
-		changes.push(CdcSequencedChange {
-			sequence: seq,
-			change,
-		});
+		system_changes.push(change);
 	}
 
-	if !changes.is_empty() {
-		let cdc = Cdc::new(item.version, item.timestamp, changes.clone());
+	if !changes.is_empty() || !system_changes.is_empty() {
+		let cdc = Cdc::new(item.version, item.timestamp, changes, system_changes.clone());
 		if let Err(e) = storage.write(&cdc) {
 			error!(version = item.version.0, "CDC write failed: {:?}", e);
 			return;
 		}
 
 		// Emit CDC stats event
-		let entries: Vec<CdcEntryStats> = changes
+		let entries: Vec<CdcEntryStats> = system_changes
 			.iter()
-			.map(|seq_change| {
-				let key = seq_change.change.key();
-				let value_bytes = seq_change.change.value_bytes() as u64;
+			.map(|sys_change| {
+				let key = sys_change.key();
+				let value_bytes = sys_change.value_bytes() as u64;
 				CdcEntryStats {
 					key: key.clone(),
 					value_bytes,
@@ -315,6 +347,7 @@ pub mod tests {
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		event_bus: EventBus,
+		schema_registry: reifydb_catalog::schema::SchemaRegistry,
 	}
 
 	impl TestCdcHost {
@@ -336,6 +369,7 @@ pub mod tests {
 				multi,
 				single,
 				event_bus,
+				schema_registry: reifydb_catalog::schema::SchemaRegistry::testing(),
 			}
 		}
 	}
@@ -365,6 +399,14 @@ pub mod tests {
 
 		fn done_until(&self) -> CommitVersion {
 			CommitVersion(1)
+		}
+
+		fn wait_for_mark_timeout(&self, _version: CommitVersion, _timeout: Duration) -> bool {
+			true
+		}
+
+		fn schema_registry(&self) -> &reifydb_catalog::schema::SchemaRegistry {
+			&self.schema_registry
 		}
 	}
 
@@ -396,10 +438,10 @@ pub mod tests {
 		assert!(cdc.is_some());
 		let cdc = cdc.unwrap();
 		assert_eq!(cdc.version, CommitVersion(1));
-		assert_eq!(cdc.changes.len(), 1);
+		assert_eq!(cdc.system_changes.len(), 1);
 
-		match &cdc.changes[0].change {
-			CdcChange::Insert {
+		match &cdc.system_changes[0] {
+			SystemChange::Insert {
 				key,
 				post,
 			} => {
@@ -442,6 +484,6 @@ pub mod tests {
 
 		let cdc = storage.read(CommitVersion(2)).unwrap().unwrap();
 		// Only the Set should produce CDC, not the Drop
-		assert_eq!(cdc.changes.len(), 1);
+		assert_eq!(cdc.system_changes.len(), 1);
 	}
 }

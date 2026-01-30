@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_runtime::hash::Hash128;
-use reifydb_sdk::flow::FlowDiff;
+use reifydb_core::interface::change::Diff;
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{
@@ -141,7 +141,7 @@ pub(crate) fn emit_joined_columns(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	opposite_parent: &Arc<Operators>,
-) -> reifydb_type::Result<Option<FlowDiff>> {
+) -> reifydb_type::Result<Option<Diff>> {
 	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
@@ -155,7 +155,7 @@ pub(crate) fn emit_joined_columns(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(FlowDiff::Insert {
+		Ok(Some(Diff::Insert {
 			post: joined,
 		}))
 	}
@@ -171,7 +171,7 @@ pub(crate) fn emit_remove_joined_columns(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	opposite_parent: &Arc<Operators>,
-) -> reifydb_type::Result<Option<FlowDiff>> {
+) -> reifydb_type::Result<Option<Diff>> {
 	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
@@ -185,7 +185,7 @@ pub(crate) fn emit_remove_joined_columns(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(FlowDiff::Remove {
+		Ok(Some(Diff::Remove {
 			pre: joined,
 		}))
 	}
@@ -202,7 +202,7 @@ pub(crate) fn emit_update_joined_columns(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	opposite_parent: &Arc<Operators>,
-) -> reifydb_type::Result<Option<FlowDiff>> {
+) -> reifydb_type::Result<Option<Diff>> {
 	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
@@ -222,7 +222,7 @@ pub(crate) fn emit_update_joined_columns(
 	if pre_joined.is_empty() || post_joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(FlowDiff::Update {
+		Ok(Some(Diff::Update {
 			pre: pre_joined,
 			post: post_joined,
 		}))
@@ -239,7 +239,7 @@ pub(crate) fn emit_joined_columns_batch(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	opposite_parent: &Arc<Operators>,
-) -> reifydb_type::Result<Option<FlowDiff>> {
+) -> reifydb_type::Result<Option<Diff>> {
 	if primary_indices.is_empty() {
 		return Ok(None);
 	}
@@ -263,7 +263,7 @@ pub(crate) fn emit_joined_columns_batch(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(FlowDiff::Insert {
+		Ok(Some(Diff::Insert {
 			post: joined,
 		}))
 	}
@@ -279,7 +279,7 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	opposite_parent: &Arc<Operators>,
-) -> reifydb_type::Result<Option<FlowDiff>> {
+) -> reifydb_type::Result<Option<Diff>> {
 	if primary_indices.is_empty() {
 		return Ok(None);
 	}
@@ -300,7 +300,7 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(FlowDiff::Remove {
+		Ok(Some(Diff::Remove {
 			pre: joined,
 		}))
 	}

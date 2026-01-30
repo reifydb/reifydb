@@ -284,14 +284,15 @@ impl WindowStatefulTestHelper {
 /// Common test scenarios for stateful operators
 pub mod scenarios {
 	use super::*;
-	use crate::{flow::FlowChange, testing::builders::TestFlowChangeBuilder};
+	use crate::testing::builders::TestChangeBuilder;
+	use reifydb_core::interface::change::Change;
 
 	/// Create a sequence of inserts for testing counters
-	pub fn counter_inserts(count: usize) -> Vec<FlowChange> {
+	pub fn counter_inserts(count: usize) -> Vec<Change> {
 		use reifydb_type::value::row_number::RowNumber;
 		(0..count)
 			.map(|i| {
-				TestFlowChangeBuilder::new()
+				TestChangeBuilder::new()
 					.insert_row(RowNumber(i as u64), vec![Value::Int8(1i64)])
 					.build()
 			})
@@ -299,9 +300,9 @@ pub mod scenarios {
 	}
 
 	/// Create a sequence of keyed inserts for group-by testing
-	pub fn grouped_inserts(groups: &[(&str, i32)]) -> FlowChange {
+	pub fn grouped_inserts(groups: &[(&str, i32)]) -> Change {
 		use reifydb_type::value::row_number::RowNumber;
-		let mut builder = TestFlowChangeBuilder::new();
+		let mut builder = TestChangeBuilder::new();
 		for (i, (key, value)) in groups.iter().enumerate() {
 			builder = builder
 				.insert_row(RowNumber(i as u64), vec![Value::Utf8((*key).into()), Value::Int4(*value)]);
@@ -310,9 +311,9 @@ pub mod scenarios {
 	}
 
 	/// Create a sequence of updates for testing state changes
-	pub fn state_updates(row_number: i64, old_value: i8, new_value: i8) -> FlowChange {
+	pub fn state_updates(row_number: i64, old_value: i8, new_value: i8) -> Change {
 		use reifydb_type::value::row_number::RowNumber;
-		TestFlowChangeBuilder::new()
+		TestChangeBuilder::new()
 			.update_row(
 				RowNumber(row_number as u64),
 				vec![Value::Int8(old_value as i64)],
@@ -322,7 +323,7 @@ pub mod scenarios {
 	}
 
 	/// Create a windowed sequence of events
-	pub fn windowed_events(window_size: i64, events_per_window: usize, windows: usize) -> Vec<(i64, FlowChange)> {
+	pub fn windowed_events(window_size: i64, events_per_window: usize, windows: usize) -> Vec<(i64, Change)> {
 		use reifydb_type::value::row_number::RowNumber;
 		let mut result = Vec::new();
 
@@ -331,7 +332,7 @@ pub mod scenarios {
 
 			for event in 0..events_per_window {
 				let timestamp = base_time + (event as i64 * (window_size / events_per_window as i64));
-				let change = TestFlowChangeBuilder::new()
+				let change = TestChangeBuilder::new()
 					.insert_row(
 						RowNumber(timestamp as u64),
 						vec![Value::Int8(1i64), Value::Int8(timestamp as i64)],

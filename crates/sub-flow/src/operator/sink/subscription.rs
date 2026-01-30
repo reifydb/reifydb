@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_abi::flow::diff::FlowDiffType;
+use reifydb_abi::flow::diff::DiffType;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	encoded::{
@@ -19,7 +19,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::{fragment::Fragment, value::row_number::RowNumber};
 
 use super::encode_row_at_index;
@@ -57,7 +57,7 @@ impl SinkSubscriptionOperator {
 	}
 
 	/// Add implicit columns (_op) to the columns
-	fn add_implicit_columns(columns: &Columns, op: FlowDiffType) -> Columns {
+	fn add_implicit_columns(columns: &Columns, op: DiffType) -> Columns {
 		let row_count = columns.row_count();
 
 		// Clone existing columns
@@ -82,18 +82,18 @@ impl Operator for SinkSubscriptionOperator {
 	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		let subscription_def = self.subscription.def().clone();
 
 		for diff in change.diffs.iter() {
 			match diff {
-				FlowDiff::Insert {
+				Diff::Insert {
 					post,
 				} => {
 					// Add implicit _op column
-					let with_implicit = Self::add_implicit_columns(post, FlowDiffType::Insert);
+					let with_implicit = Self::add_implicit_columns(post, DiffType::Insert);
 
 					// Derive and persist schema from columns with implicit fields
 					let schema = {
@@ -117,12 +117,12 @@ impl Operator for SinkSubscriptionOperator {
 						txn.set(&key, encoded)?;
 					}
 				}
-				FlowDiff::Update {
+				Diff::Update {
 					pre: _pre,
 					post,
 				} => {
 					// Add implicit _op column
-					let with_implicit = Self::add_implicit_columns(post, FlowDiffType::Update);
+					let with_implicit = Self::add_implicit_columns(post, DiffType::Update);
 
 					// Derive and persist schema from columns with implicit fields
 					let schema = {
@@ -146,11 +146,11 @@ impl Operator for SinkSubscriptionOperator {
 						txn.set(&key, encoded)?;
 					}
 				}
-				FlowDiff::Remove {
+				Diff::Remove {
 					pre,
 				} => {
 					// Add implicit _op column
-					let with_implicit = Self::add_implicit_columns(pre, FlowDiffType::Remove);
+					let with_implicit = Self::add_implicit_columns(pre, DiffType::Remove);
 
 					// Derive and persist schema from columns with implicit fields
 					let schema = {
@@ -177,7 +177,7 @@ impl Operator for SinkSubscriptionOperator {
 			}
 		}
 
-		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
+		Ok(Change::from_flow(self.node, change.version, Vec::new()))
 	}
 
 	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {

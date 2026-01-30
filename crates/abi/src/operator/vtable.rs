@@ -3,7 +3,7 @@
 
 use core::ffi::c_void;
 
-use crate::{context::context::ContextFFI, data::column::ColumnsFFI, flow::change::FlowChangeFFI};
+use crate::{context::context::ContextFFI, data::column::ColumnsFFI, flow::change::ChangeFFI};
 
 /// Virtual function table for FFI operators
 ///
@@ -13,21 +13,21 @@ use crate::{context::context::ContextFFI, data::column::ColumnsFFI, flow::change
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct OperatorVTableFFI {
-	/// Apply the operator to a flow change
+	/// Apply the operator to a change
 	///
 	/// # Parameters
 	/// - `instance`: The operator instance pointer
 	/// - `ctx`: FFI context for this operation
-	/// - `input`: Input flow change
-	/// - `output`: Output flow change (to be filled by operator)
+	/// - `input`: Input change
+	/// - `output`: Output change (to be filled by operator)
 	///
 	/// # Returns
 	/// - 0 on success, negative error code on failure
 	pub apply: extern "C" fn(
 		instance: *mut c_void,
 		ctx: *mut ContextFFI,
-		input: *const FlowChangeFFI,
-		output: *mut FlowChangeFFI,
+		input: *const ChangeFFI,
+		output: *mut ChangeFFI,
 	) -> i32,
 
 	/// Pull specific rows by their row numbers

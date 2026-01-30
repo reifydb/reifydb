@@ -7,7 +7,7 @@ use reifydb_core::{
 	encoded::schema::Schema, interface::catalog::flow::FlowNodeId, internal, value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::{
 	error::Error,
 	value::{blob::Blob, row_number::RowNumber, r#type::Type},
@@ -85,7 +85,7 @@ impl TakeOperator {
 		&self,
 		state: &mut TakeState,
 		txn: &mut FlowTransaction,
-	) -> reifydb_type::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<Diff>> {
 		let mut output_diffs = Vec::new();
 
 		while state.active.len() < self.limit && !state.candidates.is_empty() {
@@ -95,7 +95,7 @@ impl TakeOperator {
 
 				let cols = self.parent.pull(txn, &[candidate_row])?;
 				if !cols.is_empty() {
-					output_diffs.push(FlowDiff::Insert {
+					output_diffs.push(Diff::Insert {
 						post: cols,
 					});
 				}
@@ -109,7 +109,7 @@ impl TakeOperator {
 		&self,
 		state: &mut TakeState,
 		txn: &mut FlowTransaction,
-	) -> reifydb_type::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<Diff>> {
 		let mut output_diffs = Vec::new();
 		let candidate_limit = self.limit * 4;
 
@@ -120,7 +120,7 @@ impl TakeOperator {
 
 				let cols = self.parent.pull(txn, &[evicted_row])?;
 				if !cols.is_empty() {
-					output_diffs.push(FlowDiff::Remove {
+					output_diffs.push(Diff::Remove {
 						pre: cols,
 					});
 				}
@@ -153,16 +153,16 @@ impl Operator for TakeOperator {
 	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		let mut state = self.load_take_state(txn)?;
 		let mut output_diffs = Vec::new();
 		let version = change.version;
 
 		for diff in change.diffs {
 			match diff {
-				FlowDiff::Insert {
+				Diff::Insert {
 					post,
 				} => {
 					let row_number = post.number();
@@ -179,7 +179,7 @@ impl Operator for TakeOperator {
 
 					if state.active.len() < self.limit {
 						state.active.insert(row_number, 1);
-						output_diffs.push(FlowDiff::Insert {
+						output_diffs.push(Diff::Insert {
 							post,
 						});
 					} else {
@@ -194,14 +194,14 @@ impl Operator for TakeOperator {
 										self.parent.pull(txn, &[smallest])?;
 
 									if !cols.is_empty() {
-										output_diffs.push(FlowDiff::Remove {
+										output_diffs.push(Diff::Remove {
 											pre: cols,
 										});
 									}
 								}
 
 								state.active.insert(row_number, 1);
-								output_diffs.push(FlowDiff::Insert {
+								output_diffs.push(Diff::Insert {
 									post,
 								});
 
@@ -228,20 +228,20 @@ impl Operator for TakeOperator {
 						}
 					}
 				}
-				FlowDiff::Update {
+				Diff::Update {
 					pre,
 					post,
 				} => {
 					let row_number = post.number();
 
 					if state.active.contains_key(&row_number) {
-						output_diffs.push(FlowDiff::Update {
+						output_diffs.push(Diff::Update {
 							pre,
 							post,
 						});
 					}
 				}
-				FlowDiff::Remove {
+				Diff::Remove {
 					pre,
 				} => {
 					let row_number = pre.number();
@@ -251,7 +251,7 @@ impl Operator for TakeOperator {
 							*count -= 1;
 						} else {
 							state.active.remove(&row_number);
-							output_diffs.push(FlowDiff::Remove {
+							output_diffs.push(Diff::Remove {
 								pre,
 							});
 
@@ -271,7 +271,7 @@ impl Operator for TakeOperator {
 
 		self.save_take_state(txn, &state)?;
 
-		Ok(FlowChange::internal(self.node, version, output_diffs))
+		Ok(Change::from_flow(self.node, version, output_diffs))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {

@@ -6,7 +6,7 @@ use std::{
 	sync::Arc,
 };
 
-use parking_lot::RwLock;
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, CdcBatch},
@@ -94,7 +94,7 @@ impl CdcStorage for MemoryCdcStorage {
 	}
 
 	fn count(&self, version: CommitVersion) -> CdcStorageResult<usize> {
-		Ok(self.inner.read().get(&version).map(|cdc| cdc.changes.len()).unwrap_or(0))
+		Ok(self.inner.read().get(&version).map(|cdc| cdc.system_changes.len()).unwrap_or(0))
 	}
 
 	fn min_version(&self) -> CdcStorageResult<Option<CommitVersion>> {
@@ -113,10 +113,10 @@ impl CdcStorage for MemoryCdcStorage {
 		let mut entries = Vec::new();
 		for key in &keys_to_remove {
 			if let Some(cdc) = guard.get(key) {
-				for seq_change in &cdc.changes {
+				for sys_change in &cdc.system_changes {
 					entries.push(DroppedCdcEntry {
-						key: seq_change.change.key().clone(),
-						value_bytes: seq_change.change.value_bytes() as u64,
+						key: sys_change.key().clone(),
+						value_bytes: sys_change.value_bytes() as u64,
 					});
 				}
 			}
@@ -137,7 +137,7 @@ impl CdcStorage for MemoryCdcStorage {
 pub mod tests {
 	use reifydb_core::{
 		encoded::{encoded::EncodedValues, key::EncodedKey},
-		interface::cdc::{CdcChange, CdcSequencedChange},
+		interface::cdc::SystemChange,
 	};
 	use reifydb_type::util::cowvec::CowVec;
 
@@ -147,12 +147,10 @@ pub mod tests {
 		Cdc::new(
 			CommitVersion(version),
 			12345,
-			vec![CdcSequencedChange {
-				sequence: 1,
-				change: CdcChange::Insert {
-					key: EncodedKey::new(vec![1, 2, 3]),
-					post: EncodedValues(CowVec::new(vec![])),
-				},
+			Vec::new(),
+			vec![SystemChange::Insert {
+				key: EncodedKey::new(vec![1, 2, 3]),
+				post: EncodedValues(CowVec::new(vec![])),
 			}],
 		)
 	}
@@ -224,32 +222,25 @@ pub mod tests {
 		let cdc1 = Cdc::new(
 			CommitVersion(1),
 			100,
-			vec![CdcSequencedChange {
-				sequence: 1,
-				change: CdcChange::Insert {
-					key: EncodedKey::new(vec![1]),
-					post: EncodedValues(CowVec::new(vec![])),
-				},
+			Vec::new(),
+			vec![SystemChange::Insert {
+				key: EncodedKey::new(vec![1]),
+				post: EncodedValues(CowVec::new(vec![])),
 			}],
 		);
 
 		let cdc2 = Cdc::new(
 			CommitVersion(1),
 			200, // Different timestamp
+			Vec::new(),
 			vec![
-				CdcSequencedChange {
-					sequence: 1,
-					change: CdcChange::Insert {
-						key: EncodedKey::new(vec![2]),
-						post: EncodedValues(CowVec::new(vec![])),
-					},
+				SystemChange::Insert {
+					key: EncodedKey::new(vec![2]),
+					post: EncodedValues(CowVec::new(vec![])),
 				},
-				CdcSequencedChange {
-					sequence: 2,
-					change: CdcChange::Insert {
-						key: EncodedKey::new(vec![3]),
-						post: EncodedValues(CowVec::new(vec![])),
-					},
+				SystemChange::Insert {
+					key: EncodedKey::new(vec![3]),
+					post: EncodedValues(CowVec::new(vec![])),
 				},
 			],
 		);

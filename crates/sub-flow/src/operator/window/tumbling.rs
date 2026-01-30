@@ -6,7 +6,7 @@ use reifydb_core::{
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_runtime::hash::Hash128;
-use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_core::interface::change::{Change, Diff};
 
 use super::{WindowEvent, WindowOperator};
 use crate::transaction::FlowTransaction;
@@ -76,7 +76,7 @@ fn process_tumbling_insert(
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	evaluator: &StandardColumnEvaluator,
-) -> reifydb_type::Result<Vec<FlowDiff>> {
+) -> reifydb_type::Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -105,7 +105,7 @@ fn process_tumbling_group_insert(
 	columns: &Columns,
 	group_hash: Hash128,
 	evaluator: &StandardColumnEvaluator,
-) -> reifydb_type::Result<Vec<FlowDiff>> {
+) -> reifydb_type::Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -161,7 +161,7 @@ fn process_tumbling_group_insert(
 		{
 			if is_new {
 				// First time we see this window - emit Insert
-				result.push(FlowDiff::Insert {
+				result.push(Diff::Insert {
 					post: Columns::from_row(&aggregated_row),
 				});
 			} else {
@@ -171,7 +171,7 @@ fn process_tumbling_group_insert(
 				if let Some((previous_aggregated, _)) =
 					operator.apply_aggregations(txn, &window_key, previous_events, evaluator)?
 				{
-					result.push(FlowDiff::Update {
+					result.push(Diff::Update {
 						pre: Columns::from_row(&previous_aggregated),
 						post: Columns::from_row(&aggregated_row),
 					});
@@ -189,9 +189,9 @@ fn process_tumbling_group_insert(
 pub fn apply_tumbling_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
-	change: FlowChange,
+	change: Change,
 	evaluator: &StandardColumnEvaluator,
-) -> reifydb_type::Result<FlowChange> {
+) -> reifydb_type::Result<Change> {
 	let mut result = Vec::new();
 	let current_timestamp = operator.current_timestamp();
 
@@ -202,13 +202,13 @@ pub fn apply_tumbling_window(
 	// Process each incoming change (each diff may contain multiple rows)
 	for diff in change.diffs.iter() {
 		match diff {
-			FlowDiff::Insert {
+			Diff::Insert {
 				post,
 			} => {
 				let insert_result = process_tumbling_insert(operator, txn, post, evaluator)?;
 				result.extend(insert_result);
 			}
-			FlowDiff::Update {
+			Diff::Update {
 				pre: _,
 				post,
 			} => {
@@ -217,7 +217,7 @@ pub fn apply_tumbling_window(
 				let update_result = process_tumbling_insert(operator, txn, post, evaluator)?;
 				result.extend(update_result);
 			}
-			FlowDiff::Remove {
+			Diff::Remove {
 				pre: _,
 			} => {
 				// Window operators typically don't handle removes in streaming scenarios
@@ -226,5 +226,5 @@ pub fn apply_tumbling_window(
 		}
 	}
 
-	Ok(FlowChange::internal(operator.node, change.version, result))
+	Ok(Change::from_flow(operator.node, change.version, result))
 }

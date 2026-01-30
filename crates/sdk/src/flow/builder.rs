@@ -1,23 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Builder for constructing FlowChange objects
+//! Builder for constructing Change objects
 
 use reifydb_core::{
-	common::CommitVersion, interface::catalog::flow::FlowNodeId, row::Row, value::column::columns::Columns,
+	common::CommitVersion,
+	interface::{
+		catalog::flow::FlowNodeId,
+		change::{Change, Diff},
+	},
+	row::Row,
+	value::column::columns::Columns,
 };
 
-use super::{FlowChange, FlowDiff};
-
-/// Builder for constructing FlowChange objects for internal flow operators
-pub struct FlowChangeBuilder {
+/// Builder for constructing Change objects for internal flow operators
+pub struct ChangeBuilder {
 	operator_id: FlowNodeId,
 	version: CommitVersion,
-	diffs: Vec<FlowDiff>,
+	diffs: Vec<Diff>,
 }
 
-impl FlowChangeBuilder {
-	/// Create a new FlowChangeBuilder for an internal operator
+impl ChangeBuilder {
+	/// Create a new ChangeBuilder for an internal operator
 	///
 	/// # Arguments
 	/// * `operator_id` - The ID of the operator creating this change
@@ -32,7 +36,7 @@ impl FlowChangeBuilder {
 
 	/// Add an insert diff with Columns
 	pub fn insert(mut self, post: Columns) -> Self {
-		self.diffs.push(FlowDiff::Insert {
+		self.diffs.push(Diff::Insert {
 			post,
 		});
 		self
@@ -40,7 +44,7 @@ impl FlowChangeBuilder {
 
 	/// Add an insert diff from a Row (converts to Columns)
 	pub fn insert_row(mut self, row: Row) -> Self {
-		self.diffs.push(FlowDiff::Insert {
+		self.diffs.push(Diff::Insert {
 			post: Columns::from_row(&row),
 		});
 		self
@@ -48,7 +52,7 @@ impl FlowChangeBuilder {
 
 	/// Add an update diff with Columns
 	pub fn update(mut self, pre: Columns, post: Columns) -> Self {
-		self.diffs.push(FlowDiff::Update {
+		self.diffs.push(Diff::Update {
 			pre,
 			post,
 		});
@@ -57,7 +61,7 @@ impl FlowChangeBuilder {
 
 	/// Add an update diff from Rows (converts to Columns)
 	pub fn update_rows(mut self, pre: Row, post: Row) -> Self {
-		self.diffs.push(FlowDiff::Update {
+		self.diffs.push(Diff::Update {
 			pre: Columns::from_row(&pre),
 			post: Columns::from_row(&post),
 		});
@@ -66,7 +70,7 @@ impl FlowChangeBuilder {
 
 	/// Add a remove diff with Columns
 	pub fn remove(mut self, pre: Columns) -> Self {
-		self.diffs.push(FlowDiff::Remove {
+		self.diffs.push(Diff::Remove {
 			pre,
 		});
 		self
@@ -74,26 +78,26 @@ impl FlowChangeBuilder {
 
 	/// Add a remove diff from a Row (converts to Columns)
 	pub fn remove_row(mut self, row: Row) -> Self {
-		self.diffs.push(FlowDiff::Remove {
+		self.diffs.push(Diff::Remove {
 			pre: Columns::from_row(&row),
 		});
 		self
 	}
 
 	/// Add a single diff
-	pub fn diff(mut self, diff: FlowDiff) -> Self {
+	pub fn diff(mut self, diff: Diff) -> Self {
 		self.diffs.push(diff);
 		self
 	}
 
 	/// Add multiple diffs
-	pub fn diffs(mut self, iter: impl IntoIterator<Item = FlowDiff>) -> Self {
+	pub fn diffs(mut self, iter: impl IntoIterator<Item = Diff>) -> Self {
 		self.diffs.extend(iter);
 		self
 	}
 
-	/// Build the FlowChange
-	pub fn build(self) -> FlowChange {
-		FlowChange::internal(self.operator_id, self.version, self.diffs)
+	/// Build the Change
+	pub fn build(self) -> Change {
+		Change::from_flow(self.operator_id, self.version, self.diffs)
 	}
 }

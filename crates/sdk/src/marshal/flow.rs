@@ -8,38 +8,38 @@ use std::slice::{from_raw_parts, from_raw_parts_mut};
 use reifydb_abi::{
 	data::column::ColumnsFFI,
 	flow::{
-		change::{FlowChangeFFI, FlowOriginFFI},
-		diff::{FlowDiffFFI, FlowDiffType},
+		change::{ChangeFFI, OriginFFI},
+		diff::{DiffFFI, DiffType},
 	},
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{
-		flow::{FlowId, FlowNodeId},
-		id::{RingBufferId, TableId, ViewId},
-		primitive::PrimitiveId,
-		vtable::VTableId,
+	interface::{
+		catalog::{
+			flow::{FlowId, FlowNodeId},
+			id::{RingBufferId, TableId, ViewId},
+			primitive::PrimitiveId,
+			vtable::VTableId,
+		},
+		change::{Change, ChangeOrigin, Diff},
 	},
 };
 
-use crate::{
-	ffi::arena::Arena,
-	flow::{FlowChange, FlowChangeOrigin, FlowDiff},
-};
+use crate::ffi::arena::Arena;
 
 impl Arena {
-	/// Marshal a flow change to FFI representation
-	pub fn marshal_flow_change(&mut self, change: &FlowChange) -> FlowChangeFFI {
+	/// Marshal a change to FFI representation
+	pub fn marshal_change(&mut self, change: &Change) -> ChangeFFI {
 		// Allocate array for diffs
 		let diffs_count = change.diffs.len();
 		let diffs_ptr = if diffs_count > 0 {
-			let diffs_array = self.alloc(diffs_count * size_of::<FlowDiffFFI>()) as *mut FlowDiffFFI;
+			let diffs_array = self.alloc(diffs_count * size_of::<DiffFFI>()) as *mut DiffFFI;
 
 			// Marshal each diff
 			unsafe {
 				let diffs_slice = from_raw_parts_mut(diffs_array, diffs_count);
 				for (i, diff) in change.diffs.iter().enumerate() {
-					diffs_slice[i] = self.marshal_flow_diff(diff);
+					diffs_slice[i] = self.marshal_diff(diff);
 				}
 			}
 
@@ -48,7 +48,7 @@ impl Arena {
 			std::ptr::null_mut()
 		};
 
-		FlowChangeFFI {
+		ChangeFFI {
 			origin: Self::marshal_origin(&change.origin),
 			diff_count: diffs_count,
 			diffs: diffs_ptr,
@@ -56,35 +56,35 @@ impl Arena {
 		}
 	}
 
-	/// Marshal a flow change origin to FFI representation
-	fn marshal_origin(origin: &FlowChangeOrigin) -> FlowOriginFFI {
+	/// Marshal a change origin to FFI representation
+	fn marshal_origin(origin: &ChangeOrigin) -> OriginFFI {
 		match origin {
-			FlowChangeOrigin::Internal(node_id) => FlowOriginFFI {
+			ChangeOrigin::Internal(node_id) => OriginFFI {
 				origin: 0,
 				id: node_id.0,
 			},
-			FlowChangeOrigin::External(source_id) => match source_id {
-				PrimitiveId::Table(id) => FlowOriginFFI {
+			ChangeOrigin::External(source_id) => match source_id {
+				PrimitiveId::Table(id) => OriginFFI {
 					origin: 1,
 					id: id.0,
 				},
-				PrimitiveId::View(id) => FlowOriginFFI {
+				PrimitiveId::View(id) => OriginFFI {
 					origin: 2,
 					id: id.0,
 				},
-				PrimitiveId::TableVirtual(id) => FlowOriginFFI {
+				PrimitiveId::TableVirtual(id) => OriginFFI {
 					origin: 3,
 					id: id.0,
 				},
-				PrimitiveId::RingBuffer(id) => FlowOriginFFI {
+				PrimitiveId::RingBuffer(id) => OriginFFI {
 					origin: 4,
 					id: id.0,
 				},
-				&PrimitiveId::Flow(id) => FlowOriginFFI {
+				&PrimitiveId::Flow(id) => OriginFFI {
 					origin: 5,
 					id: id.0,
 				},
-				PrimitiveId::Dictionary(id) => FlowOriginFFI {
+				PrimitiveId::Dictionary(id) => OriginFFI {
 					origin: 6,
 					id: id.0,
 				},
@@ -92,36 +92,36 @@ impl Arena {
 		}
 	}
 
-	/// Marshal a single flow diff using columnar format
-	fn marshal_flow_diff(&mut self, diff: &FlowDiff) -> FlowDiffFFI {
+	/// Marshal a single diff using columnar format
+	fn marshal_diff(&mut self, diff: &Diff) -> DiffFFI {
 		match diff {
-			FlowDiff::Insert {
+			Diff::Insert {
 				post,
-			} => FlowDiffFFI {
-				diff_type: FlowDiffType::Insert,
+			} => DiffFFI {
+				diff_type: DiffType::Insert,
 				pre: ColumnsFFI::empty(),
 				post: self.marshal_columns(post),
 			},
-			FlowDiff::Update {
+			Diff::Update {
 				pre,
 				post,
-			} => FlowDiffFFI {
-				diff_type: FlowDiffType::Update,
+			} => DiffFFI {
+				diff_type: DiffType::Update,
 				pre: self.marshal_columns(pre),
 				post: self.marshal_columns(post),
 			},
-			FlowDiff::Remove {
+			Diff::Remove {
 				pre,
-			} => FlowDiffFFI {
-				diff_type: FlowDiffType::Remove,
+			} => DiffFFI {
+				diff_type: DiffType::Remove,
 				pre: self.marshal_columns(pre),
 				post: ColumnsFFI::empty(),
 			},
 		}
 	}
 
-	/// Unmarshal a flow change from FFI representation
-	pub fn unmarshal_flow_change(&self, ffi: &FlowChangeFFI) -> Result<FlowChange, String> {
+	/// Unmarshal a change from FFI representation
+	pub fn unmarshal_change(&self, ffi: &ChangeFFI) -> Result<Change, String> {
 		let mut diffs = Vec::with_capacity(ffi.diff_count);
 
 		if !ffi.diffs.is_null() && ffi.diff_count > 0 {
@@ -129,63 +129,63 @@ impl Arena {
 				let diffs_slice = from_raw_parts(ffi.diffs, ffi.diff_count);
 
 				for diff_ffi in diffs_slice {
-					diffs.push(self.unmarshal_flow_diff(diff_ffi)?);
+					diffs.push(self.unmarshal_diff(diff_ffi)?);
 				}
 			}
 		}
 
-		Ok(FlowChange {
+		Ok(Change {
 			origin: Self::unmarshal_origin(&ffi.origin)?,
 			diffs,
 			version: CommitVersion(ffi.version),
 		})
 	}
 
-	/// Unmarshal a flow change origin from FFI representation
-	fn unmarshal_origin(ffi: &FlowOriginFFI) -> Result<FlowChangeOrigin, String> {
+	/// Unmarshal a change origin from FFI representation
+	fn unmarshal_origin(ffi: &OriginFFI) -> Result<ChangeOrigin, String> {
 		match ffi.origin {
-			0 => Ok(FlowChangeOrigin::Internal(FlowNodeId(ffi.id))),
-			1 => Ok(FlowChangeOrigin::External(PrimitiveId::Table(TableId(ffi.id)))),
-			2 => Ok(FlowChangeOrigin::External(PrimitiveId::View(ViewId(ffi.id)))),
-			3 => Ok(FlowChangeOrigin::External(PrimitiveId::TableVirtual(VTableId(ffi.id)))),
-			4 => Ok(FlowChangeOrigin::External(PrimitiveId::RingBuffer(RingBufferId(ffi.id)))),
-			5 => Ok(FlowChangeOrigin::External(PrimitiveId::Flow(FlowId(ffi.id)))),
+			0 => Ok(ChangeOrigin::Internal(FlowNodeId(ffi.id))),
+			1 => Ok(ChangeOrigin::External(PrimitiveId::Table(TableId(ffi.id)))),
+			2 => Ok(ChangeOrigin::External(PrimitiveId::View(ViewId(ffi.id)))),
+			3 => Ok(ChangeOrigin::External(PrimitiveId::TableVirtual(VTableId(ffi.id)))),
+			4 => Ok(ChangeOrigin::External(PrimitiveId::RingBuffer(RingBufferId(ffi.id)))),
+			5 => Ok(ChangeOrigin::External(PrimitiveId::Flow(FlowId(ffi.id)))),
 			_ => Err(format!("Invalid origin_type: {}", ffi.origin)),
 		}
 	}
 
-	/// Unmarshal a single flow diff from columnar FFI format
-	fn unmarshal_flow_diff(&self, ffi: &FlowDiffFFI) -> Result<FlowDiff, String> {
+	/// Unmarshal a single diff from columnar FFI format
+	fn unmarshal_diff(&self, ffi: &DiffFFI) -> Result<Diff, String> {
 		match ffi.diff_type {
-			FlowDiffType::Insert => {
+			DiffType::Insert => {
 				if ffi.post.is_empty() {
 					return Err("Insert diff missing post columns".to_string());
 				}
 
 				let post = self.unmarshal_columns(&ffi.post);
-				Ok(FlowDiff::Insert {
+				Ok(Diff::Insert {
 					post,
 				})
 			}
-			FlowDiffType::Update => {
+			DiffType::Update => {
 				if ffi.pre.is_empty() || ffi.post.is_empty() {
 					return Err("Update diff missing pre or post columns".to_string());
 				}
 
 				let pre = self.unmarshal_columns(&ffi.pre);
 				let post = self.unmarshal_columns(&ffi.post);
-				Ok(FlowDiff::Update {
+				Ok(Diff::Update {
 					pre,
 					post,
 				})
 			}
-			FlowDiffType::Remove => {
+			DiffType::Remove => {
 				if ffi.pre.is_empty() {
 					return Err("Remove diff missing pre columns".to_string());
 				}
 
 				let pre = self.unmarshal_columns(&ffi.pre);
-				Ok(FlowDiff::Remove {
+				Ok(Diff::Remove {
 					pre,
 				})
 			}

@@ -6,7 +6,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_sdk::flow::FlowChange;
+use reifydb_core::interface::change::Change;
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{Operator, transaction::FlowTransaction};
@@ -34,9 +34,9 @@ impl Operator for PrimitiveFlowOperator {
 	fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		Ok(change)
 	}
 

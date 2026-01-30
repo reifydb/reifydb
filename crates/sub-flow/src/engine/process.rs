@@ -6,7 +6,7 @@ use reifydb_rql::flow::{
 	flow::FlowDag,
 	node::{FlowNode, FlowNodeType::SourceInlineData},
 };
-use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin};
+use reifydb_core::interface::change::{Change, ChangeOrigin};
 use tracing::{Span, instrument};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
@@ -22,13 +22,13 @@ impl FlowEngine {
 	pub fn process(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		flow_id: FlowId,
 	) -> reifydb_type::Result<()> {
 		let mut nodes_processed = 0;
 
 		match change.origin {
-			FlowChangeOrigin::External(source) => {
+			ChangeOrigin::External(source) => {
 				let node_registrations = self.sources.get(&source).cloned();
 
 				if let Some(node_registrations) = node_registrations {
@@ -49,7 +49,7 @@ impl FlowEngine {
 								txn,
 								&flow,
 								&node,
-								FlowChange::internal(
+								Change::from_flow(
 									node_id,
 									change.version,
 									change.diffs.clone(),
@@ -60,7 +60,7 @@ impl FlowEngine {
 					}
 				}
 			}
-			FlowChangeOrigin::Internal(node_id) => {
+			ChangeOrigin::Internal(node_id) => {
 				// Internal changes are already scoped to a specific node
 				// This path is used by the partition logic to directly process a node's changes
 				// Use the flow_id parameter for direct lookup instead of iterating all flows
@@ -91,8 +91,8 @@ impl FlowEngine {
 		&self,
 		txn: &mut FlowTransaction,
 		node: &FlowNode,
-		change: FlowChange,
-	) -> reifydb_type::Result<FlowChange> {
+		change: Change,
+	) -> reifydb_type::Result<Change> {
 		let lock_start = self.clock.instant();
 		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
@@ -117,7 +117,7 @@ impl FlowEngine {
 		txn: &mut FlowTransaction,
 		flow: &FlowDag,
 		node: &FlowNode,
-		change: FlowChange,
+		change: Change,
 	) -> reifydb_type::Result<()> {
 		let node_type = &node.ty;
 		let changes = &node.outputs;

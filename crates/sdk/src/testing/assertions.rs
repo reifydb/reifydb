@@ -8,19 +8,18 @@ use reifydb_core::{
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
 
-use crate::{
-	flow::{FlowChange, FlowDiff},
-	testing::state::TestStateStore,
-};
+use reifydb_core::interface::change::{Change, Diff};
 
-/// Assertions for FlowChange outputs
-pub struct FlowChangeAssertion<'a> {
-	change: &'a FlowChange,
+use crate::testing::state::TestStateStore;
+
+/// Assertions for Change outputs
+pub struct ChangeAssertion<'a> {
+	change: &'a Change,
 }
 
-impl<'a> FlowChangeAssertion<'a> {
-	/// Create a new FlowChange assertion
-	pub fn new(change: &'a FlowChange) -> Self {
+impl<'a> ChangeAssertion<'a> {
+	/// Create a new Change assertion
+	pub fn new(change: &'a Change) -> Self {
 		Self {
 			change,
 		}
@@ -46,21 +45,21 @@ impl<'a> FlowChangeAssertion<'a> {
 
 	/// Assert the change has at least one insert
 	pub fn has_insert(&self) -> &Self {
-		let has_insert = self.change.diffs.iter().any(|d| matches!(d, FlowDiff::Insert { .. }));
+		let has_insert = self.change.diffs.iter().any(|d| matches!(d, Diff::Insert { .. }));
 		assert!(has_insert, "Expected at least one insert diff");
 		self
 	}
 
 	/// Assert the change has at least one update
 	pub fn has_update(&self) -> &Self {
-		let has_update = self.change.diffs.iter().any(|d| matches!(d, FlowDiff::Update { .. }));
+		let has_update = self.change.diffs.iter().any(|d| matches!(d, Diff::Update { .. }));
 		assert!(has_update, "Expected at least one update diff");
 		self
 	}
 
 	/// Assert the change has at least one remove
 	pub fn has_remove(&self) -> &Self {
-		let has_remove = self.change.diffs.iter().any(|d| matches!(d, FlowDiff::Remove { .. }));
+		let has_remove = self.change.diffs.iter().any(|d| matches!(d, Diff::Remove { .. }));
 		assert!(has_remove, "Expected at least one remove diff");
 		self
 	}
@@ -82,7 +81,7 @@ impl<'a> FlowChangeAssertion<'a> {
 			.diffs
 			.iter()
 			.filter_map(|d| match d {
-				FlowDiff::Insert {
+				Diff::Insert {
 					post,
 				} => Some(post),
 				_ => None,
@@ -96,7 +95,7 @@ impl<'a> FlowChangeAssertion<'a> {
 			.diffs
 			.iter()
 			.filter_map(|d| match d {
-				FlowDiff::Update {
+				Diff::Update {
 					pre,
 					post,
 				} => Some((pre, post)),
@@ -111,7 +110,7 @@ impl<'a> FlowChangeAssertion<'a> {
 			.diffs
 			.iter()
 			.filter_map(|d| match d {
-				FlowDiff::Remove {
+				Diff::Remove {
 					pre,
 				} => Some(pre),
 				_ => None,
@@ -143,11 +142,11 @@ impl<'a> FlowChangeAssertion<'a> {
 
 /// Assertions for a single diff
 pub struct DiffAssertion<'a> {
-	diff: &'a FlowDiff,
+	diff: &'a Diff,
 }
 
 impl<'a> DiffAssertion<'a> {
-	pub fn new(diff: &'a FlowDiff) -> Self {
+	pub fn new(diff: &'a Diff) -> Self {
 		Self {
 			diff,
 		}
@@ -156,7 +155,7 @@ impl<'a> DiffAssertion<'a> {
 	/// Assert this is an insert diff
 	pub fn is_insert(&self) -> &Columns {
 		match self.diff {
-			FlowDiff::Insert {
+			Diff::Insert {
 				post,
 			} => post,
 			_ => panic!("Expected insert diff, found {:?}", self.diff),
@@ -166,7 +165,7 @@ impl<'a> DiffAssertion<'a> {
 	/// Assert this is an update diff
 	pub fn is_update(&self) -> (&Columns, &Columns) {
 		match self.diff {
-			FlowDiff::Update {
+			Diff::Update {
 				pre,
 				post,
 			} => (pre, post),
@@ -177,7 +176,7 @@ impl<'a> DiffAssertion<'a> {
 	/// Assert this is a remove diff
 	pub fn is_remove(&self) -> &Columns {
 		match self.diff {
-			FlowDiff::Remove {
+			Diff::Remove {
 				pre,
 			} => pre,
 			_ => panic!("Expected remove diff, found {:?}", self.diff),
@@ -302,14 +301,14 @@ pub trait Assertable {
 	fn assert(&self) -> Self::Assertion<'_>;
 }
 
-impl Assertable for FlowChange {
+impl Assertable for Change {
 	type Assertion<'a>
-		= FlowChangeAssertion<'a>
+		= ChangeAssertion<'a>
 	where
 		Self: 'a;
 
-	fn assert(&self) -> FlowChangeAssertion<'_> {
-		FlowChangeAssertion::new(self)
+	fn assert(&self) -> ChangeAssertion<'_> {
+		ChangeAssertion::new(self)
 	}
 }
 
@@ -342,14 +341,14 @@ pub mod tests {
 
 	use super::*;
 	use crate::testing::{
-		builders::{TestFlowChangeBuilder, TestRowBuilder},
+		builders::{TestChangeBuilder, TestRowBuilder},
 		helpers::encode_key,
 		state::TestStateStore,
 	};
 
 	#[test]
 	fn test_flow_change_assertions() {
-		let change = TestFlowChangeBuilder::new()
+		let change = TestChangeBuilder::new()
 			.insert_row(1, vec![Value::Int8(10i64)])
 			.update_row(2, vec![Value::Int8(20i64)], vec![Value::Int8(30i64)])
 			.remove_row(3, vec![Value::Int8(40i64)])
@@ -405,7 +404,7 @@ pub mod tests {
 	#[test]
 	#[should_panic(expected = "Expected 5 diffs, found 1")]
 	fn test_assertion_failure() {
-		let change = TestFlowChangeBuilder::new().insert_row(1, vec![Value::Int8(10i64)]).build();
+		let change = TestChangeBuilder::new().insert_row(1, vec![Value::Int8(10i64)]).build();
 
 		change.assert().has_diffs(5);
 	}

@@ -19,7 +19,8 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::{
 		catalog::{flow::FlowId, primitive::PrimitiveId},
-		cdc::{Cdc, CdcBatch, CdcChange},
+		cdc::{Cdc, CdcBatch, SystemChange},
+		change::{Change, ChangeOrigin},
 	},
 	internal,
 	key::{Key, kind::KeyKind},
@@ -35,13 +36,11 @@ use reifydb_runtime::{
 	},
 	clock::Clock,
 };
-use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin::External};
 use reifydb_type::{Result, error::Error};
 use tracing::{Span, debug, info, instrument};
 
 use crate::{
 	catalog::FlowCatalog,
-	convert,
 	instruction::{FlowInstruction, WorkerBatch},
 	pool::{PoolMsg, PoolResponse},
 	state::FlowStates,
@@ -103,7 +102,7 @@ struct ConsumeContext {
 	original_reply: Box<dyn FnOnce(Result<()>) + Send>,
 	consume_start: reifydb_runtime::clock::Instant,
 	/// All flow changes derived from CDCs (computed once during Consume)
-	all_changes: Vec<FlowChange>,
+	all_changes: Vec<Change>,
 	/// Latest CDC version
 	latest_version: Option<CommitVersion>,
 }
@@ -250,26 +249,20 @@ impl CoordinatorActor {
 			}
 		};
 
-		// Update tracker and convert CDC to flow changes
+		// Update tracker and collect changes directly from CDC
 		let mut all_changes = Vec::new();
 		for cdc in &cdcs {
 			let version = cdc.version;
 
 			// Update tracker for lag calculation
 			for change in &cdc.changes {
-				if let Some(Key::Row(row_key)) = Key::decode(change.key()) {
-					self.tracker.update(row_key.primitive, version);
+				if let ChangeOrigin::External(source) = &change.origin {
+					self.tracker.update(*source, version);
 				}
 			}
 
-			// Convert CDC to flow changes
-			match convert::to_flow_change(&self.engine, &self.catalog, cdc, version, &self.clock) {
-				Ok(changes) => all_changes.extend(changes),
-				Err(e) => {
-					(reply)(coordinator_error(e));
-					return;
-				}
-			}
+			// Collect changes directly (no conversion needed with columnar layout)
+			all_changes.extend(cdc.changes.iter().cloned());
 		}
 
 		let consume_ctx = ConsumeContext {
@@ -599,22 +592,10 @@ impl CoordinatorActor {
 				continue;
 			}
 
-			// Convert CDC to flow changes
+			// Collect changes directly from CDC
 			let mut chunk_changes = Vec::new();
 			for cdc in &batch.items {
-				match convert::to_flow_change(
-					&self.engine,
-					&self.catalog,
-					cdc,
-					cdc.version,
-					&self.clock,
-				) {
-					Ok(changes) => chunk_changes.extend(changes),
-					Err(e) => {
-						(consume_ctx.original_reply)(coordinator_error(e));
-						return;
-					}
-				}
+				chunk_changes.extend(cdc.changes.iter().cloned());
 			}
 
 			// Filter to only changes relevant to this flow
@@ -754,8 +735,8 @@ impl CoordinatorActor {
 		&self,
 		state: &CoordinatorState,
 		flow_id: FlowId,
-		changes: &[FlowChange],
-	) -> Vec<FlowChange> {
+		changes: &[Change],
+	) -> Vec<Change> {
 		let dependency_graph = state.analyzer.get_dependency_graph();
 
 		// Get all sources this flow depends on
@@ -776,10 +757,10 @@ impl CoordinatorActor {
 		}
 
 		// Filter changes to only those from this flow's sources
-		let result: Vec<FlowChange> = changes
+		let result: Vec<Change> = changes
 			.iter()
 			.filter(|change| {
-				if let External(source) = change.origin {
+				if let ChangeOrigin::External(source) = change.origin {
 					flow_sources.contains(&source)
 				} else {
 					true
@@ -802,7 +783,7 @@ impl CoordinatorActor {
 	fn route_and_group_changes(
 		&self,
 		state: &CoordinatorState,
-		changes: &[FlowChange],
+		changes: &[Change],
 		to_version: CommitVersion,
 		state_version: CommitVersion,
 	) -> HashMap<usize, WorkerBatch> {
@@ -840,13 +821,13 @@ pub fn extract_new_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
 	let mut flow_ids = Vec::new();
 
 	for cdc in cdcs {
-		for change in &cdc.changes {
+		for change in &cdc.system_changes {
 			if let Some(kind) = Key::kind(change.key()) {
 				if kind == KeyKind::Flow {
-					if let CdcChange::Insert {
+					if let SystemChange::Insert {
 						key,
 						..
-					} = &change.change
+					} = change
 					{
 						if let Some(Key::Flow(flow_key)) = Key::decode(key) {
 							flow_ids.push(flow_key.flow);

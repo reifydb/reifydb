@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_sdk::flow::FlowChange;
+use reifydb_core::interface::change::Change;
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{
@@ -37,9 +37,9 @@ impl Operator for ApplyOperator {
 	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		self.inner.apply(txn, change, evaluator)
 	}
 

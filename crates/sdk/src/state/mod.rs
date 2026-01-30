@@ -90,7 +90,7 @@ impl<'a> State<'a> {
 /// impl FFIRawStatefulOperator for MyOperator {}
 ///
 /// // In your operator implementation:
-/// fn apply(&mut self, ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange> {
+/// fn apply(&mut self, ctx: &mut OperatorContext, input: Change) -> Result<Change> {
 ///     let key = EncodedKey::new(b"counter".to_vec());
 ///     let value = self.state_get(ctx, &key)?;
 ///     // ... use state

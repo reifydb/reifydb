@@ -13,9 +13,10 @@ use reifydb_core::{
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
 
+use reifydb_core::interface::change::Change;
+
 use crate::{
 	error::Result,
-	flow::FlowChange,
 	operator::{FFIOperator, FFIOperatorMetadata, context::OperatorContext},
 	testing::{callbacks::create_test_callbacks, context::TestContext, state::TestStateStore},
 };
@@ -43,7 +44,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	}
 
 	/// Apply a flow change to the operator
-	pub fn apply(&mut self, input: FlowChange) -> Result<FlowChange> {
+	pub fn apply(&mut self, input: Change) -> Result<Change> {
 		let mut ctx = self.create_operator_context();
 		self.operator.apply(&mut ctx, input)
 	}
@@ -287,10 +288,11 @@ pub mod tests {
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::{super::helpers::encode_key, *};
+	use reifydb_core::interface::change::{Change, Diff};
+
 	use crate::{
-		flow::{FlowChange, FlowDiff},
 		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
-		testing::builders::TestFlowChangeBuilder,
+		testing::builders::TestChangeBuilder,
 	};
 
 	// Simple pass-through operator for basic tests
@@ -317,7 +319,7 @@ pub mod tests {
 			})
 		}
 
-		fn apply(&mut self, _ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange> {
+		fn apply(&mut self, _ctx: &mut OperatorContext, input: Change) -> Result<Change> {
 			// Simple pass-through for testing
 			Ok(input)
 		}
@@ -345,19 +347,19 @@ pub mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange> {
+		fn apply(&mut self, ctx: &mut OperatorContext, input: Change) -> Result<Change> {
 			let mut state = ctx.state();
 
 			for diff in &input.diffs {
 				let post_row = match diff {
-					FlowDiff::Insert {
+					Diff::Insert {
 						post,
 					} => Some(post),
-					FlowDiff::Update {
+					Diff::Update {
 						post,
 						..
 					} => Some(post),
-					FlowDiff::Remove {
+					Diff::Remove {
 						..
 					} => unreachable!(),
 				};
@@ -417,7 +419,7 @@ pub mod tests {
 			.expect("Failed to build harness");
 
 		// Create a flow change with an insert
-		let input = TestFlowChangeBuilder::new().insert_row(1, vec![Value::Int8(42i64)]).build();
+		let input = TestChangeBuilder::new().insert_row(1, vec![Value::Int8(42i64)]).build();
 
 		// Apply the flow change - operator should store the value in state
 		let output = harness.apply(input).expect("Apply failed");
@@ -440,7 +442,7 @@ pub mod tests {
 			TestHarnessBuilder::<StatefulTestOperator>::new().build().expect("Failed to build harness");
 
 		// Insert multiple rows
-		let input1 = TestFlowChangeBuilder::new()
+		let input1 = TestChangeBuilder::new()
 			.insert_row(1, vec![Value::Int8(10i64)])
 			.insert_row(2, vec![Value::Int8(20i64)])
 			.build();
@@ -451,7 +453,7 @@ pub mod tests {
 		assert_eq!(state.len(), 2);
 
 		// Insert another row
-		let input2 = TestFlowChangeBuilder::new().insert_row(RowNumber(3), vec![Value::Int8(30i64)]).build();
+		let input2 = TestChangeBuilder::new().insert_row(RowNumber(3), vec![Value::Int8(30i64)]).build();
 
 		harness.apply(input2).expect("Second apply failed");
 

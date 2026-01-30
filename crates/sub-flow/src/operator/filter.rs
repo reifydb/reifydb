@@ -9,7 +9,7 @@ use reifydb_engine::{
 	stack::Stack,
 };
 use reifydb_rql::expression::Expression;
-use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::{
 	params::Params,
 	value::{Value, row_number::RowNumber},
@@ -117,26 +117,26 @@ impl Operator for FilterOperator {
 	fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
 			match diff {
-				FlowDiff::Insert {
+				Diff::Insert {
 					post,
 				} => {
 					let mask = self.evaluate(&post)?;
 					let passing = self.filter_passing(&post, &mask);
 
 					if !passing.is_empty() {
-						result.push(FlowDiff::Insert {
+						result.push(Diff::Insert {
 							post: passing,
 						});
 					}
 				}
-				FlowDiff::Update {
+				Diff::Update {
 					pre,
 					post,
 				} => {
@@ -155,7 +155,7 @@ impl Operator for FilterOperator {
 							.collect();
 						let pre_passing = pre.extract_by_indices(&passing_indices);
 
-						result.push(FlowDiff::Update {
+						result.push(Diff::Update {
 							pre: pre_passing,
 							post: passing,
 						});
@@ -171,23 +171,23 @@ impl Operator for FilterOperator {
 							.collect();
 						let pre_failing = pre.extract_by_indices(&failing_indices);
 
-						result.push(FlowDiff::Remove {
+						result.push(Diff::Remove {
 							pre: pre_failing,
 						});
 					}
 				}
-				FlowDiff::Remove {
+				Diff::Remove {
 					pre,
 				} => {
 					// Always pass through removes
-					result.push(FlowDiff::Remove {
+					result.push(Diff::Remove {
 						pre,
 					});
 				}
 			}
 		}
 
-		Ok(FlowChange::internal(self.node, change.version, result))
+		Ok(Change::from_flow(self.node, change.version, result))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {

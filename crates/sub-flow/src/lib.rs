@@ -5,7 +5,6 @@
 
 pub mod builder;
 pub(crate) mod catalog;
-pub(crate) mod convert;
 pub(crate) mod coordinator;
 pub mod engine;
 #[cfg(reifydb_target = "native")]

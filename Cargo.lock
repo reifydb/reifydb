@@ -1672,7 +1672,6 @@ name = "reifydb-cdc"
 version = "0.2.0"
 dependencies = [
  "crossbeam-channel",
- "parking_lot",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
@@ -1954,6 +1953,7 @@ dependencies = [
 name = "reifydb-sub-flow"
 version = "0.2.0"
 dependencies = [
+ "crossbeam-channel",
  "dashmap",
  "indexmap",
  "libloading",

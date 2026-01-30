@@ -18,7 +18,7 @@
 //! 		.with_config([("key", Value::Utf8("value"))])
 //! 		.build()?;
 //!
-//! 	let input = TestFlowChangeBuilder::new()
+//! 	let input = TestChangeBuilder::new()
 //! 		.insert_row(RowNumber(1), vec![Value::Int8(42i64)])
 //! 		.build();
 //!

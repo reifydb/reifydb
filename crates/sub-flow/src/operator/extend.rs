@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_rql::expression::Expression;
-use reifydb_sdk::flow::FlowChange;
+use reifydb_core::interface::change::Change;
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
@@ -36,12 +36,12 @@ impl Operator for ExtendOperator {
 	fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		// TODO: Implement single-encoded extend processing
 		// For now, just pass through all changes with updated from
-		Ok(FlowChange::internal(self.node, change.version, change.diffs))
+		Ok(Change::from_flow(self.node, change.version, change.diffs))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {

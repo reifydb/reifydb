@@ -11,12 +11,12 @@ use std::collections::HashMap;
 
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_core::interface::change::Change;
 use reifydb_sdk::{
 	error::Result,
-	flow::FlowChange,
 	operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
 	state::cache::StateCache,
-	testing::{builders::TestFlowChangeBuilder, harness::TestHarnessBuilder},
+	testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
 use serde::{Deserialize, Serialize};
@@ -50,7 +50,7 @@ impl FFIOperator for PassthroughOperator {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, _ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange> {
+	fn apply(&mut self, _ctx: &mut OperatorContext, input: Change) -> Result<Change> {
 		Ok(input)
 	}
 
@@ -564,7 +564,7 @@ fn test_cache_with_operator_apply() {
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 
 	// Simulate what an operator would do: process input, update state via cache
-	let input = TestFlowChangeBuilder::new()
+	let input = TestChangeBuilder::new()
 		.insert_row(1, vec![Value::Int8(10i64)])
 		.insert_row(2, vec![Value::Int8(20i64)])
 		.build();
@@ -581,7 +581,7 @@ fn test_cache_with_operator_apply() {
 	}
 
 	// Process more input
-	let input2 = TestFlowChangeBuilder::new().insert_row(3, vec![Value::Int8(30i64)]).build();
+	let input2 = TestChangeBuilder::new().insert_row(3, vec![Value::Int8(30i64)]).build();
 
 	{
 		let mut ctx = harness.create_operator_context();

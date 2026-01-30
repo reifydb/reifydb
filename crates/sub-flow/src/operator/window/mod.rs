@@ -46,7 +46,7 @@ use reifydb_runtime::{
 	clock::Clock,
 	hash::{Hash128, xxh3_128},
 };
-use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
@@ -459,7 +459,7 @@ impl WindowOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		current_timestamp: u64,
-	) -> reifydb_type::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<Diff>> {
 		let result = Vec::new();
 
 		// For time-based windows, expire windows that are older than the window size + slide
@@ -577,9 +577,9 @@ impl Operator for WindowOperator {
 	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		// For window operators, we need  operation but trait requires sync.
 		// We'll need to refactor the architecture to support this properly.
 		// For now, return an error indicating  is needed.

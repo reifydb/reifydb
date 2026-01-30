@@ -13,7 +13,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::value::row_number::RowNumber;
 
 use super::{coerce_columns, encode_row_at_index};
@@ -44,16 +44,16 @@ impl Operator for SinkViewOperator {
 	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		// Write rows to the view storage
 		let view_def = self.view.def().clone();
 		let schema: Schema = (&view_def.columns).into();
 
 		for diff in change.diffs.iter() {
 			match diff {
-				FlowDiff::Insert {
+				Diff::Insert {
 					post,
 				} => {
 					// Coerce columns to match view schema types
@@ -68,7 +68,7 @@ impl Operator for SinkViewOperator {
 						txn.set(&key, encoded)?;
 					}
 				}
-				FlowDiff::Update {
+				Diff::Update {
 					pre,
 					post,
 				} => {
@@ -102,7 +102,7 @@ impl Operator for SinkViewOperator {
 						txn.set(&new_key, post_encoded)?;
 					}
 				}
-				FlowDiff::Remove {
+				Diff::Remove {
 					pre,
 				} => {
 					// Coerce columns to match view schema types - only need row numbers for remove
@@ -118,7 +118,7 @@ impl Operator for SinkViewOperator {
 			}
 		}
 
-		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
+		Ok(Change::from_flow(self.node, change.version, Vec::new()))
 	}
 
 	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {

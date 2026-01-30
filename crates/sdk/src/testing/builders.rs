@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_type::value::{Value, row_number::RowNumber, r#type::Type};
 
-use crate::flow::{FlowChange, FlowChangeOrigin, FlowDiff};
+use reifydb_core::interface::change::{Change, ChangeOrigin, Diff};
 
 /// Builder for creating test rows
 pub struct TestRowBuilder {
@@ -75,17 +75,17 @@ impl TestRowBuilder {
 }
 
 /// Builder for creating test flow changes
-pub struct TestFlowChangeBuilder {
-	origin: FlowChangeOrigin,
-	diffs: Vec<FlowDiff>,
+pub struct TestChangeBuilder {
+	origin: ChangeOrigin,
+	diffs: Vec<Diff>,
 	version: CommitVersion,
 }
 
-impl TestFlowChangeBuilder {
+impl TestChangeBuilder {
 	/// Create a new flow change builder with default origin and version
 	pub fn new() -> Self {
 		Self {
-			origin: FlowChangeOrigin::External(PrimitiveId::Table(TableId(1))),
+			origin: ChangeOrigin::External(PrimitiveId::Table(TableId(1))),
 			diffs: Vec::new(),
 			version: CommitVersion(1),
 		}
@@ -93,13 +93,13 @@ impl TestFlowChangeBuilder {
 
 	/// Set the origin as an external source
 	pub fn changed_by_source(mut self, source: PrimitiveId) -> Self {
-		self.origin = FlowChangeOrigin::External(source);
+		self.origin = ChangeOrigin::External(source);
 		self
 	}
 
 	/// Set the origin as an internal node
 	pub fn changed_by_node(mut self, node: FlowNodeId) -> Self {
-		self.origin = FlowChangeOrigin::Internal(node);
+		self.origin = ChangeOrigin::Internal(node);
 		self
 	}
 
@@ -111,7 +111,7 @@ impl TestFlowChangeBuilder {
 
 	/// Add an insert diff
 	pub fn insert(mut self, row: Row) -> Self {
-		self.diffs.push(FlowDiff::Insert {
+		self.diffs.push(Diff::Insert {
 			post: Columns::from_row(&row),
 		});
 		self
@@ -125,7 +125,7 @@ impl TestFlowChangeBuilder {
 
 	/// Add an update diff
 	pub fn update(mut self, pre: Row, post: Row) -> Self {
-		self.diffs.push(FlowDiff::Update {
+		self.diffs.push(Diff::Update {
 			pre: Columns::from_row(&pre),
 			post: Columns::from_row(&post),
 		});
@@ -147,7 +147,7 @@ impl TestFlowChangeBuilder {
 
 	/// Add a remove diff
 	pub fn remove(mut self, row: Row) -> Self {
-		self.diffs.push(FlowDiff::Remove {
+		self.diffs.push(Diff::Remove {
 			pre: Columns::from_row(&row),
 		});
 		self
@@ -160,8 +160,8 @@ impl TestFlowChangeBuilder {
 	}
 
 	/// Build the flow change
-	pub fn build(self) -> FlowChange {
-		FlowChange {
+	pub fn build(self) -> Change {
+		Change {
 			origin: self.origin,
 			diffs: self.diffs,
 			version: self.version,
@@ -212,7 +212,7 @@ pub mod helpers {
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::*;
-	use crate::flow::FlowChange;
+	use reifydb_core::interface::change::Change;
 
 	/// Create a simple counter schema (single int8 field)
 	pub fn counter_layout() -> Schema {
@@ -242,18 +242,18 @@ pub mod helpers {
 	}
 
 	/// Create an empty flow change from a table source
-	pub fn empty_change() -> FlowChange {
-		TestFlowChangeBuilder::new().build()
+	pub fn empty_change() -> Change {
+		TestChangeBuilder::new().build()
 	}
 
 	/// Create a flow change with a single insert
-	pub fn insert_change(row: Row) -> FlowChange {
-		TestFlowChangeBuilder::new().insert(row).build()
+	pub fn insert_change(row: Row) -> Change {
+		TestChangeBuilder::new().insert(row).build()
 	}
 
 	/// Create a flow change with multiple inserts
-	pub fn batch_insert_change(rows: Vec<Row>) -> FlowChange {
-		let mut builder = TestFlowChangeBuilder::new();
+	pub fn batch_insert_change(rows: Vec<Row>) -> Change {
+		let mut builder = TestChangeBuilder::new();
 		for row in rows {
 			builder = builder.insert(row);
 		}
@@ -267,7 +267,7 @@ pub mod tests {
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::{helpers::*, *};
-	use crate::flow::FlowChangeOrigin;
+	use reifydb_core::interface::change::ChangeOrigin;
 
 	#[test]
 	fn test_row_builder() {
@@ -282,7 +282,7 @@ pub mod tests {
 
 	#[test]
 	fn test_flow_change_builder() {
-		let change = TestFlowChangeBuilder::new()
+		let change = TestChangeBuilder::new()
 			.changed_by_source(PrimitiveId::table(100))
 			.with_version(CommitVersion(5))
 			.insert_row(1, vec![Value::Int8(42i64)])
@@ -294,7 +294,7 @@ pub mod tests {
 		assert_eq!(change.diffs.len(), 3);
 
 		match &change.origin {
-			FlowChangeOrigin::External(source) => {
+			ChangeOrigin::External(source) => {
 				assert_eq!(*source, PrimitiveId::table(100));
 			}
 			_ => panic!("Expected external origin"),

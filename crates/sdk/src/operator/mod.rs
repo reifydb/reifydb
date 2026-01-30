@@ -14,7 +14,8 @@ use column::OperatorColumnDef;
 use context::OperatorContext;
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 
-use crate::{error::Result, flow::FlowChange};
+use crate::error::Result;
+use reifydb_core::interface::change::Change;
 
 /// Static metadata about an operator type
 /// This trait provides compile-time constant metadata
@@ -45,7 +46,7 @@ pub trait FFIOperator: 'static {
 		Self: Sized;
 
 	/// Process a flow change (inserts, updates, removes)
-	fn apply(&mut self, ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange>;
+	fn apply(&mut self, ctx: &mut OperatorContext, input: Change) -> Result<Change>;
 
 	/// Pull specific rows by row number (returns Columns containing found rows)
 	fn pull(&mut self, ctx: &mut OperatorContext, row_numbers: &[RowNumber]) -> Result<Columns>;

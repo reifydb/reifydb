@@ -30,7 +30,7 @@ use filter::FilterOperator;
 use join::operator::JoinOperator;
 use map::MapOperator;
 use merge::MergeOperator;
-use reifydb_sdk::flow::FlowChange;
+use reifydb_core::interface::change::Change;
 use scan::{flow::PrimitiveFlowOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator};
 use sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator};
 use sort::SortOperator;
@@ -43,9 +43,9 @@ pub trait Operator: Send + Sync {
 	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange>;
+	) -> reifydb_type::Result<Change>;
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns>;
 }
@@ -74,9 +74,9 @@ impl Operators {
 	pub fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		match self {
 			Operators::Filter(op) => op.apply(txn, change, evaluator),
 			Operators::Map(op) => op.apply(txn, change, evaluator),

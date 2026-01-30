@@ -12,7 +12,7 @@ default = []
 
 [dependencies]
 crossbeam-channel = { workspace = true }
-parking_lot = { workspace = true }
+reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
@@ -20,7 +20,6 @@ reifydb-type = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }

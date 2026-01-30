@@ -9,7 +9,7 @@ pub mod test {
 		value::column::columns::Columns,
 	};
 	use reifydb_engine::{evaluate::column::StandardColumnEvaluator, test_utils::create_test_engine};
-	use reifydb_sdk::flow::FlowChange;
+	use reifydb_core::interface::change::Change;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_type::{
 		util::cowvec::CowVec,
@@ -62,9 +62,9 @@ pub mod test {
 		fn apply(
 			&self,
 			_txn: &mut FlowTransaction,
-			_change: FlowChange,
+			_change: Change,
 			_evaluator: &StandardColumnEvaluator,
-		) -> reifydb_type::Result<FlowChange> {
+		) -> reifydb_type::Result<Change> {
 			todo!()
 		}
 

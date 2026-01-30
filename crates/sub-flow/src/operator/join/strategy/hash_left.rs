@@ -3,7 +3,7 @@
 
 use reifydb_core::{common::CommitVersion, value::column::columns::Columns};
 use reifydb_runtime::hash::Hash128;
-use reifydb_sdk::flow::FlowDiff;
+use reifydb_core::interface::change::Diff;
 
 use super::hash::{
 	add_to_state_entry_batch, emit_joined_columns_batch, emit_remove_joined_columns_batch,
@@ -30,12 +30,12 @@ impl LeftHashJoin {
 		side: JoinSide,
 		_state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> reifydb_type::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<Diff>> {
 		match side {
 			JoinSide::Left => {
 				// Undefined key in left join still emits the row
 				let unmatched = operator.unmatched_left_columns(txn, post, row_idx)?;
-				Ok(vec![FlowDiff::Insert {
+				Ok(vec![Diff::Insert {
 					post: unmatched,
 				}])
 			}
@@ -56,7 +56,7 @@ impl LeftHashJoin {
 		_state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> reifydb_type::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<Diff>> {
 		let row_number = pre.row_numbers[row_idx];
 
 		match side {
@@ -64,7 +64,7 @@ impl LeftHashJoin {
 				// Undefined key - remove the unmatched row
 				let unmatched = operator.unmatched_left_columns(txn, pre, row_idx)?;
 				operator.cleanup_left_row_joins(txn, *row_number)?;
-				Ok(vec![FlowDiff::Remove {
+				Ok(vec![Diff::Remove {
 					pre: unmatched,
 				}])
 			}
@@ -86,13 +86,13 @@ impl LeftHashJoin {
 		_state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> reifydb_type::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<Diff>> {
 		match side {
 			JoinSide::Left => {
 				// Both keys are undefined - update the row
 				let unmatched_pre = operator.unmatched_left_columns(txn, pre, row_idx)?;
 				let unmatched_post = operator.unmatched_left_columns(txn, post, row_idx)?;
-				Ok(vec![FlowDiff::Update {
+				Ok(vec![Diff::Update {
 					pre: unmatched_pre,
 					post: unmatched_post,
 				}])
@@ -114,7 +114,7 @@ impl LeftHashJoin {
 		key_hash: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> reifydb_type::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<Diff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -141,7 +141,7 @@ impl LeftHashJoin {
 				} else {
 					// No matches - emit unmatched left rows for all
 					let unmatched = operator.unmatched_left_columns_batch(txn, post, indices)?;
-					result.push(FlowDiff::Insert {
+					result.push(Diff::Insert {
 						post: unmatched,
 					});
 				}
@@ -162,7 +162,7 @@ impl LeftHashJoin {
 							&left_columns,
 							&left_indices,
 						)?;
-						result.push(FlowDiff::Remove {
+						result.push(Diff::Remove {
 							pre: unmatched,
 						});
 					}
@@ -198,7 +198,7 @@ impl LeftHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> reifydb_type::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<Diff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -228,7 +228,7 @@ impl LeftHashJoin {
 				} else {
 					// No joined rows to remove - remove unmatched left rows
 					let unmatched = operator.unmatched_left_columns_batch(txn, pre, indices)?;
-					result.push(FlowDiff::Remove {
+					result.push(Diff::Remove {
 						pre: unmatched,
 					});
 				}
@@ -278,7 +278,7 @@ impl LeftHashJoin {
 							&left_columns,
 							&left_indices,
 						)?;
-						result.push(FlowDiff::Insert {
+						result.push(Diff::Insert {
 							post: unmatched,
 						});
 					}
@@ -302,7 +302,7 @@ impl LeftHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> reifydb_type::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<Diff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -344,7 +344,7 @@ impl LeftHashJoin {
 									.unmatched_left_columns(txn, pre, row_idx)?;
 								let unmatched_post = operator
 									.unmatched_left_columns(txn, post, row_idx)?;
-								result.push(FlowDiff::Update {
+								result.push(Diff::Update {
 									pre: unmatched_pre,
 									post: unmatched_post,
 								});

@@ -12,7 +12,7 @@ use reifydb_engine::{
 	stack::Stack,
 };
 use reifydb_rql::expression::Expression;
-use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_core::interface::change::{Change, Diff};
 use reifydb_type::{fragment::Fragment, params::Params, value::row_number::RowNumber};
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
@@ -97,14 +97,14 @@ impl Operator for MapOperator {
 	fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {
 			match diff {
-				FlowDiff::Insert {
+				Diff::Insert {
 					post,
 				} => {
 					let projected = match self.project(&post) {
@@ -115,12 +115,12 @@ impl Operator for MapOperator {
 					};
 
 					if !projected.is_empty() {
-						result.push(FlowDiff::Insert {
+						result.push(Diff::Insert {
 							post: projected,
 						});
 					}
 				}
-				FlowDiff::Update {
+				Diff::Update {
 					pre,
 					post,
 				} => {
@@ -128,18 +128,18 @@ impl Operator for MapOperator {
 					let projected_pre = self.project(&pre)?;
 
 					if !projected_post.is_empty() {
-						result.push(FlowDiff::Update {
+						result.push(Diff::Update {
 							pre: projected_pre,
 							post: projected_post,
 						});
 					}
 				}
-				FlowDiff::Remove {
+				Diff::Remove {
 					pre,
 				} => {
 					let projected_pre = self.project(&pre)?;
 					if !projected_pre.is_empty() {
-						result.push(FlowDiff::Remove {
+						result.push(Diff::Remove {
 							pre: projected_pre,
 						});
 					}
@@ -147,7 +147,7 @@ impl Operator for MapOperator {
 			}
 		}
 
-		Ok(FlowChange::internal(self.node, change.version, result))
+		Ok(Change::from_flow(self.node, change.version, result))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {

@@ -40,7 +40,7 @@
 //!         }
 //!     }
 //!
-//!     fn apply(&mut self, ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange> {
+//!     fn apply(&mut self, ctx: &mut OperatorContext, input: Change) -> Result<Change> {
 //!         let key = MyKey { base_mint, quote_mint };
 //!
 //!         // Clean API - no closures needed!

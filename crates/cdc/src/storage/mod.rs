@@ -248,24 +248,21 @@ impl CdcStorage for CdcStore {
 pub mod tests {
 	use reifydb_core::{
 		encoded::{encoded::EncodedValues, key::EncodedKey},
-		interface::cdc::{CdcChange, CdcSequencedChange},
+		interface::cdc::SystemChange,
 	};
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
 
 	fn create_test_cdc(version: u64, num_changes: usize) -> Cdc {
-		let changes: Vec<CdcSequencedChange> = (0..num_changes)
-			.map(|i| CdcSequencedChange {
-				sequence: i as u16 + 1,
-				change: CdcChange::Insert {
-					key: EncodedKey::new(vec![i as u8]),
-					post: EncodedValues(CowVec::new(vec![])),
-				},
+		let system_changes: Vec<SystemChange> = (0..num_changes)
+			.map(|i| SystemChange::Insert {
+				key: EncodedKey::new(vec![i as u8]),
+				post: EncodedValues(CowVec::new(vec![])),
 			})
 			.collect();
 
-		Cdc::new(CommitVersion(version), 12345, changes)
+		Cdc::new(CommitVersion(version), 12345, Vec::new(), system_changes)
 	}
 
 	#[test]
@@ -279,7 +276,7 @@ pub mod tests {
 		assert!(read_cdc.is_some());
 		let read_cdc = read_cdc.unwrap();
 		assert_eq!(read_cdc.version, CommitVersion(1));
-		assert_eq!(read_cdc.changes.len(), 3);
+		assert_eq!(read_cdc.system_changes.len(), 3);
 	}
 
 	#[test]
@@ -451,12 +448,10 @@ pub mod tests {
 		let cdc = Cdc::new(
 			CommitVersion(1),
 			12345,
-			vec![CdcSequencedChange {
-				sequence: 1,
-				change: CdcChange::Insert {
-					key: EncodedKey::new(vec![1, 2, 3]),                        // 3 bytes
-					post: EncodedValues(CowVec::new(vec![10, 20, 30, 40, 50])), // 5 bytes
-				},
+			Vec::new(),
+			vec![SystemChange::Insert {
+				key: EncodedKey::new(vec![1, 2, 3]),                        // 3 bytes
+				post: EncodedValues(CowVec::new(vec![10, 20, 30, 40, 50])), // 5 bytes
 			}],
 		);
 		storage.write(&cdc).unwrap();

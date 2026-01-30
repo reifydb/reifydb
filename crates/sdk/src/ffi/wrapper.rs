@@ -16,15 +16,15 @@ use std::{
 };
 
 use reifydb_abi::{
-	context::context::ContextFFI, data::column::ColumnsFFI, flow::change::FlowChangeFFI,
+	context::context::ContextFFI, data::column::ColumnsFFI, flow::change::ChangeFFI,
 	operator::vtable::OperatorVTableFFI,
 };
+use reifydb_core::interface::change::Change;
 use reifydb_type::value::row_number::RowNumber;
 use tracing::{Span, error, instrument, warn};
 
 use crate::{
 	ffi::Arena,
-	flow::FlowChange,
 	operator::{FFIOperator, context::OperatorContext},
 };
 
@@ -54,12 +54,12 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 	}
 }
 
-/// Unmarshal FFI input to FlowChange
+/// Unmarshal FFI input to Change
 #[inline]
 #[instrument(name = "unmarshal", level = "trace", skip_all)]
-fn unmarshal_input<O: FFIOperator>(arena: &mut Arena, input: *const FlowChangeFFI) -> Result<FlowChange, i32> {
+fn unmarshal_input<O: FFIOperator>(arena: &mut Arena, input: *const ChangeFFI) -> Result<Change, i32> {
 	unsafe {
-		match arena.unmarshal_flow_change(&*input) {
+		match arena.unmarshal_change(&*input) {
 			Ok(change) => Ok(change),
 			Err(e) => {
 				warn!(?e, "Unmarshal failed");
@@ -75,8 +75,8 @@ fn unmarshal_input<O: FFIOperator>(arena: &mut Arena, input: *const FlowChangeFF
 fn apply_operator<O: FFIOperator>(
 	operator: &mut O,
 	ctx: *mut ContextFFI,
-	input_change: FlowChange,
-) -> Result<FlowChange, i32> {
+	input_change: Change,
+) -> Result<Change, i32> {
 	let mut op_ctx = OperatorContext::new(ctx);
 	match operator.apply(&mut op_ctx, input_change) {
 		Ok(change) => Ok(change),
@@ -87,12 +87,12 @@ fn apply_operator<O: FFIOperator>(
 	}
 }
 
-/// Marshal FlowChange to FFI output
+/// Marshal Change to FFI output
 #[inline]
 #[instrument(name = "marshal", level = "trace", skip_all)]
-fn marshal_output(arena: &mut Arena, output_change: &FlowChange, output: *mut FlowChangeFFI) {
+fn marshal_output(arena: &mut Arena, output_change: &Change, output: *mut ChangeFFI) {
 	unsafe {
-		*output = arena.marshal_flow_change(output_change);
+		*output = arena.marshal_change(output_change);
 	}
 }
 
@@ -104,8 +104,8 @@ fn marshal_output(arena: &mut Arena, output_change: &FlowChange, output: *mut Fl
 pub extern "C" fn ffi_apply<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
-	input: *const FlowChangeFFI,
-	output: *mut FlowChangeFFI,
+	input: *const ChangeFFI,
+	output: *mut ChangeFFI,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);

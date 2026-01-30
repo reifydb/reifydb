@@ -19,7 +19,7 @@ use reifydb_engine::{
 };
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
-use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin, FlowDiff};
+use reifydb_core::interface::change::{Change, ChangeOrigin, Diff};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
@@ -406,9 +406,9 @@ impl JoinOperator {
 		Ok(builder.join_cartesian(&row_numbers, left, left_indices, right))
 	}
 
-	fn determine_side(&self, change: &FlowChange) -> Option<JoinSide> {
+	fn determine_side(&self, change: &Change) -> Option<JoinSide> {
 		match &change.origin {
-			FlowChangeOrigin::Internal(from_node) => {
+			ChangeOrigin::Internal(from_node) => {
 				if *from_node == self.left_node {
 					Some(JoinSide::Left)
 				} else if *from_node == self.right_node {
@@ -438,13 +438,13 @@ impl Operator for JoinOperator {
 	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		// Check for self-referential calls (should never happen)
-		if let FlowChangeOrigin::Internal(from_node) = &change.origin {
+		if let ChangeOrigin::Internal(from_node) = &change.origin {
 			if *from_node == self.node {
-				return Ok(FlowChange::internal(self.node, change.version, Vec::new()));
+				return Ok(Change::from_flow(self.node, change.version, Vec::new()));
 			}
 		}
 
@@ -467,7 +467,7 @@ impl Operator for JoinOperator {
 		// Process each diff inline, grouping by key within each diff
 		for diff in change.diffs {
 			match diff {
-				FlowDiff::Insert {
+				Diff::Insert {
 					post,
 				} => {
 					// Compute keys for all rows in this Columns batch
@@ -502,7 +502,7 @@ impl Operator for JoinOperator {
 						result.extend(diffs);
 					}
 				}
-				FlowDiff::Remove {
+				Diff::Remove {
 					pre,
 				} => {
 					// Compute keys for all rows
@@ -550,7 +550,7 @@ impl Operator for JoinOperator {
 						result.extend(diffs);
 					}
 				}
-				FlowDiff::Update {
+				Diff::Update {
 					pre,
 					post,
 				} => {
@@ -616,7 +616,7 @@ impl Operator for JoinOperator {
 			}
 		}
 
-		Ok(FlowChange::internal(self.node, change.version, result))
+		Ok(Change::from_flow(self.node, change.version, result))
 	}
 
 	// FIXME #244 The issue is that when we need to reconstruct an unmatched left row, we need the right side's

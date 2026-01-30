@@ -19,7 +19,7 @@ use reifydb_core::{
 	encoded::{encoded::EncodedValues, key::EncodedKey},
 	interface::{
 		catalog::{id::TableId, primitive::PrimitiveId},
-		cdc::{Cdc, CdcChange, CdcConsumerId},
+		cdc::{Cdc, CdcConsumerId, SystemChange},
 	},
 	key::{EncodableKey, Key, Key::Row, cdc_consumer::CdcConsumerKey, row::RowKey},
 };
@@ -86,11 +86,11 @@ fn test_event_processing() {
 
 	// Each transaction should have one change
 	for (i, cdc) in transactions.iter().enumerate() {
-		assert_eq!(cdc.changes.len(), 1, "Each transaction should have 1 change");
-		if let CdcChange::Insert {
+		assert_eq!(cdc.system_changes.len(), 1, "Each transaction should have 1 change");
+		if let SystemChange::Insert {
 			key,
 			..
-		} = &cdc.changes[0].change
+		} = &cdc.system_changes[0]
 		{
 			if let Some(Row(table_row)) = Key::decode(key) {
 				assert_eq!(table_row.primitive, TableId(1));
@@ -335,19 +335,19 @@ fn test_non_table_events_filtered() {
 
 	let transactions = consumer_clone.get_transactions();
 	assert_eq!(transactions.len(), 1, "Should have 1 transaction");
-	assert_eq!(transactions[0].changes.len(), 2, "Transaction should have 2 changes");
+	assert_eq!(transactions[0].system_changes.len(), 2, "Transaction should have 2 changes");
 
 	// Find the table change (could be in any order)
 	let table_change = transactions[0]
-		.changes
+		.system_changes
 		.iter()
 		.find(|c| matches!(Key::decode(c.key()), Some(Row(_))))
 		.expect("Should have at least one table change");
 
-	if let CdcChange::Insert {
+	if let SystemChange::Insert {
 		key,
 		..
-	} = &table_change.change
+	} = table_change
 	{
 		if let Some(Row(table_row)) = Key::decode(key) {
 			assert_eq!(table_row.primitive, TableId(1));
@@ -661,7 +661,7 @@ impl TestConsumer {
 	}
 
 	fn get_total_changes(&self) -> usize {
-		self.cdc_received.lock().unwrap().iter().map(|cdc| cdc.changes.len()).sum()
+		self.cdc_received.lock().unwrap().iter().map(|cdc| cdc.system_changes.len()).sum()
 	}
 
 	fn get_process_count(&self) -> usize {

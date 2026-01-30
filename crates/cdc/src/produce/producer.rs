@@ -8,10 +8,11 @@ use reifydb_core::{
 	delta::Delta,
 	event::{EventListener, transaction::PostCommitEvent},
 	interface::{
-		cdc::{Cdc, CdcChange, CdcSequencedChange},
+		cdc::{Cdc, SystemChange},
+		change::Change,
 		store::MultiVersionGetPrevious,
 	},
-	key::{Key, cdc_exclude::should_exclude_from_cdc},
+	key::{EncodableKey, Key, cdc_exclude::should_exclude_from_cdc, kind::KeyKind, row::RowKey},
 };
 use reifydb_runtime::{
 	actor::{
@@ -24,7 +25,7 @@ use reifydb_runtime::{
 };
 use tracing::{debug, error, trace};
 
-use crate::storage::CdcStorage;
+use crate::{consume::host::CdcHost, storage::CdcStorage};
 
 /// Message type for the CDC producer actor.
 #[derive(Clone, Debug)]
@@ -38,26 +39,30 @@ pub struct CdcProduceMsg {
 ///
 /// Receives commit data and generates CDC entries, writing them to storage.
 /// Uses the shared ActorRuntime, so it works in both native and WASM.
-pub struct CdcProducerActor<S, T> {
+pub struct CdcProducerActor<S, T, H> {
 	storage: Arc<S>,
 	transaction_store: Arc<T>,
+	host: H,
 }
 
-impl<S, T> CdcProducerActor<S, T>
+impl<S, T, H> CdcProducerActor<S, T, H>
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
+	H: CdcHost,
 {
-	pub fn new(storage: S, transaction_store: T) -> Self {
+	pub fn new(storage: S, transaction_store: T, host: H) -> Self {
 		Self {
 			storage: Arc::new(storage),
 			transaction_store: Arc::new(transaction_store),
+			host,
 		}
 	}
 
 	fn process(&self, version: CommitVersion, timestamp: u64, deltas: Vec<Delta>) {
-		let mut changes = Vec::new();
-		let mut seq = 0u16;
+		let mut changes: Vec<Change> = Vec::new();
+		let mut system_changes: Vec<SystemChange> = Vec::new();
+		let registry = self.host.schema_registry();
 
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
@@ -69,16 +74,54 @@ where
 				if should_exclude_from_cdc(kind) {
 					continue;
 				}
+
+				// Row deltas → try to decode into columnar Change, fall back to SystemChange
+				if kind == KeyKind::Row {
+					if let Some(row_key) = RowKey::decode(&key) {
+						let decoded = match &delta {
+							Delta::Set { key, values } => {
+								let pre = self
+									.transaction_store
+									.get_previous_version(key, version)
+									.ok()
+									.flatten();
+								if let Some(prev) = pre {
+									super::decode::build_update_change(
+										registry, row_key.primitive, row_key.row, prev.values, values.clone(), version,
+									)
+								} else {
+									super::decode::build_insert_change(
+										registry, row_key.primitive, row_key.row, values.clone(), version,
+									)
+								}
+							}
+							Delta::Unset { values, .. } => {
+								if !values.is_empty() {
+									super::decode::build_remove_change(
+										registry, row_key.primitive, row_key.row, values.clone(), version,
+									)
+								} else {
+									None
+								}
+							}
+							_ => None,
+						};
+
+						if let Some(change) = decoded {
+							changes.push(change);
+							continue;
+						}
+					}
+					// Fall through to SystemChange if decode failed
+				}
 			}
 
-			seq += 1;
-
+			// Non-row deltas (or row deltas that failed to decode) → SystemChange
 			let change = match delta {
 				Delta::Set {
 					key,
 					values,
 				} => {
-					// Check if previous version exists to determine Insert vs Update
 					let pre = self
 						.transaction_store
 						.get_previous_version(&key, version)
@@ -86,13 +129,13 @@ where
 						.flatten();
 
 					if let Some(prev_values) = pre {
-						CdcChange::Update {
+						SystemChange::Update {
 							key,
 							pre: prev_values.values,
 							post: values,
 						}
 					} else {
-						CdcChange::Insert {
+						SystemChange::Insert {
 							key,
 							post: values,
 						}
@@ -107,7 +150,7 @@ where
 					} else {
 						Some(values)
 					};
-					CdcChange::Delete {
+					SystemChange::Delete {
 						key,
 						pre,
 					}
@@ -122,14 +165,11 @@ where
 				}
 			};
 
-			changes.push(CdcSequencedChange {
-				sequence: seq,
-				change,
-			});
+			system_changes.push(change);
 		}
 
-		if !changes.is_empty() {
-			let cdc = Cdc::new(version, timestamp, changes);
+		if !changes.is_empty() || !system_changes.is_empty() {
+			let cdc = Cdc::new(version, timestamp, changes, system_changes);
 			if let Err(e) = self.storage.write(&cdc) {
 				error!(version = version.0, "CDC write failed: {:?}", e);
 			} else {
@@ -141,10 +181,11 @@ where
 
 pub struct CdcProducerState;
 
-impl<S, T> Actor for CdcProducerActor<S, T>
+impl<S, T, H> Actor for CdcProducerActor<S, T, H>
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
+	H: CdcHost,
 {
 	type State = CdcProducerState;
 	type Message = CdcProduceMsg;
@@ -207,11 +248,12 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 ///
 /// Returns a handle to the actor. The actor_ref from this handle should be used
 /// to create a `CdcProducerEventListener` which is then registered on the EventBus.
-pub fn spawn_cdc_producer<S, T>(system: &ActorSystem, storage: S, transaction_store: T) -> ActorHandle<CdcProduceMsg>
+pub fn spawn_cdc_producer<S, T, H>(system: &ActorSystem, storage: S, transaction_store: T, host: H) -> ActorHandle<CdcProduceMsg>
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
+	H: CdcHost,
 {
-	let actor = CdcProducerActor::new(storage, transaction_store);
+	let actor = CdcProducerActor::new(storage, transaction_store, host);
 	system.spawn("cdc-producer", actor)
 }

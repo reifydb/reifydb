@@ -433,6 +433,14 @@ impl CdcHost for StandardEngine {
 	fn done_until(&self) -> CommitVersion {
 		StandardEngine::done_until(self)
 	}
+
+	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
+		StandardEngine::wait_for_mark_timeout(self, version, timeout)
+	}
+
+	fn schema_registry(&self) -> &reifydb_catalog::schema::SchemaRegistry {
+		&self.catalog.schema
+	}
 }
 
 impl ExecuteQuery for StandardEngine {

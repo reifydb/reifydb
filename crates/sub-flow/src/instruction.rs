@@ -7,7 +7,7 @@
 //! rather than broadcasting all changes to all workers.
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
-use reifydb_sdk::flow::FlowChange;
+use reifydb_core::interface::change::Change;
 
 /// Instructions for processing a single flow within a batch.
 ///
@@ -21,12 +21,12 @@ pub struct FlowInstruction {
 	pub to_version: CommitVersion,
 	/// The actual changes to process, filtered to only those relevant to this flow.
 	/// Changes maintain their original CDC sequence order.
-	pub changes: Vec<FlowChange>,
+	pub changes: Vec<Change>,
 }
 
 impl FlowInstruction {
 	/// Create a new flow instruction.
-	pub fn new(flow_id: FlowId, to_version: CommitVersion, changes: Vec<FlowChange>) -> Self {
+	pub fn new(flow_id: FlowId, to_version: CommitVersion, changes: Vec<Change>) -> Self {
 		Self {
 			flow_id,
 			to_version,

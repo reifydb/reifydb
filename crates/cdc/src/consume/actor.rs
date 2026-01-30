@@ -6,7 +6,7 @@ use std::{ops::Bound, time::Duration};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::EncodedKey,
-	interface::cdc::{Cdc, CdcChange, CdcConsumerId},
+	interface::cdc::{Cdc, CdcConsumerId, SystemChange},
 	key::{EncodableKey, Key, cdc_consumer::CdcConsumerKey, kind::KeyKind},
 };
 use reifydb_runtime::actor::{
@@ -247,16 +247,18 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		let relevant_cdcs = transactions
 			.into_iter()
 			.filter(|cdc| {
-				cdc.changes.iter().any(|change| match &change.change {
-					CdcChange::Insert {
+				// Pass through if there are decoded row changes (columnar Change objects)
+				!cdc.changes.is_empty()
+				|| cdc.system_changes.iter().any(|sys_change| match sys_change {
+					SystemChange::Insert {
 						key,
 						..
 					}
-					| CdcChange::Update {
+					| SystemChange::Update {
 						key,
 						..
 					}
-					| CdcChange::Delete {
+					| SystemChange::Delete {
 						key,
 						..
 					} => {

@@ -176,9 +176,10 @@ pub mod tests {
 	};
 	use reifydb_type::value::{Value, row_number::RowNumber};
 
+	use reifydb_core::interface::change::Change;
+
 	use crate::{
 		error::Result,
-		flow::FlowChange,
 		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
 		state::{FFIRawStatefulOperator, row::RowNumberProvider},
 		testing::{harness::TestHarnessBuilder, helpers::encode_key},
@@ -202,7 +203,7 @@ pub mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange> {
+		fn apply(&mut self, _ctx: &mut OperatorContext, input: Change) -> Result<Change> {
 			Ok(input)
 		}
 

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	common::CommitVersion,
 	encoded::{encoded::EncodedValues, key::EncodedKey},
+	interface::change::Change,
 };
 
 #[repr(transparent)]
@@ -30,8 +31,10 @@ impl AsRef<str> for CdcConsumerId {
 	}
 }
 
+/// Internal system/metadata change (flow registrations, catalog ops, etc.)
+/// Kept in encoded form for key-level inspection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum CdcChange {
+pub enum SystemChange {
 	Insert {
 		key: EncodedKey,
 		post: EncodedValues,
@@ -47,19 +50,19 @@ pub enum CdcChange {
 	},
 }
 
-impl CdcChange {
+impl SystemChange {
 	/// Get the key for this change.
 	pub fn key(&self) -> &EncodedKey {
 		match self {
-			CdcChange::Insert {
+			SystemChange::Insert {
 				key,
 				..
 			} => key,
-			CdcChange::Update {
+			SystemChange::Update {
 				key,
 				..
 			} => key,
-			CdcChange::Delete {
+			SystemChange::Delete {
 				key,
 				..
 			} => key,
@@ -69,16 +72,16 @@ impl CdcChange {
 	/// Calculate the approximate value bytes for this change (pre + post values).
 	pub fn value_bytes(&self) -> usize {
 		match self {
-			CdcChange::Insert {
+			SystemChange::Insert {
 				post,
 				..
 			} => post.len(),
-			CdcChange::Update {
+			SystemChange::Update {
 				pre,
 				post,
 				..
 			} => pre.len() + post.len(),
-			CdcChange::Delete {
+			SystemChange::Delete {
 				pre,
 				..
 			} => pre.as_ref().map(|p| p.len()).unwrap_or(0),
@@ -87,45 +90,23 @@ impl CdcChange {
 }
 
 /// Structure for storing CDC data with shared metadata
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Cdc {
 	pub version: CommitVersion,
 	pub timestamp: u64,
-	pub changes: Vec<CdcSequencedChange>,
+	/// Row-data changes in columnar format
+	pub changes: Vec<Change>,
+	/// Internal system/metadata changes
+	pub system_changes: Vec<SystemChange>,
 }
 
 impl Cdc {
-	pub fn new(version: CommitVersion, timestamp: u64, changes: Vec<CdcSequencedChange>) -> Self {
+	pub fn new(version: CommitVersion, timestamp: u64, changes: Vec<Change>, system_changes: Vec<SystemChange>) -> Self {
 		Self {
 			version,
 			timestamp,
 			changes,
-		}
-	}
-}
-
-/// Structure for individual changes within a transaction
-#[derive(Debug, Clone, PartialEq)]
-pub struct CdcSequencedChange {
-	pub sequence: u16,
-	pub change: CdcChange,
-}
-
-impl CdcSequencedChange {
-	pub fn key(&self) -> &EncodedKey {
-		match &self.change {
-			CdcChange::Insert {
-				key,
-				..
-			} => key,
-			CdcChange::Update {
-				key,
-				..
-			} => key,
-			CdcChange::Delete {
-				key,
-				..
-			} => key,
+			system_changes,
 		}
 	}
 }

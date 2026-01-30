@@ -8,7 +8,7 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer, value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin, FlowDiff};
+use reifydb_core::interface::change::{Change, ChangeOrigin, Diff};
 use reifydb_type::{error::Error, value::row_number::RowNumber};
 
 use crate::{
@@ -22,7 +22,7 @@ pub struct MergeOperator {
 	node: FlowNodeId,
 	/// Parent operators indexed by their position (0..N)
 	parents: Vec<Arc<Operators>>,
-	/// Input node IDs for matching FlowChangeOrigin
+	/// Input node IDs for matching ChangeOrigin
 	input_nodes: Vec<FlowNodeId>,
 	/// Row number provider for stable output row numbers
 	row_number_provider: RowNumberProvider,
@@ -42,10 +42,10 @@ impl MergeOperator {
 	}
 
 	/// Find which parent index a change originated from
-	fn determine_parent_index(&self, change: &FlowChange) -> Option<usize> {
+	fn determine_parent_index(&self, change: &Change) -> Option<usize> {
 		match &change.origin {
-			FlowChangeOrigin::Internal(from_node) => self.input_nodes.iter().position(|n| n == from_node),
-			FlowChangeOrigin::External(_) => None,
+			ChangeOrigin::Internal(from_node) => self.input_nodes.iter().position(|n| n == from_node),
+			ChangeOrigin::External(_) => None,
 		}
 	}
 
@@ -88,9 +88,9 @@ impl Operator for MergeOperator {
 	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		// Determine which parent this change came from
 		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
 			Error(internal!("Merge received change from unknown node: {:?}", change.origin))
@@ -100,7 +100,7 @@ impl Operator for MergeOperator {
 
 		for diff in change.diffs {
 			match diff {
-				FlowDiff::Insert {
+				Diff::Insert {
 					post,
 				} => {
 					let row_count = post.row_count();
@@ -127,11 +127,11 @@ impl Operator for MergeOperator {
 						output_row_numbers,
 					);
 
-					result_diffs.push(FlowDiff::Insert {
+					result_diffs.push(Diff::Insert {
 						post: output,
 					});
 				}
-				FlowDiff::Update {
+				Diff::Update {
 					pre,
 					post,
 				} => {
@@ -162,12 +162,12 @@ impl Operator for MergeOperator {
 						output_row_numbers,
 					);
 
-					result_diffs.push(FlowDiff::Update {
+					result_diffs.push(Diff::Update {
 						pre: pre_output,
 						post: post_output,
 					});
 				}
-				FlowDiff::Remove {
+				Diff::Remove {
 					pre,
 				} => {
 					let row_count = pre.row_count();
@@ -193,14 +193,14 @@ impl Operator for MergeOperator {
 						output_row_numbers,
 					);
 
-					result_diffs.push(FlowDiff::Remove {
+					result_diffs.push(Diff::Remove {
 						pre: output,
 					});
 				}
 			}
 		}
 
-		Ok(FlowChange::internal(self.node, change.version, result_diffs))
+		Ok(Change::from_flow(self.node, change.version, result_diffs))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {

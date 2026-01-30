@@ -14,12 +14,13 @@ use std::{
 use reifydb_abi::{
 	context::context::ContextFFI,
 	data::column::ColumnsFFI,
-	flow::change::FlowChangeFFI,
+	flow::change::ChangeFFI,
 	operator::{descriptor::OperatorDescriptorFFI, vtable::OperatorVTableFFI},
 };
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
-use reifydb_sdk::{error::FFIError, ffi::arena::Arena, flow::FlowChange};
+use reifydb_core::interface::change::Change;
+use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
 use reifydb_type::value::row_number::RowNumber;
 use tracing::{Span, error, instrument};
 
@@ -80,8 +81,8 @@ impl Drop for FFIOperator {
 /// Marshal a flow change to FFI format
 #[inline]
 #[instrument(name = "flow::ffi::marshal", level = "trace", skip_all)]
-fn marshal_input(arena: &mut Arena, change: &FlowChange) -> FlowChangeFFI {
-	arena.marshal_flow_change(change)
+fn marshal_input(arena: &mut Arena, change: &Change) -> ChangeFFI {
+	arena.marshal_change(change)
 }
 
 /// Call the FFI vtable apply function
@@ -91,8 +92,8 @@ fn call_vtable(
 	vtable: &OperatorVTableFFI,
 	instance: *mut c_void,
 	ffi_ctx_ptr: *mut ContextFFI,
-	ffi_input: &FlowChangeFFI,
-	ffi_output: &mut FlowChangeFFI,
+	ffi_input: &ChangeFFI,
+	ffi_output: &mut ChangeFFI,
 	operator_id: FlowNodeId,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| (vtable.apply)(instance, ffi_ctx_ptr, ffi_input, ffi_output)));
@@ -113,11 +114,11 @@ fn call_vtable(
 	}
 }
 
-/// Unmarshal FFI output to FlowChange
+/// Unmarshal FFI output to Change
 #[inline]
 #[instrument(name = "flow::ffi::unmarshal", level = "trace", skip_all)]
-fn unmarshal_output(arena: &mut Arena, ffi_output: &FlowChangeFFI) -> Result<FlowChange, String> {
-	arena.unmarshal_flow_change(ffi_output)
+fn unmarshal_output(arena: &mut Arena, ffi_output: &ChangeFFI) -> Result<Change, String> {
+	arena.unmarshal_change(ffi_output)
 }
 
 impl Operator for FFIOperator {
@@ -133,16 +134,16 @@ impl Operator for FFIOperator {
 	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
-		change: FlowChange,
+		change: Change,
 		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<FlowChange> {
+	) -> reifydb_type::Result<Change> {
 		let mut arena = self.arena.borrow_mut();
 
 		// Phase 1: Marshal the flow change
 		let ffi_input = marshal_input(&mut arena, &change);
 
 		// Create output holder
-		let mut ffi_output = FlowChangeFFI::empty();
+		let mut ffi_output = ChangeFFI::empty();
 
 		// Create FFI context
 		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());

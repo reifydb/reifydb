@@ -10,7 +10,7 @@ use reifydb_cdc::{
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{encoded::EncodedValues, key::EncodedKey},
-	interface::cdc::{Cdc, CdcChange, CdcConsumerId, CdcSequencedChange},
+	interface::cdc::{Cdc, CdcConsumerId, SystemChange},
 };
 use reifydb_engine::test_utils::create_test_engine;
 use reifydb_type::util::cowvec::CowVec;
@@ -19,12 +19,10 @@ fn make_cdc(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
 		12345 + version,
-		vec![CdcSequencedChange {
-			sequence: 1,
-			change: CdcChange::Insert {
-				key: EncodedKey::new(vec![version as u8]),
-				post: EncodedValues(CowVec::new(vec![version as u8])),
-			},
+		Vec::new(),
+		vec![SystemChange::Insert {
+			key: EncodedKey::new(vec![version as u8]),
+			post: EncodedValues(CowVec::new(vec![version as u8])),
 		}],
 	)
 }
