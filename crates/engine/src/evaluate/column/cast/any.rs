@@ -250,6 +250,13 @@ pub fn from_any(
 							result.push_undefined();
 						}
 					}
+					ColumnData::DictionaryId(c) => {
+						if c.is_defined(0) {
+							result.push(c.get(0).unwrap().clone());
+						} else {
+							result.push_undefined();
+						}
+					}
 					ColumnData::Undefined(_) => {
 						result.push_undefined();
 					}

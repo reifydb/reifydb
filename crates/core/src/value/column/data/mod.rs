@@ -16,9 +16,9 @@ use reifydb_type::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
-			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
-			number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
+			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
+			undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -78,6 +78,8 @@ pub enum ColumnData {
 	},
 	// Container for Any type (heterogeneous values)
 	Any(AnyContainer),
+	// Container for DictionaryEntryId values
+	DictionaryId(DictionaryContainer),
 	// special case: all undefined
 	Undefined(UndefinedContainer),
 }
@@ -120,6 +122,7 @@ impl ColumnData {
 			ColumnData::Decimal {
 				..
 			} => Type::Decimal,
+			ColumnData::DictionaryId(_) => Type::DictionaryId,
 			ColumnData::Any(_) => Type::Any,
 			ColumnData::Undefined(_) => Type::Undefined,
 		}
@@ -167,6 +170,7 @@ impl ColumnData {
 				container,
 				..
 			} => container.is_defined(idx),
+			ColumnData::DictionaryId(container) => container.is_defined(idx),
 			ColumnData::Any(container) => container.is_defined(idx),
 			ColumnData::Undefined(_) => false,
 		}
@@ -252,6 +256,7 @@ impl ColumnData {
 				container,
 				..
 			} => container.bitvec(),
+			ColumnData::DictionaryId(container) => container.bitvec(),
 			ColumnData::Any(container) => container.bitvec(),
 			ColumnData::Undefined(_) => unreachable!(),
 		}
@@ -290,6 +295,7 @@ impl ColumnData {
 			Type::Int => Self::int_with_capacity(capacity),
 			Type::Uint => Self::uint_with_capacity(capacity),
 			Type::Decimal => Self::decimal_with_capacity(capacity),
+			Type::DictionaryId => Self::dictionary_id_with_capacity(capacity),
 			Type::Undefined => ColumnData::undefined(0),
 			Type::Any => Self::any_with_capacity(capacity),
 		}
@@ -343,6 +349,7 @@ impl ColumnData {
 				container,
 				..
 			} => container.len(),
+			ColumnData::DictionaryId(container) => container.len(),
 			ColumnData::Any(container) => container.len(),
 			ColumnData::Undefined(container) => container.len(),
 		}
@@ -390,6 +397,7 @@ impl ColumnData {
 				container,
 				..
 			} => container.capacity(),
+			ColumnData::DictionaryId(container) => container.capacity(),
 			ColumnData::Any(container) => container.capacity(),
 			ColumnData::Undefined(container) => container.capacity(),
 		}
@@ -437,6 +445,7 @@ impl ColumnData {
 				container,
 				..
 			} => container.as_string(index),
+			ColumnData::DictionaryId(container) => container.as_string(index),
 			ColumnData::Any(container) => container.as_string(index),
 			ColumnData::Undefined(container) => container.as_string(index),
 		}

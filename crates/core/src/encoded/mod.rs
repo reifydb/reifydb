@@ -6,6 +6,7 @@ pub mod boolean;
 pub mod date;
 pub mod datetime;
 pub mod decimal;
+pub mod dictionary_id;
 pub mod duration;
 pub mod encoded;
 pub mod f32;

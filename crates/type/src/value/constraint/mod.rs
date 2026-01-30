@@ -9,6 +9,7 @@ use crate::{
 	value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+		dictionary::DictionaryId,
 		r#type::Type,
 	},
 };
@@ -31,6 +32,8 @@ pub enum Constraint {
 	MaxBytes(MaxBytes),
 	/// Precision and scale for DECIMAL
 	PrecisionScale(Precision, Scale),
+	/// Dictionary constraint: (catalog dictionary ID, id_type)
+	Dictionary(DictionaryId, Type),
 }
 
 /// FFI-safe representation of a TypeConstraint
@@ -39,11 +42,11 @@ pub enum Constraint {
 pub struct FFITypeConstraint {
 	/// Base type code (Type::to_u8)
 	pub base_type: u8,
-	/// Constraint type: 0=None, 1=MaxBytes, 2=PrecisionScale
+	/// Constraint type: 0=None, 1=MaxBytes, 2=PrecisionScale, 3=Dictionary
 	pub constraint_type: u8,
-	/// First constraint param: MaxBytes value OR precision
+	/// First constraint param: MaxBytes value OR precision OR dictionary_id low 32 bits
 	pub constraint_param1: u32,
-	/// Second constraint param: scale (only for PrecisionScale)
+	/// Second constraint param: scale (PrecisionScale) OR id_type (Dictionary)
 	pub constraint_param2: u32,
 }
 
@@ -64,9 +67,26 @@ impl TypeConstraint {
 		}
 	}
 
+	/// Create a dictionary type constraint
+	pub fn dictionary(dictionary_id: DictionaryId, id_type: Type) -> Self {
+		Self {
+			base_type: Type::DictionaryId,
+			constraint: Some(Constraint::Dictionary(dictionary_id, id_type)),
+		}
+	}
+
 	/// Get the base type
 	pub fn get_type(&self) -> Type {
 		self.base_type
+	}
+
+	/// Get the storage type. For DictionaryId with a Dictionary constraint,
+	/// returns the id_type (e.g. Uint4). For all other types, returns the base_type.
+	pub fn storage_type(&self) -> Type {
+		match (&self.base_type, &self.constraint) {
+			(Type::DictionaryId, Some(Constraint::Dictionary(_, id_type))) => *id_type,
+			_ => self.base_type,
+		}
 	}
 
 	/// Get the constraint
@@ -96,6 +116,12 @@ impl TypeConstraint {
 				constraint_param1: p.value() as u32,
 				constraint_param2: s.value() as u32,
 			},
+			Some(Constraint::Dictionary(dict_id, id_type)) => FFITypeConstraint {
+				base_type,
+				constraint_type: 3,
+				constraint_param1: dict_id.to_u64() as u32,
+				constraint_param2: id_type.to_u8() as u32,
+			},
 		}
 	}
 
@@ -109,6 +135,13 @@ impl TypeConstraint {
 				Constraint::PrecisionScale(
 					Precision::new(ffi.constraint_param1 as u8),
 					Scale::new(ffi.constraint_param2 as u8),
+				),
+			),
+			3 => Self::with_constraint(
+				ty,
+				Constraint::Dictionary(
+					DictionaryId::from(ffi.constraint_param1 as u64),
+					Type::from_u8(ffi.constraint_param2 as u8),
 				),
 			),
 			_ => Self::unconstrained(ty),
@@ -271,6 +304,9 @@ impl TypeConstraint {
 			}
 			Some(Constraint::PrecisionScale(p, s)) => {
 				format!("{}({},{})", self.base_type, p, s)
+			}
+			Some(Constraint::Dictionary(dict_id, id_type)) => {
+				format!("DictionaryId(dict={}, {})", dict_id, id_type)
 			}
 		}
 	}

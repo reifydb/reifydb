@@ -24,12 +24,13 @@ pub fn get_or_create_table_schema(
 
 	for col in &table.columns {
 		let constraint = if let Some(dict_id) = col.dictionary_id {
-			// For dictionary columns, use the dictionary ID type
-			let dict_type = catalog
-				.find_dictionary(txn, dict_id)?
-				.map(|d| d.id_type)
-				.unwrap_or_else(|| col.constraint.get_type());
-			TypeConstraint::unconstrained(dict_type)
+			// For dictionary columns, use TypeConstraint::dictionary so the schema
+			// natively produces Value::DictionaryId on get_value()
+			if let Some(dict) = catalog.find_dictionary(txn, dict_id)? {
+				TypeConstraint::dictionary(dict_id, dict.id_type)
+			} else {
+				col.constraint.clone()
+			}
 		} else {
 			col.constraint.clone()
 		};
@@ -55,12 +56,13 @@ pub fn get_or_create_ringbuffer_schema(
 
 	for col in &ringbuffer.columns {
 		let constraint = if let Some(dict_id) = col.dictionary_id {
-			// For dictionary columns, use the dictionary ID type
-			let dict_type = catalog
-				.find_dictionary(txn, dict_id)?
-				.map(|d| d.id_type)
-				.unwrap_or_else(|| col.constraint.get_type());
-			TypeConstraint::unconstrained(dict_type)
+			// For dictionary columns, use TypeConstraint::dictionary so the schema
+			// natively produces Value::DictionaryId on get_value()
+			if let Some(dict) = catalog.find_dictionary(txn, dict_id)? {
+				TypeConstraint::dictionary(dict_id, dict.id_type)
+			} else {
+				col.constraint.clone()
+			}
 		} else {
 			col.constraint.clone()
 		};

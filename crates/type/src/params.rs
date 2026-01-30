@@ -147,6 +147,7 @@ fn parse_typed_value(type_str: &str, value_val: &serde_json::Value) -> Result<Va
 			unimplemented!()
 		}
 		Type::Any => unreachable!("Any type cannot be used as parameter"),
+		Type::DictionaryId => Value::Undefined, // DictionaryId cannot be parsed from string parameters
 	};
 
 	Ok(parsed_value)

@@ -49,6 +49,7 @@ impl ColumnData {
 				..
 			} => container.get_value(index),
 			ColumnData::Any(container) => container.get_value(index),
+			ColumnData::DictionaryId(container) => container.get_value(index),
 			ColumnData::Undefined(container) => container.get_value(index),
 		}
 	}

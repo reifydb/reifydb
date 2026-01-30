@@ -29,6 +29,7 @@ impl ColumnData {
 			ColumnData::Duration(container) => container.reorder(indices),
 			ColumnData::Undefined(container) => container.reorder(indices),
 			ColumnData::IdentityId(container) => container.reorder(indices),
+			ColumnData::DictionaryId(container) => container.reorder(indices),
 			ColumnData::Uuid4(container) => container.reorder(indices),
 			ColumnData::Uuid7(container) => container.reorder(indices),
 			ColumnData::Blob {
@@ -135,5 +136,22 @@ pub mod tests {
 		assert_eq!(col.get_value(0), Value::IdentityId(id3));
 		assert_eq!(col.get_value(1), Value::IdentityId(id1));
 		assert_eq!(col.get_value(2), Value::IdentityId(id2));
+	}
+
+	#[test]
+	fn test_reorder_dictionary_id() {
+		use reifydb_type::value::dictionary::DictionaryEntryId;
+
+		let e1 = DictionaryEntryId::U4(10);
+		let e2 = DictionaryEntryId::U4(20);
+		let e3 = DictionaryEntryId::U4(30);
+
+		let mut col = ColumnData::dictionary_id([e1, e2, e3]);
+		col.reorder(&[2, 0, 1]);
+
+		assert_eq!(col.len(), 3);
+		assert_eq!(col.get_value(0), Value::DictionaryId(e3));
+		assert_eq!(col.get_value(1), Value::DictionaryId(e1));
+		assert_eq!(col.get_value(2), Value::DictionaryId(e2));
 	}
 }

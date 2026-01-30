@@ -544,8 +544,9 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 		| Type::Decimal {
 			..
 		}
-		| Type::Any => {
-			// For arbitrary-precision types and Any, store as Utf8
+		| Type::Any
+		| Type::DictionaryId => {
+			// For arbitrary-precision types, Any, and DictionaryId, store as Utf8
 			let (values, defined): (Vec<_>, Vec<_>) = data
 				.into_iter()
 				.map(|s| {

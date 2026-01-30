@@ -106,6 +106,7 @@ impl Columns {
 				Value::Int(v) => ColumnData::int(vec![v]),
 				Value::Uint(v) => ColumnData::uint(vec![v]),
 				Value::Decimal(v) => ColumnData::decimal(vec![v]),
+				Value::DictionaryId(v) => ColumnData::dictionary_id(vec![v]),
 				Value::Any(v) => ColumnData::any(vec![v]),
 			};
 

@@ -16,9 +16,11 @@ use reifydb_type::{
 	value::{
 		blob::Blob,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+		container::dictionary::DictionaryContainer,
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
@@ -353,6 +355,13 @@ impl Arena {
 				let container = self.unmarshal_any_data(ffi, bitvec);
 				ColumnData::Any(container)
 			}
+			ColumnTypeCode::DictionaryId => {
+				let u128_container = self.unmarshal_numeric_data::<u128>(ffi, bitvec);
+				let entries: Vec<DictionaryEntryId> =
+					u128_container.data().iter().map(|&v| DictionaryEntryId::U16(v)).collect();
+				let bitvec = u128_container.bitvec().clone();
+				ColumnData::DictionaryId(DictionaryContainer::new(entries, bitvec))
+			}
 			ColumnTypeCode::Undefined => ColumnData::undefined(row_count),
 		}
 	}
@@ -548,6 +557,12 @@ impl Arena {
 					offsets.push(data_bytes.len() as u64);
 				}
 				self.marshal_with_offsets(&data_bytes, &offsets)
+			}
+
+			// DictionaryId - serialize as u128 values
+			ColumnData::DictionaryId(container) => {
+				let encoded: Vec<u128> = container.data().iter().map(|id| id.to_u128()).collect();
+				self.marshal_numeric_slice(&encoded)
 			}
 
 			// Undefined has no data

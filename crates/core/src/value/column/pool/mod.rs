@@ -23,7 +23,7 @@ use std::{collections::HashMap, ops::Deref, rc::Rc};
 
 use reifydb_type::value::{
 	container::{
-		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, row_number::RowNumberContainer,
+		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, row::RowNumberContainer,
 		temporal::TemporalContainer, undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
 	},
 	date::Date,

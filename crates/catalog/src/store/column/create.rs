@@ -30,6 +30,12 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 		Some(Constraint::PrecisionScale(precision, scale)) => {
 			vec![2, (*precision).into(), (*scale).into()] // Type 2: PrecisionScale
 		}
+		Some(Constraint::Dictionary(dict_id, id_type)) => {
+			let mut bytes = vec![3]; // Type 3: Dictionary
+			bytes.extend_from_slice(&dict_id.to_u64().to_le_bytes());
+			bytes.push(id_type.to_u8());
+			bytes
+		}
 	}
 }
 

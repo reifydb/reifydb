@@ -33,6 +33,7 @@ impl ColumnData {
 			Value::Int(v) => ColumnData::int(vec![v; row_count]),
 			Value::Uint(v) => ColumnData::uint(vec![v; row_count]),
 			Value::Decimal(v) => ColumnData::decimal(vec![v; row_count]),
+			Value::DictionaryId(v) => ColumnData::dictionary_id(vec![v; row_count]),
 			Value::Undefined => ColumnData::undefined(row_count),
 			Value::Any(v) => ColumnData::any(vec![v.clone(); row_count]),
 		}

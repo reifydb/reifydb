@@ -258,6 +258,13 @@ pub(super) fn from_any(data: &ColumnData, target: Type) -> EvalResult<ColumnData
 						// This shouldn't happen as we're casting FROM Any
 						unreachable!("Casting from Any should not produce Any")
 					}
+					ColumnData::DictionaryId(c) => {
+						if c.is_defined(0) {
+							result.push(c.get(0).unwrap().clone());
+						} else {
+							result.push_undefined();
+						}
+					}
 				}
 			}
 		}

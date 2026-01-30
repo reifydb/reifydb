@@ -6,13 +6,14 @@ use reifydb_type::{
 	value::{
 		blob::Blob,
 		container::{
-			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
-			number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
+			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
+			undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
@@ -1052,6 +1053,45 @@ impl ColumnData {
 		ColumnData::Any(AnyContainer::new(data, bitvec))
 	}
 
+	pub fn dictionary_id(data: impl IntoIterator<Item = DictionaryEntryId>) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		ColumnData::DictionaryId(DictionaryContainer::from_vec(data))
+	}
+
+	pub fn dictionary_id_optional(data: impl IntoIterator<Item = Option<DictionaryEntryId>>) -> Self {
+		let mut values = Vec::new();
+		let mut bitvec = Vec::new();
+
+		for opt in data {
+			match opt {
+				Some(value) => {
+					values.push(value);
+					bitvec.push(true);
+				}
+				None => {
+					values.push(DictionaryEntryId::default());
+					bitvec.push(false);
+				}
+			}
+		}
+
+		ColumnData::DictionaryId(DictionaryContainer::new(values, BitVec::from(bitvec)))
+	}
+
+	pub fn dictionary_id_with_capacity(capacity: usize) -> Self {
+		ColumnData::DictionaryId(DictionaryContainer::with_capacity(capacity))
+	}
+
+	pub fn dictionary_id_with_bitvec(
+		data: impl IntoIterator<Item = DictionaryEntryId>,
+		bitvec: impl Into<BitVec>,
+	) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		let bitvec = bitvec.into();
+		assert_eq!(bitvec.len(), data.len());
+		ColumnData::DictionaryId(DictionaryContainer::new(data, bitvec))
+	}
+
 	pub fn undefined(len: usize) -> Self {
 		ColumnData::Undefined(UndefinedContainer::new(len))
 	}
@@ -1095,6 +1135,10 @@ impl ColumnData {
 			} => Self::decimal_with_bitvec(vec![Decimal::from(0); len], BitVec::repeat(len, false)),
 			Type::Any => Self::any_with_bitvec(
 				vec![Box::new(reifydb_type::value::Value::Undefined); len],
+				BitVec::repeat(len, false),
+			),
+			Type::DictionaryId => Self::dictionary_id_with_bitvec(
+				vec![DictionaryEntryId::default(); len],
 				BitVec::repeat(len, false),
 			),
 			Type::Undefined => Self::undefined(len),

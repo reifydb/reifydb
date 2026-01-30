@@ -194,6 +194,10 @@ impl Columns {
 						vec![Decimal::from(0); size],
 						BitVec::repeat(size, false),
 					),
+					Type::DictionaryId => ColumnData::dictionary_id_with_bitvec(
+						vec![Default::default(); size],
+						BitVec::repeat(size, false),
+					),
 					Type::Any => ColumnData::any_with_bitvec(
 						vec![Box::new(Value::Undefined); size],
 						BitVec::repeat(size, false),
@@ -327,6 +331,12 @@ impl Columns {
 					},
 				) => {
 					container.push(schema.get_decimal(&row, index));
+				}
+				(ColumnData::DictionaryId(container), Type::DictionaryId) => {
+					match schema.get_value(&row, index) {
+						Value::DictionaryId(id) => container.push(id),
+						_ => container.push_undefined(),
+					}
 				}
 				(_, v) => {
 					return_error!(frame_error(format!(
@@ -470,6 +480,12 @@ impl Columns {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
+				(ColumnData::DictionaryId(container), Type::DictionaryId) => {
+					match schema.get_value(row, index) {
+						Value::DictionaryId(id) => container.push(id),
+						_ => container.push_undefined(),
+					}
+				}
 				(ColumnData::Undefined(container), Type::Undefined) => {
 					container.push_undefined();
 				}
@@ -1585,6 +1601,95 @@ pub mod tests {
 				ColumnData::uint16_with_bitvec([340282366920938463463374607431768211455u128], [true])
 			);
 			assert_eq!(*test_instance[1].data(), ColumnData::uint16_with_bitvec([0], [false]));
+		}
+
+		#[test]
+		fn test_all_defined_dictionary_id() {
+			use reifydb_type::value::{
+				constraint::TypeConstraint,
+				dictionary::{DictionaryEntryId, DictionaryId},
+			};
+
+			use crate::encoded::schema::SchemaField;
+
+			let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
+			let schema = Schema::new(vec![SchemaField::new("status", constraint)]);
+
+			let mut test_instance =
+				Columns::new(vec![Column::dictionary_id("status", Vec::<DictionaryEntryId>::new())]);
+
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::DictionaryId(DictionaryEntryId::U4(10))]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::DictionaryId(DictionaryEntryId::U4(20))]);
+
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+
+			assert_eq!(
+				test_instance[0].data().get_value(0),
+				Value::DictionaryId(DictionaryEntryId::U4(10))
+			);
+			assert_eq!(
+				test_instance[0].data().get_value(1),
+				Value::DictionaryId(DictionaryEntryId::U4(20))
+			);
+		}
+
+		#[test]
+		fn test_fallback_dictionary_id() {
+			use reifydb_type::value::{
+				constraint::TypeConstraint,
+				dictionary::{DictionaryEntryId, DictionaryId},
+			};
+
+			use crate::encoded::schema::SchemaField;
+
+			let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
+			let schema = Schema::new(vec![
+				SchemaField::new("dict_col", dict_constraint),
+				SchemaField::unconstrained("bool_col", Type::Boolean),
+			]);
+
+			let mut test_instance = Columns::new(vec![
+				Column::dictionary_id("dict_col", Vec::<DictionaryEntryId>::new()),
+				Column::bool("bool_col", Vec::<bool>::new()),
+			]);
+
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Undefined, Value::Boolean(true)]);
+
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+
+			// Dictionary column should be undefined
+			assert!(!test_instance[0].data().is_defined(0));
+			// Bool column should be defined
+			assert_eq!(test_instance[1].data().get_value(0), Value::Boolean(true));
+		}
+
+		#[test]
+		fn test_before_undefined_dictionary_id() {
+			use reifydb_type::value::{
+				constraint::TypeConstraint,
+				dictionary::{DictionaryEntryId, DictionaryId},
+			};
+
+			use crate::encoded::schema::SchemaField;
+
+			let constraint = TypeConstraint::dictionary(DictionaryId::from(2u64), Type::Uint4);
+			let schema = Schema::new(vec![SchemaField::new("tag", constraint)]);
+
+			let mut test_instance = Columns::new(vec![Column::undefined("tag", 2)]);
+
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::DictionaryId(DictionaryEntryId::U4(5))]);
+
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+
+			// First two are undefined (promoted from Undefined column), third is defined
+			assert!(!test_instance[0].data().is_defined(0));
+			assert!(!test_instance[0].data().is_defined(1));
+			assert!(test_instance[0].data().is_defined(2));
+			assert_eq!(test_instance[0].data().get_value(2), Value::DictionaryId(DictionaryEntryId::U4(5)));
 		}
 
 		fn test_instance_with_columns() -> Columns {

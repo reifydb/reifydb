@@ -33,7 +33,8 @@ pub enum ColumnTypeCode {
 	Uint = 23,
 	Decimal = 24,
 	Any = 25,
-	Undefined = 26,
+	DictionaryId = 26,
+	Undefined = 27,
 }
 
 /// FFI-safe column data representation

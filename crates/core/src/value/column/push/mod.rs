@@ -3,7 +3,9 @@
 
 use std::fmt::Debug;
 
-use reifydb_type::value::{blob::Blob, date::Date, datetime::DateTime, duration::Duration, time::Time};
+use reifydb_type::value::{
+	blob::Blob, date::Date, datetime::DateTime, dictionary::DictionaryEntryId, duration::Duration, time::Time,
+};
 
 use crate::value::column::ColumnData;
 
@@ -138,6 +140,28 @@ impl Push<String> for ColumnData {
 			other => {
 				panic!("called `push::<String>()` on EngineColumnData::{:?}", other.get_type())
 			}
+		}
+	}
+}
+
+impl Push<DictionaryEntryId> for ColumnData {
+	fn push(&mut self, value: DictionaryEntryId) {
+		match self {
+			ColumnData::DictionaryId(container) => {
+				container.push(value);
+			}
+			ColumnData::Undefined(container) => {
+				let mut new_container =
+					ColumnData::dictionary_id(vec![DictionaryEntryId::default(); container.len()]);
+				if let ColumnData::DictionaryId(new_container) = &mut new_container {
+					new_container.push(value);
+				}
+				*self = new_container;
+			}
+			other => panic!(
+				"called `push::<DictionaryEntryId>()` on EngineColumnData::{:?}",
+				other.get_type()
+			),
 		}
 	}
 }

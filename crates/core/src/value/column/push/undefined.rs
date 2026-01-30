@@ -29,6 +29,7 @@ impl ColumnData {
 			ColumnData::Duration(container) => container.push_undefined(),
 			ColumnData::Undefined(container) => container.push_undefined(),
 			ColumnData::IdentityId(container) => container.push_undefined(),
+			ColumnData::DictionaryId(container) => container.push_undefined(),
 			ColumnData::Uuid4(container) => container.push_undefined(),
 			ColumnData::Uuid7(container) => container.push_undefined(),
 			ColumnData::Blob {
@@ -238,6 +239,38 @@ pub mod tests {
 		};
 
 		assert_eq!(container.data().as_slice(), &[1, 0]);
+		assert!(container.is_defined(0));
+		assert!(!container.is_defined(1));
+	}
+
+	#[test]
+	fn test_identity_id() {
+		use reifydb_type::value::identity::IdentityId;
+
+		let id1 = IdentityId::generate();
+		let mut col = ColumnData::identity_id(vec![id1]);
+		col.push_undefined();
+		let ColumnData::IdentityId(container) = col else {
+			panic!("Expected IdentityId");
+		};
+
+		assert_eq!(container.data().as_slice(), &[id1, IdentityId::default()]);
+		assert!(container.is_defined(0));
+		assert!(!container.is_defined(1));
+	}
+
+	#[test]
+	fn test_dictionary_id() {
+		use reifydb_type::value::dictionary::DictionaryEntryId;
+
+		let e1 = DictionaryEntryId::U4(10);
+		let mut col = ColumnData::dictionary_id(vec![e1]);
+		col.push_undefined();
+		let ColumnData::DictionaryId(container) = col else {
+			panic!("Expected DictionaryId");
+		};
+
+		assert_eq!(container.data().as_slice(), &[e1, DictionaryEntryId::default()]);
 		assert!(container.is_defined(0));
 		assert!(!container.is_defined(1));
 	}

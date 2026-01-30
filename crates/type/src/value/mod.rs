@@ -38,6 +38,7 @@ use blob::Blob;
 use date::Date;
 use datetime::DateTime;
 use decimal::Decimal;
+use dictionary::DictionaryEntryId;
 use duration::Duration;
 use identity::IdentityId;
 use int::Int;
@@ -105,6 +106,8 @@ pub enum Value {
 	Decimal(Decimal),
 	/// A container that can hold any value type
 	Any(Box<Value>),
+	/// A dictionary entry identifier
+	DictionaryId(DictionaryEntryId),
 }
 
 impl Value {
@@ -233,6 +236,7 @@ impl PartialOrd for Value {
 			(Value::Int(l), Value::Int(r)) => l.partial_cmp(r),
 			(Value::Uint(l), Value::Uint(r)) => l.partial_cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => l.partial_cmp(r),
+			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().partial_cmp(&r.to_u128()),
 			(Value::Any(_), Value::Any(_)) => None, // Any values are not comparable
 			(Value::Undefined, Value::Undefined) => Some(Ordering::Equal),
 			// Undefined sorts after all other values (similar to NULL in SQL)
@@ -273,6 +277,7 @@ impl Ord for Value {
 			(Value::Int(l), Value::Int(r)) => l.cmp(r),
 			(Value::Uint(l), Value::Uint(r)) => l.cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => l.cmp(r),
+			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().cmp(&r.to_u128()),
 			(Value::Any(_), Value::Any(_)) => unreachable!("Any values are not orderable"),
 			_ => unimplemented!(),
 		}
@@ -309,6 +314,7 @@ impl Display for Value {
 			Value::Uint(value) => Display::fmt(value, f),
 			Value::Decimal(value) => Display::fmt(value, f),
 			Value::Any(value) => Display::fmt(value, f),
+			Value::DictionaryId(value) => Display::fmt(value, f),
 			Value::Undefined => f.write_str("undefined"),
 		}
 	}
@@ -344,6 +350,7 @@ impl Value {
 			Value::Uint(_) => Type::Uint,
 			Value::Decimal(_) => Type::Decimal,
 			Value::Any(_) => Type::Any,
+			Value::DictionaryId(_) => Type::DictionaryId,
 		}
 	}
 }

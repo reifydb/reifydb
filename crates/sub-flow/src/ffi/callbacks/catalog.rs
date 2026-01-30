@@ -407,5 +407,9 @@ fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
 		Some(reifydb_type::value::constraint::Constraint::PrecisionScale(precision, scale)) => {
 			(base_type, 2, precision.value() as u32, scale.value() as u32)
 		}
+		Some(reifydb_type::value::constraint::Constraint::Dictionary(_, _)) => {
+			// Dictionary constraint: encode as type 3
+			(base_type, 3, 0, 0)
+		}
 	}
 }

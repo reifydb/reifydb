@@ -70,6 +70,8 @@ pub enum Type {
 	Undefined,
 	/// A container that can hold any value type
 	Any,
+	/// A dictionary entry identifier
+	DictionaryId,
 }
 
 impl Type {
@@ -154,6 +156,7 @@ impl Type {
 			} => 24,
 			Type::Uint => 25,
 			Type::Any => 26,
+			Type::DictionaryId => 27,
 		}
 	}
 }
@@ -188,6 +191,7 @@ impl Type {
 			24 => Type::Decimal,
 			25 => Type::Uint,
 			26 => Type::Any,
+			27 => Type::DictionaryId,
 			_ => unreachable!(),
 		}
 	}
@@ -228,7 +232,8 @@ impl Type {
 			} => 16, // i128 inline or dynamic
 			// storage with offset + length
 			Type::Undefined => 0,
-			Type::Any => 8, // pointer size on 64-bit systems
+			Type::Any => 8,           // pointer size on 64-bit systems
+			Type::DictionaryId => 16, // max possible; actual size determined by constraint's id_type
 		}
 	}
 
@@ -266,6 +271,7 @@ impl Type {
 			// inline storage
 			Type::Undefined => 0,
 			Type::Any => 8, // pointer alignment
+			Type::DictionaryId => 16,
 		}
 	}
 }
@@ -300,6 +306,7 @@ impl Display for Type {
 			Type::Decimal => f.write_str("Decimal"),
 			Type::Undefined => f.write_str("Undefined"),
 			Type::Any => f.write_str("Any"),
+			Type::DictionaryId => f.write_str("DictionaryId"),
 		}
 	}
 }
@@ -334,6 +341,7 @@ impl From<&Value> for Type {
 			Value::Uint(_) => Type::Uint,
 			Value::Decimal(_) => Type::Decimal,
 			Value::Any(_) => Type::Any,
+			Value::DictionaryId(_) => Type::DictionaryId,
 		}
 	}
 }
@@ -370,6 +378,7 @@ impl FromStr for Type {
 			"DECIMAL" => Ok(Type::Decimal),
 			"UNDEFINED" => Ok(Type::Undefined),
 			"ANY" => Ok(Type::Any),
+			"DICTIONARYID" | "DICTIONARY_ID" => Ok(Type::DictionaryId),
 			_ => Err(()),
 		}
 	}

@@ -37,6 +37,7 @@ impl ColumnData {
 			ColumnData::Duration(container) => container.filter(mask),
 			ColumnData::Undefined(container) => container.filter(mask),
 			ColumnData::IdentityId(container) => container.filter(mask),
+			ColumnData::DictionaryId(container) => container.filter(mask),
 			ColumnData::Uuid4(container) => container.filter(mask),
 			ColumnData::Uuid7(container) => container.filter(mask),
 			ColumnData::Blob {
@@ -174,5 +175,46 @@ pub mod tests {
 		assert_eq!(col.len(), 2);
 		assert_eq!(col.get_value(0), Value::IdentityId(id1));
 		assert_eq!(col.get_value(1), Value::IdentityId(id3));
+	}
+
+	#[test]
+	fn test_filter_dictionary_id() {
+		use reifydb_type::value::dictionary::DictionaryEntryId;
+
+		let e1 = DictionaryEntryId::U4(10);
+		let e2 = DictionaryEntryId::U4(20);
+		let e3 = DictionaryEntryId::U4(30);
+		let e4 = DictionaryEntryId::U4(40);
+
+		let mut col = ColumnData::dictionary_id([e1, e2, e3, e4]);
+		let mask = BitVec::from_slice(&[true, false, true, false]);
+
+		col.filter(&mask).unwrap();
+
+		assert_eq!(col.len(), 2);
+		assert_eq!(col.get_value(0), Value::DictionaryId(e1));
+		assert_eq!(col.get_value(1), Value::DictionaryId(e3));
+	}
+
+	#[test]
+	fn test_filter_dictionary_id_with_undefined() {
+		use reifydb_type::value::dictionary::DictionaryEntryId;
+
+		let e1 = DictionaryEntryId::U4(10);
+		let e2 = DictionaryEntryId::U4(20);
+
+		let mut col = ColumnData::dictionary_id_with_bitvec(
+			[e1, DictionaryEntryId::default(), e2, DictionaryEntryId::default()],
+			BitVec::from_slice(&[true, false, true, false]),
+		);
+		let mask = BitVec::from_slice(&[true, true, false, true]);
+
+		col.filter(&mask).unwrap();
+
+		assert_eq!(col.len(), 3);
+		assert!(col.is_defined(0));
+		assert!(!col.is_defined(1));
+		assert!(!col.is_defined(2));
+		assert_eq!(col.get_value(0), Value::DictionaryId(e1));
 	}
 }

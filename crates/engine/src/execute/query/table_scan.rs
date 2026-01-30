@@ -17,18 +17,10 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::{AsTransaction, Transaction};
-use reifydb_type::{
-	error,
-	fragment::Fragment,
-	util::cowvec::CowVec,
-	value::{dictionary::DictionaryEntryId, r#type::Type},
-};
+use reifydb_type::{error, fragment::Fragment, util::cowvec::CowVec, value::r#type::Type};
 use tracing::instrument;
 
-use crate::{
-	execute::{Batch, ExecutionContext, QueryNode},
-	transaction::operation::dictionary::DictionaryOperations,
-};
+use crate::execute::{Batch, ExecutionContext, QueryNode};
 
 pub(crate) struct TableScanNode {
 	table: ResolvedTable,
@@ -57,7 +49,7 @@ impl TableScanNode {
 		for col in table.columns() {
 			if let Some(dict_id) = col.dictionary_id {
 				if let Some(dict) = context.executor.catalog.find_dictionary(rx, dict_id)? {
-					storage_types.push(dict.id_type);
+					storage_types.push(Type::DictionaryId);
 					dictionaries.push(Some(dict));
 				} else {
 					// Dictionary not found, fall back to constraint type
@@ -185,8 +177,6 @@ impl QueryNode for TableScanNode {
 			let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
 			columns.append_rows(&schema, batch_rows.into_iter(), row_numbers.clone())?;
 		}
-		self.decode_dictionary_columns(&mut columns, rx)?;
-
 		// Restore row numbers (they get cleared during column transformation)
 		columns.row_numbers = CowVec::new(row_numbers);
 
@@ -265,46 +255,5 @@ impl QueryNode for TableScanNode {
 
 		let schema = self.get_or_load_schema(rx, &encoded_rows[0])?;
 		Ok(Some(LazyBatch::new(encoded_rows, row_numbers, &schema, column_metas)))
-	}
-}
-
-impl<'a> TableScanNode {
-	/// Decode dictionary columns by replacing dictionary IDs with actual values
-	fn decode_dictionary_columns(&self, columns: &mut Columns, rx: &mut Transaction<'a>) -> crate::Result<()> {
-		for (col_idx, dict_opt) in self.dictionaries.iter().enumerate() {
-			if let Some(dictionary) = dict_opt {
-				let col = &columns[col_idx];
-				let row_count = col.data().len();
-
-				// Create new column data with the original value type
-				let mut new_data = ColumnData::with_capacity(dictionary.value_type, row_count);
-
-				// Decode each value
-				for row_idx in 0..row_count {
-					let id_value = col.data().get_value(row_idx);
-					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
-						if let Some(decoded_value) =
-							rx.get_from_dictionary(dictionary, entry_id)?
-						{
-							new_data.push_value(decoded_value);
-						} else {
-							// ID not found in dictionary, use undefined
-							new_data.push_value(reifydb_type::value::Value::Undefined);
-						}
-					} else {
-						// Not a valid dictionary ID, use undefined
-						new_data.push_value(reifydb_type::value::Value::Undefined);
-					}
-				}
-
-				// Replace the column data
-				let col_name = columns[col_idx].name().clone();
-				columns.columns.make_mut()[col_idx] = Column {
-					name: col_name,
-					data: new_data,
-				};
-			}
-		}
-		Ok(())
 	}
 }

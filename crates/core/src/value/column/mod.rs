@@ -5,6 +5,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
 	value::{
+		dictionary::DictionaryEntryId,
 		r#type::Type,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -358,6 +359,24 @@ impl Column {
 		Column {
 			name: name.into(),
 			data: ColumnData::uuid7_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn dictionary_id(name: impl Into<Fragment>, data: impl IntoIterator<Item = DictionaryEntryId>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::dictionary_id(data),
+		}
+	}
+
+	pub fn dictionary_id_with_bitvec(
+		name: impl Into<Fragment>,
+		data: impl IntoIterator<Item = DictionaryEntryId>,
+		bitvec: impl Into<BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::dictionary_id_with_bitvec(data, bitvec),
 		}
 	}
 

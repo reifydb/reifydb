@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use serde::{Deserialize, Serialize};
+use std::{
+	fmt,
+	fmt::{Display, Formatter},
+	ops::Deref,
+};
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 use super::r#type::Type;
 use crate::{error, error::diagnostic::dictionary::dictionary_entry_id_capacity_exceeded};
@@ -95,19 +101,14 @@ impl DictionaryEntryId {
 
 	/// Convert this DictionaryEntryId to a Value.
 	pub fn to_value(self) -> super::Value {
-		match self {
-			Self::U1(v) => super::Value::Uint1(v),
-			Self::U2(v) => super::Value::Uint2(v),
-			Self::U4(v) => super::Value::Uint4(v),
-			Self::U8(v) => super::Value::Uint8(v),
-			Self::U16(v) => super::Value::Uint16(v),
-		}
+		super::Value::DictionaryId(self)
 	}
 
 	/// Create a DictionaryEntryId from a Value.
-	/// Returns None if the Value is not an unsigned integer type.
+	/// Returns None if the Value is not a DictionaryId or unsigned integer type.
 	pub fn from_value(value: &super::Value) -> Option<Self> {
 		match value {
+			super::Value::DictionaryId(id) => Some(*id),
 			super::Value::Uint1(v) => Some(Self::U1(*v)),
 			super::Value::Uint2(v) => Some(Self::U2(*v)),
 			super::Value::Uint4(v) => Some(Self::U4(*v)),
@@ -115,6 +116,24 @@ impl DictionaryEntryId {
 			super::Value::Uint16(v) => Some(Self::U16(*v)),
 			_ => None,
 		}
+	}
+}
+
+impl PartialOrd for DictionaryEntryId {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl Ord for DictionaryEntryId {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		self.to_u128().cmp(&other.to_u128())
+	}
+}
+
+impl Default for DictionaryEntryId {
+	fn default() -> Self {
+		Self::U1(0)
 	}
 }
 
@@ -127,6 +146,88 @@ impl std::fmt::Display for DictionaryEntryId {
 			Self::U8(v) => write!(f, "{}", v),
 			Self::U16(v) => write!(f, "{}", v),
 		}
+	}
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct DictionaryId(pub u64);
+
+impl Display for DictionaryId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
+
+impl Deref for DictionaryId {
+	type Target = u64;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl PartialEq<u64> for DictionaryId {
+	fn eq(&self, other: &u64) -> bool {
+		self.0.eq(other)
+	}
+}
+
+impl From<DictionaryId> for u64 {
+	fn from(value: DictionaryId) -> Self {
+		value.0
+	}
+}
+
+impl DictionaryId {
+	/// Get the inner u64 value.
+	#[inline]
+	pub fn to_u64(self) -> u64 {
+		self.0
+	}
+}
+
+impl From<i32> for DictionaryId {
+	fn from(value: i32) -> Self {
+		Self(value as u64)
+	}
+}
+
+impl From<u64> for DictionaryId {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
+
+impl Serialize for DictionaryId {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_u64(self.0)
+	}
+}
+
+impl<'de> Deserialize<'de> for DictionaryId {
+	fn deserialize<D>(deserializer: D) -> Result<DictionaryId, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		struct U64Visitor;
+
+		impl Visitor<'_> for U64Visitor {
+			type Value = DictionaryId;
+
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+				formatter.write_str("an unsigned 64-bit number")
+			}
+
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+				Ok(DictionaryId(value))
+			}
+		}
+
+		deserializer.deserialize_u64(U64Visitor)
 	}
 }
 

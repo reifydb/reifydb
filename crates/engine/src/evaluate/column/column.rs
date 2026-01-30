@@ -11,6 +11,7 @@ use reifydb_type::value::{
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
+	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
 	int::Int,
@@ -526,6 +527,28 @@ impl StandardColumnEvaluator {
 					count += 1;
 				}
 				Ok(col.with_new_data(ColumnData::uuid7_with_bitvec(data, bitvec)))
+			}
+			Type::DictionaryId => {
+				let mut data = Vec::new();
+				let mut bitvec = Vec::new();
+				let mut count = 0;
+				for v in col.data().iter() {
+					if count >= take {
+						break;
+					}
+					match v {
+						Value::DictionaryId(i) => {
+							data.push(i.clone());
+							bitvec.push(true);
+						}
+						_ => {
+							data.push(DictionaryEntryId::default());
+							bitvec.push(false);
+						}
+					}
+					count += 1;
+				}
+				Ok(col.with_new_data(ColumnData::dictionary_id_with_bitvec(data, bitvec)))
 			}
 			Type::Blob => {
 				let mut data = Vec::new();

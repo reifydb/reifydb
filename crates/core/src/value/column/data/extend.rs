@@ -4,8 +4,8 @@
 use reifydb_type::{
 	return_error,
 	value::container::{
-		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer,
-		utf8::Utf8Container, uuid::UuidContainer,
+		blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer, number::NumberContainer,
+		temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 	},
 };
 
@@ -86,6 +86,7 @@ impl ColumnData {
 					..
 				},
 			) => l.extend(&r)?,
+			(ColumnData::DictionaryId(l), ColumnData::DictionaryId(r)) => l.extend(&r)?,
 			(ColumnData::Undefined(l), ColumnData::Undefined(r)) => l.extend(&r)?,
 
 			// Promote Undefined to typed
@@ -277,6 +278,13 @@ impl ColumnData {
 							"Cannot extend IdentityId column from Undefined".to_string()
 						));
 					}
+					ColumnData::DictionaryId(r) => {
+						let mut new_container =
+							DictionaryContainer::with_capacity(l_len + r.len());
+						new_container.extend_from_undefined(l_len);
+						new_container.extend(&r)?;
+						*self = ColumnData::DictionaryId(new_container);
+					}
 					ColumnData::Undefined(_) => {}
 					ColumnData::Any(_) => {
 						unreachable!("Any type not supported in extend operations");
@@ -310,6 +318,7 @@ impl ColumnData {
 					ColumnData::Time(l) => l.extend_from_undefined(r_len),
 					ColumnData::Duration(l) => l.extend_from_undefined(r_len),
 					ColumnData::IdentityId(l) => l.extend_from_undefined(r_len),
+					ColumnData::DictionaryId(l) => l.extend_from_undefined(r_len),
 					ColumnData::Uuid4(l) => l.extend_from_undefined(r_len),
 					ColumnData::Uuid7(l) => l.extend_from_undefined(r_len),
 					ColumnData::Blob {

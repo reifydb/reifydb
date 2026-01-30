@@ -154,6 +154,9 @@ pub fn encode_primary_key(
 				// handled later with constraints
 				index_layout.set_undefined(&mut index_key, pk_idx);
 			}
+			Type::DictionaryId => {
+				panic!("DictionaryId columns cannot be used in primary keys");
+			}
 			Type::Any => {
 				panic!("Any type cannot be used in primary keys");
 			}

@@ -416,6 +416,21 @@ impl ColumnData {
 				_ => unimplemented!(),
 			},
 
+			Value::DictionaryId(v) => match self {
+				ColumnData::DictionaryId(container) => container.push(v),
+				ColumnData::Undefined(container) => {
+					let mut new_container = ColumnData::dictionary_id(vec![]);
+					if let ColumnData::DictionaryId(new_container) = &mut new_container {
+						for _ in 0..container.len() {
+							new_container.push_undefined();
+						}
+						new_container.push(v);
+					}
+					*self = new_container;
+				}
+				_ => unimplemented!(),
+			},
+
 			Value::Any(v) => match self {
 				ColumnData::Any(container) => container.push(v),
 				ColumnData::Undefined(container) => {
@@ -441,6 +456,7 @@ pub mod tests {
 		Value,
 		date::Date,
 		datetime::DateTime,
+		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
 		ordered_f32::OrderedF32,
@@ -1194,6 +1210,43 @@ pub mod tests {
 			panic!("Expected Uuid7");
 		};
 		assert_eq!(container.data().as_slice(), &[Uuid7::from(Uuid::nil()), uuid]);
+		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
+	}
+
+	#[test]
+	fn test_dictionary_id() {
+		let e1 = DictionaryEntryId::U4(10);
+		let e2 = DictionaryEntryId::U4(20);
+		let mut col = ColumnData::dictionary_id(vec![e1]);
+		col.push_value(Value::DictionaryId(e2));
+		let ColumnData::DictionaryId(container) = col else {
+			panic!("Expected DictionaryId");
+		};
+		assert_eq!(container.data().as_slice(), &[e1, e2]);
+		assert_eq!(container.bitvec().to_vec(), vec![true, true]);
+	}
+
+	#[test]
+	fn test_undefined_dictionary_id() {
+		let e1 = DictionaryEntryId::U4(10);
+		let mut col = ColumnData::dictionary_id(vec![e1]);
+		col.push_value(Value::Undefined);
+		let ColumnData::DictionaryId(container) = col else {
+			panic!("Expected DictionaryId");
+		};
+		assert_eq!(container.data().as_slice(), &[e1, DictionaryEntryId::default()]);
+		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
+	}
+
+	#[test]
+	fn test_push_value_to_undefined_dictionary_id() {
+		let e = DictionaryEntryId::U4(42);
+		let mut col = ColumnData::undefined(1);
+		col.push_value(Value::DictionaryId(e));
+		let ColumnData::DictionaryId(container) = col else {
+			panic!("Expected DictionaryId");
+		};
+		assert_eq!(container.data().as_slice(), &[DictionaryEntryId::default(), e]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 }

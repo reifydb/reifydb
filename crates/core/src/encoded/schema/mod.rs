@@ -51,13 +51,13 @@ impl SchemaField {
 	/// Create a new schema field with a type constraint.
 	/// Offset, size, and alignment are computed when added to a Schema.
 	pub fn new(name: impl Into<String>, constraint: TypeConstraint) -> Self {
-		let base_type = constraint.get_type();
+		let storage_type = constraint.storage_type();
 		Self {
 			name: name.into(),
 			constraint,
 			offset: 0,
-			size: base_type.size() as u32,
-			align: base_type.alignment() as u8,
+			size: storage_type.size() as u32,
+			align: storage_type.alignment() as u8,
 		}
 	}
 
@@ -196,9 +196,9 @@ impl Schema {
 		let mut offset: u32 = (SCHEMA_HEADER_SIZE + bitvec_size) as u32;
 
 		for field in fields.iter_mut() {
-			let base_type = field.constraint.get_type();
-			field.size = base_type.size() as u32;
-			field.align = base_type.alignment() as u8;
+			let storage_type = field.constraint.storage_type();
+			field.size = storage_type.size() as u32;
+			field.align = storage_type.alignment() as u8;
 
 			// Align offset
 			let align = field.align as u32;

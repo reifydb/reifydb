@@ -106,6 +106,9 @@ impl Schema {
 				},
 				Value::Undefined,
 			) => self.set_undefined(row, index),
+			(Type::DictionaryId, Value::DictionaryId(id)) => self.set_dictionary_id(row, index, id),
+
+			(Type::DictionaryId, Value::Undefined) => self.set_undefined(row, index),
 
 			(Type::Undefined, Value::Undefined) => {}
 			(Type::Any, Value::Any(_)) => unreachable!("Any type cannot be stored in database"),
@@ -153,6 +156,7 @@ impl Schema {
 			Type::Decimal {
 				..
 			} => Value::Decimal(self.get_decimal(row, index)),
+			Type::DictionaryId => Value::DictionaryId(self.get_dictionary_id(row, index)),
 			Type::Undefined => Value::Undefined,
 			Type::Any => unreachable!("Any type cannot be stored in database"),
 		}
@@ -165,8 +169,10 @@ pub mod tests {
 	use reifydb_type::value::{
 		Value,
 		blob::Blob,
+		constraint::TypeConstraint,
 		date::Date,
 		datetime::DateTime,
+		dictionary::DictionaryEntryId,
 		duration::Duration,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
@@ -175,7 +181,10 @@ pub mod tests {
 		uuid::{Uuid4, Uuid7},
 	};
 
-	use crate::encoded::schema::Schema;
+	use crate::{
+		encoded::schema::{Schema, SchemaField},
+		interface::catalog::id::DictionaryId,
+	};
 
 	#[test]
 	fn test_set_utf8_with_dynamic_content() {
@@ -675,5 +684,87 @@ pub mod tests {
 		for i in 0..21 {
 			assert!(row.is_defined(i), "Field {} should be defined", i);
 		}
+	}
+
+	#[test]
+	fn test_dictionary_id_roundtrip_u4() {
+		let constraint = TypeConstraint::dictionary(DictionaryId::from(42u64), Type::Uint4);
+		let schema = Schema::new(vec![SchemaField::new("status", constraint)]);
+
+		let mut row = schema.allocate();
+		let entry = DictionaryEntryId::U4(7);
+		schema.set_value(&mut row, 0, &Value::DictionaryId(entry));
+
+		assert!(row.is_defined(0));
+		let retrieved = schema.get_value(&row, 0);
+		assert_eq!(retrieved, Value::DictionaryId(DictionaryEntryId::U4(7)));
+	}
+
+	#[test]
+	fn test_dictionary_id_roundtrip_u2() {
+		let constraint = TypeConstraint::dictionary(DictionaryId::from(10u64), Type::Uint2);
+		let schema = Schema::new(vec![SchemaField::new("category", constraint)]);
+
+		let mut row = schema.allocate();
+		let entry = DictionaryEntryId::U2(500);
+		schema.set_value(&mut row, 0, &Value::DictionaryId(entry));
+
+		assert!(row.is_defined(0));
+		let retrieved = schema.get_value(&row, 0);
+		assert_eq!(retrieved, Value::DictionaryId(DictionaryEntryId::U2(500)));
+	}
+
+	#[test]
+	fn test_dictionary_id_roundtrip_u8() {
+		let constraint = TypeConstraint::dictionary(DictionaryId::from(99u64), Type::Uint8);
+		let schema = Schema::new(vec![SchemaField::new("tag", constraint)]);
+
+		let mut row = schema.allocate();
+		let entry = DictionaryEntryId::U8(123456789);
+		schema.set_value(&mut row, 0, &Value::DictionaryId(entry));
+
+		assert!(row.is_defined(0));
+		let retrieved = schema.get_value(&row, 0);
+		assert_eq!(retrieved, Value::DictionaryId(DictionaryEntryId::U8(123456789)));
+	}
+
+	#[test]
+	fn test_dictionary_id_with_undefined() {
+		let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
+		let schema = Schema::new(vec![
+			SchemaField::new("dict_col", constraint),
+			SchemaField::unconstrained("int_col", Type::Int4),
+		]);
+
+		let mut row = schema.allocate();
+		schema.set_value(&mut row, 0, &Value::Undefined);
+		schema.set_value(&mut row, 1, &Value::Int4(42));
+
+		assert!(!row.is_defined(0));
+		assert!(row.is_defined(1));
+
+		assert_eq!(schema.get_value(&row, 0), Value::Undefined);
+		assert_eq!(schema.get_value(&row, 1), Value::Int4(42));
+	}
+
+	#[test]
+	fn test_dictionary_id_mixed_with_other_types() {
+		let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(5u64), Type::Uint4);
+		let schema = Schema::new(vec![
+			SchemaField::unconstrained("id", Type::Int4),
+			SchemaField::new("status", dict_constraint),
+			SchemaField::unconstrained("name", Type::Utf8),
+		]);
+
+		let mut row = schema.allocate();
+		let values = vec![
+			Value::Int4(100),
+			Value::DictionaryId(DictionaryEntryId::U4(3)),
+			Value::Utf8("test".to_string()),
+		];
+		schema.set_values(&mut row, &values);
+
+		let retrieved: Vec<Value> = (0..3).map(|i| schema.get_value(&row, i)).collect();
+		assert_eq!(retrieved, values);
 	}
 }

@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::value::{
 	Value,
 	container::{
-		any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
-		number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer,
-		utf8::Utf8Container, uuid::UuidContainer,
+		any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
+		identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
+		undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
 	},
 	date::Date,
 	datetime::DateTime,
@@ -49,6 +49,7 @@ pub enum FrameColumnData {
 	Uint(NumberContainer<Uint>),
 	Decimal(NumberContainer<Decimal>),
 	Any(AnyContainer),
+	DictionaryId(DictionaryContainer),
 	// special case: all undefined
 	Undefined(UndefinedContainer),
 }
@@ -82,6 +83,7 @@ impl FrameColumnData {
 			FrameColumnData::Uint(_) => Type::Uint,
 			FrameColumnData::Decimal(_) => Type::Decimal,
 			FrameColumnData::Any(_) => Type::Any,
+			FrameColumnData::DictionaryId(_) => Type::DictionaryId,
 			FrameColumnData::Undefined(_) => Type::Undefined,
 		}
 	}
@@ -114,6 +116,7 @@ impl FrameColumnData {
 			FrameColumnData::Uint(container) => container.is_defined(idx),
 			FrameColumnData::Decimal(container) => container.is_defined(idx),
 			FrameColumnData::Any(container) => container.is_defined(idx),
+			FrameColumnData::DictionaryId(container) => container.is_defined(idx),
 			FrameColumnData::Undefined(_) => false,
 		}
 	}
@@ -187,6 +190,7 @@ impl FrameColumnData {
 			FrameColumnData::Uint(container) => container.len(),
 			FrameColumnData::Decimal(container) => container.len(),
 			FrameColumnData::Any(container) => container.len(),
+			FrameColumnData::DictionaryId(container) => container.len(),
 			FrameColumnData::Undefined(container) => container.len(),
 		}
 	}
@@ -219,6 +223,7 @@ impl FrameColumnData {
 			FrameColumnData::Uint(container) => container.as_string(index),
 			FrameColumnData::Decimal(container) => container.as_string(index),
 			FrameColumnData::Any(container) => container.as_string(index),
+			FrameColumnData::DictionaryId(container) => container.as_string(index),
 			FrameColumnData::Undefined(container) => container.as_string(index),
 		}
 	}
@@ -253,6 +258,7 @@ impl FrameColumnData {
 			FrameColumnData::Uint(container) => container.get_value(index),
 			FrameColumnData::Decimal(container) => container.get_value(index),
 			FrameColumnData::Any(container) => container.get_value(index),
+			FrameColumnData::DictionaryId(container) => container.get_value(index),
 			FrameColumnData::Undefined(container) => container.get_value(index),
 		}
 	}
