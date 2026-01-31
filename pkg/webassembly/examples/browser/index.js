@@ -149,7 +149,7 @@ async function runCommand() {
     const startTime = performance.now();
 
     try {
-        let results = await db.command(query);
+        let results = await db.admin(query);
 
         const endTime = performance.now();
         lastQueryTime = Math.round(endTime - startTime);

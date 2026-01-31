@@ -21,6 +21,9 @@ echo
 
 cd "$WASM_DIR"
 
+# Clean previous build artifacts to avoid wasm-pack re-read bugs
+rm -rf dist/
+
 # Build for web
 echo "Building for web (ES modules)..."
 wasm-pack build \

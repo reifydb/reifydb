@@ -125,6 +125,7 @@ use std::{pin::Pin, task::Poll};
 
 #[cfg(target_arch = "wasm32")]
 use futures_util::future::LocalBoxFuture;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::runtime::Runtime;
 
 /// WASM-compatible handle (placeholder).
