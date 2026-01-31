@@ -80,6 +80,41 @@ where
 	}
 
 	#[inline]
+	pub fn insert(&self, key: K, value: V)
+	where
+		K: Clone,
+	{
+		self.inner.insert(key, value);
+	}
+
+	#[inline]
+	pub fn remove<Q>(&self, key: &Q) -> Option<V>
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq + ?Sized,
+	{
+		self.inner.remove(key)
+	}
+
+	#[inline]
+	pub fn keys(&self) -> Vec<K>
+	where
+		K: Clone,
+	{
+		self.inner.keys()
+	}
+
+	#[inline]
+	pub fn with_write<Q, R, F>(&self, key: &Q, f: F) -> Option<R>
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq + ?Sized,
+		F: FnOnce(&mut V) -> R,
+	{
+		self.inner.with_write(key, f)
+	}
+
+	#[inline]
 	pub fn clear(&self) {
 		self.inner.clear();
 	}

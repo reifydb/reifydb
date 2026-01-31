@@ -7,8 +7,9 @@
 //! and push channels to enable server-initiated message delivery.
 
 use dashmap::DashMap;
-use reifydb_core::interface::catalog::id::SubscriptionId;
-use reifydb_sub_server::response::ResponseFrame;
+use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_sub_server::response::{ResponseColumn, ResponseFrame};
+use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_type::value::uuid::Uuid7;
 use tokio::sync::mpsc;
 
@@ -177,6 +178,58 @@ impl SubscriptionRegistry {
 impl Default for SubscriptionRegistry {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+impl SubscriptionDelivery for SubscriptionRegistry {
+	fn try_deliver(&self, subscription_id: &SubscriptionId, columns: Columns) -> DeliveryResult {
+		let push_tx = match self.get_push_channel(subscription_id) {
+			Some(tx) => tx,
+			None => return DeliveryResult::Disconnected,
+		};
+
+		// Convert Columns to ResponseFrame
+		let row_numbers: Vec<u64> = columns.row_numbers.iter().map(|r| r.0).collect();
+		let row_count = columns.row_count();
+
+		let response_columns: Vec<ResponseColumn> = columns
+			.columns
+			.iter()
+			.map(|col| {
+				let data: Vec<String> = (0..row_count)
+					.map(|idx| {
+						let value = col.data().get_value(idx);
+						value.to_string()
+					})
+					.collect();
+
+				ResponseColumn {
+					name: col.name.to_string(),
+					r#type: col.data().get_type(),
+					data,
+				}
+			})
+			.collect();
+
+		let frame = ResponseFrame {
+			row_numbers,
+			columns: response_columns,
+		};
+
+		let msg = PushMessage::Change {
+			subscription_id: *subscription_id,
+			frame,
+		};
+
+		match push_tx.try_send(msg) {
+			Ok(_) => DeliveryResult::Delivered,
+			Err(mpsc::error::TrySendError::Full(_)) => DeliveryResult::BackPressure,
+			Err(mpsc::error::TrySendError::Closed(_)) => DeliveryResult::Disconnected,
+		}
+	}
+
+	fn active_subscriptions(&self) -> Vec<SubscriptionId> {
+		self.subscriptions.iter().map(|entry| *entry.key()).collect()
 	}
 }
 

@@ -10,7 +10,7 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::interface::auth::Identity;
+use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::HealthStatus;
@@ -21,7 +21,10 @@ use reifydb_sub_server_http::subsystem::HttpSubsystem;
 #[cfg(feature = "sub_server_ws")]
 use reifydb_sub_server_ws::subsystem::WsSubsystem;
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
-use reifydb_type::{Result, params::Params, value::frame::frame::Frame};
+use reifydb_subscription::cursor::SubscriptionCursor;
+use reifydb_type::{
+	Result, error::diagnostic::Diagnostic, fragment::Fragment, params::Params, value::frame::frame::Frame,
+};
 use tracing::{debug, error, instrument, warn};
 
 use crate::{
@@ -195,6 +198,61 @@ impl Database {
 	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
 		let identity = Identity::root();
 		self.engine.query_as(&identity, rql, params.into())
+	}
+
+	/// Create a subscription as root and return a cursor for consuming its data.
+	///
+	/// `query` is the inner subscription query (e.g. `from test.events`).
+	/// The full `create subscription { } as { <query> };` statement is assembled internally.
+	pub fn subscribe_as_root(&self, query: &str, batch_size: usize) -> Result<SubscriptionCursor> {
+		let identity = Identity::root();
+		self.subscribe_as(&identity, query, batch_size)
+	}
+
+	/// Create a subscription as the given identity and return a cursor for consuming its data.
+	///
+	/// `query` is the inner subscription query (e.g. `from test.events`).
+	/// The full `create subscription { } as { <query> };` statement is assembled internally.
+	pub fn subscribe_as(&self, identity: &Identity, query: &str, batch_size: usize) -> Result<SubscriptionCursor> {
+		let rql = format!("create subscription {{}} as {{ {} }};", query);
+		let frames = self.engine.admin_as(identity, &rql, Params::None)?;
+		let frame = &frames[0];
+		let sub_id: u64 = frame
+			.get::<u64>("subscription_id", 0)
+			.map_err(|e| {
+				reifydb_type::error::Error(Diagnostic {
+					code: "SUB_001".to_string(),
+					statement: None,
+					message: format!("failed to read subscription_id: {}", e),
+					column: None,
+					fragment: Fragment::None,
+					label: None,
+					help: None,
+					notes: vec![],
+					cause: None,
+					operator_chain: None,
+				})
+			})?
+			.ok_or_else(|| {
+				reifydb_type::error::Error(Diagnostic {
+					code: "SUB_001".to_string(),
+					statement: None,
+					message: "subscription_id not found in response".to_string(),
+					column: None,
+					fragment: Fragment::None,
+					label: None,
+					help: None,
+					notes: vec![],
+					cause: None,
+					operator_chain: None,
+				})
+			})?;
+		Ok(SubscriptionCursor::new(
+			SubscriptionId(sub_id),
+			batch_size,
+			self.engine.clone(),
+			self.shared_runtime.actor_system(),
+		))
 	}
 
 	pub fn await_signal(&self) -> Result<()> {

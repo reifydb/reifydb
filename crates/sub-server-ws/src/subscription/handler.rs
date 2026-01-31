@@ -8,6 +8,7 @@
 
 use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId as DbSubscriptionId};
 use reifydb_sub_server::{execute::execute_admin, state::AppState};
+use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{
 	params::Params,
 	value::{Value, uuid::Uuid7},
@@ -18,7 +19,7 @@ use tracing::{debug, error};
 use crate::{
 	handler::error_to_response,
 	protocol::SubscribeRequest,
-	subscription::{PushMessage, SubscriptionPoller, SubscriptionRegistry},
+	subscription::{PushMessage, SubscriptionRegistry},
 };
 
 type ConnectionId = Uuid7;

@@ -42,6 +42,12 @@ cargo run --bin basic-hello-world
 |--------------|-------------|-------------------|
 | `make intercept-table-view` | Table and view interceptors (pre/post hooks) | sub_flow |
 
+### Subscription Examples
+
+| Make Command | Description | Required Features |
+|--------------|-------------|-------------------|
+| `make subscription-cursor` | Pull-based subscription cursor (CDC data consumption) | sub_flow |
+
 ## Project Structure
 
 ```
@@ -68,6 +74,8 @@ bin/examples/
         └── 10_logical_operators.rs     # Logical operators
     └── intercept/      # Interceptor examples
         └── 01_table_view_interceptors.rs # Table and view hooks
+    └── subscription/   # Subscription examples
+        └── 01_cursor.rs                  # Pull-based cursor
 ```
 
 ## Running Examples

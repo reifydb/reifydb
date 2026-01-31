@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Response types and frame conversion for HTTP and WebSocket servers.
-
 use reifydb_type::value::{Value, frame::frame::Frame, r#type::Type};
 use serde::{Deserialize, Serialize};
 

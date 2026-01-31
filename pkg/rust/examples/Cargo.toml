@@ -13,7 +13,6 @@ path = "src/lib.rs"
 
 [dependencies]
 reifydb = { path = "../reifydb", features = ["sub_tracing", "sub_flow"] }
-tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
@@ -83,4 +82,9 @@ path = "examples/storage/02_sqlite_storage.rs"
 [[bin]]
 name = "intercept-table-view"
 path = "examples/intercept/01_table_view_interceptors.rs"
+
+# Subscription examples
+[[bin]]
+name = "subscription-cursor"
+path = "examples/subscription/01_cursor.rs"
 

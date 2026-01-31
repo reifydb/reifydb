@@ -21,6 +21,7 @@ use reifydb_sub_server::{
 	response::convert_frames,
 	state::AppState,
 };
+use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{error::Error, params::Params, value::uuid::Uuid7};
 use tokio::{
 	net::TcpStream,
@@ -35,7 +36,6 @@ use crate::{
 	protocol::{Request, RequestPayload},
 	subscription::{
 		handler::handle_subscribe,
-		poller::SubscriptionPoller,
 		registry::{PushMessage, SubscriptionRegistry},
 	},
 };

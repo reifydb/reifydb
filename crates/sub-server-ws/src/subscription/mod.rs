@@ -7,8 +7,6 @@
 //! real-time data changes via WebSocket connections.
 
 pub mod handler;
-pub mod poller;
 pub mod registry;
 
-use poller::SubscriptionPoller;
 use registry::{PushMessage, SubscriptionRegistry};

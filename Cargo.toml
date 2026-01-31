@@ -36,6 +36,7 @@ members = [
     "crates/sub-server-http",
     "crates/sub-server-otel",
     "crates/sub-server-ws",
+    "crates/subscription",
     # Binary projects
     "bin/cli",
     "bin/server",
@@ -88,6 +89,7 @@ default-members = [
     "crates/sub-server-http",
     "crates/sub-server-otel",
     "crates/sub-server-ws",
+    "crates/subscription",
     # Binary projects
     "bin/cli",
     "bin/server",
@@ -174,6 +176,7 @@ reifydb-sub-server = { version = "0.2.0", path = "crates/sub-server" }
 reifydb-sub-server-http = { version = "0.2.0", path = "crates/sub-server-http" }
 reifydb-sub-server-otel = { version = "0.2.0", path = "crates/sub-server-otel" }
 reifydb-sub-server-ws = { version = "0.2.0", path = "crates/sub-server-ws" }
+reifydb-subscription = { version = "0.2.0", path = "crates/subscription" }
 
 # External dependencies
 

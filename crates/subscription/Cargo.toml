@@ -2,8 +2,8 @@
 # This file is licensed under the AGPL-3.0-or-later
 
 [package]
-name = "reifydb-sub-server-ws"
-description = "WebSocket server subsystem for ReifyDB"
+name = "reifydb-subscription"
+description = "Protocol-agnostic subscription consumption for ReifyDB"
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
@@ -16,22 +16,11 @@ edition.workspace = true
 default = []
 
 [dependencies]
-reifydb-sub-server = { workspace = true }
-reifydb-sub-api = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
-reifydb-subscription = { workspace = true }
 reifydb-type = { workspace = true }
 
-dashmap = { workspace = true }
-tokio = { workspace = true }
-tokio-tungstenite = { workspace = true }
-futures-util = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
 tracing = { workspace = true }
-uuid = { workspace = true }
-
-[dev-dependencies]
+tokio = { workspace = true }

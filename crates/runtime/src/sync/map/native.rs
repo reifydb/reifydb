@@ -66,6 +66,43 @@ where
 		self.inner.get(key).map(|guard| f(guard.value()))
 	}
 
+	/// Inserts a key-value pair into the map.
+	#[inline]
+	pub fn insert(&self, key: K, value: V) {
+		self.inner.insert(key, value);
+	}
+
+	/// Removes a key from the map, returning the value if it existed.
+	#[inline]
+	pub fn remove<Q>(&self, key: &Q) -> Option<V>
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq + ?Sized,
+	{
+		self.inner.remove(key).map(|(_, v)| v)
+	}
+
+	/// Returns a vector of all keys in the map.
+	#[inline]
+	pub fn keys(&self) -> Vec<K>
+	where
+		K: Clone,
+	{
+		self.inner.iter().map(|entry| entry.key().clone()).collect()
+	}
+
+	/// Applies a closure to the mutable value associated with the key, returning the result.
+	/// Returns None if the key doesn't exist.
+	#[inline]
+	pub fn with_write<Q, R, F>(&self, key: &Q, f: F) -> Option<R>
+	where
+		K: Borrow<Q>,
+		Q: Hash + Eq + ?Sized,
+		F: FnOnce(&mut V) -> R,
+	{
+		self.inner.get_mut(key).map(|mut guard| f(guard.value_mut()))
+	}
+
 	/// Removes all entries from the map.
 	#[inline]
 	pub fn clear(&self) {

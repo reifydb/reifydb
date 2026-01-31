@@ -24,6 +24,9 @@ help:
 	@echo "Interceptor Examples:"
 	@echo "  make intercept-table-view - Table and view interceptors (pre/post hooks)"
 	@echo ""
+	@echo "Subscription Examples:"
+	@echo "  make subscription-cursor  - Pull-based subscription cursor (CDC data consumption)"
+	@echo ""
 	@echo "Utility targets:"
 	@echo "  make run-all             - Run all examples in order (by directory, then by filename)"
 	@echo "  make list                - List all available example binaries"
@@ -85,10 +88,16 @@ rql-logical:
 intercept-table-view:
 	RUST_LOG=info cargo run --bin intercept-table-view
 
+# Subscription Examples
+.PHONY: subscription-cursor
+subscription-cursor:
+	RUST_LOG=info cargo run --bin subscription-cursor
+
 # Define example groups
 BASIC_EXAMPLES := basic-hello-world basic-tables
 RQL_EXAMPLES := rql-from rql-map rql-filter rql-sort rql-take rql-aggregate rql-join rql-arithmetic rql-comparison rql-logical
 INTERCEPT_EXAMPLES := intercept-table-view
+SUBSCRIPTION_EXAMPLES := subscription-cursor
 
 # Run all examples in order (by directory, then by filename)
 .PHONY: run-all
@@ -133,6 +142,22 @@ run-all:
 	echo "=== Interceptor Examples ==="; \
 	echo ""; \
 	for example in $(INTERCEPT_EXAMPLES); do \
+		echo "--- Running $$example ---"; \
+		if RUST_LOG=info cargo run --bin $$example; then \
+			true; \
+		else \
+			exit_code=$$?; \
+			output=$$(RUST_LOG=info cargo run --bin $$example 2>&1); \
+			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
+			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
+			failed_examples="$$failed_examples $$example"; \
+			panic_messages="$$panic_messages\n$$example:\n$$panic\n"; \
+		fi; \
+		echo ""; \
+	done; \
+	echo "=== Subscription Examples ==="; \
+	echo ""; \
+	for example in $(SUBSCRIPTION_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
 		if RUST_LOG=info cargo run --bin $$example; then \
 			true; \

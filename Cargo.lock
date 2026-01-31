@@ -499,7 +499,6 @@ name = "examples"
 version = "0.2.0"
 dependencies = [
  "reifydb",
- "tokio",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1625,6 +1624,7 @@ dependencies = [
  "reifydb-sub-server-ws",
  "reifydb-sub-task",
  "reifydb-sub-tracing",
+ "reifydb-subscription",
  "reifydb-transaction",
  "reifydb-type",
  "tokio",
@@ -2063,6 +2063,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
+ "reifydb-subscription",
  "reifydb-type",
  "serde",
  "serde_json",
@@ -2099,6 +2100,19 @@ dependencies = [
  "reifydb-type",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "reifydb-subscription"
+version = "0.2.0"
+dependencies = [
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-runtime",
+ "reifydb-type",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

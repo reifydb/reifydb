@@ -23,6 +23,7 @@ use reifydb_core::{
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
+use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::error;
 use tokio::{
 	net::TcpListener,
@@ -32,10 +33,7 @@ use tokio::{
 };
 use tracing::info;
 
-use crate::{
-	handler::handle_connection,
-	subscription::{poller::SubscriptionPoller, registry::SubscriptionRegistry},
-};
+use crate::{handler::handle_connection, subscription::registry::SubscriptionRegistry};
 
 /// WebSocket server subsystem.
 ///
@@ -204,7 +202,13 @@ impl Subsystem for WsSubsystem {
 					}
 
 					_ = tick.tick() => {
-						poller_clone.poll_all_subscriptions(&poller_state, &poller_registry).await;
+						let p = poller_clone.clone();
+					let e = poller_state.engine_clone();
+					let s = poller_state.actor_system();
+					let r = poller_registry.clone();
+					let _ = tokio::task::spawn_blocking(move || {
+						p.poll_all(&e, &s, r.as_ref());
+					}).await;
 					}
 				}
 			}
