@@ -13,7 +13,7 @@ use reifydb_catalog::{
 	schema::SchemaRegistry,
 };
 use reifydb_cdc::{
-	produce::{listener::CdcEventListener, worker::CdcWorker},
+	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
 	storage::CdcStore,
 };
 use reifydb_core::{
@@ -201,9 +201,21 @@ pub fn create_test_engine() -> StandardEngine {
 		ioc,
 	);
 
-	let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, multi_store.clone(), eventbus.clone(), engine.clone()));
-	eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender(), runtime.clock().clone()));
-	ioc_for_cdc.register_service::<Arc<CdcWorker>>(cdc_worker);
+	let cdc_handle = spawn_cdc_producer(
+		&runtime.actor_system(),
+		cdc_store,
+		multi_store.clone(),
+		engine.clone(),
+		eventbus.clone(),
+	);
+	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
+		cdc_handle.actor_ref().clone(),
+		runtime.clock().clone(),
+	));
+	ioc_for_cdc
+		.register_service::<Arc<reifydb_runtime::actor::system::ActorHandle<reifydb_cdc::produce::producer::CdcProduceMsg>>>(
+			Arc::new(cdc_handle),
+		);
 
 	engine
 }

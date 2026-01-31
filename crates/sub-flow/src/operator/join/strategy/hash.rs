@@ -249,13 +249,13 @@ pub(crate) fn emit_joined_columns_batch(
 	}
 
 	let joined = match primary_side {
-		JoinSide::Left => operator.join_columns_cartesian(txn, primary, primary_indices, &opposite)?,
-		JoinSide::Right => {
-			// For right side, we need to swap: opposite (left) x primary (right)
-			// But cartesian takes (left, left_indices, right)
-			// So we need to join opposite with all rows, repeated for each primary index
+		JoinSide::Left => {
 			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-			operator.join_columns_cartesian(txn, &opposite, &opposite_indices, primary)?
+			operator.join_columns_cartesian(txn, primary, primary_indices, &opposite, &opposite_indices)?
+		}
+		JoinSide::Right => {
+			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
+			operator.join_columns_cartesian(txn, &opposite, &opposite_indices, primary, primary_indices)?
 		}
 	};
 
@@ -289,10 +289,13 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	}
 
 	let joined = match primary_side {
-		JoinSide::Left => operator.join_columns_cartesian(txn, primary, primary_indices, &opposite)?,
+		JoinSide::Left => {
+			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
+			operator.join_columns_cartesian(txn, primary, primary_indices, &opposite, &opposite_indices)?
+		}
 		JoinSide::Right => {
 			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-			operator.join_columns_cartesian(txn, &opposite, &opposite_indices, primary)?
+			operator.join_columns_cartesian(txn, &opposite, &opposite_indices, primary, primary_indices)?
 		}
 	};
 

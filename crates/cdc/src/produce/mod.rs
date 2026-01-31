@@ -8,10 +8,8 @@
 //! using traits for version resolution.
 //!
 //! Key components:
-//! - `CdcWorker`: Single-threaded worker for background CDC generation
-//! - `CdcEventListener`: Listens to PostCommitEvent and forwards to worker
+//! - `CdcProducerActor`: Actor-based CDC producer with periodic cleanup
+//! - `CdcProducerEventListener`: Listens to PostCommitEvent and forwards to producer actor
 
 pub(crate) mod decode;
-pub mod listener;
 pub mod producer;
-pub mod worker;

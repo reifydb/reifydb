@@ -1671,7 +1671,6 @@ dependencies = [
 name = "reifydb-cdc"
 version = "0.2.0"
 dependencies = [
- "crossbeam-channel",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",

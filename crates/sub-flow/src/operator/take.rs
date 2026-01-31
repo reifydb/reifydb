@@ -170,63 +170,66 @@ impl Operator for TakeOperator {
 				Diff::Insert {
 					post,
 				} => {
-					let row_number = post.number();
+					let row_count = post.row_count();
+					for row_idx in 0..row_count {
+						let row_number = post.row_numbers[row_idx];
 
-					if state.active.contains_key(&row_number) {
-						*state.active.get_mut(&row_number).unwrap() += 1;
-						continue;
-					}
+						if state.active.contains_key(&row_number) {
+							*state.active.get_mut(&row_number).unwrap() += 1;
+							continue;
+						}
+						if state.candidates.contains_key(&row_number) {
+							*state.candidates.get_mut(&row_number).unwrap() += 1;
+							continue;
+						}
 
-					if state.candidates.contains_key(&row_number) {
-						*state.candidates.get_mut(&row_number).unwrap() += 1;
-						continue;
-					}
-
-					if state.active.len() < self.limit {
-						state.active.insert(row_number, 1);
-						output_diffs.push(Diff::Insert {
-							post,
-						});
-					} else {
-						let smallest_active = state.active.keys().next().copied();
-
-						if let Some(smallest) = smallest_active {
-							if row_number > smallest {
-								if let Some(count) = state.active.remove(&smallest) {
-									state.candidates.insert(smallest, count);
-
-									let cols =
-										self.parent.pull(txn, &[smallest])?;
-
-									if !cols.is_empty() {
-										output_diffs.push(Diff::Remove {
-											pre: cols,
-										});
-									}
-								}
-
-								state.active.insert(row_number, 1);
-								output_diffs.push(Diff::Insert {
-									post,
-								});
-
-								let candidate_limit = self.limit * 4;
-								while state.candidates.len() > candidate_limit {
-									if let Some((&removed_row, _)) =
-										state.candidates.iter().next()
+						if state.active.len() < self.limit {
+							state.active.insert(row_number, 1);
+							output_diffs.push(Diff::Insert {
+								post: post.extract_by_indices(&[row_idx]),
+							});
+						} else {
+							let smallest_active = state.active.keys().next().copied();
+							if let Some(smallest) = smallest_active {
+								if row_number > smallest {
+									if let Some(count) =
+										state.active.remove(&smallest)
 									{
-										state.candidates.remove(&removed_row);
+										state.candidates
+											.insert(smallest, count);
+										let cols = self
+											.parent
+											.pull(txn, &[smallest])?;
+										if !cols.is_empty() {
+											output_diffs.push(
+												Diff::Remove {
+													pre: cols,
+												},
+											);
+										}
 									}
-								}
-							} else {
-								state.candidates.insert(row_number, 1);
-
-								let candidate_limit = self.limit * 4;
-								while state.candidates.len() > candidate_limit {
-									if let Some((&removed_row, _)) =
-										state.candidates.iter().next()
-									{
-										state.candidates.remove(&removed_row);
+									state.active.insert(row_number, 1);
+									output_diffs.push(Diff::Insert {
+										post: post
+											.extract_by_indices(&[row_idx]),
+									});
+									let candidate_limit = self.limit * 4;
+									while state.candidates.len() > candidate_limit {
+										if let Some((&r, _)) =
+											state.candidates.iter().next()
+										{
+											state.candidates.remove(&r);
+										}
+									}
+								} else {
+									state.candidates.insert(row_number, 1);
+									let candidate_limit = self.limit * 4;
+									while state.candidates.len() > candidate_limit {
+										if let Some((&r, _)) =
+											state.candidates.iter().next()
+										{
+											state.candidates.remove(&r);
+										}
 									}
 								}
 							}
@@ -237,37 +240,46 @@ impl Operator for TakeOperator {
 					pre,
 					post,
 				} => {
-					let row_number = post.number();
-
-					if state.active.contains_key(&row_number) {
+					let row_count = post.row_count();
+					let mut update_indices: Vec<usize> = Vec::new();
+					for row_idx in 0..row_count {
+						let row_number = post.row_numbers[row_idx];
+						if state.active.contains_key(&row_number) {
+							update_indices.push(row_idx);
+						}
+					}
+					if !update_indices.is_empty() {
 						output_diffs.push(Diff::Update {
-							pre,
-							post,
+							pre: pre.extract_by_indices(&update_indices),
+							post: post.extract_by_indices(&update_indices),
 						});
 					}
 				}
 				Diff::Remove {
 					pre,
 				} => {
-					let row_number = pre.number();
+					let row_count = pre.row_count();
+					for row_idx in 0..row_count {
+						let row_number = pre.row_numbers[row_idx];
 
-					if let Some(count) = state.active.get_mut(&row_number) {
-						if *count > 1 {
-							*count -= 1;
-						} else {
-							state.active.remove(&row_number);
-							output_diffs.push(Diff::Remove {
-								pre,
-							});
-
-							let promoted = self.promote_candidates(&mut state, txn)?;
-							output_diffs.extend(promoted);
-						}
-					} else if let Some(count) = state.candidates.get_mut(&row_number) {
-						if *count > 1 {
-							*count -= 1;
-						} else {
-							state.candidates.remove(&row_number);
+						if let Some(count) = state.active.get_mut(&row_number) {
+							if *count > 1 {
+								*count -= 1;
+							} else {
+								state.active.remove(&row_number);
+								output_diffs.push(Diff::Remove {
+									pre: pre.extract_by_indices(&[row_idx]),
+								});
+								let promoted =
+									self.promote_candidates(&mut state, txn)?;
+								output_diffs.extend(promoted);
+							}
+						} else if let Some(count) = state.candidates.get_mut(&row_number) {
+							if *count > 1 {
+								*count -= 1;
+							} else {
+								state.candidates.remove(&row_number);
+							}
 						}
 					}
 				}

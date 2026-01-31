@@ -372,17 +372,18 @@ impl JoinOperator {
 		Ok(builder.join_many_to_one(&row_numbers, left, right, right_idx))
 	}
 
-	/// Join left rows at specified indices with all right rows (cartesian product).
-	/// Returns combined Columns with left_indices.len() * right.row_count() rows.
+	/// Join left rows at specified indices with right rows at specified indices (cartesian product).
+	/// Returns combined Columns with left_indices.len() * right_indices.len() rows.
 	pub(crate) fn join_columns_cartesian(
 		&self,
 		txn: &mut FlowTransaction,
 		left: &Columns,
 		left_indices: &[usize],
 		right: &Columns,
+		right_indices: &[usize],
 	) -> reifydb_type::Result<Columns> {
 		let left_count = left_indices.len();
-		let right_count = right.row_count();
+		let right_count = right_indices.len();
 		if left_count == 0 || right_count == 0 {
 			return Ok(Columns::empty());
 		}
@@ -393,7 +394,7 @@ impl JoinOperator {
 
 		for &left_idx in left_indices {
 			let left_row_number = left.row_numbers[left_idx];
-			for right_idx in 0..right_count {
+			for &right_idx in right_indices {
 				let right_row_number = right.row_numbers[right_idx];
 				composite_keys.push(Self::make_composite_key(left_row_number, right_row_number));
 			}
@@ -405,7 +406,7 @@ impl JoinOperator {
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
-		Ok(builder.join_cartesian(&row_numbers, left, left_indices, right))
+		Ok(builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices))
 	}
 
 	fn determine_side(&self, change: &Change) -> Option<JoinSide> {

@@ -8,12 +8,8 @@
 
 use reifydb_catalog::schema::SchemaRegistry;
 use reifydb_core::{
-	common::CommitVersion,
 	encoded::encoded::{EncodedValues, SCHEMA_HEADER_SIZE},
-	interface::{
-		catalog::primitive::PrimitiveId,
-		change::{Change, Diff},
-	},
+	interface::change::Diff,
 	row::Row,
 	value::column::columns::Columns,
 };
@@ -42,63 +38,37 @@ fn decode_row(registry: &SchemaRegistry, row_number: RowNumber, values: EncodedV
 	}
 }
 
-/// Build an insert Change from a row delta.
-pub(crate) fn build_insert_change(
-	registry: &SchemaRegistry,
-	source: PrimitiveId,
-	row_number: RowNumber,
-	post: EncodedValues,
-	version: CommitVersion,
-) -> Option<Change> {
+/// Build an insert Diff from a row delta.
+pub(crate) fn build_insert_diff(registry: &SchemaRegistry, row_number: RowNumber, post: EncodedValues) -> Option<Diff> {
 	let row = decode_row(registry, row_number, post)?;
 	let columns = Columns::from_row(&row);
-	Some(Change::from_primitive(
-		source,
-		version,
-		vec![Diff::Insert {
-			post: columns,
-		}],
-	))
+	Some(Diff::Insert {
+		post: columns,
+	})
 }
 
-/// Build an update Change from a row delta with pre and post values.
-pub(crate) fn build_update_change(
+/// Build an update Diff from a row delta with pre and post values.
+pub(crate) fn build_update_diff(
 	registry: &SchemaRegistry,
-	source: PrimitiveId,
 	row_number: RowNumber,
 	pre: EncodedValues,
 	post: EncodedValues,
-	version: CommitVersion,
-) -> Option<Change> {
+) -> Option<Diff> {
 	let pre_row = decode_row(registry, row_number, pre)?;
 	let post_row = decode_row(registry, row_number, post)?;
 	let pre_cols = Columns::from_row(&pre_row);
 	let post_cols = Columns::from_row(&post_row);
-	Some(Change::from_primitive(
-		source,
-		version,
-		vec![Diff::Update {
-			pre: pre_cols,
-			post: post_cols,
-		}],
-	))
+	Some(Diff::Update {
+		pre: pre_cols,
+		post: post_cols,
+	})
 }
 
-/// Build a remove Change from a row delta.
-pub(crate) fn build_remove_change(
-	registry: &SchemaRegistry,
-	source: PrimitiveId,
-	row_number: RowNumber,
-	pre: EncodedValues,
-	version: CommitVersion,
-) -> Option<Change> {
+/// Build a remove Diff from a row delta.
+pub(crate) fn build_remove_diff(registry: &SchemaRegistry, row_number: RowNumber, pre: EncodedValues) -> Option<Diff> {
 	let row = decode_row(registry, row_number, pre)?;
 	let columns = Columns::from_row(&row);
-	Some(Change::from_primitive(
-		source,
-		version,
-		vec![Diff::Remove {
-			pre: columns,
-		}],
-	))
+	Some(Diff::Remove {
+		pre: columns,
+	})
 }

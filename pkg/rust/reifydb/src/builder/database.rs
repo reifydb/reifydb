@@ -13,7 +13,7 @@ use reifydb_catalog::{
 };
 use reifydb_cdc::{
 	CdcVersion,
-	produce::{listener::CdcEventListener, worker::CdcWorker},
+	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
 	storage::CdcStore,
 };
 use reifydb_core::{
@@ -238,15 +238,21 @@ impl DatabaseBuilder {
 
 		self.ioc = self.ioc.register(engine.clone());
 
-		// Create CDC worker and register event listener
-		// The worker is stored in IoC to keep it alive for the database lifetime
+		// Spawn CDC producer actor and register event listener
+		// The handle is stored in IoC to keep it alive for the database lifetime
 		// Engine is passed for periodic cleanup based on consumer watermarks
-		let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, multi_store, eventbus.clone(), engine.clone()));
-		eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(
-			cdc_worker.sender(),
+		let cdc_handle = spawn_cdc_producer(
+			&runtime.actor_system(),
+			cdc_store,
+			multi_store,
+			engine.clone(),
+			eventbus.clone(),
+		);
+		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
+			cdc_handle.actor_ref().clone(),
 			runtime.clock().clone(),
 		));
-		self.ioc.register_service::<Arc<CdcWorker>>(cdc_worker);
+		self.ioc.register_service::<Arc<reifydb_runtime::actor::system::ActorHandle<reifydb_cdc::produce::producer::CdcProduceMsg>>>(Arc::new(cdc_handle));
 
 		// Collect all versions
 		let mut all_versions = Vec::new();

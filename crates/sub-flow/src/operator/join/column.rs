@@ -199,17 +199,18 @@ impl JoinedColumnsBuilder {
 		}
 	}
 
-	/// Join left rows (at specified indices) with all right rows (cartesian product).
-	/// Produces left_indices.len() * right.row_count() output rows.
+	/// Join left rows (at specified indices) with right rows (at specified indices) (cartesian product).
+	/// Produces left_indices.len() * right_indices.len() output rows.
 	pub(crate) fn join_cartesian(
 		&self,
 		row_numbers: &[RowNumber],
 		left: &Columns,
 		left_indices: &[usize],
 		right: &Columns,
+		right_indices: &[usize],
 	) -> Columns {
 		let left_count = left_indices.len();
-		let right_count = right.row_count();
+		let right_count = right_indices.len();
 		let result_count = left_count * right_count;
 		debug_assert_eq!(row_numbers.len(), result_count, "row_numbers must match cartesian product size");
 
@@ -231,12 +232,12 @@ impl JoinedColumnsBuilder {
 			});
 		}
 
-		// Add right columns - repeat all right rows for each left row
+		// Add right columns - repeat right rows at specified indices for each left row
 		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
 			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), result_count);
 			for _ in 0..left_count {
-				for row_idx in 0..right_count {
-					col_data.push_value(right_col.data().get_value(row_idx));
+				for &right_idx in right_indices {
+					col_data.push_value(right_col.data().get_value(right_idx));
 				}
 			}
 			result_columns.push(Column {

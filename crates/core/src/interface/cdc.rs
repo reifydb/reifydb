@@ -96,7 +96,7 @@ pub struct Cdc {
 	pub timestamp: u64,
 	/// Row-data changes in columnar format
 	pub changes: Vec<Change>,
-	/// Internal system/metadata changes
+	/// Internal system changes
 	pub system_changes: Vec<SystemChange>,
 }
 

@@ -272,11 +272,12 @@ impl DictionaryOperations for Transaction<'_> {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{
-		dictionary::DictionaryDef,
-		id::{DictionaryId, NamespaceId},
+	use reifydb_core::interface::catalog::{dictionary::DictionaryDef, id::NamespaceId};
+	use reifydb_type::value::{
+		Value,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		r#type::Type,
 	};
-	use reifydb_type::value::{Value, dictionary::DictionaryEntryId, r#type::Type};
 
 	use super::DictionaryOperations;
 	use crate::test_utils::create_test_admin_transaction;
