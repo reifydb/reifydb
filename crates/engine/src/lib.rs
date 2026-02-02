@@ -10,14 +10,12 @@ pub mod bulk_insert;
 pub mod engine;
 pub mod environment;
 pub mod evaluate;
-pub mod execute;
 pub mod flow;
-pub mod instruction;
 pub(crate) mod interceptor;
-pub mod stack;
 #[allow(unused)]
 pub mod test_utils;
 pub mod transaction;
+pub mod vm;
 
 pub struct EngineVersion;
 

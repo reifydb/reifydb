@@ -22,7 +22,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::cast::cast_column_data},
-	stack::Stack,
+	vm::stack::SymbolTable,
 };
 use reifydb_type::{
 	fragment::Fragment,
@@ -36,7 +36,7 @@ use crate::transaction::FlowTransaction;
 // - crate::operator::sink::view::SinkViewOperator
 
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(Stack::new);
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 /// Coerce columns to match target schema types
 pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) -> reifydb_type::Result<Columns> {
@@ -69,7 +69,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 			row_count,
 			take: None,
 			params: &EMPTY_PARAMS,
-			stack: &EMPTY_STACK,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
 		};
 
@@ -132,7 +132,7 @@ pub(crate) fn coerce_subscription_columns(
 			row_count,
 			take: None,
 			params: &EMPTY_PARAMS,
-			stack: &EMPTY_STACK,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
 		};
 

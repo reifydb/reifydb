@@ -47,8 +47,8 @@ use tracing::instrument;
 
 use crate::{
 	bulk_insert::builder::BulkInsertBuilder,
-	execute::{Admin, Command, Executor, Query},
 	interceptor::catalog::MaterializedCatalogInterceptor,
+	vm::{Admin, Command, Query, executor::Executor},
 };
 
 pub struct StandardEngine(Arc<Inner>);
@@ -92,7 +92,7 @@ impl StandardEngine {
 	pub fn admin_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_admin()?;
-			let frames = self.executor.execute_admin_statements(
+			let frames = self.executor.admin(
 				&mut txn,
 				Admin {
 					rql,
@@ -113,7 +113,7 @@ impl StandardEngine {
 	pub fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_command()?;
-			let frames = self.executor.execute_command_statements(
+			let frames = self.executor.command(
 				&mut txn,
 				Command {
 					rql,
@@ -134,7 +134,7 @@ impl StandardEngine {
 	pub fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_query()?;
-			self.executor.execute_query_statements(
+			self.executor.query(
 				&mut txn,
 				Query {
 					rql,

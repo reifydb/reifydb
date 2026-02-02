@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
-	stack::Stack,
+	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
@@ -22,7 +22,7 @@ use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
 // Static empty params instance for use in EvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
 pub struct MapOperator {
 	parent: Arc<Operators>,
@@ -59,7 +59,7 @@ impl MapOperator {
 			row_count,
 			take: None,
 			params: &EMPTY_PARAMS,
-			stack: &EMPTY_STACK,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
 		};
 

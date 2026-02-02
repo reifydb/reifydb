@@ -45,20 +45,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use crate::engine::StandardEngine;
 
-pub fn create_test_command_transaction() -> CommandTransaction {
-	let multi_store = MultiStore::testing_memory();
-	let single_store = SingleStore::testing_memory();
-
-	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
-	let event_bus = EventBus::new(&actor_system);
-	let single = SingleTransaction::new(single_store, event_bus.clone());
-	let multi =
-		MultiTransaction::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default())
-			.unwrap();
-
-	CommandTransaction::new(multi, single, event_bus, Interceptors::new()).unwrap()
-}
-
 pub fn create_test_admin_transaction() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();

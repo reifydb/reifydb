@@ -680,7 +680,7 @@ pub mod tests {
 
 	use crate::{
 		evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
-		stack::Stack,
+		vm::stack::SymbolTable,
 	};
 
 	#[test]
@@ -695,7 +695,7 @@ pub mod tests {
 			row_count: 5,
 			take: None,
 			params: &Params::None,
-			stack: &Stack::new(),
+			symbol_table: &SymbolTable::new(),
 			is_aggregate_context: false,
 		};
 

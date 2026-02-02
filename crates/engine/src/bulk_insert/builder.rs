@@ -157,7 +157,7 @@ fn execute_table_insert<V: ValidationMode>(
 	pending: &PendingTableInsert,
 	type_id: std::any::TypeId,
 ) -> crate::Result<TableInsertResult> {
-	use crate::execute::dml::primary_key;
+	use crate::vm::instruction::dml::primary_key;
 
 	// 1. Look up namespace and table from catalog
 	let namespace = catalog
@@ -169,7 +169,7 @@ fn execute_table_insert<V: ValidationMode>(
 		.ok_or_else(|| BulkInsertError::table_not_found(Fragment::None, &pending.namespace, &pending.table))?;
 
 	// 2. Get or create schema with proper field names and constraints
-	let schema = crate::execute::dml::schema::get_or_create_table_schema(catalog, &table, txn)?;
+	let schema = crate::vm::instruction::dml::schema::get_or_create_table_schema(catalog, &table, txn)?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == std::any::TypeId::of::<Validated>();
@@ -288,7 +288,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	})?;
 
 	// Get or create schema with proper field names and constraints
-	let schema = crate::execute::dml::schema::get_or_create_ringbuffer_schema(catalog, &ringbuffer, txn)?;
+	let schema = crate::vm::instruction::dml::schema::get_or_create_ringbuffer_schema(catalog, &ringbuffer, txn)?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == std::any::TypeId::of::<Validated>();

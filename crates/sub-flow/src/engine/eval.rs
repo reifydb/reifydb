@@ -6,13 +6,13 @@ use std::{collections::HashMap, sync::LazyLock};
 use reifydb_core::value::column::columns::Columns;
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
-	stack::Stack,
+	vm::stack::SymbolTable,
 };
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Result, params::Params, value::Value};
 
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
 /// Evaluate a list of expressions into operator configuration
 ///
@@ -45,7 +45,7 @@ pub fn evaluate_operator_config(
 		row_count: 1, // Need at least 1 row to evaluate constants
 		take: None,
 		params: &EMPTY_PARAMS,
-		stack: &EMPTY_STACK,
+		symbol_table: &EMPTY_SYMBOL_TABLE,
 		is_aggregate_context: false,
 	};
 
