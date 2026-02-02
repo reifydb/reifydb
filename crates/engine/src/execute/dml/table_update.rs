@@ -29,7 +29,7 @@ use reifydb_type::{
 use super::primary_key;
 use crate::{
 	execute::{
-		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
+		Batch, ExecutionContext, Executor, QueryNode, dml::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
 	stack::Stack,

@@ -62,7 +62,7 @@ pub mod tests {
 		// First creation should succeed
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateNamespace(plan.clone()),
 				Params::default(),
@@ -78,7 +78,7 @@ pub mod tests {
 		// should not error
 		plan.if_not_exists = true;
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateNamespace(plan.clone()),
 				Params::default(),
@@ -93,12 +93,7 @@ pub mod tests {
 		// false` should return error
 		plan.if_not_exists = false;
 		let err = instance
-			.execute_admin_plan(
-				&mut txn,
-				PhysicalPlan::CreateNamespace(plan),
-				Params::default(),
-				&mut stack,
-			)
+			.dispatch_admin(&mut txn, PhysicalPlan::CreateNamespace(plan), Params::default(), &mut stack)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");
 	}

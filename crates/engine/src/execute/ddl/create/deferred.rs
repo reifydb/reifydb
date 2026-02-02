@@ -80,7 +80,7 @@ pub mod tests {
 		// First creation should succeed
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
@@ -97,7 +97,7 @@ pub mod tests {
 		// should not error
 		plan.if_not_exists = true;
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
@@ -114,12 +114,7 @@ pub mod tests {
 		// should return error
 		plan.if_not_exists = false;
 		let err = instance
-			.execute_admin_plan(
-				&mut txn,
-				PhysicalPlan::CreateDeferredView(plan),
-				Params::default(),
-				&mut stack,
-			)
+			.dispatch_admin(&mut txn, PhysicalPlan::CreateDeferredView(plan), Params::default(), &mut stack)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
@@ -148,7 +143,7 @@ pub mod tests {
 
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
@@ -175,7 +170,7 @@ pub mod tests {
 		};
 
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
@@ -208,7 +203,7 @@ pub mod tests {
 		};
 
 		let mut stack = Stack::new();
-		instance.execute_admin_plan(
+		instance.dispatch_admin(
 			&mut txn,
 			PhysicalPlan::CreateDeferredView(plan),
 			Params::default(),

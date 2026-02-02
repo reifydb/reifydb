@@ -27,7 +27,7 @@ use tracing::instrument;
 use super::{primary_key, schema::get_or_create_table_schema};
 use crate::{
 	execute::{
-		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
+		Batch, ExecutionContext, Executor, QueryNode, dml::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
 	stack::Stack,

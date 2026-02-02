@@ -63,7 +63,7 @@ pub mod tests {
 	use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 	use crate::{
-		execute::{Executor, catalog::create::ringbuffer::CreateRingBufferNode},
+		execute::{Executor, ddl::create::ringbuffer::CreateRingBufferNode},
 		stack::Stack,
 		test_utils::create_test_admin_transaction,
 	};
@@ -90,7 +90,7 @@ pub mod tests {
 		// First creation should succeed
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateRingBuffer(plan.clone()),
 				Params::default(),
@@ -106,7 +106,7 @@ pub mod tests {
 		// true` should not error
 		plan.if_not_exists = true;
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateRingBuffer(plan.clone()),
 				Params::default(),
@@ -122,12 +122,7 @@ pub mod tests {
 		// false` should return error
 		plan.if_not_exists = false;
 		let err = instance
-			.execute_admin_plan(
-				&mut txn,
-				PhysicalPlan::CreateRingBuffer(plan),
-				Params::default(),
-				&mut stack,
-			)
+			.dispatch_admin(&mut txn, PhysicalPlan::CreateRingBuffer(plan), Params::default(), &mut stack)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_005");
 	}
@@ -153,7 +148,7 @@ pub mod tests {
 
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateRingBuffer(plan.clone()),
 				Params::default(),
@@ -176,7 +171,7 @@ pub mod tests {
 		};
 
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateRingBuffer(plan.clone()),
 				Params::default(),
@@ -211,12 +206,7 @@ pub mod tests {
 
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_admin_plan(
-				&mut txn,
-				PhysicalPlan::CreateRingBuffer(plan),
-				Params::default(),
-				&mut stack,
-			)
+			.dispatch_admin(&mut txn, PhysicalPlan::CreateRingBuffer(plan), Params::default(), &mut stack)
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("missing_schema".to_string()));

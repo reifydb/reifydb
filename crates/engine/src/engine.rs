@@ -47,7 +47,7 @@ use tracing::instrument;
 
 use crate::{
 	bulk_insert::builder::BulkInsertBuilder,
-	execute::{Admin, Command, ExecuteAdmin, ExecuteCommand, ExecuteQuery, Executor, Query},
+	execute::{Admin, Command, Executor, Query},
 	interceptor::catalog::MaterializedCatalogInterceptor,
 };
 
@@ -92,7 +92,7 @@ impl StandardEngine {
 	pub fn admin_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_admin()?;
-			let frames = self.executor.execute_admin(
+			let frames = self.executor.execute_admin_statements(
 				&mut txn,
 				Admin {
 					rql,
@@ -113,7 +113,7 @@ impl StandardEngine {
 	pub fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_command()?;
-			let frames = self.executor.execute_command(
+			let frames = self.executor.execute_command_statements(
 				&mut txn,
 				Command {
 					rql,
@@ -134,7 +134,7 @@ impl StandardEngine {
 	pub fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_query()?;
-			self.executor.execute_query(
+			self.executor.execute_query_statements(
 				&mut txn,
 				Query {
 					rql,
@@ -224,21 +224,6 @@ impl StandardEngine {
 		self.executor.virtual_table_registry.register(ns_def.id, name.to_string(), entry);
 		Ok(table_id)
 	}
-
-}
-
-impl ExecuteAdmin for StandardEngine {
-	#[inline]
-	fn execute_admin(&self, txn: &mut AdminTransaction, cmd: Admin<'_>) -> crate::Result<Vec<Frame>> {
-		self.executor.execute_admin(txn, cmd)
-	}
-}
-
-impl ExecuteCommand for StandardEngine {
-	#[inline]
-	fn execute_command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
-		self.executor.execute_command(txn, cmd)
-	}
 }
 
 impl CdcHost for StandardEngine {
@@ -264,13 +249,6 @@ impl CdcHost for StandardEngine {
 
 	fn schema_registry(&self) -> &reifydb_catalog::schema::SchemaRegistry {
 		&self.catalog.schema
-	}
-}
-
-impl ExecuteQuery for StandardEngine {
-	#[inline]
-	fn execute_query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
-		self.executor.execute_query(txn, qry)
 	}
 }
 

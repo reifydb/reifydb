@@ -58,7 +58,7 @@ pub mod tests {
 	};
 
 	use crate::{
-		execute::{Executor, catalog::create::dictionary::CreateDictionaryNode},
+		execute::{Executor, ddl::create::dictionary::CreateDictionaryNode},
 		stack::Stack,
 		test_utils::create_test_admin_transaction,
 	};
@@ -81,7 +81,7 @@ pub mod tests {
 		// First creation should succeed
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateDictionary(plan.clone()),
 				Params::default(),
@@ -97,7 +97,7 @@ pub mod tests {
 		// should not error
 		plan.if_not_exists = true;
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateDictionary(plan.clone()),
 				Params::default(),
@@ -113,12 +113,7 @@ pub mod tests {
 		// should return error
 		plan.if_not_exists = false;
 		let err = instance
-			.execute_admin_plan(
-				&mut txn,
-				PhysicalPlan::CreateDictionary(plan),
-				Params::default(),
-				&mut stack,
-			)
+			.dispatch_admin(&mut txn, PhysicalPlan::CreateDictionary(plan), Params::default(), &mut stack)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_006");
 	}
@@ -141,7 +136,7 @@ pub mod tests {
 
 		let mut stack = Stack::new();
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateDictionary(plan.clone()),
 				Params::default(),
@@ -162,7 +157,7 @@ pub mod tests {
 		};
 
 		let result = instance
-			.execute_admin_plan(
+			.dispatch_admin(
 				&mut txn,
 				PhysicalPlan::CreateDictionary(plan.clone()),
 				Params::default(),
