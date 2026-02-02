@@ -12,6 +12,7 @@ pub mod environment;
 pub mod evaluate;
 pub mod execute;
 pub mod flow;
+pub mod instruction;
 pub(crate) mod interceptor;
 pub mod stack;
 #[allow(unused)]

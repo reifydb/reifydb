@@ -136,6 +136,7 @@ impl Compiler {
 		let iterable_stmt = crate::ast::ast::AstStatement {
 			nodes: vec![iterable_ast],
 			has_pipes: false,
+			is_output: false,
 		};
 		let iterable = self.compile(iterable_stmt, tx)?;
 		let body = self.compile_block(&ast.body, tx)?;

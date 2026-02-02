@@ -74,6 +74,17 @@ impl QueryNode for VariableNode {
 					columns: frame_columns.clone(),
 				}))
 			}
+			Some(Variable::ForIterator {
+				columns,
+				..
+			}) => {
+				// Return the iterator's columns
+				self.executed = true;
+
+				Ok(Some(Batch {
+					columns: columns.clone(),
+				}))
+			}
 			None => {
 				// Variable not found - return error
 				return_error!(variable_not_found(variable_name));

@@ -40,7 +40,10 @@ impl StandardColumnEvaluator {
 					data,
 				})
 			}
-			Some(Variable::Frame(_)) => {
+			Some(Variable::Frame(_))
+			| Some(Variable::ForIterator {
+				..
+			}) => {
 				// Frame variables cannot be used directly in scalar expressions
 				// Return a clear error with helpful guidance
 				return_error!(variable_is_dataframe(variable_name));

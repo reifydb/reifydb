@@ -6,13 +6,18 @@ use std::collections::HashMap;
 use reifydb_core::{internal, value::column::columns::Columns};
 use reifydb_type::{error, error::diagnostic, value::Value};
 
-/// A variable can be either a scalar value or a dataframe
+/// A variable can be either a scalar value, a dataframe, or a FOR loop iterator
 #[derive(Debug, Clone)]
 pub enum Variable {
 	/// A scalar value that can be used directly in expressions
 	Scalar(Value),
 	/// A dataframe (columns) that requires explicit conversion to scalar
 	Frame(Columns),
+	/// A FOR loop iterator tracking position in a result set
+	ForIterator {
+		columns: Columns,
+		index: usize,
+	},
 }
 
 impl Variable {
@@ -30,15 +35,15 @@ impl Variable {
 	pub fn as_scalar(&self) -> Option<&Value> {
 		match self {
 			Variable::Scalar(value) => Some(value),
-			Variable::Frame(_) => None,
+			_ => None,
 		}
 	}
 
 	/// Get the frame if this is a frame variable
 	pub fn as_frame(&self) -> Option<&Columns> {
 		match self {
-			Variable::Scalar(_) => None,
 			Variable::Frame(columns) => Some(columns),
+			_ => None,
 		}
 	}
 }

@@ -24,6 +24,7 @@ use crate::ast::{
 pub struct AstStatement {
 	pub nodes: Vec<Ast>,
 	pub has_pipes: bool,
+	pub is_output: bool,
 }
 
 impl AstStatement {

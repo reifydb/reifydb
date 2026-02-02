@@ -95,6 +95,7 @@ impl Parser {
 		Ok(crate::ast::ast::AstStatement {
 			nodes,
 			has_pipes,
+			is_output: false,
 		})
 	}
 }

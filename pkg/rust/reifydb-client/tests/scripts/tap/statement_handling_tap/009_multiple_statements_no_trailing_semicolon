@@ -1,7 +1,7 @@
 # Generated from: statement_handling.tap.md#multiple_statements_no_trailing_semicolon
 # Test: Multiple statements without trailing semicolon
 
-command 'MAP 1 as x;MAP 2 as y'
+command 'OUTPUT MAP 1 as x;OUTPUT MAP 2 as y'
 ---
 > +-----+
 > |  x  |

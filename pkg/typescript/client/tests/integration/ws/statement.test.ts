@@ -70,7 +70,7 @@ describe('Statement', () => {
 
         it('mixed empty and non empty', async () => {
             const frames = await wsClient.admin(
-                ';MAP 1 as one ;;;MAP 2 as two',
+                ';OUTPUT MAP 1 as one ;;;MAP 2 as two',
                 {},
                 [
                     Schema.object({one: Schema.int4Value()}),
@@ -101,8 +101,8 @@ describe('Statement', () => {
 
         it('multiple statements, but same structure', async () => {
             const frames = await wsClient.admin(
-                'MAP 1 as result;' +
-                'MAP 2 as result;' +
+                'OUTPUT MAP 1 as result;' +
+                'OUTPUT MAP 2 as result;' +
                 'MAP 3 as result;',
                 {},
                 [
@@ -125,8 +125,8 @@ describe('Statement', () => {
 
         it('multiple statements, different structure', async () => {
             const frames = await wsClient.admin(
-                'MAP 1 as result;' +
-                'MAP { 2 as a, 3 as b };' +
+                'OUTPUT MAP 1 as result;' +
+                'OUTPUT MAP { 2 as a, 3 as b };' +
                 "MAP 'ReifyDB' as result;",
                 {},
                 [
@@ -183,7 +183,7 @@ describe('Statement', () => {
 
         it('mixed empty and non empty', async () => {
             const frames = await wsClient.command(
-                ';MAP 1 as one ;;;MAP 2 as two',
+                ';OUTPUT MAP 1 as one ;;;MAP 2 as two',
                 {},
                 [
                     Schema.object({one: Schema.int4Value()}),
@@ -214,8 +214,8 @@ describe('Statement', () => {
 
         it('multiple statements, but same structure', async () => {
             const frames = await wsClient.command(
-                'MAP 1 as result;' +
-                'MAP 2 as result;' +
+                'OUTPUT MAP 1 as result;' +
+                'OUTPUT MAP 2 as result;' +
                 'MAP 3 as result;',
                 {},
                 [
@@ -238,8 +238,8 @@ describe('Statement', () => {
 
         it('multiple statements, different structure', async () => {
             const frames = await wsClient.command(
-                'MAP 1 as result;' +
-                'MAP { 2 as a, 3 as b };' +
+                'OUTPUT MAP 1 as result;' +
+                'OUTPUT MAP { 2 as a, 3 as b };' +
                 "MAP 'ReifyDB' as result;",
                 {},
                 [
@@ -297,7 +297,7 @@ describe('Statement', () => {
 
         it('mixed empty and non empty', async () => {
             const frames = await wsClient.query(
-                ';MAP 1 as one ;;;MAP 2 as two',
+                ';OUTPUT MAP 1 as one ;;;MAP 2 as two',
                 {},
                 [
                     Schema.object({one: Schema.int4Value()}),
@@ -328,8 +328,8 @@ describe('Statement', () => {
 
         it('multiple statements, but same structure', async () => {
             const frames = await wsClient.query(
-                'MAP 1 as result;' +
-                'MAP 2 as result;' +
+                'OUTPUT MAP 1 as result;' +
+                'OUTPUT MAP 2 as result;' +
                 'MAP 3 as result;',
                 {},
                 [
@@ -352,8 +352,8 @@ describe('Statement', () => {
 
         it('multiple statements, different structure', async () => {
             const frames = await wsClient.query(
-                'MAP 1 as result;' +
-                'MAP { 2 as a, 3 as b } ;' +
+                'OUTPUT MAP 1 as result;' +
+                'OUTPUT MAP { 2 as a, 3 as b } ;' +
                 "MAP 'ReifyDB' as result;",
                 {},
                 [

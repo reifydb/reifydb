@@ -118,6 +118,14 @@ impl Parser {
 
 	/// Parse a single statement (possibly with pipes)
 	pub(crate) fn parse_statement(&mut self) -> crate::Result<AstStatement> {
+		// Check for OUTPUT prefix
+		let is_output = if !self.is_eof() && self.current()?.is_keyword(Keyword::Output) {
+			self.advance()?;
+			true
+		} else {
+			false
+		};
+
 		let mut nodes = Vec::with_capacity(8);
 		let mut has_pipes = false;
 		loop {
@@ -160,6 +168,7 @@ impl Parser {
 		Ok(AstStatement {
 			nodes,
 			has_pipes,
+			is_output,
 		})
 	}
 
@@ -195,6 +204,7 @@ impl Parser {
 		Ok(AstStatement {
 			nodes,
 			has_pipes,
+			is_output: false,
 		})
 	}
 
@@ -517,6 +527,7 @@ pub mod tests {
 	};
 
 	use crate::ast::{
+		ast::Ast,
 		parse::{Parser, Precedence, Precedence::Term},
 		tokenize::{
 			operator::Operator::Plus,
@@ -817,8 +828,44 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_mixed_pipe_and_newline() {
+	fn test_output_prefix_first_statement() {
 		use crate::ast::ast::Ast;
+		let tokens = tokenize("OUTPUT FROM users; FROM orders").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 2);
+		assert!(result[0].is_output, "First statement should have is_output = true");
+		assert!(!result[1].is_output, "Second statement should have is_output = false");
+		assert!(matches!(result[0].nodes[0], Ast::From(_)));
+		assert!(matches!(result[1].nodes[0], Ast::From(_)));
+	}
+
+	#[test]
+	fn test_output_prefix_not_present() {
+		let tokens = tokenize("FROM users; FROM orders").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 2);
+		assert!(!result[0].is_output);
+		assert!(!result[1].is_output);
+	}
+
+	#[test]
+	fn test_output_prefix_multiple() {
+		let tokens = tokenize("OUTPUT FROM users; OUTPUT FROM products; FROM orders").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 3);
+		assert!(result[0].is_output);
+		assert!(result[1].is_output);
+		assert!(!result[2].is_output);
+	}
+
+	#[test]
+	fn test_mixed_pipe_and_newline() {
 		let tokens = tokenize("from users | filter age > 18\nsort name | take 10").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();

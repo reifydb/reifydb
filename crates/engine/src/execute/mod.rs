@@ -84,22 +84,21 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
 };
-use reifydb_type::error::{
-	Error,
-	diagnostic::runtime::{break_outside_loop, continue_outside_loop},
-};
 use tracing::instrument;
 
 use crate::{
-	execute::query::join::{inner::InnerJoinNode, left::LeftJoinNode, natural::NaturalJoinNode},
+	execute::{
+		interpret::TransactionAccess,
+		query::join::{inner::InnerJoinNode, left::LeftJoinNode, natural::NaturalJoinNode},
+	},
+	instruction,
 	stack::{Stack, Variable},
 };
 
 pub mod ddl;
-pub(crate) mod dispatch;
 pub(crate) mod dml;
+pub(crate) mod interpret;
 pub mod query;
-pub(crate) mod vm;
 
 /// Unified trait for query execution nodes following the volcano iterator pattern
 
@@ -419,73 +418,28 @@ impl Executor {
 		cmd: Admin<'_>,
 	) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
+		let mut output_results: Vec<Frame> = Vec::new();
 		let statements = parse_str(cmd.rql)?;
 		let mut stack = Stack::new();
 		populate_stack(&mut stack, &cmd.params)?;
 
 		for statement in statements {
+			let is_output = statement.is_output;
 			if let Some(physical_plan) = plan(&self.catalog, txn, statement)? {
-				match &physical_plan {
-					PhysicalPlan::Loop(node) => {
-						let mut std_txn = Transaction::from(&mut *txn);
-						self.vm_loop(
-							&mut std_txn,
-							node,
-							cmd.params.clone(),
-							&mut stack,
-							&mut result,
-						)?;
-					}
-					PhysicalPlan::While(node) => {
-						let mut std_txn = Transaction::from(&mut *txn);
-						self.vm_while(
-							&mut std_txn,
-							node,
-							cmd.params.clone(),
-							&mut stack,
-							&mut result,
-						)?;
-					}
-					PhysicalPlan::For(node) => {
-						let mut std_txn = Transaction::from(&mut *txn);
-						self.vm_for(
-							&mut std_txn,
-							node,
-							cmd.params.clone(),
-							&mut stack,
-							&mut result,
-						)?;
-					}
-					PhysicalPlan::Break => {
-						return Err(Error(break_outside_loop()));
-					}
-					PhysicalPlan::Continue => {
-						return Err(Error(continue_outside_loop()));
-					}
-					_ => {
-						if let Some(columns) = self.dispatch_admin(
-							txn,
-							physical_plan,
-							cmd.params.clone(),
-							&mut stack,
-						)? {
-							result.push(Frame::from(columns));
-						}
-						match stack.control_flow {
-							crate::stack::ControlFlow::Break => {
-								return Err(Error(break_outside_loop()));
-							}
-							crate::stack::ControlFlow::Continue => {
-								return Err(Error(continue_outside_loop()));
-							}
-							crate::stack::ControlFlow::Normal => {}
-						}
-					}
+				result.clear();
+				let instructions = instruction::compile::compile(vec![physical_plan])?;
+				let mut tx = TransactionAccess::Admin(txn);
+				self.interpret(&mut tx, &instructions, &cmd.params, &mut stack, &mut result)?;
+
+				if is_output {
+					output_results.append(&mut result);
 				}
 			}
 		}
 
-		Ok(result)
+		let mut final_result = output_results;
+		final_result.append(&mut result);
+		Ok(final_result)
 	}
 
 	#[instrument(name = "executor::execute_command_statements", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
@@ -495,73 +449,28 @@ impl Executor {
 		cmd: Command<'_>,
 	) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
+		let mut output_results: Vec<Frame> = Vec::new();
 		let statements = parse_str(cmd.rql)?;
 		let mut stack = Stack::new();
 		populate_stack(&mut stack, &cmd.params)?;
 
 		for statement in statements {
+			let is_output = statement.is_output;
 			if let Some(physical_plan) = plan(&self.catalog, txn, statement)? {
-				match &physical_plan {
-					PhysicalPlan::Loop(node) => {
-						let mut std_txn = Transaction::from(&mut *txn);
-						self.vm_loop(
-							&mut std_txn,
-							node,
-							cmd.params.clone(),
-							&mut stack,
-							&mut result,
-						)?;
-					}
-					PhysicalPlan::While(node) => {
-						let mut std_txn = Transaction::from(&mut *txn);
-						self.vm_while(
-							&mut std_txn,
-							node,
-							cmd.params.clone(),
-							&mut stack,
-							&mut result,
-						)?;
-					}
-					PhysicalPlan::For(node) => {
-						let mut std_txn = Transaction::from(&mut *txn);
-						self.vm_for(
-							&mut std_txn,
-							node,
-							cmd.params.clone(),
-							&mut stack,
-							&mut result,
-						)?;
-					}
-					PhysicalPlan::Break => {
-						return Err(Error(break_outside_loop()));
-					}
-					PhysicalPlan::Continue => {
-						return Err(Error(continue_outside_loop()));
-					}
-					_ => {
-						if let Some(columns) = self.dispatch_command(
-							txn,
-							physical_plan,
-							cmd.params.clone(),
-							&mut stack,
-						)? {
-							result.push(Frame::from(columns));
-						}
-						match stack.control_flow {
-							crate::stack::ControlFlow::Break => {
-								return Err(Error(break_outside_loop()));
-							}
-							crate::stack::ControlFlow::Continue => {
-								return Err(Error(continue_outside_loop()));
-							}
-							crate::stack::ControlFlow::Normal => {}
-						}
-					}
+				result.clear();
+				let instructions = instruction::compile::compile(vec![physical_plan])?;
+				let mut tx = TransactionAccess::Command(txn);
+				self.interpret(&mut tx, &instructions, &cmd.params, &mut stack, &mut result)?;
+
+				if is_output {
+					output_results.append(&mut result);
 				}
 			}
 		}
 
-		Ok(result)
+		let mut final_result = output_results;
+		final_result.append(&mut result);
+		Ok(final_result)
 	}
 
 	#[instrument(name = "executor::execute_query_statements", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
@@ -571,73 +480,162 @@ impl Executor {
 		qry: Query<'_>,
 	) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
+		let mut output_results: Vec<Frame> = Vec::new();
 		let statements = parse_str(qry.rql)?;
 		let mut stack = Stack::new();
 		populate_stack(&mut stack, &qry.params)?;
 
 		for statement in statements {
+			let is_output = statement.is_output;
 			if let Some(physical_plan) = plan(&self.catalog, txn, statement)? {
-				match &physical_plan {
-					PhysicalPlan::Loop(node) => {
-						let mut std_txn = Transaction::from(&mut *txn);
-						self.vm_loop(
-							&mut std_txn,
-							node,
-							qry.params.clone(),
-							&mut stack,
-							&mut result,
-						)?;
-					}
-					PhysicalPlan::While(node) => {
-						let mut std_txn = Transaction::from(&mut *txn);
-						self.vm_while(
-							&mut std_txn,
-							node,
-							qry.params.clone(),
-							&mut stack,
-							&mut result,
-						)?;
-					}
-					PhysicalPlan::For(node) => {
-						let mut std_txn = Transaction::from(&mut *txn);
-						self.vm_for(
-							&mut std_txn,
-							node,
-							qry.params.clone(),
-							&mut stack,
-							&mut result,
-						)?;
-					}
-					PhysicalPlan::Break => {
-						return Err(Error(break_outside_loop()));
-					}
-					PhysicalPlan::Continue => {
-						return Err(Error(continue_outside_loop()));
-					}
-					_ => {
-						if let Some(columns) = self.dispatch_query(
-							txn,
-							physical_plan,
-							qry.params.clone(),
-							&mut stack,
-						)? {
-							result.push(Frame::from(columns));
-						}
-						match stack.control_flow {
-							crate::stack::ControlFlow::Break => {
-								return Err(Error(break_outside_loop()));
-							}
-							crate::stack::ControlFlow::Continue => {
-								return Err(Error(continue_outside_loop()));
-							}
-							crate::stack::ControlFlow::Normal => {}
-						}
-					}
+				result.clear();
+				let instructions = instruction::compile::compile(vec![physical_plan])?;
+				let mut tx = TransactionAccess::Query(txn);
+				self.interpret(&mut tx, &instructions, &qry.params, &mut stack, &mut result)?;
+
+				if is_output {
+					output_results.append(&mut result);
 				}
 			}
 		}
 
-		Ok(result)
+		let mut final_result = output_results;
+		final_result.append(&mut result);
+		Ok(final_result)
+	}
+
+	/// Dispatch a single PhysicalPlan in admin context.
+	/// Routes DDL to direct handlers, everything else through the query pipeline.
+	pub fn dispatch_admin<'a>(
+		&self,
+		txn: &'a mut AdminTransaction,
+		plan: PhysicalPlan,
+		params: Params,
+		stack: &mut Stack,
+	) -> crate::Result<Option<Columns>> {
+		match plan {
+			PhysicalPlan::AlterSequence(node) => Ok(Some(self.alter_table_sequence(txn, node)?)),
+			PhysicalPlan::CreateDeferredView(node) => Ok(Some(self.create_deferred_view(txn, node)?)),
+			PhysicalPlan::CreateTransactionalView(node) => {
+				Ok(Some(self.create_transactional_view(txn, node)?))
+			}
+			PhysicalPlan::CreateNamespace(node) => Ok(Some(self.create_namespace(txn, node)?)),
+			PhysicalPlan::CreateTable(node) => Ok(Some(self.create_table(txn, node)?)),
+			PhysicalPlan::CreateRingBuffer(node) => Ok(Some(self.create_ringbuffer(txn, node)?)),
+			PhysicalPlan::CreateFlow(node) => Ok(Some(self.create_flow(txn, node)?)),
+			PhysicalPlan::CreateDictionary(node) => Ok(Some(self.create_dictionary(txn, node)?)),
+			PhysicalPlan::CreateSubscription(node) => Ok(Some(self.create_subscription(txn, node)?)),
+			PhysicalPlan::AlterTable(node) => Ok(Some(self.alter_table(txn, node)?)),
+			PhysicalPlan::AlterView(node) => Ok(Some(self.execute_alter_view(txn, node)?)),
+			PhysicalPlan::AlterFlow(node) => Ok(Some(self.execute_alter_flow(txn, node)?)),
+			PhysicalPlan::Delete(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.delete(&mut std_txn, node, params)?))
+			}
+			PhysicalPlan::DeleteRingBuffer(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.delete_ringbuffer(&mut std_txn, node, params)?))
+			}
+			PhysicalPlan::InsertTable(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.insert_table(&mut std_txn, node, stack)?))
+			}
+			PhysicalPlan::InsertRingBuffer(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.insert_ringbuffer(&mut std_txn, node, params)?))
+			}
+			PhysicalPlan::InsertDictionary(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.insert_dictionary(&mut std_txn, node, stack)?))
+			}
+			PhysicalPlan::Update(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.update_table(&mut std_txn, node, params)?))
+			}
+			PhysicalPlan::UpdateRingBuffer(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.update_ringbuffer(&mut std_txn, node, params)?))
+			}
+			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
+				let mut std_txn = Transaction::from(txn);
+				self.query(&mut std_txn, plan, params, stack)?;
+				Ok(None)
+			}
+			other => {
+				let mut std_txn = Transaction::from(txn);
+				self.query(&mut std_txn, other, params, stack)
+			}
+		}
+	}
+
+	/// Dispatch a single PhysicalPlan in command context.
+	pub fn dispatch_command<'a>(
+		&self,
+		txn: &'a mut CommandTransaction,
+		plan: PhysicalPlan,
+		params: Params,
+		stack: &mut Stack,
+	) -> crate::Result<Option<Columns>> {
+		match plan {
+			PhysicalPlan::Delete(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.delete(&mut std_txn, node, params)?))
+			}
+			PhysicalPlan::DeleteRingBuffer(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.delete_ringbuffer(&mut std_txn, node, params)?))
+			}
+			PhysicalPlan::InsertTable(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.insert_table(&mut std_txn, node, stack)?))
+			}
+			PhysicalPlan::InsertRingBuffer(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.insert_ringbuffer(&mut std_txn, node, params)?))
+			}
+			PhysicalPlan::InsertDictionary(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.insert_dictionary(&mut std_txn, node, stack)?))
+			}
+			PhysicalPlan::Update(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.update_table(&mut std_txn, node, params)?))
+			}
+			PhysicalPlan::UpdateRingBuffer(node) => {
+				let mut std_txn = Transaction::from(txn);
+				Ok(Some(self.update_ringbuffer(&mut std_txn, node, params)?))
+			}
+			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
+				let mut std_txn = Transaction::from(txn);
+				self.query(&mut std_txn, plan, params, stack)?;
+				Ok(None)
+			}
+			other => {
+				let mut std_txn = Transaction::from(txn);
+				self.query(&mut std_txn, other, params, stack)
+			}
+		}
+	}
+
+	/// Dispatch a single PhysicalPlan in query context.
+	pub fn dispatch_query<'a>(
+		&self,
+		txn: &'a mut QueryTransaction,
+		plan: PhysicalPlan,
+		params: Params,
+		stack: &mut Stack,
+	) -> crate::Result<Option<Columns>> {
+		match plan {
+			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
+				let mut std_txn = Transaction::from(txn);
+				self.query(&mut std_txn, plan, params, stack)?;
+				Ok(None)
+			}
+			other => {
+				let mut std_txn = Transaction::from(txn);
+				self.query(&mut std_txn, other, params, stack)
+			}
+		}
 	}
 
 	#[instrument(name = "executor::query", level = "debug", skip(self, rx, plan, params, stack))]

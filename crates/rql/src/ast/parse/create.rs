@@ -205,6 +205,7 @@ impl Parser {
 			Some(crate::ast::ast::AstStatement {
 				nodes: query_nodes,
 				has_pipes,
+				is_output: false,
 			})
 		} else {
 			None
@@ -274,6 +275,7 @@ impl Parser {
 			Some(crate::ast::ast::AstStatement {
 				nodes: query_nodes,
 				has_pipes,
+				is_output: false,
 			})
 		} else {
 			None
@@ -344,6 +346,7 @@ impl Parser {
 			Some(crate::ast::ast::AstStatement {
 				nodes: query_nodes,
 				has_pipes,
+				is_output: false,
 			})
 		} else {
 			None
@@ -791,6 +794,7 @@ impl Parser {
 			crate::ast::ast::AstStatement {
 				nodes: query_nodes,
 				has_pipes,
+				is_output: false,
 			}
 		} else {
 			// Direct syntax - parse until semicolon or EOF
@@ -826,6 +830,7 @@ impl Parser {
 			crate::ast::ast::AstStatement {
 				nodes: query_nodes,
 				has_pipes,
+				is_output: false,
 			}
 		};
 
