@@ -25,6 +25,7 @@ pub use reifydb_core::{event::EventBus, interface::auth::Identity};
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
+pub use reifydb_function as function;
 pub use reifydb_rql as rql;
 pub use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,

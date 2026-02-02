@@ -18,6 +18,7 @@ default = ["console_error_panic_hook"]
 
 [dependencies]
 reifydb-engine = { workspace = true }
+reifydb-function = {workspace = true}
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-type = { workspace = true }

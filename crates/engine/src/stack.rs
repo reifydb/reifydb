@@ -47,6 +47,7 @@ impl Variable {
 #[derive(Debug, Clone)]
 pub struct Stack {
 	scopes: Vec<Scope>,
+	pub control_flow: ControlFlow,
 }
 
 /// Represents a single scope containing variables
@@ -63,6 +64,15 @@ pub enum ScopeType {
 	Function,
 	Block,
 	Conditional,
+	Loop,
+}
+
+/// Control flow signal for loop constructs
+#[derive(Debug, Clone, PartialEq)]
+pub enum ControlFlow {
+	Normal,
+	Break,
+	Continue,
 }
 
 /// Represents a variable binding with its value and mutability
@@ -82,6 +92,7 @@ impl Stack {
 
 		Self {
 			scopes: vec![global_scope],
+			control_flow: ControlFlow::Normal,
 		}
 	}
 
@@ -120,29 +131,29 @@ impl Stack {
 	}
 
 	/// Reassign an existing variable (checks mutability)
+	/// Searches from innermost to outermost scope to find the variable
 	pub fn reassign(&mut self, name: String, variable: Variable) -> crate::Result<()> {
-		let current_scope = self.scopes.last_mut().unwrap();
-
-		// Check if variable exists and is mutable
-		if let Some(existing) = current_scope.variables.get(&name) {
-			if !existing.mutable {
-				return Err(reifydb_type::error::Error(diagnostic::runtime::variable_is_immutable(
-					&name,
-				)));
+		// Search from innermost scope to outermost scope
+		for scope in self.scopes.iter_mut().rev() {
+			if let Some(existing) = scope.variables.get(&name) {
+				if !existing.mutable {
+					return Err(reifydb_type::error::Error(
+						diagnostic::runtime::variable_is_immutable(&name),
+					));
+				}
+				let mutable = existing.mutable;
+				scope.variables.insert(
+					name,
+					VariableBinding {
+						variable,
+						mutable,
+					},
+				);
+				return Ok(());
 			}
-			// Update existing variable, keeping its mutability
-			current_scope.variables.insert(
-				name,
-				VariableBinding {
-					variable,
-					mutable: existing.mutable,
-				},
-			);
-		} else {
-			return Err(reifydb_type::error::Error(diagnostic::runtime::variable_not_found(&name)));
 		}
 
-		Ok(())
+		Err(reifydb_type::error::Error(diagnostic::runtime::variable_not_found(&name)))
 	}
 
 	/// Set a variable specifically in the current scope
@@ -236,6 +247,7 @@ impl Stack {
 			variables: HashMap::new(),
 			scope_type: ScopeType::Global,
 		});
+		self.control_flow = ControlFlow::Normal;
 	}
 }
 

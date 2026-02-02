@@ -61,6 +61,21 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 	);
 
 	match plan {
+		LogicalPlan::Loop(_) => {
+			output.push_str(&format!("{}{} Loop\n", prefix, branch));
+		}
+		LogicalPlan::While(_) => {
+			output.push_str(&format!("{}{} While\n", prefix, branch));
+		}
+		LogicalPlan::For(_) => {
+			output.push_str(&format!("{}{} For\n", prefix, branch));
+		}
+		LogicalPlan::Break => {
+			output.push_str(&format!("{}{} Break\n", prefix, branch));
+		}
+		LogicalPlan::Continue => {
+			output.push_str(&format!("{}{} Continue\n", prefix, branch));
+		}
 		LogicalPlan::CreateDeferredView(_) => unimplemented!(),
 		LogicalPlan::CreateTransactionalView(_) => unimplemented!(),
 		LogicalPlan::CreateNamespace(_) => unimplemented!(),

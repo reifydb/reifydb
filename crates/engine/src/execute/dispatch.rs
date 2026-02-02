@@ -105,6 +105,22 @@ impl Executor {
 					"Merge operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 				)
 			}
+			PhysicalPlan::Loop(_) | PhysicalPlan::While(_) | PhysicalPlan::For(_) => {
+				reifydb_type::err!(reifydb_core::error::diagnostic::internal::internal_with_context(
+					"Loop constructs are handled at the VM level and should not reach dispatch",
+					file!(),
+					line!(),
+					column!(),
+					module_path!(),
+					module_path!()
+				))
+			}
+			PhysicalPlan::Break => Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::runtime::break_outside_loop(),
+			)),
+			PhysicalPlan::Continue => Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::runtime::continue_outside_loop(),
+			)),
 		}
 	}
 
@@ -207,6 +223,22 @@ impl Executor {
 				let mut std_txn = Transaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}
+			PhysicalPlan::Loop(_) | PhysicalPlan::While(_) | PhysicalPlan::For(_) => {
+				reifydb_type::err!(reifydb_core::error::diagnostic::internal::internal_with_context(
+					"Loop constructs are handled at the VM level and should not reach dispatch",
+					file!(),
+					line!(),
+					column!(),
+					module_path!(),
+					module_path!()
+				))
+			}
+			PhysicalPlan::Break => Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::runtime::break_outside_loop(),
+			)),
+			PhysicalPlan::Continue => Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::runtime::continue_outside_loop(),
+			)),
 		}
 	}
 
@@ -316,6 +348,22 @@ impl Executor {
 					module_path!()
 				))
 			}
+			PhysicalPlan::Loop(_) | PhysicalPlan::While(_) | PhysicalPlan::For(_) => {
+				reifydb_type::err!(reifydb_core::error::diagnostic::internal::internal_with_context(
+					"Loop constructs are handled at the VM level and should not reach dispatch",
+					file!(),
+					line!(),
+					column!(),
+					module_path!(),
+					module_path!()
+				))
+			}
+			PhysicalPlan::Break => Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::runtime::break_outside_loop(),
+			)),
+			PhysicalPlan::Continue => Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::runtime::continue_outside_loop(),
+			)),
 		}
 	}
 }

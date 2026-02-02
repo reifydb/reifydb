@@ -90,7 +90,7 @@ impl QueryNode for MapNode {
 					}
 				}
 
-				let column = evaluate(&eval_ctx, expr)?;
+				let column = evaluate(&eval_ctx, expr, &stored_ctx.executor.functions)?;
 
 				new_columns.push(column);
 			}
@@ -167,6 +167,7 @@ impl QueryNode for MapWithoutInputNode {
 					is_aggregate_context: false,
 				},
 				&expr,
+				&stored_ctx.executor.functions,
 			)?;
 
 			columns.push(column);

@@ -46,6 +46,54 @@ pub fn variable_is_dataframe(name: &str) -> Diagnostic {
 	}
 }
 
+/// BREAK used outside of a loop
+pub fn break_outside_loop() -> Diagnostic {
+	Diagnostic {
+		code: "RUNTIME_004".to_string(),
+		statement: None,
+		message: "BREAK can only be used inside a loop".to_string(),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("Use BREAK inside a LOOP, WHILE, or FOR block".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// CONTINUE used outside of a loop
+pub fn continue_outside_loop() -> Diagnostic {
+	Diagnostic {
+		code: "RUNTIME_005".to_string(),
+		statement: None,
+		message: "CONTINUE can only be used inside a loop".to_string(),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("Use CONTINUE inside a LOOP, WHILE, or FOR block".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// Loop exceeded maximum iteration limit
+pub fn max_iterations_exceeded(limit: usize) -> Diagnostic {
+	Diagnostic {
+		code: "RUNTIME_006".to_string(),
+		statement: None,
+		message: format!("Loop exceeded maximum iteration limit of {}", limit),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("Add a BREAK condition or use WHILE with a terminating condition".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 /// Variable is immutable and cannot be reassigned
 pub fn variable_is_immutable(name: &str) -> Diagnostic {
 	Diagnostic {

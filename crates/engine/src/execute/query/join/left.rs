@@ -97,7 +97,7 @@ impl QueryNode for LeftJoinNode {
 				};
 
 				let all_true = self.on.iter().fold(true, |acc, cond| {
-					let col = evaluate(&eval_ctx, cond).unwrap();
+					let col = evaluate(&eval_ctx, cond, &ctx.executor.functions).unwrap();
 					matches!(col.data().get_value(0), Value::Boolean(true)) && acc
 				});
 

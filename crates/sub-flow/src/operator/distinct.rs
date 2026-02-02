@@ -17,6 +17,7 @@ use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
 };
+use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_type::{
@@ -173,13 +174,18 @@ pub struct DistinctOperator {
 }
 
 impl DistinctOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
+	pub fn new(
+		parent: Arc<Operators>,
+		node: FlowNodeId,
+		expressions: Vec<Expression>,
+		functions: Functions,
+	) -> Self {
 		Self {
 			parent,
 			node,
 			expressions,
 			schema: Schema::testing(&[Type::Blob]),
-			column_evaluator: StandardColumnEvaluator::default(),
+			column_evaluator: StandardColumnEvaluator::new(functions),
 		}
 	}
 

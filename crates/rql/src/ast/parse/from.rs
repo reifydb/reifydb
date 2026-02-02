@@ -195,7 +195,7 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use crate::ast::{
-		ast::{AstFrom, InfixOperator::TypeAscription},
+		ast::{AstFrom, InfixOperator::As},
 		parse::Parser,
 		tokenize::tokenize,
 	};
@@ -476,14 +476,14 @@ pub mod tests {
 				assert_eq!(generator.nodes.len(), 2);
 
 				let first_param = generator.nodes[0].as_infix();
-				assert!(matches!(first_param.operator, crate::ast::ast::InfixOperator::As(_)));
+				assert!(matches!(first_param.operator, As(_)));
 				assert_eq!(first_param.left.as_literal_number().value(), "1");
 				assert_eq!(first_param.right.as_identifier().text(), "start");
 
 				let second_param = generator.nodes[1].as_infix();
-				assert!(matches!(second_param.operator, TypeAscription(_)));
-				assert_eq!(second_param.left.as_identifier().text(), "end");
-				assert_eq!(second_param.right.as_literal_number().value(), "100");
+				assert!(matches!(second_param.operator, As(_)));
+				assert_eq!(second_param.left.as_literal_number().value(), "100");
+				assert_eq!(second_param.right.as_identifier().text(), "end");
 			}
 			_ => unreachable!("Expected Generator"),
 		}

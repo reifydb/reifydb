@@ -77,7 +77,15 @@ impl FlowSubsystem {
 			let bus = event_bus.clone();
 			let clk = clock_for_factory.clone();
 
-			move || FlowEngine::new(cat, StandardColumnEvaluator::default(), exec, bus, clk)
+			move || {
+				FlowEngine::new(
+					cat,
+					StandardColumnEvaluator::new(exec.functions.clone()),
+					exec,
+					bus,
+					clk,
+				)
+			}
 		};
 
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());

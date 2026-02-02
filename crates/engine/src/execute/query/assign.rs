@@ -69,7 +69,8 @@ impl QueryNode for AssignNode {
 					is_aggregate_context: false,
 				};
 
-				let result_column = evaluate(&evaluation_context, expr)?;
+				let result_column =
+					evaluate(&evaluation_context, expr, &stored_ctx.executor.functions)?;
 				Columns::new(vec![result_column])
 			}
 			AssignValue::Statement(physical_plans) => {

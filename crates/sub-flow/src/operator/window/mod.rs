@@ -42,6 +42,7 @@ use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
 };
+use reifydb_function::registry::Functions;
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_runtime::{
 	clock::Clock,
@@ -167,6 +168,7 @@ impl WindowOperator {
 		max_window_count: Option<usize>,
 		max_window_age: Option<std::time::Duration>,
 		clock: Clock,
+		functions: Functions,
 	) -> Self {
 		Self {
 			parent,
@@ -177,7 +179,7 @@ impl WindowOperator {
 			group_by,
 			aggregations,
 			layout: Schema::testing(&[Type::Blob]),
-			column_evaluator: StandardColumnEvaluator::default(),
+			column_evaluator: StandardColumnEvaluator::new(functions),
 			row_number_provider: RowNumberProvider::new(node),
 			min_events: min_events.max(1), // Ensure at least 1 event is required
 			max_window_count,

@@ -24,6 +24,7 @@ use reifydb_core::{
 	},
 	util::ioc::IocContainer,
 };
+use reifydb_function::registry::Functions;
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
@@ -193,7 +194,7 @@ pub fn create_test_engine() -> StandardEngine {
 		eventbus.clone(),
 		Box::new(StandardInterceptorFactory::default()),
 		Catalog::new(materialized_catalog, schema_registry),
-		None,
+		Functions::builder().build(),
 		ioc,
 	);
 

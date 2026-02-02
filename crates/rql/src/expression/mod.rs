@@ -998,14 +998,14 @@ impl ExpressionCompiler {
 				// Compile condition
 				let condition = Box::new(Self::compile(*if_ast.condition)?);
 
-				// Compile then expression
-				let then_expr = Box::new(Self::compile(*if_ast.then_block)?);
+				// Compile then expression (take first expression from first statement in block)
+				let then_expr = Box::new(Self::compile_block_as_expr(&if_ast.then_block)?);
 
 				// Compile else_if chains
 				let mut else_ifs = Vec::new();
 				for else_if in if_ast.else_ifs {
 					let else_if_condition = Box::new(Self::compile(*else_if.condition)?);
-					let else_if_then = Box::new(Self::compile(*else_if.then_block)?);
+					let else_if_then = Box::new(Self::compile_block_as_expr(&else_if.then_block)?);
 					else_ifs.push(ElseIfExpression {
 						condition: else_if_condition,
 						then_expr: else_if_then,
@@ -1014,8 +1014,8 @@ impl ExpressionCompiler {
 				}
 
 				// Compile optional else expression
-				let else_expr = if let Some(else_block) = if_ast.else_block {
-					Some(Box::new(Self::compile(*else_block)?))
+				let else_expr = if let Some(ref else_block) = if_ast.else_block {
+					Some(Box::new(Self::compile_block_as_expr(else_block)?))
 				} else {
 					None
 				};
@@ -1065,6 +1065,21 @@ impl ExpressionCompiler {
 			}
 			ast => unimplemented!("{:?}", ast),
 		}
+	}
+
+	/// Compile an AstBlock as a single expression.
+	/// Takes the first expression from the first statement in the block.
+	/// Used for IF/ELSE blocks in expression context.
+	fn compile_block_as_expr(block: &crate::ast::ast::AstBlock) -> crate::Result<Expression> {
+		if let Some(first_stmt) = block.statements.first() {
+			if let Some(first_node) = first_stmt.nodes.first() {
+				return Self::compile(first_node.clone());
+			}
+		}
+		// Empty block → undefined
+		Ok(Expression::Constant(ConstantExpression::Undefined {
+			fragment: block.token.fragment.clone(),
+		}))
 	}
 
 	fn infix(ast: AstInfix) -> crate::Result<Expression> {

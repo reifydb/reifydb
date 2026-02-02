@@ -972,6 +972,68 @@ impl Compiler {
 					}));
 				}
 
+				LogicalPlan::Loop(loop_node) => {
+					let mut body = Vec::new();
+					for statement_plans in loop_node.body {
+						for logical_plan in statement_plans {
+							if let Some(physical_plan) =
+								self.compile(rx, vec![logical_plan])?
+							{
+								body.push(physical_plan);
+							}
+						}
+					}
+					stack.push(PhysicalPlan::Loop(LoopPhysicalNode {
+						body,
+					}));
+				}
+
+				LogicalPlan::While(while_node) => {
+					let mut body = Vec::new();
+					for statement_plans in while_node.body {
+						for logical_plan in statement_plans {
+							if let Some(physical_plan) =
+								self.compile(rx, vec![logical_plan])?
+							{
+								body.push(physical_plan);
+							}
+						}
+					}
+					stack.push(PhysicalPlan::While(WhilePhysicalNode {
+						condition: while_node.condition,
+						body,
+					}));
+				}
+
+				LogicalPlan::For(for_node) => {
+					let iterable = self
+						.compile(rx, for_node.iterable)?
+						.expect("For iterable must produce a plan");
+					let mut body = Vec::new();
+					for statement_plans in for_node.body {
+						for logical_plan in statement_plans {
+							if let Some(physical_plan) =
+								self.compile(rx, vec![logical_plan])?
+							{
+								body.push(physical_plan);
+							}
+						}
+					}
+					stack.push(PhysicalPlan::For(ForPhysicalNode {
+						variable_name: for_node.variable_name,
+						iterable: Box::new(iterable),
+						body,
+					}));
+				}
+
+				LogicalPlan::Break => {
+					stack.push(PhysicalPlan::Break);
+				}
+
+				LogicalPlan::Continue => {
+					stack.push(PhysicalPlan::Continue);
+				}
+
 				_ => unimplemented!(),
 			}
 		}
@@ -1018,6 +1080,11 @@ pub enum PhysicalPlan {
 	Environment(EnvironmentNode),
 	// Control flow
 	Conditional(ConditionalNode),
+	Loop(LoopPhysicalNode),
+	While(WhilePhysicalNode),
+	For(ForPhysicalNode),
+	Break,
+	Continue,
 
 	// Query
 	Aggregate(AggregateNode),
@@ -1187,6 +1254,24 @@ pub struct ConditionalNode {
 pub struct ElseIfBranch {
 	pub condition: Expression,
 	pub then_branch: Box<PhysicalPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LoopPhysicalNode {
+	pub body: Vec<PhysicalPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhilePhysicalNode {
+	pub condition: Expression,
+	pub body: Vec<PhysicalPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ForPhysicalNode {
+	pub variable_name: Fragment,
+	pub iterable: Box<PhysicalPlan>,
+	pub body: Vec<PhysicalPlan>,
 }
 
 #[derive(Debug, Clone)]

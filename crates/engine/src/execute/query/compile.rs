@@ -393,6 +393,13 @@ pub(crate) fn compile<'a>(
 			)
 		}
 
+		PhysicalPlan::Loop(_) | PhysicalPlan::While(_) | PhysicalPlan::For(_) => {
+			unreachable!("Loop constructs are handled at the VM level")
+		}
+
+		PhysicalPlan::Break => ExecutionPlan::Break,
+		PhysicalPlan::Continue => ExecutionPlan::Continue,
+
 		// Row-number optimized access nodes
 		PhysicalPlan::RowPointLookup(physical::RowPointLookupNode {
 			source,

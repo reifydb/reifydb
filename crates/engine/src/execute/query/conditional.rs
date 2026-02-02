@@ -63,7 +63,7 @@ impl<'a> ConditionalNode {
 		};
 
 		// Evaluate the condition expression
-		let result_column = evaluate(&evaluation_context, condition)?;
+		let result_column = evaluate(&evaluation_context, condition, &ctx.executor.functions)?;
 
 		// Extract the boolean value from the result
 		if let Some(first_value) = result_column.data().iter().next() {

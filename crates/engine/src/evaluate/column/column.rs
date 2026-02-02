@@ -674,6 +674,7 @@ pub mod tests {
 		interface::identifier::{ColumnIdentifier, ColumnPrimitive},
 		value::column::{Column, columns::Columns, data::ColumnData},
 	};
+	use reifydb_function::registry::Functions;
 	use reifydb_rql::expression::ColumnExpression;
 	use reifydb_type::{fragment::Fragment, params::Params};
 
@@ -698,7 +699,7 @@ pub mod tests {
 			is_aggregate_context: false,
 		};
 
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 
 		// Try to access a column that doesn't exist
 		let result = evaluator

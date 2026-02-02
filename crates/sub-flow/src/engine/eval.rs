@@ -75,6 +75,7 @@ pub fn evaluate_operator_config(
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+	use reifydb_function::registry::Functions;
 	use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_type::{fragment::Fragment, value::Value};
 
@@ -114,7 +115,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_expressions() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions: Vec<Expression> = vec![];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -124,7 +125,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_string() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![create_alias_expression("key1", create_constant_text("value1"))];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -135,7 +136,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_number() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![create_alias_expression("count", create_constant_number(42))];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -146,7 +147,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_bool() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![create_alias_expression("enabled", create_constant_bool(true))];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -157,7 +158,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_undefined() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![create_alias_expression("optional", create_constant_undefined())];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -168,7 +169,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_aliases() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![
 			create_alias_expression("key1", create_constant_text("value1")),
 			create_alias_expression("key2", create_constant_number(100)),
@@ -187,7 +188,7 @@ pub mod tests {
 
 	#[test]
 	fn test_non_alias_expressions_skipped() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![
 			create_alias_expression("valid", create_constant_text("included")),
 			create_constant_text("standalone"), // Non-alias, should be skipped
@@ -202,7 +203,7 @@ pub mod tests {
 
 	#[test]
 	fn test_only_non_alias_expressions() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions =
 			vec![create_constant_text("text"), create_constant_number(42), create_constant_bool(true)];
 
@@ -215,7 +216,7 @@ pub mod tests {
 
 	#[test]
 	fn test_all_basic_value_types() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![
 			create_alias_expression("text_val", create_constant_text("hello")),
 			create_alias_expression("num_val", create_constant_number(-42)),
@@ -236,7 +237,7 @@ pub mod tests {
 
 	#[test]
 	fn test_duplicate_alias_names_last_wins() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![
 			create_alias_expression("key", create_constant_text("first")),
 			create_alias_expression("key", create_constant_text("second")),
@@ -251,7 +252,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_string_value() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![create_alias_expression("empty", create_constant_text(""))];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -262,7 +263,7 @@ pub mod tests {
 
 	#[test]
 	fn test_special_characters_in_alias_name() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![
 			create_alias_expression("key_with_underscore", create_constant_number(1)),
 			create_alias_expression("keyWithCamelCase", create_constant_number(2)),
@@ -279,7 +280,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_number_values() {
-		let evaluator = StandardColumnEvaluator::default();
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
 		let expressions = vec![
 			create_alias_expression("small", create_constant_number(0)),
 			create_alias_expression("large_positive", create_constant_number(i64::MAX)),

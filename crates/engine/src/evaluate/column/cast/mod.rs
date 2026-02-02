@@ -83,6 +83,7 @@ pub fn cast_column_data(
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::value::column::data::ColumnData;
+	use reifydb_function::registry::Functions;
 	use reifydb_rql::expression::{
 		CastExpression, ConstantExpression,
 		ConstantExpression::Number,
@@ -108,6 +109,7 @@ pub mod tests {
 					ty: Type::Int4,
 				},
 			}),
+			&Functions::empty(),
 		)
 		.unwrap();
 
@@ -133,6 +135,7 @@ pub mod tests {
 					ty: Type::Int4,
 				},
 			}),
+			&Functions::empty(),
 		)
 		.unwrap();
 
@@ -158,6 +161,7 @@ pub mod tests {
 					ty: Type::Int1,
 				},
 			}),
+			&Functions::empty(),
 		)
 		.unwrap();
 
@@ -179,6 +183,7 @@ pub mod tests {
 					ty: Type::Float8,
 				},
 			}),
+			&Functions::empty(),
 		)
 		.unwrap();
 
@@ -200,6 +205,7 @@ pub mod tests {
 					ty: Type::Float4,
 				},
 			}),
+			&Functions::empty(),
 		)
 		.unwrap();
 
@@ -221,6 +227,7 @@ pub mod tests {
 					ty: Type::Float4,
 				},
 			}),
+			&Functions::empty(),
 		)
 		.unwrap();
 
@@ -242,6 +249,7 @@ pub mod tests {
 					ty: Type::Float8,
 				},
 			}),
+			&Functions::empty(),
 		)
 		.unwrap();
 
@@ -263,6 +271,7 @@ pub mod tests {
 					ty: Type::Boolean,
 				},
 			}),
+			&Functions::empty(),
 		)
 		.unwrap();
 
@@ -284,6 +293,7 @@ pub mod tests {
 					ty: Type::Boolean,
 				},
 			}),
+			&Functions::empty(),
 		);
 
 		assert!(result.is_err());
@@ -313,6 +323,7 @@ pub mod tests {
 					ty: Type::Date,
 				},
 			}),
+			&Functions::empty(),
 		);
 
 		assert!(result.is_err());
@@ -339,6 +350,7 @@ pub mod tests {
 					ty: Type::Decimal,
 				},
 			}),
+			&Functions::empty(),
 		)
 		.unwrap();
 

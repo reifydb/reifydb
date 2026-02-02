@@ -309,6 +309,11 @@ impl Compiler {
 			Ast::Insert(node) => self.compile_insert(node, tx),
 			Ast::Update(node) => self.compile_update(node, tx),
 			Ast::If(node) => self.compile_if(node, tx),
+			Ast::Loop(node) => self.compile_loop(node, tx),
+			Ast::While(node) => self.compile_while(node, tx),
+			Ast::For(node) => self.compile_for(node, tx),
+			Ast::Break(_) => Ok(LogicalPlan::Break),
+			Ast::Continue(_) => Ok(LogicalPlan::Continue),
 			Ast::Let(node) => self.compile_let(node, tx),
 			Ast::StatementExpression(node) => {
 				// Compile the inner expression and wrap it in a MAP
@@ -376,6 +381,10 @@ impl Compiler {
 			Ast::Literal(_) | Ast::Variable(_) | Ast::CallFunction(_) => {
 				let wrapped_map = Self::wrap_scalar_in_map(node);
 				self.compile_map(wrapped_map)
+			}
+			Ast::Block(_) => {
+				// Blocks are handled by their parent constructs (IF, LOOP, etc.)
+				return_error!(unsupported_ast_node(node.token().fragment.clone(), "standalone block"))
 			}
 			node => {
 				let node_type =
@@ -504,6 +513,11 @@ pub enum LogicalPlan {
 	Assign(AssignNode),
 	// Control flow
 	Conditional(ConditionalNode),
+	Loop(LoopNode),
+	While(WhileNode),
+	For(ForNode),
+	Break,
+	Continue,
 	// Query
 	Aggregate(AggregateNode),
 	Distinct(DistinctNode),
@@ -594,6 +608,24 @@ pub struct ConditionalNode {
 pub struct ElseIfBranch {
 	pub condition: Expression,
 	pub then_branch: Box<LogicalPlan>,
+}
+
+#[derive(Debug)]
+pub struct LoopNode {
+	pub body: Vec<Vec<LogicalPlan>>,
+}
+
+#[derive(Debug)]
+pub struct WhileNode {
+	pub condition: Expression,
+	pub body: Vec<Vec<LogicalPlan>>,
+}
+
+#[derive(Debug)]
+pub struct ForNode {
+	pub variable_name: Fragment,
+	pub iterable: Vec<LogicalPlan>,
+	pub body: Vec<Vec<LogicalPlan>>,
 }
 
 #[derive(Debug, Clone)]

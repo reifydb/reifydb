@@ -9,6 +9,10 @@ use crate::{AggregateFunction, GeneratorFunction, ScalarFunction};
 pub struct Functions(Arc<FunctionsInner>);
 
 impl Functions {
+	pub fn empty() -> Functions {
+		Functions::builder().build()
+	}
+
 	pub fn builder() -> FunctionsBuilder {
 		FunctionsBuilder(FunctionsInner {
 			scalars: HashMap::new(),
@@ -44,6 +48,18 @@ impl FunctionsInner {
 
 	pub fn get_generator(&self, name: &str) -> Option<Box<dyn GeneratorFunction>> {
 		self.generators.get(name).map(|func| func())
+	}
+
+	pub fn scalar_names(&self) -> Vec<&str> {
+		self.scalars.keys().map(|s| s.as_str()).collect()
+	}
+
+	pub fn aggregate_names(&self) -> Vec<&str> {
+		self.aggregates.keys().map(|s| s.as_str()).collect()
+	}
+
+	pub fn generator_names(&self) -> Vec<&str> {
+		self.generators.keys().map(|s| s.as_str()).collect()
 	}
 }
 

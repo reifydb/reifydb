@@ -301,6 +301,14 @@ impl FlowCompiler {
 				// TODO: Implement DictionaryScan for flow graphs
 				unimplemented!("DictionaryScan compilation not yet implemented for flow")
 			}
+
+			PhysicalPlan::Loop(_)
+			| PhysicalPlan::While(_)
+			| PhysicalPlan::For(_)
+			| PhysicalPlan::Break
+			| PhysicalPlan::Continue => {
+				unimplemented!("Loop constructs are not supported in flow compilation")
+			}
 		}
 	}
 }

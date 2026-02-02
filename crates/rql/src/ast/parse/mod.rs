@@ -4,6 +4,7 @@
 pub mod aggregate;
 pub mod alter;
 pub mod apply;
+pub mod block;
 pub mod call;
 pub mod cast;
 pub mod conditional;
@@ -24,6 +25,7 @@ pub mod join;
 pub mod r#let;
 pub mod list;
 pub mod literal;
+pub mod loop_construct;
 pub mod map;
 pub mod merge;
 pub mod policy;
@@ -478,8 +480,10 @@ impl Parser {
 			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
 		}
 
-		// Check if current token is identifier
-		if !self.tokens[self.position].is_identifier() {
+		// Check if current token is identifier or keyword (keywords can be used as field names)
+		if !self.tokens[self.position].is_identifier()
+			&& !matches!(self.tokens[self.position].kind, TokenKind::Keyword(_))
+		{
 			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
 		}
 

@@ -84,6 +84,10 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
 };
+use reifydb_type::error::{
+	Error,
+	diagnostic::runtime::{break_outside_loop, continue_outside_loop},
+};
 use tracing::instrument;
 
 use crate::{
@@ -95,6 +99,7 @@ pub mod ddl;
 pub(crate) mod dispatch;
 pub(crate) mod dml;
 pub mod query;
+pub(crate) mod vm;
 
 /// Unified trait for query execution nodes following the volcano iterator pattern
 
@@ -162,6 +167,9 @@ pub(crate) enum ExecutionPlan {
 	RowPointLookup(RowPointLookupNode),
 	RowListLookup(RowListLookupNode),
 	RowRangeScan(RowRangeScanNode),
+	// Control flow signals (for Break/Continue inside IF branches within loops)
+	Break,
+	Continue,
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -220,6 +228,7 @@ impl QueryNode for ExecutionPlan {
 			ExecutionPlan::RowPointLookup(node) => node.initialize(rx, ctx),
 			ExecutionPlan::RowListLookup(node) => node.initialize(rx, ctx),
 			ExecutionPlan::RowRangeScan(node) => node.initialize(rx, ctx),
+			ExecutionPlan::Break | ExecutionPlan::Continue => Ok(()),
 		}
 	}
 
@@ -254,6 +263,14 @@ impl QueryNode for ExecutionPlan {
 			ExecutionPlan::RowPointLookup(node) => node.next(rx, ctx),
 			ExecutionPlan::RowListLookup(node) => node.next(rx, ctx),
 			ExecutionPlan::RowRangeScan(node) => node.next(rx, ctx),
+			ExecutionPlan::Break => {
+				ctx.stack.control_flow = crate::stack::ControlFlow::Break;
+				Ok(None)
+			}
+			ExecutionPlan::Continue => {
+				ctx.stack.control_flow = crate::stack::ControlFlow::Continue;
+				Ok(None)
+			}
 		}
 	}
 
@@ -301,6 +318,7 @@ impl QueryNode for ExecutionPlan {
 			ExecutionPlan::RowPointLookup(node) => node.headers(),
 			ExecutionPlan::RowListLookup(node) => node.headers(),
 			ExecutionPlan::RowRangeScan(node) => node.headers(),
+			ExecutionPlan::Break | ExecutionPlan::Continue => None,
 		}
 	}
 }
@@ -407,10 +425,62 @@ impl Executor {
 
 		for statement in statements {
 			if let Some(physical_plan) = plan(&self.catalog, txn, statement)? {
-				if let Some(columns) =
-					self.dispatch_admin(txn, physical_plan, cmd.params.clone(), &mut stack)?
-				{
-					result.push(Frame::from(columns));
+				match &physical_plan {
+					PhysicalPlan::Loop(node) => {
+						let mut std_txn = Transaction::from(&mut *txn);
+						self.vm_loop(
+							&mut std_txn,
+							node,
+							cmd.params.clone(),
+							&mut stack,
+							&mut result,
+						)?;
+					}
+					PhysicalPlan::While(node) => {
+						let mut std_txn = Transaction::from(&mut *txn);
+						self.vm_while(
+							&mut std_txn,
+							node,
+							cmd.params.clone(),
+							&mut stack,
+							&mut result,
+						)?;
+					}
+					PhysicalPlan::For(node) => {
+						let mut std_txn = Transaction::from(&mut *txn);
+						self.vm_for(
+							&mut std_txn,
+							node,
+							cmd.params.clone(),
+							&mut stack,
+							&mut result,
+						)?;
+					}
+					PhysicalPlan::Break => {
+						return Err(Error(break_outside_loop()));
+					}
+					PhysicalPlan::Continue => {
+						return Err(Error(continue_outside_loop()));
+					}
+					_ => {
+						if let Some(columns) = self.dispatch_admin(
+							txn,
+							physical_plan,
+							cmd.params.clone(),
+							&mut stack,
+						)? {
+							result.push(Frame::from(columns));
+						}
+						match stack.control_flow {
+							crate::stack::ControlFlow::Break => {
+								return Err(Error(break_outside_loop()));
+							}
+							crate::stack::ControlFlow::Continue => {
+								return Err(Error(continue_outside_loop()));
+							}
+							crate::stack::ControlFlow::Normal => {}
+						}
+					}
 				}
 			}
 		}
@@ -431,10 +501,62 @@ impl Executor {
 
 		for statement in statements {
 			if let Some(physical_plan) = plan(&self.catalog, txn, statement)? {
-				if let Some(columns) =
-					self.dispatch_command(txn, physical_plan, cmd.params.clone(), &mut stack)?
-				{
-					result.push(Frame::from(columns));
+				match &physical_plan {
+					PhysicalPlan::Loop(node) => {
+						let mut std_txn = Transaction::from(&mut *txn);
+						self.vm_loop(
+							&mut std_txn,
+							node,
+							cmd.params.clone(),
+							&mut stack,
+							&mut result,
+						)?;
+					}
+					PhysicalPlan::While(node) => {
+						let mut std_txn = Transaction::from(&mut *txn);
+						self.vm_while(
+							&mut std_txn,
+							node,
+							cmd.params.clone(),
+							&mut stack,
+							&mut result,
+						)?;
+					}
+					PhysicalPlan::For(node) => {
+						let mut std_txn = Transaction::from(&mut *txn);
+						self.vm_for(
+							&mut std_txn,
+							node,
+							cmd.params.clone(),
+							&mut stack,
+							&mut result,
+						)?;
+					}
+					PhysicalPlan::Break => {
+						return Err(Error(break_outside_loop()));
+					}
+					PhysicalPlan::Continue => {
+						return Err(Error(continue_outside_loop()));
+					}
+					_ => {
+						if let Some(columns) = self.dispatch_command(
+							txn,
+							physical_plan,
+							cmd.params.clone(),
+							&mut stack,
+						)? {
+							result.push(Frame::from(columns));
+						}
+						match stack.control_flow {
+							crate::stack::ControlFlow::Break => {
+								return Err(Error(break_outside_loop()));
+							}
+							crate::stack::ControlFlow::Continue => {
+								return Err(Error(continue_outside_loop()));
+							}
+							crate::stack::ControlFlow::Normal => {}
+						}
+					}
 				}
 			}
 		}
@@ -455,10 +577,62 @@ impl Executor {
 
 		for statement in statements {
 			if let Some(physical_plan) = plan(&self.catalog, txn, statement)? {
-				if let Some(columns) =
-					self.dispatch_query(txn, physical_plan, qry.params.clone(), &mut stack)?
-				{
-					result.push(Frame::from(columns));
+				match &physical_plan {
+					PhysicalPlan::Loop(node) => {
+						let mut std_txn = Transaction::from(&mut *txn);
+						self.vm_loop(
+							&mut std_txn,
+							node,
+							qry.params.clone(),
+							&mut stack,
+							&mut result,
+						)?;
+					}
+					PhysicalPlan::While(node) => {
+						let mut std_txn = Transaction::from(&mut *txn);
+						self.vm_while(
+							&mut std_txn,
+							node,
+							qry.params.clone(),
+							&mut stack,
+							&mut result,
+						)?;
+					}
+					PhysicalPlan::For(node) => {
+						let mut std_txn = Transaction::from(&mut *txn);
+						self.vm_for(
+							&mut std_txn,
+							node,
+							qry.params.clone(),
+							&mut stack,
+							&mut result,
+						)?;
+					}
+					PhysicalPlan::Break => {
+						return Err(Error(break_outside_loop()));
+					}
+					PhysicalPlan::Continue => {
+						return Err(Error(continue_outside_loop()));
+					}
+					_ => {
+						if let Some(columns) = self.dispatch_query(
+							txn,
+							physical_plan,
+							qry.params.clone(),
+							&mut stack,
+						)? {
+							result.push(Frame::from(columns));
+						}
+						match stack.control_flow {
+							crate::stack::ControlFlow::Break => {
+								return Err(Error(break_outside_loop()));
+							}
+							crate::stack::ControlFlow::Continue => {
+								return Err(Error(continue_outside_loop()));
+							}
+							crate::stack::ControlFlow::Normal => {}
+						}
+					}
 				}
 			}
 		}

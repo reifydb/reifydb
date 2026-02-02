@@ -29,6 +29,7 @@ mod error;
 mod utils;
 
 pub use error::JsError;
+use reifydb_function::registry::Functions;
 use reifydb_store_multi::{
 	config::{HotConfig, MultiStoreConfig},
 	hot::storage::HotStorage,
@@ -132,7 +133,7 @@ impl WasmDB {
 			eventbus,
 			Box::new(StandardInterceptorFactory::default()),
 			Catalog::new(materialized_catalog, SchemaRegistry::new(single)),
-			None,
+			Functions::empty(),
 			ioc,
 		);
 

@@ -78,6 +78,9 @@ If         => "IF",
 Else       => "ELSE",
 End        => "END",
 Loop       => "LOOP",
+While      => "WHILE",
+Break      => "BREAK",
+Continue   => "CONTINUE",
 Return     => "RETURN",
 
 Define     => "DEFINE",
@@ -170,6 +173,9 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("ELSE", Keyword::Else);
 	map.insert("END", Keyword::End);
 	map.insert("LOOP", Keyword::Loop);
+	map.insert("WHILE", Keyword::While);
+	map.insert("BREAK", Keyword::Break);
+	map.insert("CONTINUE", Keyword::Continue);
 	map.insert("RETURN", Keyword::Return);
 	map.insert("DEFINE", Keyword::Define);
 	map.insert("FUNCTION", Keyword::Function);
@@ -339,6 +345,9 @@ pub mod tests {
 	test_keyword_else => (Else, "ELSE"),
 	test_keyword_end => (End, "END"),
 	test_keyword_loop => (Loop, "LOOP"),
+	test_keyword_while => (While, "WHILE"),
+	test_keyword_break => (Break, "BREAK"),
+	test_keyword_continue => (Continue, "CONTINUE"),
 	test_keyword_return => (Return, "RETURN"),
 	test_keyword_define => (Define, "DEFINE"),
 	test_keyword_function => (Function, "FUNCTION"),
@@ -471,6 +480,9 @@ pub mod tests {
 	test_not_keyword_else => ( "else"),
 	test_not_keyword_end => ( "end"),
 	test_not_keyword_loop => ( "loop"),
+	test_not_keyword_while => ( "while"),
+	test_not_keyword_break => ( "break"),
+	test_not_keyword_continue => ( "continue"),
 	test_not_keyword_return => ( "return"),
 	test_not_keyword_define => ( "define"),
 	test_not_keyword_function => ( "function"),

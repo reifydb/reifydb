@@ -14,6 +14,7 @@ use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
 };
+use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_type::{fragment::Fragment, params::Params, value::row_number::RowNumber};
 
@@ -31,12 +32,17 @@ pub struct MapOperator {
 }
 
 impl MapOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
+	pub fn new(
+		parent: Arc<Operators>,
+		node: FlowNodeId,
+		expressions: Vec<Expression>,
+		functions: Functions,
+	) -> Self {
 		Self {
 			parent,
 			node,
 			expressions,
-			column_evaluator: StandardColumnEvaluator::default(),
+			column_evaluator: StandardColumnEvaluator::new(functions),
 		}
 	}
 

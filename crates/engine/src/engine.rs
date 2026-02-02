@@ -28,7 +28,7 @@ use reifydb_core::{
 	},
 	util::ioc::IocContainer,
 };
-use reifydb_function::{math, registry::Functions, series, subscription};
+use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
 use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_transaction::{
@@ -283,27 +283,9 @@ impl StandardEngine {
 		event_bus: EventBus,
 		interceptors: Box<dyn InterceptorFactory>,
 		catalog: Catalog,
-		custom_functions: Option<Functions>,
+		functions: Functions,
 		ioc: IocContainer,
 	) -> Self {
-		let functions = custom_functions.unwrap_or_else(|| {
-			Functions::builder()
-				.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
-				.register_aggregate("math::min", math::aggregate::min::Min::new)
-				.register_aggregate("math::max", math::aggregate::max::Max::new)
-				.register_aggregate("math::avg", math::aggregate::avg::Avg::new)
-				.register_aggregate("math::count", math::aggregate::count::Count::new)
-				.register_scalar("math::abs", math::scalar::abs::Abs::new)
-				.register_scalar("math::avg", math::scalar::avg::Avg::new)
-				.register_generator("generate_series", series::GenerateSeries::new)
-				.register_generator(
-					"inspect_subscription",
-					subscription::inspect::InspectSubscription::new,
-				)
-				.build()
-		});
-
-		// Create the flow operator store and register the event listener
 		let flow_operator_store = FlowOperatorStore::new();
 		let listener = FlowOperatorEventListener::new(flow_operator_store.clone());
 		event_bus.register(listener);

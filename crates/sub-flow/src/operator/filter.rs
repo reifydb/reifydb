@@ -15,6 +15,7 @@ use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
 	stack::Stack,
 };
+use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_type::{
 	params::Params,
@@ -37,12 +38,17 @@ pub struct FilterOperator {
 }
 
 impl FilterOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, conditions: Vec<Expression>) -> Self {
+	pub fn new(
+		parent: Arc<Operators>,
+		node: FlowNodeId,
+		conditions: Vec<Expression>,
+		functions: Functions,
+	) -> Self {
 		Self {
 			parent,
 			node,
 			conditions,
-			column_evaluator: StandardColumnEvaluator::default(),
+			column_evaluator: StandardColumnEvaluator::new(functions),
 		}
 	}
 

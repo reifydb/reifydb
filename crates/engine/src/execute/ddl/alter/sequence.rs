@@ -65,6 +65,7 @@ impl Executor {
 				is_aggregate_context: false,
 			},
 			&plan.value,
+			&self.functions,
 		)?;
 
 		let data = value.data();

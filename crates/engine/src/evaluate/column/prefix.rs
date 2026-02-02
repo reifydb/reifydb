@@ -17,7 +17,7 @@ use reifydb_type::{
 	value::{decimal::Decimal, int::Int, uint::Uint},
 };
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator, evaluate};
+use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
 	pub(crate) fn prefix<'a>(
@@ -25,7 +25,7 @@ impl StandardColumnEvaluator {
 		ctx: &ColumnEvaluationContext,
 		prefix: &PrefixExpression,
 	) -> crate::Result<Column> {
-		let column = evaluate(ctx, &prefix.expression)?;
+		let column = self.evaluate(ctx, &prefix.expression)?;
 
 		match column.data() {
 			ColumnData::Bool(container) => match prefix.operator {

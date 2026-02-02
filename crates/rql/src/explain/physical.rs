@@ -63,6 +63,21 @@ fn with_child_prefix<F: FnOnce(&str)>(prefix: &str, is_last: bool, f: F) {
 
 fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, output: &mut String) {
 	match plan {
+		PhysicalPlan::Loop(_) => {
+			output.push_str(&format!("{}Loop\n", prefix));
+		}
+		PhysicalPlan::While(_) => {
+			output.push_str(&format!("{}While\n", prefix));
+		}
+		PhysicalPlan::For(_) => {
+			output.push_str(&format!("{}For\n", prefix));
+		}
+		PhysicalPlan::Break => {
+			output.push_str(&format!("{}Break\n", prefix));
+		}
+		PhysicalPlan::Continue => {
+			output.push_str(&format!("{}Continue\n", prefix));
+		}
 		PhysicalPlan::CreateDeferredView(_) => unimplemented!(),
 		PhysicalPlan::CreateTransactionalView(_) => unimplemented!(),
 		PhysicalPlan::CreateNamespace(_) => unimplemented!(),

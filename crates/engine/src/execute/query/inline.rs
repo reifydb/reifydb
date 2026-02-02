@@ -180,7 +180,11 @@ impl<'a> InlineDataNode {
 						is_aggregate_context: false,
 					};
 
-					let evaluated = evaluate(&ctx, &alias_expr.expression)?;
+					let evaluated = evaluate(
+						&ctx,
+						&alias_expr.expression,
+						&self.context.as_ref().unwrap().executor.functions,
+					)?;
 
 					// Take the first value from the
 					// evaluated result
@@ -346,7 +350,11 @@ impl<'a> InlineDataNode {
 						is_aggregate_context: false,
 					};
 
-					let evaluated = evaluate(&ctx, &alias_expr.expression)?;
+					let evaluated = evaluate(
+						&ctx,
+						&alias_expr.expression,
+						&self.context.as_ref().unwrap().executor.functions,
+					)?;
 
 					// Ensure we always add exactly one
 					// value

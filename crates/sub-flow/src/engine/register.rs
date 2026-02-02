@@ -156,7 +156,12 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Filter(FilterOperator::new(parent, node.id, conditions))),
+					Arc::new(Operators::Filter(FilterOperator::new(
+						parent,
+						node.id,
+						conditions,
+						self.executor.functions.clone(),
+					))),
 				);
 			}
 			Map {
@@ -169,7 +174,12 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Map(MapOperator::new(parent, node.id, expressions))),
+					Arc::new(Operators::Map(MapOperator::new(
+						parent,
+						node.id,
+						expressions,
+						self.executor.functions.clone(),
+					))),
 				);
 			}
 			Extend {
@@ -268,6 +278,7 @@ impl FlowEngine {
 						parent,
 						node.id,
 						expressions,
+						self.executor.functions.clone(),
 					))),
 				);
 			}
@@ -364,6 +375,7 @@ impl FlowEngine {
 					max_window_count.clone(),
 					max_window_age.clone(),
 					self.clock.clone(),
+					self.executor.functions.clone(),
 				);
 				self.operators.insert(node.id, Arc::new(Operators::Window(operator)));
 			}
