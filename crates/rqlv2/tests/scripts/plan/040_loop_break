@@ -1,8 +1,0 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
-# Copyright (c) 2025 ReifyDB
-
-# Test loop with break
-plan 'loop { break }'
----
-LOOP
-  BREAK

@@ -36,7 +36,6 @@ use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_rql::RqlVersion;
-use reifydb_rqlv2::{self, compiler::Compiler};
 use reifydb_runtime::SharedRuntime;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
@@ -181,10 +180,7 @@ impl DatabaseBuilder {
 		Self::load_materialized_catalog(&multi, &single, &catalog)?;
 		Self::load_schema_registry(&multi, &single, &schema_registry)?;
 
-		// Create and register Compiler (requires SharedRuntime to be registered first)
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
-		let compiler = Compiler::new(catalog.clone());
-		self.ioc = self.ioc.register(compiler);
 
 		// Create and register CdcStore for CDC storage
 		let cdc_store = CdcStore::memory();

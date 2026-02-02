@@ -16,7 +16,6 @@ reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }
-reifydb-rqlv2 = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-subscription = { workspace = true}

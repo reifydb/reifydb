@@ -27,11 +27,9 @@ use reifydb_core::{
 		},
 	},
 	util::ioc::IocContainer,
-	value::column::columns::Columns,
 };
 use reifydb_function::{math, registry::Functions, series, subscription};
 use reifydb_metric::metric::MetricReader;
-use reifydb_rqlv2::compiler::Compiler;
 use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_transaction::{
 	interceptor::factory::InterceptorFactory,
@@ -40,14 +38,10 @@ use reifydb_transaction::{
 	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_type::{
-	error::{Error, diagnostic},
+	error::Error,
 	fragment::Fragment,
 	params::Params,
 	value::{constraint::TypeConstraint, frame::frame::Frame},
-};
-use reifydb_vm::{
-	pipeline::collect,
-	runtime::{context::VmContext, state::VmState},
 };
 use tracing::instrument;
 
@@ -231,176 +225,6 @@ impl StandardEngine {
 		Ok(table_id)
 	}
 
-	#[instrument(name = "engine::query_new", level = "debug", skip(self, _params), fields(rql = %rql))]
-	pub fn query_new_as(&self, _identity: &Identity, rql: &str, _params: Params) -> Result<Vec<Frame>, Error> {
-		let catalog = self.catalog();
-		let rql_for_errors = rql.to_string();
-
-		let program = self.compiler.compile(rql)?;
-
-		// Step 2: Create a new transaction for execution
-		let mut exec_tx = self.begin_query().map_err(|e| {
-			let diagnostic = diagnostic::Diagnostic {
-				code: "VM_ERROR".to_string(),
-				statement: Some(rql_for_errors.clone()),
-				message: format!("Failed to begin transaction for execution: {}", e),
-				column: None,
-				fragment: Fragment::default(),
-				label: None,
-				help: None,
-				notes: Vec::new(),
-				cause: None,
-				operator_chain: None,
-			};
-			Error(diagnostic)
-		})?;
-
-		// Step 3: Execute the bytecode
-		let context = Arc::new(VmContext::with_catalog(catalog));
-		let mut vm = VmState::new(program, context);
-
-		let pipeline = vm
-			.execute(&mut exec_tx)
-			.map_err(|e| {
-				let diagnostic = diagnostic::Diagnostic {
-					code: "VM_ERROR".to_string(),
-					statement: Some(rql_for_errors.clone()),
-					message: format!("Execution failed: {}", e),
-					column: None,
-					fragment: Fragment::default(),
-					label: None,
-					help: None,
-					notes: Vec::new(),
-					cause: None,
-					operator_chain: None,
-				};
-				Error(diagnostic)
-			})?
-			.ok_or_else(|| {
-				let diagnostic = diagnostic::Diagnostic {
-					code: "VM_ERROR".to_string(),
-					statement: Some(rql_for_errors.clone()),
-					message: "Query produced no result".to_string(),
-					column: None,
-					fragment: Fragment::default(),
-					label: None,
-					help: None,
-					notes: Vec::new(),
-					cause: None,
-					operator_chain: None,
-				};
-				Error(diagnostic)
-			})?;
-
-		// Step 4: Collect results
-		let columns = collect(pipeline).map_err(|e| {
-			let diagnostic = diagnostic::Diagnostic {
-				code: "VM_ERROR".to_string(),
-				statement: Some(rql_for_errors.clone()),
-				message: format!("Collection failed: {}", e),
-				column: None,
-				fragment: Fragment::default(),
-				label: None,
-				help: None,
-				notes: Vec::new(),
-				cause: None,
-				operator_chain: None,
-			};
-			Error(diagnostic)
-		})?;
-
-		Ok(vec![Frame::from(columns)])
-	}
-
-	/// Execute a DDL/DML command using the new RQLv2/VM stack.
-	///
-	/// This is similar to `command_as()` but uses the new bytecode-based execution.
-	#[instrument(name = "engine::command_new", level = "debug", skip(self, _params), fields(rql = %rql))]
-	pub fn command_new_as(&self, _identity: &Identity, rql: &str, _params: Params) -> Result<Vec<Frame>, Error> {
-		let catalog = self.catalog();
-		let rql_for_errors = rql.to_string();
-
-		// Step 1: Compile to bytecode
-		let program = self.compiler.compile(rql)?;
-
-		// Step 2: Begin a command transaction
-		let mut exec_tx = self.begin_command().map_err(|e| {
-			let diagnostic = diagnostic::Diagnostic {
-				code: "VM_ERROR".to_string(),
-				statement: Some(rql_for_errors.clone()),
-				message: format!("Failed to begin command transaction: {}", e),
-				column: None,
-				fragment: Fragment::default(),
-				label: None,
-				help: None,
-				notes: Vec::new(),
-				cause: None,
-				operator_chain: None,
-			};
-			Error(diagnostic)
-		})?;
-
-		// Step 3: Execute the bytecode
-		let context = Arc::new(VmContext::with_catalog(catalog));
-		let mut vm = VmState::new(program, context);
-
-		let pipeline = vm.execute(&mut exec_tx).map_err(|e| {
-			let diagnostic = diagnostic::Diagnostic {
-				code: "VM_ERROR".to_string(),
-				statement: Some(rql_for_errors.clone()),
-				message: format!("Command execution failed: {}", e),
-				column: None,
-				fragment: Fragment::default(),
-				label: None,
-				help: None,
-				notes: Vec::new(),
-				cause: None,
-				operator_chain: None,
-			};
-			Error(diagnostic)
-		})?;
-
-		// Step 4: Collect results
-		let columns = if let Some(pipeline) = pipeline {
-			collect(pipeline).map_err(|e| {
-				let diagnostic = diagnostic::Diagnostic {
-					code: "VM_ERROR".to_string(),
-					statement: Some(rql_for_errors.clone()),
-					message: format!("Collection failed: {}", e),
-					column: None,
-					fragment: Fragment::default(),
-					label: None,
-					help: None,
-					notes: Vec::new(),
-					cause: None,
-					operator_chain: None,
-				};
-				Error(diagnostic)
-			})?
-		} else {
-			// Commands may not produce output (e.g., CREATE TABLE)
-			Columns::empty()
-		};
-
-		// Step 5: Commit the transaction
-		exec_tx.commit().map_err(|e| {
-			let diagnostic = diagnostic::Diagnostic {
-				code: "VM_ERROR".to_string(),
-				statement: Some(rql_for_errors.clone()),
-				message: format!("Failed to commit transaction: {}", e),
-				column: None,
-				fragment: Fragment::default(),
-				label: None,
-				help: None,
-				notes: Vec::new(),
-				cause: None,
-				operator_chain: None,
-			};
-			Error(diagnostic)
-		})?;
-
-		Ok(vec![Frame::from(columns)])
-	}
 }
 
 impl ExecuteAdmin for StandardEngine {
@@ -472,7 +296,6 @@ pub struct Inner {
 	interceptors: Box<dyn InterceptorFactory>,
 	catalog: Catalog,
 	flow_operator_store: FlowOperatorStore,
-	compiler: Compiler,
 }
 
 impl StandardEngine {
@@ -513,8 +336,6 @@ impl StandardEngine {
 			.expect("SingleStore must be registered in IocContainer for metrics");
 		let stats_reader = MetricReader::new(metrics_store);
 
-		let compiler = ioc.resolve::<Compiler>().expect("Compiler must be registered in IocContainer");
-
 		Self(Arc::new(Inner {
 			multi,
 			single,
@@ -529,7 +350,6 @@ impl StandardEngine {
 			interceptors,
 			catalog,
 			flow_operator_store,
-			compiler,
 		}))
 	}
 

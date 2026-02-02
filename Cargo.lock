@@ -1611,7 +1611,6 @@ dependencies = [
  "reifydb-function",
  "reifydb-metric",
  "reifydb-rql",
- "reifydb-rqlv2",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -1768,13 +1767,11 @@ dependencies = [
  "reifydb-function",
  "reifydb-metric",
  "reifydb-rql",
- "reifydb-rqlv2",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-transaction",
  "reifydb-type",
- "reifydb-vm",
  "serde",
  "serde_json",
  "tracing",
@@ -1842,23 +1839,6 @@ dependencies = [
  "serde_json",
  "test_each_file",
  "tokio",
- "tracing",
-]
-
-[[package]]
-name = "reifydb-rqlv2"
-version = "0.2.0"
-dependencies = [
- "bumpalo",
- "reifydb",
- "reifydb-catalog",
- "reifydb-core",
- "reifydb-function",
- "reifydb-runtime",
- "reifydb-testing",
- "reifydb-transaction",
- "reifydb-type",
- "test_each_file",
  "tracing",
 ]
 
@@ -2162,21 +2142,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-vm"
-version = "0.2.0"
-dependencies = [
- "reifydb-catalog",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-function",
- "reifydb-rqlv2",
- "reifydb-store-multi",
- "reifydb-store-single",
- "reifydb-transaction",
- "reifydb-type",
-]
-
-[[package]]
 name = "reifydb-webassembly"
 version = "0.2.0"
 dependencies = [
@@ -2187,7 +2152,6 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-rqlv2",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",

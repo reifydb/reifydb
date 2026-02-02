@@ -25,7 +25,6 @@ reifydb-core = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-rqlv2 = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sub-flow = { workspace = true }
 reifydb-cdc = { workspace = true }

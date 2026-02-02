@@ -25,13 +25,10 @@ reifydb-abi = { workspace = true }
 reifydb-metric = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }
-reifydb-rqlv2 = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
-reifydb-vm = { workspace = true }
-
 tracing = { workspace = true }
 postcard = { workspace = true }
 once_cell = { workspace = true }

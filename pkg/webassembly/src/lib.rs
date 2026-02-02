@@ -60,7 +60,6 @@ impl WasmDB {
 	pub fn new() -> Result<WasmDB, JsValue> {
 		use reifydb_catalog::{catalog::Catalog, materialized::MaterializedCatalog};
 		use reifydb_core::{event::EventBus, util::ioc::IocContainer};
-		use reifydb_rqlv2::compiler::Compiler;
 		use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 		use reifydb_transaction::{
 			interceptor::factory::StandardInterceptorFactory, multi::transaction::MultiTransaction,
@@ -114,9 +113,6 @@ impl WasmDB {
 		ioc = ioc.register(materialized_catalog.clone());
 
 		ioc = ioc.register(runtime.clone());
-
-		let compiler = Compiler::new(materialized_catalog.clone());
-		ioc = ioc.register(compiler);
 
 		// Register metrics store for engine
 		ioc = ioc.register(single_store.clone());

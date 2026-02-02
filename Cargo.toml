@@ -18,14 +18,12 @@ members = [
     "crates/runtime",
     "crates/sdk",
     "crates/rql",
-    "crates/rqlv2",
     "crates/store-column",
     "crates/store-multi",
     "crates/store-single",
     "crates/testing",
     "crates/transaction",
     "crates/type",
-    "crates/vm",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-server-admin",
@@ -71,14 +69,12 @@ default-members = [
     "crates/runtime",
     "crates/sdk",
     "crates/rql",
-    "crates/rqlv2",
     "crates/store-column",
     "crates/store-multi",
     "crates/store-single",
     "crates/testing",
     "crates/transaction",
     "crates/type",
-    "crates/vm",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-server-admin",
@@ -155,14 +151,12 @@ reifydb-abi = { version = "0.2.0", path = "crates/abi" }
 reifydb-runtime = { version = "0.2.0", path = "crates/runtime" }
 reifydb-sdk = { version = "0.2.0", path = "crates/sdk" }
 reifydb-rql = { version = "0.2.0", path = "crates/rql" }
-reifydb-rqlv2 = { version = "0.2.0", path = "crates/rqlv2" }
 reifydb-store-column = { version = "0.2.0", path = "crates/store-column" }
 reifydb-store-multi = { version = "0.2.0", path = "crates/store-multi" }
 reifydb-store-single = { version = "0.2.0", path = "crates/store-single" }
 reifydb-testing = { version = "0.2.0", path = "crates/testing" }
 reifydb-transaction = { version = "0.2.0", path = "crates/transaction" }
 reifydb-type = { version = "0.2.0", path = "crates/type" }
-reifydb-vm = { version = "0.2.0", path = "crates/vm" }
 reifydb-macro = { version = "0.2.0", path = "crates/macro" }
 reifydb-macro-impl = { version = "0.2.0", path = "crates/macro-impl" }
 

@@ -27,7 +27,6 @@ use reifydb_core::{
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
-use reifydb_rqlv2::compiler::Compiler;
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::system::{ActorSystem, ActorSystemConfig},
@@ -167,9 +166,6 @@ pub fn create_test_engine() -> StandardEngine {
 	ioc = ioc.register(schema_registry.clone());
 
 	ioc = ioc.register(runtime.clone());
-
-	let compiler = Compiler::new(materialized_catalog.clone());
-	ioc = ioc.register(compiler);
 
 	let metrics_store = single_store.clone();
 
