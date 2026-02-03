@@ -1051,6 +1051,50 @@ impl Compiler {
 					stack.push(PhysicalPlan::Continue);
 				}
 
+				LogicalPlan::DefineFunction(def_node) => {
+					// Convert parameters
+					let parameters: Vec<FunctionParameter> = def_node
+						.parameters
+						.into_iter()
+						.map(|p| FunctionParameter {
+							name: p.name,
+							type_constraint: p.type_constraint,
+						})
+						.collect();
+
+					// Compile the body
+					let mut body = Vec::new();
+					for statement_plans in def_node.body {
+						for logical_plan in statement_plans {
+							if let Some(physical_plan) =
+								self.compile(rx, vec![logical_plan])?
+							{
+								body.push(physical_plan);
+							}
+						}
+					}
+
+					stack.push(PhysicalPlan::DefineFunction(DefineFunctionNode {
+						name: def_node.name,
+						parameters,
+						return_type: def_node.return_type,
+						body,
+					}));
+				}
+
+				LogicalPlan::Return(ret_node) => {
+					stack.push(PhysicalPlan::Return(ReturnNode {
+						value: ret_node.value,
+					}));
+				}
+
+				LogicalPlan::CallFunction(call_node) => {
+					stack.push(PhysicalPlan::CallFunction(CallFunctionNode {
+						name: call_node.name,
+						arguments: call_node.arguments,
+					}));
+				}
+
 				_ => unimplemented!(),
 			}
 		}
@@ -1102,6 +1146,10 @@ pub enum PhysicalPlan {
 	For(ForPhysicalNode),
 	Break,
 	Continue,
+	// User-defined functions
+	DefineFunction(DefineFunctionNode),
+	Return(ReturnNode),
+	CallFunction(CallFunctionNode),
 
 	// Query
 	Aggregate(AggregateNode),
@@ -1290,6 +1338,44 @@ pub struct ForPhysicalNode {
 	pub variable_name: Fragment,
 	pub iterable: Box<PhysicalPlan>,
 	pub body: Vec<PhysicalPlan>,
+}
+
+/// A function parameter in the physical plan
+#[derive(Debug, Clone)]
+pub struct FunctionParameter {
+	/// Parameter name (includes $)
+	pub name: Fragment,
+	/// Optional type constraint
+	pub type_constraint: Option<TypeConstraint>,
+}
+
+/// Define a user-defined function
+#[derive(Debug, Clone)]
+pub struct DefineFunctionNode {
+	/// Function name
+	pub name: Fragment,
+	/// Function parameters
+	pub parameters: Vec<FunctionParameter>,
+	/// Optional return type constraint
+	pub return_type: Option<TypeConstraint>,
+	/// Function body as physical plans
+	pub body: Vec<PhysicalPlan>,
+}
+
+/// Return statement
+#[derive(Debug, Clone)]
+pub struct ReturnNode {
+	/// Optional return value expression
+	pub value: Option<Expression>,
+}
+
+/// Call a function (built-in or user-defined)
+#[derive(Debug, Clone)]
+pub struct CallFunctionNode {
+	/// Function name to call
+	pub name: Fragment,
+	/// Arguments to pass
+	pub arguments: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]

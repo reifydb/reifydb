@@ -608,5 +608,64 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 				),
 			);
 		}
+
+		PhysicalPlan::DefineFunction(def) => {
+			let params: Vec<String> = def
+				.parameters
+				.iter()
+				.map(|p| {
+					if let Some(ref tc) = p.type_constraint {
+						format!("${}: {:?}", p.name.text(), tc)
+					} else {
+						format!("${}", p.name.text())
+					}
+				})
+				.collect();
+			let return_str = if let Some(ref rt) = def.return_type {
+				format!(" -> {:?}", rt)
+			} else {
+				String::new()
+			};
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("DefineFunction: {}[{}]{}", def.name.text(), params.join(", "), return_str),
+			);
+
+			// Render body
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			for (i, plan) in def.body.iter().enumerate() {
+				let is_last_plan = i == def.body.len() - 1;
+				render_physical_plan_inner(plan, &child_prefix, is_last_plan, output);
+			}
+		}
+
+		PhysicalPlan::Return(ret) => {
+			let value_str = if let Some(ref expr) = ret.value {
+				format!(" {}", expr)
+			} else {
+				String::new()
+			};
+			write_node_header(output, prefix, is_last, &format!("Return{}", value_str));
+		}
+
+		PhysicalPlan::CallFunction(call) => {
+			let args: Vec<String> = call.arguments.iter().map(|a| format!("{}", a)).collect();
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("CallFunction: {}({})", call.name.text(), args.join(", ")),
+			);
+		}
 	}
 }

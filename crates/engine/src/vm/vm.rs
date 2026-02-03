@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
 use reifydb_rql::{
-	expression::Expression,
+	expression::{CallExpression, Expression, IdentExpression},
 	plan::physical::{AssignValue, LetValue, PhysicalPlan},
 };
 use reifydb_type::{params::Params, value::frame::frame::Frame};
@@ -14,7 +14,7 @@ use super::{
 	instruction::Instruction,
 	interpret::TransactionAccess,
 	services::Services,
-	stack::{ControlFlow, Stack, StackValue, SymbolTable, Variable},
+	stack::{ControlFlow, ScopeType, Stack, StackValue, SymbolTable, Variable},
 	volcano::{
 		compile::compile,
 		query::{QueryContext, QueryNode},
@@ -620,6 +620,221 @@ impl Vm {
 					let columns = self.evaluate_assign_value(&node.value, services, tx, params)?;
 					let variable = columns_to_variable(&columns);
 					self.symbol_table.reassign(name, variable)?;
+				}
+
+				// === User-defined functions ===
+				Instruction::DefineFunction(node) => {
+					// Register the function in the symbol table
+					let func_name = node.name.text().to_string();
+					self.symbol_table.define_function(func_name, node.clone());
+				}
+
+				Instruction::CallFunction(node) => {
+					// Look up the function in the symbol table
+					let func_name = node.name.text();
+					if let Some(func_def) = self.symbol_table.get_function(func_name) {
+						// Clone the function definition to avoid borrow issues
+						let func_def = func_def.clone();
+
+						// Create a new scope for the function call
+						self.symbol_table.enter_scope(ScopeType::Function);
+
+						// Bind arguments to parameters
+						for (param, arg) in
+							func_def.parameters.iter().zip(node.arguments.iter())
+						{
+							let param_name = strip_dollar_prefix(param.name.text());
+							// Evaluate the argument
+							let evaluation_context = ColumnEvaluationContext {
+								target: None,
+								columns: Columns::empty(),
+								row_count: 1,
+								take: None,
+								params,
+								symbol_table: &self.symbol_table,
+								is_aggregate_context: false,
+							};
+							let result_column = evaluate(
+								&evaluation_context,
+								arg,
+								&services.functions,
+							)?;
+							// Get the first value from the column (or undefined if empty)
+							let value = if result_column.data.len() > 0 {
+								result_column.data.get_value(0)
+							} else {
+								reifydb_type::value::Value::Undefined
+							};
+							self.symbol_table.set(
+								param_name,
+								Variable::Scalar(value),
+								true,
+							)?;
+						}
+
+						// Compile the function body into instructions
+						let body_instructions =
+							super::instruction::compile::compile(func_def.body.clone())?;
+
+						// Execute the function body instructions
+						let mut body_ip = 0;
+						while body_ip < body_instructions.len() {
+							match &body_instructions[body_ip] {
+								Instruction::Halt => break,
+								Instruction::Return(ret_node) => {
+									if let Some(ref expr) = ret_node.value {
+										let evaluation_context =
+											ColumnEvaluationContext {
+												target: None,
+												columns: Columns::empty(
+												),
+												row_count: 1,
+												take: None,
+												params,
+												symbol_table: &self
+													.symbol_table,
+												is_aggregate_context:
+													false,
+											};
+										let result_column = evaluate(
+											&evaluation_context,
+											expr,
+											&services.functions,
+										)?;
+										let value = if result_column.data.len()
+											> 0
+										{
+											result_column.data.get_value(0)
+										} else {
+											reifydb_type::value::Value::Undefined
+										};
+										let columns = Columns::single_row([(
+											"value", value,
+										)]);
+										self.stack.push(StackValue::Columns(
+											columns,
+										));
+									}
+									break;
+								}
+								Instruction::Query(plan) => {
+									let mut std_txn = tx.as_transaction();
+									if let Some(columns) = run_query_plan(
+										services,
+										&mut std_txn,
+										plan.clone(),
+										params.clone(),
+										&mut self.symbol_table,
+									)? {
+										self.stack.push(StackValue::Columns(
+											columns,
+										));
+									}
+								}
+								Instruction::Emit => {
+									// Emit is handled - result is already on stack
+								}
+								Instruction::EvalCondition(expr) => {
+									let result = self.evaluate_condition(
+										services, expr, params,
+									)?;
+									self.stack.push(StackValue::Scalar(
+										reifydb_type::value::Value::Boolean(
+											result,
+										),
+									));
+								}
+								Instruction::JumpIfFalsePop(addr) => {
+									let value = self.stack.pop()?;
+									let is_false = match value {
+										StackValue::Scalar(reifydb_type::value::Value::Boolean(false)) => {
+											true
+										}
+										StackValue::Scalar(reifydb_type::value::Value::Boolean(true)) => {
+											false
+										}
+										_ => true,
+									};
+									if is_false {
+										body_ip = *addr;
+										continue;
+									}
+								}
+								Instruction::Jump(addr) => {
+									body_ip = *addr;
+									continue;
+								}
+								Instruction::EnterScope(scope_type) => {
+									self.symbol_table
+										.enter_scope(scope_type.clone());
+								}
+								Instruction::ExitScope => {
+									let _ = self.symbol_table.exit_scope();
+								}
+								Instruction::Nop => {}
+								_ => {
+									// Handle other instructions as needed
+								}
+							}
+							body_ip += 1;
+						}
+
+						// Exit the function scope
+						let _ = self.symbol_table.exit_scope();
+					} else {
+						// User-defined function not found - try as built-in function
+						let call_expr = Expression::Call(CallExpression {
+							func: IdentExpression(node.name.clone()),
+							args: node.arguments.clone(),
+							fragment: node.name.clone(),
+						});
+
+						let evaluation_context = ColumnEvaluationContext {
+							target: None,
+							columns: Columns::empty(),
+							row_count: 1,
+							take: None,
+							params,
+							symbol_table: &self.symbol_table,
+							is_aggregate_context: false,
+						};
+
+						let result_column =
+							evaluate(&evaluation_context, &call_expr, &services.functions)?;
+						let value = if result_column.data.len() > 0 {
+							result_column.data.get_value(0)
+						} else {
+							reifydb_type::value::Value::Undefined
+						};
+						let columns = Columns::single_row([("value", value)]);
+						self.stack.push(StackValue::Columns(columns));
+					}
+				}
+
+				Instruction::Return(node) => {
+					// Return is handled within function call execution
+					// If we encounter it at the top level, just evaluate and push result
+					if let Some(ref expr) = node.value {
+						let evaluation_context = ColumnEvaluationContext {
+							target: None,
+							columns: Columns::empty(),
+							row_count: 1,
+							take: None,
+							params,
+							symbol_table: &self.symbol_table,
+							is_aggregate_context: false,
+						};
+						let result_column =
+							evaluate(&evaluation_context, expr, &services.functions)?;
+						// Get the first value
+						let value = if result_column.data.len() > 0 {
+							result_column.data.get_value(0)
+						} else {
+							reifydb_type::value::Value::Undefined
+						};
+						let columns = Columns::single_row([("value", value)]);
+						self.stack.push(StackValue::Columns(columns));
+					}
 				}
 			}
 			self.ip += 1;

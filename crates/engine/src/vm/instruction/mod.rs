@@ -67,6 +67,11 @@ pub enum Instruction {
 		addr: Addr,
 	},
 
+	// User-defined functions
+	DefineFunction(physical::DefineFunctionNode),
+	CallFunction(physical::CallFunctionNode),
+	Return(physical::ReturnNode),
+
 	Emit,
 	Pop,
 	Dup,

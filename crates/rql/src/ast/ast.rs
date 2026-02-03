@@ -109,6 +109,8 @@ pub enum Ast {
 	Window(AstWindow),
 	StatementExpression(AstStatementExpression),
 	Rownum(AstRownum),
+	DefFunction(AstDefFunction),
+	Return(AstReturn),
 }
 
 impl Default for Ast {
@@ -193,6 +195,8 @@ impl Ast {
 			Ast::StatementExpression(node) => node.expression.token(),
 			Ast::Environment(node) => &node.token,
 			Ast::Rownum(node) => &node.token,
+			Ast::DefFunction(node) => &node.token,
+			Ast::Return(node) => &node.token,
 		}
 	}
 
@@ -1577,4 +1581,29 @@ pub struct AstWindowConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstStatementExpression {
 	pub expression: Box<Ast>,
+}
+
+/// Function parameter (always has $ prefix)
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstFunctionParameter {
+	pub token: Token,
+	pub variable: AstVariable,
+	pub type_annotation: Option<AstDataType>,
+}
+
+/// Function definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDefFunction {
+	pub token: Token,
+	pub name: UnqualifiedIdentifier,
+	pub parameters: Vec<AstFunctionParameter>,
+	pub return_type: Option<AstDataType>,
+	pub body: AstBlock,
+}
+
+/// Return statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstReturn {
+	pub token: Token,
+	pub value: Option<Box<Ast>>,
 }

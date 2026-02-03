@@ -1,0 +1,269 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
+use crate::ast::{
+	ast::{AstDataType, AstDefFunction, AstFunctionParameter, AstReturn, AstVariable},
+	parse::{Parser, Precedence},
+	tokenize::{keyword::Keyword, operator::Operator, separator::Separator, token::TokenKind},
+};
+
+impl Parser {
+	/// Parse `DEF name ($param: type, ...) -> return_type { body }`
+	pub(crate) fn parse_def_function(&mut self) -> crate::Result<AstDefFunction> {
+		let token = self.consume_keyword(Keyword::Def)?;
+		let name = self.parse_identifier()?;
+
+		// Parse parameters: ($a: type, $b: type)
+		self.consume_operator(Operator::OpenParen)?;
+		let parameters = self.parse_function_parameters()?;
+		self.consume_operator(Operator::CloseParen)?;
+
+		// Optional return type: -> type
+		let return_type = if !self.is_eof() && self.current()?.is_operator(Operator::Arrow) {
+			self.advance()?;
+			Some(self.parse_type_annotation()?)
+		} else {
+			None
+		};
+
+		let body = self.parse_block()?;
+
+		Ok(AstDefFunction {
+			token,
+			name,
+			parameters,
+			return_type,
+			body,
+		})
+	}
+
+	/// Parse function parameters: $var: type, $var2: type
+	fn parse_function_parameters(&mut self) -> crate::Result<Vec<AstFunctionParameter>> {
+		let mut parameters = Vec::new();
+
+		loop {
+			self.skip_new_line()?;
+
+			// Check for closing paren (empty params or trailing comma)
+			if self.current()?.is_operator(Operator::CloseParen) {
+				break;
+			}
+
+			// Parse parameter: $name or $name: type
+			let param_token = self.consume(TokenKind::Variable)?;
+			let variable = AstVariable {
+				token: param_token.clone(),
+			};
+
+			// Optional type annotation: : type
+			let type_annotation = if !self.is_eof() && self.current()?.is_operator(Operator::Colon) {
+				self.consume_operator(Operator::Colon)?;
+				Some(self.parse_type_annotation()?)
+			} else {
+				None
+			};
+
+			parameters.push(AstFunctionParameter {
+				token: param_token,
+				variable,
+				type_annotation,
+			});
+
+			self.skip_new_line()?;
+
+			// Check for comma to continue, or break if no comma
+			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
+				continue;
+			}
+
+			// Check for closing paren
+			if self.current()?.is_operator(Operator::CloseParen) {
+				break;
+			}
+		}
+
+		Ok(parameters)
+	}
+
+	/// Parse a type annotation (identifier with optional parameters)
+	fn parse_type_annotation(&mut self) -> crate::Result<AstDataType> {
+		let ty_token = self.consume(TokenKind::Identifier)?;
+
+		// Check for type with parameters like DECIMAL(10,2)
+		if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
+			self.consume_operator(Operator::OpenParen)?;
+			let mut params = Vec::new();
+
+			// Parse first parameter
+			params.push(self.parse_literal_number()?);
+
+			// Parse additional parameters if comma-separated
+			while self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
+				params.push(self.parse_literal_number()?);
+			}
+
+			self.consume_operator(Operator::CloseParen)?;
+
+			Ok(AstDataType::Constrained {
+				name: ty_token.fragment,
+				params,
+			})
+		} else {
+			Ok(AstDataType::Unconstrained(ty_token.fragment))
+		}
+	}
+
+	/// Parse `RETURN` or `RETURN expr`
+	pub(crate) fn parse_return(&mut self) -> crate::Result<AstReturn> {
+		let token = self.consume_keyword(Keyword::Return)?;
+
+		// Check if there's a value to return (not at EOF, semicolon, or closing brace)
+		let value = if !self.is_eof() {
+			let current = self.current()?;
+			if current.is_separator(Separator::Semicolon)
+				|| current.is_separator(Separator::NewLine)
+				|| current.is_operator(Operator::CloseCurly)
+			{
+				None
+			} else {
+				Some(Box::new(self.parse_node(Precedence::None)?))
+			}
+		} else {
+			None
+		};
+
+		Ok(AstReturn {
+			token,
+			value,
+		})
+	}
+}
+
+#[cfg(test)]
+pub mod tests {
+	use crate::ast::{
+		ast::{Ast, AstDataType},
+		parse::parse,
+		tokenize::tokenize,
+	};
+
+	#[test]
+	fn test_def_function_no_params() {
+		let tokens = tokenize("DEF hello () { MAP { \"message\": \"Hello\" } }").unwrap();
+		let mut result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!("Expected DefFunction")
+		};
+
+		assert_eq!(def.name.text(), "hello");
+		assert!(def.parameters.is_empty());
+		assert!(def.return_type.is_none());
+	}
+
+	#[test]
+	fn test_def_function_with_params() {
+		let tokens = tokenize("DEF greet ($name) { MAP { \"message\": $name } }").unwrap();
+		let mut result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!("Expected DefFunction")
+		};
+
+		assert_eq!(def.name.text(), "greet");
+		assert_eq!(def.parameters.len(), 1);
+		assert_eq!(def.parameters[0].variable.name(), "name");
+		assert!(def.parameters[0].type_annotation.is_none());
+	}
+
+	#[test]
+	fn test_def_function_with_typed_params() {
+		let tokens = tokenize("DEF add ($a: int, $b: int) { $a + $b }").unwrap();
+		let mut result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!("Expected DefFunction")
+		};
+
+		assert_eq!(def.name.text(), "add");
+		assert_eq!(def.parameters.len(), 2);
+
+		assert_eq!(def.parameters[0].variable.name(), "a");
+		match &def.parameters[0].type_annotation {
+			Some(AstDataType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
+			_ => panic!("Expected unconstrained type"),
+		}
+
+		assert_eq!(def.parameters[1].variable.name(), "b");
+		match &def.parameters[1].type_annotation {
+			Some(AstDataType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
+			_ => panic!("Expected unconstrained type"),
+		}
+	}
+
+	#[test]
+	fn test_def_function_with_return_type() {
+		let tokens = tokenize("DEF add ($a: int, $b: int) -> int { $a + $b }").unwrap();
+		let mut result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!("Expected DefFunction")
+		};
+
+		assert_eq!(def.name.text(), "add");
+		match &def.return_type {
+			Some(AstDataType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
+			_ => panic!("Expected unconstrained return type"),
+		}
+	}
+
+	#[test]
+	fn test_def_function_mixed_typed_params() {
+		let tokens = tokenize("DEF example ($x, $y: int) { $x + $y }").unwrap();
+		let mut result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!("Expected DefFunction")
+		};
+
+		assert_eq!(def.name.text(), "example");
+		assert_eq!(def.parameters.len(), 2);
+
+		assert_eq!(def.parameters[0].variable.name(), "x");
+		assert!(def.parameters[0].type_annotation.is_none());
+
+		assert_eq!(def.parameters[1].variable.name(), "y");
+		assert!(def.parameters[1].type_annotation.is_some());
+	}
+
+	#[test]
+	fn test_return_with_value() {
+		let tokens = tokenize("RETURN 42").unwrap();
+		let mut result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Ast::Return(ret) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!("Expected Return")
+		};
+
+		assert!(ret.value.is_some());
+	}
+
+	#[test]
+	fn test_return_without_value() {
+		let tokens = tokenize("RETURN;").unwrap();
+		let mut result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Ast::Return(ret) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!("Expected Return")
+		};
+
+		assert!(ret.value.is_none());
+	}
+}

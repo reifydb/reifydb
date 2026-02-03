@@ -310,6 +310,10 @@ impl FlowCompiler {
 			| PhysicalPlan::Continue => {
 				unimplemented!("Loop constructs are not supported in flow compilation")
 			}
+
+			PhysicalPlan::DefineFunction(_) | PhysicalPlan::Return(_) | PhysicalPlan::CallFunction(_) => {
+				unimplemented!("User-defined functions are not supported in flow compilation")
+			}
 		}
 	}
 }

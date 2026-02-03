@@ -157,6 +157,18 @@ impl Compiler {
 				self.compile_continue()?;
 			}
 
+			// User-defined functions
+			PhysicalPlan::DefineFunction(node) => {
+				self.emit(Instruction::DefineFunction(node));
+			}
+			PhysicalPlan::CallFunction(node) => {
+				self.emit(Instruction::CallFunction(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::Return(node) => {
+				self.emit(Instruction::Return(node));
+			}
+
 			// Everything else is a query pipeline
 			other => {
 				self.emit(Instruction::Query(other));

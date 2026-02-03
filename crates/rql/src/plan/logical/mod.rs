@@ -3,6 +3,7 @@
 
 pub mod alter;
 pub mod create;
+pub mod function;
 pub mod mutate;
 pub mod query;
 pub mod resolver;
@@ -195,14 +196,27 @@ impl Compiler {
 				return_error!(unsupported_ast_node(id.token.fragment.clone(), "standalone identifier"))
 			}
 			// Auto-wrap scalar expressions into MAP constructs
-			Ast::Literal(_) | Ast::Variable(_) | Ast::CallFunction(_) => {
+			Ast::Literal(_) | Ast::Variable(_) => {
 				let wrapped_map = Self::wrap_scalar_in_map(node);
 				self.compile_map(wrapped_map)
+			}
+			// Function calls: check if it's potentially a user-defined function
+			Ast::CallFunction(ref call_node) => {
+				// If no namespaces, treat as potential user-defined function call
+				if call_node.function.namespaces.is_empty() {
+					self.compile_call_function(call_node.clone())
+				} else {
+					// Namespaced function calls are always built-in functions
+					let wrapped_map = Self::wrap_scalar_in_map(node);
+					self.compile_map(wrapped_map)
+				}
 			}
 			Ast::Block(_) => {
 				// Blocks are handled by their parent constructs (IF, LOOP, etc.)
 				return_error!(unsupported_ast_node(node.token().fragment.clone(), "standalone block"))
 			}
+			Ast::DefFunction(node) => self.compile_def_function(node, tx),
+			Ast::Return(node) => self.compile_return(node),
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
@@ -345,6 +359,10 @@ pub enum LogicalPlan {
 	Scalarize(ScalarizeNode),
 	// Pipeline wrapper for piped operations
 	Pipeline(PipelineNode),
+	// User-defined functions
+	DefineFunction(function::DefineFunctionNode),
+	Return(function::ReturnNode),
+	CallFunction(function::CallFunctionNode),
 }
 
 #[derive(Debug)]

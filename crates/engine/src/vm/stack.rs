@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::{internal, value::column::columns::Columns};
+use reifydb_rql::plan::physical::DefineFunctionNode;
 use reifydb_type::{error, error::diagnostic, value::Value};
 
 /// A value on the VM data stack
@@ -99,6 +100,8 @@ impl Variable {
 #[derive(Debug, Clone)]
 pub struct SymbolTable {
 	scopes: Vec<Scope>,
+	/// User-defined functions
+	functions: HashMap<String, DefineFunctionNode>,
 }
 
 /// Represents a single scope containing variables
@@ -143,6 +146,7 @@ impl SymbolTable {
 
 		Self {
 			scopes: vec![global_scope],
+			functions: HashMap::new(),
 		}
 	}
 
@@ -297,6 +301,22 @@ impl SymbolTable {
 			variables: HashMap::new(),
 			scope_type: ScopeType::Global,
 		});
+		self.functions.clear();
+	}
+
+	/// Define a user-defined function
+	pub fn define_function(&mut self, name: String, func: DefineFunctionNode) {
+		self.functions.insert(name, func);
+	}
+
+	/// Get a user-defined function by name
+	pub fn get_function(&self, name: &str) -> Option<&DefineFunctionNode> {
+		self.functions.get(name)
+	}
+
+	/// Check if a function exists
+	pub fn function_exists(&self, name: &str) -> bool {
+		self.functions.contains_key(name)
 	}
 }
 

@@ -109,3 +109,19 @@ pub fn variable_is_immutable(name: &str) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+/// Function is not defined
+pub fn undefined_function(name: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "RUNTIME_007".to_string(),
+		statement: None,
+		message: format!("Function '{}' is not defined", name.text()),
+		column: None,
+		fragment: name,
+		label: None,
+		help: Some("Define the function using 'DEF name [] { ... }' before calling it".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

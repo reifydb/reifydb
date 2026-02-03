@@ -424,5 +424,9 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 					.expect("Failed to create RowRangeScanNode"),
 			)
 		}
+
+		PhysicalPlan::DefineFunction(_) | PhysicalPlan::Return(_) | PhysicalPlan::CallFunction(_) => {
+			unreachable!("User-defined functions are handled at the VM instruction level")
+		}
 	}
 }

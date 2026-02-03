@@ -10,6 +10,7 @@ pub mod cast;
 pub mod conditional;
 pub mod create;
 pub mod create_index;
+pub mod def_function;
 pub mod delete;
 pub mod describe;
 pub mod distinct;

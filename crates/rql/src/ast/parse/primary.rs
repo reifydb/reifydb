@@ -80,6 +80,8 @@ impl Parser {
 					Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
 					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
+					Keyword::Def => Ok(Ast::DefFunction(self.parse_def_function()?)),
+					Keyword::Return => Ok(Ast::Return(self.parse_return()?)),
 					Keyword::Rownum => {
 						let token = self.advance()?;
 						Ok(Ast::Rownum(AstRownum {

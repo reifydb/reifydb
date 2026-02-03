@@ -7,15 +7,17 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	ast::{
 		ast::{
-			Ast, AstBlock, AstFor, AstIf, AstLet, AstLiteral, AstLiteralUndefined, AstLoop, AstWhile,
-			LetValue as AstLetValue,
+			Ast, AstBlock, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral,
+			AstLiteralUndefined, AstLoop, AstReturn, AstWhile, LetValue as AstLetValue,
 		},
 		tokenize::token::{Literal, Token, TokenKind},
 	},
+	convert_data_type_with_constraints,
 	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, ConditionalNode, DeclareNode, ElseIfBranch, ForNode, LetValue, LogicalPlan, LoopNode,
 		WhileNode,
+		function::{CallFunctionNode, DefineFunctionNode, FunctionParameter, ReturnNode},
 	},
 };
 
@@ -144,6 +146,77 @@ impl Compiler {
 			variable_name,
 			iterable,
 			body,
+		}))
+	}
+
+	/// Compile a function definition
+	pub(crate) fn compile_def_function<T: AsTransaction>(
+		&self,
+		ast: AstDefFunction,
+		tx: &mut T,
+	) -> crate::Result<LogicalPlan> {
+		// Convert function name
+		let name = ast.name.token.fragment.clone();
+
+		// Convert parameters
+		let mut parameters = Vec::new();
+		for param in ast.parameters {
+			let param_name = param.variable.token.fragment.clone();
+			let type_constraint = if let Some(ref ty) = param.type_annotation {
+				Some(convert_data_type_with_constraints(ty)?)
+			} else {
+				None
+			};
+			parameters.push(FunctionParameter {
+				name: param_name,
+				type_constraint,
+			});
+		}
+
+		// Convert optional return type
+		let return_type = if let Some(ref ty) = ast.return_type {
+			Some(convert_data_type_with_constraints(ty)?)
+		} else {
+			None
+		};
+
+		// Compile the body
+		let body = self.compile_block(&ast.body, tx)?;
+
+		Ok(LogicalPlan::DefineFunction(DefineFunctionNode {
+			name,
+			parameters,
+			return_type,
+			body,
+		}))
+	}
+
+	/// Compile a return statement
+	pub(crate) fn compile_return(&self, ast: AstReturn) -> crate::Result<LogicalPlan> {
+		let value = if let Some(expr) = ast.value {
+			Some(ExpressionCompiler::compile(*expr)?)
+		} else {
+			None
+		};
+
+		Ok(LogicalPlan::Return(ReturnNode {
+			value,
+		}))
+	}
+
+	/// Compile a function call (potentially user-defined)
+	pub(crate) fn compile_call_function(&self, ast: AstCallFunction) -> crate::Result<LogicalPlan> {
+		let name = ast.function.name.clone();
+
+		// Compile arguments as expressions
+		let mut arguments = Vec::new();
+		for arg in ast.arguments.nodes {
+			arguments.push(ExpressionCompiler::compile(arg)?);
+		}
+
+		Ok(LogicalPlan::CallFunction(CallFunctionNode {
+			name,
+			arguments,
 		}))
 	}
 }

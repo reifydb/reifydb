@@ -905,5 +905,66 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				}
 			}
 		}
+		LogicalPlan::DefineFunction(def) => {
+			let params: Vec<String> = def
+				.parameters
+				.iter()
+				.map(|p| {
+					if let Some(ref tc) = p.type_constraint {
+						format!("${}: {:?}", p.name.text(), tc)
+					} else {
+						format!("${}", p.name.text())
+					}
+				})
+				.collect();
+			let return_str = if let Some(ref rt) = def.return_type {
+				format!(" -> {:?}", rt)
+			} else {
+				String::new()
+			};
+			output.push_str(&format!(
+				"{}{} DefineFunction: {}[{}]{}\n",
+				prefix,
+				branch,
+				def.name.text(),
+				params.join(", "),
+				return_str
+			));
+
+			// Render body statements
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			for (i, stmt) in def.body.iter().enumerate() {
+				for (j, plan) in stmt.iter().enumerate() {
+					let is_last_stmt = i == def.body.len() - 1 && j == stmt.len() - 1;
+					render_logical_plan_inner(plan, &child_prefix, is_last_stmt, output);
+				}
+			}
+		}
+		LogicalPlan::Return(ret) => {
+			let value_str = if let Some(ref expr) = ret.value {
+				format!(" {}", expr)
+			} else {
+				String::new()
+			};
+			output.push_str(&format!("{}{} Return{}\n", prefix, branch, value_str));
+		}
+		LogicalPlan::CallFunction(call) => {
+			let args: Vec<String> = call.arguments.iter().map(|a| format!("{}", a)).collect();
+			output.push_str(&format!(
+				"{}{} CallFunction: {}({})\n",
+				prefix,
+				branch,
+				call.name.text(),
+				args.join(", ")
+			));
+		}
 	}
 }
