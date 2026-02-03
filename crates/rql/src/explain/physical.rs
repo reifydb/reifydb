@@ -243,6 +243,22 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
+		PhysicalPlan::Patch(physical::PatchNode {
+			assignments,
+			input,
+		}) => {
+			let label = format!(
+				"Patch [{}]",
+				assignments.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
+			);
+			write_node_header(output, prefix, is_last, &label);
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				if let Some(input) = input {
+					render_physical_plan_inner(input, child_prefix, true, output);
+				}
+			});
+		}
+
 		PhysicalPlan::JoinInner(physical::JoinInnerNode {
 			left,
 			right,

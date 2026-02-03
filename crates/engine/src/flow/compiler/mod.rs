@@ -240,7 +240,8 @@ impl FlowCompiler {
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::UpdateRingBuffer(_)
 			| PhysicalPlan::Delete(_)
-			| PhysicalPlan::DeleteRingBuffer(_) => {
+			| PhysicalPlan::DeleteRingBuffer(_)
+			| PhysicalPlan::Patch(_) => {
 				unreachable!()
 			}
 			PhysicalPlan::FlowScan(flow_scan) => FlowScanCompiler::from(flow_scan).compile(self, txn),

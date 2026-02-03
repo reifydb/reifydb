@@ -67,7 +67,7 @@ fn main() {
 	// Insert data
 	db.command_as_root(
 		r#"
-		INSERT company.employees FROM [
+		INSERT company.employees [
 			{ emp_id: 1, name: "Alice", dept_id: 10, salary: 75000 },
 			{ emp_id: 2, name: "Bob", dept_id: 20, salary: 65000 },
 			{ emp_id: 3, name: "Carol", dept_id: 10, salary: 80000 },
@@ -82,7 +82,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT company.departments FROM [
+		INSERT company.departments [
 			{ dept_id: 10, dept_name: "Engineering", location: "Building A" },
 			{ dept_id: 20, dept_name: "Sales", location: "Building B" },
 			{ dept_id: 30, dept_name: "Marketing", location: "Building C" }
@@ -94,7 +94,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT company.projects FROM [
+		INSERT company.projects [
 			{ project_id: 1, project_name: "Project Alpha", dept_id: 10, budget: 100000 },
 			{ project_id: 2, project_name: "Project Beta", dept_id: 20, budget: 50000 },
 			{ project_id: 3, project_name: "Project Gamma", dept_id: 10, budget: 75000 },

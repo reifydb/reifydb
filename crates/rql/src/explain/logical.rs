@@ -10,7 +10,7 @@ use crate::{
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, MergeNode,
-		OrderNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
+		OrderNode, PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
 		alter::{
 			flow::AlterFlowAction,
 			table::{AlterTableNode, AlterTableOperation},
@@ -279,6 +279,24 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 			output.push_str(&format!("{}{} Extend\n", prefix, branch));
 			for (i, expr) in extend.iter().enumerate() {
 				let last = i == extend.len() - 1;
+				output.push_str(&format!(
+					"{}{} {}\n",
+					child_prefix,
+					if last {
+						"└──"
+					} else {
+						"├──"
+					},
+					expr.to_string()
+				));
+			}
+		}
+		LogicalPlan::Patch(PatchNode {
+			assignments,
+		}) => {
+			output.push_str(&format!("{}{} Patch\n", prefix, branch));
+			for (i, expr) in assignments.iter().enumerate() {
+				let last = i == assignments.len() - 1;
 				output.push_str(&format!(
 					"{}{} {}\n",
 					child_prefix,

@@ -30,7 +30,7 @@ CREATE TABLE demo.users {
   city: utf8
 };
 
-INSERT demo.users FROM [
+INSERT demo.users [
   { id: 1, name: "Alice", age: 30, city: "NYC" },
   { id: 2, name: "Bob", age: 25, city: "LA" },
   { id: 3, name: "Carol", age: 35, city: "NYC" }
@@ -90,12 +90,12 @@ CREATE TABLE demo.orders {
   total: int4
 };
 
-INSERT demo.users FROM [
+INSERT demo.users [
   { id: 1, name: "Alice" },
   { id: 2, name: "Bob" }
 ];
 
-INSERT demo.orders FROM [
+INSERT demo.orders [
   { id: 1, user_id: 1, total: 150 },
   { id: 2, user_id: 1, total: 200 },
   { id: 3, user_id: 2, total: 100 }

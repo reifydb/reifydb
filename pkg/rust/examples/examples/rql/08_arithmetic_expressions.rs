@@ -115,7 +115,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT shop.products FROM [
+		INSERT shop.products [
 			{ id: 1, name: "Widget", price: 29.99, quantity: 5, discount_percent: 10.0, tax_rate: 8.5 },
 			{ id: 2, name: "Gadget", price: 49.99, quantity: 3, discount_percent: 15.0, tax_rate: 8.5 },
 			{ id: 3, name: "Tool", price: 99.99, quantity: 2, discount_percent: 20.0, tax_rate: 8.5 },

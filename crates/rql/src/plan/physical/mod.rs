@@ -692,6 +692,14 @@ impl Compiler {
 					}));
 				}
 
+				LogicalPlan::Patch(patch) => {
+					let input = stack.pop().map(Box::new);
+					stack.push(PhysicalPlan::Patch(PatchNode {
+						assignments: patch.assignments,
+						input,
+					}));
+				}
+
 				LogicalPlan::Apply(apply) => {
 					let input = stack.pop().map(Box::new);
 					stack.push(PhysicalPlan::Apply(ApplyNode {
@@ -1112,6 +1120,7 @@ pub enum PhysicalPlan {
 	Sort(SortNode),
 	Map(MapNode),
 	Extend(ExtendNode),
+	Patch(PatchNode),
 	Apply(ApplyNode),
 	InlineData(InlineDataNode),
 	TableScan(TableScanNode),
@@ -1396,6 +1405,12 @@ pub struct MapNode {
 pub struct ExtendNode {
 	pub input: Option<Box<PhysicalPlan>>,
 	pub extend: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PatchNode {
+	pub input: Option<Box<PhysicalPlan>>,
+	pub assignments: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]

@@ -47,7 +47,7 @@ impl Workload for ScanWorkload {
 				})
 				.collect();
 
-			queries.push(SetupQuery::command(format!("INSERT bench.users FROM [{}]", rows.join(", "))));
+			queries.push(SetupQuery::command(format!("INSERT bench.users [{}]", rows.join(", "))));
 		}
 
 		queries

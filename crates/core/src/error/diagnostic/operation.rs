@@ -444,33 +444,32 @@ pub fn insert_missing_target(fragment: Fragment) -> Diagnostic {
 		column: None,
 		fragment,
 		label: Some("missing target table".to_string()),
-		help: Some("Specify the table to insert into, e.g., 'INSERT users FROM [{ id: 1, name: \"Alice\" }]'"
+		help: Some("Specify the table to insert into, e.g., 'INSERT users [{ id: 1, name: \"Alice\" }]'"
 			.to_string()),
 		notes: vec![
 			"The target table specifies where to insert the data".to_string(),
-			"Example: INSERT users FROM [{ id: 1, name: \"Alice\" }]".to_string(),
-			"Example with namespace: INSERT test.users FROM [{ id: 1, name: \"Alice\" }]".to_string(),
+			"Example: INSERT users [{ id: 1, name: \"Alice\" }]".to_string(),
+			"Example with namespace: INSERT test.users [{ id: 1, name: \"Alice\" }]".to_string(),
 		],
 		cause: None,
 		operator_chain: None,
 	}
 }
 
-/// INSERT missing FROM clause error
-pub fn insert_missing_from_clause(fragment: Fragment) -> Diagnostic {
+/// INSERT missing data source error
+pub fn insert_missing_source(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "INSERT_002".to_string(),
 		statement: None,
-		message: "INSERT requires a FROM clause with data source".to_string(),
+		message: "INSERT requires a data source".to_string(),
 		column: None,
 		fragment,
-		label: Some("missing FROM clause".to_string()),
-		help: Some("Add a FROM clause to specify the data to insert, e.g., 'INSERT users FROM [{ id: 1, name: \"Alice\" }]'"
-			.to_string()),
+		label: Some("missing data source".to_string()),
+		help: Some("Specify the data to insert, e.g., 'INSERT users [{ id: 1, name: \"Alice\" }]'".to_string()),
 		notes: vec![
-			"The FROM clause specifies the data to insert".to_string(),
-			"It can be an inline array: INSERT users FROM [{ id: 1 }, { id: 2 }]".to_string(),
-			"Or a source table: INSERT target_table FROM source_table".to_string(),
+			"Use inline array directly: INSERT users [{ id: 1 }, { id: 2 }]".to_string(),
+			"Use variable directly: INSERT users $data".to_string(),
+			"Use FROM for table sources: INSERT target_table FROM source_table".to_string(),
 		],
 		cause: None,
 		operator_chain: None,

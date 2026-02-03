@@ -52,6 +52,7 @@ pub mod generator;
 pub mod inline;
 pub mod join;
 pub mod map;
+pub mod patch;
 pub mod query;
 pub mod row_lookup;
 pub mod scalarize;

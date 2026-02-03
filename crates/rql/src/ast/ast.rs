@@ -102,6 +102,7 @@ pub enum Ast {
 	Map(AstMap),
 	Generator(AstGenerator),
 	Extend(AstExtend),
+	Patch(AstPatch),
 	Tuple(AstTuple),
 	While(AstWhile),
 	Wildcard(AstWildcard),
@@ -184,6 +185,7 @@ impl Ast {
 			Ast::Map(node) => &node.token,
 			Ast::Generator(node) => &node.token,
 			Ast::Extend(node) => &node.token,
+			Ast::Patch(node) => &node.token,
 			Ast::Tuple(node) => &node.token,
 			Ast::While(node) => &node.token,
 			Ast::Wildcard(node) => &node.0,
@@ -616,6 +618,18 @@ impl Ast {
 			result
 		} else {
 			panic!("not extend")
+		}
+	}
+
+	pub fn is_patch(&self) -> bool {
+		matches!(self, Ast::Patch(_))
+	}
+
+	pub fn as_patch(&self) -> &AstPatch {
+		if let Ast::Patch(result) = self {
+			result
+		} else {
+			panic!("not patch")
 		}
 	}
 
@@ -1412,6 +1426,26 @@ impl Index<usize> for AstExtend {
 impl AstExtend {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstPatch {
+	pub token: Token,
+	pub assignments: Vec<Ast>,
+}
+
+impl AstPatch {
+	pub fn len(&self) -> usize {
+		self.assignments.len()
+	}
+}
+
+impl Index<usize> for AstPatch {
+	type Output = Ast;
+
+	fn index(&self, index: usize) -> &Self::Output {
+		&self.assignments[index]
 	}
 }
 

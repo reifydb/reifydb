@@ -37,6 +37,7 @@ use crate::vm::volcano::{
 	inline::InlineDataNode,
 	join::{inner::InnerJoinNode, left::LeftJoinNode, natural::NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
+	patch::PatchNode,
 	query::{QueryContext, QueryPlan},
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
@@ -133,6 +134,16 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			} else {
 				QueryPlan::ExtendWithoutInput(ExtendWithoutInputNode::new(extend))
 			}
+		}
+
+		PhysicalPlan::Patch(physical::PatchNode {
+			assignments,
+			input,
+		}) => {
+			// Patch requires input - it merges with existing row
+			let input = input.expect("Patch requires input");
+			let input_node = Box::new(compile(*input, rx, context));
+			QueryPlan::Patch(PatchNode::new(input_node, assignments))
 		}
 
 		PhysicalPlan::JoinInner(physical::JoinInnerNode {

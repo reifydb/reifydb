@@ -83,7 +83,7 @@ fn test_insert_and_query() {
 	// Insert data
 	let result = db.command(
 		r#"
-        INSERT test.users FROM [
+        INSERT test.users [
             { id: 1, name: "Alice" },
             { id: 2, name: "Bob" }
         ]

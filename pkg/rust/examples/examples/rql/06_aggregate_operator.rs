@@ -40,7 +40,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT sales.transactions FROM [
+		INSERT sales.transactions [
 			{ id: 1, product: "Laptop", category: "Electronics", quantity: 2, price: 999.99, region: "North", month: 1 },
 			{ id: 2, product: "Mouse", category: "Electronics", quantity: 5, price: 25.99, region: "North", month: 1 },
 			{ id: 3, product: "Desk", category: "Furniture", quantity: 1, price: 299.99, region: "South", month: 1 },

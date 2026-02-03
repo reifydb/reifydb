@@ -5,7 +5,7 @@ use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	ast::{
-		ast::{Ast, AstFrom, AstMap, AstUpdate},
+		ast::{Ast, AstFrom, AstPatch, AstUpdate},
 		identifier::{MaybeQualifiedRingBufferIdentifier, MaybeQualifiedTableIdentifier},
 	},
 	expression::ExpressionCompiler,
@@ -37,16 +37,16 @@ impl Compiler {
 			condition: ExpressionCompiler::compile(*filter_ast.node)?,
 		});
 
-		// 3. Create MAP node from assignments
-		let map_ast = AstMap {
+		// 3. Create PATCH node from assignments (merges with original row)
+		let patch_ast = AstPatch {
 			token: ast.token.clone(),
-			nodes: ast.assignments,
+			assignments: ast.assignments,
 		};
-		let map_plan = self.compile_map(map_ast)?;
+		let patch_plan = self.compile_patch(patch_ast)?;
 
-		// 4. Build pipeline: FROM -> FILTER -> MAP
+		// 4. Build pipeline: FROM -> FILTER -> PATCH
 		let pipeline = LogicalPlan::Pipeline(PipelineNode {
-			steps: vec![from_plan, filter_plan, map_plan],
+			steps: vec![from_plan, filter_plan, patch_plan],
 		});
 
 		// 5. Wrap in UPDATE node

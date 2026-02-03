@@ -4,7 +4,7 @@
 (admin 'create namespace test')
 
 (admin 'create table test.conversion{col: int8}')
-(command 'INSERT test.conversion FROM [{ col: 0 }]')
+(command 'INSERT test.conversion [{ col: 0 }]')
 command 'from test.conversion map cast(col, float4)'
 ---
 > +----------+-------+
@@ -15,7 +15,7 @@ command 'from test.conversion map cast(col, float4)'
 >
 
 
-(command 'INSERT test.conversion FROM [{ col: 16777216 }]')
+(command 'INSERT test.conversion [{ col: 16777216 }]')
 command 'from test.conversion map cast(col, float4)'
 ---
 > +----------+------------+
@@ -26,7 +26,7 @@ command 'from test.conversion map cast(col, float4)'
 > +----------+------------+
 >
 
-(command 'INSERT test.conversion FROM [{ col: -16777216 }]')
+(command 'INSERT test.conversion [{ col: -16777216 }]')
 command 'from test.conversion map cast(col, float4)'
 ---
 > +----------+-------------+
@@ -39,7 +39,7 @@ command 'from test.conversion map cast(col, float4)'
 >
 
 (admin 'create table test.conversion_fail{col: int8}')
-(command 'INSERT test.conversion_fail FROM [{ col: 16777217 }]')
+(command 'INSERT test.conversion_fail [{ col: 16777217 }]')
 !command 'from test.conversion_fail map cast(col, float4)'
 ---
 >  Error CAST_002: failed to cast to Float4
@@ -60,7 +60,7 @@ command 'from test.conversion map cast(col, float4)'
 >     note: consider using a different numeric type if exact precision is required
 >
 
-(command 'INSERT test.conversion_fail FROM [{ col: -16777217 }]')
+(command 'INSERT test.conversion_fail [{ col: -16777217 }]')
 !command 'from test.conversion_fail map cast(col, float4)'
 ---
 >  Error CAST_002: failed to cast to Float4

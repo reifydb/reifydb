@@ -4,7 +4,7 @@
 (admin 'create namespace test')
 (admin 'create table test.arith{id: int2, num: int2}')
 (command '
-  INSERT test.arith FROM [
+  INSERT test.arith [
     { id: 1, num: 6 },
     { id: 2, num: 8 },
     { id: 3, num: 4 },

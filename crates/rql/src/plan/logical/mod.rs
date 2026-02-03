@@ -333,6 +333,7 @@ pub enum LogicalPlan {
 	Order(OrderNode),
 	Map(MapNode),
 	Extend(ExtendNode),
+	Patch(PatchNode),
 	Apply(ApplyNode),
 	InlineData(InlineDataNode),
 	PrimitiveScan(PrimitiveScanNode),
@@ -634,6 +635,11 @@ pub struct MapNode {
 #[derive(Debug)]
 pub struct ExtendNode {
 	pub extend: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct PatchNode {
+	pub assignments: Vec<Expression>,
 }
 
 #[derive(Debug)]

@@ -68,7 +68,7 @@ take 3"#,
 
 	db.command_as_root(
 		r#"
-		INSERT demo.events FROM [
+		INSERT demo.events [
 			{ id: 1, event_type: "ERROR", timestamp: 1000, severity: "HIGH", message: "Database connection failed" },
 			{ id: 2, event_type: "INFO", timestamp: 1001, severity: "LOW", message: "User logged in" },
 			{ id: 3, event_type: "WARNING", timestamp: 1002, severity: "MEDIUM", message: "Memory usage high" },

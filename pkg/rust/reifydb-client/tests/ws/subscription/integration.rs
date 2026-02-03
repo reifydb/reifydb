@@ -242,13 +242,13 @@
 // 		let sub2 = client.subscribe(&format!("from test.{}", table2)).await.unwrap();
 //
 // 		// Insert into table 1
-// 		client.command(&format!("INSERT test. FROM [{{ id: 1, name: 'alice' }}]{}", table1), None).await.unwrap();
+// 		client.command(&format!("INSERT test. [{{ id: 1, name: 'alice' }}]{}", table1), None).await.unwrap();
 //
 // 		let change1 = recv_with_timeout(&mut client, 5000).await.expect("Should receive change from table1");
 // 		assert_eq!(change1.subscription_id, sub1);
 //
 // 		// Insert into table 2
-// 		client.command(&format!("INSERT test. FROM [{{ id: 2, value: 200 }}]{}", table2), None).await.unwrap();
+// 		client.command(&format!("INSERT test. [{{ id: 2, value: 200 }}]{}", table2), None).await.unwrap();
 //
 // 		let change2 = recv_with_timeout(&mut client, 5000).await.expect("Should receive change from table2");
 // 		assert_eq!(change2.subscription_id, sub2);
@@ -288,7 +288,7 @@
 // 		// Insert into all tables
 // 		for (i, table) in tables.iter().enumerate() {
 // 			client
-// 				.command(&format!("INSERT test. FROM [{{ id: {}, value: {} }}]{}", i, i * 100, table), None)
+// 				.command(&format!("INSERT test. [{{ id: {}, value: {} }}]{}", i, i * 100, table), None)
 // 				.await
 // 				.unwrap();
 // 		}
@@ -345,7 +345,7 @@
 // 		let sub_id2 = client2.subscribe(&format!("from test.{}", table)).await.unwrap();
 //
 // 		// Insert new data
-// 		client2.command(&format!("INSERT test. FROM [{{ id: 1, name: 'after_reconnect' }}]{}", table),
+// 		client2.command(&format!("INSERT test. [{{ id: 1, name: 'after_reconnect' }}]{}", table),
 // None).await.unwrap();
 //
 // 		let change = recv_with_timeout(&mut client2, 5000).await.expect("Should receive notification after reconnect");
@@ -400,7 +400,7 @@
 //
 // 		// Insert into all tables
 // 		for (i, table) in tables.iter().enumerate() {
-// 			client2.command(&format!("INSERT test. FROM [{{ id: {}, value: {} }}]{}", i, i * 100, table),
+// 			client2.command(&format!("INSERT test. [{{ id: {}, value: {} }}]{}", i, i * 100, table),
 // None).await.unwrap(); 		}
 //
 // 		let changes = recv_multiple_with_timeout(&mut client2, 3, 10000).await;
@@ -631,7 +631,7 @@
 // 		// Fire 10 insert commands rapidly
 // 		for i in 0..10 {
 // 			client
-// 				.command(&format!("INSERT test. FROM [{{ id: {}, value: {} }}]{}", i, i * 10, table), None)
+// 				.command(&format!("INSERT test. [{{ id: {}, value: {} }}]{}", i, i * 10, table), None)
 // 				.await
 // 				.unwrap();
 // 		}
@@ -681,7 +681,7 @@
 //
 // 		// Insert into all tables
 // 		for table in &tables {
-// 			client.command(&format!("INSERT test. FROM [{{ id: 1 }}]{}", table), None).await.unwrap();
+// 			client.command(&format!("INSERT test. [{{ id: 1 }}]{}", table), None).await.unwrap();
 // 		}
 //
 // 		// Receive all notifications
@@ -754,7 +754,7 @@
 // 		// Trigger insert
 // 		let mut trigger_client = WsClient::connect("127.0.0.1:8090").await.unwrap();
 // 		trigger_client.authenticate("mysecrettoken").await.unwrap();
-// 		trigger_client.command(&format!("INSERT test. FROM [{{ id: 999 }}]{}", shared_table), None).await.unwrap();
+// 		trigger_client.command(&format!("INSERT test. [{{ id: 999 }}]{}", shared_table), None).await.unwrap();
 // 		trigger_client.close().await.unwrap();
 //
 // 		// Wait for all clients
@@ -801,7 +801,7 @@
 // 		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
 // 		assert!(!sub_id.is_empty(), "Should get valid subscription after rapid cycles");
 //
-// 		client.command(&format!("INSERT test. FROM [{{ id: 999 }}]{}", table), None).await.unwrap();
+// 		client.command(&format!("INSERT test. [{{ id: 999 }}]{}", table), None).await.unwrap();
 //
 // 		let change = recv_with_timeout(&mut client, 5000).await;
 // 		assert!(change.is_some(), "Should still receive changes after {} rapid cycles", NUM_CYCLES);
@@ -855,7 +855,7 @@
 // 		let sub_id = new_client.subscribe(&format!("from test.{}", shared_table)).await.unwrap();
 // 		assert!(!sub_id.is_empty(), "New client should be able to subscribe after abrupt disconnects");
 //
-// 		new_client.command(&format!("INSERT test. FROM [{{ id: 1 }}]{}", shared_table), None).await.unwrap();
+// 		new_client.command(&format!("INSERT test. [{{ id: 1 }}]{}", shared_table), None).await.unwrap();
 //
 // 		let change = recv_with_timeout(&mut new_client, 5000).await;
 // 		assert!(change.is_some(), "New client should receive notification");
@@ -958,7 +958,7 @@
 // 		let sub_id = final_client.subscribe(&format!("from test.{}", tables[0])).await.unwrap();
 // 		assert!(!sub_id.is_empty(), "Server should still accept new subscriptions");
 //
-// 		final_client.command(&format!("INSERT test. FROM [{{ id: 1 }}]{}", tables[0]), None).await.unwrap();
+// 		final_client.command(&format!("INSERT test. [{{ id: 1 }}]{}", tables[0]), None).await.unwrap();
 //
 // 		let change = recv_with_timeout(&mut final_client, 5000).await;
 // 		assert!(change.is_some(), "Server should still deliver notifications after stress test");
@@ -988,7 +988,7 @@
 // 		const NUM_CYCLES: usize = 200;
 // 		for i in 0..NUM_CYCLES {
 // 			let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
-// 			client.command(&format!("INSERT test. FROM [{{ id: {} }}]{}", i, table), None).await.unwrap();
+// 			client.command(&format!("INSERT test. [{{ id: {} }}]{}", i, table), None).await.unwrap();
 //
 // 			let change = recv_with_timeout(&mut client, 500).await;
 // 			assert!(change.is_some(), "Cycle {}: should receive notification", i);

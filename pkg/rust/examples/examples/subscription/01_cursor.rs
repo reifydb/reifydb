@@ -52,7 +52,7 @@ fn main() {
 	// which writes to subscription storage
 	info!("Inserting events...");
 	log_query(
-		r#"INSERT test.events FROM [
+		r#"INSERT test.events [
     { id: 1, name: "deploy", status: "success" },
     { id: 2, name: "build", status: "failed" },
     { id: 3, name: "test", status: "success" }
@@ -60,7 +60,7 @@ fn main() {
 	);
 	db.command_as_root(
 		r#"
-		INSERT test.events FROM [
+		INSERT test.events [
 			{ id: 1, name: "deploy", status: "success" },
 			{ id: 2, name: "build", status: "failed" },
 			{ id: 3, name: "test", status: "success" }

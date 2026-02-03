@@ -4,7 +4,7 @@
 
 (admin 'create table test.conversion{col: float4}')
 
-(command 'INSERT test.conversion FROM [{ col: cast(cast(0, int4), float4) }]')
+(command 'INSERT test.conversion [{ col: cast(cast(0, int4), float4) }]')
 command 'from test.conversion map col'
 ---
 > +----------+-------+
@@ -14,7 +14,7 @@ command 'from test.conversion map col'
 > +----------+-------+
 >
 
-(command 'INSERT test.conversion FROM [{ col: cast(cast(16777216, int4), float4) }]')
+(command 'INSERT test.conversion [{ col: cast(cast(16777216, int4), float4) }]')
 command 'from test.conversion map col'
 ---
 > +----------+------------+
@@ -25,7 +25,7 @@ command 'from test.conversion map col'
 > +----------+------------+
 >
 
-(command 'INSERT test.conversion FROM [{ col: cast(cast(-16777216, int4), float4) }]')
+(command 'INSERT test.conversion [{ col: cast(cast(-16777216, int4), float4) }]')
 command 'from test.conversion map col'
 ---
 > +----------+-------------+
@@ -38,21 +38,21 @@ command 'from test.conversion map col'
 >
 
 (admin 'create table test.float4_test10{col: float4}')
-!command 'INSERT test.float4_test10 FROM [{ col: cast(cast(16777217, int4), float4) }]'
+!command 'INSERT test.float4_test10 [{ col: cast(cast(16777217, int4), float4) }]'
 ---
 >  Error CAST_002: failed to cast to Float4
->   at "(16777217float4" (line 1, column 44)
+>   at "(16777217float4" (line 1, column 39)
 >
->   1 │ INSERT test.float4_test10 FROM [{ col: cast(cast(16777217, int4), float4) }]
->     │                                             ~~~~~~~~~~~~~~~
->     │                                        failed to cast to Float4
+>   1 │ INSERT test.float4_test10 [{ col: cast(cast(16777217, int4), float4) }]
+>     │                                        ~~~~~~~~~~~~~~~
+>     │                                   failed to cast to Float4
 >
 >   ↳  Error NUMBER_004: too large for precise float conversion
->     at "16777217" (line 1, column 50)
+>     at "16777217" (line 1, column 45)
 >
->     1 │ INSERT test.float4_test10 FROM [{ col: cast(cast(16777217, int4), float4) }]
->       │                                                  ~~~~~~~~
->       │                       converting '16777217' from Int4 to Float4 would lose precision
+>     1 │ INSERT test.float4_test10 [{ col: cast(cast(16777217, int4), float4) }]
+>       │                                             ~~~~~~~~
+>       │                  converting '16777217' from Int4 to Float4 would lose precision
 >
 >     note: Float4 can only represent from -16_777_216 (-2^24) to 16_777_216 (2^24) precisely
 >     note: consider using a different numeric type if exact precision is required

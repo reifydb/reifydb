@@ -64,6 +64,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Map(_) => "Map",
 		Ast::Generator(_) => "Generator",
 		Ast::Extend(_) => "Extend",
+		Ast::Patch(_) => "Patch",
 		Ast::Take(_) => "Take",
 		Ast::Tuple(_) => "Tuple",
 		Ast::While(_) => "While",

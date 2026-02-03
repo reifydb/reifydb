@@ -78,7 +78,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT inventory.products FROM [
+		INSERT inventory.products [
 			{ id: 1, name: "Toy Car", category: "Toys", price: 15.99, in_stock: true, on_sale: true, featured: false, min_age: 3 },
 			{ id: 2, name: "Laptop", category: "Electronics", price: 999.99, in_stock: true, on_sale: false, featured: true, min_age: 0 },
 			{ id: 3, name: "Book", category: "Books", price: 12.99, in_stock: false, on_sale: false, featured: false, min_age: 0 },

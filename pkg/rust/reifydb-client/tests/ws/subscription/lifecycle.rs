@@ -31,7 +31,7 @@ fn test_no_changes_after_unsubscribe() {
 		client.unsubscribe(&sub_id).await.unwrap();
 
 		// Insert data after unsubscribe
-		client.command(&format!("INSERT test.{} FROM [{{ id: 1 }}]", table), None).await.unwrap();
+		client.command(&format!("INSERT test.{} [{{ id: 1 }}]", table), None).await.unwrap();
 
 		// Should NOT receive any change
 		let change = recv_with_timeout(&mut client, 500).await;
@@ -90,7 +90,7 @@ fn test_rapid_subscribe_unsubscribe() {
 		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
 		assert!(!sub_id.is_empty());
 
-		client.command(&format!("INSERT test.{} FROM [{{ id: 999 }}]", table), None).await.unwrap();
+		client.command(&format!("INSERT test.{} [{{ id: 999 }}]", table), None).await.unwrap();
 
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some(), "Should still receive changes after rapid cycles");

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::{insert_missing_from_clause, insert_missing_target};
+use reifydb_core::error::diagnostic::operation::{insert_missing_source, insert_missing_target};
 use reifydb_type::return_error;
 
 use crate::ast::{
-	ast::{Ast, AstInsert},
+	ast::{Ast, AstFrom, AstInsert, AstVariable},
 	identifier::UnresolvedPrimitiveIdentifier,
 	parse::Parser,
 	tokenize::{keyword::Keyword, operator::Operator, token::TokenKind},
@@ -13,9 +13,9 @@ use crate::ast::{
 
 impl Parser {
 	/// Parse INSERT statement with keyword-first syntax:
-	/// INSERT table FROM [...]
-	/// INSERT namespace.table FROM source_table
-	/// INSERT table FROM $variable
+	/// INSERT table [...]              - inline array (no FROM)
+	/// INSERT table $variable          - variable (no FROM)
+	/// INSERT namespace.table FROM source_table  - table source (FROM required)
 	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
@@ -35,13 +35,47 @@ impl Parser {
 			UnresolvedPrimitiveIdentifier::new(None, first.into_fragment())
 		};
 
-		// 2. Parse FROM clause (REQUIRED)
-		if self.is_eof() || !self.current()?.is_keyword(Keyword::From) {
-			return_error!(insert_missing_from_clause(token.fragment));
+		// 2. Parse data source
+		// Check what follows the target:
+		// - `[` → inline array (no FROM keyword)
+		// - `$` → variable (no FROM keyword)
+		// - `FROM` keyword → table/generator source (parse FROM clause)
+		if self.is_eof() {
+			return_error!(insert_missing_source(token.fragment));
 		}
 
-		// Parse the FROM clause which handles inline arrays, variables, and table sources
-		let source = Ast::From(self.parse_from()?);
+		let current = self.current()?;
+		let source = if current.is_operator(Operator::OpenBracket) {
+			// Inline array - parse directly without FROM keyword
+			// Reuse parse_static from from.rs
+			let list = self.parse_static()?;
+			Ast::From(AstFrom::Inline {
+				token: list.token.clone(),
+				list,
+			})
+		} else if matches!(current.kind, TokenKind::Variable) {
+			// Variable - parse directly without FROM keyword
+			let var_token = self.advance()?;
+
+			if var_token.fragment.text() == "$env" {
+				Ast::From(AstFrom::Environment {
+					token: var_token,
+				})
+			} else {
+				let variable = AstVariable {
+					token: var_token.clone(),
+				};
+				Ast::From(AstFrom::Variable {
+					token: var_token,
+					variable,
+				})
+			}
+		} else if current.is_keyword(Keyword::From) {
+			// Table/generator source - use FROM clause
+			Ast::From(self.parse_from()?)
+		} else {
+			return_error!(insert_missing_source(token.fragment));
+		};
 
 		Ok(AstInsert {
 			token,
@@ -54,16 +88,17 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use crate::ast::{
-		ast::{Ast, AstFrom, AstInsert},
+		ast::{Ast, AstFrom},
 		parse::Parser,
 		tokenize::tokenize,
 	};
 
 	#[test]
 	fn test_insert_with_inline_array() {
+		// New syntax: no FROM keyword for inline arrays
 		let tokens = tokenize(
 			r#"
-        INSERT users FROM [{ id: 1, name: "Alice" }]
+        INSERT users [{ id: 1, name: "Alice" }]
     "#,
 		)
 		.unwrap();
@@ -84,9 +119,10 @@ pub mod tests {
 
 	#[test]
 	fn test_insert_with_namespace() {
+		// New syntax: no FROM keyword for inline arrays
 		let tokens = tokenize(
 			r#"
-        INSERT test.users FROM [{ id: 1, name: "Bob" }]
+        INSERT test.users [{ id: 1, name: "Bob" }]
     "#,
 		)
 		.unwrap();
@@ -104,6 +140,7 @@ pub mod tests {
 
 	#[test]
 	fn test_insert_from_source_table() {
+		// Table sources still use FROM keyword
 		let tokens = tokenize(
 			r#"
         INSERT target_table FROM source_table
@@ -134,10 +171,11 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_insert_from_variable() {
+	fn test_insert_variable() {
+		// New syntax: no FROM keyword for variables
 		let tokens = tokenize(
 			r#"
-        INSERT users FROM $data
+        INSERT users $data
     "#,
 		)
 		.unwrap();
@@ -157,7 +195,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_insert_missing_from_fails() {
+	fn test_insert_missing_source_fails() {
 		let tokens = tokenize(
 			r#"
         INSERT users
@@ -173,7 +211,7 @@ pub mod tests {
 	fn test_insert_missing_target_fails() {
 		let tokens = tokenize(
 			r#"
-        INSERT FROM [{ id: 1 }]
+        INSERT [{ id: 1 }]
     "#,
 		)
 		.unwrap();
@@ -184,9 +222,10 @@ pub mod tests {
 
 	#[test]
 	fn test_insert_multiple_rows() {
+		// New syntax: no FROM keyword for inline arrays
 		let tokens = tokenize(
 			r#"
-        INSERT users FROM [
+        INSERT users [
           { id: 1, name: "Alice" },
           { id: 2, name: "Bob" },
           { id: 3, name: "Charlie" }

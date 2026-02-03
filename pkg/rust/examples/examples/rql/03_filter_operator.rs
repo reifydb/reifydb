@@ -40,7 +40,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT hr.employees FROM [
+		INSERT hr.employees [
 			{ id: 1, name: "Alice", department: "Engineering", salary: 120000, years_experience: 8, is_manager: true },
 			{ id: 2, name: "Bob", department: "Sales", salary: 80000, years_experience: 5, is_manager: false },
 			{ id: 3, name: "Carol", department: "Engineering", salary: 95000, years_experience: 3, is_manager: false },

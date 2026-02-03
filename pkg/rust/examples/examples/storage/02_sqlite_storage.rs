@@ -68,7 +68,7 @@ fn main() {
 		// Insert data
 		info!("Inserting products...");
 		log_query(
-			r#"INSERT store.products FROM [
+			r#"INSERT store.products [
   { id: 1, name: "Laptop", price: 999.99, in_stock: true },
   { id: 2, name: "Mouse", price: 29.99, in_stock: true },
   { id: 3, name: "Keyboard", price: 79.99, in_stock: false }
@@ -78,7 +78,7 @@ fn main() {
 		let result = db
 			.command_as_root(
 				r#"
-			INSERT store.products FROM [
+			INSERT store.products [
 				{ id: 1, name: "Laptop", price: 999.99, in_stock: true },
 				{ id: 2, name: "Mouse", price: 29.99, in_stock: true },
 				{ id: 3, name: "Keyboard", price: 79.99, in_stock: false }
@@ -127,12 +127,12 @@ fn main() {
 
 		// Add more data
 		info!("Adding new product:");
-		log_query(r#"INSERT store.products FROM [{ id: 4, name: "Monitor", price: 299.99, in_stock: true }]"#);
+		log_query(r#"INSERT store.products [{ id: 4, name: "Monitor", price: 299.99, in_stock: true }]"#);
 
 		let result = db
 			.command_as_root(
 				r#"
-			INSERT store.products FROM [{ id: 4, name: "Monitor", price: 299.99, in_stock: true }]
+			INSERT store.products [{ id: 4, name: "Monitor", price: 299.99, in_stock: true }]
 			"#,
 				Params::None,
 			)

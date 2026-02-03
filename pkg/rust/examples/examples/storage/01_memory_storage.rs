@@ -54,7 +54,7 @@ fn main() {
 	// Insert data
 	info!("Inserting data...");
 	log_query(
-		r#"INSERT app.users FROM [
+		r#"INSERT app.users [
   { id: 1, name: "Alice", email: "alice@example.com", active: true },
   { id: 2, name: "Bob", email: "bob@example.com", active: false },
   { id: 3, name: "Charlie", email: "charlie@example.com", active: true }
@@ -64,7 +64,7 @@ fn main() {
 	let result = db
 		.command_as_root(
 			r#"
-		INSERT app.users FROM [
+		INSERT app.users [
 			{ id: 1, name: "Alice", email: "alice@example.com", active: true },
 			{ id: 2, name: "Bob", email: "bob@example.com", active: false },
 			{ id: 3, name: "Charlie", email: "charlie@example.com", active: true }
@@ -96,12 +96,12 @@ fn main() {
 
 	// Add more data
 	info!("\nAdding another user:");
-	log_query(r#"INSERT app.users FROM [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]"#);
+	log_query(r#"INSERT app.users [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]"#);
 
 	let result = db
 		.command_as_root(
 			r#"
-		INSERT app.users FROM [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]
+		INSERT app.users [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]
 		"#,
 			Params::None,
 		)

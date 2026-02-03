@@ -125,7 +125,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT test.scores FROM [
+		INSERT test.scores [
 			{ id: 1, student: "Alice", subject: "Math", score: 95, grade: "A", passed: true },
 			{ id: 2, student: "Bob", subject: "Math", score: 78, grade: "C", passed: true },
 			{ id: 3, student: "Carol", subject: "Math", score: 88, grade: "B", passed: true },
