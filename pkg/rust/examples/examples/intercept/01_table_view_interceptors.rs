@@ -76,18 +76,18 @@ fn main() {
 	// Step 4: Insert data - this triggers the table interceptors
 	info!("\n--- Inserting users (triggers table interceptors) ---");
 	log_query(
-		r#"from [
+		r#"INSERT test.users FROM [
     {id: 1, username: "alice", active: true},
     {id: 2, username: "bob", active: false},
     {id: 3, username: "charlie", active: true}
-] insert test.users"#,
+]"#,
 	);
 	db.command_as_root(
-		r#"from [
+		r#"INSERT test.users FROM [
             {id: 1, username: "alice", active: true},
             {id: 2, username: "bob", active: false},
             {id: 3, username: "charlie", active: true}
-        ] insert test.users"#,
+        ]"#,
 		Params::None,
 	)
 	.unwrap();

@@ -4,7 +4,7 @@
 (admin 'create namespace test')
 
 (admin 'create table test.conversion{col: uint8}')
-(command 'from [{ col: 0 }] insert test.conversion')
+(command 'INSERT test.conversion FROM [{ col: 0 }]')
 command 'from test.conversion map cast(col, float8)'
 ---
 > +----------+-------+
@@ -15,7 +15,7 @@ command 'from test.conversion map cast(col, float8)'
 >
 
 
-(command 'from [{ col: 9007199254740992 }] insert test.conversion')
+(command 'INSERT test.conversion FROM [{ col: 9007199254740992 }]')
 command 'from test.conversion map cast(col, float8)'
 ---
 > +----------+--------------------+
@@ -26,7 +26,7 @@ command 'from test.conversion map cast(col, float8)'
 > +----------+--------------------+
 >
 
-(command 'from [{ col: 9007199254740993 }] insert test.conversion')
+(command 'INSERT test.conversion FROM [{ col: 9007199254740993 }]')
 !command 'from test.conversion map cast(col, float8)'
 ---
 >  Error CAST_002: failed to cast to Float8

@@ -200,37 +200,20 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 	// Insert varying amounts of data to create clear size differences
 
 	// Tiny: 1 row, minimal data
-	engine.command_as(
-		&identity,
-		r#"
-		FROM [{ id: 1 }]
-		INSERT test.tiny
-	"#,
-		Default::default(),
-	)
-	.unwrap();
+	engine.command_as(&identity, r#"INSERT test.tiny FROM [{ id: 1 }]"#, Default::default()).unwrap();
 
 	// Small: 1 row with small text
-	engine.command_as(
-		&identity,
-		r#"
-		FROM [{ id: 1, name: "a" }]
-		INSERT test.small
-	"#,
-		Default::default(),
-	)
-	.unwrap();
+	engine.command_as(&identity, r#"INSERT test.small FROM [{ id: 1, name: "a" }]"#, Default::default()).unwrap();
 
 	// Medium: 3 rows with moderate text
 	engine.command_as(
 		&identity,
 		r#"
-		FROM [
+		INSERT test.medium FROM [
 			{ id: 1, name: "abc" },
 			{ id: 2, name: "def" },
 			{ id: 3, name: "ghi" }
 		]
-		INSERT test.medium
 	"#,
 		Default::default(),
 	)
@@ -240,14 +223,13 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 	engine.command_as(
 		&identity,
 		r#"
-		FROM [
+		INSERT test.large FROM [
 			{ id: 1, name: "abcdefghij", description: "This is a longer description with more text" },
 			{ id: 2, name: "opqrstuvwx", description: "Fifth and final row with more text data" },
 			{ id: 3, name: "klmnopqrst", description: "Another long description with lots of data" },
 			{ id: 4, name: "uvwxyzabcd", description: "Yet another description to increase size" },
 			{ id: 5, name: "efghijklmn", description: "Fourth row with substantial content here" }
 		]
-		INSERT test.large
 	"#,
 		Default::default(),
 	)
@@ -374,18 +356,17 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 	.unwrap();
 
 	// Insert minimal data
-	engine.command_as(&identity, r#"FROM [{ id: 1 }] INSERT test.tiny"#, Default::default()).unwrap();
+	engine.command_as(&identity, r#"INSERT test.tiny FROM [{ id: 1 }]"#, Default::default()).unwrap();
 
 	// Insert lots of data
 	engine.command_as(
 		&identity,
 		r#"
-		FROM [
+		INSERT test.large FROM [
 			{ id: 1, name: "abcdefghij", description: "This is a longer description with more text" },
 			{ id: 2, name: "klmnopqrst", description: "Another long description with lots of data" },
 			{ id: 3, name: "uvwxyzabcd", description: "Yet another description to increase size" }
 		]
-		INSERT test.large
 	"#,
 		Default::default(),
 	)
@@ -462,16 +443,15 @@ fn test_asc_is_not_desc() {
 	engine.admin_as(&identity, "CREATE TABLE test.b { id: int4, data: text }", Default::default()).unwrap();
 
 	// Insert different amounts to create size difference
-	engine.command_as(&identity, r#"FROM [{ id: 1 }] INSERT test.a"#, Default::default()).unwrap();
+	engine.command_as(&identity, r#"INSERT test.a FROM [{ id: 1 }]"#, Default::default()).unwrap();
 	engine.command_as(
 		&identity,
 		r#"
-		FROM [
+		INSERT test.b FROM [
 			{ id: 1, data: "lots of data here to make this bigger" },
 			{ id: 2, data: "even more data to increase size further" },
 			{ id: 3, data: "yet more data to make this the largest" }
 		]
-		INSERT test.b
 	"#,
 		Default::default(),
 	)

@@ -165,7 +165,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, value: 'test'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, value: 'test'}]`,
                     null,
                     []
                 );
@@ -212,7 +212,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, name: 'alice'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, name: 'alice'}]`,
                     null,
                     []
                 );
@@ -251,7 +251,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1}]`,
                     null,
                     []
                 );
@@ -319,7 +319,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}]`,
                     null,
                     []
                 );
@@ -363,7 +363,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, value: 'hello'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, value: 'hello'}]`,
                     null,
                     []
                 );
@@ -389,7 +389,7 @@ describe('useSubscriptionExecutor Hook', () => {
             // Pre-populate with data
             const client = getConnection().getClient();
             await client!.command(
-                `from [{id: 1, value: 'original'}] insert test.${tableName}`,
+                `INSERT test.${tableName} FROM [{id: 1, value: 'original'}]`,
                 null,
                 []
             );
@@ -435,7 +435,7 @@ describe('useSubscriptionExecutor Hook', () => {
             // Pre-populate with data
             const client = getConnection().getClient();
             await client!.command(
-                `from [{id: 1, value: 'to_delete'}] insert test.${tableName}`,
+                `INSERT test.${tableName} FROM [{id: 1, value: 'to_delete'}]`,
                 null,
                 []
             );
@@ -494,7 +494,7 @@ describe('useSubscriptionExecutor Hook', () => {
             const client = getConnection().getClient();
             await act(async () => {
                 await client!.command(
-                    `from [{id: 1, name: 'alice'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, name: 'alice'}]`,
                     null,
                     []
                 );
@@ -558,7 +558,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, value: 'first'}, {id: 2, value: 'second'}, {id: 3, value: 'third'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, value: 'first'}, {id: 2, value: 'second'}, {id: 3, value: 'third'}]`,
                     null,
                     []
                 );
@@ -686,8 +686,8 @@ describe('useSubscriptionExecutor Hook', () => {
             // Trigger different operations on each
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{id: 100}] insert test.${table1}`, null, []);
-                await client!.command(`from [{id: 200}] insert test.${table2}`, null, []);
+                await client!.command(`INSERT test.${table1} FROM [{id: 100}]`, null, []);
+                await client!.command(`INSERT test.${table2} FROM [{id: 200}]`, null, []);
             });
 
             await waitFor(() => {
@@ -740,7 +740,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, value: 'test'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, value: 'test'}]`,
                     null,
                     []
                 );

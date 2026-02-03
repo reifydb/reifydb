@@ -171,12 +171,11 @@ map {
 	// Insert sample data
 	db.command_as_root(
 		r#"
-		from [
+		INSERT sales.orders FROM [
 			{ id: 1, customer: "Alice", subtotal: 100.0, discount_percent: 10.0 },
 			{ id: 2, customer: "Bob", subtotal: 200.0, discount_percent: 15.0 },
 			{ id: 3, customer: "Carol", subtotal: 150.0, discount_percent: 5.0 }
 		]
-		insert sales.orders
 		"#,
 		Params::None,
 	)

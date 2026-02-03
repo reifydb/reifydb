@@ -40,7 +40,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, value: 2147483647 }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, value: 2147483647 }]`, null, []);
             });
 
             await waitFor(() => {
@@ -74,7 +74,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, bigValue: 9007199254740991 }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, bigValue: 9007199254740991 }]`, null, []);
             });
 
             await waitFor(() => {
@@ -108,7 +108,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, unsigned: 4294967295 }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, unsigned: 4294967295 }]`, null, []);
             });
 
             await waitFor(() => {
@@ -142,7 +142,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, bigUnsigned: 18446744073709551615 }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, bigUnsigned: 18446744073709551615 }]`, null, []);
             });
 
             await waitFor(() => {
@@ -178,7 +178,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, floatValue: 3.14 }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, floatValue: 3.14 }]`, null, []);
             });
 
             await waitFor(() => {
@@ -213,7 +213,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, doubleValue: 2.718281828459045 }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, doubleValue: 2.718281828459045 }]`, null, []);
             });
 
             await waitFor(() => {
@@ -250,7 +250,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, text: 'Hello, World!' }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, text: 'Hello, World!' }]`, null, []);
             });
 
             await waitFor(() => {
@@ -287,7 +287,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, flag: true }, { id: 2, flag: false }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, flag: true }, { id: 2, flag: false }]`, null, []);
             });
 
             await waitFor(() => {
@@ -331,7 +331,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, count: 100, ratio: 0.95, name: 'Alice', active: true }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, count: 100, ratio: 0.95, name: 'Alice', active: true }]`, null, []);
             });
 
             await waitFor(() => {
@@ -373,7 +373,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, value: 42 }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, value: 42 }]`, null, []);
             });
 
             await waitFor(() => {
@@ -408,7 +408,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
             // INSERT after subscribing
             const client = getConnection().getClient();
             await act(async () => {
-                await client!.command(`from [{ id: 1, score: 85.5 }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, score: 85.5 }]`, null, []);
             });
 
             await waitFor(() => {
@@ -453,7 +453,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
             // INSERT after subscribing
             const client = getConnection().getClient();
             await act(async () => {
-                await client!.command(`from [{ id: 1, name: 'to_delete' }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, name: 'to_delete' }]`, null, []);
             });
 
             await waitFor(() => {
@@ -497,7 +497,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
             // INSERT
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, counter: 0 }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, counter: 0 }]`, null, []);
             });
 
             await waitFor(() => {
@@ -561,7 +561,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, amount: 1000, rate: 0.05, label: 'Premium' }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, amount: 1000, rate: 0.05, label: 'Premium' }]`, null, []);
             });
 
             await waitFor(() => {
@@ -611,7 +611,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from ${JSON.stringify(rows)} insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM ${JSON.stringify(rows)}`, null, []);
             });
 
             await waitFor(() => {
@@ -654,7 +654,7 @@ describe('useSubscriptionExecutor - Value Object Schema Transformations', () => 
 
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`from [{ id: 1, count: 100, name: 'Test' }] insert test.${tableName}`, null, []);
+                await client!.command(`INSERT test.${tableName} FROM [{ id: 1, count: 100, name: 'Test' }]`, null, []);
             });
 
             await waitFor(() => {

@@ -115,12 +115,11 @@ fn main() {
 	info!("Inserting sample data...");
 	db.command_as_root(
 		r#"
-		from [
+		INSERT demo.users FROM [
 			{ id: 1, username: "alice", email: "alice@example.com", is_active: true },
 			{ id: 2, username: "bob", email: "bob@example.com", is_active: true },
 			{ id: 3, username: "charlie", email: "charlie@example.com", is_active: false }
 		]
-		insert demo.users
 		"#,
 		Params::None,
 	)

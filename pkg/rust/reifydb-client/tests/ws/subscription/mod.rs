@@ -143,9 +143,9 @@ impl TestContext {
 		Ok(sub_id)
 	}
 
-	/// Insert rows using RQL: `from [{row1}, {row2}] insert test.table`
+	/// Insert rows using RQL: `INSERT test.table FROM [{row1}, {row2}]`
 	pub async fn insert(&self, table: &str, rows: &str) -> Result<(), Box<dyn Error>> {
-		self.client.command(&format!("from [{}] insert test.{}", rows, table), None).await?;
+		self.client.command(&format!("INSERT test.{} FROM [{}]", table, rows), None).await?;
 		Ok(())
 	}
 

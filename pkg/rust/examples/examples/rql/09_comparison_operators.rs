@@ -125,7 +125,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		from [
+		INSERT test.scores FROM [
 			{ id: 1, student: "Alice", subject: "Math", score: 95, grade: "A", passed: true },
 			{ id: 2, student: "Bob", subject: "Math", score: 78, grade: "C", passed: true },
 			{ id: 3, student: "Carol", subject: "Math", score: 88, grade: "B", passed: true },
@@ -135,7 +135,6 @@ fn main() {
 			{ id: 7, student: "Grace", subject: "Math", score: 100, grade: "A", passed: true },
 			{ id: 8, student: "Henry", subject: "Math", score: 73, grade: "C", passed: true }
 		]
-		insert test.scores
 		"#,
 		Params::None,
 	)

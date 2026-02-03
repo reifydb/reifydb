@@ -4,7 +4,7 @@
 (admin 'create namespace test')
 
 (admin 'create table test.conversion{col: uint4}')
-(command 'from [{ col: 0 }] insert test.conversion')
+(command 'INSERT test.conversion FROM [{ col: 0 }]')
 command 'from test.conversion map cast(col, float4)'
 ---
 > +----------+-------+
@@ -15,7 +15,7 @@ command 'from test.conversion map cast(col, float4)'
 >
 
 
-(command 'from [{ col: 16777216 }] insert test.conversion')
+(command 'INSERT test.conversion FROM [{ col: 16777216 }]')
 command 'from test.conversion map cast(col, float4)'
 ---
 > +----------+------------+
@@ -27,7 +27,7 @@ command 'from test.conversion map cast(col, float4)'
 >
 
 (admin 'create table test.conversion_fail{col: uint4}')
-(command 'from [{ col: 16777217 }] insert test.conversion_fail')
+(command 'INSERT test.conversion_fail FROM [{ col: 16777217 }]')
 !command 'from test.conversion_fail map cast(col, float4)'
 ---
 >  Error CAST_002: failed to cast to Float4

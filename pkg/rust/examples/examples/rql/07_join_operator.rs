@@ -67,7 +67,7 @@ fn main() {
 	// Insert data
 	db.command_as_root(
 		r#"
-		from [
+		INSERT company.employees FROM [
 			{ emp_id: 1, name: "Alice", dept_id: 10, salary: 75000 },
 			{ emp_id: 2, name: "Bob", dept_id: 20, salary: 65000 },
 			{ emp_id: 3, name: "Carol", dept_id: 10, salary: 80000 },
@@ -75,7 +75,6 @@ fn main() {
 			{ emp_id: 5, name: "Eve", dept_id: 20, salary: 72000 },
 			{ emp_id: 6, name: "Frank", dept_id: 40, salary: 68000 }
 		]
-		insert company.employees
 		"#,
 		Params::None,
 	)
@@ -83,12 +82,11 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		from [
+		INSERT company.departments FROM [
 			{ dept_id: 10, dept_name: "Engineering", location: "Building A" },
 			{ dept_id: 20, dept_name: "Sales", location: "Building B" },
 			{ dept_id: 30, dept_name: "Marketing", location: "Building C" }
 		]
-		insert company.departments
 		"#,
 		Params::None,
 	)
@@ -96,13 +94,12 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		from [
+		INSERT company.projects FROM [
 			{ project_id: 1, project_name: "Project Alpha", dept_id: 10, budget: 100000 },
 			{ project_id: 2, project_name: "Project Beta", dept_id: 20, budget: 50000 },
 			{ project_id: 3, project_name: "Project Gamma", dept_id: 10, budget: 75000 },
 			{ project_id: 4, project_name: "Project Delta", dept_id: 30, budget: 60000 }
 		]
-		insert company.projects
 		"#,
 		Params::None,
 	)

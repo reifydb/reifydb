@@ -227,7 +227,10 @@ impl Subsystem for FlowSubsystem {
 impl HasVersion for FlowSubsystem {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: env!("CARGO_PKG_NAME").strip_prefix("reifydb-").unwrap_or(env!("CARGO_PKG_NAME")).to_string(),
+			name: env!("CARGO_PKG_NAME")
+				.strip_prefix("reifydb-")
+				.unwrap_or(env!("CARGO_PKG_NAME"))
+				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Data flow and stream processing subsystem".to_string(),
 			r#type: ComponentType::Subsystem,

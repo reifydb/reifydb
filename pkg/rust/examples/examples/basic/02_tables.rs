@@ -61,25 +61,23 @@ fn main() {
 	// Insert some initial data
 	info!("Inserting employees...");
 	log_query(
-		r#"from [
+		r#"INSERT company.employees FROM [
     { id: 1, name: "Alice Johnson", age: 28, salary: 75000.0, is_active: true, department: "Engineering" },
     { id: 2, name: "Bob Smith", age: 35, salary: 85000.0, is_active: true, department: "Sales" },
     { id: 3, name: "Charlie Bframen", age: 42, salary: 95000.0, is_active: true, department: "Engineering" },
     { id: 4, name: "Diana Prince", age: 31, salary: 72000.0, is_active: false, department: "HR" },
     { id: 5, name: "Eve Adams", age: 26, salary: 68000.0, is_active: true, department: "Marketing" }
-]
-insert company.employees"#,
+]"#,
 	);
 	db.command_as_root(
 		r#"
-		from [
+		INSERT company.employees FROM [
 			{ id: 1, name: "Alice Johnson", age: 28, salary: 75000.0, is_active: true, department: "Engineering" },
 			{ id: 2, name: "Bob Smith", age: 35, salary: 85000.0, is_active: true, department: "Sales" },
 			{ id: 3, name: "Charlie Bframen", age: 42, salary: 95000.0, is_active: true, department: "Engineering" },
 			{ id: 4, name: "Diana Prince", age: 31, salary: 72000.0, is_active: false, department: "HR" },
 			{ id: 5, name: "Eve Adams", age: 26, salary: 68000.0, is_active: true, department: "Marketing" }
-		]
-		insert company.employees;
+		];
 		"#,
 		Params::None,
 	)

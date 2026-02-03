@@ -547,16 +547,19 @@ pub struct DeleteRingBufferNode {
 #[derive(Debug)]
 pub struct InsertTableNode {
 	pub target: MaybeQualifiedTableIdentifier,
+	pub source: Box<LogicalPlan>,
 }
 
 #[derive(Debug)]
 pub struct InsertRingBufferNode {
 	pub target: MaybeQualifiedRingBufferIdentifier,
+	pub source: Box<LogicalPlan>,
 }
 
 #[derive(Debug)]
 pub struct InsertDictionaryNode {
 	pub target: MaybeQualifiedDictionaryIdentifier,
+	pub source: Box<LogicalPlan>,
 }
 
 #[derive(Debug)]

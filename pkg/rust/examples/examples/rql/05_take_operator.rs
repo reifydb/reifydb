@@ -68,7 +68,7 @@ take 3"#,
 
 	db.command_as_root(
 		r#"
-		from [
+		INSERT demo.events FROM [
 			{ id: 1, event_type: "ERROR", timestamp: 1000, severity: "HIGH", message: "Database connection failed" },
 			{ id: 2, event_type: "INFO", timestamp: 1001, severity: "LOW", message: "User logged in" },
 			{ id: 3, event_type: "WARNING", timestamp: 1002, severity: "MEDIUM", message: "Memory usage high" },
@@ -80,7 +80,6 @@ take 3"#,
 			{ id: 9, event_type: "ERROR", timestamp: 1008, severity: "HIGH", message: "Authentication failed" },
 			{ id: 10, event_type: "INFO", timestamp: 1009, severity: "LOW", message: "Service started" }
 		]
-		insert demo.events
 		"#,
 		Params::None,
 	)

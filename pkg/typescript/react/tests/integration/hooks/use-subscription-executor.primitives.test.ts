@@ -43,7 +43,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, value: 42}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, value: 42}]`,
                     null,
                     []
                 );
@@ -82,7 +82,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, bigValue: 9007199254740991}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, bigValue: 9007199254740991}]`,
                     null,
                     []
                 );
@@ -120,7 +120,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, floatValue: 3.14}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, floatValue: 3.14}]`,
                     null,
                     []
                 );
@@ -157,7 +157,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, doubleValue: 2.718281828459045}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, doubleValue: 2.718281828459045}]`,
                     null,
                     []
                 );
@@ -196,7 +196,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, name: 'Alice'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, name: 'Alice'}]`,
                     null,
                     []
                 );
@@ -233,7 +233,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, text: 'Hello 世界 🌍'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, text: 'Hello 世界 🌍'}]`,
                     null,
                     []
                 );
@@ -271,7 +271,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, isActive: true}, {id: 2, isActive: false}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, isActive: true}, {id: 2, isActive: false}]`,
                     null,
                     []
                 );
@@ -317,7 +317,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, name: 'Alice', score: 95.5, isValid: true}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, name: 'Alice', score: 95.5, isValid: true}]`,
                     null,
                     []
                 );
@@ -368,7 +368,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, name: 'test', value: 1.5}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, name: 'test', value: 1.5}]`,
                     null,
                     []
                 );
@@ -396,7 +396,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             // Pre-populate
             const client = getConnection().getClient();
             await client!.command(
-                `from [{id: 1, value: 10}] insert test.${tableName}`,
+                `INSERT test.${tableName} FROM [{id: 1, value: 10}]`,
                 null,
                 []
             );
@@ -443,7 +443,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             // Pre-populate
             const client = getConnection().getClient();
             await client!.command(
-                `from [{id: 1, name: 'to_remove'}] insert test.${tableName}`,
+                `INSERT test.${tableName} FROM [{id: 1, name: 'to_remove'}]`,
                 null,
                 []
             );
@@ -504,7 +504,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             // INSERT
             await act(async () => {
                 await client!.command(
-                    `from [{id: 1, count: 0}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, count: 0}]`,
                     null,
                     []
                 );
@@ -576,7 +576,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, optionalValue: 42}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, optionalValue: 42}]`,
                     null,
                     []
                 );
@@ -613,7 +613,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 const client = getConnection().getClient();
                 const rows = Array.from({length: 100}, (_, i) => `{id: ${i}, value: ${i * 1.5}}`).join(', ');
                 await client!.command(
-                    `from [${rows}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [${rows}]`,
                     null,
                     []
                 );

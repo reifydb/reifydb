@@ -41,7 +41,7 @@ impl Workload for WriteWorkload {
 	fn next_operation(&self, _rng: &mut StdRng, _worker_id: usize) -> Operation {
 		let id = self.next_id.fetch_add(1, Ordering::Relaxed);
 		Operation::Command(format!(
-			"from [{{ id: {}, name: \"user_{}\", email: \"user_{}@bench.test\" }}] insert bench.users",
+			"INSERT bench.users FROM [{{ id: {}, name: \"user_{}\", email: \"user_{}@bench.test\" }}]",
 			id, id, id
 		))
 	}

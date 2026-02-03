@@ -325,7 +325,10 @@ impl Compiler {
 				}
 
 				LogicalPlan::InsertTable(insert) => {
-					let input = stack.pop().unwrap();
+					// Compile the source from the INSERT node
+					let input = self
+						.compile(rx, vec![*insert.source])?
+						.expect("Insert source must produce a plan");
 
 					// Resolve the table
 					use reifydb_core::interface::resolved::{ResolvedNamespace, ResolvedTable};
@@ -363,7 +366,10 @@ impl Compiler {
 				}
 
 				LogicalPlan::InsertRingBuffer(insert_rb) => {
-					let input = stack.pop().unwrap();
+					// Compile the source from the INSERT node
+					let input = self
+						.compile(rx, vec![*insert_rb.source])?
+						.expect("Insert source must produce a plan");
 
 					// Resolve the ring buffer
 					use reifydb_core::interface::resolved::{
@@ -406,7 +412,10 @@ impl Compiler {
 				}
 
 				LogicalPlan::InsertDictionary(insert_dict) => {
-					let input = stack.pop().unwrap();
+					// Compile the source from the INSERT node
+					let input = self
+						.compile(rx, vec![*insert_dict.source])?
+						.expect("Insert source must produce a plan");
 
 					// Resolve the dictionary
 					let dictionary_id = insert_dict.target.clone();

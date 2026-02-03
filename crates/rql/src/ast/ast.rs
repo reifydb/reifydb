@@ -1190,7 +1190,8 @@ pub struct AstDelete {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstInsert {
 	pub token: Token,
-	pub target: Option<UnresolvedPrimitiveIdentifier>,
+	pub target: UnresolvedPrimitiveIdentifier,
+	pub source: Box<Ast>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

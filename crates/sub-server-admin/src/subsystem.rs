@@ -84,7 +84,10 @@ impl AdminSubsystem {
 impl HasVersion for AdminSubsystem {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: env!("CARGO_PKG_NAME").strip_prefix("reifydb-").unwrap_or(env!("CARGO_PKG_NAME")).to_string(),
+			name: env!("CARGO_PKG_NAME")
+				.strip_prefix("reifydb-")
+				.unwrap_or(env!("CARGO_PKG_NAME"))
+				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Admin server subsystem for web-based administration".to_string(),
 			r#type: ComponentType::Subsystem,

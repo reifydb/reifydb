@@ -83,11 +83,10 @@ fn test_insert_and_query() {
 	// Insert data
 	let result = db.command(
 		r#"
-        FROM [
+        INSERT test.users FROM [
             { id: 1, name: "Alice" },
             { id: 2, name: "Bob" }
         ]
-        INSERT test.users
     "#,
 	);
 	assert!(result.is_ok(), "INSERT should succeed");

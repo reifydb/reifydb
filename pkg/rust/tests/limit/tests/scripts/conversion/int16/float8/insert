@@ -4,7 +4,7 @@
 
 (admin 'create table test.conversion{col: float8}')
 
-(command 'from [{ col: cast(cast(0, int16), float8) }] insert test.conversion')
+(command 'INSERT test.conversion FROM [{ col: cast(cast(0, int16), float8) }]')
 command 'from test.conversion map col'
 ---
 > +----------+-------+
@@ -14,7 +14,7 @@ command 'from test.conversion map col'
 > +----------+-------+
 >
 
-(command 'from [{ col: cast(cast(9007199254740992, int16), float8) }] insert test.conversion')
+(command 'INSERT test.conversion FROM [{ col: cast(cast(9007199254740992, int16), float8) }]')
 command 'from test.conversion map col'
 ---
 > +----------+--------------------+
@@ -25,7 +25,7 @@ command 'from test.conversion map col'
 > +----------+--------------------+
 >
 
-(command 'from [{ col: cast(cast(-9007199254740992, int16), float8) }] insert test.conversion')
+(command 'INSERT test.conversion FROM [{ col: cast(cast(-9007199254740992, int16), float8) }]')
 command 'from test.conversion map col'
 ---
 > +----------+---------------------+
@@ -38,21 +38,21 @@ command 'from test.conversion map col'
 >
 
 (admin 'create table test.float8_test10{col: float8}')
-!command 'from [{ col: cast(cast(9007199254740993, int16), float8) }] insert test.float8_test10'
+!command 'INSERT test.float8_test10 FROM [{ col: cast(cast(9007199254740993, int16), float8) }]'
 ---
 >  Error CAST_002: failed to cast to Float8
->   at "(9007199254740993float8" (line 1, column 18)
+>   at "(9007199254740993float8" (line 1, column 44)
 >
->   1 │ from [{ col: cast(cast(9007199254740993, int16), float8) }] insert test.float8_test10
->     │                   ~~~~~~~~~~~~~~~~~~~~~~~
->     │                  failed to cast to Float8
+>   1 │ INSERT test.float8_test10 FROM [{ col: cast(cast(9007199254740993, int16), float8) }]
+>     │                                             ~~~~~~~~~~~~~~~~~~~~~~~
+>     │                                            failed to cast to Float8
 >
 >   ↳  Error NUMBER_004: too large for precise float conversion
->     at "9007199254740993" (line 1, column 24)
+>     at "9007199254740993" (line 1, column 50)
 >
->     1 │ from [{ col: cast(cast(9007199254740993, int16), float8) }] insert test.float8_test10
->       │                        ~~~~~~~~~~~~~~~~
->       │ converting '9007199254740993' from Int16 to Float8 would lose precision
+>     1 │ INSERT test.float8_test10 FROM [{ col: cast(cast(9007199254740993, int16), float8) }]
+>       │                                                  ~~~~~~~~~~~~~~~~
+>       │                       converting '9007199254740993' from Int16 to Float8 would lose precision
 >
 >     note: Float8 can only represent from -9_007_199_254_740_992 (-2^53) to 9_007_199_254_740_992 (2^53) precisely
 >     note: consider using a different numeric type if exact precision is required

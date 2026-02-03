@@ -434,3 +434,45 @@ pub fn delete_missing_filter_clause(fragment: Fragment) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+/// INSERT missing target error
+pub fn insert_missing_target(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "INSERT_001".to_string(),
+		statement: None,
+		message: "INSERT requires a target table".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing target table".to_string()),
+		help: Some("Specify the table to insert into, e.g., 'INSERT users FROM [{ id: 1, name: \"Alice\" }]'"
+			.to_string()),
+		notes: vec![
+			"The target table specifies where to insert the data".to_string(),
+			"Example: INSERT users FROM [{ id: 1, name: \"Alice\" }]".to_string(),
+			"Example with namespace: INSERT test.users FROM [{ id: 1, name: \"Alice\" }]".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// INSERT missing FROM clause error
+pub fn insert_missing_from_clause(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "INSERT_002".to_string(),
+		statement: None,
+		message: "INSERT requires a FROM clause with data source".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing FROM clause".to_string()),
+		help: Some("Add a FROM clause to specify the data to insert, e.g., 'INSERT users FROM [{ id: 1, name: \"Alice\" }]'"
+			.to_string()),
+		notes: vec![
+			"The FROM clause specifies the data to insert".to_string(),
+			"It can be an inline array: INSERT users FROM [{ id: 1 }, { id: 2 }]".to_string(),
+			"Or a source table: INSERT target_table FROM source_table".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}

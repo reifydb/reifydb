@@ -39,7 +39,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		from [
+		INSERT store.products FROM [
 			{ id: 1, name: "Laptop", category: "Electronics", price: 999.99, stock: 15, rating: 4.5 },
 			{ id: 2, name: "Mouse", category: "Electronics", price: 25.99, stock: 50, rating: 4.2 },
 			{ id: 3, name: "Desk", category: "Furniture", price: 299.99, stock: 8, rating: 4.7 },
@@ -49,7 +49,6 @@ fn main() {
 			{ id: 7, name: "Lamp", category: "Furniture", price: 45.99, stock: 25, rating: 4.1 },
 			{ id: 8, name: "Webcam", category: "Electronics", price: 89.99, stock: 18, rating: 4.4 }
 		]
-		insert store.products
 		"#,
 		Params::None,
 	)

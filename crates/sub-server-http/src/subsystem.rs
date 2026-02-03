@@ -105,7 +105,10 @@ impl HttpSubsystem {
 impl HasVersion for HttpSubsystem {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: env!("CARGO_PKG_NAME").strip_prefix("reifydb-").unwrap_or(env!("CARGO_PKG_NAME")).to_string(),
+			name: env!("CARGO_PKG_NAME")
+				.strip_prefix("reifydb-")
+				.unwrap_or(env!("CARGO_PKG_NAME"))
+				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "HTTP server subsystem for query and command handling".to_string(),
 			r#type: ComponentType::Subsystem,
