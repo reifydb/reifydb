@@ -325,3 +325,71 @@ pub fn window_missing_type_or_size(fragment: Fragment) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+/// UPDATE missing assignments block error
+pub fn update_missing_assignments_block(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "UPDATE_001".to_string(),
+		statement: None,
+		message: "UPDATE requires an assignments block".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing assignments block".to_string()),
+		help: Some(
+			"Specify the fields to update in curly braces, e.g., 'UPDATE users { name: 'alice' } FILTER id == 1'"
+				.to_string(),
+		),
+		notes: vec![
+			"The assignments block specifies which columns to update and their new values".to_string(),
+			"Use colon syntax for assignments: { column: value, ... }".to_string(),
+			"Example: UPDATE users { name: 'alice', age: 30 } FILTER id == 1".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// UPDATE empty assignments block error
+pub fn update_empty_assignments_block(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "UPDATE_002".to_string(),
+		statement: None,
+		message: "UPDATE assignments block cannot be empty".to_string(),
+		column: None,
+		fragment,
+		label: Some("empty assignments block".to_string()),
+		help: Some(
+			"Specify at least one field to update, e.g., 'UPDATE users { name: 'alice' } FILTER id == 1'"
+				.to_string(),
+		),
+		notes: vec![
+			"At least one column must be specified for update".to_string(),
+			"Example: UPDATE users { name: 'alice', age: 30 } FILTER id == 1".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// UPDATE missing FILTER clause error
+pub fn update_missing_filter_clause(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "UPDATE_003".to_string(),
+		statement: None,
+		message: "UPDATE requires a FILTER clause".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing FILTER clause".to_string()),
+		help: Some(
+			"Add a FILTER clause to specify which rows to update, e.g., 'UPDATE users { name: 'alice' } FILTER id == 1'"
+				.to_string(),
+		),
+		notes: vec![
+			"The FILTER clause is required to prevent accidental mass updates".to_string(),
+			"It specifies the condition for selecting rows to update".to_string(),
+			"Example: UPDATE users { name: 'alice' } FILTER id == 1".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}

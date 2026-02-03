@@ -94,99 +94,19 @@ impl Compiler {
 		let has_pipes = ast.has_pipes;
 		let ast_vec = ast.nodes; // Extract the inner Vec
 
-		// Check if this is a pipeline ending with UPDATE or DELETE
-		let is_update_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::Update(_)));
+		// Check if this is a pipeline ending with DELETE
+		// Note: UPDATE no longer uses pipeline syntax - it has self-contained syntax
 		let is_delete_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::Delete(_)));
 
-		if is_update_pipeline || is_delete_pipeline {
+		if is_delete_pipeline {
 			// Build pipeline: compile all nodes except the last one
 			// into a pipeline
 			let mut pipeline_nodes = Vec::new();
 
 			for (i, node) in ast_vec.into_iter().enumerate() {
 				if i == ast_len - 1 {
-					// Last operator is UPDATE or DELETE
+					// Last operator is DELETE
 					match node {
-						Ast::Update(update_ast) => {
-							// Build the pipeline as
-							// input to update
-							let input = if !pipeline_nodes.is_empty() {
-								Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
-							} else {
-								None
-							};
-
-							// If target is None, we can't determine table vs ring buffer
-							let Some(unresolved) = &update_ast.target else {
-								return Ok(vec![LogicalPlan::Update(
-									UpdateTableNode {
-										target: None,
-										input,
-									},
-								)]);
-							};
-
-							// Check if target is a table or ring buffer
-							use crate::ast::identifier::{
-								MaybeQualifiedRingBufferIdentifier,
-								MaybeQualifiedTableIdentifier,
-							};
-
-							// Check in the catalog whether the target is a table or ring
-							// buffer
-							let namespace_name = unresolved
-								.namespace
-								.as_ref()
-								.map(|n| n.text())
-								.unwrap_or("default");
-							let target_name = unresolved.name.text();
-
-							// Try to find namespace
-							if let Some(ns) = self
-								.catalog
-								.find_namespace_by_name(tx, namespace_name)?
-							{
-								let namespace_id = ns.id;
-
-								// Check if it's a ring buffer first
-								if self.catalog
-									.find_ringbuffer_by_name(
-										tx,
-										namespace_id,
-										target_name,
-									)?
-									.is_some()
-								{
-									let mut target =
-										MaybeQualifiedRingBufferIdentifier::new(
-											unresolved.name.clone(),
-										);
-									if let Some(ns) = unresolved.namespace.clone() {
-										target = target.with_namespace(ns);
-									}
-									return Ok(vec![
-										LogicalPlan::UpdateRingBuffer(
-											UpdateRingBufferNode {
-												target,
-												input,
-											},
-										),
-									]);
-								}
-							}
-
-							// Default to table update
-							let mut target = MaybeQualifiedTableIdentifier::new(
-								unresolved.name.clone(),
-							);
-							if let Some(ns) = unresolved.namespace.clone() {
-								target = target.with_namespace(ns);
-							}
-							return Ok(vec![LogicalPlan::Update(UpdateTableNode {
-								target: Some(target),
-								input,
-							})]);
-						}
 						Ast::Delete(delete_ast) => {
 							// Build the pipeline as
 							// input to delete

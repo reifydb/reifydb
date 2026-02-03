@@ -1195,7 +1195,9 @@ pub struct AstInsert {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstUpdate {
 	pub token: Token,
-	pub target: Option<UnresolvedPrimitiveIdentifier>,
+	pub target: UnresolvedPrimitiveIdentifier,
+	pub assignments: Vec<Ast>,
+	pub filter: Box<Ast>,
 }
 
 /// Connector between join condition pairs
