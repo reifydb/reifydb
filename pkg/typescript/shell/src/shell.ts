@@ -37,12 +37,14 @@ export class Shell {
   private continuationPromptLen: number;
   private welcomeMessage: string | string[] | (() => string[]) | undefined;
   private onExit: (() => void) | undefined;
+  private onFullscreenChange: ((isFullscreen: boolean) => void) | undefined;
 
   constructor(container: HTMLElement, options: ShellOptions) {
     this.executor = options.executor;
-    this.displayMode = options.displayMode ?? 'truncate';
+    this.displayMode = options.displayMode ?? 'full';
     this.welcomeMessage = options.welcomeMessage;
     this.onExit = options.onExit;
+    this.onFullscreenChange = options.onFullscreenChange;
 
     // Set up prompts
     this.primaryPrompt = options.prompt ?? DEFAULT_PRIMARY_PROMPT;
@@ -68,7 +70,22 @@ export class Shell {
 
   dispose(): void {
     this.isExited = true;
+    this.terminal.exitFullscreen();
     this.terminal.dispose();
+  }
+
+  get isFullscreen(): boolean {
+    return this.terminal.isFullscreen;
+  }
+
+  enterFullscreen(): void {
+    this.terminal.enterFullscreen();
+    this.onFullscreenChange?.(true);
+  }
+
+  exitFullscreen(): void {
+    this.terminal.exitFullscreen();
+    this.onFullscreenChange?.(false);
   }
 
   private showWelcomeBanner(): void {
@@ -216,7 +233,10 @@ export class Shell {
       case 9: // Tab - ignore for now
         return;
 
-      case 27: // Escape - ignore
+      case 27: // Escape - exit fullscreen
+        if (this.terminal.isFullscreen) {
+          this.exitFullscreen();
+        }
         return;
     }
 
@@ -265,6 +285,9 @@ export class Shell {
           this.formatter.setDisplayMode(mode);
         },
         clearScreen: () => this.clearScreen(),
+        isFullscreen: this.isFullscreen,
+        enterFullscreen: () => this.enterFullscreen(),
+        exitFullscreen: () => this.exitFullscreen(),
       });
 
       if (result.exit) {

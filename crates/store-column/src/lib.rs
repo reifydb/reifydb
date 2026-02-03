@@ -29,7 +29,7 @@ pub struct StoreColumnVersion;
 impl HasVersion for StoreColumnVersion {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "store-column".to_string(),
+			name: env!("CARGO_PKG_NAME").strip_prefix("reifydb-").unwrap_or(env!("CARGO_PKG_NAME")).to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Column-oriented storage for analytical queries".to_string(),
 			r#type: ComponentType::Module,

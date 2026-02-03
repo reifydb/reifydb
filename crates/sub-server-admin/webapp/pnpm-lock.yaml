@@ -17,12 +17,21 @@ importers:
       '@reifydb/react':
         specifier: 0.2.0
         version: 0.2.0(react@19.2.3)
+      '@reifydb/shell':
+        specifier: 0.2.0
+        version: 0.2.0(@reifydb/client@0.2.0)(@xterm/addon-fit@0.10.0(@xterm/xterm@5.5.0))(@xterm/xterm@5.5.0)
       '@tanstack/react-query':
         specifier: ^5.90.19
         version: 5.90.19(react@19.2.3)
       '@tanstack/react-router':
         specifier: ^1.154.7
         version: 1.154.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@xterm/addon-fit':
+        specifier: ^0.10.0
+        version: 0.10.0(@xterm/xterm@5.5.0)
+      '@xterm/xterm':
+        specifier: ^5.3.0
+        version: 5.5.0
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -351,6 +360,17 @@ packages:
     peerDependencies:
       react: '>=16.8.0'
 
+  '@reifydb/shell@0.2.0':
+    resolution: {integrity: sha512-WCSX0MJECNrPrxZasI85tYzwzjiLMsg0KJgpOa5pNz+zp/iHkjqRjqXkmndVt4rmNahYDW9Srziq7+HBbMefeA==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      '@reifydb/client': '*'
+      '@xterm/addon-fit': '>=0.8.0'
+      '@xterm/xterm': '>=5.0.0'
+    peerDependenciesMeta:
+      '@reifydb/client':
+        optional: true
+
   '@rolldown/pluginutils@1.0.0-beta.53':
     resolution: {integrity: sha512-vENRlFU4YbrwVqNDZ7fLvy+JR1CRkyr01jhSiDpE1u6py3OMzQfztQU2jxykW3ALNxO4kSlqIDeYyD0Y9RcQeQ==}
 
@@ -637,6 +657,14 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0
+
+  '@xterm/addon-fit@0.10.0':
+    resolution: {integrity: sha512-UFYkDm4HUahf2lnEyHvio51TNGiLK66mqP2JoATy7hRZeXaGMRDr00JiSF7m63vR5WKATF605yEggJKsw0JpMQ==}
+    peerDependencies:
+      '@xterm/xterm': ^5.0.0
+
+  '@xterm/xterm@5.5.0':
+    resolution: {integrity: sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A==}
 
   autoprefixer@10.4.23:
     resolution: {integrity: sha512-YYTXSFulfwytnjAPlw8QHncHJmlvFKtczb8InXaAx9Q0LbfDnfEYDE55omerIJKihhmU61Ft+cAOSzQVaBUmeA==}
@@ -1238,6 +1266,13 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@reifydb/shell@0.2.0(@reifydb/client@0.2.0)(@xterm/addon-fit@0.10.0(@xterm/xterm@5.5.0))(@xterm/xterm@5.5.0)':
+    dependencies:
+      '@xterm/addon-fit': 0.10.0(@xterm/xterm@5.5.0)
+      '@xterm/xterm': 5.5.0
+    optionalDependencies:
+      '@reifydb/client': 0.2.0
+
   '@rolldown/pluginutils@1.0.0-beta.53': {}
 
   '@rollup/rollup-android-arm-eabi@4.56.0':
@@ -1475,6 +1510,12 @@ snapshots:
       vite: 7.3.1(jiti@2.6.1)(lightningcss@1.30.2)
     transitivePeerDependencies:
       - supports-color
+
+  '@xterm/addon-fit@0.10.0(@xterm/xterm@5.5.0)':
+    dependencies:
+      '@xterm/xterm': 5.5.0
+
+  '@xterm/xterm@5.5.0': {}
 
   autoprefixer@10.4.23(postcss@8.5.6):
     dependencies:

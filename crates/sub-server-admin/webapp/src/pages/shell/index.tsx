@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useReducer } from 'react'
 import { Shell, WsExecutor, COLORS } from '@reifydb/shell'
 import { useConnection } from '@reifydb/react'
 import { Maximize2, Minimize2, Terminal, Loader2 } from 'lucide-react'
@@ -10,7 +10,7 @@ export function ShellPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const shellRef = useRef<Shell | null>(null)
   const { client, isConnected, isConnecting } = useConnection()
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [, forceUpdate] = useReducer(x => x + 1, 0)
 
   useEffect(() => {
     if (!containerRef.current || !client || !isConnected) return
@@ -25,6 +25,7 @@ export function ShellPage() {
         `Statements must end with a semicolon ${COLORS.yellow};${COLORS.reset}`,
         '',
       ],
+      onFullscreenChange: () => forceUpdate(),
     })
     shell.start()
     shellRef.current = shell
@@ -35,20 +36,6 @@ export function ShellPage() {
     }
   }, [client, isConnected])
 
-  // ESC key handler for fullscreen exit
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isFullscreen) {
-        setIsFullscreen(false)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isFullscreen])
-
-  const toggleFullscreen = useCallback(() => {
-    setIsFullscreen(prev => !prev)
-  }, [])
 
   // Show loading state while connecting
   if (isConnecting || !isConnected) {
@@ -68,17 +55,25 @@ export function ShellPage() {
     )
   }
 
+  const isFullscreen = shellRef.current?.isFullscreen ?? false
+
+  const toggleFullscreen = () => {
+    if (shellRef.current?.isFullscreen) {
+      shellRef.current.exitFullscreen()
+    } else {
+      shellRef.current?.enterFullscreen()
+    }
+    forceUpdate()
+  }
+
   return (
     <div className={cn(
-      isFullscreen && "fixed inset-0 z-50 bg-[#1e1e2e] flex flex-col",
+      isFullscreen && "fixed inset-0 z-50 bg-[#1e1e2e] p-[3px]",
       !isFullscreen && "space-y-6"
     )}>
-      {/* Header */}
-      <div className={cn(
-        "flex items-center justify-between",
-        isFullscreen && "p-4 shrink-0"
-      )}>
-        {!isFullscreen && (
+      {/* Header - only shown when not fullscreen */}
+      {!isFullscreen && (
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold flex items-center gap-2">
               <Terminal className="h-6 w-6" />
@@ -86,33 +81,35 @@ export function ShellPage() {
             </h1>
             <p className="text-muted-foreground">Interactive RQL terminal</p>
           </div>
-        )}
-        {isFullscreen && <span className="text-white/50 text-sm">Press ESC to exit</span>}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleFullscreen}
+          >
+            <Maximize2 className="h-4 w-4 mr-2" />
+            Fullscreen
+          </Button>
+        </div>
+      )}
+
+      {/* Minimize button - overlaid in fullscreen */}
+      {isFullscreen && (
         <Button
-          variant={isFullscreen ? "ghost" : "outline"}
-          size={isFullscreen ? "icon" : "sm"}
+          variant="ghost"
+          size="icon"
           onClick={toggleFullscreen}
-          className={cn(
-            isFullscreen && "text-white/70 hover:text-white hover:bg-white/10 ml-auto"
-          )}
+          className="absolute top-[3px] right-[3px] z-10 text-white/50 hover:text-white hover:bg-white/10"
         >
-          {isFullscreen ? (
-            <Minimize2 className="h-5 w-5" />
-          ) : (
-            <>
-              <Maximize2 className="h-4 w-4 mr-2" />
-              Fullscreen
-            </>
-          )}
+          <Minimize2 className="h-4 w-4" />
         </Button>
-      </div>
+      )}
 
       {/* Terminal container */}
       <div
         ref={containerRef}
         className={cn(
           "bg-[#1e1e2e]",
-          isFullscreen && "flex-1 w-full",
+          isFullscreen && "w-full h-full",
           !isFullscreen && "h-[calc(100vh-200px)] rounded-lg overflow-hidden"
         )}
       />

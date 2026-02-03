@@ -24,7 +24,7 @@ pub struct EngineVersion;
 impl HasVersion for EngineVersion {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "engine".to_string(),
+			name: env!("CARGO_PKG_NAME").strip_prefix("reifydb-").unwrap_or(env!("CARGO_PKG_NAME")).to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Query execution and processing engine module".to_string(),
 			r#type: ComponentType::Module,

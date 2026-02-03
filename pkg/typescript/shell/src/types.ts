@@ -106,7 +106,7 @@ export interface ShellOptions {
   historyStorage?: HistoryStorage;
 
   /**
-   * Initial display mode (default: "truncate")
+   * Initial display mode (default: "full")
    */
   displayMode?: DisplayMode;
 
@@ -114,6 +114,11 @@ export interface ShellOptions {
    * Callback when user exits the shell
    */
   onExit?: () => void;
+
+  /**
+   * Callback when fullscreen state changes
+   */
+  onFullscreenChange?: (isFullscreen: boolean) => void;
 }
 
 /**
@@ -129,6 +134,9 @@ export interface DotCommandContext {
   displayMode: DisplayMode;
   setDisplayMode: (mode: DisplayMode) => void;
   clearScreen: () => void;
+  isFullscreen: boolean;
+  enterFullscreen: () => void;
+  exitFullscreen: () => void;
 }
 
 /**

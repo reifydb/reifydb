@@ -19,15 +19,10 @@ export default defineConfig({
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "./src"),
+            "@reifydb/core": path.resolve(__dirname, "../../../pkg/typescript/core/src/index.ts"),
+            "@reifydb/client": path.resolve(__dirname, "../../../pkg/typescript/client/src/index.ts"),
+            "@reifydb/react": path.resolve(__dirname, "../../../pkg/typescript/react/src/index.ts"),
+            "@reifydb/shell": path.resolve(__dirname, "../../../pkg/typescript/shell/src/index.ts"),
         },
     },
-    server: {
-        proxy: {
-            '/v1/auth': 'http://localhost:9092',
-            '/v1/ws': {
-                target: 'ws://localhost:9092',
-                ws: true
-            }
-        }
-    }
 })

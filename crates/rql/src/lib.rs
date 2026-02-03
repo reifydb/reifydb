@@ -120,7 +120,7 @@ pub struct RqlVersion;
 impl HasVersion for RqlVersion {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "rql".to_string(),
+			name: env!("CARGO_PKG_NAME").strip_prefix("reifydb-").unwrap_or(env!("CARGO_PKG_NAME")).to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "ReifyDB Query Language parser and planner module".to_string(),
 			r#type: ComponentType::Module,

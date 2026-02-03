@@ -19,14 +19,8 @@ export async function handleDotCommand(
       showHelp(context.terminal);
       return { handled: true };
 
-    case '.quit':
-    case '.exit':
-      context.terminal.writeln(`${C.yellow}Goodbye!${C.reset}`);
-      context.terminal.writeln('');
-      return { handled: true, exit: true };
-
     case '.clear':
-      context.clearScreen();
+      context.terminal.write(TerminalAdapter.clearScreen());
       return { handled: true };
 
     case '.mode':
@@ -43,6 +37,16 @@ export async function handleDotCommand(
 
     case '.schema':
       await showSchema(args, context);
+      return { handled: true };
+
+    case '.fullscreen':
+      context.enterFullscreen();
+      return { handled: true };
+
+    case '.exit':
+      if (context.isFullscreen) {
+        context.exitFullscreen();
+      }
       return { handled: true };
 
     default:
@@ -62,12 +66,13 @@ function showHelp(terminal: TerminalAdapter): void {
   terminal.writeln(`${C.bold}${C.cyan}Available commands:${C.reset}`);
   terminal.writeln('');
   terminal.writeln(`  ${C.green}.help${C.reset}              Show this help message`);
-  terminal.writeln(`  ${C.green}.quit${C.reset}, ${C.green}.exit${C.reset}      Exit message`);
   terminal.writeln(`  ${C.green}.clear${C.reset}             Clear the screen`);
   terminal.writeln(`  ${C.green}.mode${C.reset} [mode]       Set display mode (truncate|full)`);
   terminal.writeln(`  ${C.green}.history${C.reset}           Show command history`);
   terminal.writeln(`  ${C.green}.tables${C.reset}            List all tables`);
   terminal.writeln(`  ${C.green}.schema${C.reset} [table]    Show table schema`);
+  terminal.writeln(`  ${C.green}.fullscreen${C.reset}        Enter fullscreen mode`);
+  terminal.writeln(`  ${C.green}.exit${C.reset}              Exit fullscreen mode`);
   terminal.writeln('');
   terminal.writeln(`${C.bold}${C.cyan}Keyboard shortcuts:${C.reset}`);
   terminal.writeln('');

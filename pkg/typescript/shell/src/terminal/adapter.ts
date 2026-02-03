@@ -12,10 +12,13 @@ export type KeyHandler = (key: string, domEvent: KeyboardEvent) => void;
 export class TerminalAdapter {
   private terminal: Terminal;
   private fitAddon: FitAddon;
+  private container: HTMLElement;
   private keyHandler: KeyHandler | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private _isFullscreen: boolean = false;
 
   constructor(container: HTMLElement, theme: TerminalTheme = defaultTheme) {
+    this.container = container;
     this.terminal = new Terminal({
       theme,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace",
@@ -82,6 +85,24 @@ export class TerminalAdapter {
       this.resizeObserver = null;
     }
     this.terminal.dispose();
+  }
+
+  get isFullscreen(): boolean {
+    return this._isFullscreen;
+  }
+
+  enterFullscreen(): void {
+    if (this._isFullscreen) return;
+    this._isFullscreen = true;
+    this.container.classList.add('reifydb-shell-fullscreen');
+    this.fitAddon.fit();
+  }
+
+  exitFullscreen(): void {
+    if (!this._isFullscreen) return;
+    this._isFullscreen = false;
+    this.container.classList.remove('reifydb-shell-fullscreen');
+    this.fitAddon.fit();
   }
 
   // ANSI escape code helpers - static for use without instance

@@ -11,7 +11,7 @@ export class OutputFormatter {
   private terminal: TerminalAdapter;
   private displayMode: DisplayMode;
 
-  constructor(terminal: TerminalAdapter, displayMode: DisplayMode = 'truncate') {
+  constructor(terminal: TerminalAdapter, displayMode: DisplayMode = 'full') {
     this.terminal = terminal;
     this.displayMode = displayMode;
   }

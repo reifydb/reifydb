@@ -20,7 +20,7 @@ export class TableRenderer {
   constructor(data: Record<string, unknown>[], options: TableOptions = {}) {
     this.data = data;
     this.maxWidth = options.maxWidth ?? 120;
-    this.truncate = options.truncate ?? true;
+    this.truncate = options.truncate ?? false;
     this.columns = this.calculateColumns();
   }
 
@@ -46,7 +46,11 @@ export class TableRenderer {
 
   private formatValue(value: unknown): string {
     if (value === null || value === undefined) {
-      return 'null';
+      return 'undefined';
+    }
+    // Check if it's a core Value object (has type property and toString)
+    if (value && typeof value === 'object' && 'type' in value && typeof (value as { toString(): string }).toString === 'function') {
+      return (value as { toString(): string }).toString();
     }
     if (typeof value === 'object') {
       return JSON.stringify(value);

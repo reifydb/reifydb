@@ -51,17 +51,12 @@ export class WsExecutor implements Executor {
       // Get first frame results (admin typically returns single frame)
       const results = frames[0] ?? [];
 
-      // Convert results to plain objects
+      // Convert results to plain objects, keeping Value objects as-is
       const data = results.map((row: unknown) => {
         if (row && typeof row === 'object') {
           const plainRow: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(row as Record<string, unknown>)) {
-            // Extract primitive value from Value objects if present
-            if (value && typeof value === 'object' && typeof (value as { valueOf(): unknown }).valueOf === 'function') {
-              plainRow[key] = (value as { valueOf(): unknown }).valueOf();
-            } else {
-              plainRow[key] = value;
-            }
+            plainRow[key] = value;  // Keep Value objects as-is
           }
           return plainRow;
         }

@@ -145,7 +145,7 @@ impl OtelSubsystem {
 impl HasVersion for OtelSubsystem {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "opentelemetry".to_string(),
+			name: env!("CARGO_PKG_NAME").strip_prefix("reifydb-").unwrap_or(env!("CARGO_PKG_NAME")).to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "OpenTelemetry/Jaeger tracing subsystem".to_string(),
 			r#type: ComponentType::Subsystem,
