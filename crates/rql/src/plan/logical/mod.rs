@@ -94,110 +94,7 @@ impl Compiler {
 		let has_pipes = ast.has_pipes;
 		let ast_vec = ast.nodes; // Extract the inner Vec
 
-		// Check if this is a pipeline ending with DELETE
-		// Note: UPDATE no longer uses pipeline syntax - it has self-contained syntax
-		let is_delete_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::Delete(_)));
-
-		if is_delete_pipeline {
-			// Build pipeline: compile all nodes except the last one
-			// into a pipeline
-			let mut pipeline_nodes = Vec::new();
-
-			for (i, node) in ast_vec.into_iter().enumerate() {
-				if i == ast_len - 1 {
-					// Last operator is DELETE
-					match node {
-						Ast::Delete(delete_ast) => {
-							// Build the pipeline as
-							// input to delete
-							let input = if !pipeline_nodes.is_empty() {
-								Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
-							} else {
-								None
-							};
-
-							// Check if target is a table or ring buffer
-							if let Some(unresolved) = &delete_ast.target {
-								use crate::ast::identifier::{
-									MaybeQualifiedRingBufferIdentifier,
-									MaybeQualifiedTableIdentifier,
-								};
-
-								// Check in the catalog whether the target is a table or
-								// ring buffer
-								let namespace_name = unresolved
-									.namespace
-									.as_ref()
-									.map(|n| n.text())
-									.unwrap_or("default");
-								let target_name = unresolved.name.text();
-
-								// Try to find namespace
-								if let Some(ns) = self
-									.catalog
-									.find_namespace_by_name(tx, namespace_name)?
-								{
-									let namespace_id = ns.id;
-
-									// Check if it's a ring buffer first
-									if self.catalog
-										.find_ringbuffer_by_name(
-											tx,
-											namespace_id,
-											target_name,
-										)?
-										.is_some()
-									{
-										let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved.name.clone());
-										if let Some(ns) =
-											unresolved.namespace.clone()
-										{
-											target = target
-												.with_namespace(ns);
-										}
-										return Ok(vec![
-											LogicalPlan::DeleteRingBuffer(
-												DeleteRingBufferNode {
-													target,
-													input,
-												},
-											),
-										]);
-									}
-								}
-
-								// Default to table delete
-								let mut target = MaybeQualifiedTableIdentifier::new(
-									unresolved.name.clone(),
-								);
-								if let Some(ns) = unresolved.namespace.clone() {
-									target = target.with_namespace(ns);
-								}
-								return Ok(vec![LogicalPlan::DeleteTable(
-									DeleteTableNode {
-										target: Some(target),
-										input,
-									},
-								)]);
-							} else {
-								// No target specified - use DeleteTable with None
-								return Ok(vec![LogicalPlan::DeleteTable(
-									DeleteTableNode {
-										target: None,
-										input,
-									},
-								)]);
-							}
-						}
-						_ => unreachable!(),
-					}
-				} else {
-					// Add to pipeline
-					pipeline_nodes.push(self.compile_single(node, tx)?);
-				}
-			}
-			unreachable!("Pipeline should have been handled above");
-		}
+		// Note: UPDATE and DELETE no longer use pipeline syntax - they have self-contained syntax
 
 		// Check if this is a piped query that should be wrapped in
 		// Pipeline
@@ -386,20 +283,6 @@ impl Compiler {
 				return_error!(unsupported_ast_node(node.token.fragment, "infix operation as statement"))
 			}
 		}
-	}
-
-	fn build_pipeline(plans: Vec<LogicalPlan>) -> crate::Result<LogicalPlan> {
-		// The pipeline should be properly structured with inputs
-		// For now, we'll wrap them in a special Pipeline plan
-		// that the physical compiler can handle
-		if plans.is_empty() {
-			panic!("Empty pipeline");
-		}
-
-		// Return a Pipeline logical plan that contains all the steps
-		Ok(LogicalPlan::Pipeline(PipelineNode {
-			steps: plans,
-		}))
 	}
 }
 

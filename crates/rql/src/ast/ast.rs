@@ -1183,7 +1183,8 @@ pub struct AstLet {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstDelete {
 	pub token: Token,
-	pub target: Option<UnresolvedPrimitiveIdentifier>,
+	pub target: UnresolvedPrimitiveIdentifier,
+	pub filter: Box<Ast>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

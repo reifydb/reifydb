@@ -393,3 +393,44 @@ pub fn update_missing_filter_clause(fragment: Fragment) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+/// DELETE missing target error
+pub fn delete_missing_target(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "DELETE_001".to_string(),
+		statement: None,
+		message: "DELETE requires a target table".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing target table".to_string()),
+		help: Some("Specify the table to delete from, e.g., 'DELETE users FILTER id == 1'".to_string()),
+		notes: vec![
+			"The target table specifies which table to delete rows from".to_string(),
+			"Example: DELETE users FILTER id == 1".to_string(),
+			"Example with namespace: DELETE test.users FILTER id == 1".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// DELETE missing FILTER clause error
+pub fn delete_missing_filter_clause(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "DELETE_002".to_string(),
+		statement: None,
+		message: "DELETE requires a FILTER clause".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing FILTER clause".to_string()),
+		help: Some("Add a FILTER clause to specify which rows to delete, e.g., 'DELETE users FILTER id == 1'"
+			.to_string()),
+		notes: vec![
+			"The FILTER clause is required to prevent accidental mass deletes".to_string(),
+			"It specifies the condition for selecting rows to delete".to_string(),
+			"Example: DELETE users FILTER id == 1".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}

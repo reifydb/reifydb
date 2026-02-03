@@ -149,25 +149,15 @@ impl TestContext {
 		Ok(())
 	}
 
-	/// Update rows: `from test.table filter {cond} map {new_vals} update test.table`
+	/// Update rows: `UPDATE test.table { new_vals } FILTER cond`
 	pub async fn update(&self, table: &str, filter: &str, map: &str) -> Result<(), Box<dyn Error>> {
-		self.client
-			.command(
-				&format!(
-					"from test.{} filter {{ {} }} map {{ {} }} update test.{}",
-					table, filter, map, table
-				),
-				None,
-			)
-			.await?;
+		self.client.command(&format!("UPDATE test.{} {{ {} }} FILTER {}", table, map, filter), None).await?;
 		Ok(())
 	}
 
-	/// Delete rows: `from test.table filter {cond} delete test.table`
+	/// Delete rows: `DELETE test.table FILTER cond`
 	pub async fn delete(&self, table: &str, filter: &str) -> Result<(), Box<dyn Error>> {
-		self.client
-			.command(&format!("from test.{} filter {{ {} }} delete test.{}", table, filter, table), None)
-			.await?;
+		self.client.command(&format!("DELETE test.{} FILTER {}", table, filter), None).await?;
 		Ok(())
 	}
 

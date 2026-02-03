@@ -1,59 +1,61 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::error::diagnostic::operation::{delete_missing_filter_clause, delete_missing_target};
+use reifydb_type::return_error;
+
 use crate::ast::{
-	ast::AstDelete,
+	ast::{Ast, AstDelete},
+	identifier::UnresolvedPrimitiveIdentifier,
 	parse::Parser,
-	tokenize::{keyword::Keyword, operator::Operator},
+	tokenize::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
 impl Parser {
 	pub(crate) fn parse_delete(&mut self) -> crate::Result<AstDelete> {
 		let token = self.consume_keyword(Keyword::Delete)?;
 
-		// Check if there's a target specified (optional)
-		let target = if !self.is_eof()
-			&& matches!(
-				self.current()?.kind,
-				crate::ast::tokenize::token::TokenKind::Identifier
-					| crate::ast::tokenize::token::TokenKind::Keyword(_)
-			) {
-			use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
-			let first = self.parse_identifier_with_hyphens()?;
+		// 1. Parse target (REQUIRED) - namespace.table or just table
+		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
+			return_error!(delete_missing_target(token.fragment));
+		}
 
-			if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
-				self.consume_operator(Operator::Dot)?;
-				let second = self.parse_identifier_with_hyphens()?;
-				// namespace.source
-				Some(UnresolvedPrimitiveIdentifier::new(
-					Some(first.into_fragment()),
-					second.into_fragment(),
-				))
-			} else {
-				// source only
-				Some(UnresolvedPrimitiveIdentifier::new(None, first.into_fragment()))
-			}
+		let first = self.parse_identifier_with_hyphens()?;
+		let target = if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
+			self.consume_operator(Operator::Dot)?;
+			let second = self.parse_identifier_with_hyphens()?;
+			UnresolvedPrimitiveIdentifier::new(Some(first.into_fragment()), second.into_fragment())
 		} else {
-			// No target specified - will be inferred from input
-			None
+			UnresolvedPrimitiveIdentifier::new(None, first.into_fragment())
 		};
+
+		// 2. Parse FILTER clause - REQUIRED
+		if self.is_eof() || !self.current()?.is_keyword(Keyword::Filter) {
+			return_error!(delete_missing_filter_clause(token.fragment));
+		}
+		let filter = self.parse_filter()?;
 
 		Ok(AstDelete {
 			token,
 			target,
+			filter: Box::new(Ast::Filter(filter)),
 		})
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{ast::AstDelete, parse::Parser, tokenize::tokenize};
+	use crate::ast::{
+		ast::{Ast, InfixOperator},
+		parse::Parser,
+		tokenize::tokenize,
+	};
 
 	#[test]
-	fn test_schema_and_table() {
+	fn test_basic_delete_syntax() {
 		let tokens = tokenize(
 			r#"
-        delete test.users
+        DELETE users FILTER id == 1
     "#,
 		)
 		.unwrap();
@@ -64,23 +66,19 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let delete = result.first_unchecked().as_delete();
 
-		match delete {
-			AstDelete {
-				target,
-				..
-			} => {
-				let target = target.as_ref().expect("Should have target");
-				assert_eq!(target.namespace.as_ref().unwrap().text(), "test");
-				assert_eq!(target.name.text(), "users");
-			}
-		}
+		// Check target
+		assert!(delete.target.namespace.is_none());
+		assert_eq!(delete.target.name.text(), "users");
+
+		// Check filter exists
+		assert!(matches!(*delete.filter, Ast::Filter(_)));
 	}
 
 	#[test]
-	fn test_table_only() {
+	fn test_delete_with_namespace() {
 		let tokens = tokenize(
 			r#"
-        delete users
+        DELETE test.users FILTER id == 1
     "#,
 		)
 		.unwrap();
@@ -91,23 +89,16 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let delete = result.first_unchecked().as_delete();
 
-		match delete {
-			AstDelete {
-				target,
-				..
-			} => {
-				let target = target.as_ref().expect("Should have target");
-				assert!(target.namespace.is_none());
-				assert_eq!(target.name.text(), "users");
-			}
-		}
+		// Check target with namespace
+		assert_eq!(delete.target.namespace.as_ref().unwrap().text(), "test");
+		assert_eq!(delete.target.name.text(), "users");
 	}
 
 	#[test]
-	fn test_no_table() {
+	fn test_delete_complex_filter() {
 		let tokens = tokenize(
 			r#"
-        delete
+        DELETE users FILTER age > 18 and active == false
     "#,
 		)
 		.unwrap();
@@ -118,13 +109,35 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let delete = result.first_unchecked().as_delete();
 
-		match delete {
-			AstDelete {
-				target,
-				..
-			} => {
-				assert!(target.is_none());
-			}
-		}
+		// Check filter has AND operator
+		let filter = delete.filter.as_filter();
+		let condition = filter.node.as_infix();
+		assert!(matches!(condition.operator, InfixOperator::And(_)));
+	}
+
+	#[test]
+	fn test_delete_missing_filter_fails() {
+		let tokens = tokenize(
+			r#"
+        DELETE users
+    "#,
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse();
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_delete_missing_target_fails() {
+		let tokens = tokenize(
+			r#"
+        DELETE FILTER id == 1
+    "#,
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse();
+		assert!(result.is_err());
 	}
 }
