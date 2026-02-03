@@ -1,0 +1,21 @@
+{
+  "name": "reifydb-wasm-shell",
+  "version": "0.1.0",
+  "description": "Interactive terminal shell for ReifyDB WASM database",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@reifydb/shell": "file:../../../typescript/shell",
+    "@xterm/xterm": "^5.3.0",
+    "@xterm/addon-fit": "^0.10.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "typescript": "^5.8.0"
+  },
+  "license": "AGPL-3.0-or-later"
+}

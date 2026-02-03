@@ -6,6 +6,7 @@ import { QueryPage } from '@/pages/query'
 import { SettingsPage } from '@/pages/settings'
 import { UsersPage } from '@/pages/users'
 import { VersionPage } from '@/pages/version'
+import { ShellPage } from '@/pages/shell'
 
 const rootRoute = createRootRoute({
   component: MainLayout,
@@ -57,6 +58,12 @@ const versionRoute = createRoute({
   component: VersionPage,
 })
 
+const shellRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/shell',
+  component: ShellPage,
+})
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
@@ -65,6 +72,7 @@ const routeTree = rootRoute.addChildren([
   settingsRoute,
   usersRoute,
   versionRoute,
+  shellRoute,
 ])
 
 export const router = createRouter({ routeTree })

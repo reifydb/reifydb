@@ -1,0 +1,60 @@
+{
+  "name": "@reifydb/shell",
+  "version": "0.2.0",
+  "description": "Interactive terminal shell for ReifyDB databases",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm --sourcemap",
+    "prepublishOnly": "pnpm build",
+    "publish:npm": "pnpm publish --access public"
+  },
+  "peerDependencies": {
+    "@xterm/xterm": ">=5.0.0",
+    "@xterm/addon-fit": ">=0.8.0"
+  },
+  "peerDependenciesMeta": {
+    "@reifydb/client": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@xterm/xterm": "^5.3.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@reifydb/client": "workspace:*",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "reifydb",
+    "database",
+    "shell",
+    "terminal",
+    "xterm",
+    "typescript"
+  ],
+  "files": [
+    "dist/",
+    "package.json",
+    "readme.md",
+    "license.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "linkWorkspacePackages": false
+  },
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reifydb/reifydb.git",
+    "directory": "pkg/typescript/shell"
+  },
+  "homepage": "https://github.com/reifydb/reifydb#readme",
+  "bugs": {
+    "url": "https://github.com/reifydb/reifydb/issues"
+  }
+}
