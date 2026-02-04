@@ -715,7 +715,8 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_flow_set_query() {
-		let tokens = tokenize("ALTER FLOW my_flow SET QUERY AS FROM new_source FILTER active = true").unwrap();
+		let tokens =
+			tokenize("ALTER FLOW my_flow SET QUERY AS FROM new_source FILTER {active = true}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -732,7 +733,6 @@ pub mod tests {
 						query,
 					} => {
 						assert!(query.len() > 0);
-						// Should have FROM and WHERE nodes
 					}
 					_ => panic!("Expected SetQuery action"),
 				}
@@ -747,8 +747,8 @@ pub mod tests {
 			r#"
 			ALTER FLOW my_flow SET QUERY AS {
 				FROM new_source
-				FILTER active = true
-				AGGREGATE {total: count(*) } BY category
+				FILTER {active = true}
+				AGGREGATE {total: count(*) } BY {category}
 			}
 		"#,
 		)
@@ -768,7 +768,7 @@ pub mod tests {
 					AstAlterFlowAction::SetQuery {
 						query,
 					} => {
-						assert!(query.len() >= 3); // FROM, FILTER, AGGREGATE
+						assert!(query.len() >= 3);
 					}
 					_ => panic!("Expected SetQuery action"),
 				}

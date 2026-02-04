@@ -48,7 +48,7 @@ describe('Named Parameters', () => {
 
         it('Boolean', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new BooleanValue(true) },
                 [Schema.object({result: Schema.booleanValue()})]
             );
@@ -58,7 +58,7 @@ describe('Named Parameters', () => {
 
         it('Int1', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int1Value(42) },
                 [Schema.object({result: Schema.int1Value()})]
             );
@@ -68,7 +68,7 @@ describe('Named Parameters', () => {
 
         it('Int2', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int2Value(1234) },
                 [Schema.object({result: Schema.int2Value()})]
             );
@@ -78,7 +78,7 @@ describe('Named Parameters', () => {
 
         it('Int4', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int4Value(12345678) },
                 [Schema.object({result: Schema.int4Value()})]
             );
@@ -88,7 +88,7 @@ describe('Named Parameters', () => {
 
         it('Int8', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int8Value(BigInt("9223372036854775807")) },
                 [Schema.object({result: Schema.int8Value()})]
             );
@@ -98,7 +98,7 @@ describe('Named Parameters', () => {
 
         it('Int16', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int16Value(BigInt("170141183460469231731687303715884105727")) },
                 [Schema.object({result: Schema.int16Value()})]
             );
@@ -108,7 +108,7 @@ describe('Named Parameters', () => {
 
         it('Uint1', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint1Value(255) },
                 [Schema.object({result: Schema.uint1Value()})]
             );
@@ -118,7 +118,7 @@ describe('Named Parameters', () => {
 
         it('Uint2', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint2Value(65535) },
                 [Schema.object({result: Schema.uint2Value()})]
             );
@@ -128,7 +128,7 @@ describe('Named Parameters', () => {
 
         it('Uint4', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint4Value(4294967295) },
                 [Schema.object({result: Schema.uint4Value()})]
             );
@@ -138,7 +138,7 @@ describe('Named Parameters', () => {
 
         it('Uint8', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint8Value(BigInt("18446744073709551615")) },
                 [Schema.object({result: Schema.uint8Value()})]
             );
@@ -148,7 +148,7 @@ describe('Named Parameters', () => {
 
         it('Uint16', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint16Value(BigInt("340282366920938463463374607431768211455")) },
                 [Schema.object({result: Schema.uint16Value()})]
             );
@@ -158,7 +158,7 @@ describe('Named Parameters', () => {
 
         it('Float4', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Float4Value(3.14) },
                 [Schema.object({result: Schema.float4Value()})]
             );
@@ -168,7 +168,7 @@ describe('Named Parameters', () => {
 
         it('Float8', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Float8Value(3.141592653589793) },
                 [Schema.object({result: Schema.float8Value()})]
             );
@@ -178,7 +178,7 @@ describe('Named Parameters', () => {
 
         it('Decimal', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DecimalValue("123.456789") },
                 [Schema.object({result: Schema.decimalValue()})]
             );
@@ -188,7 +188,7 @@ describe('Named Parameters', () => {
 
         it('Utf8', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Utf8Value("Hello, World!") },
                 [Schema.object({result: Schema.utf8Value()})]
             );
@@ -199,7 +199,7 @@ describe('Named Parameters', () => {
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new BlobValue(data) },
                 [Schema.object({result: Schema.blobValue()})]
             );
@@ -210,7 +210,7 @@ describe('Named Parameters', () => {
         it('Date', async () => {
             const date = new Date('2024-03-15');
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DateValue(date) },
                 [Schema.object({result: Schema.dateValue()})]
             );
@@ -220,7 +220,7 @@ describe('Named Parameters', () => {
 
         it('Time', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new TimeValue("14:30:00.123456789") },
                 [Schema.object({result: Schema.timeValue()})]
             );
@@ -231,7 +231,7 @@ describe('Named Parameters', () => {
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DateTimeValue(datetime) },
                 [Schema.object({result: Schema.dateTimeValue()})]
             );
@@ -241,7 +241,7 @@ describe('Named Parameters', () => {
 
         it('Duration', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DurationValue("P1DT2H30M") },
                 [Schema.object({result: Schema.durationValue()})]
             );
@@ -252,7 +252,7 @@ describe('Named Parameters', () => {
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uuid4Value(uuid) },
                 [Schema.object({result: Schema.uuid4Value()})]
             );
@@ -263,7 +263,7 @@ describe('Named Parameters', () => {
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uuid7Value(uuid) },
                 [Schema.object({result: Schema.uuid7Value()})]
             );
@@ -274,7 +274,7 @@ describe('Named Parameters', () => {
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new IdentityIdValue(identityId) },
                 [Schema.object({result: Schema.identityIdValue()})]
             );
@@ -284,7 +284,7 @@ describe('Named Parameters', () => {
 
         it('Undefined', async () => {
             const frames = await wsClient.admin(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new UndefinedValue() },
                 [Schema.object({result: Schema.undefinedValue()})]
             );
@@ -298,7 +298,7 @@ describe('Named Parameters', () => {
 
         it('Boolean', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new BooleanValue(true) },
                 [Schema.object({result: Schema.booleanValue()})]
             );
@@ -308,7 +308,7 @@ describe('Named Parameters', () => {
 
         it('Int1', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int1Value(42) },
                 [Schema.object({result: Schema.int1Value()})]
             );
@@ -318,7 +318,7 @@ describe('Named Parameters', () => {
 
         it('Int2', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int2Value(1234) },
                 [Schema.object({result: Schema.int2Value()})]
             );
@@ -328,7 +328,7 @@ describe('Named Parameters', () => {
 
         it('Int4', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int4Value(12345678) },
                 [Schema.object({result: Schema.int4Value()})]
             );
@@ -338,7 +338,7 @@ describe('Named Parameters', () => {
 
         it('Int8', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int8Value(BigInt("9223372036854775807")) },
                 [Schema.object({result: Schema.int8Value()})]
             );
@@ -348,7 +348,7 @@ describe('Named Parameters', () => {
 
         it('Int16', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int16Value(BigInt("170141183460469231731687303715884105727")) },
                 [Schema.object({result: Schema.int16Value()})]
             );
@@ -358,7 +358,7 @@ describe('Named Parameters', () => {
 
         it('Uint1', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint1Value(255) },
                 [Schema.object({result: Schema.uint1Value()})]
             );
@@ -368,7 +368,7 @@ describe('Named Parameters', () => {
 
         it('Uint2', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint2Value(65535) },
                 [Schema.object({result: Schema.uint2Value()})]
             );
@@ -378,7 +378,7 @@ describe('Named Parameters', () => {
 
         it('Uint4', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint4Value(4294967295) },
                 [Schema.object({result: Schema.uint4Value()})]
             );
@@ -388,7 +388,7 @@ describe('Named Parameters', () => {
 
         it('Uint8', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint8Value(BigInt("18446744073709551615")) },
                 [Schema.object({result: Schema.uint8Value()})]
             );
@@ -398,7 +398,7 @@ describe('Named Parameters', () => {
 
         it('Uint16', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint16Value(BigInt("340282366920938463463374607431768211455")) },
                 [Schema.object({result: Schema.uint16Value()})]
             );
@@ -408,7 +408,7 @@ describe('Named Parameters', () => {
 
         it('Float4', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Float4Value(3.14) },
                 [Schema.object({result: Schema.float4Value()})]
             );
@@ -418,7 +418,7 @@ describe('Named Parameters', () => {
 
         it('Float8', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Float8Value(3.141592653589793) },
                 [Schema.object({result: Schema.float8Value()})]
             );
@@ -428,7 +428,7 @@ describe('Named Parameters', () => {
 
         it('Decimal', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DecimalValue("123.456789") },
                 [Schema.object({result: Schema.decimalValue()})]
             );
@@ -438,7 +438,7 @@ describe('Named Parameters', () => {
 
         it('Utf8', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Utf8Value("Hello, World!") },
                 [Schema.object({result: Schema.utf8Value()})]
             );
@@ -449,7 +449,7 @@ describe('Named Parameters', () => {
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new BlobValue(data) },
                 [Schema.object({result: Schema.blobValue()})]
             );
@@ -460,7 +460,7 @@ describe('Named Parameters', () => {
         it('Date', async () => {
             const date = new Date('2024-03-15');
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DateValue(date) },
                 [Schema.object({result: Schema.dateValue()})]
             );
@@ -470,7 +470,7 @@ describe('Named Parameters', () => {
 
         it('Time', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new TimeValue("14:30:00.123456789") },
                 [Schema.object({result: Schema.timeValue()})]
             );
@@ -481,7 +481,7 @@ describe('Named Parameters', () => {
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DateTimeValue(datetime) },
                 [Schema.object({result: Schema.dateTimeValue()})]
             );
@@ -491,7 +491,7 @@ describe('Named Parameters', () => {
 
         it('Duration', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DurationValue("P1DT2H30M") },
                 [Schema.object({result: Schema.durationValue()})]
             );
@@ -502,7 +502,7 @@ describe('Named Parameters', () => {
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uuid4Value(uuid) },
                 [Schema.object({result: Schema.uuid4Value()})]
             );
@@ -513,7 +513,7 @@ describe('Named Parameters', () => {
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uuid7Value(uuid) },
                 [Schema.object({result: Schema.uuid7Value()})]
             );
@@ -524,7 +524,7 @@ describe('Named Parameters', () => {
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new IdentityIdValue(identityId) },
                 [Schema.object({result: Schema.identityIdValue()})]
             );
@@ -534,7 +534,7 @@ describe('Named Parameters', () => {
 
         it('Undefined', async () => {
             const frames = await wsClient.command(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new UndefinedValue() },
                 [Schema.object({result: Schema.undefinedValue()})]
             );
@@ -548,7 +548,7 @@ describe('Named Parameters', () => {
 
         it('Boolean', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new BooleanValue(true) },
                 [Schema.object({result: Schema.booleanValue()})]
             );
@@ -558,7 +558,7 @@ describe('Named Parameters', () => {
 
         it('Int1', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int1Value(42) },
                 [Schema.object({result: Schema.int1Value()})]
             );
@@ -568,7 +568,7 @@ describe('Named Parameters', () => {
 
         it('Int2', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int2Value(1234) },
                 [Schema.object({result: Schema.int2Value()})]
             );
@@ -578,7 +578,7 @@ describe('Named Parameters', () => {
 
         it('Int4', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int4Value(12345678) },
                 [Schema.object({result: Schema.int4Value()})]
             );
@@ -588,7 +588,7 @@ describe('Named Parameters', () => {
 
         it('Int8', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int8Value(BigInt("9223372036854775807")) },
                 [Schema.object({result: Schema.int8Value()})]
             );
@@ -598,7 +598,7 @@ describe('Named Parameters', () => {
 
         it('Int16', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Int16Value(BigInt("170141183460469231731687303715884105727")) },
                 [Schema.object({result: Schema.int16Value()})]
             );
@@ -608,7 +608,7 @@ describe('Named Parameters', () => {
 
         it('Uint1', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint1Value(255) },
                 [Schema.object({result: Schema.uint1Value()})]
             );
@@ -618,7 +618,7 @@ describe('Named Parameters', () => {
 
         it('Uint2', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint2Value(65535) },
                 [Schema.object({result: Schema.uint2Value()})]
             );
@@ -628,7 +628,7 @@ describe('Named Parameters', () => {
 
         it('Uint4', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint4Value(4294967295) },
                 [Schema.object({result: Schema.uint4Value()})]
             );
@@ -638,7 +638,7 @@ describe('Named Parameters', () => {
 
         it('Uint8', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint8Value(BigInt("18446744073709551615")) },
                 [Schema.object({result: Schema.uint8Value()})]
             );
@@ -648,7 +648,7 @@ describe('Named Parameters', () => {
 
         it('Uint16', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uint16Value(BigInt("340282366920938463463374607431768211455")) },
                 [Schema.object({result: Schema.uint16Value()})]
             );
@@ -658,7 +658,7 @@ describe('Named Parameters', () => {
 
         it('Float4', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Float4Value(3.14) },
                 [Schema.object({result: Schema.float4Value()})]
             );
@@ -668,7 +668,7 @@ describe('Named Parameters', () => {
 
         it('Float8', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Float8Value(3.141592653589793) },
                 [Schema.object({result: Schema.float8Value()})]
             );
@@ -678,7 +678,7 @@ describe('Named Parameters', () => {
 
         it('Decimal', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DecimalValue("123.456789") },
                 [Schema.object({result: Schema.decimalValue()})]
             );
@@ -688,7 +688,7 @@ describe('Named Parameters', () => {
 
         it('Utf8', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Utf8Value("Hello, World!") },
                 [Schema.object({result: Schema.utf8Value()})]
             );
@@ -699,7 +699,7 @@ describe('Named Parameters', () => {
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new BlobValue(data) },
                 [Schema.object({result: Schema.blobValue()})]
             );
@@ -710,7 +710,7 @@ describe('Named Parameters', () => {
         it('Date', async () => {
             const date = new Date('2024-03-15');
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DateValue(date) },
                 [Schema.object({result: Schema.dateValue()})]
             );
@@ -720,7 +720,7 @@ describe('Named Parameters', () => {
 
         it('Time', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new TimeValue("14:30:00.123456789") },
                 [Schema.object({result: Schema.timeValue()})]
             );
@@ -731,7 +731,7 @@ describe('Named Parameters', () => {
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DateTimeValue(datetime) },
                 [Schema.object({result: Schema.dateTimeValue()})]
             );
@@ -741,7 +741,7 @@ describe('Named Parameters', () => {
 
         it('Duration', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new DurationValue("P1DT2H30M") },
                 [Schema.object({result: Schema.durationValue()})]
             );
@@ -752,7 +752,7 @@ describe('Named Parameters', () => {
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uuid4Value(uuid) },
                 [Schema.object({result: Schema.uuid4Value()})]
             );
@@ -763,7 +763,7 @@ describe('Named Parameters', () => {
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new Uuid7Value(uuid) },
                 [Schema.object({result: Schema.uuid7Value()})]
             );
@@ -774,7 +774,7 @@ describe('Named Parameters', () => {
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new IdentityIdValue(identityId) },
                 [Schema.object({result: Schema.identityIdValue()})]
             );
@@ -784,7 +784,7 @@ describe('Named Parameters', () => {
 
         it('Undefined', async () => {
             const frames = await wsClient.query(
-                'MAP $value as result',
+                'MAP {result: $value}',
                 { value: new UndefinedValue() },
                 [Schema.object({result: Schema.undefinedValue()})]
             );

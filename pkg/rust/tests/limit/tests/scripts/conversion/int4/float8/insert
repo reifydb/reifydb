@@ -5,7 +5,7 @@
 (admin 'create table test.conversion{col: float8}')
 
 (command 'INSERT test.conversion [{ col: cast(cast(0, int4), float8) }]')
-command 'from test.conversion map col'
+command 'from test.conversion map {col}'
 ---
 > +----------+-------+
 > |  rownum  |  col  |
@@ -15,7 +15,7 @@ command 'from test.conversion map col'
 >
 
 (command 'INSERT test.conversion [{ col: cast(cast(-2147483648, int4), float8) }]')
-command 'from test.conversion map col'
+command 'from test.conversion map {col}'
 ---
 > +----------+---------------+
 > |  rownum  |      col      |
@@ -26,7 +26,7 @@ command 'from test.conversion map col'
 >
 
 (command 'INSERT test.conversion [{ col: cast(cast(2147483647, int4), float8) }]')
-command 'from test.conversion map col'
+command 'from test.conversion map {col}'
 ---
 > +----------+---------------+
 > |  rownum  |      col      |

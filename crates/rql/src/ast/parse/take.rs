@@ -7,13 +7,26 @@ use reifydb_type::return_error;
 use crate::ast::{
 	ast::{Ast, AstLiteral, AstTake},
 	parse::{Parser, Precedence},
-	tokenize::keyword::Keyword,
+	tokenize::{keyword::Keyword, operator::Operator},
 };
 
 impl Parser {
 	pub(crate) fn parse_take(&mut self) -> crate::Result<AstTake> {
 		let token = self.consume_keyword(Keyword::Take)?;
+
+		// Check if braces are used (optional)
+		let has_braces = !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly);
+
+		if has_braces {
+			self.advance()?; // consume opening brace
+		}
+
 		let take = self.parse_node(Precedence::None)?;
+
+		if has_braces {
+			self.consume_operator(Operator::CloseCurly)?;
+		}
+
 		match take {
 			Ast::Literal(literal) => match literal {
 				AstLiteral::Number(number) => {
@@ -39,7 +52,19 @@ pub mod tests {
 	use crate::ast::tokenize::tokenize;
 
 	#[test]
-	fn test_take_number() {
+	fn test_take_with_braces() {
+		let tokens = tokenize("TAKE {10}").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let take = result.first_unchecked().as_take();
+		assert_eq!(take.take, 10);
+	}
+
+	#[test]
+	fn test_take_without_braces() {
 		let tokens = tokenize("TAKE 10").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();

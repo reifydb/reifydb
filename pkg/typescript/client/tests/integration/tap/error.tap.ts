@@ -39,14 +39,14 @@ describe('Error Handling', () => {
     it('command_out_of_range', async () => {
         await expect(
             wsClient.command(
-                "MAP cast(129, int1) as result;",
+                "MAP {result: cast(129, int1)};",
                 {},
                 [Schema.object({result: Schema.int1Value()})]
             )
         ).rejects.toMatchObject({
             name: 'ReifyError',
             code: 'CAST_002',
-            statement: "MAP cast(129, int1) as result;",
+            statement: "MAP {result: cast(129, int1)};",
             fragment: {
                 Statement: expect.objectContaining({
                     text: "129",
@@ -65,14 +65,14 @@ describe('Error Handling', () => {
     it('query_out_of_range', async () => {
         await expect(
             wsClient.query(
-                "MAP cast(129, int1) as result;",
+                "MAP {result: cast(129, int1)};",
                 {},
                 [Schema.object({result: Schema.int1Value()})]
             )
         ).rejects.toMatchObject({
             name: 'ReifyError',
             code: 'CAST_002',
-            statement: "MAP cast(129, int1) as result;",
+            statement: "MAP {result: cast(129, int1)};",
             fragment: {
                 Statement: expect.objectContaining({
                     text: "129",

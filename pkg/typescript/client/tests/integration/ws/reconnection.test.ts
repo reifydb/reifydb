@@ -37,7 +37,7 @@ describe('WebSocket Client Reconnection', () => {
             });
 
             const firstResult = await wsClient.query(
-                'MAP 42 as result',
+                'MAP {result: 42}',
                 {},
                 [Schema.object({result: Schema.number()})]
             );
@@ -50,7 +50,7 @@ describe('WebSocket Client Reconnection', () => {
             await new Promise(resolve => setTimeout(resolve, 500));
 
             const secondResult = await wsClient.query(
-                'MAP 84 as result',
+                'MAP {result: 84}',
                 {},
                 [Schema.object({result: Schema.number()})]
             );
@@ -126,7 +126,7 @@ describe('WebSocket Client Reconnection', () => {
             await new Promise(resolve => setTimeout(resolve, 100));
 
             const queryPromise = wsClient.query(
-                'MAP 42 as result',
+                'MAP {result: 42}',
                 {},
                 [Schema.object({result: Schema.number()})]
             );
@@ -172,7 +172,7 @@ describe('WebSocket Client Reconnection', () => {
             const results = [];
             for (let i = 0; i < 3; i++) {
                 const result = await wsClient.query(
-                    `MAP ${i} as result`,
+                    `MAP {result: ${i}}`,
                     {},
                     [Schema.object({result: Schema.number()})]
                 );
@@ -196,7 +196,7 @@ describe('WebSocket Client Reconnection', () => {
             await new Promise(resolve => setTimeout(resolve, 500));
 
             await wsClient.query(
-                'MAP 1 as result',
+                'MAP {result: 1}',
                 {},
                 [Schema.object({result: Schema.number()})]
             );
@@ -209,7 +209,7 @@ describe('WebSocket Client Reconnection', () => {
             await new Promise(resolve => setTimeout(resolve, 500));
 
             await wsClient.query(
-                'MAP 2 as result',
+                'MAP {result: 2}',
                 {},
                 [Schema.object({result: Schema.number()})]
             );

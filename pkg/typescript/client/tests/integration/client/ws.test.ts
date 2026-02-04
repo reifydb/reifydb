@@ -41,7 +41,7 @@ describe('ReifyDB Client Integration Tests', () => {
 
         it('should execute simple command', async () => {
             const frames = await wsClient.command(
-                'MAP 42 as result',
+                'MAP {result: 42}',
                 {},
                 [
                     Schema.object({result: Schema.number()}),
@@ -56,7 +56,7 @@ describe('ReifyDB Client Integration Tests', () => {
 
         it('should execute simple query', async () => {
             const frames = await wsClient.query(
-                'MAP 42 as result',
+                'MAP {result: 42}',
                 {},
                 [
                     Schema.object({result: Schema.number()}),

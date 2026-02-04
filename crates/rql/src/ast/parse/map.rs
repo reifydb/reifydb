@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::map_multiple_expressions_without_braces;
+use reifydb_core::error::diagnostic::operation::map_missing_braces;
 use reifydb_type::return_error;
 
 use crate::ast::{ast::AstMap, parse::Parser, tokenize::keyword::Keyword};
@@ -10,11 +10,11 @@ impl Parser {
 	pub(crate) fn parse_map(&mut self) -> crate::Result<AstMap> {
 		let token = self.consume_keyword(Keyword::Map)?;
 
-		let (nodes, has_braces) = self.parse_expressions(true)?;
+		let (nodes, has_braces) = self.parse_expressions(true, false)?;
 
-		// Validate multiple expressions require braces
-		if nodes.len() > 1 && !has_braces {
-			return_error!(map_multiple_expressions_without_braces(token.fragment));
+		// Always require braces
+		if !has_braces {
+			return_error!(map_missing_braces(token.fragment));
 		}
 
 		Ok(AstMap {
@@ -34,7 +34,7 @@ pub mod tests {
 
 	#[test]
 	fn test_constant_number() {
-		let tokens = tokenize("MAP 1").unwrap();
+		let tokens = tokenize("MAP {1}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -71,7 +71,7 @@ pub mod tests {
 
 	#[test]
 	fn test_star() {
-		let tokens = tokenize("MAP *").unwrap();
+		let tokens = tokenize("MAP {*}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -84,7 +84,7 @@ pub mod tests {
 
 	#[test]
 	fn test_keyword() {
-		let tokens = tokenize("MAP value").unwrap();
+		let tokens = tokenize("MAP {value}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -97,7 +97,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_column() {
-		let tokens = tokenize("MAP name").unwrap();
+		let tokens = tokenize("MAP {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -125,8 +125,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_as() {
-		let tokens = tokenize("map 1 as a").unwrap();
+	fn test_colon_alias() {
+		let tokens = tokenize("MAP {a: 1}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -140,6 +140,7 @@ pub mod tests {
 			right,
 			..
 		} = map.nodes[0].as_infix();
+		// Colon syntax is converted to AS operator internally: expr AS alias
 		let left = left.as_literal_number();
 		assert_eq!(left.value(), "1");
 
@@ -165,11 +166,11 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_multiple_expressions_without_braces_fails() {
-		let tokens = tokenize("MAP 1, 2").unwrap();
+	fn test_without_braces_fails() {
+		let tokens = tokenize("MAP 1").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap_err();
-		assert_eq!(result.code, "MAP_001");
+		assert_eq!(result.code, "MAP_002");
 	}
 
 	#[test]
@@ -187,7 +188,7 @@ pub mod tests {
 
 	#[test]
 	fn test_colon_syntax_single() {
-		let tokens = tokenize("MAP col: 1 + 2").unwrap();
+		let tokens = tokenize("MAP {col: 1 + 2}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -196,17 +197,14 @@ pub mod tests {
 		let map = result.first_unchecked().as_map();
 		assert_eq!(map.nodes.len(), 1);
 
-		// Should be parsed as "1 + 2 as col"
 		let infix = map.nodes[0].as_infix();
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
 
-		// Left side should be "1 + 2"
 		let left_infix = infix.left.as_infix();
 		assert!(matches!(left_infix.operator, InfixOperator::Add(_)));
 		assert_eq!(left_infix.left.as_literal_number().value(), "1");
 		assert_eq!(left_infix.right.as_literal_number().value(), "2");
 
-		// Right side should be identifier "col"
 		let right = infix.right.as_identifier();
 		assert_eq!(right.text(), "col");
 	}
@@ -221,13 +219,11 @@ pub mod tests {
 		let map = result.first_unchecked().as_map();
 		assert_eq!(map.nodes.len(), 2);
 
-		// First expression: "id as name"
 		let first_infix = map.nodes[0].as_infix();
 		assert!(matches!(first_infix.operator, InfixOperator::As(_)));
 		assert_eq!(first_infix.left.as_identifier().text(), "id");
 		assert_eq!(first_infix.right.as_identifier().text(), "name");
 
-		// Second expression: "years as age"
 		let second_infix = map.nodes[1].as_infix();
 		assert!(matches!(second_infix.operator, InfixOperator::As(_)));
 		assert_eq!(second_infix.left.as_identifier().text(), "years");
@@ -236,7 +232,7 @@ pub mod tests {
 
 	#[test]
 	fn test_colon_syntax_comptokenize_expression() {
-		let tokens = tokenize("MAP total: price * quantity").unwrap();
+		let tokens = tokenize("MAP {total: price * quantity}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -244,17 +240,14 @@ pub mod tests {
 		let map = result.first_unchecked().as_map();
 		assert_eq!(map.nodes.len(), 1);
 
-		// Should be parsed as "price * quantity as total"
 		let infix = map.nodes[0].as_infix();
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
 
-		// Left side should be "price * quantity"
 		let left_infix = infix.left.as_infix();
 		assert!(matches!(left_infix.operator, InfixOperator::Multiply(_)));
 		assert_eq!(left_infix.left.as_identifier().text(), "price");
 		assert_eq!(left_infix.right.as_identifier().text(), "quantity");
 
-		// Right side should be identifier "total"
 		let right = infix.right.as_identifier();
 		assert_eq!(right.text(), "total");
 	}
@@ -269,16 +262,13 @@ pub mod tests {
 		let map = result.first_unchecked().as_map();
 		assert_eq!(map.nodes.len(), 3);
 
-		// First: plain identifier
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
 		assert_eq!(map.nodes[0].as_identifier().text(), "name");
 
-		// Second: colon syntax
 		let middle_infix = map.nodes[1].as_infix();
 		assert!(matches!(middle_infix.operator, InfixOperator::As(_)));
 		assert_eq!(middle_infix.right.as_identifier().text(), "total");
 
-		// Third: plain identifier
 		assert!(matches!(map.nodes[2], Ast::Identifier(_)));
 		assert_eq!(map.nodes[2].as_identifier().text(), "age");
 	}

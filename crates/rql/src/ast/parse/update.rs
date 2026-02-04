@@ -35,7 +35,7 @@ impl Parser {
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
 			return_error!(update_missing_assignments_block(token.fragment));
 		}
-		let (assignments, _) = self.parse_expressions(true)?;
+		let (assignments, _) = self.parse_expressions(true, false)?;
 		if assignments.is_empty() {
 			return_error!(update_empty_assignments_block(token.fragment));
 		}
@@ -67,7 +67,7 @@ pub mod tests {
 	fn test_basic_update_syntax() {
 		let tokens = tokenize(
 			r#"
-        UPDATE users { name: 'alice' } FILTER id == 1
+        UPDATE users { name: 'alice' } FILTER {id == 1}
     "#,
 		)
 		.unwrap();
@@ -78,16 +78,13 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let update = result.first_unchecked().as_update();
 
-		// Check target
 		assert!(update.target.namespace.is_none());
 		assert_eq!(update.target.name.text(), "users");
 
-		// Check assignments
 		assert_eq!(update.assignments.len(), 1);
 		let assignment = update.assignments[0].as_infix();
 		assert!(matches!(assignment.operator, InfixOperator::As(_)));
 
-		// Check filter exists
 		assert!(matches!(*update.filter, Ast::Filter(_)));
 	}
 
@@ -95,7 +92,7 @@ pub mod tests {
 	fn test_update_with_namespace() {
 		let tokens = tokenize(
 			r#"
-        UPDATE test.users { name: 'alice' } FILTER id == 1
+        UPDATE test.users { name: 'alice' } FILTER {id == 1}
     "#,
 		)
 		.unwrap();
@@ -106,7 +103,6 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let update = result.first_unchecked().as_update();
 
-		// Check target with namespace
 		assert_eq!(update.target.namespace.as_ref().unwrap().text(), "test");
 		assert_eq!(update.target.name.text(), "users");
 	}
@@ -115,7 +111,7 @@ pub mod tests {
 	fn test_update_multiple_assignments() {
 		let tokens = tokenize(
 			r#"
-        UPDATE users { name: 'alice', age: 30, active: true } FILTER id == 1
+        UPDATE users { name: 'alice', age: 30, active: true } FILTER {id == 1}
     "#,
 		)
 		.unwrap();
@@ -126,7 +122,6 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let update = result.first_unchecked().as_update();
 
-		// Check we have 3 assignments
 		assert_eq!(update.assignments.len(), 3);
 	}
 
@@ -134,7 +129,7 @@ pub mod tests {
 	fn test_update_complex_filter() {
 		let tokens = tokenize(
 			r#"
-        UPDATE users { status: 'inactive' } FILTER age > 18 and active == true
+        UPDATE users { status: 'inactive' } FILTER {age > 18 and active == true}
     "#,
 		)
 		.unwrap();
@@ -145,7 +140,6 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let update = result.first_unchecked().as_update();
 
-		// Check filter has AND operator
 		let filter = update.filter.as_filter();
 		let condition = filter.node.as_infix();
 		assert!(matches!(condition.operator, InfixOperator::And(_)));

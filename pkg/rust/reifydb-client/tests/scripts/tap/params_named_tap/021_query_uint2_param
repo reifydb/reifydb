@@ -1,7 +1,7 @@
 # Generated from: params_named.tap.md#uint2_param
 # Test: Query with named UINT2 parameter
 
-query_named 'MAP $uint2_val as result' 'uint2_val=65535'
+query_named 'MAP {result: $uint2_val}' 'uint2_val=65535'
 ---
 > +----------+
 > |  result  |

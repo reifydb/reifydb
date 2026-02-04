@@ -126,14 +126,14 @@ take 2"#,
 	info!("\nExample 4: Get 3 most recent events (sort by timestamp desc, take 3)");
 	log_query(
 		r#"from demo.events
-sort timestamp desc
+sort {timestamp desc}
 take 3"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from demo.events
-			sort timestamp desc
+			sort {timestamp desc}
 			take 3
 			"#,
 			Params::None,
@@ -169,7 +169,7 @@ take 4"#,
 	log_query(
 		r#"from demo.events
 filter severity == "HIGH" or severity == "CRITICAL"
-sort timestamp desc
+sort {timestamp desc}
 map { id, event_type, severity, message }
 take 3"#,
 	);
@@ -178,7 +178,7 @@ take 3"#,
 			r#"
 			from demo.events
 			filter severity == "HIGH" or severity == "CRITICAL"
-			sort timestamp desc
+			sort {timestamp desc}
 			map { id, event_type, severity, message }
 			take 3
 			"#,

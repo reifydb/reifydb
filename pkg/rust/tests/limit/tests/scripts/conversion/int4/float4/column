@@ -5,7 +5,7 @@
 
 (admin 'create table test.conversion{col: int4}')
 (command 'INSERT test.conversion [{ col: 0 }]')
-command 'from test.conversion map cast(col, float4)'
+command 'from test.conversion map {cast(col, float4)}'
 ---
 > +----------+-------+
 > |  rownum  |  col  |
@@ -16,7 +16,7 @@ command 'from test.conversion map cast(col, float4)'
 
 
 (command 'INSERT test.conversion [{ col: 16777216 }]')
-command 'from test.conversion map cast(col, float4)'
+command 'from test.conversion map {cast(col, float4)}'
 ---
 > +----------+------------+
 > |  rownum  |    col     |
@@ -27,7 +27,7 @@ command 'from test.conversion map cast(col, float4)'
 >
 
 (command 'INSERT test.conversion [{ col: -16777216 }]')
-command 'from test.conversion map cast(col, float4)'
+command 'from test.conversion map {cast(col, float4)}'
 ---
 > +----------+-------------+
 > |  rownum  |     col     |
@@ -40,42 +40,42 @@ command 'from test.conversion map cast(col, float4)'
 
 (admin 'create table test.conversion_fail{col: int4}')
 (command 'INSERT test.conversion_fail [{ col: 16777217 }]')
-!command 'from test.conversion_fail map cast(col, float4)'
+!command 'from test.conversion_fail map {cast(col, float4)}'
 ---
 >  Error CAST_002: failed to cast to Float4
->   at "(colfloat4" (line 1, column 35)
+>   at "(colfloat4" (line 1, column 36)
 >
->   1 │ from test.conversion_fail map cast(col, float4)
->     │                                    ~~~~~~~~~~
->     │                             failed to cast to Float4
+>   1 │ from test.conversion_fail map {cast(col, float4)}
+>     │                                     ~~~~~~~~~~
+>     │                              failed to cast to Float4
 >
 >   ↳  Error NUMBER_004: too large for precise float conversion
->     at "col" (line 1, column 36)
+>     at "col" (line 1, column 37)
 >
->     1 │ from test.conversion_fail map cast(col, float4)
->       │                                    ~~~
->       │         converting 'col' from Int4 to Float4 would lose precision
+>     1 │ from test.conversion_fail map {cast(col, float4)}
+>       │                                     ~~~
+>       │          converting 'col' from Int4 to Float4 would lose precision
 >
 >     note: Float4 can only represent from -16_777_216 (-2^24) to 16_777_216 (2^24) precisely
 >     note: consider using a different numeric type if exact precision is required
 >
 
 (command 'INSERT test.conversion_fail [{ col: -16777217 }]')
-!command 'from test.conversion_fail map cast(col, float4)'
+!command 'from test.conversion_fail map {cast(col, float4)}'
 ---
 >  Error CAST_002: failed to cast to Float4
->   at "(colfloat4" (line 1, column 35)
+>   at "(colfloat4" (line 1, column 36)
 >
->   1 │ from test.conversion_fail map cast(col, float4)
->     │                                    ~~~~~~~~~~
->     │                             failed to cast to Float4
+>   1 │ from test.conversion_fail map {cast(col, float4)}
+>     │                                     ~~~~~~~~~~
+>     │                              failed to cast to Float4
 >
 >   ↳  Error NUMBER_004: too large for precise float conversion
->     at "col" (line 1, column 36)
+>     at "col" (line 1, column 37)
 >
->     1 │ from test.conversion_fail map cast(col, float4)
->       │                                    ~~~
->       │         converting 'col' from Int4 to Float4 would lose precision
+>     1 │ from test.conversion_fail map {cast(col, float4)}
+>       │                                     ~~~
+>       │          converting 'col' from Int4 to Float4 would lose precision
 >
 >     note: Float4 can only represent from -16_777_216 (-2^24) to 16_777_216 (2^24) precisely
 >     note: consider using a different numeric type if exact precision is required

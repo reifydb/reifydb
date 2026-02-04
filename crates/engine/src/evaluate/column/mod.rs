@@ -72,6 +72,15 @@ impl StandardColumnEvaluator {
 			expr => unimplemented!("{expr:?}"),
 		}
 	}
+
+	pub fn evaluate_multi(&self, ctx: &ColumnEvaluationContext, expr: &Expression) -> crate::Result<Vec<Column>> {
+		match expr {
+			Expression::Map(map_expr) => self.map_expr_multi(ctx, map_expr),
+			Expression::Extend(extend_expr) => self.extend_expr_multi(ctx, extend_expr),
+			Expression::If(if_expr) => self.if_expr_multi(ctx, if_expr),
+			_ => Ok(vec![self.evaluate(ctx, expr)?]),
+		}
+	}
 }
 
 pub fn evaluate(ctx: &ColumnEvaluationContext, expr: &Expression, functions: &Functions) -> crate::Result<Column> {

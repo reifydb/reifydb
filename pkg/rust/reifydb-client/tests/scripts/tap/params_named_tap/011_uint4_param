@@ -1,7 +1,7 @@
 # Generated from: params_named.tap.md#uint4_param
 # Test: Named parameter with UINT4 type
 
-command_named 'MAP $uint4_val as result' 'uint4_val=4294967295'
+command_named 'MAP {result: $uint4_val}' 'uint4_val=4294967295'
 ---
 > +--------------+
 > |    result    |

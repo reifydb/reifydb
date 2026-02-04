@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::apply_multiple_arguments_without_braces;
+use reifydb_core::error::diagnostic::operation::apply_missing_braces;
 use reifydb_type::return_error;
 
 use crate::ast::{
@@ -14,61 +14,32 @@ impl Parser {
 	pub(crate) fn parse_apply(&mut self) -> crate::Result<AstApply> {
 		let token = self.consume_keyword(Keyword::Apply)?;
 
-		// Parse the operator name (identifier)
 		let operator = self.parse_identifier()?;
 
-		// Check if we have arguments
-		let expressions = if self.current()?.is_operator(Operator::OpenCurly) {
-			// We have a block - could be empty {} or
-			// contain expressions
-			self.advance()?; // consume '{'
+		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
+			return_error!(apply_missing_braces(token.fragment));
+		}
 
-			let mut exprs = Vec::new();
+		self.advance()?;
 
-			// Check if it's empty braces
-			if !self.current()?.is_operator(Operator::CloseCurly) {
-				// Parse expressions until we hit the
-				// closing brace
-				loop {
-					exprs.push(self.parse_node(Precedence::None)?);
+		let mut expressions = Vec::new();
 
-					if self.current()?.is_separator(Separator::Comma) {
-						self.advance()?; // consume comma
-						// Check for trailing
-						// comma
-						if self.current()?.is_operator(Operator::CloseCurly) {
-							break;
-						}
-					} else {
+		if !self.current()?.is_operator(Operator::CloseCurly) {
+			loop {
+				expressions.push(self.parse_node(Precedence::None)?);
+
+				if self.current()?.is_separator(Separator::Comma) {
+					self.advance()?;
+					if self.current()?.is_operator(Operator::CloseCurly) {
 						break;
 					}
+				} else {
+					break;
 				}
 			}
+		}
 
-			self.consume_operator(Operator::CloseCurly)?; // consume '}'
-			exprs
-		} else if !self.is_eof()
-			&& !self.current()?.is_separator(Separator::NewLine)
-			&& !self.current()?.is_keyword(Keyword::Map)
-			&& !self.current()?.is_keyword(Keyword::Filter)
-			&& !self.current()?.is_keyword(Keyword::From)
-		{
-			// Try to parse a single expression
-			let first_expr = self.parse_node(Precedence::None)?;
-
-			// Check if there's a comma following (which
-			// would indicate multiple arguments)
-			if !self.is_eof() && self.current()?.is_separator(Separator::Comma) {
-				// Multiple arguments without braces -
-				// this is an error
-				return_error!(apply_multiple_arguments_without_braces(token.fragment));
-			}
-
-			vec![first_expr]
-		} else {
-			// No arguments
-			Vec::new()
-		};
+		self.consume_operator(Operator::CloseCurly)?;
 
 		Ok(AstApply {
 			token,
@@ -98,7 +69,7 @@ pub mod tests {
 
 	#[test]
 	fn test_apply_with_single_expression() {
-		let tokens = tokenize("APPLY running_sum value").unwrap();
+		let tokens = tokenize("APPLY running_sum {value}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -124,10 +95,10 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_apply_multiple_without_braces_fails() {
-		let tokens = tokenize("APPLY some_op value1, value2").unwrap();
+	fn test_apply_without_braces_fails() {
+		let tokens = tokenize("APPLY some_op value").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap_err();
-		assert_eq!(result.code, "APPLY_001");
+		assert_eq!(result.code, "APPLY_002");
 	}
 }

@@ -23,22 +23,22 @@ fn main() {
 	info!("Example 1: Basic arithmetic operations");
 	log_query(
 		r#"map {
-  10 + 5 as addition,
-  10 - 5 as subtraction,
-  10 * 5 as multiplication,
-  10 / 5 as division,
-  10 % 3 as modulo
+  addition: 10 + 5,
+  subtraction: 10 - 5,
+  multiplication: 10 * 5,
+  division: 10 / 5,
+  modulo: 10 % 3
 }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			map {
-				10 + 5 as addition,
-				10 - 5 as subtraction,
-				10 * 5 as multiplication,
-				10 / 5 as division,
-				10 % 3 as modulo
+				addition: 10 + 5,
+				subtraction: 10 - 5,
+				multiplication: 10 * 5,
+				division: 10 / 5,
+				modulo: 10 % 3
 			}
 			"#,
 			Params::None,
@@ -52,16 +52,16 @@ fn main() {
 	info!("\nExample 2: Operator precedence (multiplication before addition)");
 	log_query(
 		r#"map {
-  2 + 3 * 4 as without_parens,
-  (2 + 3) * 4 as with_parens
+  without_parens: 2 + 3 * 4,
+  with_parens: (2 + 3) * 4
 }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			map {
-				2 + 3 * 4 as without_parens,
-				(2 + 3) * 4 as with_parens
+				without_parens: 2 + 3 * 4,
+				with_parens: (2 + 3) * 4
 			}
 			"#,
 			Params::None,
@@ -75,18 +75,18 @@ fn main() {
 	info!("\nExample 3: Floating point arithmetic");
 	log_query(
 		r#"map {
-  3.14 * 2.0 as pi_times_two,
-  10.5 / 2.5 as decimal_division,
-  1.1 + 2.2 as decimal_addition
+  pi_times_two: 3.14 * 2.0,
+  decimal_division: 10.5 / 2.5,
+  decimal_addition: 1.1 + 2.2
 }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			map {
-				3.14 * 2.0 as pi_times_two,
-				10.5 / 2.5 as decimal_division,
-				1.1 + 2.2 as decimal_addition
+				pi_times_two: 3.14 * 2.0,
+				decimal_division: 10.5 / 2.5,
+				decimal_addition: 1.1 + 2.2
 			}
 			"#,
 			Params::None,
@@ -130,13 +130,13 @@ fn main() {
 	info!("\nExample 4: Calculate total price (price * quantity)");
 	log_query(
 		r#"from shop.products
-map { name, price, quantity, price * quantity as total }"#,
+map { name, price, quantity, total: price * quantity }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from shop.products
-			map { name, price, quantity, price * quantity as total }
+			map { name, price, quantity, total: price * quantity }
 			"#,
 			Params::None,
 		)
@@ -153,8 +153,8 @@ map {
   name,
   price,
   discount_percent,
-  price * (discount_percent / 100) as discount_amount,
-  price - (price * discount_percent / 100) as discounted_price
+  discount_amount: price * (discount_percent / 100),
+  discounted_price: price - (price * discount_percent / 100)
 }"#,
 	);
 	for frame in db
@@ -165,8 +165,8 @@ map {
 				name,
 				price,
 				discount_percent,
-				price * (discount_percent / 100) as discount_amount,
-				price - (price * discount_percent / 100) as discounted_price
+				discount_amount: price * (discount_percent / 100),
+				discounted_price: price - (price * discount_percent / 100)
 			}
 			"#,
 			Params::None,
@@ -184,8 +184,8 @@ map {
   name,
   price,
   tax_rate,
-  price * (tax_rate / 100) as tax_amount,
-  price + (price * tax_rate / 100) as price_with_tax
+  tax_amount: price * (tax_rate / 100),
+  price_with_tax: price + (price * tax_rate / 100)
 }"#,
 	);
 	for frame in db
@@ -196,8 +196,8 @@ map {
 				name,
 				price,
 				tax_rate,
-				price * (tax_rate / 100) as tax_amount,
-				price + (price * tax_rate / 100) as price_with_tax
+				tax_amount: price * (tax_rate / 100),
+				price_with_tax: price + (price * tax_rate / 100)
 			}
 			"#,
 			Params::None,
@@ -233,11 +233,11 @@ filter price * quantity > 100"#,
 map {
   name,
   quantity,
-  price * quantity as subtotal,
-  (price * quantity) * (discount_percent / 100) as discount,
-  (price * quantity) - ((price * quantity) * (discount_percent / 100)) as after_discount,
-  ((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (tax_rate / 100) as tax,
-  ((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (1 + tax_rate / 100) as final_total
+  subtotal: price * quantity,
+  discount: (price * quantity) * (discount_percent / 100),
+  after_discount: (price * quantity) - ((price * quantity) * (discount_percent / 100)),
+  tax: ((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (tax_rate / 100),
+  final_total: ((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (1 + tax_rate / 100)
 }"#,
 	);
 	for frame in db
@@ -247,11 +247,11 @@ map {
 			map {
 				name,
 				quantity,
-				price * quantity as subtotal,
-				(price * quantity) * (discount_percent / 100) as discount,
-				(price * quantity) - ((price * quantity) * (discount_percent / 100)) as after_discount,
-				((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (tax_rate / 100) as tax,
-				((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (1 + tax_rate / 100) as final_total
+				subtotal: price * quantity,
+				discount: (price * quantity) * (discount_percent / 100),
+				after_discount: (price * quantity) - ((price * quantity) * (discount_percent / 100)),
+				tax: ((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (tax_rate / 100),
+				final_total: ((price * quantity) - ((price * quantity) * (discount_percent / 100))) * (1 + tax_rate / 100)
 			}
 			"#,
 			Params::None,

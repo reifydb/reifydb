@@ -32,7 +32,7 @@ fn test_sort_system_namespaces() {
 
 	// Query system.namespaces with sort
 	let frames: Vec<Frame> =
-		engine.query_as(&identity, "FROM system.namespaces SORT name", Default::default()).unwrap();
+		engine.query_as(&identity, "FROM system.namespaces SORT {name}", Default::default()).unwrap();
 
 	// Extract namespace names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -76,7 +76,7 @@ fn test_sort_system_namespaces_asc() {
 
 	// Query system.namespaces with explicit ASC sort
 	let frames: Vec<Frame> =
-		engine.query_as(&identity, "FROM system.namespaces SORT name ASC", Default::default()).unwrap();
+		engine.query_as(&identity, "FROM system.namespaces SORT {name ASC}", Default::default()).unwrap();
 
 	// Extract namespace names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -115,7 +115,7 @@ fn test_sort_system_tables() {
 
 	// Query system.tables with sort
 	let frames: Vec<Frame> =
-		engine.query_as(&identity, "FROM system.tables SORT name ASC", Default::default()).unwrap();
+		engine.query_as(&identity, "FROM system.tables SORT {name ASC}", Default::default()).unwrap();
 
 	// Extract table names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -154,7 +154,7 @@ fn test_sort_system_tables_with_pipe_syntax() {
 
 	// Query system.tables with pipe syntax
 	let frames: Vec<Frame> =
-		engine.query_as(&identity, "from system.tables | sort name", Default::default()).unwrap();
+		engine.query_as(&identity, "from system.tables | sort {name}", Default::default()).unwrap();
 
 	// Extract table names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -262,7 +262,7 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 
 	// Now query WITH sorting (ascending)
 	let frames_asc: Vec<Frame> = engine
-		.query_as(&identity, "FROM system.table_storage_stats SORT total_bytes ASC", Default::default())
+		.query_as(&identity, "FROM system.table_storage_stats SORT {total_bytes ASC}", Default::default())
 		.unwrap();
 
 	let frame_asc = frames_asc.first().expect("Expected at least one frame");
@@ -294,7 +294,7 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 
 	// Now query WITH sorting (descending)
 	let frames_desc: Vec<Frame> = engine
-		.query_as(&identity, "FROM system.table_storage_stats SORT total_bytes DESC", Default::default())
+		.query_as(&identity, "FROM system.table_storage_stats SORT {total_bytes DESC}", Default::default())
 		.unwrap();
 
 	let frame_desc = frames_desc.first().expect("Expected at least one frame");
@@ -379,7 +379,7 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 
 	// Test with MULTI-LINE syntax (newline between from and sort) - EXACT USER SYNTAX
 	let multiline_query = "from system.table_storage_stats
-sort total_bytes asc";
+sort {total_bytes asc}";
 
 	println!("Query:\n{}\n", multiline_query);
 
@@ -462,12 +462,12 @@ fn test_asc_is_not_desc() {
 
 	// Get results with ASC
 	let frames_asc: Vec<Frame> = engine
-		.query_as(&identity, "from system.table_storage_stats\nsort total_bytes asc", Default::default())
+		.query_as(&identity, "from system.table_storage_stats\nsort {total_bytes asc}", Default::default())
 		.unwrap();
 
 	// Get results with DESC
 	let frames_desc: Vec<Frame> = engine
-		.query_as(&identity, "from system.table_storage_stats\nsort total_bytes desc", Default::default())
+		.query_as(&identity, "from system.table_storage_stats\nsort {total_bytes desc}", Default::default())
 		.unwrap();
 
 	// Extract first total_bytes from each

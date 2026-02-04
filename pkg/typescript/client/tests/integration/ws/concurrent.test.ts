@@ -41,17 +41,17 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.admin(
-                    'MAP 1 as result;',
+                    'MAP {result: 1};',
                     {},
                     [Schema.object({result: Schema.int4Value()})]
                 ),
                 wsClient.admin(
-                    'MAP { 2 as a, 3 as b };',
+                    'MAP { a: 2, b: 3 };',
                     {},
                     [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
                 ),
                 wsClient.admin(
-                    "MAP 'ReifyDB' as result;",
+                    "MAP {result: 'ReifyDB'};",
                     {},
                     [Schema.object({result: Schema.utf8Value()})]
                 )
@@ -68,17 +68,17 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.command(
-                    'MAP 1 as result;',
+                    'MAP {result: 1};',
                     {},
                     [Schema.object({result: Schema.int4Value()})]
                 ),
                 wsClient.command(
-                    'MAP { 2 as a, 3 as b };',
+                    'MAP { a: 2, b: 3 };',
                     {},
                     [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
                 ),
                 wsClient.command(
-                    "MAP 'ReifyDB' as result;",
+                    "MAP {result: 'ReifyDB'};",
                     {},
                     [Schema.object({result: Schema.utf8Value()})]
                 )
@@ -96,17 +96,17 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.query(
-                    'MAP 1 as result;',
+                    'MAP {result: 1};',
                     {},
                     [Schema.object({result: Schema.int4Value()})]
                 ),
                 wsClient.query(
-                    'MAP { 2 as a, 3 as b };',
+                    'MAP { a: 2, b: 3 };',
                     {},
                     [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
                 ),
                 wsClient.query(
-                    "MAP 'ReifyDB' as result;",
+                    "MAP {result: 'ReifyDB'};",
                     {},
                     [Schema.object({result: Schema.utf8Value()})]
                 )
@@ -123,17 +123,17 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.admin(
-                    'MAP 1 as result;',
+                    'MAP {result: 1};',
                     {},
                     [Schema.object({result: Schema.int4Value()})]
                 ),
                 wsClient.query(
-                    'MAP { 2 as a, 3 as b };',
+                    'MAP { a: 2, b: 3 };',
                     {},
                     [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
                 ),
                 wsClient.admin(
-                    "MAP 'ReifyDB' as result;",
+                    "MAP {result: 'ReifyDB'};",
                     {},
                     [Schema.object({result: Schema.utf8Value()})]
                 )
@@ -150,17 +150,17 @@ describe('Concurrent requests', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
                 wsClient.command(
-                    'MAP 1 as result;',
+                    'MAP {result: 1};',
                     {},
                     [Schema.object({result: Schema.int4Value()})]
                 ),
                 wsClient.query(
-                    'MAP { 2 as a, 3 as b };',
+                    'MAP { a: 2, b: 3 };',
                     {},
                     [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
                 ),
                 wsClient.command(
-                    "MAP 'ReifyDB' as result;",
+                    "MAP {result: 'ReifyDB'};",
                     {},
                     [Schema.object({result: Schema.utf8Value()})]
                 )

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::{
-	aggregate_multiple_by_without_braces, aggregate_multiple_map_without_braces,
-};
+use reifydb_core::error::diagnostic::operation::{aggregate_by_missing_braces, aggregate_missing_braces};
 use reifydb_type::return_error;
 
 use crate::ast::{
@@ -23,52 +21,49 @@ impl Parser {
 		let mut projections = Vec::new();
 
 		if !self.current()?.is_keyword(Keyword::By) {
-			let has_projections_braces = self.current()?.is_operator(OpenCurly);
-
-			if has_projections_braces {
-				self.advance()?; // consume opening brace
+			if !self.current()?.is_operator(OpenCurly) {
+				return_error!(aggregate_missing_braces(token.fragment));
 			}
 
-			loop {
-				if self.current()?.is_keyword(Keyword::By) {
-					break;
+			self.advance()?;
+
+			if !self.current()?.is_operator(CloseCurly) {
+				loop {
+					if self.current()?.is_keyword(Keyword::By) {
+						break;
+					}
+
+					// Try colon alias syntax first (alias: expr), otherwise parse with LogicOr
+					// precedence to prevent AS keyword from being parsed
+					if let Ok(alias_expr) = self.try_parse_colon_alias() {
+						projections.push(alias_expr);
+					} else {
+						projections.push(self.parse_node(Precedence::LogicOr)?);
+					}
+
+					if self.is_eof() {
+						break;
+					}
+
+					if self.current()?.is_operator(CloseCurly) {
+						self.advance()?;
+						break;
+					}
+
+					if self.current()?.is_separator(Comma) {
+						self.advance()?;
+					} else {
+						break;
+					}
 				}
-
-				projections.push(self.parse_node(Precedence::None)?);
-
-				if self.is_eof() {
-					break;
-				}
-
-				// If we have braces, look for closing brace
-				if has_projections_braces && self.current()?.is_operator(CloseCurly) {
-					self.advance()?; // consume closing brace
-					break;
-				}
-
-				if self.current()?.is_separator(Comma) {
-					self.advance()?;
-				} else {
-					break;
-				}
-			}
-
-			if projections.len() > 1 && !has_projections_braces {
-				return_error!(aggregate_multiple_map_without_braces(token.fragment));
+			} else {
+				self.advance()?;
 			}
 		}
 
-		// Note: We allow empty projections for group-by-only operations
-		// This can be useful for getting distinct groups without
-		// aggregations
-
-		// BY clause is optional - if not present, it's a global
-		// aggregation
 		let has_by_keyword = self.current().map_or(false, |t| t.is_keyword(Keyword::By));
 
 		if !has_by_keyword {
-			// No BY clause means global aggregation with empty
-			// grouping
 			return Ok(AstAggregate {
 				token,
 				by: Vec::new(),
@@ -76,31 +71,27 @@ impl Parser {
 			});
 		}
 
-		let _ = self.consume_keyword(Keyword::By)?;
+		let by_token = self.consume_keyword(Keyword::By)?;
 
-		let has_by_braces = self.current()?.is_operator(OpenCurly);
-
-		if has_by_braces {
-			self.advance()?; // consume opening brace
+		if !self.current()?.is_operator(OpenCurly) {
+			return_error!(aggregate_by_missing_braces(by_token.fragment));
 		}
+
+		self.advance()?;
 
 		let mut by = Vec::new();
 
-		// Check for empty braces first
-		if has_by_braces && self.current()?.is_operator(CloseCurly) {
-			self.advance()?; // consume closing brace
-		// Empty by clause for global aggregation
-		} else {
+		if !self.current()?.is_operator(CloseCurly) {
 			loop {
-				by.push(self.parse_node(Precedence::None)?);
+				// Use LogicOr precedence to prevent AS keyword from being parsed
+				by.push(self.parse_node(Precedence::LogicOr)?);
 
 				if self.is_eof() {
 					break;
 				}
 
-				// If we have braces, look for closing brace
-				if has_by_braces && self.current()?.is_operator(CloseCurly) {
-					self.advance()?; // consume closing brace
+				if self.current()?.is_operator(CloseCurly) {
+					self.advance()?;
 					break;
 				}
 
@@ -110,10 +101,8 @@ impl Parser {
 					break;
 				}
 			}
-		}
-
-		if by.len() > 1 && !has_by_braces {
-			return_error!(aggregate_multiple_by_without_braces(token.fragment));
+		} else {
+			self.advance()?;
 		}
 
 		Ok(AstAggregate {
@@ -134,7 +123,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_column() {
-		let tokens = tokenize("AGGREGATE min(age) BY name").unwrap();
+		let tokens = tokenize("AGGREGATE {min(age)} BY {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -157,7 +146,7 @@ pub mod tests {
 
 	#[test]
 	fn test_keyword() {
-		let tokens = tokenize("AGGREGATE min(value) BY value").unwrap();
+		let tokens = tokenize("AGGREGATE {min(value)} BY {value}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -179,8 +168,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_alias() {
-		let tokens = tokenize("AGGREGATE min(age) as min_age BY name").unwrap();
+	fn test_alias_colon() {
+		let tokens = tokenize("AGGREGATE { min_age: min(age) } BY {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -190,6 +179,7 @@ pub mod tests {
 
 		let projection = &aggregate.map[0].as_infix();
 
+		// Colon syntax is converted to AS operator internally: expr AS alias
 		let min_call = projection.left.as_call_function();
 		assert_eq!(min_call.function.name.text(), "min");
 		assert!(min_call.function.namespaces.is_empty());
@@ -208,38 +198,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_alias_colon() {
-		let tokens = tokenize("AGGREGATE { min_age: min(age) } BY name").unwrap();
-		let mut parser = Parser::new(tokens);
-		let mut result = parser.parse().unwrap();
-
-		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
-		assert_eq!(aggregate.map.len(), 1);
-
-		let projection = &aggregate.map[0].as_infix();
-
-		let identifier = projection.left.as_identifier();
-		assert_eq!(identifier.text(), "min_age");
-
-		assert!(matches!(projection.operator, InfixOperator::TypeAscription(_)));
-
-		let min_call = projection.right.as_call_function();
-		assert_eq!(min_call.function.name.text(), "min");
-		assert!(min_call.function.namespaces.is_empty());
-
-		assert_eq!(min_call.arguments.len(), 1);
-		let identifier = min_call.arguments.nodes[0].as_identifier();
-		assert_eq!(identifier.text(), "age");
-
-		assert_eq!(aggregate.by.len(), 1);
-		assert!(matches!(aggregate.by[0], Ast::Identifier(_)));
-		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
-	}
-
-	#[test]
 	fn test_no_projection_single_column() {
-		let tokens = tokenize("AGGREGATE BY name").unwrap();
+		let tokens = tokenize("AGGREGATE BY {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -306,7 +266,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_projection_with_braces() {
-		let tokens = tokenize("AGGREGATE {min(age)} BY name").unwrap();
+		let tokens = tokenize("AGGREGATE {min(age)} BY {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -340,19 +300,19 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_multiple_maps_without_braces_fails() {
-		let tokens = tokenize("AGGREGATE min(age), max(age) BY name").unwrap();
+	fn test_maps_without_braces_fails() {
+		let tokens = tokenize("AGGREGATE min(age) BY {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap_err();
-		assert_eq!(result.code, "AGGREGATE_002")
+		assert_eq!(result.code, "AGGREGATE_004")
 	}
 
 	#[test]
-	fn test_multiple_by_without_braces_fails() {
-		let tokens = tokenize("AGGREGATE { count(value) } BY name, age").unwrap();
+	fn test_by_without_braces_fails() {
+		let tokens = tokenize("AGGREGATE { count(value) } BY name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap_err();
-		assert_eq!(result.code, "AGGREGATE_003")
+		assert_eq!(result.code, "AGGREGATE_005")
 	}
 
 	#[test]
@@ -373,7 +333,7 @@ pub mod tests {
 		let identifier = projection.arguments.nodes[0].as_identifier();
 		assert_eq!(identifier.text(), "value");
 
-		assert_eq!(aggregate.by.len(), 0, "BY clause should be empty for global aggregation");
+		assert_eq!(aggregate.by.len(), 0);
 	}
 
 	#[test]
@@ -394,6 +354,6 @@ pub mod tests {
 		let identifier = projection.arguments.nodes[0].as_identifier();
 		assert_eq!(identifier.text(), "value");
 
-		assert_eq!(aggregate.by.len(), 0, "BY clause should be empty for global aggregation");
+		assert_eq!(aggregate.by.len(), 0);
 	}
 }

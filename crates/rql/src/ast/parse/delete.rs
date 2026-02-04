@@ -55,7 +55,7 @@ pub mod tests {
 	fn test_basic_delete_syntax() {
 		let tokens = tokenize(
 			r#"
-        DELETE users FILTER id == 1
+        DELETE users FILTER {id == 1}
     "#,
 		)
 		.unwrap();
@@ -66,11 +66,9 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let delete = result.first_unchecked().as_delete();
 
-		// Check target
 		assert!(delete.target.namespace.is_none());
 		assert_eq!(delete.target.name.text(), "users");
 
-		// Check filter exists
 		assert!(matches!(*delete.filter, Ast::Filter(_)));
 	}
 
@@ -78,7 +76,7 @@ pub mod tests {
 	fn test_delete_with_namespace() {
 		let tokens = tokenize(
 			r#"
-        DELETE test.users FILTER id == 1
+        DELETE test.users FILTER {id == 1}
     "#,
 		)
 		.unwrap();
@@ -89,7 +87,6 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let delete = result.first_unchecked().as_delete();
 
-		// Check target with namespace
 		assert_eq!(delete.target.namespace.as_ref().unwrap().text(), "test");
 		assert_eq!(delete.target.name.text(), "users");
 	}
@@ -98,7 +95,7 @@ pub mod tests {
 	fn test_delete_complex_filter() {
 		let tokens = tokenize(
 			r#"
-        DELETE users FILTER age > 18 and active == false
+        DELETE users FILTER {age > 18 and active == false}
     "#,
 		)
 		.unwrap();
@@ -109,7 +106,6 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let delete = result.first_unchecked().as_delete();
 
-		// Check filter has AND operator
 		let filter = delete.filter.as_filter();
 		let condition = filter.node.as_infix();
 		assert!(matches!(condition.operator, InfixOperator::And(_)));

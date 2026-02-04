@@ -258,7 +258,7 @@ inner join {
   from company.departments
 } as departments using (dept_id, departments.dept_id)
 aggregate { avg(salary), count(emp_id) }
-  by dept_name"#,
+  by {dept_name}"#,
 	);
 	for frame in db
 		.query_as_root(
@@ -268,7 +268,7 @@ aggregate { avg(salary), count(emp_id) }
 				from company.departments
 			} as departments using (dept_id, departments.dept_id)
 			aggregate { math::avg(salary), math::count(emp_id) }
-				by departments_dept_name
+				by {departments_dept_name}
 			"#,
 			Params::None,
 		)

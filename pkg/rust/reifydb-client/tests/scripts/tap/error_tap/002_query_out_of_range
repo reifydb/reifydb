@@ -1,20 +1,20 @@
 # Generated from: error.tap.md#query_out_of_range
 # Test: Query operation with INT1 cast out-of-range error
 
-!query 'MAP cast(129, int1) as result;'
+!query 'MAP {result: cast(129, int1)};'
 ---
 >  Error CAST_002: failed to cast to Int1
->   at "129" (line 1, column 10)
+>   at "129" (line 1, column 19)
 >
->   1 │ MAP cast(129, int1) as result;
->     │          ~~~
->     │ failed to cast to Int1
+>   1 │ MAP {result: cast(129, int1)};
+>     │                   ~~~
+>     │         failed to cast to Int1
 >
 >   ↳  Error NUMBER_002: number out of range
->     at "129" (line 1, column 10)
+>     at "129" (line 1, column 19)
 >
->     1 │ MAP cast(129, int1) as result;
->       │          ~~~
+>     1 │ MAP {result: cast(129, int1)};
+>       │                   ~~~
 >       │ value '129' exceeds the valid range for type Int1 (-128 to 127)
 >
 >     help: use a value within range -128 to 127 or use a wider type

@@ -1642,9 +1642,9 @@ pub mod tests {
 			r#"
 			CREATE FLOW aggregated AS {
 				FROM raw_events
-				WHERE event_type = 'purchase'
-				AGGREGATE BY user_id
-				SELECT { user_id, SUM(amount) as total }
+				FILTER {event_type = 'purchase'}
+				AGGREGATE BY {user_id}
+				SELECT { user_id, total: SUM(amount) }
 			}
 		"#,
 		)
@@ -1659,8 +1659,7 @@ pub mod tests {
 		match create {
 			AstCreate::Flow(flow) => {
 				assert_eq!(flow.flow.name.text(), "aggregated");
-				// The AS clause should have multiple query nodes
-				assert!(flow.as_clause.len() >= 4); // FROM, WHERE, AGGREGATE, SELECT
+				assert!(flow.as_clause.len() >= 4);
 			}
 			_ => unreachable!(),
 		}
@@ -1906,7 +1905,7 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_with_piped_query() {
 		let tokens = tokenize(
-			"CREATE SUBSCRIPTION { id: Int4, price: Float8 } AS { from test.products | filter price > 50 | filter stock > 0 }",
+			"CREATE SUBSCRIPTION { id: Int4, price: Float8 } AS { from test.products | filter {price > 50} | filter {stock > 0} }",
 		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
@@ -1927,14 +1926,10 @@ pub mod tests {
 				assert!(as_clause.is_some(), "AS clause should be present");
 				let as_clause = as_clause.as_ref().unwrap();
 
-				// Should have FROM node followed by filter operations
 				assert!(as_clause.nodes.len() >= 1, "Should have at least FROM node");
 
-				// First node should be FROM
 				match &as_clause.nodes[0] {
-					Ast::From(_) => {
-						// Expected: FROM node
-					}
+					Ast::From(_) => {}
 					_ => panic!("Expected FROM node as first node in AS clause"),
 				}
 			}
@@ -2000,9 +1995,8 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_schemaless_with_filter() {
-		// Test schema-less subscription with filter
 		let tokens =
-			tokenize("CREATE SUBSCRIPTION AS { FROM demo.events | FILTER id > 1 and id < 3 }").unwrap();
+			tokenize("CREATE SUBSCRIPTION AS { FROM demo.events | FILTER {id > 1 and id < 3} }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -2024,9 +2018,7 @@ pub mod tests {
 				assert!(as_clause.has_pipes, "Should have pipes");
 
 				match &as_clause.nodes[0] {
-					Ast::From(_) => {
-						// Expected: FROM node
-					}
+					Ast::From(_) => {}
 					_ => panic!("Expected FROM node as first node"),
 				}
 			}

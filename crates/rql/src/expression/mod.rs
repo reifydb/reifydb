@@ -1208,12 +1208,18 @@ impl ExpressionCompiler {
 			}
 			InfixOperator::As(token) => {
 				let left = Self::compile(*ast.left)?;
-				let Ast::Identifier(right) = *ast.right else {
-					unimplemented!()
+				let alias_fragment = match *ast.right {
+					Ast::Identifier(ident) => ident.token.fragment,
+					Ast::Literal(AstLiteral::Text(text)) => {
+						let raw = text.0.fragment.text();
+						let unquoted = raw.trim_matches('"');
+						Fragment::internal(unquoted)
+					}
+					_ => unimplemented!(),
 				};
 
 				Ok(Expression::Alias(AliasExpression {
-					alias: IdentExpression(right.token.fragment),
+					alias: IdentExpression(alias_fragment),
 					expression: Box::new(left),
 					fragment: token.fragment,
 				}))

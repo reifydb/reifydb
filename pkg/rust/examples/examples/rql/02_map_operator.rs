@@ -22,8 +22,8 @@ fn main() {
 
 	// Example 1: MAP with constants
 	info!("Example 1: MAP with constants");
-	log_query(r#"map { 42 as answer, "hello" as greeting }"#);
-	for frame in db.query_as_root(r#"map { 42 as answer, "hello" as greeting }"#, Params::None).unwrap() {
+	log_query(r#"map { answer: 42, greeting: "hello" }"#);
+	for frame in db.query_as_root(r#"map { answer: 42, greeting: "hello" }"#, Params::None).unwrap() {
 		info!("{}", frame);
 		// Output:
 		// +----------+------------+
@@ -35,10 +35,9 @@ fn main() {
 
 	// Example 2: MAP with arithmetic expressions
 	info!("\nExample 2: MAP with arithmetic expressions");
-	log_query(r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#);
-	for frame in db
-		.query_as_root(r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#, Params::None)
-		.unwrap()
+	log_query(r#"map { sum: 10 + 5, product: 10 * 5, quotient: 10 / 5 }"#);
+	for frame in
+		db.query_as_root(r#"map { sum: 10 + 5, product: 10 * 5, quotient: 10 / 5 }"#, Params::None).unwrap()
 	{
 		info!("{}", frame);
 		// Output:
@@ -78,13 +77,13 @@ map { name, age }"#,
 	info!("\nExample 4: MAP with field renaming");
 	log_query(
 		r#"from [{ first_name: "Bob", years: 25 }]
-map { first_name as name, years as age }"#,
+map { name: first_name, age: years }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from [{ first_name: "Bob", years: 25 }]
-			map { first_name as name, years as age }
+			map { name: first_name, age: years }
 			"#,
 			Params::None,
 		)
@@ -114,8 +113,8 @@ map {
   product,
   price,
   quantity,
-  price * quantity as total,
-  price * 0.1 as tax
+  total: price * quantity,
+  tax: price * 0.1
 }"#,
 	);
 
@@ -131,8 +130,8 @@ map {
 				product,
 				price,
 				quantity,
-				price * quantity as total,
-				price * 0.1 as tax
+				total: price * quantity,
+				tax: price * 0.1
 			}
 			"#,
 			Params::None,
@@ -186,8 +185,8 @@ map {
 map {
   customer,
   subtotal,
-  subtotal * (discount_percent / 100) as discount_amount,
-  subtotal - (subtotal * (discount_percent / 100)) as final_total
+  discount_amount: subtotal * (discount_percent / 100),
+  final_total: subtotal - (subtotal * (discount_percent / 100))
 }"#,
 	);
 
@@ -198,8 +197,8 @@ map {
 			map {
 				customer,
 				subtotal,
-				subtotal * (discount_percent / 100) as discount_amount,
-				subtotal - (subtotal * (discount_percent / 100)) as final_total
+				discount_amount: subtotal * (discount_percent / 100),
+				final_total: subtotal - (subtotal * (discount_percent / 100))
 			}
 			"#,
 			Params::None,
@@ -221,14 +220,14 @@ map {
 	info!("\nExample 7: MAP with boolean expressions");
 	log_query(
 		r#"from [{ value: 10 }, { value: 20 }, { value: 5 }]
-map { value, value > 15 as is_high, value <= 10 as is_low }"#,
+map { value, is_high: value > 15, is_low: value <= 10 }"#,
 	);
 
 	for frame in db
 		.query_as_root(
 			r#"
 			from [{ value: 10 }, { value: 20 }, { value: 5 }]
-			map { value, value > 15 as is_high, value <= 10 as is_low }
+			map { value, is_high: value > 15, is_low: value <= 10 }
 			"#,
 			Params::None,
 		)

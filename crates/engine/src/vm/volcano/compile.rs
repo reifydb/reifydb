@@ -90,7 +90,6 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			take,
 			input,
 		}) => {
-			// Top-K optimization: if input is a Sort, fuse into TopKNode
 			if let PhysicalPlan::Sort(physical::SortNode {
 				by,
 				input: sort_input,
@@ -99,7 +98,6 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 				let input_node = Box::new(compile(*sort_input, rx, context));
 				return QueryPlan::TopK(TopKNode::new(input_node, by, take));
 			}
-			// Fallback: regular Take
 			let input_node = Box::new(compile(*input, rx, context));
 			QueryPlan::Take(TakeNode::new(input_node, take))
 		}

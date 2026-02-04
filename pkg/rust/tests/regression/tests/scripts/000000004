@@ -14,7 +14,7 @@
 ')
 command '
     from test.arith
-    map 1 as a
+    map {a: 1}
 '
 ---
 > +----------+-----+

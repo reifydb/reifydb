@@ -1,7 +1,7 @@
 # Generated from: params_named.tap.md#uint8_param  
 # Test: Named parameter with UINT8 type
 
-command_named 'MAP $uint8_val as result' 'uint8_val=18446744073709551615'
+command_named 'MAP {result: $uint8_val}' 'uint8_val=18446744073709551615'
 ---
 > +------------------------+
 > |         result         |

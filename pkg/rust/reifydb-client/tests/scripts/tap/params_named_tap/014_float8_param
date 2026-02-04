@@ -1,7 +1,7 @@
 # Generated from: params_named.tap.md#float8_param
 # Test: Named parameter with FLOAT8 type
 
-command_named 'MAP $float8_val as result' 'float8_val=3.141592653589793'
+command_named 'MAP {result: $float8_val}' 'float8_val=3.141592653589793'
 ---
 > +---------------------+
 > |       result        |

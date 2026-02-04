@@ -1,7 +1,7 @@
 # Generated from: statement_handling.tap.md#single_statement_with_semicolon
 # Test: Single statement with semicolon
 
-command 'MAP 1 as result;'
+command 'MAP {result: 1};'
 ---
 > +----------+
 > |  result  |

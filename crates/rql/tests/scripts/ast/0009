@@ -18,17 +18,17 @@ ast 'aggregate { sum(amount), avg(price) } by {}'
 >     │   └── CallFunction @ line 1, column 26 — "avg"
 >
 
-# Test AST for global aggregate with aliases
+# Test AST for global aggregate with aliases (colon syntax is converted to expr AS alias)
 ast 'from users aggregate { total: count(id), average: avg(age) } by {}'
 ---
 > └── From @ line 1, column 1 — "from"
 >     └── Identifier @ line 1, column 6 — "users"
 > └── Aggregate @ line 1, column 12 — "aggregate"
 >     ├── Aggregate Map
->     │   ├── Infix @ line 1, column 24 — "total"
->     │   │   ├── Identifier @ line 1, column 24 — "total"
->     │   │   └── CallFunction @ line 1, column 31 — "count"
->     │   └── Infix @ line 1, column 42 — "average"
->     │       ├── Identifier @ line 1, column 42 — "average"
->     │       └── CallFunction @ line 1, column 51 — "avg"
+>     │   ├── Infix @ line 1, column 31 — "count"
+>     │   │   ├── CallFunction @ line 1, column 31 — "count"
+>     │   │   └── Identifier @ line 1, column 24 — "total"
+>     │   └── Infix @ line 1, column 51 — "avg"
+>     │       ├── CallFunction @ line 1, column 51 — "avg"
+>     │       └── Identifier @ line 1, column 42 — "average"
 >

@@ -1,7 +1,7 @@
 # Generated from: statement_handling.tap.md#mixed_empty_and_non_empty
 # Test: Mixed empty and non-empty statements
 
-command ';OUTPUT MAP 1 as one ;;;OUTPUT MAP 2 as two'
+command ';OUTPUT MAP {one: 1};;;OUTPUT MAP {two: 2}'
 ---
 > +-------+
 > |  one  |
