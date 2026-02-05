@@ -9,7 +9,7 @@ use crate::ast::{
 	parse::Parser,
 	tokenize::{
 		keyword::Keyword,
-		operator::Operator::{CloseCurly, OpenCurly},
+		operator::Operator::{CloseCurly, Colon, OpenCurly},
 		separator::Separator::Comma,
 	},
 };
@@ -40,11 +40,27 @@ impl Parser {
 		loop {
 			columns.push(self.parse_column_identifier_or_keyword()?);
 
+			// Check for direction specifier
 			if !self.is_eof()
 				&& !self.current()?.is_separator(Comma)
 				&& !self.current()?.is_operator(CloseCurly)
 			{
-				if self.current()?.is_keyword(Keyword::Asc) || self.current()?.is_keyword(Keyword::Desc)
+				// Colon-based syntax: {column: asc}
+				if self.current()?.is_operator(Colon) {
+					self.advance()?; // consume colon
+					if self.current()?.is_keyword(Keyword::Asc)
+						|| self.current()?.is_keyword(Keyword::Desc)
+					{
+						let token = self.current()?.clone();
+						self.advance()?;
+						directions.push(Some(token.fragment));
+					} else {
+						directions.push(None);
+					}
+				}
+				// Space-based syntax: {column ASC}
+				else if self.current()?.is_keyword(Keyword::Asc)
+					|| self.current()?.is_keyword(Keyword::Desc)
 				{
 					let token = self.current()?.clone();
 					self.advance()?;
@@ -204,5 +220,71 @@ pub mod tests {
 		assert!(result.is_err(), "Expected error for SORT without braces");
 		let err = result.unwrap_err();
 		assert_eq!(err.code, "SORT_001");
+	}
+
+	#[test]
+	fn test_colon_syntax_asc() {
+		let tokens = tokenize("SORT {name: asc}").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let sort = result.first_unchecked().as_sort();
+		assert_eq!(sort.columns.len(), 1);
+		assert_eq!(sort.directions.len(), 1);
+
+		assert_eq!(sort.columns[0].name.text(), "name");
+		assert_eq!(sort.directions[0].as_ref().unwrap().text(), "asc");
+	}
+
+	#[test]
+	fn test_colon_syntax_desc() {
+		let tokens = tokenize("SORT {name: desc}").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let sort = result.first_unchecked().as_sort();
+		assert_eq!(sort.columns.len(), 1);
+		assert_eq!(sort.directions.len(), 1);
+
+		assert_eq!(sort.columns[0].name.text(), "name");
+		assert_eq!(sort.directions[0].as_ref().unwrap().text(), "desc");
+	}
+
+	#[test]
+	fn test_colon_syntax_multiple_columns() {
+		let tokens = tokenize("SORT {name: asc, age: desc}").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let sort = result.first_unchecked().as_sort();
+		assert_eq!(sort.columns.len(), 2);
+		assert_eq!(sort.directions.len(), 2);
+
+		assert_eq!(sort.columns[0].name.text(), "name");
+		assert_eq!(sort.directions[0].as_ref().unwrap().text(), "asc");
+
+		assert_eq!(sort.columns[1].name.text(), "age");
+		assert_eq!(sort.directions[1].as_ref().unwrap().text(), "desc");
+	}
+
+	#[test]
+	fn test_colon_syntax_mixed() {
+		let tokens = tokenize("SORT {name: asc, age}").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let sort = result.first_unchecked().as_sort();
+		assert_eq!(sort.columns.len(), 2);
+		assert_eq!(sort.directions.len(), 2);
+
+		assert_eq!(sort.columns[0].name.text(), "name");
+		assert_eq!(sort.directions[0].as_ref().unwrap().text(), "asc");
+
+		assert_eq!(sort.columns[1].name.text(), "age");
+		assert_eq!(sort.directions[1].as_ref(), None);
 	}
 }

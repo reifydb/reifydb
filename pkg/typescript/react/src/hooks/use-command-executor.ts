@@ -125,6 +125,8 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
                         errorMessage = (err as { message: string }).message;
                     }
 
+                    console.error('Command execution failed:', errorMessage);
+
                     setState({
                         isExecuting: false,
                         results: undefined,

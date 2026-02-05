@@ -125,6 +125,8 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                         errorMessage = (err as { message: string }).message;
                     }
 
+                    console.error('Admin execution failed:', errorMessage);
+
                     setState({
                         isExecuting: false,
                         results: undefined,
