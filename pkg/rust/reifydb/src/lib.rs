@@ -19,6 +19,7 @@ pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::Database;
 pub use health::HealthMonitor;
 pub use reifydb_auth as auth;
+pub use reifydb_catalog as catalog;
 pub use reifydb_cdc as cdc;
 pub use reifydb_core as core;
 pub use reifydb_core::{event::EventBus, interface::auth::Identity};
