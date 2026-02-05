@@ -281,7 +281,8 @@ impl ScalarFunction for FlowNodeToJson {
 
 				Ok(ColumnData::utf8_with_bitvec(result_data, container.bitvec().clone()))
 			}
-			_ => Err(reifydb_type::error::Error(internal!("flow_node::to_json only supports Blob input")).into()),
+			_ => Err(reifydb_type::error::Error(internal!("flow_node::to_json only supports Blob input"))
+				.into()),
 		}
 	}
 }

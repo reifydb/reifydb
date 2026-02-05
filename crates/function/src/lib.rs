@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{
-    columns::Columns,
-    data::ColumnData,
-    view::group_by::{GroupByView, GroupKey},
-    Column,
+	Column,
+	columns::Columns,
+	data::ColumnData,
+	view::group_by::{GroupByView, GroupKey},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;

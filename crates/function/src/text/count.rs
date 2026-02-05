@@ -30,7 +30,10 @@ impl ScalarFunction for TextCount {
 		let column = columns.get(0).unwrap();
 
 		match &column.data() {
-			ColumnData::Utf8 { container, .. } => {
+			ColumnData::Utf8 {
+				container,
+				..
+			} => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 
