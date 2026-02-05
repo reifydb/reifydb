@@ -123,6 +123,8 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                         errorMessage = (err as { message: string }).message;
                     }
 
+                    console.error('Query execution failed:', errorMessage);
+
                     setState({
                         isExecuting: false,
                         results: undefined,
