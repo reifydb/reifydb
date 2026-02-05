@@ -2,8 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use num_traits::ToPrimitive;
-use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::r#type::Type;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{container::undefined::UndefinedContainer, r#type::Type},
+};
 
 use crate::{ScalarFunction, ScalarFunctionContext, ScalarFunctionError};
 
@@ -13,6 +16,433 @@ impl Power {
 	pub fn new() -> Self {
 		Self {}
 	}
+}
+
+fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> ColumnData {
+	match target {
+		Type::Int1 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_i8(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::int1_with_bitvec(result, bitvec)
+		}
+		Type::Int2 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_i16(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::int2_with_bitvec(result, bitvec)
+		}
+		Type::Int4 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_i32(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::int4_with_bitvec(result, bitvec)
+		}
+		Type::Int8 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_i64(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::int8_with_bitvec(result, bitvec)
+		}
+		Type::Int16 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_i128(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::int16_with_bitvec(result, bitvec)
+		}
+		Type::Uint1 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_u8(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::uint1_with_bitvec(result, bitvec)
+		}
+		Type::Uint2 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_u16(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::uint2_with_bitvec(result, bitvec)
+		}
+		Type::Uint4 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_u32(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::uint4_with_bitvec(result, bitvec)
+		}
+		Type::Uint8 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_u64(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::uint8_with_bitvec(result, bitvec)
+		}
+		Type::Uint16 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_u128(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::uint16_with_bitvec(result, bitvec)
+		}
+		Type::Float4 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_f32(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0.0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::float4_with_bitvec(result, bitvec)
+		}
+		Type::Float8 => {
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_f64(data, i);
+					result.push(val);
+					bitvec.push(true);
+				} else {
+					result.push(0.0);
+					bitvec.push(false);
+				}
+			}
+			ColumnData::float8_with_bitvec(result, bitvec)
+		}
+		Type::Int => {
+			use reifydb_type::value::int::Int;
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_i128(data, i);
+					result.push(Int::from(val));
+					bitvec.push(true);
+				} else {
+					result.push(Int::default());
+					bitvec.push(false);
+				}
+			}
+			ColumnData::int_with_bitvec(result, bitvec)
+		}
+		Type::Uint => {
+			use reifydb_type::value::uint::Uint;
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_u128(data, i);
+					result.push(Uint::from(val));
+					bitvec.push(true);
+				} else {
+					result.push(Uint::default());
+					bitvec.push(false);
+				}
+			}
+			ColumnData::uint_with_bitvec(result, bitvec)
+		}
+		Type::Decimal => {
+			use reifydb_type::value::decimal::Decimal;
+			let mut result = Vec::with_capacity(row_count);
+			let mut bitvec = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				if data.is_defined(i) {
+					let val = get_as_f64(data, i);
+					result.push(Decimal::from(val));
+					bitvec.push(true);
+				} else {
+					result.push(Decimal::default());
+					bitvec.push(false);
+				}
+			}
+			ColumnData::decimal_with_bitvec(result, bitvec)
+		}
+		// For same type or unsupported conversions, clone the original
+		_ => data.clone(),
+	}
+}
+
+fn get_as_i8(data: &ColumnData, i: usize) -> i8 {
+	match data {
+		ColumnData::Int1(c) => c.get(i).copied().unwrap_or(0),
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i8).unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn get_as_u8(data: &ColumnData, i: usize) -> u8 {
+	match data {
+		ColumnData::Uint1(c) => c.get(i).copied().unwrap_or(0),
+		ColumnData::Int1(c) => c.get(i).map(|&v| v as u8).unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn get_as_i16(data: &ColumnData, i: usize) -> i16 {
+	match data {
+		ColumnData::Int1(c) => c.get(i).map(|&v| v as i16).unwrap_or(0),
+		ColumnData::Int2(c) => c.get(i).copied().unwrap_or(0),
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i16).unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn get_as_i32(data: &ColumnData, i: usize) -> i32 {
+	match data {
+		ColumnData::Int1(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
+		ColumnData::Int2(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
+		ColumnData::Int4(c) => c.get(i).copied().unwrap_or(0),
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
+		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn get_as_i64(data: &ColumnData, i: usize) -> i64 {
+	match data {
+		ColumnData::Int1(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnData::Int2(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnData::Int4(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnData::Int8(c) => c.get(i).copied().unwrap_or(0),
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnData::Uint4(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn get_as_i128(data: &ColumnData, i: usize) -> i128 {
+	match data {
+		ColumnData::Int1(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnData::Int2(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnData::Int4(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnData::Int8(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnData::Int16(c) => c.get(i).copied().unwrap_or(0),
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnData::Uint4(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnData::Uint8(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn get_as_u16(data: &ColumnData, i: usize) -> u16 {
+	match data {
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as u16).unwrap_or(0),
+		ColumnData::Uint2(c) => c.get(i).copied().unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn get_as_u32(data: &ColumnData, i: usize) -> u32 {
+	match data {
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as u32).unwrap_or(0),
+		ColumnData::Uint2(c) => c.get(i).map(|&v| v as u32).unwrap_or(0),
+		ColumnData::Uint4(c) => c.get(i).copied().unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn get_as_u64(data: &ColumnData, i: usize) -> u64 {
+	match data {
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
+		ColumnData::Uint2(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
+		ColumnData::Uint4(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
+		ColumnData::Uint8(c) => c.get(i).copied().unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn get_as_u128(data: &ColumnData, i: usize) -> u128 {
+	match data {
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
+		ColumnData::Uint2(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
+		ColumnData::Uint4(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
+		ColumnData::Uint8(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
+		ColumnData::Uint16(c) => c.get(i).copied().unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn get_as_f32(data: &ColumnData, i: usize) -> f32 {
+	match data {
+		ColumnData::Int1(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Int2(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Int4(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Int8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Int16(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Uint2(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Uint4(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Uint8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Uint16(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Float4(c) => c.get(i).copied().unwrap_or(0.0),
+		ColumnData::Float8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnData::Int {
+			container,
+			..
+		} => container.get(i).map(|v| v.0.to_f32().unwrap_or(0.0)).unwrap_or(0.0),
+		ColumnData::Uint {
+			container,
+			..
+		} => container.get(i).map(|v| v.0.to_f32().unwrap_or(0.0)).unwrap_or(0.0),
+		ColumnData::Decimal {
+			container,
+			..
+		} => container.get(i).map(|v| v.0.to_f32().unwrap_or(0.0)).unwrap_or(0.0),
+		_ => 0.0,
+	}
+}
+
+fn get_as_f64(data: &ColumnData, i: usize) -> f64 {
+	match data {
+		ColumnData::Int1(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Int2(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Int4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Int8(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Int16(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Uint1(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Uint2(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Uint4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Uint8(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Uint16(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Float4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnData::Float8(c) => c.get(i).copied().unwrap_or(0.0),
+		ColumnData::Int {
+			container,
+			..
+		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)).unwrap_or(0.0),
+		ColumnData::Uint {
+			container,
+			..
+		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)).unwrap_or(0.0),
+		ColumnData::Decimal {
+			container,
+			..
+		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)).unwrap_or(0.0),
+		_ => 0.0,
+	}
+}
+
+/// Promotes two numeric types to a common type for power computation.
+/// This handles types that the standard Type::promote doesn't handle well,
+/// including Int, Uint, and Decimal.
+fn promote_numeric_types(left: Type, right: Type) -> Type {
+	use Type::*;
+
+	if matches!(left, Float4 | Float8 | Decimal) || matches!(right, Float4 | Float8 | Decimal) {
+		return Decimal;
+	}
+
+	// If any type is the arbitrary-precision Int or Uint, promote to the largest fixed type
+	// Int -> Int16 (largest signed), Uint -> Uint16 (largest unsigned)
+	// But if mixing signed/unsigned, go to Int16
+	if left == Int || right == Int {
+		return Int16;
+	}
+	if left == Uint || right == Uint {
+		// If the other type is signed, go to Int16
+		if matches!(left, Int1 | Int2 | Int4 | Int8 | Int16)
+			|| matches!(right, Int1 | Int2 | Int4 | Int8 | Int16)
+		{
+			return Int16;
+		}
+		return Uint16;
+	}
+
+	// For standard fixed-size types, use the standard promotion logic
+	Type::promote(left, right)
 }
 
 impl ScalarFunction for Power {
@@ -33,6 +463,8 @@ impl ScalarFunction for Power {
 		let exponent_column = columns.get(1).unwrap();
 
 		match (base_column.data(), exponent_column.data()) {
+			(ColumnData::Undefined(u), _) => Ok(ColumnData::Undefined(UndefinedContainer::new(u.len()))),
+			(_, ColumnData::Undefined(u)) => Ok(ColumnData::Undefined(UndefinedContainer::new(u.len()))),
 			(ColumnData::Int1(base_container), ColumnData::Int1(exp_container)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
@@ -451,28 +883,68 @@ impl ScalarFunction for Power {
 					scale: *scale,
 				})
 			}
-			_ => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![
-					Type::Int1,
-					Type::Int2,
-					Type::Int4,
-					Type::Int8,
-					Type::Int16,
-					Type::Uint1,
-					Type::Uint2,
-					Type::Uint4,
-					Type::Uint8,
-					Type::Uint16,
-					Type::Float4,
-					Type::Float8,
-					Type::Int,
-					Type::Uint,
-					Type::Decimal,
-				],
-				actual: base_column.data().get_type(),
-			}),
+			// Mixed-type case: promote both columns to a common type and recurse
+			(base_data, exp_data) => {
+				let base_type = base_data.get_type();
+				let exp_type = exp_data.get_type();
+
+				// Check if both are numeric types that can be promoted
+				let is_numeric = |t: Type| {
+					matches!(
+						t,
+						Type::Int1
+							| Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16
+							| Type::Uint1 | Type::Uint2 | Type::Uint4 | Type::Uint8
+							| Type::Uint16 | Type::Float4 | Type::Float8 | Type::Int
+							| Type::Uint | Type::Decimal
+					)
+				};
+
+				if !is_numeric(base_type) || !is_numeric(exp_type) {
+					return Err(ScalarFunctionError::InvalidArgumentType {
+						function: ctx.fragment.clone(),
+						argument_index: 0,
+						expected: vec![
+							Type::Int1,
+							Type::Int2,
+							Type::Int4,
+							Type::Int8,
+							Type::Int16,
+							Type::Uint1,
+							Type::Uint2,
+							Type::Uint4,
+							Type::Uint8,
+							Type::Uint16,
+							Type::Float4,
+							Type::Float8,
+							Type::Int,
+							Type::Uint,
+							Type::Decimal,
+						],
+						actual: base_type,
+					});
+				}
+
+				// Custom promotion logic that handles all numeric types
+				// The standard Type::promote doesn't handle Int, Uint, Decimal well
+				let promoted_type = promote_numeric_types(base_type, exp_type);
+
+				let promoted_base = convert_column_to_type(base_data, promoted_type, row_count);
+				let promoted_exp = convert_column_to_type(exp_data, promoted_type, row_count);
+
+				// Create new columns with the promoted data
+				let base_col = Column::new(Fragment::internal("base"), promoted_base);
+				let exp_col = Column::new(Fragment::internal("exp"), promoted_exp);
+				let promoted_columns = Columns::new(vec![base_col, exp_col]);
+
+				// Recursively call scalar with the promoted columns
+				let new_ctx = ScalarFunctionContext {
+					fragment: ctx.fragment.clone(),
+					columns: &promoted_columns,
+					row_count,
+				};
+				self.scalar(new_ctx)
+			}
 		}
 	}
 }
