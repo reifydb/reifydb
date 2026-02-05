@@ -64,12 +64,13 @@ impl StandardColumnEvaluator {
 		let functor = self
 			.functions
 			.get_scalar(function_name)
-			.ok_or(error!(function::unknown_function(function_name.to_string())))?;
+			.ok_or(error!(function::unknown_function(call.func.0.clone())))?;
 
 		let row_count = ctx.row_count;
 		Ok(Column {
 			name: call.full_fragment_owned(),
 			data: functor.scalar(ScalarFunctionContext {
+				fragment: call.func.0.clone(),
 				columns: &arguments,
 				row_count,
 			})?,
@@ -260,6 +261,7 @@ impl StandardColumnEvaluator {
 
 		// Call the aggregate function
 		aggregate_fn.aggregate(AggregateFunctionContext {
+			fragment: call.func.0.clone(),
 			column: &column,
 			groups: &group_view,
 		})?;

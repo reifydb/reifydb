@@ -81,6 +81,7 @@ impl QueryNode for GeneratorNode {
 		let evaluated_params = Columns::new(evaluated_columns);
 
 		let columns = generator.generate(GeneratorContext {
+			fragment: self.function_name.clone(),
 			params: evaluated_params,
 			txn: unsafe { std::mem::transmute::<&mut Transaction, &'a mut Transaction<'a>>(txn) },
 			catalog: unsafe {

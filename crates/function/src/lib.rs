@@ -2,15 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{
-	Column,
-	columns::Columns,
-	data::ColumnData,
-	view::group_by::{GroupByView, GroupKey},
+    columns::Columns,
+    data::ColumnData,
+    view::group_by::{GroupByView, GroupKey},
+    Column,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
+use reifydb_type::{fragment::Fragment, Result};
 
 pub mod blob;
+pub mod error;
 pub mod flow;
 pub mod math;
 pub mod registry;
@@ -18,10 +19,14 @@ pub mod series;
 pub mod subscription;
 pub mod text;
 
+pub use error::{AggregateFunctionError, GeneratorFunctionError, ScalarFunctionError};
+use reifydb_catalog::catalog::Catalog;
+
 pub struct GeneratorContext<'a> {
+	pub fragment: Fragment,
 	pub params: Columns,
 	pub txn: &'a mut Transaction<'a>,
-	pub catalog: &'a reifydb_catalog::catalog::Catalog,
+	pub catalog: &'a Catalog,
 }
 
 pub trait GeneratorFunction: Send + Sync {
@@ -29,6 +34,7 @@ pub trait GeneratorFunction: Send + Sync {
 }
 
 pub struct ScalarFunctionContext<'a> {
+	pub fragment: Fragment,
 	pub columns: &'a Columns,
 	pub row_count: usize,
 }
@@ -38,6 +44,7 @@ pub trait ScalarFunction: Send + Sync {
 }
 
 pub struct AggregateFunctionContext<'a> {
+	pub fragment: Fragment,
 	pub column: &'a Column,
 	pub groups: &'a GroupByView,
 }

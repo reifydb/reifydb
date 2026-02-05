@@ -20,6 +20,7 @@ use crate::vm::volcano::query::{QueryContext, QueryNode, QueryPlan};
 
 enum Projection {
 	Aggregate {
+		fragment: Fragment,
 		column: String,
 		alias: Fragment,
 		function: Box<dyn AggregateFunction>,
@@ -89,6 +90,7 @@ impl QueryNode for AggregateNode {
 
 			for projection in &mut projections {
 				if let Projection::Aggregate {
+					fragment,
 					function,
 					column,
 					..
@@ -96,6 +98,7 @@ impl QueryNode for AggregateNode {
 				{
 					let column = columns.column(column).unwrap();
 					function.aggregate(AggregateFunctionContext {
+						fragment: fragment.clone(),
 						column,
 						groups: &groups,
 					})
@@ -210,6 +213,7 @@ fn parse_keys_and_aggregates<'a>(
 					Some(Expression::Column(c)) => {
 						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
+							fragment: call.func.0.clone(),
 							column: c.0.name.text().to_string(),
 							alias,
 							function,
@@ -221,6 +225,7 @@ fn parse_keys_and_aggregates<'a>(
 						// functions
 						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
+							fragment: call.func.0.clone(),
 							column: access.column.name.text().to_string(),
 							alias,
 							function,

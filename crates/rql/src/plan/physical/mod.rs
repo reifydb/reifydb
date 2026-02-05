@@ -923,7 +923,7 @@ impl Compiler {
 						Box::new(then_plan)
 					} else {
 						return Err(reifydb_type::error::Error(internal_error(
-							"compile_physical".to_string(),
+							"compile_physical".into(),
 							"Failed to compile conditional then branch".to_string(),
 						)));
 					};
@@ -938,7 +938,7 @@ impl Compiler {
 							Box::new(plan)
 						} else {
 							return Err(reifydb_type::error::Error(internal_error(
-								"compile_physical".to_string(),
+								"compile_physical".into(),
 								"Failed to compile conditional else if branch"
 									.to_string(),
 							)));
@@ -955,7 +955,7 @@ impl Compiler {
 							Some(Box::new(plan))
 						} else {
 							return Err(reifydb_type::error::Error(internal_error(
-								"compile_physical".to_string(),
+								"compile_physical".into(),
 								"Failed to compile conditional else branch".to_string(),
 							)));
 						}
@@ -978,7 +978,7 @@ impl Compiler {
 							Box::new(plan)
 						} else {
 							return Err(reifydb_type::error::Error(internal_error(
-								"compile_physical".to_string(),
+								"compile_physical".into(),
 								"Failed to compile scalarize input".to_string(),
 							)));
 						};

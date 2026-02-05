@@ -224,6 +224,7 @@ impl DatabaseBuilder {
 			.register_scalar("text::length", text::length::TextLength::new)
 			.register_scalar("text::trim", text::trim::TextTrim::new)
 			.register_scalar("text::upper", text::upper::TextUpper::new)
+			.register_scalar("text::lower", text::lower::TextLower::new)
 			.register_scalar("text::substring", text::substring::TextSubstring::new)
 			.register_scalar("text::format_bytes", text::format_bytes::FormatBytes::new)
 			.register_scalar("text::format_bytes_si", text::format_bytes::FormatBytesSi::new)
