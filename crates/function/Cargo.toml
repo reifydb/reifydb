@@ -14,6 +14,7 @@ default = []
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-rql = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 

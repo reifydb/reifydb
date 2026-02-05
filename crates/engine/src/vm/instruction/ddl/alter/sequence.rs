@@ -64,6 +64,7 @@ pub(crate) fn alter_table_sequence<'a>(
 		},
 		&plan.value,
 		&services.functions,
+		&services.clock,
 	)?;
 
 	let data = value.data();

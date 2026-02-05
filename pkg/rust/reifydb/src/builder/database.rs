@@ -251,6 +251,7 @@ impl DatabaseBuilder {
 			eventbus.clone(),
 			Box::new(self.interceptors.build()),
 			Catalog::new(catalog, schema_registry),
+			runtime.clock().clone(),
 			functions,
 			self.ioc.clone(),
 		);

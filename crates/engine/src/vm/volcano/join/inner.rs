@@ -95,7 +95,9 @@ impl QueryNode for InnerJoinNode {
 				};
 
 				let all_true = self.on.iter().fold(true, |acc, cond| {
-					let col = evaluate(&eval_ctx, cond, &ctx.services.functions).unwrap();
+					let col =
+						evaluate(&eval_ctx, cond, &ctx.services.functions, &ctx.services.clock)
+							.unwrap();
 					matches!(col.data().get_value(0), Value::Boolean(true)) && acc
 				});
 

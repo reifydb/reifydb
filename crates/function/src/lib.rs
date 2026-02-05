@@ -7,6 +7,7 @@ use reifydb_core::value::column::{
 	data::ColumnData,
 	view::group_by::{GroupByView, GroupKey},
 };
+use reifydb_runtime::clock::Clock;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
@@ -41,8 +42,8 @@ pub struct ScalarFunctionContext<'a> {
 	pub fragment: Fragment,
 	pub columns: &'a Columns,
 	pub row_count: usize,
+	pub clock: &'a Clock,
 }
-
 pub trait ScalarFunction: Send + Sync {
 	fn scalar<'a>(&'a self, ctx: ScalarFunctionContext<'a>) -> ScalarFunctionResult<ColumnData>;
 }

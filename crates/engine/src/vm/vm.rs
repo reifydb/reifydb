@@ -658,6 +658,7 @@ impl Vm {
 								&evaluation_context,
 								arg,
 								&services.functions,
+								&services.clock,
 							)?;
 							// Get the first value from the column (or undefined if empty)
 							let value = if result_column.data.len() > 0 {
@@ -700,6 +701,7 @@ impl Vm {
 											&evaluation_context,
 											expr,
 											&services.functions,
+											&services.clock,
 										)?;
 										let value = if result_column.data.len()
 											> 0
@@ -799,8 +801,12 @@ impl Vm {
 							is_aggregate_context: false,
 						};
 
-						let result_column =
-							evaluate(&evaluation_context, &call_expr, &services.functions)?;
+						let result_column = evaluate(
+							&evaluation_context,
+							&call_expr,
+							&services.functions,
+							&services.clock,
+						)?;
 						let value = if result_column.data.len() > 0 {
 							result_column.data.get_value(0)
 						} else {
@@ -824,8 +830,12 @@ impl Vm {
 							symbol_table: &self.symbol_table,
 							is_aggregate_context: false,
 						};
-						let result_column =
-							evaluate(&evaluation_context, expr, &services.functions)?;
+						let result_column = evaluate(
+							&evaluation_context,
+							expr,
+							&services.functions,
+							&services.clock,
+						)?;
 						// Get the first value
 						let value = if result_column.data.len() > 0 {
 							result_column.data.get_value(0)
@@ -860,7 +870,8 @@ impl Vm {
 					symbol_table: &self.symbol_table,
 					is_aggregate_context: false,
 				};
-				let result_column = evaluate(&evaluation_context, expr, &services.functions)?;
+				let result_column =
+					evaluate(&evaluation_context, expr, &services.functions, &services.clock)?;
 				Ok(Columns::new(vec![result_column]))
 			}
 			LetValue::Statement(physical_plans) => {
@@ -899,7 +910,8 @@ impl Vm {
 					symbol_table: &self.symbol_table,
 					is_aggregate_context: false,
 				};
-				let result_column = evaluate(&evaluation_context, expr, &services.functions)?;
+				let result_column =
+					evaluate(&evaluation_context, expr, &services.functions, &services.clock)?;
 				Ok(Columns::new(vec![result_column]))
 			}
 			AssignValue::Statement(physical_plans) => {
@@ -936,7 +948,7 @@ impl Vm {
 			is_aggregate_context: false,
 		};
 
-		let result_column = evaluate(&evaluation_context, condition, &services.functions)?;
+		let result_column = evaluate(&evaluation_context, condition, &services.functions, &services.clock)?;
 
 		if let Some(first_value) = result_column.data().iter().next() {
 			use reifydb_type::value::Value;

@@ -10,6 +10,7 @@ use reifydb_metric::metric::MetricReader;
 #[cfg(test)]
 use reifydb_rql::plan::physical::PhysicalPlan;
 use reifydb_rql::{ast::parse_str, plan::plan};
+use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction};
 use reifydb_type::{params::Params, value::frame::frame::Frame};
@@ -43,12 +44,13 @@ impl std::ops::Deref for Executor {
 impl Executor {
 	pub fn new(
 		catalog: Catalog,
+		clock: Clock,
 		functions: Functions,
 		flow_operator_store: FlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
 		ioc: IocContainer,
 	) -> Self {
-		Self(Arc::new(Services::new(catalog, functions, flow_operator_store, stats_reader, ioc)))
+		Self(Arc::new(Services::new(catalog, clock, functions, flow_operator_store, stats_reader, ioc)))
 	}
 
 	/// Get a reference to the underlying Services

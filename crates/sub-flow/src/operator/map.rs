@@ -16,6 +16,7 @@ use reifydb_engine::{
 };
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
+use reifydb_runtime::clock::Clock;
 use reifydb_type::{fragment::Fragment, params::Params, value::row_number::RowNumber};
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
@@ -37,12 +38,13 @@ impl MapOperator {
 		node: FlowNodeId,
 		expressions: Vec<Expression>,
 		functions: Functions,
+		clock: Clock,
 	) -> Self {
 		Self {
 			parent,
 			node,
 			expressions,
-			column_evaluator: StandardColumnEvaluator::new(functions),
+			column_evaluator: StandardColumnEvaluator::new(functions, clock),
 		}
 	}
 

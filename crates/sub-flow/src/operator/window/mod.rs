@@ -179,7 +179,7 @@ impl WindowOperator {
 			group_by,
 			aggregations,
 			layout: Schema::testing(&[Type::Blob]),
-			column_evaluator: StandardColumnEvaluator::new(functions),
+			column_evaluator: StandardColumnEvaluator::new(functions, clock.clone()),
 			row_number_provider: RowNumberProvider::new(node),
 			min_events: min_events.max(1), // Ensure at least 1 event is required
 			max_window_count,

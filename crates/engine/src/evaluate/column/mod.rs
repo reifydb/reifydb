@@ -4,6 +4,7 @@
 use reifydb_core::value::column::Column;
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
+use reifydb_runtime::clock::Clock;
 
 use crate::evaluate::ColumnEvaluationContext;
 
@@ -26,12 +27,14 @@ pub mod variable;
 
 #[derive(Clone)]
 pub struct StandardColumnEvaluator {
+	clock: Clock,
 	functions: Functions,
 }
 
 impl StandardColumnEvaluator {
-	pub fn new(functions: Functions) -> Self {
+	pub fn new(functions: Functions, clock: Clock) -> Self {
 		Self {
+			clock,
 			functions,
 		}
 	}
@@ -83,8 +86,13 @@ impl StandardColumnEvaluator {
 	}
 }
 
-pub fn evaluate(ctx: &ColumnEvaluationContext, expr: &Expression, functions: &Functions) -> crate::Result<Column> {
-	let evaluator = StandardColumnEvaluator::new(functions.clone());
+pub fn evaluate(
+	ctx: &ColumnEvaluationContext,
+	expr: &Expression,
+	functions: &Functions,
+	clock: &Clock,
+) -> crate::Result<Column> {
+	let evaluator = StandardColumnEvaluator::new(functions.clone(), clock.clone());
 
 	// Ensures that result column data type matches the expected target
 	// column type

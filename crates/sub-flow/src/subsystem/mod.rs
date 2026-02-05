@@ -80,7 +80,7 @@ impl FlowSubsystem {
 			move || {
 				FlowEngine::new(
 					cat,
-					StandardColumnEvaluator::new(exec.functions.clone()),
+					StandardColumnEvaluator::new(exec.functions.clone(), clk.clone()),
 					exec,
 					bus,
 					clk,

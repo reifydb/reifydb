@@ -73,6 +73,7 @@ impl StandardColumnEvaluator {
 				fragment: call.func.0.clone(),
 				columns: &arguments,
 				row_count,
+				clock: &self.clock,
 			})?,
 		})
 	}

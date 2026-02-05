@@ -90,7 +90,10 @@ impl JoinOperator {
 			alias,
 			schema,
 			row_number_provider,
-			column_evaluator: StandardColumnEvaluator::new(executor.functions.clone()),
+			column_evaluator: StandardColumnEvaluator::new(
+				executor.functions.clone(),
+				executor.clock.clone(),
+			),
 			executor,
 		}
 	}

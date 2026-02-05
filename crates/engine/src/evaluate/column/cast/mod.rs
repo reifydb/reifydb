@@ -90,6 +90,7 @@ pub mod tests {
 		Expression::{Cast, Constant, Prefix},
 		PrefixExpression, PrefixOperator, TypeExpression,
 	};
+	use reifydb_runtime::clock::Clock;
 	use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 	use crate::evaluate::{ColumnEvaluationContext, column::evaluate};
@@ -110,6 +111,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		)
 		.unwrap();
 
@@ -136,6 +138,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		)
 		.unwrap();
 
@@ -162,6 +165,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		)
 		.unwrap();
 
@@ -184,6 +188,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		)
 		.unwrap();
 
@@ -206,6 +211,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		)
 		.unwrap();
 
@@ -228,6 +234,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		)
 		.unwrap();
 
@@ -250,6 +257,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		)
 		.unwrap();
 
@@ -272,6 +280,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		)
 		.unwrap();
 
@@ -294,6 +303,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		);
 
 		assert!(result.is_err());
@@ -324,6 +334,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		);
 
 		assert!(result.is_err());
@@ -351,6 +362,7 @@ pub mod tests {
 				},
 			}),
 			&Functions::empty(),
+			&Clock::default(),
 		)
 		.unwrap();
 

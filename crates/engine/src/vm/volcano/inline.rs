@@ -182,6 +182,7 @@ impl<'a> InlineDataNode {
 						&ctx,
 						&alias_expr.expression,
 						&self.context.as_ref().unwrap().services.functions,
+						&self.context.as_ref().unwrap().services.clock,
 					)?;
 
 					// Take the first value from the
@@ -350,6 +351,7 @@ impl<'a> InlineDataNode {
 						&ctx,
 						&alias_expr.expression,
 						&self.context.as_ref().unwrap().services.functions,
+						&self.context.as_ref().unwrap().services.clock,
 					)?;
 
 					// Ensure we always add exactly one
