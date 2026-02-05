@@ -8,7 +8,7 @@ use reifydb_core::value::column::{
     Column,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, Result};
+use reifydb_type::fragment::Fragment;
 
 pub mod blob;
 pub mod error;
@@ -19,7 +19,10 @@ pub mod series;
 pub mod subscription;
 pub mod text;
 
-pub use error::{AggregateFunctionError, GeneratorFunctionError, ScalarFunctionError};
+pub use error::{
+	AggregateFunctionError, AggregateFunctionResult, GeneratorFunctionError, GeneratorFunctionResult,
+	ScalarFunctionError, ScalarFunctionResult,
+};
 use reifydb_catalog::catalog::Catalog;
 
 pub struct GeneratorContext<'a> {
@@ -30,7 +33,7 @@ pub struct GeneratorContext<'a> {
 }
 
 pub trait GeneratorFunction: Send + Sync {
-	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> Result<Columns>;
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns>;
 }
 
 pub struct ScalarFunctionContext<'a> {
@@ -40,7 +43,7 @@ pub struct ScalarFunctionContext<'a> {
 }
 
 pub trait ScalarFunction: Send + Sync {
-	fn scalar<'a>(&'a self, ctx: ScalarFunctionContext<'a>) -> Result<ColumnData>;
+	fn scalar<'a>(&'a self, ctx: ScalarFunctionContext<'a>) -> ScalarFunctionResult<ColumnData>;
 }
 
 pub struct AggregateFunctionContext<'a> {
@@ -50,6 +53,6 @@ pub struct AggregateFunctionContext<'a> {
 }
 
 pub trait AggregateFunction: Send + Sync {
-	fn aggregate<'a>(&'a mut self, ctx: AggregateFunctionContext<'a>) -> Result<()>;
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnData)>;
+	fn aggregate<'a>(&'a mut self, ctx: AggregateFunctionContext<'a>) -> AggregateFunctionResult<()>;
+	fn finalize(&mut self) -> AggregateFunctionResult<(Vec<GroupKey>, ColumnData)>;
 }

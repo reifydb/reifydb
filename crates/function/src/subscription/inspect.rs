@@ -20,7 +20,7 @@ impl InspectSubscription {
 }
 
 impl GeneratorFunction for InspectSubscription {
-	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> reifydb_type::Result<Columns> {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::GeneratorFunctionResult<Columns> {
 		let txn = ctx.txn;
 
 		let params = &ctx.params;

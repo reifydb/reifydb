@@ -15,7 +15,7 @@ impl TextLower {
 }
 
 impl ScalarFunction for TextLower {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> reifydb_type::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -25,8 +25,7 @@ impl ScalarFunction for TextLower {
 				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: columns.len(),
-			}
-			.into());
+			});
 		}
 
 		let column = columns.get(0).unwrap();
@@ -61,8 +60,7 @@ impl ScalarFunction for TextLower {
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
-			}
-			.into()),
+			}),
 		}
 	}
 }

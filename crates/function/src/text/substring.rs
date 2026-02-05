@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::container::utf8::Utf8Container;
+use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext};
+use crate::{ScalarFunction, ScalarFunctionContext, ScalarFunctionError};
 
 pub struct TextSubstring;
 
@@ -15,12 +15,17 @@ impl TextSubstring {
 }
 
 impl ScalarFunction for TextSubstring {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> reifydb_type::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
-		if columns.len() < 3 {
-			return Ok(ColumnData::utf8(Vec::<String>::new()));
+		// Validate exactly 3 arguments
+		if columns.len() != 3 {
+			return Err(ScalarFunctionError::ArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 3,
+				actual: columns.len(),
+			});
 		}
 
 		let text_column = columns.get(0).unwrap();
@@ -47,9 +52,13 @@ impl ScalarFunction for TextSubstring {
 						let start_pos = start_container.get(i).copied().unwrap_or(0);
 						let length = length_container.get(i).copied().unwrap_or(0);
 
-						// Convert to 0-based indexing (RQL uses 0-based)
+						// Get the substring with proper Unicode handling
+						let chars: Vec<char> = original_str.chars().collect();
+						let chars_len = chars.len();
+
+						// Convert negative start to positive index from end
 						let start_idx = if start_pos < 0 {
-							0
+							chars_len.saturating_sub((-start_pos) as usize)
 						} else {
 							start_pos as usize
 						};
@@ -59,19 +68,12 @@ impl ScalarFunction for TextSubstring {
 							length as usize
 						};
 
-						let substring = if start_idx >= original_str.len() {
+						let substring = if start_idx >= chars_len {
 							// Start position is beyond string length
 							String::new()
 						} else {
-							// Get the substring with proper Unicode handling
-							let chars: Vec<char> = original_str.chars().collect();
-							let end_idx = (start_idx + length_usize).min(chars.len());
-
-							if start_idx < chars.len() {
-								chars[start_idx..end_idx].iter().collect()
-							} else {
-								String::new()
-							}
+							let end_idx = (start_idx + length_usize).min(chars_len);
+							chars[start_idx..end_idx].iter().collect()
 						};
 
 						result_data.push(substring);
@@ -137,9 +139,13 @@ impl ScalarFunction for TextSubstring {
 							_ => 0,
 						};
 
-						// Convert to 0-based indexing
+						// Get the substring with proper Unicode handling
+						let chars: Vec<char> = original_str.chars().collect();
+						let chars_len = chars.len();
+
+						// Convert negative start to positive index from end
 						let start_idx = if start_pos < 0 {
-							0
+							chars_len.saturating_sub((-start_pos) as usize)
 						} else {
 							start_pos as usize
 						};
@@ -149,19 +155,12 @@ impl ScalarFunction for TextSubstring {
 							length as usize
 						};
 
-						let substring = if start_idx >= original_str.len() {
+						let substring = if start_idx >= chars_len {
 							// Start position is beyond string length
 							String::new()
 						} else {
-							// Get the substring with proper Unicode handling
-							let chars: Vec<char> = original_str.chars().collect();
-							let end_idx = (start_idx + length_usize).min(chars.len());
-
-							if start_idx < chars.len() {
-								chars[start_idx..end_idx].iter().collect()
-							} else {
-								String::new()
-							}
+							let end_idx = (start_idx + length_usize).min(chars_len);
+							chars[start_idx..end_idx].iter().collect()
 						};
 
 						result_data.push(substring);
@@ -177,7 +176,12 @@ impl ScalarFunction for TextSubstring {
 					max_bytes: *max_bytes,
 				})
 			}
-			_ => unimplemented!("TextSubstring requires text, start position, and length parameters"),
+			(other, _, _) => Err(ScalarFunctionError::InvalidArgumentType {
+				function: ctx.fragment.clone(),
+				argument_index: 0,
+				expected: vec![Type::Utf8],
+				actual: other.get_type(),
+			}),
 		}
 	}
 }

@@ -2,8 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::value::r#type::Type;
 
-use crate::{ScalarFunction, ScalarFunctionContext};
+use crate::{ScalarFunction, ScalarFunctionContext, ScalarFunctionError};
 
 pub struct TextLength;
 
@@ -14,12 +15,17 @@ impl TextLength {
 }
 
 impl ScalarFunction for TextLength {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> reifydb_type::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
-		if columns.is_empty() {
-			return Ok(ColumnData::int4(Vec::<i32>::new()));
+		// Validate exactly 1 argument
+		if columns.len() != 1 {
+			return Err(ScalarFunctionError::ArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 1,
+				actual: columns.len(),
+			});
 		}
 
 		let column = columns.get(0).unwrap();
@@ -30,20 +36,28 @@ impl ScalarFunction for TextLength {
 				..
 			} => {
 				let mut result = Vec::with_capacity(row_count);
+				let mut bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
 						let text = &container[i];
 						// Return byte length, not character count
 						result.push(text.len() as i32);
+						bitvec.push(true);
 					} else {
 						result.push(0);
+						bitvec.push(false);
 					}
 				}
 
-				Ok(ColumnData::int4(result))
+				Ok(ColumnData::int4_with_bitvec(result, bitvec))
 			}
-			_ => unimplemented!("TextLength only supports text input"),
+			other => Err(ScalarFunctionError::InvalidArgumentType {
+				function: ctx.fragment.clone(),
+				argument_index: 0,
+				expected: vec![Type::Utf8],
+				actual: other.get_type(),
+			}),
 		}
 	}
 }

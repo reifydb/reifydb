@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::container::utf8::Utf8Container;
+use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext};
+use crate::{ScalarFunction, ScalarFunctionContext, ScalarFunctionError};
 
 pub struct TextTrim;
 
@@ -15,12 +15,17 @@ impl TextTrim {
 }
 
 impl ScalarFunction for TextTrim {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> reifydb_type::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
-		if columns.is_empty() {
-			return Ok(ColumnData::utf8(Vec::<String>::new()));
+		// Validate exactly 1 argument
+		if columns.len() != 1 {
+			return Err(ScalarFunctionError::ArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 1,
+				actual: columns.len(),
+			});
 		}
 
 		let column = columns.get(0).unwrap();
@@ -50,7 +55,12 @@ impl ScalarFunction for TextTrim {
 					max_bytes: *max_bytes,
 				})
 			}
-			_ => unimplemented!("text::trim only supports text input"),
+			other => Err(ScalarFunctionError::InvalidArgumentType {
+				function: ctx.fragment.clone(),
+				argument_index: 0,
+				expected: vec![Type::Utf8],
+				actual: other.get_type(),
+			}),
 		}
 	}
 }

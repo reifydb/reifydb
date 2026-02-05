@@ -2,24 +2,23 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
+use reifydb_type::value::r#type::Type;
 
 use crate::{ScalarFunction, ScalarFunctionContext, ScalarFunctionError};
 
-pub struct TextUpper;
+pub struct TextCount;
 
-impl TextUpper {
+impl TextCount {
 	pub fn new() -> Self {
 		Self
 	}
 }
 
-impl ScalarFunction for TextUpper {
+impl ScalarFunction for TextCount {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
-		// Validate exactly 1 argument
 		if columns.len() != 1 {
 			return Err(ScalarFunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
@@ -31,29 +30,22 @@ impl ScalarFunction for TextUpper {
 		let column = columns.get(0).unwrap();
 
 		match &column.data() {
-			ColumnData::Utf8 {
-				container,
-				max_bytes,
-			} => {
-				let mut result_data = Vec::with_capacity(container.data().len());
-				let mut result_bitvec = Vec::with_capacity(row_count);
+			ColumnData::Utf8 { container, .. } => {
+				let mut result = Vec::with_capacity(row_count);
+				let mut bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let original_str = &container[i];
-						let upper_str = original_str.to_uppercase();
-						result_data.push(upper_str);
-						result_bitvec.push(true);
+						let text = &container[i];
+						result.push(text.chars().count() as i32);
+						bitvec.push(true);
 					} else {
-						result_data.push(String::new());
-						result_bitvec.push(false);
+						result.push(0);
+						bitvec.push(false);
 					}
 				}
 
-				Ok(ColumnData::Utf8 {
-					container: Utf8Container::new(result_data, result_bitvec.into()),
-					max_bytes: *max_bytes,
-				})
+				Ok(ColumnData::int4_with_bitvec(result, bitvec))
 			}
 			other => Err(ScalarFunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),

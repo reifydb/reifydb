@@ -221,13 +221,14 @@ impl DatabaseBuilder {
 			.register_scalar("math::min", math::scalar::min::Min::new)
 			.register_scalar("math::round", math::scalar::round::Round::new)
 			.register_scalar("math::power", math::scalar::power::Power::new)
+			.register_scalar("text::count", text::count::TextCount::new)
 			.register_scalar("text::length", text::length::TextLength::new)
 			.register_scalar("text::trim", text::trim::TextTrim::new)
 			.register_scalar("text::upper", text::upper::TextUpper::new)
 			.register_scalar("text::lower", text::lower::TextLower::new)
 			.register_scalar("text::substring", text::substring::TextSubstring::new)
 			.register_scalar("text::format_bytes", text::format_bytes::FormatBytes::new)
-			.register_scalar("text::format_bytes_si", text::format_bytes::FormatBytesSi::new)
+			.register_scalar("text::format_bytes_si", text::format_bytes_si::FormatBytesSi::new)
 			.register_generator("generate_series", series::GenerateSeries::new)
 			.register_generator("inspect_subscription", subscription::inspect::InspectSubscription::new);
 

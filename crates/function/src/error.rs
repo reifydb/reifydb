@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter};
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 /// Errors that can occur when executing a scalar function
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ScalarFunctionError {
 	/// Function called with wrong number of arguments
 	ArityMismatch {
@@ -26,6 +26,8 @@ pub enum ScalarFunctionError {
 		function: Fragment,
 		reason: String,
 	},
+	/// Wrapped error from underlying operation
+	Wrapped(Box<reifydb_type::error::Error>),
 }
 
 impl Display for ScalarFunctionError {
@@ -59,7 +61,16 @@ impl Display for ScalarFunctionError {
 			} => {
 				write!(f, "Function {} execution failed: {}", function.text(), reason)
 			}
+			ScalarFunctionError::Wrapped(err) => {
+				write!(f, "{}", err)
+			}
 		}
+	}
+}
+
+impl From<reifydb_type::error::Error> for ScalarFunctionError {
+	fn from(err: reifydb_type::error::Error) -> Self {
+		ScalarFunctionError::Wrapped(Box::new(err))
 	}
 }
 
@@ -71,29 +82,29 @@ impl From<ScalarFunctionError> for reifydb_type::error::Error {
 			arity_mismatch, execution_failed, invalid_argument_type,
 		};
 
-		let diagnostic = match err {
+		match err {
 			ScalarFunctionError::ArityMismatch {
 				function,
 				expected,
 				actual,
-			} => arity_mismatch(function, expected, actual),
+			} => reifydb_type::error!(arity_mismatch(function, expected, actual)),
 			ScalarFunctionError::InvalidArgumentType {
 				function,
 				argument_index,
 				expected,
 				actual,
-			} => invalid_argument_type(function, argument_index, expected, actual),
+			} => reifydb_type::error!(invalid_argument_type(function, argument_index, expected, actual)),
 			ScalarFunctionError::ExecutionFailed {
 				function,
 				reason,
-			} => execution_failed(function, reason),
-		};
-		reifydb_type::error!(diagnostic)
+			} => reifydb_type::error!(execution_failed(function, reason)),
+			ScalarFunctionError::Wrapped(err) => *err,
+		}
 	}
 }
 
 /// Errors that can occur when executing an aggregate function
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum AggregateFunctionError {
 	/// Function called with wrong number of arguments
 	ArityMismatch {
@@ -113,6 +124,8 @@ pub enum AggregateFunctionError {
 		function: Fragment,
 		reason: String,
 	},
+	/// Wrapped error from underlying operation
+	Wrapped(Box<reifydb_type::error::Error>),
 }
 
 impl Display for AggregateFunctionError {
@@ -146,11 +159,20 @@ impl Display for AggregateFunctionError {
 			} => {
 				write!(f, "Function {} execution failed: {}", function.text(), reason)
 			}
+			AggregateFunctionError::Wrapped(err) => {
+				write!(f, "{}", err)
+			}
 		}
 	}
 }
 
 impl std::error::Error for AggregateFunctionError {}
+
+impl From<reifydb_type::error::Error> for AggregateFunctionError {
+	fn from(err: reifydb_type::error::Error) -> Self {
+		AggregateFunctionError::Wrapped(Box::new(err))
+	}
+}
 
 impl From<AggregateFunctionError> for reifydb_type::error::Error {
 	fn from(err: AggregateFunctionError) -> Self {
@@ -158,29 +180,29 @@ impl From<AggregateFunctionError> for reifydb_type::error::Error {
 			arity_mismatch, execution_failed, invalid_argument_type,
 		};
 
-		let diagnostic = match err {
+		match err {
 			AggregateFunctionError::ArityMismatch {
 				function,
 				expected,
 				actual,
-			} => arity_mismatch(function, expected, actual),
+			} => reifydb_type::error!(arity_mismatch(function, expected, actual)),
 			AggregateFunctionError::InvalidArgumentType {
 				function,
 				argument_index,
 				expected,
 				actual,
-			} => invalid_argument_type(function, argument_index, expected, actual),
+			} => reifydb_type::error!(invalid_argument_type(function, argument_index, expected, actual)),
 			AggregateFunctionError::ExecutionFailed {
 				function,
 				reason,
-			} => execution_failed(function, reason),
-		};
-		reifydb_type::error!(diagnostic)
+			} => reifydb_type::error!(execution_failed(function, reason)),
+			AggregateFunctionError::Wrapped(err) => *err,
+		}
 	}
 }
 
 /// Errors that can occur when executing a generator function
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum GeneratorFunctionError {
 	/// Function called with wrong number of arguments
 	ArityMismatch {
@@ -204,6 +226,8 @@ pub enum GeneratorFunctionError {
 	NotFound {
 		function: Fragment,
 	},
+	/// Wrapped error from underlying operation
+	Wrapped(Box<reifydb_type::error::Error>),
 }
 
 impl Display for GeneratorFunctionError {
@@ -242,11 +266,20 @@ impl Display for GeneratorFunctionError {
 			} => {
 				write!(f, "Generator function '{}' not found", function.text())
 			}
+			GeneratorFunctionError::Wrapped(err) => {
+				write!(f, "{}", err)
+			}
 		}
 	}
 }
 
 impl std::error::Error for GeneratorFunctionError {}
+
+impl From<reifydb_type::error::Error> for GeneratorFunctionError {
+	fn from(err: reifydb_type::error::Error) -> Self {
+		GeneratorFunctionError::Wrapped(Box::new(err))
+	}
+}
 
 impl From<GeneratorFunctionError> for reifydb_type::error::Error {
 	fn from(err: GeneratorFunctionError) -> Self {
@@ -254,26 +287,35 @@ impl From<GeneratorFunctionError> for reifydb_type::error::Error {
 			arity_mismatch, execution_failed, generator_not_found, invalid_argument_type,
 		};
 
-		let diagnostic = match err {
+		match err {
 			GeneratorFunctionError::ArityMismatch {
 				function,
 				expected,
 				actual,
-			} => arity_mismatch(function, expected, actual),
+			} => reifydb_type::error!(arity_mismatch(function, expected, actual)),
 			GeneratorFunctionError::InvalidArgumentType {
 				function,
 				argument_index,
 				expected,
 				actual,
-			} => invalid_argument_type(function, argument_index, expected, actual),
+			} => reifydb_type::error!(invalid_argument_type(function, argument_index, expected, actual)),
 			GeneratorFunctionError::ExecutionFailed {
 				function,
 				reason,
-			} => execution_failed(function, reason),
+			} => reifydb_type::error!(execution_failed(function, reason)),
 			GeneratorFunctionError::NotFound {
 				function,
-			} => generator_not_found(function),
-		};
-		reifydb_type::error!(diagnostic)
+			} => reifydb_type::error!(generator_not_found(function)),
+			GeneratorFunctionError::Wrapped(err) => *err,
+		}
 	}
 }
+
+/// Result type for scalar function operations
+pub type ScalarFunctionResult<T> = Result<T, ScalarFunctionError>;
+
+/// Result type for aggregate function operations
+pub type AggregateFunctionResult<T> = Result<T, AggregateFunctionError>;
+
+/// Result type for generator function operations
+pub type GeneratorFunctionResult<T> = Result<T, GeneratorFunctionError>;

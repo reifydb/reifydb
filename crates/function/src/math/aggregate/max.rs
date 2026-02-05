@@ -20,7 +20,7 @@ impl Max {
 }
 
 impl AggregateFunction for Max {
-	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> reifydb_type::Result<()> {
+	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::AggregateFunctionResult<()> {
 		let column = ctx.column;
 		let groups = &ctx.groups;
 
@@ -77,7 +77,7 @@ impl AggregateFunction for Max {
 		}
 	}
 
-	fn finalize(&mut self) -> reifydb_type::Result<(Vec<Vec<Value>>, ColumnData)> {
+	fn finalize(&mut self) -> crate::AggregateFunctionResult<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.maxs.len());
 		let mut data = ColumnData::float8_with_capacity(self.maxs.len());
 
