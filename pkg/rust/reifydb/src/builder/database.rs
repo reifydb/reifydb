@@ -28,7 +28,9 @@ use reifydb_core::{
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine};
 use reifydb_function::{
-	blob, math,
+	blob,
+	flow::to_json::FlowNodeToJson,
+	math,
 	registry::{Functions, FunctionsBuilder},
 	series, subscription, text,
 };
@@ -212,6 +214,7 @@ impl DatabaseBuilder {
 			.register_aggregate("math::max", math::aggregate::max::Max::new)
 			.register_aggregate("math::avg", math::aggregate::avg::Avg::new)
 			.register_aggregate("math::count", math::aggregate::count::Count::new)
+			.register_scalar("flow_node::to_json", FlowNodeToJson::new)
 			.register_scalar("blob::b58", blob::b58::BlobB58::new)
 			.register_scalar("blob::b64", blob::b64::BlobB64::new)
 			.register_scalar("blob::hex", blob::hex::BlobHex::new)
