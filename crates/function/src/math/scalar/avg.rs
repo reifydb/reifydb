@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use num_traits::ToPrimitive;
 use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::value::r#type::Type;
 
-use crate::{ScalarFunction, ScalarFunctionContext};
+use crate::{ScalarFunction, ScalarFunctionContext, ScalarFunctionError};
 
 pub struct Avg {}
 
@@ -18,10 +20,19 @@ impl ScalarFunction for Avg {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
+		// Validate at least 1 argument
+		if columns.is_empty() {
+			return Err(ScalarFunctionError::ArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 1,
+				actual: 0,
+			});
+		}
+
 		let mut sum = vec![0.0f64; row_count];
 		let mut count = vec![0u32; row_count];
 
-		for col in columns.iter() {
+		for (col_idx, col) in columns.iter().enumerate() {
 			match &col.data() {
 				ColumnData::Int1(container) => {
 					for i in 0..row_count {
@@ -47,6 +58,62 @@ impl ScalarFunction for Avg {
 						}
 					}
 				}
+				ColumnData::Int8(container) => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += *value as f64;
+							count[i] += 1;
+						}
+					}
+				}
+				ColumnData::Int16(container) => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += *value as f64;
+							count[i] += 1;
+						}
+					}
+				}
+				ColumnData::Uint1(container) => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += *value as f64;
+							count[i] += 1;
+						}
+					}
+				}
+				ColumnData::Uint2(container) => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += *value as f64;
+							count[i] += 1;
+						}
+					}
+				}
+				ColumnData::Uint4(container) => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += *value as f64;
+							count[i] += 1;
+						}
+					}
+				}
+				ColumnData::Uint8(container) => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += *value as f64;
+							count[i] += 1;
+						}
+					}
+				}
+				ColumnData::Uint16(container) => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += *value as f64;
+							count[i] += 1;
+						}
+					}
+				}
 				ColumnData::Float4(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
@@ -63,7 +130,63 @@ impl ScalarFunction for Avg {
 						}
 					}
 				}
-				data => unimplemented!("{data:?}"),
+				ColumnData::Int {
+					container,
+					..
+				} => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += value.0.to_f64().unwrap_or(0.0);
+							count[i] += 1;
+						}
+					}
+				}
+				ColumnData::Uint {
+					container,
+					..
+				} => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += value.0.to_f64().unwrap_or(0.0);
+							count[i] += 1;
+						}
+					}
+				}
+				ColumnData::Decimal {
+					container,
+					..
+				} => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += value.0.to_f64().unwrap_or(0.0);
+							count[i] += 1;
+						}
+					}
+				}
+				other => {
+					return Err(ScalarFunctionError::InvalidArgumentType {
+						function: ctx.fragment.clone(),
+						argument_index: col_idx,
+						expected: vec![
+							Type::Int1,
+							Type::Int2,
+							Type::Int4,
+							Type::Int8,
+							Type::Int16,
+							Type::Uint1,
+							Type::Uint2,
+							Type::Uint4,
+							Type::Uint8,
+							Type::Uint16,
+							Type::Float4,
+							Type::Float8,
+							Type::Int,
+							Type::Uint,
+							Type::Decimal,
+						],
+						actual: other.get_type(),
+					});
+				}
 			}
 		}
 

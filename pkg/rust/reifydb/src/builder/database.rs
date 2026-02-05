@@ -28,7 +28,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine};
 use reifydb_function::{
-	blob, math,
+	blob, math, meta,
 	registry::{Functions, FunctionsBuilder},
 	series, subscription, text,
 };
@@ -231,6 +231,7 @@ impl DatabaseBuilder {
 			.register_scalar("text::substring", text::substring::TextSubstring::new)
 			.register_scalar("text::format_bytes", text::format_bytes::FormatBytes::new)
 			.register_scalar("text::format_bytes_si", text::format_bytes_si::FormatBytesSi::new)
+			.register_scalar("meta::type", meta::r#type::Type::new)
 			.register_generator("generate_series", series::GenerateSeries::new)
 			.register_generator("inspect_subscription", subscription::inspect::InspectSubscription::new);
 

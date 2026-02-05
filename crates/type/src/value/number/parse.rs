@@ -12,8 +12,10 @@ use crate::{
 	fragment::Fragment,
 	return_error,
 	value::{
+		int::{Int, parse::parse_int},
 		is::{IsFloat, IsInt, IsUint},
 		r#type::Type,
+		uint::{Uint, parse::parse_uint},
 	},
 };
 
@@ -31,6 +33,8 @@ where
 		Ok(cast::<T, i64>(parse_i64(fragment)?))
 	} else if TypeId::of::<T>() == TypeId::of::<i128>() {
 		Ok(cast::<T, i128>(parse_i128(fragment)?))
+	} else if TypeId::of::<T>() == TypeId::of::<Int>() {
+		Ok(cast::<T, Int>(parse_int(fragment)?))
 	} else {
 		unreachable!();
 	}
@@ -50,6 +54,8 @@ where
 		Ok(cast::<T, u64>(parse_u64(fragment)?))
 	} else if TypeId::of::<T>() == TypeId::of::<u128>() {
 		Ok(cast::<T, u128>(parse_u128(fragment)?))
+	} else if TypeId::of::<T>() == TypeId::of::<Uint>() {
+		Ok(cast::<T, Uint>(parse_uint(fragment)?))
 	} else {
 		unreachable!();
 	}
@@ -102,7 +108,9 @@ fn cast_float_to_int<T: 'static>(f: f64) -> T {
 fn cast<T: 'static, U: 'static>(v: U) -> T {
 	// SAFETY: caller guarantees that T and U are the same type
 	assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
-	unsafe { std::mem::transmute_copy(&v) }
+	// Use ManuallyDrop to prevent double-free when T and U are non-Copy types
+	let v = std::mem::ManuallyDrop::new(v);
+	unsafe { std::ptr::read(&*v as *const U as *const T) }
 }
 
 trait TypeInfo {
@@ -1790,6 +1798,55 @@ pub mod tests {
 		#[test]
 		fn trimming_negative_both_spaces() {
 			assert_eq!(parse_float::<f64>(Fragment::testing(" -0.001 ")), Ok(-0.001));
+		}
+	}
+
+	mod big_int {
+		use crate::{
+			fragment::Fragment,
+			value::{int::Int, number::parse::parse_primitive_int},
+		};
+
+		#[test]
+		fn test_parse_int_basic() {
+			let result = parse_primitive_int::<Int>(Fragment::testing("12345"));
+			assert!(result.is_ok());
+			assert_eq!(format!("{}", result.unwrap()), "12345");
+		}
+
+		#[test]
+		fn test_parse_int_negative() {
+			let result = parse_primitive_int::<Int>(Fragment::testing("-12345"));
+			assert!(result.is_ok());
+			assert_eq!(format!("{}", result.unwrap()), "-12345");
+		}
+
+		#[test]
+		fn test_parse_int_large() {
+			let result = parse_primitive_int::<Int>(Fragment::testing("123456789012345678901234567890"));
+			assert!(result.is_ok());
+			assert_eq!(format!("{}", result.unwrap()), "123456789012345678901234567890");
+		}
+	}
+
+	mod big_uint {
+		use crate::{
+			fragment::Fragment,
+			value::{number::parse::parse_primitive_uint, uint::Uint},
+		};
+
+		#[test]
+		fn test_parse_uint_basic() {
+			let result = parse_primitive_uint::<Uint>(Fragment::testing("12345"));
+			assert!(result.is_ok());
+			assert_eq!(format!("{}", result.unwrap()), "12345");
+		}
+
+		#[test]
+		fn test_parse_uint_large() {
+			let result = parse_primitive_uint::<Uint>(Fragment::testing("123456789012345678901234567890"));
+			assert!(result.is_ok());
+			assert_eq!(format!("{}", result.unwrap()), "123456789012345678901234567890");
 		}
 	}
 }

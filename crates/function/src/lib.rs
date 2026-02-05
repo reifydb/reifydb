@@ -14,6 +14,7 @@ pub mod blob;
 pub mod error;
 pub mod flow;
 pub mod math;
+pub mod meta;
 pub mod registry;
 pub mod series;
 pub mod subscription;
