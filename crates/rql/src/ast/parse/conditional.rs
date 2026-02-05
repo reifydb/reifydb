@@ -3,10 +3,12 @@
 
 use reifydb_type::error::diagnostic::ast::unexpected_token_error;
 
-use crate::ast::{
-	ast::{AstElseIf, AstIf},
-	parse::{Parser, Precedence},
-	tokenize::keyword::Keyword,
+use crate::{
+	ast::{
+		ast::{AstElseIf, AstIf},
+		parse::{Parser, Precedence},
+	},
+	token::keyword::Keyword,
 };
 
 impl Parser {

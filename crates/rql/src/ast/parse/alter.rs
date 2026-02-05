@@ -3,14 +3,16 @@
 
 use reifydb_core::sort::SortDirection;
 
-use crate::ast::{
+use crate::{
 	ast::{
-		AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
-		AstAlterView, AstAlterViewOperation, AstIndexColumn, AstStatement,
+		ast::{
+			AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstAlterTable,
+			AstAlterTableOperation, AstAlterView, AstAlterViewOperation, AstIndexColumn, AstStatement,
+		},
+		identifier::MaybeQualifiedFlowIdentifier,
+		parse::Parser,
 	},
-	identifier::MaybeQualifiedFlowIdentifier,
-	parse::Parser,
-	tokenize::{
+	token::{
 		keyword::Keyword,
 		operator::Operator,
 		separator::Separator,
@@ -47,22 +49,21 @@ impl Parser {
 
 	fn parse_alter_sequence(&mut self, token: Token) -> crate::Result<AstAlter> {
 		// Parse namespace.table.column or table.column
-		let first_identifier_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
+		let first_identifier_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 
 		if self.current()?.is_operator(Operator::Dot) {
 			self.consume_operator(Operator::Dot)?;
-			let second_identifier_token =
-				self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
+			let second_identifier_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 
 			if self.current()?.is_operator(Operator::Dot) {
 				self.consume_operator(Operator::Dot)?;
-				let column_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
+				let column_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 
 				// Expect SET VALUE <number>
 				self.consume_keyword(Keyword::Set)?;
 				self.consume_keyword(Keyword::Value)?;
-				let value_token = self.consume(crate::ast::tokenize::token::TokenKind::Literal(
-					crate::ast::tokenize::token::Literal::Number,
+				let value_token = self.consume(crate::token::token::TokenKind::Literal(
+					crate::token::token::Literal::Number,
 				))?;
 
 				// Create MaybeQualifiedSequenceIdentifier with
@@ -87,8 +88,8 @@ impl Parser {
 				// table.column
 				self.consume_keyword(Keyword::Set)?;
 				self.consume_keyword(Keyword::Value)?;
-				let value_token = self.consume(crate::ast::tokenize::token::TokenKind::Literal(
-					crate::ast::tokenize::token::Literal::Number,
+				let value_token = self.consume(crate::token::token::TokenKind::Literal(
+					crate::token::token::Literal::Number,
 				))?;
 
 				// Create MaybeQualifiedSequenceIdentifier
@@ -116,9 +117,9 @@ impl Parser {
 
 	fn parse_alter_table(&mut self, token: Token) -> crate::Result<AstAlter> {
 		// Parse namespace.table
-		let namespace_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
+		let namespace_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let table_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
+		let table_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 
 		// Create MaybeQualifiedTableIdentifier
 		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
@@ -190,9 +191,9 @@ impl Parser {
 
 	fn parse_alter_view(&mut self, token: Token) -> crate::Result<AstAlter> {
 		// Parse namespace.view
-		let namespace_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
+		let namespace_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let view_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
+		let view_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 
 		// Create MaybeQualifiedViewIdentifier for view
 		use crate::ast::identifier::MaybeQualifiedViewIdentifier;
@@ -432,13 +433,15 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{
+	use crate::{
 		ast::{
-			AstAlter, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
-			AstAlterView, AstAlterViewOperation,
+			ast::{
+				AstAlter, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
+				AstAlterView, AstAlterViewOperation,
+			},
+			parse::Parser,
 		},
-		parse::Parser,
-		tokenize::tokenize,
+		token::tokenize,
 	};
 
 	#[test]

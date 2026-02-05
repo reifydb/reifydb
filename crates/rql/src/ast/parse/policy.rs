@@ -3,10 +3,12 @@
 
 use reifydb_type::{error::diagnostic::ast, return_error};
 
-use crate::ast::{
-	ast::{AstPolicy, AstPolicyBlock, AstPolicyKind},
-	parse::{Parser, Precedence},
-	tokenize::{
+use crate::{
+	ast::{
+		ast::{AstPolicy, AstPolicyBlock, AstPolicyKind},
+		parse::{Parser, Precedence},
+	},
+	token::{
 		keyword::Keyword,
 		operator::Operator,
 		separator::Separator,
@@ -60,10 +62,12 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{
-		ast::{AstCreate, AstCreateTable, AstDataType, AstPolicyKind},
-		parse::Parser,
-		tokenize::tokenize,
+	use crate::{
+		ast::{
+			ast::{AstCreate, AstCreateTable, AstDataType, AstPolicyKind},
+			parse::Parser,
+		},
+		token::tokenize,
 	};
 
 	#[test]

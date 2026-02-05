@@ -4,10 +4,9 @@
 use reifydb_core::error::diagnostic::operation::sort_missing_braces;
 use reifydb_type::return_error;
 
-use crate::ast::{
-	ast::AstSort,
-	parse::Parser,
-	tokenize::{
+use crate::{
+	ast::{ast::AstSort, parse::Parser},
+	token::{
 		keyword::Keyword,
 		operator::Operator::{CloseCurly, Colon, OpenCurly},
 		separator::Separator::Comma,
@@ -101,7 +100,7 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::ast::tokenize::tokenize;
+	use crate::token::tokenize;
 
 	#[test]
 	fn test_single_column() {

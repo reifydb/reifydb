@@ -5,12 +5,9 @@ use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	ast::{
-		ast::{
-			Ast, AstBlock, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral,
-			AstLiteralUndefined, AstLoop, AstReturn, AstWhile, LetValue as AstLetValue,
-		},
-		tokenize::token::{Literal, Token, TokenKind},
+	ast::ast::{
+		Ast, AstBlock, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral, AstLiteralUndefined,
+		AstLoop, AstReturn, AstWhile, LetValue as AstLetValue,
 	},
 	convert_data_type_with_constraints,
 	expression::ExpressionCompiler,
@@ -19,6 +16,7 @@ use crate::{
 		WhileNode,
 		function::{CallFunctionNode, DefineFunctionNode, FunctionParameter, ReturnNode},
 	},
+	token::token::{Literal, Token, TokenKind},
 };
 
 impl Compiler {

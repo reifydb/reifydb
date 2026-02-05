@@ -3,10 +3,12 @@
 
 use reifydb_type::{error::diagnostic::ast, return_error};
 
-use crate::ast::{
-	ast::{Ast, AstInfix, InfixOperator},
-	parse::{Parser, Precedence},
-	tokenize::{operator::Operator, token::TokenKind},
+use crate::{
+	ast::{
+		ast::{Ast, AstInfix, InfixOperator},
+		parse::{Parser, Precedence},
+	},
+	token::{operator::Operator, token::TokenKind},
 };
 
 impl Parser {
@@ -65,13 +67,15 @@ impl Parser {
 pub mod tests {
 	use std::ops::Deref;
 
-	use crate::ast::{
+	use crate::{
 		ast::{
-			Ast::{Infix, Literal},
-			AstInfix, AstLiteral, InfixOperator,
+			ast::{
+				Ast::{Infix, Literal},
+				AstInfix, AstLiteral, InfixOperator,
+			},
+			parse::parse,
 		},
-		parse::parse,
-		tokenize::tokenize,
+		token::tokenize,
 	};
 
 	#[test]

@@ -4,7 +4,10 @@
 use reifydb_core::error::diagnostic::operation::map_missing_braces;
 use reifydb_type::return_error;
 
-use crate::ast::{ast::AstMap, parse::Parser, tokenize::keyword::Keyword};
+use crate::{
+	ast::{ast::AstMap, parse::Parser},
+	token::keyword::Keyword,
+};
 
 impl Parser {
 	pub(crate) fn parse_map(&mut self) -> crate::Result<AstMap> {
@@ -27,9 +30,9 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::ast::{
-		ast::{Ast, AstInfix, InfixOperator},
-		tokenize::tokenize,
+	use crate::{
+		ast::ast::{Ast, AstInfix, InfixOperator},
+		token::tokenize,
 	};
 
 	#[test]

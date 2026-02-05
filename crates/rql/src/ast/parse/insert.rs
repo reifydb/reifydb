@@ -4,11 +4,13 @@
 use reifydb_core::error::diagnostic::operation::{insert_missing_source, insert_missing_target};
 use reifydb_type::return_error;
 
-use crate::ast::{
-	ast::{Ast, AstFrom, AstInsert, AstVariable},
-	identifier::UnresolvedPrimitiveIdentifier,
-	parse::Parser,
-	tokenize::{keyword::Keyword, operator::Operator, token::TokenKind},
+use crate::{
+	ast::{
+		ast::{Ast, AstFrom, AstInsert, AstVariable},
+		identifier::UnresolvedPrimitiveIdentifier,
+		parse::Parser,
+	},
+	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
 impl Parser {
@@ -87,10 +89,12 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{
-		ast::{Ast, AstFrom},
-		parse::Parser,
-		tokenize::tokenize,
+	use crate::{
+		ast::{
+			ast::{Ast, AstFrom},
+			parse::Parser,
+		},
+		token::tokenize,
 	};
 
 	#[test]

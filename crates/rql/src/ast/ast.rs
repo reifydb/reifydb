@@ -9,15 +9,15 @@ use reifydb_core::{
 };
 use reifydb_type::fragment::Fragment;
 
-use crate::ast::{
-	identifier::{
+use crate::{
+	ast::identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier, MaybeQualifiedFunctionIdentifier,
 		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
 		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
 		UnresolvedPrimitiveIdentifier,
 	},
-	tokenize::token::{Literal, Token, TokenKind},
+	token::token::{Literal, Token, TokenKind},
 };
 
 #[derive(Debug, Clone, PartialEq)]

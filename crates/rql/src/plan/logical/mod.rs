@@ -40,14 +40,14 @@ use crate::{
 			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
 			MaybeQualifiedTransactionalViewIdentifier,
 		},
-		tokenize::{
-			keyword::Keyword,
-			operator::Operator,
-			token::{Literal, Token, TokenKind},
-		},
 	},
 	expression::{AliasExpression, Expression},
 	plan::logical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
+	token::{
+		keyword::Keyword,
+		operator::Operator,
+		token::{Literal, Token, TokenKind},
+	},
 };
 
 pub(crate) struct Compiler {

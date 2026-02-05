@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::{
-	ast::{AstCall, AstCallFunction},
-	parse::Parser,
-	tokenize::{keyword::Keyword, operator::Operator},
+use crate::{
+	ast::{
+		ast::{AstCall, AstCallFunction},
+		parse::Parser,
+	},
+	token::{keyword::Keyword, operator::Operator},
 };
 
 impl Parser {
@@ -26,7 +28,7 @@ impl Parser {
 	}
 
 	pub(crate) fn parse_function_call(&mut self) -> crate::Result<AstCallFunction> {
-		let first_ident_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
+		let first_ident_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 		let start_token = first_ident_token.clone();
 
 		// Check if this is a simple function call: identifier(
@@ -61,7 +63,7 @@ impl Parser {
 			namespace_fragments.push(current_ident_token.fragment.clone());
 
 			self.advance()?; // consume ::
-			let next_ident_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
+			let next_ident_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 
 			// Check if this is the function name (followed by
 			// opening paren)
@@ -134,7 +136,7 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{parse::parse, tokenize::tokenize};
+	use crate::{ast::parse::parse, token::tokenize};
 
 	#[test]
 	fn test_simple_function_call() {

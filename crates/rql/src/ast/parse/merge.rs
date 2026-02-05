@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::{ast::AstMerge, parse::Parser, tokenize::keyword::Keyword::Merge};
+use crate::{
+	ast::{ast::AstMerge, parse::Parser},
+	token::keyword::Keyword::Merge,
+};
 
 impl Parser {
 	pub(crate) fn parse_merge(&mut self) -> crate::Result<AstMerge> {
@@ -16,10 +19,12 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{
-		ast::{Ast, AstFrom},
-		parse::Parser,
-		tokenize::tokenize,
+	use crate::{
+		ast::{
+			ast::{Ast, AstFrom},
+			parse::Parser,
+		},
+		token::tokenize,
 	};
 
 	#[test]

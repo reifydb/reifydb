@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::{
-	ast::{Ast, AstAlter, AstAlterTableOperation, AstAlterViewOperation, AstFrom, AstJoin},
-	parse::parse,
-	tokenize::{
+use crate::{
+	ast::{
+		ast::{Ast, AstAlter, AstAlterTableOperation, AstAlterViewOperation, AstFrom, AstJoin},
+		parse::parse,
+	},
+	token::{
 		token::{Token, TokenKind},
 		tokenize,
 	},
@@ -172,9 +174,9 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 					// If there's an index directive, add it
 					// as a child too
 					if let Some(index) = index_name {
-						use crate::ast::{
-							identifier::UnqualifiedIdentifier,
-							tokenize::token::{Token, TokenKind},
+						use crate::{
+							ast::identifier::UnqualifiedIdentifier,
+							token::token::{Token, TokenKind},
 						};
 						let index_token = Token {
 							kind: TokenKind::Identifier,

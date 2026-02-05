@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use Separator::Comma;
-
-use crate::ast::{
-	ast::AstTuple,
-	parse::{Parser, Precedence},
-	tokenize::{
+use crate::{
+	ast::{
+		ast::AstTuple,
+		parse::{Parser, Precedence},
+	},
+	token::{
 		operator::{Operator, Operator::CloseParen},
-		separator::Separator,
+		separator::Separator::Comma,
 		token::{Token, TokenKind},
 	},
 };
@@ -43,15 +43,17 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{
+	use crate::{
 		ast::{
-			Ast::{Identifier, Infix, Literal},
-			AstInfix,
-			AstLiteral::Number,
-			InfixOperator,
+			ast::{
+				Ast::{Identifier, Infix, Literal},
+				AstInfix,
+				AstLiteral::Number,
+				InfixOperator,
+			},
+			parse::parse,
 		},
-		parse::parse,
-		tokenize::tokenize,
+		token::tokenize,
 	};
 
 	#[test]

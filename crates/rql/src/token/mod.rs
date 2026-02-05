@@ -17,7 +17,7 @@ use cursor::Cursor;
 use reifydb_type::error::Error;
 use variable::scan_variable;
 
-use crate::ast::tokenize::{
+use crate::token::{
 	identifier::{scan_identifier, scan_quoted_identifier},
 	keyword::scan_keyword,
 	literal::scan_literal,

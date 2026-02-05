@@ -1,28 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use Keyword::{Create, Dictionary, Exists, Flow, For, If, Namespace, Replace, Subscription};
-use Operator::{Colon, Dot};
 use reifydb_core::sort::SortDirection;
 
-use crate::ast::{
+use crate::{
 	ast::{
-		AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-		AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
-		AstCreateTransactionalView, AstDataType, AstIndexColumn, AstPrimaryKeyDef,
+		ast::{
+			AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
+			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
+			AstCreateTransactionalView, AstDataType, AstIndexColumn, AstPrimaryKeyDef,
+		},
+		identifier::{
+			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier,
+			MaybeQualifiedSequenceIdentifier,
+		},
+		parse::Parser,
 	},
-	identifier::{
-		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
-	},
-	parse::Parser,
-	tokenize::{
+	token::{
 		keyword::{
 			Keyword,
-			Keyword::{Deferred, Ringbuffer, Series, Table, Transactional, View},
+			Keyword::{
+				Create, Deferred, Dictionary, Exists, Flow, For, If, Namespace, Replace, Ringbuffer,
+				Series, Subscription, Table, Transactional, View,
+			},
 		},
 		operator::{
 			Operator,
-			Operator::{Not, Or},
+			Operator::{Colon, Dot, Not, Or},
 		},
 		separator::{Separator, Separator::Comma},
 		token::{Literal, Token, TokenKind},
@@ -847,14 +851,16 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{
+	use crate::{
 		ast::{
-			Ast, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
-			AstCreateTransactionalView, AstDataType, AstPolicyKind,
+			ast::{
+				Ast, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
+				AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
+				AstCreateTransactionalView, AstDataType, AstPolicyKind,
+			},
+			parse::Parser,
 		},
-		parse::Parser,
-		tokenize::tokenize,
+		token::tokenize,
 	};
 
 	#[test]
