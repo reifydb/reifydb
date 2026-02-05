@@ -10,6 +10,7 @@ use reifydb_catalog::{
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_function::{math, registry::Functions, series, subscription};
 use reifydb_metric::metric::MetricReader;
+use reifydb_rql::compiler::Compiler;
 use reifydb_store_single::SingleStore;
 
 /// Services is a container for shared resources used throughout the execution engine.
@@ -18,6 +19,7 @@ use reifydb_store_single::SingleStore;
 /// query operators, and other components need access to.
 pub struct Services {
 	pub catalog: Catalog,
+	pub compiler: Compiler,
 	pub functions: Functions,
 	pub flow_operator_store: FlowOperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
@@ -34,6 +36,7 @@ impl Services {
 		ioc: IocContainer,
 	) -> Self {
 		Self {
+			compiler: Compiler::new(catalog.clone()),
 			catalog,
 			functions,
 			flow_operator_store,

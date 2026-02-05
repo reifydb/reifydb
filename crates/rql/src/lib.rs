@@ -17,6 +17,7 @@ use reifydb_type::{
 use crate::ast::ast::{AstDataType, AstLiteral};
 
 pub mod ast;
+pub mod compiler;
 pub mod error;
 pub mod explain;
 pub mod expression;

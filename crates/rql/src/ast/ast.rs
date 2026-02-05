@@ -39,6 +39,11 @@ impl AstStatement {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
+
+	/// Returns true if this statement contains any DDL nodes (CREATE, ALTER, DROP).
+	pub fn contains_ddl(&self) -> bool {
+		self.nodes.iter().any(|node| node.is_ddl())
+	}
 }
 
 impl Index<usize> for AstStatement {
@@ -209,6 +214,11 @@ impl Ast {
 }
 
 impl Ast {
+	/// Returns true if this AST node is a DDL statement (CREATE, ALTER, DROP).
+	pub fn is_ddl(&self) -> bool {
+		matches!(self, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_))
+	}
+
 	pub fn is_aggregate(&self) -> bool {
 		matches!(self, Ast::Aggregate(_))
 	}
