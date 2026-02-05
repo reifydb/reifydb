@@ -43,7 +43,7 @@ impl Workload for JoinWorkload {
 				.map(|i| format!("{{ id: {}, name: \"customer_{}\" }}", i, i))
 				.collect();
 
-			queries.push(SetupQuery::command(format!("from [{}] insert bench.customers", rows.join(", "))));
+			queries.push(SetupQuery::command(format!("INSERT bench.customers [{}]", rows.join(", "))));
 		}
 
 		// Insert orders in batches (3 orders per customer on average)
@@ -61,7 +61,7 @@ impl Workload for JoinWorkload {
 				})
 				.collect();
 
-			queries.push(SetupQuery::command(format!("from [{}] insert bench.orders", rows.join(", "))));
+			queries.push(SetupQuery::command(format!("INSERT bench.orders [{}]", rows.join(", "))));
 		}
 
 		queries

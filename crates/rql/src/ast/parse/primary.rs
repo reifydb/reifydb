@@ -71,10 +71,17 @@ impl Parser {
 					Keyword::Apply => Ok(Ast::Apply(self.parse_apply()?)),
 					Keyword::Call => Ok(Ast::Call(self.parse_call()?)),
 					Keyword::If => Ok(Ast::If(self.parse_if()?)),
+					Keyword::Loop => Ok(Ast::Loop(self.parse_loop()?)),
+					Keyword::While => Ok(Ast::While(self.parse_while()?)),
+					Keyword::For => Ok(Ast::For(self.parse_for()?)),
+					Keyword::Break => Ok(Ast::Break(self.parse_break()?)),
+					Keyword::Continue => Ok(Ast::Continue(self.parse_continue()?)),
 					Keyword::Let => Ok(Ast::Let(self.parse_let()?)),
 					Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
 					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
+					Keyword::Def => Ok(Ast::DefFunction(self.parse_def_function()?)),
+					Keyword::Return => Ok(Ast::Return(self.parse_return()?)),
 					Keyword::Rownum => {
 						let token = self.advance()?;
 						Ok(Ast::Rownum(AstRownum {

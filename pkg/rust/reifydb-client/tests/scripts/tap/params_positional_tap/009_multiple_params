@@ -1,7 +1,7 @@
 # Generated from: params_positional.tap.md
 # Test: Multiple positional parameters
 
-query_positional 'MAP { $1 + $2 as sum, $3 as name }' '10' '20' 'test'
+query_positional 'MAP { sum: $1 + $2, name: $3 }' '10' '20' 'test'
 ---
 > +-------+--------+
 > |  sum  |  name  |

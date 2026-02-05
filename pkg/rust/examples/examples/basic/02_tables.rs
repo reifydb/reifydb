@@ -61,25 +61,23 @@ fn main() {
 	// Insert some initial data
 	info!("Inserting employees...");
 	log_query(
-		r#"from [
+		r#"INSERT company.employees [
     { id: 1, name: "Alice Johnson", age: 28, salary: 75000.0, is_active: true, department: "Engineering" },
     { id: 2, name: "Bob Smith", age: 35, salary: 85000.0, is_active: true, department: "Sales" },
     { id: 3, name: "Charlie Bframen", age: 42, salary: 95000.0, is_active: true, department: "Engineering" },
     { id: 4, name: "Diana Prince", age: 31, salary: 72000.0, is_active: false, department: "HR" },
     { id: 5, name: "Eve Adams", age: 26, salary: 68000.0, is_active: true, department: "Marketing" }
-]
-insert company.employees"#,
+]"#,
 	);
 	db.command_as_root(
 		r#"
-		from [
+		INSERT company.employees [
 			{ id: 1, name: "Alice Johnson", age: 28, salary: 75000.0, is_active: true, department: "Engineering" },
 			{ id: 2, name: "Bob Smith", age: 35, salary: 85000.0, is_active: true, department: "Sales" },
 			{ id: 3, name: "Charlie Bframen", age: 42, salary: 95000.0, is_active: true, department: "Engineering" },
 			{ id: 4, name: "Diana Prince", age: 31, salary: 72000.0, is_active: false, department: "HR" },
 			{ id: 5, name: "Eve Adams", age: 26, salary: 68000.0, is_active: true, department: "Marketing" }
-		]
-		insert company.employees;
+		];
 		"#,
 		Params::None,
 	)
@@ -118,32 +116,10 @@ insert company.employees"#,
 
 	// Update operation - give everyone in Engineering a raise
 	info!("Giving Engineering department a 10% raise...");
-	log_query(
-		r#"from company.employees
-filter { department == "Engineering" }
-map {
-    id: id,
-    name: name,
-    age: age,
-    salary: salary * 1.1,
-    is_active: is_active,
-    department: department
-}
-update company.employees"#,
-	);
+	log_query(r#"UPDATE company.employees { salary: salary * 1.1 } FILTER department == "Engineering""#);
 	db.command_as_root(
 		r#"
-		from company.employees
-		filter { department == "Engineering" }
-		map {
-			id: id,
-			name: name,
-			age: age,
-			salary: salary * 1.1,
-			is_active: is_active,
-			department: department
-		}
-		update company.employees;
+		UPDATE company.employees { salary: salary * 1.1 } FILTER department == "Engineering";
 		"#,
 		Params::None,
 	)
@@ -167,16 +143,10 @@ update company.employees"#,
 
 	// Delete operation - remove inactive employees
 	info!("Removing inactive employees...");
-	log_query(
-		r#"from company.employees
-filter { is_active == false }
-delete company.employees"#,
-	);
+	log_query(r#"DELETE company.employees FILTER is_active == false"#);
 	db.command_as_root(
 		r#"
-		from company.employees
-		filter { is_active == false }
-		delete company.employees;
+		DELETE company.employees FILTER is_active == false;
 		"#,
 		Params::None,
 	)

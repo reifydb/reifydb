@@ -4,11 +4,13 @@
 pub mod aggregate;
 pub mod alter;
 pub mod apply;
+pub mod block;
 pub mod call;
 pub mod cast;
 pub mod conditional;
 pub mod create;
 pub mod create_index;
+pub mod def_function;
 pub mod delete;
 pub mod describe;
 pub mod distinct;
@@ -24,6 +26,7 @@ pub mod join;
 pub mod r#let;
 pub mod list;
 pub mod literal;
+pub mod loop_construct;
 pub mod map;
 pub mod merge;
 pub mod policy;
@@ -116,6 +119,14 @@ impl Parser {
 
 	/// Parse a single statement (possibly with pipes)
 	pub(crate) fn parse_statement(&mut self) -> crate::Result<AstStatement> {
+		// Check for OUTPUT prefix
+		let is_output = if !self.is_eof() && self.current()?.is_keyword(Keyword::Output) {
+			self.advance()?;
+			true
+		} else {
+			false
+		};
+
 		let mut nodes = Vec::with_capacity(8);
 		let mut has_pipes = false;
 		loop {
@@ -158,6 +169,7 @@ impl Parser {
 		Ok(AstStatement {
 			nodes,
 			has_pipes,
+			is_output,
 		})
 	}
 
@@ -193,6 +205,7 @@ impl Parser {
 		Ok(AstStatement {
 			nodes,
 			has_pipes,
+			is_output: false,
 		})
 	}
 
@@ -432,12 +445,27 @@ impl Parser {
 
 	/// Parse a comma-separated list of expressions with optional braces
 	/// Returns (nodes, had_braces) tuple
-	pub(crate) fn parse_expressions(&mut self, allow_colon_alias: bool) -> crate::Result<(Vec<Ast>, bool)> {
+	///
+	/// - `allow_colon_alias`: if true, allows `{alias: expr}` syntax which is converted to `expr AS alias`
+	/// - `allow_as_keyword`: if true, allows `{expr as alias}` syntax. When false, only colon syntax is accepted.
+	pub(crate) fn parse_expressions(
+		&mut self,
+		allow_colon_alias: bool,
+		allow_as_keyword: bool,
+	) -> crate::Result<(Vec<Ast>, bool)> {
 		let has_braces = self.current()?.is_operator(Operator::OpenCurly);
 
 		if has_braces {
 			self.advance()?; // consume opening brace
 		}
+
+		// When allow_as_keyword is false, use Assignment precedence to stop at AS
+		// This allows parsing or/xor (LogicOr precedence) but stops at as (Assignment precedence)
+		let precedence = if allow_as_keyword {
+			Precedence::None
+		} else {
+			Assignment
+		};
 
 		let mut nodes = Vec::with_capacity(4);
 		loop {
@@ -445,10 +473,10 @@ impl Parser {
 				if let Ok(alias_expr) = self.try_parse_colon_alias() {
 					nodes.push(alias_expr);
 				} else {
-					nodes.push(self.parse_node(Precedence::None)?);
+					nodes.push(self.parse_node(precedence.clone())?);
 				}
 			} else {
-				nodes.push(self.parse_node(Precedence::None)?);
+				nodes.push(self.parse_node(precedence.clone())?);
 			}
 
 			if self.is_eof() {
@@ -470,16 +498,20 @@ impl Parser {
 		Ok((nodes, has_braces))
 	}
 
-	/// Try to parse "identifier: expression" syntax and convert it to
-	/// "expression AS identifier"
+	/// Try to parse "key: expression" syntax and convert it to
+	/// "expression AS key" where key can be identifier, keyword, or string literal
 	pub(crate) fn try_parse_colon_alias(&mut self) -> crate::Result<Ast> {
 		// Check if we have enough tokens from current position
 		if self.position + 1 >= self.tokens.len() {
 			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
 		}
 
-		// Check if current token is identifier
-		if !self.tokens[self.position].is_identifier() {
+		// Check if current token is identifier, keyword, or string literal (all can be used as field names)
+		let is_valid_key = self.tokens[self.position].is_identifier()
+			|| matches!(self.tokens[self.position].kind, TokenKind::Keyword(_))
+			|| matches!(self.tokens[self.position].kind, TokenKind::Literal(Literal::Text));
+
+		if !is_valid_key {
 			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
 		}
 
@@ -488,19 +520,25 @@ impl Parser {
 			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
 		}
 
-		// Parse the identifier and consume colon
-		let identifier = self.parse_as_identifier()?;
+		// Parse the key (identifier, keyword, or string literal)
+		let key = if matches!(self.tokens[self.position].kind, TokenKind::Literal(Literal::Text)) {
+			// For string literals, parse as literal and keep the AST node
+			Ast::Literal(self.parse_literal_text()?)
+		} else {
+			// For identifiers/keywords, parse as identifier
+			Ast::Identifier(self.parse_as_identifier()?)
+		};
 		let colon_token = self.advance()?; // consume colon
 
 		// Parse the expression
 		let expression = self.parse_node(Precedence::None)?;
 
-		// Return as "expression AS identifier"
+		// Return as "expression AS key"
 		Ok(Ast::Infix(AstInfix {
 			token: expression.token().clone(),
 			left: Box::new(expression),
 			operator: InfixOperator::As(colon_token),
-			right: Box::new(Ast::Identifier(identifier)),
+			right: Box::new(key),
 		}))
 	}
 }
@@ -513,6 +551,7 @@ pub mod tests {
 	};
 
 	use crate::ast::{
+		ast::Ast,
 		parse::{Parser, Precedence, Precedence::Term},
 		tokenize::{
 			operator::Operator::Plus,
@@ -640,7 +679,7 @@ pub mod tests {
 	fn test_variable_multiline_separation() {
 		use crate::ast::tokenize::tokenize;
 		let sql = r#"
-		let $user_data = FROM [{ name: "Alice", age: 25 }, { name: "Bob", age: 17 }, { name: "Carol", age: 30 }] | FILTER age > 21;
+		let $user_data = FROM [{ name: "Alice", age: 25 }, { name: "Bob", age: 17 }, { name: "Carol", age: 30 }] | FILTER {age > 21};
 		FROM $user_data
 		"#;
 		let tokens = tokenize(sql).unwrap();
@@ -648,12 +687,10 @@ pub mod tests {
 		let statements = parser.parse().unwrap();
 		assert_eq!(statements.len(), 2, "Should parse two separate statements from multiline input");
 
-		// First statement should be the let assignment
 		let first_stmt = &statements[0];
 		assert_eq!(first_stmt.nodes.len(), 1);
 		assert!(matches!(first_stmt.nodes[0], crate::ast::ast::Ast::Let(_)));
 
-		// Second statement should be the FROM with variable
 		let second_stmt = &statements[1];
 		assert_eq!(second_stmt.nodes.len(), 1);
 		if let crate::ast::ast::Ast::From(from_ast) = &second_stmt.nodes[0] {
@@ -751,7 +788,7 @@ pub mod tests {
 	#[test]
 	fn test_pipe_operator_simple() {
 		use crate::ast::ast::Ast;
-		let tokens = tokenize("from users | sort name").unwrap();
+		let tokens = tokenize("from users | sort {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
 
@@ -759,16 +796,14 @@ pub mod tests {
 		let statement = &result[0];
 		assert_eq!(statement.len(), 2);
 
-		// First operation should be From
 		assert!(matches!(statement[0], Ast::From(_)));
-		// Second operation should be Sort
 		assert!(matches!(statement[1], Ast::Sort(_)));
 	}
 
 	#[test]
 	fn test_pipe_operator_multiple() {
 		use crate::ast::ast::Ast;
-		let tokens = tokenize("from users | filter age > 18 | sort name | take 10").unwrap();
+		let tokens = tokenize("from users | filter {age > 18} | sort {name} | take {10}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
 
@@ -785,7 +820,7 @@ pub mod tests {
 	#[test]
 	fn test_pipe_with_system_tables() {
 		use crate::ast::ast::Ast;
-		let tokens = tokenize("from system.tables | sort id").unwrap();
+		let tokens = tokenize("from system.tables | sort {id}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
 
@@ -800,7 +835,7 @@ pub mod tests {
 	#[test]
 	fn test_newline_still_works() {
 		use crate::ast::ast::Ast;
-		let tokens = tokenize("from users\nsort name").unwrap();
+		let tokens = tokenize("from users\nsort {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
 
@@ -813,9 +848,45 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_mixed_pipe_and_newline() {
+	fn test_output_prefix_first_statement() {
 		use crate::ast::ast::Ast;
-		let tokens = tokenize("from users | filter age > 18\nsort name | take 10").unwrap();
+		let tokens = tokenize("OUTPUT FROM users; FROM orders").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 2);
+		assert!(result[0].is_output, "First statement should have is_output = true");
+		assert!(!result[1].is_output, "Second statement should have is_output = false");
+		assert!(matches!(result[0].nodes[0], Ast::From(_)));
+		assert!(matches!(result[1].nodes[0], Ast::From(_)));
+	}
+
+	#[test]
+	fn test_output_prefix_not_present() {
+		let tokens = tokenize("FROM users; FROM orders").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 2);
+		assert!(!result[0].is_output);
+		assert!(!result[1].is_output);
+	}
+
+	#[test]
+	fn test_output_prefix_multiple() {
+		let tokens = tokenize("OUTPUT FROM users; OUTPUT FROM products; FROM orders").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 3);
+		assert!(result[0].is_output);
+		assert!(result[1].is_output);
+		assert!(!result[2].is_output);
+	}
+
+	#[test]
+	fn test_mixed_pipe_and_newline() {
+		let tokens = tokenize("from users | filter {age > 18}\nsort {name} | take {10}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
 

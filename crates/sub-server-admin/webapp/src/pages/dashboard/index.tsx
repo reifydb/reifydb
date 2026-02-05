@@ -1,20 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Activity, Server, Database, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { REIFYDB_CONFIG } from '@/config'
 
 export function DashboardPage() {
   const [health, setHealth] = useState<any>(null)
   const [metrics, setMetrics] = useState<any>(null)
 
   useEffect(() => {
+    const apiUrl = REIFYDB_CONFIG.getApiUrl()
+
     // Fetch health status
-    fetch('/v1/health')
+    fetch(`${apiUrl}/v1/health`)
       .then(res => res.json())
       .then(data => setHealth(data))
       .catch(err => console.error('Health check failed:', err))
 
     // Fetch metrics
-    fetch('/v1/metrics')
+    fetch(`${apiUrl}/v1/metrics`)
       .then(res => res.json())
       .then(data => setMetrics(data))
       .catch(err => console.error('Metrics fetch failed:', err))

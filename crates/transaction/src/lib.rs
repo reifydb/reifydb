@@ -72,7 +72,10 @@ pub struct TransactionVersion;
 impl HasVersion for TransactionVersion {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "transaction".to_string(),
+			name: env!("CARGO_PKG_NAME")
+				.strip_prefix("reifydb-")
+				.unwrap_or(env!("CARGO_PKG_NAME"))
+				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Transaction management and concurrency control module".to_string(),
 			r#type: ComponentType::Module,

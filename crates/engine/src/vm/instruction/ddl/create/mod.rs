@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
+use reifydb_catalog::catalog::{Catalog, flow::FlowToCreate};
+use reifydb_core::interface::catalog::{
+	flow::FlowStatus,
+	subscription::{SubscriptionDef, subscription_flow_name, subscription_flow_namespace},
+	view::ViewDef,
+};
+use reifydb_rql::plan::physical::PhysicalPlan;
+use reifydb_transaction::transaction::admin::AdminTransaction;
+
+use crate::flow::compiler::{compile_flow, compile_subscription_flow};
+
+#[allow(dead_code)] // FIXME
+pub mod deferred;
+pub mod dictionary;
+pub mod flow;
+pub mod namespace;
+pub mod ringbuffer;
+pub mod subscription;
+pub mod table;
+#[allow(dead_code)] // FIXME
+pub mod transactional;
+
+/// Creates a flow for a deferred view.
+///
+/// The flow entry is created first to obtain a FlowId, then the flow nodes
+/// and edges are compiled and persisted with that same FlowId.
+pub(crate) fn create_deferred_view_flow(
+	catalog: &Catalog,
+	txn: &mut AdminTransaction,
+	view: &ViewDef,
+	plan: Box<PhysicalPlan>,
+) -> crate::Result<()> {
+	let flow_def = catalog.create_flow(
+		txn,
+		FlowToCreate {
+			fragment: None,
+			name: view.name.to_string(),
+			namespace: view.namespace,
+			status: FlowStatus::Active,
+		},
+	)?;
+
+	let _flow = compile_flow(catalog, txn, *plan, Some(view), flow_def.id)?;
+	Ok(())
+}
+
+/// Creates a flow for a subscription.
+///
+/// Since SubscriptionId == FlowId for subscription flows, we use the subscription ID
+/// directly as the flow ID, avoiding the O(n) find_flow_by_name check.
+pub(crate) fn create_subscription_flow(
+	catalog: &Catalog,
+	txn: &mut AdminTransaction,
+	subscription: &SubscriptionDef,
+	plan: PhysicalPlan,
+) -> crate::Result<()> {
+	use reifydb_core::interface::catalog::flow::FlowId;
+
+	// FlowId == SubscriptionId for subscription flows
+	let flow_id = FlowId(subscription.id.0);
+	let flow_def = catalog.create_flow_with_id(
+		txn,
+		flow_id,
+		FlowToCreate {
+			fragment: None,
+			name: subscription_flow_name(subscription.id),
+			namespace: subscription_flow_namespace(),
+			status: FlowStatus::Active,
+		},
+	)?;
+
+	let _flow = compile_subscription_flow(catalog, txn, plan, subscription, flow_def.id)?;
+	Ok(())
+}

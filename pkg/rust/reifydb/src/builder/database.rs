@@ -28,15 +28,14 @@ use reifydb_core::{
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine};
 use reifydb_function::{
-	math,
+	blob, math,
 	registry::{Functions, FunctionsBuilder},
-	series,
+	series, subscription, text,
 };
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_rql::RqlVersion;
-use reifydb_rqlv2::{self, compiler::Compiler};
 use reifydb_runtime::SharedRuntime;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
@@ -181,10 +180,7 @@ impl DatabaseBuilder {
 		Self::load_materialized_catalog(&multi, &single, &catalog)?;
 		Self::load_schema_registry(&multi, &single, &schema_registry)?;
 
-		// Create and register Compiler (requires SharedRuntime to be registered first)
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
-		let compiler = Compiler::new(catalog.clone());
-		self.ioc = self.ioc.register(compiler);
 
 		// Create and register CdcStore for CDC storage
 		let cdc_store = CdcStore::memory();
@@ -209,20 +205,35 @@ impl DatabaseBuilder {
 		// Register single store in IoC for engine to access
 		self.ioc = self.ioc.register(single_store);
 
-		let functions = if let Some(configurator) = self.functions_configurator {
-			let default_builder = Functions::builder()
-				.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
-				.register_aggregate("math::min", math::aggregate::min::Min::new)
-				.register_aggregate("math::max", math::aggregate::max::Max::new)
-				.register_aggregate("math::avg", math::aggregate::avg::Avg::new)
-				.register_aggregate("math::count", math::aggregate::count::Count::new)
-				.register_scalar("math::abs", math::scalar::abs::Abs::new)
-				.register_scalar("math::avg", math::scalar::avg::Avg::new)
-				.register_generator("generate_series", series::GenerateSeries::new);
+		let default_builder = Functions::builder()
+			.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
+			.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
+			.register_aggregate("math::min", math::aggregate::min::Min::new)
+			.register_aggregate("math::max", math::aggregate::max::Max::new)
+			.register_aggregate("math::avg", math::aggregate::avg::Avg::new)
+			.register_aggregate("math::count", math::aggregate::count::Count::new)
+			.register_scalar("blob::b58", blob::b58::BlobB58::new)
+			.register_scalar("blob::b64", blob::b64::BlobB64::new)
+			.register_scalar("blob::hex", blob::hex::BlobHex::new)
+			.register_scalar("math::abs", math::scalar::abs::Abs::new)
+			.register_scalar("math::avg", math::scalar::avg::Avg::new)
+			.register_scalar("math::max", math::scalar::max::Max::new)
+			.register_scalar("math::min", math::scalar::min::Min::new)
+			.register_scalar("math::round", math::scalar::round::Round::new)
+			.register_scalar("math::power", math::scalar::power::Power::new)
+			.register_scalar("text::length", text::length::TextLength::new)
+			.register_scalar("text::trim", text::trim::TextTrim::new)
+			.register_scalar("text::upper", text::upper::TextUpper::new)
+			.register_scalar("text::substring", text::substring::TextSubstring::new)
+			.register_scalar("text::format_bytes", text::format_bytes::FormatBytes::new)
+			.register_scalar("text::format_bytes_si", text::format_bytes::FormatBytesSi::new)
+			.register_generator("generate_series", series::GenerateSeries::new)
+			.register_generator("inspect_subscription", subscription::inspect::InspectSubscription::new);
 
-			Some(configurator(default_builder).build())
+		let functions = if let Some(configurator) = self.functions_configurator {
+			configurator(default_builder).build()
 		} else {
-			None
+			default_builder.build()
 		};
 
 		// Create engine before CDC worker (CDC worker needs engine for cleanup)

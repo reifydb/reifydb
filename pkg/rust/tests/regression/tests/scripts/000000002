@@ -3,8 +3,8 @@
 
 (admin 'create namespace test')
 (admin 'create table test.item{field: int1}')
-(command 'from [{field: -1 -2}] insert test.item')
-command 'from test.item map field'
+(command 'INSERT test.item [{field: -1 -2}]')
+command 'from test.item map {field}'
 ---
 > +----------+---------+
 > |  rownum  |  field  |

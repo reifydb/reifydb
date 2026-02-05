@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Play, History, FileCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { REIFYDB_CONFIG } from '@/config'
 
 export function QueryPage() {
   const [query, setQuery] = useState('')
@@ -11,7 +12,7 @@ export function QueryPage() {
   const executeQuery = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/v1/execute', {
+      const response = await fetch(`${REIFYDB_CONFIG.getApiUrl()}/v1/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

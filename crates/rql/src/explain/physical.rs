@@ -63,6 +63,21 @@ fn with_child_prefix<F: FnOnce(&str)>(prefix: &str, is_last: bool, f: F) {
 
 fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, output: &mut String) {
 	match plan {
+		PhysicalPlan::Loop(_) => {
+			output.push_str(&format!("{}Loop\n", prefix));
+		}
+		PhysicalPlan::While(_) => {
+			output.push_str(&format!("{}While\n", prefix));
+		}
+		PhysicalPlan::For(_) => {
+			output.push_str(&format!("{}For\n", prefix));
+		}
+		PhysicalPlan::Break => {
+			output.push_str(&format!("{}Break\n", prefix));
+		}
+		PhysicalPlan::Continue => {
+			output.push_str(&format!("{}Continue\n", prefix));
+		}
 		PhysicalPlan::CreateDeferredView(_) => unimplemented!(),
 		PhysicalPlan::CreateTransactionalView(_) => unimplemented!(),
 		PhysicalPlan::CreateNamespace(_) => unimplemented!(),
@@ -219,6 +234,22 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			let label = format!(
 				"Extend [{}]",
 				extend.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
+			);
+			write_node_header(output, prefix, is_last, &label);
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				if let Some(input) = input {
+					render_physical_plan_inner(input, child_prefix, true, output);
+				}
+			});
+		}
+
+		PhysicalPlan::Patch(physical::PatchNode {
+			assignments,
+			input,
+		}) => {
+			let label = format!(
+				"Patch [{}]",
+				assignments.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
 			);
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
@@ -575,6 +606,65 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 					"RowRangeScan (source: {}, range: {}..={})",
 					source_name, scan.start, scan.end
 				),
+			);
+		}
+
+		PhysicalPlan::DefineFunction(def) => {
+			let params: Vec<String> = def
+				.parameters
+				.iter()
+				.map(|p| {
+					if let Some(ref tc) = p.type_constraint {
+						format!("${}: {:?}", p.name.text(), tc)
+					} else {
+						format!("${}", p.name.text())
+					}
+				})
+				.collect();
+			let return_str = if let Some(ref rt) = def.return_type {
+				format!(" -> {:?}", rt)
+			} else {
+				String::new()
+			};
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("DefineFunction: {}[{}]{}", def.name.text(), params.join(", "), return_str),
+			);
+
+			// Render body
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			for (i, plan) in def.body.iter().enumerate() {
+				let is_last_plan = i == def.body.len() - 1;
+				render_physical_plan_inner(plan, &child_prefix, is_last_plan, output);
+			}
+		}
+
+		PhysicalPlan::Return(ret) => {
+			let value_str = if let Some(ref expr) = ret.value {
+				format!(" {}", expr)
+			} else {
+				String::new()
+			};
+			write_node_header(output, prefix, is_last, &format!("Return{}", value_str));
+		}
+
+		PhysicalPlan::CallFunction(call) => {
+			let args: Vec<String> = call.arguments.iter().map(|a| format!("{}", a)).collect();
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("CallFunction: {}({})", call.name.text(), args.join(", ")),
 			);
 		}
 	}

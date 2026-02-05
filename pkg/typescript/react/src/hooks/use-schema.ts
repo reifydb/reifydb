@@ -61,7 +61,7 @@ export function useSchema(): [boolean, TableInfo[], string | undefined] {
 
             try {
                 await query(
-                    `FROM system.namespaces; FROM system.tables; FROM system.views; FROM system.columns;`,
+                    `OUTPUT FROM system.namespaces; OUTPUT FROM system.tables; OUTPUT FROM system.views; FROM system.columns;`,
                     undefined,
                     [namespaceSchema, tableSchema, viewSchema, columnSchema]
                 );

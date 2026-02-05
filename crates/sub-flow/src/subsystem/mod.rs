@@ -77,7 +77,15 @@ impl FlowSubsystem {
 			let bus = event_bus.clone();
 			let clk = clock_for_factory.clone();
 
-			move || FlowEngine::new(cat, StandardColumnEvaluator::default(), exec, bus, clk)
+			move || {
+				FlowEngine::new(
+					cat,
+					StandardColumnEvaluator::new(exec.functions.clone()),
+					exec,
+					bus,
+					clk,
+				)
+			}
 		};
 
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
@@ -219,7 +227,10 @@ impl Subsystem for FlowSubsystem {
 impl HasVersion for FlowSubsystem {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "sub-flow".to_string(),
+			name: env!("CARGO_PKG_NAME")
+				.strip_prefix("reifydb-")
+				.unwrap_or(env!("CARGO_PKG_NAME"))
+				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Data flow and stream processing subsystem".to_string(),
 			r#type: ComponentType::Subsystem,

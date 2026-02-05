@@ -68,7 +68,7 @@ take 3"#,
 
 	db.command_as_root(
 		r#"
-		from [
+		INSERT demo.events [
 			{ id: 1, event_type: "ERROR", timestamp: 1000, severity: "HIGH", message: "Database connection failed" },
 			{ id: 2, event_type: "INFO", timestamp: 1001, severity: "LOW", message: "User logged in" },
 			{ id: 3, event_type: "WARNING", timestamp: 1002, severity: "MEDIUM", message: "Memory usage high" },
@@ -80,7 +80,6 @@ take 3"#,
 			{ id: 9, event_type: "ERROR", timestamp: 1008, severity: "HIGH", message: "Authentication failed" },
 			{ id: 10, event_type: "INFO", timestamp: 1009, severity: "LOW", message: "Service started" }
 		]
-		insert demo.events
 		"#,
 		Params::None,
 	)
@@ -127,14 +126,14 @@ take 2"#,
 	info!("\nExample 4: Get 3 most recent events (sort by timestamp desc, take 3)");
 	log_query(
 		r#"from demo.events
-sort timestamp desc
+sort {timestamp desc}
 take 3"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from demo.events
-			sort timestamp desc
+			sort {timestamp desc}
 			take 3
 			"#,
 			Params::None,
@@ -170,7 +169,7 @@ take 4"#,
 	log_query(
 		r#"from demo.events
 filter severity == "HIGH" or severity == "CRITICAL"
-sort timestamp desc
+sort {timestamp desc}
 map { id, event_type, severity, message }
 take 3"#,
 	);
@@ -179,7 +178,7 @@ take 3"#,
 			r#"
 			from demo.events
 			filter severity == "HIGH" or severity == "CRITICAL"
-			sort timestamp desc
+			sort {timestamp desc}
 			map { id, event_type, severity, message }
 			take 3
 			"#,

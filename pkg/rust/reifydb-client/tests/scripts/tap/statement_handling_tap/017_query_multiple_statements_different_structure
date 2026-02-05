@@ -1,7 +1,7 @@
 # Generated from: statement_handling.tap.md#query_multiple_statements_different_structure
 # Test: Query with multiple statements different structure
 
-query 'MAP 1 as result;MAP { 2 as a, 3 as b };MAP "ReifyDB" as result;'
+query 'OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };OUTPUT MAP {result: "ReifyDB"}'
 ---
 > +----------+
 > |  result  |

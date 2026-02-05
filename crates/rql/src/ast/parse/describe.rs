@@ -30,7 +30,7 @@ pub mod tests {
 
 	#[test]
 	fn describe_query() {
-		let tokens = tokenize("describe { map cast(9924, int8) }").unwrap();
+		let tokens = tokenize("describe { map {cast(9924, int8)} }").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

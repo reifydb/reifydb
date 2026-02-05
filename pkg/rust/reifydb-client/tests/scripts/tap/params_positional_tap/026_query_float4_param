@@ -1,7 +1,7 @@
 # Generated from: params_positional.tap.md#float4_param
 # Test: Query with positional FLOAT4 parameter
 
-query_positional 'MAP $1 as result' '3.14'
+query_positional 'MAP {result: $1}' '3.14'
 ---
 > +----------+
 > |  result  |

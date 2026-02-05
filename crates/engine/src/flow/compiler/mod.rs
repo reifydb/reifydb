@@ -240,7 +240,8 @@ impl FlowCompiler {
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::UpdateRingBuffer(_)
 			| PhysicalPlan::Delete(_)
-			| PhysicalPlan::DeleteRingBuffer(_) => {
+			| PhysicalPlan::DeleteRingBuffer(_)
+			| PhysicalPlan::Patch(_) => {
 				unreachable!()
 			}
 			PhysicalPlan::FlowScan(flow_scan) => FlowScanCompiler::from(flow_scan).compile(self, txn),
@@ -300,6 +301,18 @@ impl FlowCompiler {
 			PhysicalPlan::DictionaryScan(_) => {
 				// TODO: Implement DictionaryScan for flow graphs
 				unimplemented!("DictionaryScan compilation not yet implemented for flow")
+			}
+
+			PhysicalPlan::Loop(_)
+			| PhysicalPlan::While(_)
+			| PhysicalPlan::For(_)
+			| PhysicalPlan::Break
+			| PhysicalPlan::Continue => {
+				unimplemented!("Loop constructs are not supported in flow compilation")
+			}
+
+			PhysicalPlan::DefineFunction(_) | PhysicalPlan::Return(_) | PhysicalPlan::CallFunction(_) => {
+				unimplemented!("User-defined functions are not supported in flow compilation")
 			}
 		}
 	}

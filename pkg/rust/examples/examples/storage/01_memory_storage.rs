@@ -54,23 +54,21 @@ fn main() {
 	// Insert data
 	info!("Inserting data...");
 	log_query(
-		r#"from [
+		r#"INSERT app.users [
   { id: 1, name: "Alice", email: "alice@example.com", active: true },
   { id: 2, name: "Bob", email: "bob@example.com", active: false },
   { id: 3, name: "Charlie", email: "charlie@example.com", active: true }
-]
-insert app.users"#,
+]"#,
 	);
 
 	let result = db
 		.command_as_root(
 			r#"
-		from [
+		INSERT app.users [
 			{ id: 1, name: "Alice", email: "alice@example.com", active: true },
 			{ id: 2, name: "Bob", email: "bob@example.com", active: false },
 			{ id: 3, name: "Charlie", email: "charlie@example.com", active: true }
 		]
-		insert app.users
 		"#,
 			Params::None,
 		)
@@ -98,16 +96,12 @@ insert app.users"#,
 
 	// Add more data
 	info!("\nAdding another user:");
-	log_query(
-		r#"from [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]
-insert app.users"#,
-	);
+	log_query(r#"INSERT app.users [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]"#);
 
 	let result = db
 		.command_as_root(
 			r#"
-		from [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]
-		insert app.users
+		INSERT app.users [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]
 		"#,
 			Params::None,
 		)

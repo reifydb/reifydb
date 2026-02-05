@@ -2,19 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::Column;
-use reifydb_function::{
-	blob::{b58::BlobB58, b64::BlobB64, b64url::BlobB64url, hex::BlobHex, utf8::BlobUtf8},
-	flow::to_json::FlowNodeToJson,
-	math::scalar::{abs::Abs, avg::Avg, max::Max, min::Min, power::Power, round::Round},
-	registry::Functions,
-	text::{
-		format_bytes::{FormatBytes, FormatBytesSi},
-		length::TextLength,
-		substring::TextSubstring,
-		trim::TextTrim,
-		upper::TextUpper,
-	},
-};
+use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 
 use crate::evaluate::ColumnEvaluationContext;
@@ -41,29 +29,10 @@ pub struct StandardColumnEvaluator {
 	functions: Functions,
 }
 
-impl Default for StandardColumnEvaluator {
-	fn default() -> Self {
+impl StandardColumnEvaluator {
+	pub fn new(functions: Functions) -> Self {
 		Self {
-			functions: Functions::builder()
-				.register_scalar("math::abs", Abs::new)
-				.register_scalar("math::avg", Avg::new)
-				.register_scalar("math::max", Max::new)
-				.register_scalar("math::min", Min::new)
-				.register_scalar("math::power", Power::new)
-				.register_scalar("math::round", Round::new)
-				.register_scalar("blob::hex", BlobHex::new)
-				.register_scalar("blob::b58", BlobB58::new)
-				.register_scalar("blob::b64", BlobB64::new)
-				.register_scalar("blob::b64url", BlobB64url::new)
-				.register_scalar("blob::utf8", BlobUtf8::new)
-				.register_scalar("flow_node::to_json", FlowNodeToJson::new)
-				.register_scalar("text::trim", TextTrim::new)
-				.register_scalar("text::upper", TextUpper::new)
-				.register_scalar("text::substring", TextSubstring::new)
-				.register_scalar("text::length", TextLength::new)
-				.register_scalar("text::format_bytes", FormatBytes::new)
-				.register_scalar("text::format_bytes_si", FormatBytesSi::new)
-				.build(),
+			functions,
 		}
 	}
 }
@@ -103,31 +72,19 @@ impl StandardColumnEvaluator {
 			expr => unimplemented!("{expr:?}"),
 		}
 	}
+
+	pub fn evaluate_multi(&self, ctx: &ColumnEvaluationContext, expr: &Expression) -> crate::Result<Vec<Column>> {
+		match expr {
+			Expression::Map(map_expr) => self.map_expr_multi(ctx, map_expr),
+			Expression::Extend(extend_expr) => self.extend_expr_multi(ctx, extend_expr),
+			Expression::If(if_expr) => self.if_expr_multi(ctx, if_expr),
+			_ => Ok(vec![self.evaluate(ctx, expr)?]),
+		}
+	}
 }
 
-pub fn evaluate(ctx: &ColumnEvaluationContext, expr: &Expression) -> crate::Result<Column> {
-	let evaluator = StandardColumnEvaluator {
-		functions: Functions::builder()
-			.register_scalar("math::abs", Abs::new)
-			.register_scalar("math::avg", Avg::new)
-			.register_scalar("math::max", Max::new)
-			.register_scalar("math::min", Min::new)
-			.register_scalar("math::power", Power::new)
-			.register_scalar("math::round", Round::new)
-			.register_scalar("blob::hex", BlobHex::new)
-			.register_scalar("blob::b58", BlobB58::new)
-			.register_scalar("blob::b64", BlobB64::new)
-			.register_scalar("blob::b64url", BlobB64url::new)
-			.register_scalar("blob::utf8", BlobUtf8::new)
-			.register_scalar("flow_node::to_json", FlowNodeToJson::new)
-			.register_scalar("text::trim", TextTrim::new)
-			.register_scalar("text::upper", TextUpper::new)
-			.register_scalar("text::substring", TextSubstring::new)
-			.register_scalar("text::length", TextLength::new)
-			.register_scalar("text::format_bytes", FormatBytes::new)
-			.register_scalar("text::format_bytes_si", FormatBytesSi::new)
-			.build(),
-	};
+pub fn evaluate(ctx: &ColumnEvaluationContext, expr: &Expression, functions: &Functions) -> crate::Result<Column> {
+	let evaluator = StandardColumnEvaluator::new(functions.clone());
 
 	// Ensures that result column data type matches the expected target
 	// column type

@@ -1,7 +1,7 @@
 # Generated from: params_named.tap.md#int2_param
 # Test: Named parameter with INT2 type
 
-command_named 'MAP $int2_val as result' 'int2_val=1234'
+command_named 'MAP {result: $int2_val}' 'int2_val=1234'
 ---
 > +----------+
 > |  result  |

@@ -1,0 +1,43 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2025 ReifyDB */
+
+/* Fullscreen mode */
+.reifydb-shell-fullscreen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  background: #1e1e2e !important;
+}
+
+/* xterm.js container styling */
+.xterm {
+  padding: 12px;
+}
+
+.xterm-viewport {
+  /* Hide scrollbar but keep scrolling functional */
+  scrollbar-width: thin;
+  scrollbar-color: #45475a #1e1e2e;
+}
+
+.xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.xterm-viewport::-webkit-scrollbar-track {
+  background: #1e1e2e;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: #45475a;
+  border-radius: 4px;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: #585b70;
+}

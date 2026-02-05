@@ -143,31 +143,23 @@ impl TestContext {
 		Ok(sub_id)
 	}
 
-	/// Insert rows using RQL: `from [{row1}, {row2}] insert test.table`
+	/// Insert rows using RQL: `INSERT test.table [{row1}, {row2}]`
 	pub async fn insert(&self, table: &str, rows: &str) -> Result<(), Box<dyn Error>> {
-		self.client.command(&format!("from [{}] insert test.{}", rows, table), None).await?;
+		self.client.command(&format!("INSERT test.{} [{}]", table, rows), None).await?;
 		Ok(())
 	}
 
-	/// Update rows: `from test.table filter {cond} map {new_vals} update test.table`
+	/// Update rows: `UPDATE test.table { new_vals } FILTER {cond}`
 	pub async fn update(&self, table: &str, filter: &str, map: &str) -> Result<(), Box<dyn Error>> {
 		self.client
-			.command(
-				&format!(
-					"from test.{} filter {{ {} }} map {{ {} }} update test.{}",
-					table, filter, map, table
-				),
-				None,
-			)
+			.command(&format!("UPDATE test.{} {{ {} }} FILTER {{{}}}", table, map, filter), None)
 			.await?;
 		Ok(())
 	}
 
-	/// Delete rows: `from test.table filter {cond} delete test.table`
+	/// Delete rows: `DELETE test.table FILTER {cond}`
 	pub async fn delete(&self, table: &str, filter: &str) -> Result<(), Box<dyn Error>> {
-		self.client
-			.command(&format!("from test.{} filter {{ {} }} delete test.{}", table, filter, table), None)
-			.await?;
+		self.client.command(&format!("DELETE test.{} FILTER {{{}}}", table, filter), None).await?;
 		Ok(())
 	}
 

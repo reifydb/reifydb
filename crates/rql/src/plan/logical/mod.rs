@@ -3,6 +3,7 @@
 
 pub mod alter;
 pub mod create;
+pub mod function;
 pub mod mutate;
 pub mod query;
 pub mod resolver;
@@ -94,190 +95,7 @@ impl Compiler {
 		let has_pipes = ast.has_pipes;
 		let ast_vec = ast.nodes; // Extract the inner Vec
 
-		// Check if this is a pipeline ending with UPDATE or DELETE
-		let is_update_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::Update(_)));
-		let is_delete_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::Delete(_)));
-
-		if is_update_pipeline || is_delete_pipeline {
-			// Build pipeline: compile all nodes except the last one
-			// into a pipeline
-			let mut pipeline_nodes = Vec::new();
-
-			for (i, node) in ast_vec.into_iter().enumerate() {
-				if i == ast_len - 1 {
-					// Last operator is UPDATE or DELETE
-					match node {
-						Ast::Update(update_ast) => {
-							// Build the pipeline as
-							// input to update
-							let input = if !pipeline_nodes.is_empty() {
-								Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
-							} else {
-								None
-							};
-
-							// If target is None, we can't determine table vs ring buffer
-							let Some(unresolved) = &update_ast.target else {
-								return Ok(vec![LogicalPlan::Update(
-									UpdateTableNode {
-										target: None,
-										input,
-									},
-								)]);
-							};
-
-							// Check if target is a table or ring buffer
-							use crate::ast::identifier::{
-								MaybeQualifiedRingBufferIdentifier,
-								MaybeQualifiedTableIdentifier,
-							};
-
-							// Check in the catalog whether the target is a table or ring
-							// buffer
-							let namespace_name = unresolved
-								.namespace
-								.as_ref()
-								.map(|n| n.text())
-								.unwrap_or("default");
-							let target_name = unresolved.name.text();
-
-							// Try to find namespace
-							if let Some(ns) = self
-								.catalog
-								.find_namespace_by_name(tx, namespace_name)?
-							{
-								let namespace_id = ns.id;
-
-								// Check if it's a ring buffer first
-								if self.catalog
-									.find_ringbuffer_by_name(
-										tx,
-										namespace_id,
-										target_name,
-									)?
-									.is_some()
-								{
-									let mut target =
-										MaybeQualifiedRingBufferIdentifier::new(
-											unresolved.name.clone(),
-										);
-									if let Some(ns) = unresolved.namespace.clone() {
-										target = target.with_namespace(ns);
-									}
-									return Ok(vec![
-										LogicalPlan::UpdateRingBuffer(
-											UpdateRingBufferNode {
-												target,
-												input,
-											},
-										),
-									]);
-								}
-							}
-
-							// Default to table update
-							let mut target = MaybeQualifiedTableIdentifier::new(
-								unresolved.name.clone(),
-							);
-							if let Some(ns) = unresolved.namespace.clone() {
-								target = target.with_namespace(ns);
-							}
-							return Ok(vec![LogicalPlan::Update(UpdateTableNode {
-								target: Some(target),
-								input,
-							})]);
-						}
-						Ast::Delete(delete_ast) => {
-							// Build the pipeline as
-							// input to delete
-							let input = if !pipeline_nodes.is_empty() {
-								Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
-							} else {
-								None
-							};
-
-							// Check if target is a table or ring buffer
-							if let Some(unresolved) = &delete_ast.target {
-								use crate::ast::identifier::{
-									MaybeQualifiedRingBufferIdentifier,
-									MaybeQualifiedTableIdentifier,
-								};
-
-								// Check in the catalog whether the target is a table or
-								// ring buffer
-								let namespace_name = unresolved
-									.namespace
-									.as_ref()
-									.map(|n| n.text())
-									.unwrap_or("default");
-								let target_name = unresolved.name.text();
-
-								// Try to find namespace
-								if let Some(ns) = self
-									.catalog
-									.find_namespace_by_name(tx, namespace_name)?
-								{
-									let namespace_id = ns.id;
-
-									// Check if it's a ring buffer first
-									if self.catalog
-										.find_ringbuffer_by_name(
-											tx,
-											namespace_id,
-											target_name,
-										)?
-										.is_some()
-									{
-										let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved.name.clone());
-										if let Some(ns) =
-											unresolved.namespace.clone()
-										{
-											target = target
-												.with_namespace(ns);
-										}
-										return Ok(vec![
-											LogicalPlan::DeleteRingBuffer(
-												DeleteRingBufferNode {
-													target,
-													input,
-												},
-											),
-										]);
-									}
-								}
-
-								// Default to table delete
-								let mut target = MaybeQualifiedTableIdentifier::new(
-									unresolved.name.clone(),
-								);
-								if let Some(ns) = unresolved.namespace.clone() {
-									target = target.with_namespace(ns);
-								}
-								return Ok(vec![LogicalPlan::DeleteTable(
-									DeleteTableNode {
-										target: Some(target),
-										input,
-									},
-								)]);
-							} else {
-								// No target specified - use DeleteTable with None
-								return Ok(vec![LogicalPlan::DeleteTable(
-									DeleteTableNode {
-										target: None,
-										input,
-									},
-								)]);
-							}
-						}
-						_ => unreachable!(),
-					}
-				} else {
-					// Add to pipeline
-					pipeline_nodes.push(self.compile_single(node, tx)?);
-				}
-			}
-			unreachable!("Pipeline should have been handled above");
-		}
+		// Note: UPDATE and DELETE no longer use pipeline syntax - they have self-contained syntax
 
 		// Check if this is a piped query that should be wrapped in
 		// Pipeline
@@ -309,6 +127,11 @@ impl Compiler {
 			Ast::Insert(node) => self.compile_insert(node, tx),
 			Ast::Update(node) => self.compile_update(node, tx),
 			Ast::If(node) => self.compile_if(node, tx),
+			Ast::Loop(node) => self.compile_loop(node, tx),
+			Ast::While(node) => self.compile_while(node, tx),
+			Ast::For(node) => self.compile_for(node, tx),
+			Ast::Break(_) => Ok(LogicalPlan::Break),
+			Ast::Continue(_) => Ok(LogicalPlan::Continue),
 			Ast::Let(node) => self.compile_let(node, tx),
 			Ast::StatementExpression(node) => {
 				// Compile the inner expression and wrap it in a MAP
@@ -373,10 +196,27 @@ impl Compiler {
 				return_error!(unsupported_ast_node(id.token.fragment.clone(), "standalone identifier"))
 			}
 			// Auto-wrap scalar expressions into MAP constructs
-			Ast::Literal(_) | Ast::Variable(_) | Ast::CallFunction(_) => {
+			Ast::Literal(_) | Ast::Variable(_) => {
 				let wrapped_map = Self::wrap_scalar_in_map(node);
 				self.compile_map(wrapped_map)
 			}
+			// Function calls: check if it's potentially a user-defined function
+			Ast::CallFunction(ref call_node) => {
+				// If no namespaces, treat as potential user-defined function call
+				if call_node.function.namespaces.is_empty() {
+					self.compile_call_function(call_node.clone())
+				} else {
+					// Namespaced function calls are always built-in functions
+					let wrapped_map = Self::wrap_scalar_in_map(node);
+					self.compile_map(wrapped_map)
+				}
+			}
+			Ast::Block(_) => {
+				// Blocks are handled by their parent constructs (IF, LOOP, etc.)
+				return_error!(unsupported_ast_node(node.token().fragment.clone(), "standalone block"))
+			}
+			Ast::DefFunction(node) => self.compile_def_function(node, tx),
+			Ast::Return(node) => self.compile_return(node),
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
@@ -458,20 +298,6 @@ impl Compiler {
 			}
 		}
 	}
-
-	fn build_pipeline(plans: Vec<LogicalPlan>) -> crate::Result<LogicalPlan> {
-		// The pipeline should be properly structured with inputs
-		// For now, we'll wrap them in a special Pipeline plan
-		// that the physical compiler can handle
-		if plans.is_empty() {
-			panic!("Empty pipeline");
-		}
-
-		// Return a Pipeline logical plan that contains all the steps
-		Ok(LogicalPlan::Pipeline(PipelineNode {
-			steps: plans,
-		}))
-	}
 }
 
 #[derive(Debug)]
@@ -504,6 +330,11 @@ pub enum LogicalPlan {
 	Assign(AssignNode),
 	// Control flow
 	Conditional(ConditionalNode),
+	Loop(LoopNode),
+	While(WhileNode),
+	For(ForNode),
+	Break,
+	Continue,
 	// Query
 	Aggregate(AggregateNode),
 	Distinct(DistinctNode),
@@ -516,6 +347,7 @@ pub enum LogicalPlan {
 	Order(OrderNode),
 	Map(MapNode),
 	Extend(ExtendNode),
+	Patch(PatchNode),
 	Apply(ApplyNode),
 	InlineData(InlineDataNode),
 	PrimitiveScan(PrimitiveScanNode),
@@ -527,6 +359,10 @@ pub enum LogicalPlan {
 	Scalarize(ScalarizeNode),
 	// Pipeline wrapper for piped operations
 	Pipeline(PipelineNode),
+	// User-defined functions
+	DefineFunction(function::DefineFunctionNode),
+	Return(function::ReturnNode),
+	CallFunction(function::CallFunctionNode),
 }
 
 #[derive(Debug)]
@@ -594,6 +430,24 @@ pub struct ConditionalNode {
 pub struct ElseIfBranch {
 	pub condition: Expression,
 	pub then_branch: Box<LogicalPlan>,
+}
+
+#[derive(Debug)]
+pub struct LoopNode {
+	pub body: Vec<Vec<LogicalPlan>>,
+}
+
+#[derive(Debug)]
+pub struct WhileNode {
+	pub condition: Expression,
+	pub body: Vec<Vec<LogicalPlan>>,
+}
+
+#[derive(Debug)]
+pub struct ForNode {
+	pub variable_name: Fragment,
+	pub iterable: Vec<LogicalPlan>,
+	pub body: Vec<Vec<LogicalPlan>>,
 }
 
 #[derive(Debug, Clone)]
@@ -712,16 +566,19 @@ pub struct DeleteRingBufferNode {
 #[derive(Debug)]
 pub struct InsertTableNode {
 	pub target: MaybeQualifiedTableIdentifier,
+	pub source: Box<LogicalPlan>,
 }
 
 #[derive(Debug)]
 pub struct InsertRingBufferNode {
 	pub target: MaybeQualifiedRingBufferIdentifier,
+	pub source: Box<LogicalPlan>,
 }
 
 #[derive(Debug)]
 pub struct InsertDictionaryNode {
 	pub target: MaybeQualifiedDictionaryIdentifier,
+	pub source: Box<LogicalPlan>,
 }
 
 #[derive(Debug)]
@@ -796,6 +653,11 @@ pub struct MapNode {
 #[derive(Debug)]
 pub struct ExtendNode {
 	pub extend: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct PatchNode {
+	pub assignments: Vec<Expression>,
 }
 
 #[derive(Debug)]

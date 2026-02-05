@@ -325,3 +325,352 @@ pub fn window_missing_type_or_size(fragment: Fragment) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+/// UPDATE missing assignments block error
+pub fn update_missing_assignments_block(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "UPDATE_001".to_string(),
+		statement: None,
+		message: "UPDATE requires an assignments block".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing assignments block".to_string()),
+		help: Some(
+			"Specify the fields to update in curly braces, e.g., 'UPDATE users { name: 'alice' } FILTER id == 1'"
+				.to_string(),
+		),
+		notes: vec![
+			"The assignments block specifies which columns to update and their new values".to_string(),
+			"Use colon syntax for assignments: { column: value, ... }".to_string(),
+			"Example: UPDATE users { name: 'alice', age: 30 } FILTER id == 1".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// UPDATE empty assignments block error
+pub fn update_empty_assignments_block(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "UPDATE_002".to_string(),
+		statement: None,
+		message: "UPDATE assignments block cannot be empty".to_string(),
+		column: None,
+		fragment,
+		label: Some("empty assignments block".to_string()),
+		help: Some(
+			"Specify at least one field to update, e.g., 'UPDATE users { name: 'alice' } FILTER id == 1'"
+				.to_string(),
+		),
+		notes: vec![
+			"At least one column must be specified for update".to_string(),
+			"Example: UPDATE users { name: 'alice', age: 30 } FILTER id == 1".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// UPDATE missing FILTER clause error
+pub fn update_missing_filter_clause(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "UPDATE_003".to_string(),
+		statement: None,
+		message: "UPDATE requires a FILTER clause".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing FILTER clause".to_string()),
+		help: Some(
+			"Add a FILTER clause to specify which rows to update, e.g., 'UPDATE users { name: 'alice' } FILTER id == 1'"
+				.to_string(),
+		),
+		notes: vec![
+			"The FILTER clause is required to prevent accidental mass updates".to_string(),
+			"It specifies the condition for selecting rows to update".to_string(),
+			"Example: UPDATE users { name: 'alice' } FILTER id == 1".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// DELETE missing target error
+pub fn delete_missing_target(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "DELETE_001".to_string(),
+		statement: None,
+		message: "DELETE requires a target table".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing target table".to_string()),
+		help: Some("Specify the table to delete from, e.g., 'DELETE users FILTER id == 1'".to_string()),
+		notes: vec![
+			"The target table specifies which table to delete rows from".to_string(),
+			"Example: DELETE users FILTER id == 1".to_string(),
+			"Example with namespace: DELETE test.users FILTER id == 1".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// DELETE missing FILTER clause error
+pub fn delete_missing_filter_clause(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "DELETE_002".to_string(),
+		statement: None,
+		message: "DELETE requires a FILTER clause".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing FILTER clause".to_string()),
+		help: Some("Add a FILTER clause to specify which rows to delete, e.g., 'DELETE users FILTER id == 1'"
+			.to_string()),
+		notes: vec![
+			"The FILTER clause is required to prevent accidental mass deletes".to_string(),
+			"It specifies the condition for selecting rows to delete".to_string(),
+			"Example: DELETE users FILTER id == 1".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// INSERT missing target error
+pub fn insert_missing_target(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "INSERT_001".to_string(),
+		statement: None,
+		message: "INSERT requires a target table".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing target table".to_string()),
+		help: Some("Specify the table to insert into, e.g., 'INSERT users [{ id: 1, name: \"Alice\" }]'"
+			.to_string()),
+		notes: vec![
+			"The target table specifies where to insert the data".to_string(),
+			"Example: INSERT users [{ id: 1, name: \"Alice\" }]".to_string(),
+			"Example with namespace: INSERT test.users [{ id: 1, name: \"Alice\" }]".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// INSERT missing data source error
+pub fn insert_missing_source(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "INSERT_002".to_string(),
+		statement: None,
+		message: "INSERT requires a data source".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing data source".to_string()),
+		help: Some("Specify the data to insert, e.g., 'INSERT users [{ id: 1, name: \"Alice\" }]'".to_string()),
+		notes: vec![
+			"Use inline array directly: INSERT users [{ id: 1 }, { id: 2 }]".to_string(),
+			"Use variable directly: INSERT users $data".to_string(),
+			"Use FROM for table sources: INSERT target_table FROM source_table".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// SORT missing braces error
+pub fn sort_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "SORT_001".to_string(),
+		statement: None,
+		message: "SORT requires curly braces around columns".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some("Wrap SORT columns in curly braces, e.g., 'SORT {name}' or 'SORT {name ASC, age DESC}'"
+			.to_string()),
+		notes: vec![
+			"SORT always requires curly braces: SORT {column}".to_string(),
+			"Multiple columns: SORT {col1 ASC, col2 DESC}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// MAP missing braces error
+pub fn map_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "MAP_002".to_string(),
+		statement: None,
+		message: "MAP requires curly braces around expressions".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some("Wrap MAP expressions in curly braces, e.g., 'MAP {name}' or 'MAP {name, age}'".to_string()),
+		notes: vec![
+			"MAP always requires curly braces: MAP {expression}".to_string(),
+			"Multiple expressions: MAP {expr1, expr2}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// SELECT missing braces error
+pub fn select_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "SELECT_002".to_string(),
+		statement: None,
+		message: "SELECT requires curly braces around expressions".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some("Wrap SELECT expressions in curly braces, e.g., 'SELECT {name}' or 'SELECT {name, age}'"
+			.to_string()),
+		notes: vec![
+			"SELECT always requires curly braces: SELECT {expression}".to_string(),
+			"Multiple expressions: SELECT {expr1, expr2}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// FILTER missing braces error
+pub fn filter_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "FILTER_001".to_string(),
+		statement: None,
+		message: "FILTER requires curly braces around the condition".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some("Wrap FILTER condition in curly braces, e.g., 'FILTER {price > 100}'".to_string()),
+		notes: vec![
+			"FILTER always requires curly braces: FILTER {condition}".to_string(),
+			"Example: FILTER {active == true AND price > 100}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// EXTEND missing braces error
+pub fn extend_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "EXTEND_002".to_string(),
+		statement: None,
+		message: "EXTEND requires curly braces around expressions".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some("Wrap EXTEND expressions in curly braces, e.g., 'EXTEND {total: price * qty}'".to_string()),
+		notes: vec![
+			"EXTEND always requires curly braces: EXTEND {expression}".to_string(),
+			"Multiple expressions: EXTEND {expr1, expr2}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// DISTINCT missing braces error
+pub fn distinct_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "DISTINCT_002".to_string(),
+		statement: None,
+		message: "DISTINCT requires curly braces around columns".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some(
+			"Wrap DISTINCT columns in curly braces, e.g., 'DISTINCT {}' or 'DISTINCT {name}'".to_string()
+		),
+		notes: vec![
+			"DISTINCT always requires curly braces: DISTINCT {columns}".to_string(),
+			"For all columns distinct: DISTINCT {}".to_string(),
+			"Multiple columns: DISTINCT {col1, col2}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// APPLY missing braces error
+pub fn apply_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "APPLY_002".to_string(),
+		statement: None,
+		message: "APPLY requires curly braces around arguments".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some("Wrap APPLY arguments in curly braces, e.g., 'APPLY running_sum {value}'".to_string()),
+		notes: vec![
+			"APPLY always requires curly braces: APPLY operator {arguments}".to_string(),
+			"No arguments: APPLY counter {}".to_string(),
+			"Multiple arguments: APPLY op {arg1, arg2}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// TAKE missing braces error
+pub fn take_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "TAKE_002".to_string(),
+		statement: None,
+		message: "TAKE requires curly braces around the limit".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some("Wrap TAKE limit in curly braces, e.g., 'TAKE {10}' or 'TAKE {}'".to_string()),
+		notes: vec![
+			"TAKE always requires curly braces: TAKE {limit}".to_string(),
+			"Unlimited: TAKE {}".to_string(),
+			"Limited: TAKE {100}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// AGGREGATE missing braces error for projections
+pub fn aggregate_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "AGGREGATE_004".to_string(),
+		statement: None,
+		message: "AGGREGATE requires curly braces around aggregation expressions".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some("Wrap aggregation expressions in curly braces, e.g., 'AGGREGATE {count(id)} BY {name}'"
+			.to_string()),
+		notes: vec![
+			"AGGREGATE always requires curly braces: AGGREGATE {expressions} BY {columns}".to_string(),
+			"Example: AGGREGATE {sum(amount), avg(price)} BY {category}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// AGGREGATE BY missing braces error
+pub fn aggregate_by_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "AGGREGATE_005".to_string(),
+		statement: None,
+		message: "AGGREGATE BY requires curly braces around grouping columns".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some("Wrap BY columns in curly braces, e.g., 'AGGREGATE {count(id)} BY {name}'".to_string()),
+		notes: vec![
+			"AGGREGATE BY always requires curly braces: BY {columns}".to_string(),
+			"Global aggregation (no grouping): BY {}".to_string(),
+			"Multiple columns: BY {col1, col2}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}

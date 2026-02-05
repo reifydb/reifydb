@@ -89,7 +89,7 @@ describe('Schema Type Conversion', () => {
             });
 
             const result = await wsClient.admin(
-                "MAP { 'test' as str_val, 42 as int_val, true as bool_val, 3.14 as float_val }",
+                "MAP { str_val: 'test', int_val: 42, bool_val: true, float_val: 3.14 }",
                 null,
                 [schema]
             );
@@ -120,7 +120,7 @@ describe('Schema Type Conversion', () => {
             });
 
             const result = await wsClient.admin(
-                "MAP { 9223372036854775807 as big_val, 1 as another_val }",
+                "MAP { big_val: 9223372036854775807, another_val: 1 }",
                 null,
                 [schema]
             );
@@ -147,7 +147,7 @@ describe('Schema Type Conversion', () => {
             });
 
             const result = await wsClient.admin(
-                "MAP { 'test' as name, 42 as count }",
+                "MAP { name: 'test', count: 42 }",
                 null,
                 [valueSchema]
             );

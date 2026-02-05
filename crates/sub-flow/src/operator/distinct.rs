@@ -15,8 +15,9 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
-	stack::Stack,
+	vm::stack::SymbolTable,
 };
+use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_type::{
@@ -37,7 +38,7 @@ use crate::{
 };
 
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
 /// Layout information shared across all rows
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,13 +174,18 @@ pub struct DistinctOperator {
 }
 
 impl DistinctOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
+	pub fn new(
+		parent: Arc<Operators>,
+		node: FlowNodeId,
+		expressions: Vec<Expression>,
+		functions: Functions,
+	) -> Self {
 		Self {
 			parent,
 			node,
 			expressions,
 			schema: Schema::testing(&[Type::Blob]),
-			column_evaluator: StandardColumnEvaluator::default(),
+			column_evaluator: StandardColumnEvaluator::new(functions),
 		}
 	}
 
@@ -210,7 +216,7 @@ impl DistinctOperator {
 				row_count,
 				take: None,
 				params: &EMPTY_PARAMS,
-				stack: &EMPTY_STACK,
+				symbol_table: &EMPTY_SYMBOL_TABLE,
 				is_aggregate_context: false,
 			};
 

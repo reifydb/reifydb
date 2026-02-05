@@ -1,16 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{error::diagnostic::ast::unexpected_token_error, fragment::Fragment};
+use reifydb_type::error::diagnostic::ast::unexpected_token_error;
 
 use crate::ast::{
-	ast::{Ast, AstElseIf, AstIf, AstLiteral, AstLiteralUndefined},
+	ast::{AstElseIf, AstIf},
 	parse::{Parser, Precedence},
-	tokenize::{
-		keyword::Keyword,
-		operator::Operator,
-		token::{Literal, Token, TokenKind},
-	},
+	tokenize::keyword::Keyword,
 };
 
 impl Parser {
@@ -29,38 +25,8 @@ impl Parser {
 		// Parse condition expression
 		let condition = Box::new(self.parse_node(Precedence::None)?);
 
-		// Expect opening brace '{'
-		if !self.current()?.is_operator(Operator::OpenCurly) {
-			return Err(reifydb_type::error::Error(unexpected_token_error(
-				"expected '{' after if condition",
-				self.current()?.fragment.clone(),
-			)));
-		}
-
-		// Parse the then block - should be a single expression inside {}
-		self.advance()?; // consume '{'
-
-		// Check if the block is empty (next token is '}')
-		let then_expr = if self.current()?.is_operator(Operator::CloseCurly) {
-			// Empty block - return undefined literal
-			Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
-				kind: TokenKind::Literal(Literal::Undefined),
-				fragment: Fragment::internal("undefined"),
-			})))
-		} else {
-			self.parse_node(Precedence::None)?
-		};
-
-		// Expect closing brace '}'
-		if !self.current()?.is_operator(Operator::CloseCurly) {
-			return Err(reifydb_type::error::Error(unexpected_token_error(
-				"expected '}' after then block",
-				self.current()?.fragment.clone(),
-			)));
-		}
-		self.advance()?; // consume '}'
-
-		let then_block = Box::new(then_expr);
+		// Parse the then block
+		let then_block = self.parse_block()?;
 
 		// Parse any else if chains
 		let else_ifs = self.parse_else_if_chain()?;
@@ -106,36 +72,8 @@ impl Parser {
 			// Parse condition
 			let condition = Box::new(self.parse_node(Precedence::None)?);
 
-			// Expect opening brace '{'
-			if !self.current()?.is_operator(Operator::OpenCurly) {
-				return Err(reifydb_type::error::Error(unexpected_token_error(
-					"expected '{' after else if condition",
-					self.current()?.fragment.clone(),
-				)));
-			}
-
-			// Parse the then block - should be a single expression inside {}
-			self.advance()?; // consume '{'
-
-			let then_expr = if self.current()?.is_operator(Operator::CloseCurly) {
-				Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
-					kind: TokenKind::Literal(Literal::Undefined),
-					fragment: Fragment::internal("undefined"),
-				})))
-			} else {
-				self.parse_node(Precedence::None)?
-			};
-
-			// Expect closing brace '}'
-			if !self.current()?.is_operator(Operator::CloseCurly) {
-				return Err(reifydb_type::error::Error(unexpected_token_error(
-					"expected '}' after else if then block",
-					self.current()?.fragment.clone(),
-				)));
-			}
-			self.advance()?; // consume '}'
-
-			let then_block = Box::new(then_expr);
+			// Parse the then block
+			let then_block = self.parse_block()?;
 
 			else_ifs.push(AstElseIf {
 				token: else_token,
@@ -147,7 +85,7 @@ impl Parser {
 		Ok(else_ifs)
 	}
 
-	fn parse_else_block(&mut self) -> crate::Result<Option<Box<Ast>>> {
+	fn parse_else_block(&mut self) -> crate::Result<Option<crate::ast::ast::AstBlock>> {
 		// Check if we have a final 'else' block
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Else) {
 			return Ok(None);
@@ -156,35 +94,9 @@ impl Parser {
 		// Consume 'else'
 		self.advance()?;
 
-		// Expect opening brace '{'
-		if !self.current()?.is_operator(Operator::OpenCurly) {
-			return Err(reifydb_type::error::Error(unexpected_token_error(
-				"expected '{' after else",
-				self.current()?.fragment.clone(),
-			)));
-		}
+		// Parse the else block
+		let block = self.parse_block()?;
 
-		// Parse the else block - should be a single expression inside {}
-		self.advance()?; // consume '{'
-
-		let else_expr = if self.current()?.is_operator(Operator::CloseCurly) {
-			Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
-				kind: TokenKind::Literal(Literal::Undefined),
-				fragment: Fragment::internal("undefined"),
-			})))
-		} else {
-			self.parse_node(Precedence::None)?
-		};
-
-		// Expect closing brace '}'
-		if !self.current()?.is_operator(Operator::CloseCurly) {
-			return Err(reifydb_type::error::Error(unexpected_token_error(
-				"expected '}' after else block",
-				self.current()?.fragment.clone(),
-			)));
-		}
-		self.advance()?; // consume '}'
-
-		Ok(Some(Box::new(else_expr)))
+		Ok(Some(block))
 	}
 }

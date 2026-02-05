@@ -24,6 +24,7 @@ use crate::ast::{
 pub struct AstStatement {
 	pub nodes: Vec<Ast>,
 	pub has_pipes: bool,
+	pub is_output: bool,
 }
 
 impl AstStatement {
@@ -62,21 +63,26 @@ pub enum Ast {
 	Aggregate(AstAggregate),
 	Apply(AstApply),
 	Between(AstBetween),
+	Block(AstBlock),
+	Break(AstBreak),
 	Call(AstCall),
 	CallFunction(AstCallFunction),
 	Cast(AstCast),
+	Continue(AstContinue),
 	Create(AstCreate),
 	Alter(AstAlter),
 	Drop(AstDrop),
 	Describe(AstDescribe),
 	Distinct(AstDistinct),
 	Filter(AstFilter),
+	For(AstFor),
 	From(AstFrom),
 	Identifier(UnqualifiedIdentifier),
 	If(AstIf),
 	Infix(AstInfix),
 	Inline(AstInline),
 	Let(AstLet),
+	Loop(AstLoop),
 	Delete(AstDelete),
 	Insert(AstInsert),
 	Update(AstUpdate),
@@ -96,11 +102,15 @@ pub enum Ast {
 	Map(AstMap),
 	Generator(AstGenerator),
 	Extend(AstExtend),
+	Patch(AstPatch),
 	Tuple(AstTuple),
+	While(AstWhile),
 	Wildcard(AstWildcard),
 	Window(AstWindow),
 	StatementExpression(AstStatementExpression),
 	Rownum(AstRownum),
+	DefFunction(AstDefFunction),
+	Return(AstReturn),
 }
 
 impl Default for Ast {
@@ -115,9 +125,12 @@ impl Ast {
 			Ast::Inline(node) => &node.token,
 			Ast::Apply(node) => &node.token,
 			Ast::Between(node) => &node.token,
+			Ast::Block(node) => &node.token,
+			Ast::Break(node) => &node.token,
 			Ast::Call(node) => &node.token,
 			Ast::CallFunction(node) => &node.token,
 			Ast::Cast(node) => &node.token,
+			Ast::Continue(node) => &node.token,
 			Ast::Create(node) => node.token(),
 			Ast::Alter(node) => node.token(),
 			Ast::Drop(node) => node.token(),
@@ -129,12 +142,14 @@ impl Ast {
 			},
 			Ast::Distinct(node) => &node.token,
 			Ast::Filter(node) => &node.token,
+			Ast::For(node) => &node.token,
 			Ast::From(node) => node.token(),
 			Ast::Aggregate(node) => &node.token,
 			Ast::Identifier(identifier) => &identifier.token,
 			Ast::If(node) => &node.token,
 			Ast::Infix(node) => &node.token,
 			Ast::Let(node) => &node.token,
+			Ast::Loop(node) => &node.token,
 			Ast::Delete(node) => &node.token,
 			Ast::Insert(node) => &node.token,
 			Ast::Update(node) => &node.token,
@@ -172,12 +187,16 @@ impl Ast {
 			Ast::Map(node) => &node.token,
 			Ast::Generator(node) => &node.token,
 			Ast::Extend(node) => &node.token,
+			Ast::Patch(node) => &node.token,
 			Ast::Tuple(node) => &node.token,
+			Ast::While(node) => &node.token,
 			Ast::Wildcard(node) => &node.0,
 			Ast::Window(node) => &node.token,
 			Ast::StatementExpression(node) => node.expression.token(),
 			Ast::Environment(node) => &node.token,
 			Ast::Rownum(node) => &node.token,
+			Ast::DefFunction(node) => &node.token,
+			Ast::Return(node) => &node.token,
 		}
 	}
 
@@ -603,6 +622,18 @@ impl Ast {
 			result
 		} else {
 			panic!("not extend")
+		}
+	}
+
+	pub fn is_patch(&self) -> bool {
+		matches!(self, Ast::Patch(_))
+	}
+
+	pub fn as_patch(&self) -> &AstPatch {
+		if let Ast::Patch(result) = self {
+			result
+		} else {
+			panic!("not patch")
 		}
 	}
 
@@ -1170,19 +1201,23 @@ pub struct AstLet {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstDelete {
 	pub token: Token,
-	pub target: Option<UnresolvedPrimitiveIdentifier>,
+	pub target: UnresolvedPrimitiveIdentifier,
+	pub filter: Box<Ast>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstInsert {
 	pub token: Token,
-	pub target: Option<UnresolvedPrimitiveIdentifier>,
+	pub target: UnresolvedPrimitiveIdentifier,
+	pub source: Box<Ast>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstUpdate {
 	pub token: Token,
-	pub target: Option<UnresolvedPrimitiveIdentifier>,
+	pub target: UnresolvedPrimitiveIdentifier,
+	pub assignments: Vec<Ast>,
+	pub filter: Box<Ast>,
 }
 
 /// Connector between join condition pairs
@@ -1399,6 +1434,26 @@ impl AstExtend {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstPatch {
+	pub token: Token,
+	pub assignments: Vec<Ast>,
+}
+
+impl AstPatch {
+	pub fn len(&self) -> usize {
+		self.assignments.len()
+	}
+}
+
+impl Index<usize> for AstPatch {
+	type Output = Ast;
+
+	fn index(&self, index: usize) -> &Self::Output {
+		&self.assignments[index]
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstTuple {
 	pub token: Token,
 	pub nodes: Vec<Ast>,
@@ -1457,19 +1512,56 @@ impl AstVariable {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstBlock {
+	pub token: Token,
+	pub statements: Vec<AstStatement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstLoop {
+	pub token: Token,
+	pub body: AstBlock,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstWhile {
+	pub token: Token,
+	pub condition: Box<Ast>,
+	pub body: AstBlock,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstFor {
+	pub token: Token,
+	pub variable: AstVariable,
+	pub iterable: Box<Ast>,
+	pub body: AstBlock,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstBreak {
+	pub token: Token,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstContinue {
+	pub token: Token,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstIf {
 	pub token: Token,
 	pub condition: Box<Ast>,
-	pub then_block: Box<Ast>,
+	pub then_block: AstBlock,
 	pub else_ifs: Vec<AstElseIf>,
-	pub else_block: Option<Box<Ast>>,
+	pub else_block: Option<AstBlock>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstElseIf {
 	pub token: Token,
 	pub condition: Box<Ast>,
-	pub then_block: Box<Ast>,
+	pub then_block: AstBlock,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1489,4 +1581,29 @@ pub struct AstWindowConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstStatementExpression {
 	pub expression: Box<Ast>,
+}
+
+/// Function parameter (always has $ prefix)
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstFunctionParameter {
+	pub token: Token,
+	pub variable: AstVariable,
+	pub type_annotation: Option<AstDataType>,
+}
+
+/// Function definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDefFunction {
+	pub token: Token,
+	pub name: UnqualifiedIdentifier,
+	pub parameters: Vec<AstFunctionParameter>,
+	pub return_type: Option<AstDataType>,
+	pub body: AstBlock,
+}
+
+/// Return statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstReturn {
+	pub token: Token,
+	pub value: Option<Box<Ast>>,
 }

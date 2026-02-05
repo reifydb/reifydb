@@ -325,7 +325,10 @@ impl Compiler {
 				}
 
 				LogicalPlan::InsertTable(insert) => {
-					let input = stack.pop().unwrap();
+					// Compile the source from the INSERT node
+					let input = self
+						.compile(rx, vec![*insert.source])?
+						.expect("Insert source must produce a plan");
 
 					// Resolve the table
 					use reifydb_core::interface::resolved::{ResolvedNamespace, ResolvedTable};
@@ -363,7 +366,10 @@ impl Compiler {
 				}
 
 				LogicalPlan::InsertRingBuffer(insert_rb) => {
-					let input = stack.pop().unwrap();
+					// Compile the source from the INSERT node
+					let input = self
+						.compile(rx, vec![*insert_rb.source])?
+						.expect("Insert source must produce a plan");
 
 					// Resolve the ring buffer
 					use reifydb_core::interface::resolved::{
@@ -406,7 +412,10 @@ impl Compiler {
 				}
 
 				LogicalPlan::InsertDictionary(insert_dict) => {
-					let input = stack.pop().unwrap();
+					// Compile the source from the INSERT node
+					let input = self
+						.compile(rx, vec![*insert_dict.source])?
+						.expect("Insert source must produce a plan");
 
 					// Resolve the dictionary
 					let dictionary_id = insert_dict.target.clone();
@@ -679,6 +688,14 @@ impl Compiler {
 					let input = stack.pop().map(Box::new);
 					stack.push(PhysicalPlan::Extend(ExtendNode {
 						extend: extend.extend,
+						input,
+					}));
+				}
+
+				LogicalPlan::Patch(patch) => {
+					let input = stack.pop().map(Box::new);
+					stack.push(PhysicalPlan::Patch(PatchNode {
+						assignments: patch.assignments,
 						input,
 					}));
 				}
@@ -972,6 +989,112 @@ impl Compiler {
 					}));
 				}
 
+				LogicalPlan::Loop(loop_node) => {
+					let mut body = Vec::new();
+					for statement_plans in loop_node.body {
+						for logical_plan in statement_plans {
+							if let Some(physical_plan) =
+								self.compile(rx, vec![logical_plan])?
+							{
+								body.push(physical_plan);
+							}
+						}
+					}
+					stack.push(PhysicalPlan::Loop(LoopPhysicalNode {
+						body,
+					}));
+				}
+
+				LogicalPlan::While(while_node) => {
+					let mut body = Vec::new();
+					for statement_plans in while_node.body {
+						for logical_plan in statement_plans {
+							if let Some(physical_plan) =
+								self.compile(rx, vec![logical_plan])?
+							{
+								body.push(physical_plan);
+							}
+						}
+					}
+					stack.push(PhysicalPlan::While(WhilePhysicalNode {
+						condition: while_node.condition,
+						body,
+					}));
+				}
+
+				LogicalPlan::For(for_node) => {
+					let iterable = self
+						.compile(rx, for_node.iterable)?
+						.expect("For iterable must produce a plan");
+					let mut body = Vec::new();
+					for statement_plans in for_node.body {
+						for logical_plan in statement_plans {
+							if let Some(physical_plan) =
+								self.compile(rx, vec![logical_plan])?
+							{
+								body.push(physical_plan);
+							}
+						}
+					}
+					stack.push(PhysicalPlan::For(ForPhysicalNode {
+						variable_name: for_node.variable_name,
+						iterable: Box::new(iterable),
+						body,
+					}));
+				}
+
+				LogicalPlan::Break => {
+					stack.push(PhysicalPlan::Break);
+				}
+
+				LogicalPlan::Continue => {
+					stack.push(PhysicalPlan::Continue);
+				}
+
+				LogicalPlan::DefineFunction(def_node) => {
+					// Convert parameters
+					let parameters: Vec<FunctionParameter> = def_node
+						.parameters
+						.into_iter()
+						.map(|p| FunctionParameter {
+							name: p.name,
+							type_constraint: p.type_constraint,
+						})
+						.collect();
+
+					// Compile the body
+					let mut body = Vec::new();
+					for statement_plans in def_node.body {
+						for logical_plan in statement_plans {
+							if let Some(physical_plan) =
+								self.compile(rx, vec![logical_plan])?
+							{
+								body.push(physical_plan);
+							}
+						}
+					}
+
+					stack.push(PhysicalPlan::DefineFunction(DefineFunctionNode {
+						name: def_node.name,
+						parameters,
+						return_type: def_node.return_type,
+						body,
+					}));
+				}
+
+				LogicalPlan::Return(ret_node) => {
+					stack.push(PhysicalPlan::Return(ReturnNode {
+						value: ret_node.value,
+					}));
+				}
+
+				LogicalPlan::CallFunction(call_node) => {
+					stack.push(PhysicalPlan::CallFunction(CallFunctionNode {
+						name: call_node.name,
+						arguments: call_node.arguments,
+					}));
+				}
+
 				_ => unimplemented!(),
 			}
 		}
@@ -1018,6 +1141,15 @@ pub enum PhysicalPlan {
 	Environment(EnvironmentNode),
 	// Control flow
 	Conditional(ConditionalNode),
+	Loop(LoopPhysicalNode),
+	While(WhilePhysicalNode),
+	For(ForPhysicalNode),
+	Break,
+	Continue,
+	// User-defined functions
+	DefineFunction(DefineFunctionNode),
+	Return(ReturnNode),
+	CallFunction(CallFunctionNode),
 
 	// Query
 	Aggregate(AggregateNode),
@@ -1036,6 +1168,7 @@ pub enum PhysicalPlan {
 	Sort(SortNode),
 	Map(MapNode),
 	Extend(ExtendNode),
+	Patch(PatchNode),
 	Apply(ApplyNode),
 	InlineData(InlineDataNode),
 	TableScan(TableScanNode),
@@ -1190,6 +1323,62 @@ pub struct ElseIfBranch {
 }
 
 #[derive(Debug, Clone)]
+pub struct LoopPhysicalNode {
+	pub body: Vec<PhysicalPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhilePhysicalNode {
+	pub condition: Expression,
+	pub body: Vec<PhysicalPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ForPhysicalNode {
+	pub variable_name: Fragment,
+	pub iterable: Box<PhysicalPlan>,
+	pub body: Vec<PhysicalPlan>,
+}
+
+/// A function parameter in the physical plan
+#[derive(Debug, Clone)]
+pub struct FunctionParameter {
+	/// Parameter name (includes $)
+	pub name: Fragment,
+	/// Optional type constraint
+	pub type_constraint: Option<TypeConstraint>,
+}
+
+/// Define a user-defined function
+#[derive(Debug, Clone)]
+pub struct DefineFunctionNode {
+	/// Function name
+	pub name: Fragment,
+	/// Function parameters
+	pub parameters: Vec<FunctionParameter>,
+	/// Optional return type constraint
+	pub return_type: Option<TypeConstraint>,
+	/// Function body as physical plans
+	pub body: Vec<PhysicalPlan>,
+}
+
+/// Return statement
+#[derive(Debug, Clone)]
+pub struct ReturnNode {
+	/// Optional return value expression
+	pub value: Option<Expression>,
+}
+
+/// Call a function (built-in or user-defined)
+#[derive(Debug, Clone)]
+pub struct CallFunctionNode {
+	/// Function name to call
+	pub name: Fragment,
+	/// Arguments to pass
+	pub arguments: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ScalarizeNode {
 	pub input: Box<PhysicalPlan>,
 	pub fragment: Fragment,
@@ -1302,6 +1491,12 @@ pub struct MapNode {
 pub struct ExtendNode {
 	pub input: Option<Box<PhysicalPlan>>,
 	pub extend: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PatchNode {
+	pub input: Option<Box<PhysicalPlan>>,
+	pub assignments: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]

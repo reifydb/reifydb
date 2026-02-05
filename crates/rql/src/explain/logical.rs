@@ -10,7 +10,7 @@ use crate::{
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, MergeNode,
-		OrderNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
+		OrderNode, PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
 		alter::{
 			flow::AlterFlowAction,
 			table::{AlterTableNode, AlterTableOperation},
@@ -61,6 +61,21 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 	);
 
 	match plan {
+		LogicalPlan::Loop(_) => {
+			output.push_str(&format!("{}{} Loop\n", prefix, branch));
+		}
+		LogicalPlan::While(_) => {
+			output.push_str(&format!("{}{} While\n", prefix, branch));
+		}
+		LogicalPlan::For(_) => {
+			output.push_str(&format!("{}{} For\n", prefix, branch));
+		}
+		LogicalPlan::Break => {
+			output.push_str(&format!("{}{} Break\n", prefix, branch));
+		}
+		LogicalPlan::Continue => {
+			output.push_str(&format!("{}{} Continue\n", prefix, branch));
+		}
 		LogicalPlan::CreateDeferredView(_) => unimplemented!(),
 		LogicalPlan::CreateTransactionalView(_) => unimplemented!(),
 		LogicalPlan::CreateNamespace(_) => unimplemented!(),
@@ -264,6 +279,24 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 			output.push_str(&format!("{}{} Extend\n", prefix, branch));
 			for (i, expr) in extend.iter().enumerate() {
 				let last = i == extend.len() - 1;
+				output.push_str(&format!(
+					"{}{} {}\n",
+					child_prefix,
+					if last {
+						"└──"
+					} else {
+						"├──"
+					},
+					expr.to_string()
+				));
+			}
+		}
+		LogicalPlan::Patch(PatchNode {
+			assignments,
+		}) => {
+			output.push_str(&format!("{}{} Patch\n", prefix, branch));
+			for (i, expr) in assignments.iter().enumerate() {
+				let last = i == assignments.len() - 1;
 				output.push_str(&format!(
 					"{}{} {}\n",
 					child_prefix,
@@ -871,6 +904,67 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 					render_logical_plan_inner(plan, &new_prefix, is_last, output);
 				}
 			}
+		}
+		LogicalPlan::DefineFunction(def) => {
+			let params: Vec<String> = def
+				.parameters
+				.iter()
+				.map(|p| {
+					if let Some(ref tc) = p.type_constraint {
+						format!("${}: {:?}", p.name.text(), tc)
+					} else {
+						format!("${}", p.name.text())
+					}
+				})
+				.collect();
+			let return_str = if let Some(ref rt) = def.return_type {
+				format!(" -> {:?}", rt)
+			} else {
+				String::new()
+			};
+			output.push_str(&format!(
+				"{}{} DefineFunction: {}[{}]{}\n",
+				prefix,
+				branch,
+				def.name.text(),
+				params.join(", "),
+				return_str
+			));
+
+			// Render body statements
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			for (i, stmt) in def.body.iter().enumerate() {
+				for (j, plan) in stmt.iter().enumerate() {
+					let is_last_stmt = i == def.body.len() - 1 && j == stmt.len() - 1;
+					render_logical_plan_inner(plan, &child_prefix, is_last_stmt, output);
+				}
+			}
+		}
+		LogicalPlan::Return(ret) => {
+			let value_str = if let Some(ref expr) = ret.value {
+				format!(" {}", expr)
+			} else {
+				String::new()
+			};
+			output.push_str(&format!("{}{} Return{}\n", prefix, branch, value_str));
+		}
+		LogicalPlan::CallFunction(call) => {
+			let args: Vec<String> = call.arguments.iter().map(|a| format!("{}", a)).collect();
+			output.push_str(&format!(
+				"{}{} CallFunction: {}({})\n",
+				prefix,
+				branch,
+				call.name.text(),
+				args.join(", ")
+			));
 		}
 	}
 }

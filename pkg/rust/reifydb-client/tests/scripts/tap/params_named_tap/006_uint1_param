@@ -1,7 +1,7 @@
 # Generated from: params_named.tap.md#uint1_param
 # Test: Named parameter with UINT1 type
 
-command_named 'MAP $uint1_val as result' 'uint1_val=255'
+command_named 'MAP {result: $uint1_val}' 'uint1_val=255'
 ---
 > +----------+
 > |  result  |

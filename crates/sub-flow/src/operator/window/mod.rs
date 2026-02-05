@@ -40,8 +40,9 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
-	stack::Stack,
+	vm::stack::SymbolTable,
 };
+use reifydb_function::registry::Functions;
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_runtime::{
 	clock::Clock,
@@ -57,7 +58,7 @@ use reifydb_type::{
 
 use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
 
-static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
 /// A single event stored within a window
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,6 +168,7 @@ impl WindowOperator {
 		max_window_count: Option<usize>,
 		max_window_age: Option<std::time::Duration>,
 		clock: Clock,
+		functions: Functions,
 	) -> Self {
 		Self {
 			parent,
@@ -177,7 +179,7 @@ impl WindowOperator {
 			group_by,
 			aggregations,
 			layout: Schema::testing(&[Type::Blob]),
-			column_evaluator: StandardColumnEvaluator::default(),
+			column_evaluator: StandardColumnEvaluator::new(functions),
 			row_number_provider: RowNumberProvider::new(node),
 			min_events: min_events.max(1), // Ensure at least 1 event is required
 			max_window_count,
@@ -209,7 +211,7 @@ impl WindowOperator {
 			row_count,
 			take: None,
 			params: &EMPTY_PARAMS,
-			stack: &EMPTY_STACK,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
 		};
 
@@ -403,7 +405,7 @@ impl WindowOperator {
 			row_count: events.len(),
 			take: None,
 			params: &EMPTY_PARAMS,
-			stack: &EMPTY_STACK,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: true, // Use aggregate functions for window aggregations
 		};
 

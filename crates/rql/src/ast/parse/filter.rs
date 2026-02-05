@@ -11,23 +11,22 @@ impl Parser {
 	pub(crate) fn parse_filter(&mut self) -> crate::Result<AstFilter> {
 		let token = self.consume_keyword(Keyword::Filter)?;
 
-		// Check if we have an opening brace
+		// Check if braces are used (optional)
 		let has_braces = !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly);
 
 		if has_braces {
-			self.advance()?;
+			self.advance()?; // consume opening brace
 		}
 
-		// Handle case where there's no expression (like "filter {}"
-		// alone)
-		let node = if self.is_eof() || (has_braces && self.current()?.is_operator(Operator::CloseCurly)) {
+		let node = if has_braces && self.current()?.is_operator(Operator::CloseCurly) {
+			// Empty braces: filter {}
 			Ast::Nop
 		} else {
 			self.parse_node(Precedence::None)?
 		};
 
 		if has_braces {
-			self.consume_operator(Operator::CloseCurly)?; // consume closing brace
+			self.consume_operator(Operator::CloseCurly)?;
 		}
 
 		Ok(AstFilter {
@@ -48,7 +47,7 @@ pub mod tests {
 
 	#[test]
 	fn test_simple_comparison() {
-		let tokens = tokenize("filter price > 100").unwrap();
+		let tokens = tokenize("filter {price > 100}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -62,7 +61,7 @@ pub mod tests {
 
 	#[test]
 	fn test_nested_expression() {
-		let tokens = tokenize("filter (price + fee) > 100").unwrap();
+		let tokens = tokenize("filter {(price + fee) > 100}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -77,16 +76,20 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_filter_missing_expression() {
-		let tokens = tokenize("filter").unwrap();
+	fn test_filter_without_braces() {
+		let tokens = tokenize("filter price > 100").unwrap();
 		let mut parser = Parser::new(tokens);
-		let result = parser.parse_filter().unwrap();
-		assert_eq!(*result.node, Ast::Nop);
+		let filter = parser.parse_filter().unwrap();
+
+		let node = filter.node.as_infix();
+		assert_eq!(node.left.as_identifier().text(), "price");
+		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
+		assert_eq!(node.right.as_literal_number().value(), "100");
 	}
 
 	#[test]
 	fn test_keyword() {
-		let tokens = tokenize("filter value > 100").unwrap();
+		let tokens = tokenize("filter {value > 100}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -98,7 +101,7 @@ pub mod tests {
 
 	#[test]
 	fn test_logical_and() {
-		let tokens = tokenize("filter price > 100 and qty < 50").unwrap();
+		let tokens = tokenize("filter {price > 100 and qty < 50}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -118,7 +121,7 @@ pub mod tests {
 
 	#[test]
 	fn test_logical_or() {
-		let tokens = tokenize("filter active == true or premium == true").unwrap();
+		let tokens = tokenize("filter {active == true or premium == true}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -136,7 +139,7 @@ pub mod tests {
 
 	#[test]
 	fn test_logical_xor() {
-		let tokens = tokenize("filter active == true xor guest == true").unwrap();
+		let tokens = tokenize("filter {active == true xor guest == true}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -154,7 +157,7 @@ pub mod tests {
 
 	#[test]
 	fn test_comptokenize_logical_chain() {
-		let tokens = tokenize("filter active == true and price > 100 or premium == true").unwrap();
+		let tokens = tokenize("filter {active == true and price > 100 or premium == true}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -192,7 +195,6 @@ pub mod tests {
 		let node = filter.node.as_infix();
 		assert!(matches!(node.operator, InfixOperator::And(_)));
 
-		// Left side: (price + fee) > 100
 		let left = node.left.as_infix();
 		assert!(matches!(left.operator, InfixOperator::GreaterThan(_)));
 		assert_eq!(left.right.as_literal_number().value(), "100");
@@ -202,24 +204,25 @@ pub mod tests {
 		assert!(matches!(nested.operator, InfixOperator::Add(_)));
 		assert_eq!(nested.right.as_identifier().text(), "fee");
 
-		// Right side: active == true
 		let right = node.right.as_infix();
 		assert_eq!(right.left.as_identifier().text(), "active");
 		assert!(matches!(right.operator, InfixOperator::Equal(_)));
 	}
 
 	#[test]
-	fn test_filter_without_braces_still_works() {
-		let tokens = tokenize("filter price > 100").unwrap();
+	fn test_filter_without_braces_logical() {
+		let tokens = tokenize("filter active == true and price > 100").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		assert_eq!(filter.token.kind, TokenKind::Keyword(Keyword::Filter));
-
 		let node = filter.node.as_infix();
-		assert_eq!(node.left.as_identifier().text(), "price");
-		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
-		assert_eq!(node.right.as_literal_number().value(), "100");
+		assert!(matches!(node.operator, InfixOperator::And(_)));
+
+		let left = node.left.as_infix();
+		assert_eq!(left.left.as_identifier().text(), "active");
+
+		let right = node.right.as_infix();
+		assert_eq!(right.left.as_identifier().text(), "price");
 	}
 
 	#[test]

@@ -25,26 +25,26 @@ fn main() {
 	info!("Example 1: Numeric comparisons");
 	log_query(
 		r#"map {
-  10 = 10 as equals_true,
-  10 = 5 as equals_false,
-  10 != 5 as not_equals_true,
-  10 < 20 as less_than,
-  10 <= 10 as less_equal,
-  10 > 5 as greater_than,
-  10 >= 10 as greater_equal
+  equals_true: 10 = 10,
+  equals_false: 10 = 5,
+  not_equals_true: 10 != 5,
+  less_than: 10 < 20,
+  less_equal: 10 <= 10,
+  greater_than: 10 > 5,
+  greater_equal: 10 >= 10
 }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			map {
-				10 == 10 as equals_true,
-				10 == 5 as equals_false,
-				10 != 5 as not_equals_true,
-				10 < 20 as less_than,
-				10 <= 10 as less_equal,
-				10 > 5 as greater_than,
-				10 >= 10 as greater_equal
+				equals_true: 10 == 10,
+				equals_false: 10 == 5,
+				not_equals_true: 10 != 5,
+				less_than: 10 < 20,
+				less_equal: 10 <= 10,
+				greater_than: 10 > 5,
+				greater_equal: 10 >= 10
 			}
 			"#,
 			Params::None,
@@ -58,20 +58,20 @@ fn main() {
 	info!("\nExample 2: String comparisons");
 	log_query(
 		r#"map {
-  "apple" == "apple" as string_equals,
-  "apple" != "banana" as string_not_equals,
-  "apple" < "banana" as string_less_than,
-  "zebra" > "apple" as string_greater_than
+  string_equals: "apple" == "apple",
+  string_not_equals: "apple" != "banana",
+  string_less_than: "apple" < "banana",
+  string_greater_than: "zebra" > "apple"
 }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			map {
-				"apple" == "apple" as string_equals,
-				"apple" != "banana" as string_not_equals,
-				"apple" < "banana" as string_less_than,
-				"zebra" > "apple" as string_greater_than
+				string_equals: "apple" == "apple",
+				string_not_equals: "apple" != "banana",
+				string_less_than: "apple" < "banana",
+				string_greater_than: "zebra" > "apple"
 			}
 			"#,
 			Params::None,
@@ -85,18 +85,18 @@ fn main() {
 	info!("\nExample 3: Boolean comparisons");
 	log_query(
 		r#"map {
-  true == true as bool_equals_true,
-  true == false as bool_equals_false,
-  true != false as bool_not_equals
+  bool_equals_true: true == true,
+  bool_equals_false: true == false,
+  bool_not_equals: true != false
 }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			map {
-				true == true as bool_equals_true,
-				true == false as bool_equals_false,
-				true != false as bool_not_equals
+				bool_equals_true: true == true,
+				bool_equals_false: true == false,
+				bool_not_equals: true != false
 			}
 			"#,
 			Params::None,
@@ -125,7 +125,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		from [
+		INSERT test.scores [
 			{ id: 1, student: "Alice", subject: "Math", score: 95, grade: "A", passed: true },
 			{ id: 2, student: "Bob", subject: "Math", score: 78, grade: "C", passed: true },
 			{ id: 3, student: "Carol", subject: "Math", score: 88, grade: "B", passed: true },
@@ -135,7 +135,6 @@ fn main() {
 			{ id: 7, student: "Grace", subject: "Math", score: 100, grade: "A", passed: true },
 			{ id: 8, student: "Henry", subject: "Math", score: 73, grade: "C", passed: true }
 		]
-		insert test.scores
 		"#,
 		Params::None,
 	)
@@ -228,9 +227,9 @@ fn main() {
 map {
   student,
   score,
-  score >= 90 as is_excellent,
-  score >= 70 as is_passing,
-  score < 60 as needs_help
+  is_excellent: score >= 90,
+  is_passing: score >= 70,
+  needs_help: score < 60
 }"#,
 	);
 	for frame in db
@@ -240,9 +239,9 @@ map {
 			map {
 				student,
 				score,
-				score >= 90 as is_excellent,
-				score >= 70 as is_passing,
-				score < 60 as needs_help
+				is_excellent: score >= 90,
+				is_passing: score >= 70,
+				needs_help: score < 60
 			}
 			"#,
 			Params::None,

@@ -24,10 +24,10 @@ use reifydb_core::{
 	},
 	util::ioc::IocContainer,
 };
+use reifydb_function::registry::Functions;
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
-use reifydb_rqlv2::compiler::Compiler;
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::system::{ActorSystem, ActorSystemConfig},
@@ -44,20 +44,6 @@ use reifydb_transaction::{
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use crate::engine::StandardEngine;
-
-pub fn create_test_command_transaction() -> CommandTransaction {
-	let multi_store = MultiStore::testing_memory();
-	let single_store = SingleStore::testing_memory();
-
-	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
-	let event_bus = EventBus::new(&actor_system);
-	let single = SingleTransaction::new(single_store, event_bus.clone());
-	let multi =
-		MultiTransaction::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default())
-			.unwrap();
-
-	CommandTransaction::new(multi, single, event_bus, Interceptors::new()).unwrap()
-}
 
 pub fn create_test_admin_transaction() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
@@ -168,9 +154,6 @@ pub fn create_test_engine() -> StandardEngine {
 
 	ioc = ioc.register(runtime.clone());
 
-	let compiler = Compiler::new(materialized_catalog.clone());
-	ioc = ioc.register(compiler);
-
 	let metrics_store = single_store.clone();
 
 	ioc = ioc.register(metrics_store.clone());
@@ -197,7 +180,7 @@ pub fn create_test_engine() -> StandardEngine {
 		eventbus.clone(),
 		Box::new(StandardInterceptorFactory::default()),
 		Catalog::new(materialized_catalog, schema_registry),
-		None,
+		Functions::builder().build(),
 		ioc,
 	);
 

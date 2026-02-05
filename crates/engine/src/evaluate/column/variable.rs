@@ -10,7 +10,7 @@ use reifydb_type::{
 };
 
 use super::StandardColumnEvaluator;
-use crate::{evaluate::ColumnEvaluationContext, stack::Variable};
+use crate::{evaluate::ColumnEvaluationContext, vm::stack::Variable};
 
 impl StandardColumnEvaluator {
 	pub(super) fn variable<'a>(
@@ -28,7 +28,7 @@ impl StandardColumnEvaluator {
 		}
 
 		// Look up the variable in the stack
-		match ctx.stack.get(variable_name) {
+		match ctx.symbol_table.get(variable_name) {
 			Some(Variable::Scalar(value)) => {
 				let mut data = ColumnData::with_capacity(value.get_type(), ctx.row_count);
 				for _ in 0..ctx.row_count {
@@ -40,7 +40,10 @@ impl StandardColumnEvaluator {
 					data,
 				})
 			}
-			Some(Variable::Frame(_)) => {
+			Some(Variable::Frame(_))
+			| Some(Variable::ForIterator {
+				..
+			}) => {
 				// Frame variables cannot be used directly in scalar expressions
 				// Return a clear error with helpful guidance
 				return_error!(variable_is_dataframe(variable_name));

@@ -41,14 +41,14 @@ describe('Error', () => {
         it('out of range', async () => {
             await expect(
                 wsClient.admin(
-                    "MAP cast(129, int1) as result;",
+                    "MAP {result: cast(129, int1)};",
                     {},
                     [Schema.object({result: Schema.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
-                statement: "MAP cast(129, int1) as result;",
+                statement: "MAP {result: cast(129, int1)};",
                 fragment: {
                     Statement: expect.objectContaining({
                         text: "129",
@@ -70,14 +70,14 @@ describe('Error', () => {
         it('out of range', async () => {
             await expect(
                 wsClient.command(
-                    "MAP cast(129, int1) as result;",
+                    "MAP {result: cast(129, int1)};",
                     {},
                     [Schema.object({result: Schema.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
-                statement: "MAP cast(129, int1) as result;",
+                statement: "MAP {result: cast(129, int1)};",
                 fragment: {
                     Statement: expect.objectContaining({
                         text: "129",
@@ -100,14 +100,14 @@ describe('Error', () => {
         it('out of range', async () => {
             await expect(
                 wsClient.query(
-                    "MAP cast(129, int1) as result;",
+                    "MAP {result: cast(129, int1)};",
                     {},
                     [Schema.object({result: Schema.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
-                statement: "MAP cast(129, int1) as result;",
+                statement: "MAP {result: cast(129, int1)};",
                 fragment: {
                     Statement: expect.objectContaining({
                         text: "129",

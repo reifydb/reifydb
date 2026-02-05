@@ -11,7 +11,7 @@ use reifydb_type::{fragment::Fragment, params::Params};
 
 use crate::{
 	evaluate::{ColumnEvaluationContext, column::cast::cast_column_data},
-	stack::Stack,
+	vm::stack::SymbolTable,
 };
 
 /// Coerce each column's data to the target type in batch.
@@ -26,7 +26,7 @@ pub(super) fn coerce_columns(
 		row_count: num_rows,
 		take: None,
 		params: &Params::None,
-		stack: &Stack::new(),
+		symbol_table: &SymbolTable::new(),
 		is_aggregate_context: false,
 	};
 

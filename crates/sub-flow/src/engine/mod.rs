@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_engine::{evaluate::column::StandardColumnEvaluator, execute::Executor};
+use reifydb_engine::{evaluate::column::StandardColumnEvaluator, vm::executor::Executor};
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,

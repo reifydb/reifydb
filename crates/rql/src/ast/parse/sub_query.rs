@@ -49,6 +49,7 @@ impl Parser {
 		Ok(AstStatement {
 			nodes,
 			has_pipes,
+			is_output: false,
 		})
 	}
 }

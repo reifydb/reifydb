@@ -1,0 +1,210 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
+use reifydb_catalog::catalog::{primary_key::PrimaryKeyToCreate, table::TableToCreate};
+use reifydb_core::{
+	error::diagnostic::query::column_not_found,
+	interface::catalog::{change::CatalogTrackTableChangeOperations, primitive::PrimitiveId},
+	value::column::columns::Columns,
+};
+use reifydb_rql::plan::physical::CreateTableNode;
+use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_type::{return_error, value::Value};
+
+use crate::vm::services::Services;
+
+pub(crate) fn create_table(
+	services: &Services,
+	txn: &mut AdminTransaction,
+	plan: CreateTableNode,
+) -> crate::Result<Columns> {
+	// Check if table already exists using the catalog
+	if let Some(_) = services.catalog.find_table_by_name(txn, plan.namespace.def().id, plan.table.text())? {
+		if plan.if_not_exists {
+			return Ok(Columns::single_row([
+				("namespace", Value::Utf8(plan.namespace.name().to_string())),
+				("table", Value::Utf8(plan.table.text().to_string())),
+				("created", Value::Boolean(false)),
+			]));
+		}
+		// The error will be returned by create_table if the
+		// table exists
+	}
+
+	let table = services.catalog.create_table(
+		txn,
+		TableToCreate {
+			fragment: Some(plan.table.clone()),
+			table: plan.table.text().to_string(),
+			namespace: plan.namespace.def().id,
+			columns: plan.columns,
+			retention_policy: None,
+			primary_key_columns: None,
+		},
+	)?;
+	txn.track_table_def_created(table.clone())?;
+
+	// If primary key is specified, create it immediately
+	if let Some(pk_def) = plan.primary_key {
+		// Get the table columns to resolve column IDs
+		let table_columns = services.catalog.list_columns(txn, table.id)?;
+
+		// Resolve column names to IDs
+		let mut column_ids = Vec::new();
+		for pk_column in pk_def.columns {
+			let column_name = pk_column.column.text();
+			let Some(column) = table_columns.iter().find(|col| col.name == column_name) else {
+				return_error!(column_not_found(pk_column.column));
+			};
+			column_ids.push(column.id);
+		}
+
+		// Create primary key
+		services.catalog.create_primary_key(
+			txn,
+			PrimaryKeyToCreate {
+				source: PrimitiveId::Table(table.id),
+				column_ids,
+			},
+		)?;
+	}
+
+	Ok(Columns::single_row([
+		("namespace", Value::Utf8(plan.namespace.name().to_string())),
+		("table", Value::Utf8(plan.table.text().to_string())),
+		("created", Value::Boolean(true)),
+	]))
+}
+
+#[cfg(test)]
+pub mod tests {
+	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
+	use reifydb_core::interface::{
+		catalog::{id::NamespaceId, namespace::NamespaceDef},
+		resolved::ResolvedNamespace,
+	};
+	use reifydb_rql::plan::physical::PhysicalPlan;
+	use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+
+	use crate::{
+		test_utils::create_test_admin_transaction,
+		vm::{executor::Executor, instruction::ddl::create::table::CreateTableNode},
+	};
+
+	#[test]
+	fn test_create_table() {
+		let instance = Executor::testing();
+		let mut txn = create_test_admin_transaction();
+
+		let namespace = ensure_test_namespace(&mut txn);
+
+		let namespace_ident = Fragment::internal("test_namespace");
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
+		let mut plan = CreateTableNode {
+			namespace: resolved_namespace.clone(),
+			table: Fragment::internal("test_table"),
+			if_not_exists: false,
+			columns: vec![],
+			primary_key: None,
+		};
+
+		// First creation should succeed
+		let frames = instance
+			.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.unwrap();
+		let frame = &frames[0];
+		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+
+		// Creating the same table again with `if_not_exists = true`
+		// should not error
+		plan.if_not_exists = true;
+		let frames = instance
+			.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.unwrap();
+		let frame = &frames[0];
+		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
+
+		// Creating the same table again with `if_not_exists = false`
+		// should return error
+		plan.if_not_exists = false;
+		let err = instance
+			.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default())
+			.unwrap_err();
+		assert_eq!(err.diagnostic().code, "CA_003");
+	}
+
+	#[test]
+	fn test_create_same_table_in_different_schema() {
+		let instance = Executor::testing();
+		let mut txn = create_test_admin_transaction();
+
+		let namespace = ensure_test_namespace(&mut txn);
+		let another_schema = create_namespace(&mut txn, "another_schema");
+
+		let namespace_ident = Fragment::internal("test_namespace");
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
+		let plan = CreateTableNode {
+			namespace: resolved_namespace,
+			table: Fragment::internal("test_table"),
+			if_not_exists: false,
+			columns: vec![],
+			primary_key: None,
+		};
+
+		let frames = instance
+			.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.unwrap();
+		let frame = &frames[0];
+		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		let namespace_ident = Fragment::internal("another_schema");
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, another_schema.clone());
+		let plan = CreateTableNode {
+			namespace: resolved_namespace,
+			table: Fragment::internal("test_table"),
+			if_not_exists: false,
+			columns: vec![],
+			primary_key: None,
+		};
+
+		let frames = instance
+			.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.unwrap();
+		let frame = &frames[0];
+		assert_eq!(frame[0].get_value(0), Value::Utf8("another_schema".to_string()));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+	}
+
+	#[test]
+	fn test_create_table_missing_schema() {
+		let instance = Executor::testing();
+		let mut txn = create_test_admin_transaction();
+
+		let namespace_ident = Fragment::internal("missing_schema");
+		let namespace_def = NamespaceDef {
+			id: NamespaceId(999),
+			name: "missing_schema".to_string(),
+		};
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace_def);
+		let plan = CreateTableNode {
+			namespace: resolved_namespace,
+			table: Fragment::internal("my_table"),
+			if_not_exists: false,
+			columns: vec![],
+			primary_key: None,
+		};
+
+		let frames =
+			instance.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default()).unwrap();
+		let frame = &frames[0];
+		assert_eq!(frame[0].get_value(0), Value::Utf8("missing_schema".to_string()));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("my_table".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+	}
+}

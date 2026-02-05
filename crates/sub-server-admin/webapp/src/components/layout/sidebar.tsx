@@ -8,7 +8,8 @@ import {
     ChevronLeft,
     ChevronRight,
     LayoutDashboard,
-    Info
+    Info,
+    SquareTerminal
 } from 'lucide-react'
 import {cn} from '@/lib/utils'
 import {Button} from '@/components/ui/button'
@@ -19,6 +20,7 @@ const navigation = [
     {name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard},
     {name: 'Schema', href: '/schema', icon: Database},
     {name: 'Query', href: '/query', icon: Terminal},
+    {name: 'Shell', href: '/shell', icon: SquareTerminal},
     {name: 'Users', href: '/users', icon: Users},
     {name: 'Settings', href: '/settings', icon: Settings},
 ]

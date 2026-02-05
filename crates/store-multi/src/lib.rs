@@ -39,7 +39,10 @@ pub struct MultiStoreVersion;
 impl HasVersion for MultiStoreVersion {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "store-multi".to_string(),
+			name: env!("CARGO_PKG_NAME")
+				.strip_prefix("reifydb-")
+				.unwrap_or(env!("CARGO_PKG_NAME"))
+				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Multi-version storage for OLTP operations with MVCC support".to_string(),
 			r#type: ComponentType::Module,

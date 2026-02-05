@@ -17,8 +17,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
-	execute::Executor,
-	stack::Stack,
+	vm::{executor::Executor, stack::SymbolTable},
 };
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
@@ -44,7 +43,7 @@ use crate::{
 };
 
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
 pub struct JoinOperator {
 	pub(crate) left_parent: Arc<Operators>,
@@ -91,8 +90,8 @@ impl JoinOperator {
 			alias,
 			schema,
 			row_number_provider,
+			column_evaluator: StandardColumnEvaluator::new(executor.functions.clone()),
 			executor,
-			column_evaluator: StandardColumnEvaluator::default(),
 		}
 	}
 
@@ -118,7 +117,7 @@ impl JoinOperator {
 			row_count,
 			take: None,
 			params: &EMPTY_PARAMS,
-			stack: &EMPTY_STACK,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
 		};
 

@@ -339,7 +339,7 @@ describe('useSubscription Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, name: 'test'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, name: 'test'}]`,
                     null,
                     []
                 );
@@ -437,7 +437,7 @@ describe('useSubscription Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `from [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}] insert test.${tableName}`,
+                    `INSERT test.${tableName} FROM [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}]`,
                     null,
                     []
                 );

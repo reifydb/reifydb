@@ -29,7 +29,7 @@ fn test_subscription_int_types() {
 
 		client.command(
 			&format!(
-				"from [{{ i1: 127, i2: 32767, i4: 2147483647, i8: 9223372036854775807 }}] insert test.{}",
+				"INSERT test.{} [{{ i1: 127, i2: 32767, i4: 2147483647, i8: 9223372036854775807 }}]",
 				table
 			),
 			None,
@@ -77,7 +77,7 @@ fn test_subscription_uint_types() {
 
 		client.command(
 			&format!(
-				"from [{{ u1: 255, u2: 65535, u4: 4294967295, u8: 18446744073709551615 }}] insert test.{}",
+				"INSERT test.{} [{{ u1: 255, u2: 65535, u4: 4294967295, u8: 18446744073709551615 }}]",
 				table
 			),
 			None,
@@ -117,7 +117,7 @@ fn test_subscription_float_types() {
 
 		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
 
-		client.command(&format!("from [{{ f4: 3.14, f8: 2.718281828459045 }}] insert test.{}", table), None)
+		client.command(&format!("INSERT test.{} [{{ f4: 3.14, f8: 2.718281828459045 }}]", table), None)
 			.await
 			.unwrap();
 
@@ -154,7 +154,7 @@ fn test_subscription_string_types() {
 
 		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
 
-		client.command(&format!("from [{{ s: 'hello world', s2: 'test data' }}] insert test.{}", table), None)
+		client.command(&format!("INSERT test.{} [{{ s: 'hello world', s2: 'test data' }}]", table), None)
 			.await
 			.unwrap();
 
@@ -191,7 +191,7 @@ fn test_subscription_temporal() {
 		// Use quoted strings for temporal values (will be cast to temporal types)
 		client.command(
 			&format!(
-				"from [{{ d: '2025-01-15', t: '14:30:00', dt: '2025-01-15T14:30:00Z' }}] insert test.{}",
+				"INSERT test.{} [{{ d: '2025-01-15', t: '14:30:00', dt: '2025-01-15T14:30:00Z' }}]",
 				table
 			),
 			None,
@@ -229,15 +229,15 @@ fn test_subscription_uuid() {
 
 		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
 
-		client
-			.command(
-				&format!(
-					"from [{{ u4: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', u7: '019478f0-d3af-7e22-9d7a-f8d7c7a3b3c4' }}] insert test.{}",
-					table
-				),
-				None,
-			)
-			.await.unwrap();
+		client.command(
+			&format!(
+				"INSERT test.{} [{{ u4: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', u7: '019478f0-d3af-7e22-9d7a-f8d7c7a3b3c4' }}]",
+				table
+			),
+			None,
+		)
+		.await
+		.unwrap();
 
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some());

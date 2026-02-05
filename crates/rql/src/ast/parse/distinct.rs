@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::distinct_multiple_columns_without_braces;
+use reifydb_core::error::diagnostic::operation::distinct_missing_braces;
 use reifydb_type::return_error;
 
 use crate::ast::{
 	ast::AstDistinct,
 	identifier::MaybeQualifiedColumnIdentifier,
 	parse::Parser,
-	tokenize::{keyword::Keyword, operator::Operator, separator::Separator, token::TokenKind},
+	tokenize::{keyword::Keyword, operator::Operator, separator::Separator},
 };
 
 impl Parser {
@@ -17,9 +17,8 @@ impl Parser {
 
 		let (columns, has_braces) = self.parse_identifiers()?;
 
-		// Validate multiple columns require braces
-		if columns.len() > 1 && !has_braces {
-			return_error!(distinct_multiple_columns_without_braces(token.fragment));
+		if !has_braces {
+			return_error!(distinct_missing_braces(token.fragment));
 		}
 
 		Ok(AstDistinct {
@@ -28,29 +27,20 @@ impl Parser {
 		})
 	}
 
-	/// Parse a comma-separated list of column identifiers with optional
-	/// braces Returns (identifiers, had_braces) tuple
 	fn parse_identifiers(&mut self) -> crate::Result<(Vec<MaybeQualifiedColumnIdentifier>, bool)> {
-		if self.is_eof() {
+		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
 			return Ok((vec![], false));
 		}
 
-		let has_braces = self.current()?.is_operator(Operator::OpenCurly);
-		if has_braces {
-			self.advance()?; // consume opening brace
-		}
+		self.advance()?;
 
 		let mut identifiers = Vec::new();
 
-		// Check if empty list or next statement keyword
-		if self.should_stop_identifier_parsing(has_braces)? {
-			if has_braces && !self.is_eof() && self.current()?.is_operator(Operator::CloseCurly) {
-				self.advance()?; // consume closing brace
-			}
-			return Ok((identifiers, has_braces));
+		if self.current()?.is_operator(Operator::CloseCurly) {
+			self.advance()?;
+			return Ok((identifiers, true));
 		}
 
-		// Parse column identifiers
 		loop {
 			identifiers.push(self.parse_column_identifier_or_keyword()?);
 
@@ -58,13 +48,11 @@ impl Parser {
 				break;
 			}
 
-			// Check for closing brace if we have braces
-			if has_braces && self.current()?.is_operator(Operator::CloseCurly) {
-				self.advance()?; // consume closing brace
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				self.advance()?;
 				break;
 			}
 
-			// Check for comma continuation
 			if self.current()?.is_separator(Separator::Comma) {
 				self.advance()?;
 			} else {
@@ -72,23 +60,7 @@ impl Parser {
 			}
 		}
 
-		Ok((identifiers, has_braces))
-	}
-
-	/// Check if we should stop parsing identifiers based on next token
-	fn should_stop_identifier_parsing(&mut self, has_braces: bool) -> crate::Result<bool> {
-		if self.is_eof() {
-			return Ok(true);
-		}
-
-		let current = self.current()?;
-
-		// If we have braces, only stop on closing brace
-		if has_braces {
-			return Ok(current.is_operator(Operator::CloseCurly));
-		}
-
-		Ok(matches!(current.kind, TokenKind::Keyword(_)))
+		Ok((identifiers, true))
 	}
 }
 
@@ -98,8 +70,8 @@ pub mod tests {
 	use crate::ast::tokenize::tokenize;
 
 	#[test]
-	fn test_distinct_no_args() {
-		let tokens = tokenize("DISTINCT").unwrap();
+	fn test_distinct_empty_braces() {
+		let tokens = tokenize("DISTINCT {}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -113,7 +85,7 @@ pub mod tests {
 
 	#[test]
 	fn test_distinct_single_column() {
-		let tokens = tokenize("DISTINCT name").unwrap();
+		let tokens = tokenize("DISTINCT {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -143,11 +115,12 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_distinct_multiple_columns_without_braces_fails() {
-		let tokens = tokenize("DISTINCT name, age").unwrap();
+	fn test_distinct_without_braces_fails() {
+		let tokens = tokenize("DISTINCT name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 
-		assert!(result.is_err(), "Expected error for multiple columns without braces");
+		assert!(result.is_err());
+		assert_eq!(result.unwrap_err().code, "DISTINCT_002");
 	}
 }

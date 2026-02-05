@@ -39,7 +39,7 @@ describe('Named Parameters - Primitive Types', () => {
     describe('command_named', () => {
         it('bool_param', async () => {
             const frames = await wsClient.command(
-                "MAP $bool_val as result",
+                "MAP {result: $bool_val}",
                 {bool_val: true},
                 [Schema.object({result: Schema.boolean()})]
             );
@@ -49,7 +49,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('int1_param', async () => {
             const frames = await wsClient.command(
-                "MAP $int1_val as result",
+                "MAP {result: $int1_val}",
                 {int1_val: 42},
                 [Schema.object({result: Schema.int1()})]
             );
@@ -59,7 +59,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('int2_param', async () => {
             const frames = await wsClient.command(
-                "MAP $int2_val as result",
+                "MAP {result: $int2_val}",
                 {int2_val: 1234},
                 [Schema.object({result: Schema.int2()})]
             );
@@ -69,7 +69,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('int4_param', async () => {
             const frames = await wsClient.command(
-                "MAP $int4_val as result",
+                "MAP {result: $int4_val}",
                 {int4_val: 12345678},
                 [Schema.object({result: Schema.int4()})]
             );
@@ -79,7 +79,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('int8_param', async () => {
             const frames = await wsClient.command(
-                "MAP $int8_val as result",
+                "MAP {result: $int8_val}",
                 {int8_val: BigInt("9223372036854775807")},
                 [Schema.object({result: Schema.int8()})]
             );
@@ -89,7 +89,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('int16_param', async () => {
             const frames = await wsClient.command(
-                "MAP $int16_val as result",
+                "MAP {result: $int16_val}",
                 {int16_val: BigInt("170141183460469231731687303715884105727")},
                 [Schema.object({result: Schema.int16()})]
             );
@@ -99,7 +99,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('uint1_param', async () => {
             const frames = await wsClient.command(
-                "MAP $uint1_val as result",
+                "MAP {result: $uint1_val}",
                 {uint1_val: 255},
                 [Schema.object({result: Schema.uint1()})]
             );
@@ -109,7 +109,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('uint2_param', async () => {
             const frames = await wsClient.command(
-                "MAP $uint2_val as result",
+                "MAP {result: $uint2_val}",
                 {uint2_val: 65535},
                 [Schema.object({result: Schema.uint2()})]
             );
@@ -119,7 +119,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('uint4_param', async () => {
             const frames = await wsClient.command(
-                "MAP $uint4_val as result",
+                "MAP {result: $uint4_val}",
                 {uint4_val: 4294967295},
                 [Schema.object({result: Schema.uint4()})]
             );
@@ -129,7 +129,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('uint8_param', async () => {
             const frames = await wsClient.command(
-                "MAP $uint8_val as result",
+                "MAP {result: $uint8_val}",
                 {uint8_val: BigInt("18446744073709551615")},
                 [Schema.object({result: Schema.uint8()})]
             );
@@ -139,7 +139,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('uint16_param', async () => {
             const frames = await wsClient.command(
-                "MAP $uint16_val as result",
+                "MAP {result: $uint16_val}",
                 {uint16_val: BigInt("340282366920938463463374607431768211455")},
                 [Schema.object({result: Schema.uint16()})]
             );
@@ -149,7 +149,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('float4_param', async () => {
             const frames = await wsClient.command(
-                "MAP $float4_val as result",
+                "MAP {result: $float4_val}",
                 {float4_val: 3.14},
                 [Schema.object({result: Schema.float4()})]
             );
@@ -160,7 +160,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('float8_param', async () => {
             const frames = await wsClient.command(
-                "MAP $float8_val as result",
+                "MAP {result: $float8_val}",
                 {float8_val: 3.141592653589793},
                 [Schema.object({result: Schema.float8()})]
             );
@@ -170,7 +170,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('decimal_param', async () => {
             const frames = await wsClient.command(
-                "MAP $decimal_val as result",
+                "MAP {result: $decimal_val}",
                 {decimal_val: "123.456789"},
                 [Schema.object({result: Schema.decimal()})]
             );
@@ -182,7 +182,7 @@ describe('Named Parameters - Primitive Types', () => {
     describe('query_named', () => {
         it('bool_param', async () => {
             const frames = await wsClient.query(
-                "MAP $bool_val as result",
+                "MAP {result: $bool_val}",
                 {bool_val: true},
                 [Schema.object({result: Schema.boolean()})]
             );
@@ -192,7 +192,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('int1_param', async () => {
             const frames = await wsClient.query(
-                "MAP $int1_val as result",
+                "MAP {result: $int1_val}",
                 {int1_val: 42},
                 [Schema.object({result: Schema.int1()})]
             );
@@ -202,7 +202,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('int2_param', async () => {
             const frames = await wsClient.query(
-                "MAP $int2_val as result",
+                "MAP {result: $int2_val}",
                 {int2_val: 1234},
                 [Schema.object({result: Schema.int2()})]
             );
@@ -212,7 +212,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('int4_param', async () => {
             const frames = await wsClient.query(
-                "MAP $int4_val as result",
+                "MAP {result: $int4_val}",
                 {int4_val: 12345678},
                 [Schema.object({result: Schema.int4()})]
             );
@@ -222,7 +222,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('int8_param', async () => {
             const frames = await wsClient.query(
-                "MAP $int8_val as result",
+                "MAP {result: $int8_val}",
                 {int8_val: BigInt("9223372036854775807")},
                 [Schema.object({result: Schema.int8()})]
             );
@@ -232,7 +232,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('int16_param', async () => {
             const frames = await wsClient.query(
-                "MAP $int16_val as result",
+                "MAP {result: $int16_val}",
                 {int16_val: BigInt("170141183460469231731687303715884105727")},
                 [Schema.object({result: Schema.int16()})]
             );
@@ -242,7 +242,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('uint1_param', async () => {
             const frames = await wsClient.query(
-                "MAP $uint1_val as result",
+                "MAP {result: $uint1_val}",
                 {uint1_val: 255},
                 [Schema.object({result: Schema.uint1()})]
             );
@@ -252,7 +252,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('uint2_param', async () => {
             const frames = await wsClient.query(
-                "MAP $uint2_val as result",
+                "MAP {result: $uint2_val}",
                 {uint2_val: 65535},
                 [Schema.object({result: Schema.uint2()})]
             );
@@ -262,7 +262,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('uint4_param', async () => {
             const frames = await wsClient.query(
-                "MAP $uint4_val as result",
+                "MAP {result: $uint4_val}",
                 {uint4_val: 4294967295},
                 [Schema.object({result: Schema.uint4()})]
             );
@@ -272,7 +272,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('uint8_param', async () => {
             const frames = await wsClient.query(
-                "MAP $uint8_val as result",
+                "MAP {result: $uint8_val}",
                 {uint8_val: BigInt("18446744073709551615")},
                 [Schema.object({result: Schema.uint8()})]
             );
@@ -282,7 +282,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('uint16_param', async () => {
             const frames = await wsClient.query(
-                "MAP $uint16_val as result",
+                "MAP {result: $uint16_val}",
                 {uint16_val: BigInt("340282366920938463463374607431768211455")},
                 [Schema.object({result: Schema.uint16()})]
             );
@@ -292,7 +292,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('float4_param', async () => {
             const frames = await wsClient.query(
-                "MAP $float4_val as result",
+                "MAP {result: $float4_val}",
                 {float4_val: 3.14},
                 [Schema.object({result: Schema.float4()})]
             );
@@ -302,7 +302,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('float8_param', async () => {
             const frames = await wsClient.query(
-                "MAP $float8_val as result",
+                "MAP {result: $float8_val}",
                 {float8_val: 3.141592653589793},
                 [Schema.object({result: Schema.float8()})]
             );
@@ -312,7 +312,7 @@ describe('Named Parameters - Primitive Types', () => {
 
         it('decimal_param', async () => {
             const frames = await wsClient.query(
-                "MAP $decimal_val as result",
+                "MAP {result: $decimal_val}",
                 {decimal_val: "123.456789"},
                 [Schema.object({result: Schema.decimal()})]
             );

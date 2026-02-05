@@ -4,8 +4,8 @@
 (admin 'create namespace test')
 
 (admin 'create table test.conversion{col: int4}')
-(command 'from [{ col: 0 }] insert test.conversion')
-command 'from test.conversion map cast(col, float8)'
+(command 'INSERT test.conversion [{ col: 0 }]')
+command 'from test.conversion map {cast(col, float8)}'
 ---
 > +----------+-------+
 > |  rownum  |  col  |
@@ -15,8 +15,8 @@ command 'from test.conversion map cast(col, float8)'
 >
 
 
-(command 'from [{ col: -2147483648 }] insert test.conversion')
-command 'from test.conversion map cast(col, float8)'
+(command 'INSERT test.conversion [{ col: -2147483648 }]')
+command 'from test.conversion map {cast(col, float8)}'
 ---
 > +----------+---------------+
 > |  rownum  |      col      |
@@ -26,8 +26,8 @@ command 'from test.conversion map cast(col, float8)'
 > +----------+---------------+
 >
 
-(command 'from [{ col: 2147483647 }] insert test.conversion')
-command 'from test.conversion map cast(col, float8)'
+(command 'INSERT test.conversion [{ col: 2147483647 }]')
+command 'from test.conversion map {cast(col, float8)}'
 ---
 > +----------+---------------+
 > |  rownum  |      col      |

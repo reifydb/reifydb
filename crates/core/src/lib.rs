@@ -23,7 +23,10 @@ pub struct CoreVersion;
 impl HasVersion for CoreVersion {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "core".to_string(),
+			name: env!("CARGO_PKG_NAME")
+				.strip_prefix("reifydb-")
+				.unwrap_or(env!("CARGO_PKG_NAME"))
+				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Core database interfaces and data structures".to_string(),
 			r#type: ComponentType::Module,

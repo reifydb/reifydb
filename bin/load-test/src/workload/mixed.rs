@@ -57,7 +57,7 @@ impl Workload for MixedWorkload {
 				})
 				.collect();
 
-			queries.push(SetupQuery::command(format!("from [{}] insert bench.users", rows.join(", "))));
+			queries.push(SetupQuery::command(format!("INSERT bench.users [{}]", rows.join(", "))));
 		}
 
 		queries
@@ -74,7 +74,7 @@ impl Workload for MixedWorkload {
 			// Write operation - insert new row
 			let new_id = self.write_counter.fetch_add(1, Ordering::Relaxed);
 			Operation::Command(format!(
-				"from [{{ id: {}, name: \"user_{}\", email: \"user_{}@bench.test\" }}] insert bench.users",
+				"INSERT bench.users [{{ id: {}, name: \"user_{}\", email: \"user_{}@bench.test\" }}]",
 				new_id, new_id, new_id
 			))
 		}

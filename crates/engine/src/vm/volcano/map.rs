@@ -1,0 +1,179 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
+use std::sync::Arc;
+
+use reifydb_core::{
+	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
+	value::column::{columns::Columns, headers::ColumnHeaders},
+};
+use reifydb_rql::expression::{Expression, name::column_name_from_expression};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_type::fragment::Fragment;
+use tracing::instrument;
+
+use crate::{
+	evaluate::{ColumnEvaluationContext, column::evaluate},
+	vm::volcano::query::{QueryContext, QueryNode, QueryPlan},
+};
+
+pub(crate) struct MapNode {
+	input: Box<QueryPlan>,
+	expressions: Vec<Expression>,
+	headers: Option<ColumnHeaders>,
+	context: Option<Arc<QueryContext>>,
+}
+
+impl MapNode {
+	pub fn new(input: Box<QueryPlan>, expressions: Vec<Expression>) -> Self {
+		Self {
+			input,
+			expressions,
+			headers: None,
+			context: None,
+		}
+	}
+}
+
+impl QueryNode for MapNode {
+	#[instrument(name = "volcano::map::initialize", level = "trace", skip_all)]
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+		self.context = Some(Arc::new(ctx.clone()));
+		self.input.initialize(rx, ctx)?;
+		Ok(())
+	}
+
+	#[instrument(name = "volcano::map::next", level = "trace", skip_all)]
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+		debug_assert!(self.context.is_some(), "MapNode::next() called before initialize()");
+		let stored_ctx = self.context.as_ref().unwrap();
+
+		while let Some(columns) = self.input.next(rx, ctx)? {
+			let mut new_columns = Vec::with_capacity(self.expressions.len());
+
+			let row_count = columns.row_count();
+
+			// Clone expressions to avoid lifetime issues
+			let expressions = self.expressions.clone();
+			for expr in &expressions {
+				// Create evaluation context inline to avoid lifetime issues
+				let mut eval_ctx = ColumnEvaluationContext {
+					target: None,
+					columns: columns.clone(),
+					row_count,
+					take: None,
+					params: &stored_ctx.params,
+					symbol_table: &stored_ctx.stack,
+					is_aggregate_context: false,
+				};
+
+				// Check if this is an alias expression and we have source information
+				if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
+					let alias_name = alias_expr.alias.name();
+
+					// Find the matching column in the source
+					if let Some(table_column) =
+						source.columns().iter().find(|col| col.name == alias_name)
+					{
+						// Create a resolved column with source information
+						let column_ident = Fragment::internal(&table_column.name);
+						let resolved_column = ResolvedColumn::new(
+							column_ident,
+							source.clone(),
+							table_column.clone(),
+						);
+
+						eval_ctx.target = Some(TargetColumn::Resolved(resolved_column));
+					}
+				}
+
+				let column = evaluate(&eval_ctx, expr, &stored_ctx.services.functions)?;
+
+				new_columns.push(column);
+			}
+
+			let column_names = expressions.iter().map(column_name_from_expression).collect();
+			self.headers = Some(ColumnHeaders {
+				columns: column_names,
+			});
+
+			// Create new Columns with the original encoded numbers preserved
+			let result_columns = if !columns.row_numbers.is_empty() {
+				Columns::with_row_numbers(new_columns, columns.row_numbers.to_vec())
+			} else {
+				Columns::new(new_columns)
+			};
+
+			return Ok(Some(result_columns));
+		}
+		Ok(None)
+	}
+
+	fn headers(&self) -> Option<ColumnHeaders> {
+		self.headers.clone().or(self.input.headers())
+	}
+}
+
+pub(crate) struct MapWithoutInputNode {
+	expressions: Vec<Expression>,
+	headers: Option<ColumnHeaders>,
+	context: Option<Arc<QueryContext>>,
+}
+
+impl MapWithoutInputNode {
+	pub fn new(expressions: Vec<Expression>) -> Self {
+		Self {
+			expressions,
+			headers: None,
+			context: None,
+		}
+	}
+}
+
+impl QueryNode for MapWithoutInputNode {
+	#[instrument(name = "volcano::map::noinput::initialize", level = "trace", skip_all)]
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+		self.context = Some(Arc::new(ctx.clone()));
+		Ok(())
+	}
+
+	#[instrument(name = "volcano::map::noinput::next", level = "trace", skip_all)]
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+		debug_assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
+		let stored_ctx = self.context.as_ref().unwrap();
+
+		if self.headers.is_some() {
+			return Ok(None);
+		}
+
+		let mut columns = vec![];
+
+		// Clone expressions to avoid lifetime issues
+		let expressions = self.expressions.clone();
+		for expr in expressions.iter() {
+			let column = evaluate(
+				&ColumnEvaluationContext {
+					target: None,
+					columns: Columns::empty(),
+					row_count: 1,
+					take: None,
+					params: &stored_ctx.params,
+					symbol_table: &stored_ctx.stack,
+					is_aggregate_context: false,
+				},
+				&expr,
+				&stored_ctx.services.functions,
+			)?;
+
+			columns.push(column);
+		}
+
+		let columns = Columns::new(columns);
+		self.headers = Some(ColumnHeaders::from_columns(&columns));
+		Ok(Some(columns))
+	}
+
+	fn headers(&self) -> Option<ColumnHeaders> {
+		self.headers.clone()
+	}
+}

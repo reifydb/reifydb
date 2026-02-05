@@ -15,7 +15,7 @@ use reifydb_core::{
 };
 use reifydb_type::{params::Params, value::r#type::Type};
 
-use crate::stack::Stack;
+use crate::vm::stack::SymbolTable;
 
 #[derive(Debug)]
 pub struct ColumnEvaluationContext<'a> {
@@ -24,7 +24,7 @@ pub struct ColumnEvaluationContext<'a> {
 	pub row_count: usize,
 	pub take: Option<usize>,
 	pub params: &'a Params,
-	pub stack: &'a Stack,
+	pub symbol_table: &'a SymbolTable,
 	// TODO: This is a temporary hack to support aggregate functions in StandardColumnEvaluator
 	// Should be replaced with proper function detection or separate aggregation methods
 	pub is_aggregate_context: bool,
@@ -34,14 +34,14 @@ impl<'a> ColumnEvaluationContext<'a> {
 	pub fn testing() -> Self {
 		use std::sync::LazyLock;
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
-		static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
+		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 		Self {
 			target: None,
 			columns: Columns::empty(),
 			row_count: 1,
 			take: None,
 			params: &EMPTY_PARAMS,
-			stack: &EMPTY_STACK,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
 		}
 	}

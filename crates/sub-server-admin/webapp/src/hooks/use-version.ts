@@ -1,4 +1,4 @@
-import {useQueryOne, InferSchema, Schema} from '@reifydb/react';
+import {useAdminOne, InferSchema, Schema} from '@reifydb/react';
 
 export interface Version {
     version: string;
@@ -17,7 +17,7 @@ const versionSchema = Schema.object({
 type VersionRow = InferSchema<typeof versionSchema>;
 
 export function useVersion(): [boolean, Version, string | undefined] {
-    const {isExecuting, result, error} = useQueryOne("FROM system.versions", null, versionSchema);
+    const {isExecuting, result, error} = useAdminOne("FROM system.versions", null, versionSchema);
 
     const rows: VersionRow[] = result?.rows || [];
 

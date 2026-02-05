@@ -1,7 +1,7 @@
 # Generated from: params_named.tap.md#float4_param
 # Test: Query with named FLOAT4 parameter
 
-query_named 'MAP $float4_val as result' 'float4_val=3.14'
+query_named 'MAP {result: $float4_val}' 'float4_val=3.14'
 ---
 > +----------+
 > |  result  |

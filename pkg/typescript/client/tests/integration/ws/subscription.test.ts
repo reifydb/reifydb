@@ -123,7 +123,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert data after subscription is established
             await wsClient.command(
-                `from [{ id: 1, name: 'test', value: 100 }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 1, name: 'test', value: 100 }]`,
                 null,
                 []
             );
@@ -171,7 +171,7 @@ describe('WebSocket Subscriptions', () => {
             );
 
             await wsClient.command(
-                `from [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
                 null,
                 []
             );
@@ -225,7 +225,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Now insert initial data
             await wsClient.command(
-                `from [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
                 null,
                 []
             );
@@ -240,7 +240,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Update data
             await wsClient.command(
-                `from test.${tableName} filter { id == 1 } map { id: id, name: 'alice_updated' } update test.${tableName}`,
+                `UPDATE test.${tableName} { name: 'alice_updated' } FILTER id == 1`,
                 null,
                 []
             );
@@ -291,7 +291,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Now insert initial data
             await wsClient.command(
-                `from [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
                 null,
                 []
             );
@@ -306,7 +306,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Delete data
             await wsClient.command(
-                `from test.${tableName} filter { id == 1 } delete test.${tableName}`,
+                `DELETE test.${tableName} FILTER id == 1`,
                 null,
                 []
             );
@@ -356,7 +356,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert
             await wsClient.command(
-                `from [{ id: 1, name: 'alice' }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 1, name: 'alice' }]`,
                 null,
                 []
             );
@@ -364,7 +364,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Update
             await wsClient.command(
-                `from test.${tableName} filter { id == 1 } map { id: id, name: 'alice_updated' } update test.${tableName}`,
+                `UPDATE test.${tableName} { name: 'alice_updated' } FILTER id == 1`,
                 null,
                 []
             );
@@ -372,7 +372,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Remove
             await wsClient.command(
-                `from test.${tableName} filter { id == 1 } delete test.${tableName}`,
+                `DELETE test.${tableName} FILTER id == 1`,
                 null,
                 []
             );
@@ -432,7 +432,7 @@ describe('WebSocket Subscriptions', () => {
             // Insert 10 rows at once
             const rows = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, name: `user${i + 1}` }));
             await wsClient.command(
-                `from ${JSON.stringify(rows)} insert test.${tableName}`,
+                `INSERT test.${tableName} FROM ${JSON.stringify(rows)}`,
                 null,
                 []
             );
@@ -482,7 +482,7 @@ describe('WebSocket Subscriptions', () => {
             );
 
             await wsClient.command(
-                `from [{ id: 42, name: 'test', value: 100 }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 42, name: 'test', value: 100 }]`,
                 null,
                 []
             );
@@ -527,7 +527,7 @@ describe('WebSocket Subscriptions', () => {
             );
 
             await wsClient.command(
-                `from [{ id: 42, name: 'test' }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 42, name: 'test' }]`,
                 null,
                 []
             );
@@ -573,7 +573,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert into table 1
             await wsClient.command(
-                `from [{ id: 1, name: 'alice' }] insert test.${table1}`,
+                `INSERT test.${table1} [{ id: 1, name: 'alice' }]`,
                 null,
                 []
             );
@@ -581,7 +581,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert into table 2
             await wsClient.command(
-                `from [{ id: 2, value: 200 }] insert test.${table2}`,
+                `INSERT test.${table2} [{ id: 2, value: 200 }]`,
                 null,
                 []
             );
@@ -631,7 +631,7 @@ describe('WebSocket Subscriptions', () => {
             await Promise.all(
                 tables.map((table, i) =>
                     wsClient.command(
-                        `from [{ id: ${i}, value: ${i * 100} }] insert test.${table}`,
+                        `INSERT test.${table} [{ id: ${i}, value: ${i * 100} }]`,
                         null,
                         []
                 )
@@ -689,7 +689,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert new data
             await wsClient.command(
-                `from [{ id: 1, name: 'after_reconnect' }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 1, name: 'after_reconnect' }]`,
                 null,
                 []
             );
@@ -728,7 +728,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert before disconnect
             await wsClient.command(
-                `from [{ id: 1, value: 100 }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 1, value: 100 }]`,
                 null,
                 []
             );
@@ -749,7 +749,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert after reconnect
             await wsClient.command(
-                `from [{ id: 2, value: 200 }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 2, value: 200 }]`,
                 null,
                 []
             );
@@ -803,7 +803,7 @@ describe('WebSocket Subscriptions', () => {
             await Promise.all(
                 tables.map((table, i) =>
                     wsClient.command(
-                        `from [{ id: ${i}, value: ${i * 100} }] insert test.${table}`,
+                        `INSERT test.${table} [{ id: ${i}, value: ${i * 100} }]`,
                         null,
                         []
                     )
@@ -920,7 +920,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert data
             await wsClient.command(
-                `from [{ id: 1, value: 100 }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 1, value: 100 }]`,
                 null,
                 []
             );
@@ -954,7 +954,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert data that doesn't match filter
             await wsClient.command(
-                `from [{ id: 1, value: 100 }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 1, value: 100 }]`,
                 null,
                 []
             );
@@ -966,7 +966,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert data that matches filter
             await wsClient.command(
-                `from [{ id: 1001, value: 200 }] insert test.${tableName}`,
+                `INSERT test.${tableName} [{ id: 1001, value: 200 }]`,
                 null,
                 []
             );
@@ -1007,7 +1007,7 @@ describe('WebSocket Subscriptions', () => {
 
             const startTime = Date.now();
             await wsClient.command(
-                `from ${JSON.stringify(rows)} insert test.${tableName}`,
+                `INSERT test.${tableName} FROM ${JSON.stringify(rows)}`,
                 null,
                 []
             );
@@ -1060,7 +1060,7 @@ describe('WebSocket Subscriptions', () => {
             // Fire 10 insert commands rapidly without await
             const promises = Array.from({ length: 10 }, (_, i) =>
                 wsClient.command(
-                    `from [{ id: ${i}, value: ${i * 10} }] insert test.${tableName}`,
+                    `INSERT test.${tableName} [{ id: ${i}, value: ${i * 10} }]`,
                     null,
                     []
                 )

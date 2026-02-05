@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{error::diagnostic::ast::multiple_expressions_without_braces, return_error};
+use reifydb_core::error::diagnostic::operation::sort_missing_braces;
+use reifydb_type::return_error;
 
 use crate::ast::{
 	ast::AstSort,
@@ -17,21 +18,31 @@ impl Parser {
 	pub(crate) fn parse_sort(&mut self) -> crate::Result<AstSort> {
 		let token = self.consume_keyword(Keyword::Sort)?;
 
-		let has_braces = self.current()?.is_operator(OpenCurly);
-
-		if has_braces {
-			self.advance()?;
+		// Always require opening curly brace
+		if self.is_eof() || !self.current()?.is_operator(OpenCurly) {
+			return_error!(sort_missing_braces(token.fragment));
 		}
+		self.advance()?; // consume opening brace
 
 		let mut columns = Vec::new();
 		let mut directions = Vec::new();
+
+		// Handle empty braces case
+		if !self.is_eof() && self.current()?.is_operator(CloseCurly) {
+			self.advance()?; // consume closing brace
+			return Ok(AstSort {
+				token,
+				columns,
+				directions,
+			});
+		}
 
 		loop {
 			columns.push(self.parse_column_identifier_or_keyword()?);
 
 			if !self.is_eof()
 				&& !self.current()?.is_separator(Comma)
-				&& (!has_braces || !self.current()?.is_operator(CloseCurly))
+				&& !self.current()?.is_operator(CloseCurly)
 			{
 				if self.current()?.is_keyword(Keyword::Asc) || self.current()?.is_keyword(Keyword::Desc)
 				{
@@ -49,8 +60,8 @@ impl Parser {
 				break;
 			}
 
-			// If we have braces, look for closing brace
-			if has_braces && self.current()?.is_operator(CloseCurly) {
+			// Look for closing brace
+			if self.current()?.is_operator(CloseCurly) {
 				self.advance()?; // consume closing brace
 				break;
 			}
@@ -61,10 +72,6 @@ impl Parser {
 			} else {
 				break;
 			}
-		}
-
-		if columns.len() > 1 && !has_braces {
-			return_error!(multiple_expressions_without_braces(token.fragment));
 		}
 
 		Ok(AstSort {
@@ -82,7 +89,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_column() {
-		let tokens = tokenize("SORT name").unwrap();
+		let tokens = tokenize("SORT {name}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -97,7 +104,7 @@ pub mod tests {
 
 	#[test]
 	fn test_keyword() {
-		let tokens = tokenize("SORT value ASC").unwrap();
+		let tokens = tokenize("SORT {value ASC}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -112,7 +119,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_column_asc() {
-		let tokens = tokenize("SORT name ASC").unwrap();
+		let tokens = tokenize("SORT {name ASC}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -127,7 +134,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_column_desc() {
-		let tokens = tokenize("SORT name DESC").unwrap();
+		let tokens = tokenize("SORT {name DESC}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -177,26 +184,25 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_single_column_with_braces() {
-		let tokens = tokenize("SORT {name}").unwrap();
+	fn test_empty_braces() {
+		let tokens = tokenize("SORT {}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
 		let sort = result.first_unchecked().as_sort();
-		assert_eq!(sort.columns.len(), 1);
-		assert_eq!(sort.directions.len(), 1);
-
-		assert_eq!(sort.columns[0].name.text(), "name");
-		assert_eq!(sort.directions[0].as_ref(), None);
+		assert_eq!(sort.columns.len(), 0);
+		assert_eq!(sort.directions.len(), 0);
 	}
 
 	#[test]
-	fn test_multiple_columns_without_braces_fails() {
-		let tokens = tokenize("SORT name, age").unwrap();
+	fn test_without_braces_fails() {
+		let tokens = tokenize("SORT name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 
-		assert!(result.is_err(), "Expected error for multiple columns without braces");
+		assert!(result.is_err(), "Expected error for SORT without braces");
+		let err = result.unwrap_err();
+		assert_eq!(err.code, "SORT_001");
 	}
 }

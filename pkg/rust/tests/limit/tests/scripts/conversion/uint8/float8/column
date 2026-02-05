@@ -4,8 +4,8 @@
 (admin 'create namespace test')
 
 (admin 'create table test.conversion{col: uint8}')
-(command 'from [{ col: 0 }] insert test.conversion')
-command 'from test.conversion map cast(col, float8)'
+(command 'INSERT test.conversion [{ col: 0 }]')
+command 'from test.conversion map {cast(col, float8)}'
 ---
 > +----------+-------+
 > |  rownum  |  col  |
@@ -15,8 +15,8 @@ command 'from test.conversion map cast(col, float8)'
 >
 
 
-(command 'from [{ col: 9007199254740992 }] insert test.conversion')
-command 'from test.conversion map cast(col, float8)'
+(command 'INSERT test.conversion [{ col: 9007199254740992 }]')
+command 'from test.conversion map {cast(col, float8)}'
 ---
 > +----------+--------------------+
 > |  rownum  |        col         |
@@ -26,22 +26,22 @@ command 'from test.conversion map cast(col, float8)'
 > +----------+--------------------+
 >
 
-(command 'from [{ col: 9007199254740993 }] insert test.conversion')
-!command 'from test.conversion map cast(col, float8)'
+(command 'INSERT test.conversion [{ col: 9007199254740993 }]')
+!command 'from test.conversion map {cast(col, float8)}'
 ---
 >  Error CAST_002: failed to cast to Float8
->   at "(colfloat8" (line 1, column 30)
+>   at "(colfloat8" (line 1, column 31)
 >
->   1 │ from test.conversion map cast(col, float8)
->     │                               ~~~~~~~~~~
->     │                        failed to cast to Float8
+>   1 │ from test.conversion map {cast(col, float8)}
+>     │                                ~~~~~~~~~~
+>     │                         failed to cast to Float8
 >
 >   ↳  Error NUMBER_004: too large for precise float conversion
->     at "col" (line 1, column 31)
+>     at "col" (line 1, column 32)
 >
->     1 │ from test.conversion map cast(col, float8)
->       │                               ~~~
->       │   converting 'col' from Uint8 to Float8 would lose precision
+>     1 │ from test.conversion map {cast(col, float8)}
+>       │                                ~~~
+>       │    converting 'col' from Uint8 to Float8 would lose precision
 >
 >     note: Float8 can only represent from 0 to 9_007_199_254_740_992 (2^53) precisely
 >     note: consider using a different numeric type if exact precision is required

@@ -1,8 +1,0 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
-# Copyright (c) 2025 ReifyDB
-
-# Test for loop with inline array
-plan 'for $x in [1, 2, 3] { $x }'
----
-FOR $x IN [1, 2, 3]
-  EXPR

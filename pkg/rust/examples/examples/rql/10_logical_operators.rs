@@ -26,28 +26,28 @@ fn main() {
 	info!("Example 1: Basic logical operations");
 	log_query(
 		r#"map {
-  true and true as and_true,
-  true and false as and_false,
-  true or false as or_true,
-  false or false as or_false,
-  not true as not_true,
-  not false as not_false,
-  true xor false as xor_true,
-  true xor true as xor_false
+  and_true: true and true,
+  and_false: true and false,
+  or_true: true or false,
+  or_false: false or false,
+  not_true: not true,
+  not_false: not false,
+  xor_true: true xor false,
+  xor_false: true xor true
 }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			map {
-				true and true as and_true,
-				true and false as and_false,
-				true or false as or_true,
-				false or false as or_false,
-				not true as not_true,
-				not false as not_false,
-				true xor false as xor_true,
-				true xor true as xor_false
+				and_true: true and true,
+				and_false: true and false,
+				or_true: true or false,
+				or_false: false or false,
+				not_true: not true,
+				not_false: not false,
+				xor_true: true xor false,
+				xor_false: true xor true
 			}
 			"#,
 			Params::None,
@@ -78,7 +78,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		from [
+		INSERT inventory.products [
 			{ id: 1, name: "Toy Car", category: "Toys", price: 15.99, in_stock: true, on_sale: true, featured: false, min_age: 3 },
 			{ id: 2, name: "Laptop", category: "Electronics", price: 999.99, in_stock: true, on_sale: false, featured: true, min_age: 0 },
 			{ id: 3, name: "Book", category: "Books", price: 12.99, in_stock: false, on_sale: false, featured: false, min_age: 0 },
@@ -88,7 +88,6 @@ fn main() {
 			{ id: 7, name: "Smartphone", category: "Electronics", price: 699.99, in_stock: true, on_sale: false, featured: true, min_age: 0 },
 			{ id: 8, name: "Puzzle", category: "Toys", price: 24.99, in_stock: true, on_sale: true, featured: false, min_age: 5 }
 		]
-		insert inventory.products
 		"#,
 		Params::None,
 	)
@@ -256,9 +255,9 @@ filter (on_sale == true or featured == true) and category == "Electronics""#,
 map {
   name,
   price,
-  in_stock and on_sale as available_deal,
-  featured or (price > 500) as premium_item,
-  not in_stock or not on_sale as limited_offer
+  available_deal: in_stock and on_sale,
+  premium_item: featured or (price > 500),
+  limited_offer: not in_stock or not on_sale
 }"#,
 	);
 	for frame in db
@@ -268,9 +267,9 @@ map {
 			map {
 				name,
 				price,
-				in_stock and on_sale as available_deal,
-				featured or (price > 500) as premium_item,
-				not in_stock or not on_sale as limited_offer
+				available_deal: in_stock and on_sale,
+				premium_item: featured or (price > 500),
+				limited_offer: not in_stock or not on_sale
 			}
 			"#,
 			Params::None,

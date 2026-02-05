@@ -72,7 +72,7 @@ describe('Statement Handling', () => {
 
         it('mixed_empty_and_non_empty', async () => {
             const frames = await wsClient.command(
-                ';MAP 1 as one ;;;MAP 2 as two',
+                ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
                 null,
                 [
                     Schema.object({ one: Schema.int4() }),
@@ -80,11 +80,11 @@ describe('Statement Handling', () => {
                 ]
             );
             expect(frames).toHaveLength(2);
-            
+
             // Frame 1
             expect(frames[0]).toHaveLength(1);
             expect(frames[0][0].one).toBe(1);
-            
+
             // Frame 2
             expect(frames[1]).toHaveLength(1);
             expect(frames[1][0].two).toBe(2);
@@ -92,7 +92,7 @@ describe('Statement Handling', () => {
 
         it('single_statement_with_semicolon', async () => {
             const frames = await wsClient.command(
-                'MAP 1 as result;',
+                'MAP {result: 1};',
                 null,
                 [Schema.object({ result: Schema.int4() })]
             );
@@ -103,7 +103,7 @@ describe('Statement Handling', () => {
 
         it('multiple_statements_same_structure', async () => {
             const frames = await wsClient.command(
-                'MAP 1 as result;MAP 2 as result;MAP 3 as result;',
+                'OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};MAP {result: 3};',
                 null,
                 [
                     Schema.object({ result: Schema.int4() }),
@@ -112,15 +112,15 @@ describe('Statement Handling', () => {
                 ]
             );
             expect(frames).toHaveLength(3);
-            
+
             // Frame 1
             expect(frames[0]).toHaveLength(1);
             expect(frames[0][0].result).toBe(1);
-            
+
             // Frame 2
             expect(frames[1]).toHaveLength(1);
             expect(frames[1][0].result).toBe(2);
-            
+
             // Frame 3
             expect(frames[2]).toHaveLength(1);
             expect(frames[2][0].result).toBe(3);
@@ -128,7 +128,7 @@ describe('Statement Handling', () => {
 
         it('multiple_statements_different_structure', async () => {
             const frames = await wsClient.command(
-                "MAP 1 as result;MAP { 2 as a, 3 as b };MAP 'ReifyDB' as result;",
+                "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };MAP {result: 'ReifyDB'};",
                 null,
                 [
                     Schema.object({ result: Schema.int4() }),
@@ -154,7 +154,7 @@ describe('Statement Handling', () => {
 
         it('statement_without_trailing_semicolon', async () => {
             const frames = await wsClient.command(
-                'MAP 1 as x',
+                'MAP {x: 1}',
                 null,
                 [Schema.object({ x: Schema.int4() })]
             );
@@ -165,7 +165,7 @@ describe('Statement Handling', () => {
 
         it('multiple_statements_no_trailing_semicolon', async () => {
             const frames = await wsClient.command(
-                'MAP 1 as x;MAP 2 as y',
+                'OUTPUT MAP {x: 1};MAP {y: 2}',
                 null,
                 [
                     Schema.object({ x: Schema.int4() }),
@@ -173,11 +173,11 @@ describe('Statement Handling', () => {
                 ]
             );
             expect(frames).toHaveLength(2);
-            
+
             // Frame 1
             expect(frames[0]).toHaveLength(1);
             expect(frames[0][0].x).toBe(1);
-            
+
             // Frame 2
             expect(frames[1]).toHaveLength(1);
             expect(frames[1][0].y).toBe(2);
@@ -185,7 +185,7 @@ describe('Statement Handling', () => {
 
         it('statement_with_whitespace', async () => {
             const frames = await wsClient.command(
-                '  MAP 1 as result  ;  MAP 2 as result  ',
+                '  OUTPUT MAP {result: 1}  ;  MAP {result: 2}  ',
                 null,
                 [
                     Schema.object({ result: Schema.int4() }),
@@ -235,7 +235,7 @@ describe('Statement Handling', () => {
 
         it('query_mixed_empty_and_non_empty', async () => {
             const frames = await wsClient.query(
-                ';MAP 1 as one ;;;MAP 2 as two',
+                ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
                 null,
                 [
                     Schema.object({ one: Schema.int4() }),
@@ -243,11 +243,11 @@ describe('Statement Handling', () => {
                 ]
             );
             expect(frames).toHaveLength(2);
-            
+
             // Frame 1
             expect(frames[0]).toHaveLength(1);
             expect(frames[0][0].one).toBe(1);
-            
+
             // Frame 2
             expect(frames[1]).toHaveLength(1);
             expect(frames[1][0].two).toBe(2);
@@ -255,7 +255,7 @@ describe('Statement Handling', () => {
 
         it('query_single_statement_with_semicolon', async () => {
             const frames = await wsClient.query(
-                'MAP 1 as result;',
+                'MAP {result: 1};',
                 null,
                 [Schema.object({ result: Schema.int4() })]
             );
@@ -266,7 +266,7 @@ describe('Statement Handling', () => {
 
         it('query_multiple_statements_same_structure', async () => {
             const frames = await wsClient.query(
-                'MAP 1 as result;MAP 2 as result;MAP 3 as result;',
+                'OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};MAP {result: 3};',
                 null,
                 [
                     Schema.object({ result: Schema.int4() }),
@@ -275,15 +275,15 @@ describe('Statement Handling', () => {
                 ]
             );
             expect(frames).toHaveLength(3);
-            
+
             // Frame 1
             expect(frames[0]).toHaveLength(1);
             expect(frames[0][0].result).toBe(1);
-            
+
             // Frame 2
             expect(frames[1]).toHaveLength(1);
             expect(frames[1][0].result).toBe(2);
-            
+
             // Frame 3
             expect(frames[2]).toHaveLength(1);
             expect(frames[2][0].result).toBe(3);
@@ -291,7 +291,7 @@ describe('Statement Handling', () => {
 
         it('query_multiple_statements_different_structure', async () => {
             const frames = await wsClient.query(
-                "MAP 1 as result;MAP { 2 as a, 3 as b };MAP 'ReifyDB' as result;",
+                "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };MAP {result: 'ReifyDB'};",
                 null,
                 [
                     Schema.object({ result: Schema.int4() }),

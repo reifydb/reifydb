@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-logical 'from users map {id, name} filter id > 10'
+logical 'from users map {id, name} filter {id > 10}'
 ---
 > └── TableScan default.users
 > └── Map
@@ -11,7 +11,7 @@ logical 'from users map {id, name} filter id > 10'
 >     └── condition: (id > Constant(10))
 >
 
-logical 'from users filter id > 10 map {id, name}'
+logical 'from users filter {id > 10} map {id, name}'
 ---
 > └── TableScan default.users
 > └── Filter

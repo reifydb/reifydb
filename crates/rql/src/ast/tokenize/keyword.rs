@@ -78,10 +78,12 @@ If         => "IF",
 Else       => "ELSE",
 End        => "END",
 Loop       => "LOOP",
+While      => "WHILE",
+Break      => "BREAK",
+Continue   => "CONTINUE",
 Return     => "RETURN",
 
-Define     => "DEFINE",
-Function   => "FUNCTION",
+Def        => "DEF",
 Call       => "CALL",
 Apply      => "APPLY",
 Cast       => "CAST",
@@ -134,7 +136,8 @@ Query => "QUERY",
 Rename => "RENAME",
 Rownum => "ROWNUM",
 Dictionary => "DICTIONARY",
-For => "FOR"}
+For => "FOR",
+Output => "OUTPUT"}
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
 	let mut map = HashMap::new();
@@ -170,9 +173,11 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("ELSE", Keyword::Else);
 	map.insert("END", Keyword::End);
 	map.insert("LOOP", Keyword::Loop);
+	map.insert("WHILE", Keyword::While);
+	map.insert("BREAK", Keyword::Break);
+	map.insert("CONTINUE", Keyword::Continue);
 	map.insert("RETURN", Keyword::Return);
-	map.insert("DEFINE", Keyword::Define);
-	map.insert("FUNCTION", Keyword::Function);
+	map.insert("DEF", Keyword::Def);
 	map.insert("CALL", Keyword::Call);
 	map.insert("CAST", Keyword::Cast);
 	map.insert("DESCRIBE", Keyword::Describe);
@@ -219,6 +224,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("ROWNUM", Keyword::Rownum);
 	map.insert("DICTIONARY", Keyword::Dictionary);
 	map.insert("FOR", Keyword::For);
+	map.insert("OUTPUT", Keyword::Output);
 	map
 });
 
@@ -339,9 +345,11 @@ pub mod tests {
 	test_keyword_else => (Else, "ELSE"),
 	test_keyword_end => (End, "END"),
 	test_keyword_loop => (Loop, "LOOP"),
+	test_keyword_while => (While, "WHILE"),
+	test_keyword_break => (Break, "BREAK"),
+	test_keyword_continue => (Continue, "CONTINUE"),
 	test_keyword_return => (Return, "RETURN"),
-	test_keyword_define => (Define, "DEFINE"),
-	test_keyword_function => (Function, "FUNCTION"),
+	test_keyword_def => (Def, "DEF"),
 	test_keyword_call => (Call, "CALL"),
 	test_keyword_describe => (Describe, "DESCRIBE"),
 	test_keyword_show => (Show, "SHOW"),
@@ -387,7 +395,8 @@ pub mod tests {
 	test_keyword_rename => (Rename, "RENAME"),
 	test_keyword_rownum => (Rownum, "ROWNUM"),
 	test_keyword_dictionary => (Dictionary, "DICTIONARY"),
-	test_keyword_for => (For, "FOR")}
+	test_keyword_for => (For, "FOR"),
+	test_keyword_output => (Output, "OUTPUT")}
 
 	fn check_no_keyword(repr: &str) {
 		// Test that keywords with additional characters are not parsed
@@ -471,9 +480,11 @@ pub mod tests {
 	test_not_keyword_else => ( "else"),
 	test_not_keyword_end => ( "end"),
 	test_not_keyword_loop => ( "loop"),
+	test_not_keyword_while => ( "while"),
+	test_not_keyword_break => ( "break"),
+	test_not_keyword_continue => ( "continue"),
 	test_not_keyword_return => ( "return"),
-	test_not_keyword_define => ( "define"),
-	test_not_keyword_function => ( "function"),
+	test_not_keyword_def => ( "def"),
 	test_not_keyword_call => ( "call"),
 	test_not_keyword_describe => ( "describe"),
 	test_not_keyword_show => ( "show"),
@@ -519,5 +530,6 @@ pub mod tests {
 	test_not_keyword_rename => ( "rename"),
 	test_not_keyword_rownum => ( "rownum"),
 	test_not_keyword_dictionary => ( "dictionary"),
-	test_not_keyword_for => ( "for")}
+	test_not_keyword_for => ( "for"),
+	test_not_keyword_output => ( "output")}
 }

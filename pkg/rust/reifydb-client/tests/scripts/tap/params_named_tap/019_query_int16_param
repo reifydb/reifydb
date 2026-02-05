@@ -1,7 +1,7 @@
 # Generated from: params_named.tap.md#int16_param
 # Test: Query with named INT16 parameter
 
-query_named 'MAP $int16_val as result' 'int16_val=170141183460469231731687303715884105727'
+query_named 'MAP {result: $int16_val}' 'int16_val=170141183460469231731687303715884105727'
 ---
 > +-------------------------------------------+
 > |                  result                   |

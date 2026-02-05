@@ -31,7 +31,10 @@ pub struct SingleStoreVersion;
 impl HasVersion for SingleStoreVersion {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "store-single".to_string(),
+			name: env!("CARGO_PKG_NAME")
+				.strip_prefix("reifydb-")
+				.unwrap_or(env!("CARGO_PKG_NAME"))
+				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Single-version storage for OLTP operations without version history".to_string(),
 			r#type: ComponentType::Module,

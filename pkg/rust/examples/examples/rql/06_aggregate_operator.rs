@@ -40,7 +40,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		from [
+		INSERT sales.transactions [
 			{ id: 1, product: "Laptop", category: "Electronics", quantity: 2, price: 999.99, region: "North", month: 1 },
 			{ id: 2, product: "Mouse", category: "Electronics", quantity: 5, price: 25.99, region: "North", month: 1 },
 			{ id: 3, product: "Desk", category: "Furniture", quantity: 1, price: 299.99, region: "South", month: 1 },
@@ -52,7 +52,6 @@ fn main() {
 			{ id: 9, product: "Chair", category: "Furniture", quantity: 4, price: 149.99, region: "West", month: 3 },
 			{ id: 10, product: "Laptop", category: "Electronics", quantity: 3, price: 999.99, region: "North", month: 3 }
 		]
-		insert sales.transactions
 		"#,
 		Params::None,
 	)
@@ -62,13 +61,13 @@ fn main() {
 	info!("Example 1: Calculate average price by product");
 	log_query(
 		r#"from sales.transactions
-aggregate math::avg(price) by product"#,
+aggregate {math::avg(price)} by {product}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from sales.transactions
-			aggregate math::avg(price) by product
+			aggregate {math::avg(price)} by {product}
 			"#,
 			Params::None,
 		)
@@ -81,15 +80,15 @@ aggregate math::avg(price) by product"#,
 	info!("\nExample 2: Average price by category");
 	log_query(
 		r#"from sales.transactions
-aggregate math::avg(price) by category
-sort category"#,
+aggregate {math::avg(price)} by {category}
+sort {category}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from sales.transactions
-			aggregate math::avg(price) by category
-			sort category
+			aggregate {math::avg(price)} by {category}
+			sort {category}
 			"#,
 			Params::None,
 		)
@@ -102,15 +101,15 @@ sort category"#,
 	info!("\nExample 3: Multiple aggregations by region");
 	log_query(
 		r#"from sales.transactions
-aggregate { math::avg(price), math::sum(quantity), math::count(id) } by region
-sort region"#,
+aggregate { math::avg(price), math::sum(quantity), math::count(id) } by {region}
+sort {region}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from sales.transactions
-			aggregate { math::avg(price), math::sum(quantity), math::count(id) } by region
-			sort region
+			aggregate { math::avg(price), math::sum(quantity), math::count(id) } by {region}
+			sort {region}
 			"#,
 			Params::None,
 		)
@@ -124,14 +123,14 @@ sort region"#,
 	log_query(
 		r#"from sales.transactions
 filter category == "Electronics"
-aggregate { math::avg(price), math::sum(quantity) } by product"#,
+aggregate { math::avg(price), math::sum(quantity) } by {product}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from sales.transactions
 			filter category == "Electronics"
-			aggregate { math::avg(price), math::sum(quantity) } by product
+			aggregate { math::avg(price), math::sum(quantity) } by {product}
 			"#,
 			Params::None,
 		)
@@ -145,15 +144,15 @@ aggregate { math::avg(price), math::sum(quantity) } by product"#,
 	log_query(
 		r#"
 from sales.transactions
-aggregate math::count(id) by month
-sort month"#,
+aggregate {math::count(id)} by {month}
+sort {month}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from sales.transactions
-			aggregate math::count(id) by month
-			sort month
+			aggregate {math::count(id)} by {month}
+			sort {month}
 			"#,
 			Params::None,
 		)
@@ -166,15 +165,15 @@ sort month"#,
 	info!("\nExample 6: Total revenue (price * quantity) by category");
 	log_query(
 		r#"from sales.transactions
-map { category, price * quantity as revenue }
-aggregate math::sum(revenue) by category"#,
+map { category, revenue: price * quantity }
+aggregate {math::sum(revenue)} by {category}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from sales.transactions
-			map { category, price * quantity as revenue }
-			aggregate math::sum(revenue) by category
+			map { category, revenue: price * quantity }
+			aggregate {math::sum(revenue)} by {category}
 			"#,
 			Params::None,
 		)

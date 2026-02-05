@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::extend_multiple_expressions_without_braces;
+use reifydb_core::error::diagnostic::operation::extend_missing_braces;
 use reifydb_type::return_error;
 
 use crate::ast::{ast::AstExtend, parse::Parser, tokenize::keyword::Keyword};
@@ -10,10 +10,10 @@ impl Parser {
 	pub(crate) fn parse_extend(&mut self) -> crate::Result<AstExtend> {
 		let token = self.consume_keyword(Keyword::Extend)?;
 
-		let (nodes, has_braces) = self.parse_expressions(true)?;
+		let (nodes, has_braces) = self.parse_expressions(true, false)?;
 
-		if nodes.len() > 1 && !has_braces {
-			return_error!(extend_multiple_expressions_without_braces(token.fragment));
+		if !has_braces {
+			return_error!(extend_missing_braces(token.fragment));
 		}
 
 		Ok(AstExtend {
@@ -30,7 +30,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extend_constant_number() {
-		let tokens = tokenize("EXTEND 1").unwrap();
+		let tokens = tokenize("EXTEND {1}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -38,7 +38,6 @@ pub mod tests {
 		let statement = result.pop().unwrap();
 		let ast_node = statement.first_unchecked();
 
-		// Debug print the actual AST operator type
 		let extend = ast_node.as_extend();
 		assert_eq!(extend.nodes.len(), 1);
 
@@ -48,7 +47,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extend_colon_syntax() {
-		let tokens = tokenize("EXTEND total: price * quantity").unwrap();
+		let tokens = tokenize("EXTEND {total: price * quantity}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -56,17 +55,14 @@ pub mod tests {
 		let extend = result.first_unchecked().as_extend();
 		assert_eq!(extend.nodes.len(), 1);
 
-		// Should be parsed as "price * quantity as total"
 		let infix = extend.nodes[0].as_infix();
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
 
-		// Left side should be "price * quantity"
 		let left_infix = infix.left.as_infix();
 		assert!(matches!(left_infix.operator, InfixOperator::Multiply(_)));
 		assert_eq!(left_infix.left.as_identifier().text(), "price");
 		assert_eq!(left_infix.right.as_identifier().text(), "quantity");
 
-		// Right side should be identifier "total"
 		let right = infix.right.as_identifier();
 		assert_eq!(right.text(), "total");
 	}
@@ -81,12 +77,10 @@ pub mod tests {
 		let extend = result.first_unchecked().as_extend();
 		assert_eq!(extend.nodes.len(), 2);
 
-		// First expression: "price * quantity as total"
 		let first_infix = extend.nodes[0].as_infix();
 		assert!(matches!(first_infix.operator, InfixOperator::As(_)));
 		assert_eq!(first_infix.right.as_identifier().text(), "total");
 
-		// Second expression: "price * 0.1 as tax"
 		let second_infix = extend.nodes[1].as_infix();
 		assert!(matches!(second_infix.operator, InfixOperator::As(_)));
 		assert_eq!(second_infix.right.as_identifier().text(), "tax");
@@ -94,10 +88,10 @@ pub mod tests {
 
 	#[test]
 	fn test_extend_without_braces_fails() {
-		let tokens = tokenize("EXTEND total: price * quantity, tax: price * 0.1").unwrap();
+		let tokens = tokenize("EXTEND 1").unwrap();
 		let mut parser = Parser::new(tokens);
 
 		let result = parser.parse().unwrap_err();
-		assert_eq!(result.code, "EXTEND_001");
+		assert_eq!(result.code, "EXTEND_002");
 	}
 }

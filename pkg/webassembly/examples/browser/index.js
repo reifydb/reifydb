@@ -30,12 +30,11 @@ CREATE TABLE demo.users {
   city: utf8
 };
 
-FROM [
+INSERT demo.users [
   { id: 1, name: "Alice", age: 30, city: "NYC" },
   { id: 2, name: "Bob", age: 25, city: "LA" },
   { id: 3, name: "Carol", age: 35, city: "NYC" }
-]
-INSERT demo.users;
+];
 
 FROM demo.users;`,
 
@@ -91,18 +90,16 @@ CREATE TABLE demo.orders {
   total: int4
 };
 
-FROM [
+INSERT demo.users [
   { id: 1, name: "Alice" },
   { id: 2, name: "Bob" }
-]
-INSERT demo.users;
+];
 
-FROM [
+INSERT demo.orders [
   { id: 1, user_id: 1, total: 150 },
   { id: 2, user_id: 1, total: 200 },
   { id: 3, user_id: 2, total: 100 }
-]
-INSERT demo.orders;
+];
 
 FROM demo.orders
 JOIN demo.users ON orders.user_id = users.id
@@ -149,7 +146,7 @@ async function runCommand() {
     const startTime = performance.now();
 
     try {
-        let results = await db.command(query);
+        let results = await db.admin(query);
 
         const endTime = performance.now();
         lastQueryTime = Math.round(endTime - startTime);

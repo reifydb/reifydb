@@ -1,7 +1,8 @@
 export const REIFYDB_CONFIG = {
-  // Default WebSocket URL for local development
+  // Default URLs for local development
   DEFAULT_WS_URL: 'ws://127.0.0.1:8090',
-  
+  DEFAULT_API_URL: 'http://127.0.0.1:8090',
+
   // Connection settings
   CONNECTION: {
     TIMEOUT_MS: 10000,
@@ -31,5 +32,17 @@ export const REIFYDB_CONFIG = {
     }
     
     return this.DEFAULT_WS_URL;
+  },
+
+  getApiUrl(): string {
+    if (typeof window !== 'undefined') {
+      const envUrl = (window as any).REIFYDB_API_URL;
+      if (envUrl) return envUrl;
+
+      if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        return `https://${window.location.hostname}`;
+      }
+    }
+    return this.DEFAULT_API_URL;
   },
 };

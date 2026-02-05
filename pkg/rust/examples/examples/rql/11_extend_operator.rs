@@ -30,9 +30,9 @@ fn main() {
 
 	// Example 2: Standalone EXTEND with single expression
 	info!("\nExample 2: Standalone EXTEND with computed value");
-	log_query(r#"extend result: 100 + 23"#);
+	log_query(r#"extend {result: 100 + 23}"#);
 
-	for frame in db.query_as_root(r#"extend result: 100 + 23"#, Params::None).unwrap() {
+	for frame in db.query_as_root(r#"extend {result: 100 + 23}"#, Params::None).unwrap() {
 		info!("{}", frame);
 	}
 
@@ -60,14 +60,14 @@ extend { total: price * 1.1, tax: price * 0.1 }"#,
 	info!("\nExample 4: EXTEND with multiple rows");
 	log_query(
 		r#"from [{ value: 10 }, { value: 20 }]
-extend result: value * 2"#,
+extend {result: value * 2}"#,
 	);
 
 	for frame in db
 		.query_as_root(
 			r#"
 		from [{ value: 10 }, { value: 20 }]
-		extend result: value * 2
+		extend {result: value * 2}
 		"#,
 			Params::None,
 		)
@@ -80,14 +80,14 @@ extend result: value * 2"#,
 	info!("\nExample 5: EXTEND vs MAP - column preservation");
 	log_query(
 		r#"from [{ id: 1, name: "Bob", age: 25 }]
-extend category: age > 30"#,
+extend {category: age > 30}"#,
 	);
 
 	for frame in db
 		.query_as_root(
 			r#"
 		from [{ id: 1, name: "Bob", age: 25 }]
-		extend category: age > 30
+		extend {category: age > 30}
 		"#,
 			Params::None,
 		)

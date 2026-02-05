@@ -2,6 +2,7 @@ packages:
   - core
   - client
   - react
+  - shell
 
 overrides:
   '@reifydb/core': link:core

@@ -4,7 +4,7 @@ export {UNDEFINED_VALUE} from './constant';
 export {decode} from './decoder';
 export * from './schema'
 export * from './value';
-export {
+export type {
     Params,
     Frame,
     DiagnosticColumn,
@@ -12,9 +12,11 @@ export {
     Diagnostic,
     Column,
     ErrorResponse,
-    ReifyError,
     FrameResults,
     SingleFrameResult,
+} from './types';
+export {
+    ReifyError,
     asFrameResults
 } from './types';
 

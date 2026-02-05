@@ -20,13 +20,12 @@ impl Compiler {
 		ast: AstInsert,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {
-		// Get the target, if None it means the target will come from a pipeline
-		let Some(unresolved_target) = ast.target else {
-			// TODO: Handle pipeline case where target comes from previous operation
-			unimplemented!("Pipeline insert target not yet implemented");
-		};
+		let unresolved_target = ast.target;
 
-		// Check in the catalog whether the target is a table or ring buffer
+		// Compile the source (the FROM clause)
+		let source = self.compile_single(*ast.source, tx)?;
+
+		// Check in the catalog whether the target is a table, ring buffer, or dictionary
 		let namespace_name = unresolved_target.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 		let target_name = unresolved_target.name.text();
 
@@ -41,6 +40,7 @@ impl Compiler {
 			}
 			return Ok(LogicalPlan::InsertTable(InsertTableNode {
 				target,
+				source: Box::new(source),
 			}));
 		};
 
@@ -52,6 +52,7 @@ impl Compiler {
 			}
 			return Ok(LogicalPlan::InsertRingBuffer(InsertRingBufferNode {
 				target,
+				source: Box::new(source),
 			}));
 		}
 
@@ -63,6 +64,7 @@ impl Compiler {
 			}
 			return Ok(LogicalPlan::InsertDictionary(InsertDictionaryNode {
 				target,
+				source: Box::new(source),
 			}));
 		}
 
@@ -73,6 +75,7 @@ impl Compiler {
 		}
 		Ok(LogicalPlan::InsertTable(InsertTableNode {
 			target,
+			source: Box::new(source),
 		}))
 	}
 }
