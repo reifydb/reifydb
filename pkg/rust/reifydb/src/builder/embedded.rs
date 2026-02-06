@@ -8,7 +8,7 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 use reifydb_sub_flow::builder::FlowBuilder;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingBuilder;
-use reifydb_transaction::interceptor::{builder::StandardInterceptorBuilder, interceptors::RegisterInterceptor};
+use reifydb_transaction::interceptor::builder::StandardInterceptorBuilder;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::{
@@ -48,16 +48,6 @@ impl EmbeddedBuilder {
 	/// If not set, a default configuration will be used.
 	pub fn with_runtime_config(mut self, config: SharedRuntimeConfig) -> Self {
 		self.runtime_config = Some(config);
-		self
-	}
-
-	pub fn intercept<I>(mut self, interceptor: I) -> Self
-	where
-		I: RegisterInterceptor + Clone + 'static,
-	{
-		self.interceptors = self.interceptors.add_factory(move |interceptors| {
-			interceptor.clone().register(interceptors);
-		});
 		self
 	}
 

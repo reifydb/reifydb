@@ -5,7 +5,11 @@ use num_traits::ToPrimitive;
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::{
 	fragment::Fragment,
-	value::{container::undefined::UndefinedContainer, r#type::Type},
+	value::{
+		container::{number::NumberContainer, undefined::UndefinedContainer},
+		decimal::Decimal,
+		r#type::Type,
+	},
 };
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
@@ -794,10 +798,7 @@ impl ScalarFunction for Power {
 				}
 
 				Ok(ColumnData::Int {
-					container: reifydb_type::value::container::number::NumberContainer::new(
-						result,
-						bitvec.into(),
-					),
+					container: NumberContainer::new(result, bitvec.into()),
 					max_bytes: *max_bytes,
 				})
 			}
@@ -834,10 +835,7 @@ impl ScalarFunction for Power {
 				}
 
 				Ok(ColumnData::Uint {
-					container: reifydb_type::value::container::number::NumberContainer::new(
-						result,
-						bitvec.into(),
-					),
+					container: NumberContainer::new(result, bitvec.into()),
 					max_bytes: *max_bytes,
 				})
 			}
@@ -852,7 +850,6 @@ impl ScalarFunction for Power {
 					..
 				},
 			) => {
-				use reifydb_type::value::decimal::Decimal;
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 
@@ -864,6 +861,7 @@ impl ScalarFunction for Power {
 						(Some(base_val), Some(exp_val)) => {
 							let b = base_val.0.to_f64().unwrap_or(0.0);
 							let e = exp_val.0.to_f64().unwrap_or(0.0);
+
 							result.push(Decimal::from(b.powf(e)));
 							bitvec.push(true);
 						}
@@ -875,10 +873,7 @@ impl ScalarFunction for Power {
 				}
 
 				Ok(ColumnData::Decimal {
-					container: reifydb_type::value::container::number::NumberContainer::new(
-						result,
-						bitvec.into(),
-					),
+					container: NumberContainer::new(result, bitvec.into()),
 					precision: *precision,
 					scale: *scale,
 				})
@@ -888,19 +883,7 @@ impl ScalarFunction for Power {
 				let base_type = base_data.get_type();
 				let exp_type = exp_data.get_type();
 
-				// Check if both are numeric types that can be promoted
-				let is_numeric = |t: Type| {
-					matches!(
-						t,
-						Type::Int1
-							| Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16
-							| Type::Uint1 | Type::Uint2 | Type::Uint4 | Type::Uint8
-							| Type::Uint16 | Type::Float4 | Type::Float8 | Type::Int
-							| Type::Uint | Type::Decimal
-					)
-				};
-
-				if !is_numeric(base_type) || !is_numeric(exp_type) {
+				if !base_type.is_number() || !exp_type.is_number() {
 					return Err(ScalarFunctionError::InvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: 0,
@@ -925,23 +908,20 @@ impl ScalarFunction for Power {
 					});
 				}
 
-				// Custom promotion logic that handles all numeric types
-				// The standard Type::promote doesn't handle Int, Uint, Decimal well
 				let promoted_type = promote_numeric_types(base_type, exp_type);
 
 				let promoted_base = convert_column_to_type(base_data, promoted_type, row_count);
 				let promoted_exp = convert_column_to_type(exp_data, promoted_type, row_count);
 
-				// Create new columns with the promoted data
 				let base_col = Column::new(Fragment::internal("base"), promoted_base);
 				let exp_col = Column::new(Fragment::internal("exp"), promoted_exp);
 				let promoted_columns = Columns::new(vec![base_col, exp_col]);
 
-				// Recursively call scalar with the promoted columns
 				let new_ctx = ScalarFunctionContext {
 					fragment: ctx.fragment.clone(),
 					columns: &promoted_columns,
 					row_count,
+					clock: ctx.clock,
 				};
 				self.scalar(new_ctx)
 			}

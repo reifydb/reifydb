@@ -82,6 +82,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_type::value::{Value, r#type::Type};
 
 	use super::*;
@@ -131,7 +132,7 @@ pub mod tests {
 	#[test]
 	fn test_load_save_state() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(100), Value::Utf8("key1".to_string())];
 
@@ -152,7 +153,7 @@ pub mod tests {
 	#[test]
 	fn test_update_state() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(200), Value::Utf8("update_key".to_string())];
 
@@ -176,7 +177,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_state() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(300), Value::Utf8("remove_key".to_string())];
 
@@ -196,7 +197,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_keys() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 
 		// Create multiple keys with different states

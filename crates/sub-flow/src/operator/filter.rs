@@ -17,6 +17,7 @@ use reifydb_engine::{
 };
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
+use reifydb_runtime::clock::Clock;
 use reifydb_type::{
 	params::Params,
 	value::{Value, row_number::RowNumber},
@@ -43,12 +44,13 @@ impl FilterOperator {
 		node: FlowNodeId,
 		conditions: Vec<Expression>,
 		functions: Functions,
+		clock: Clock,
 	) -> Self {
 		Self {
 			parent,
 			node,
 			conditions,
-			column_evaluator: StandardColumnEvaluator::new(functions),
+			column_evaluator: StandardColumnEvaluator::new(functions, clock),
 		}
 	}
 

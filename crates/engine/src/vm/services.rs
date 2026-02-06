@@ -11,6 +11,7 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_function::{math, registry::Functions, series, subscription};
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::Compiler;
+use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
 
 /// Services is a container for shared resources used throughout the execution engine.
@@ -19,6 +20,7 @@ use reifydb_store_single::SingleStore;
 /// query operators, and other components need access to.
 pub struct Services {
 	pub catalog: Catalog,
+	pub clock: Clock,
 	pub compiler: Compiler,
 	pub functions: Functions,
 	pub flow_operator_store: FlowOperatorStore,
@@ -30,6 +32,7 @@ pub struct Services {
 impl Services {
 	pub fn new(
 		catalog: Catalog,
+		clock: Clock,
 		functions: Functions,
 		flow_operator_store: FlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
@@ -38,6 +41,7 @@ impl Services {
 		Self {
 			compiler: Compiler::new(catalog.clone()),
 			catalog,
+			clock,
 			functions,
 			flow_operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
@@ -51,6 +55,7 @@ impl Services {
 		let store = SingleStore::testing_memory();
 		Arc::new(Self::new(
 			Catalog::testing(),
+			Clock::default(),
 			Functions::builder()
 				.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
 				.register_aggregate("math::min", math::aggregate::min::Min::new)

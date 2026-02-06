@@ -8,16 +8,41 @@
 
 use super::{
 	filter::InterceptFilter,
+	namespace_def::{
+		NamespaceDefPostCreateContext, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateContext,
+		NamespaceDefPostUpdateInterceptor, NamespaceDefPreDeleteContext, NamespaceDefPreDeleteInterceptor,
+		NamespaceDefPreUpdateContext, NamespaceDefPreUpdateInterceptor,
+	},
 	ringbuffer::{
 		RingBufferPostDeleteContext, RingBufferPostDeleteInterceptor, RingBufferPostInsertContext,
 		RingBufferPostInsertInterceptor, RingBufferPostUpdateContext, RingBufferPostUpdateInterceptor,
 		RingBufferPreDeleteContext, RingBufferPreDeleteInterceptor, RingBufferPreInsertContext,
 		RingBufferPreInsertInterceptor, RingBufferPreUpdateContext, RingBufferPreUpdateInterceptor,
 	},
+	ringbuffer_def::{
+		RingBufferDefPostCreateContext, RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateContext,
+		RingBufferDefPostUpdateInterceptor, RingBufferDefPreDeleteContext, RingBufferDefPreDeleteInterceptor,
+		RingBufferDefPreUpdateContext, RingBufferDefPreUpdateInterceptor,
+	},
 	table::{
 		TablePostDeleteContext, TablePostDeleteInterceptor, TablePostInsertContext, TablePostInsertInterceptor,
 		TablePostUpdateContext, TablePostUpdateInterceptor, TablePreDeleteContext, TablePreDeleteInterceptor,
 		TablePreInsertContext, TablePreInsertInterceptor, TablePreUpdateContext, TablePreUpdateInterceptor,
+	},
+	table_def::{
+		TableDefPostCreateContext, TableDefPostCreateInterceptor, TableDefPostUpdateContext,
+		TableDefPostUpdateInterceptor, TableDefPreDeleteContext, TableDefPreDeleteInterceptor,
+		TableDefPreUpdateContext, TableDefPreUpdateInterceptor,
+	},
+	view::{
+		ViewPostDeleteContext, ViewPostDeleteInterceptor, ViewPostInsertContext, ViewPostInsertInterceptor,
+		ViewPostUpdateContext, ViewPostUpdateInterceptor, ViewPreDeleteContext, ViewPreDeleteInterceptor,
+		ViewPreInsertContext, ViewPreInsertInterceptor, ViewPreUpdateContext, ViewPreUpdateInterceptor,
+	},
+	view_def::{
+		ViewDefPostCreateContext, ViewDefPostCreateInterceptor, ViewDefPostUpdateContext,
+		ViewDefPostUpdateInterceptor, ViewDefPreDeleteContext, ViewDefPreDeleteInterceptor,
+		ViewDefPreUpdateContext, ViewDefPreUpdateInterceptor,
 	},
 };
 
@@ -174,4 +199,133 @@ define_filtered_interceptor!(
 	RingBufferPostDeleteInterceptor,
 	RingBufferPostDeleteContext,
 	ringbuffer
+);
+
+// View data filtered interceptors
+define_filtered_interceptor!(FilteredViewPreInsertInterceptor, ViewPreInsertInterceptor, ViewPreInsertContext, view);
+
+define_filtered_interceptor!(FilteredViewPostInsertInterceptor, ViewPostInsertInterceptor, ViewPostInsertContext, view);
+
+define_filtered_interceptor!(FilteredViewPreUpdateInterceptor, ViewPreUpdateInterceptor, ViewPreUpdateContext, view);
+
+define_filtered_interceptor!(FilteredViewPostUpdateInterceptor, ViewPostUpdateInterceptor, ViewPostUpdateContext, view);
+
+define_filtered_interceptor!(FilteredViewPreDeleteInterceptor, ViewPreDeleteInterceptor, ViewPreDeleteContext, view);
+
+define_filtered_interceptor!(FilteredViewPostDeleteInterceptor, ViewPostDeleteInterceptor, ViewPostDeleteContext, view);
+
+// View definition filtered interceptors
+define_filtered_interceptor!(
+	FilteredViewDefPostCreateInterceptor,
+	ViewDefPostCreateInterceptor,
+	ViewDefPostCreateContext,
+	post
+);
+
+define_filtered_interceptor!(
+	FilteredViewDefPreUpdateInterceptor,
+	ViewDefPreUpdateInterceptor,
+	ViewDefPreUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredViewDefPostUpdateInterceptor,
+	ViewDefPostUpdateInterceptor,
+	ViewDefPostUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredViewDefPreDeleteInterceptor,
+	ViewDefPreDeleteInterceptor,
+	ViewDefPreDeleteContext,
+	pre
+);
+
+// Table definition filtered interceptors
+define_filtered_interceptor!(
+	FilteredTableDefPostCreateInterceptor,
+	TableDefPostCreateInterceptor,
+	TableDefPostCreateContext,
+	post
+);
+
+define_filtered_interceptor!(
+	FilteredTableDefPreUpdateInterceptor,
+	TableDefPreUpdateInterceptor,
+	TableDefPreUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredTableDefPostUpdateInterceptor,
+	TableDefPostUpdateInterceptor,
+	TableDefPostUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredTableDefPreDeleteInterceptor,
+	TableDefPreDeleteInterceptor,
+	TableDefPreDeleteContext,
+	pre
+);
+
+// Ring buffer definition filtered interceptors
+define_filtered_interceptor!(
+	FilteredRingBufferDefPostCreateInterceptor,
+	RingBufferDefPostCreateInterceptor,
+	RingBufferDefPostCreateContext,
+	post
+);
+
+define_filtered_interceptor!(
+	FilteredRingBufferDefPreUpdateInterceptor,
+	RingBufferDefPreUpdateInterceptor,
+	RingBufferDefPreUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredRingBufferDefPostUpdateInterceptor,
+	RingBufferDefPostUpdateInterceptor,
+	RingBufferDefPostUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredRingBufferDefPreDeleteInterceptor,
+	RingBufferDefPreDeleteInterceptor,
+	RingBufferDefPreDeleteContext,
+	pre
+);
+
+// Namespace definition filtered interceptors
+define_filtered_interceptor!(
+	FilteredNamespaceDefPostCreateInterceptor,
+	NamespaceDefPostCreateInterceptor,
+	NamespaceDefPostCreateContext,
+	post
+);
+
+define_filtered_interceptor!(
+	FilteredNamespaceDefPreUpdateInterceptor,
+	NamespaceDefPreUpdateInterceptor,
+	NamespaceDefPreUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredNamespaceDefPostUpdateInterceptor,
+	NamespaceDefPostUpdateInterceptor,
+	NamespaceDefPostUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredNamespaceDefPreDeleteInterceptor,
+	NamespaceDefPreDeleteInterceptor,
+	NamespaceDefPreDeleteContext,
+	pre
 );

@@ -90,7 +90,12 @@ impl QueryNode for ExtendNode {
 					}
 				}
 
-				let column = evaluate(&eval_ctx, expr, &stored_ctx.services.functions)?;
+				let column = evaluate(
+					&eval_ctx,
+					expr,
+					&stored_ctx.services.functions,
+					&stored_ctx.services.clock,
+				)?;
 
 				new_columns.push(column);
 			}
@@ -194,7 +199,12 @@ impl QueryNode for ExtendWithoutInputNode {
 				is_aggregate_context: false,
 			};
 
-			let column = evaluate(&evaluation_context, expr, &stored_ctx.services.functions)?;
+			let column = evaluate(
+				&evaluation_context,
+				expr,
+				&stored_ctx.services.functions,
+				&stored_ctx.services.clock,
+			)?;
 			new_columns.push(column);
 		}
 

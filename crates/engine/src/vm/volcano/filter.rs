@@ -99,7 +99,12 @@ impl QueryNode for FilterNode {
 					};
 
 					// Evaluate the filter expression
-					let result = evaluate(&eval_ctx, filter_expr, &stored_ctx.services.functions)?;
+					let result = evaluate(
+						&eval_ctx,
+						filter_expr,
+						&stored_ctx.services.functions,
+						&stored_ctx.services.clock,
+					)?;
 
 					// Create filter mask from result
 					let filter_mask = match result.data() {
@@ -173,7 +178,7 @@ impl FilterNode {
 				is_aggregate_context: false,
 			};
 
-			let result = evaluate(&eval_ctx, filter_expr, &ctx.services.functions)?;
+			let result = evaluate(&eval_ctx, filter_expr, &ctx.services.functions, &ctx.services.clock)?;
 
 			// Extract mask from boolean column result
 			match result.data() {

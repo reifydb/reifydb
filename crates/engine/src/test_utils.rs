@@ -180,6 +180,7 @@ pub fn create_test_engine() -> StandardEngine {
 		eventbus.clone(),
 		Box::new(StandardInterceptorFactory::default()),
 		Catalog::new(materialized_catalog, schema_registry),
+		runtime.clock().clone(),
 		Functions::builder().build(),
 		ioc,
 	);

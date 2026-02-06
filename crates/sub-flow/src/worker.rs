@@ -136,6 +136,7 @@ impl FlowWorkerActor {
 		Span::current().record("total_changes", total_changes);
 
 		let mut pending = PendingWrites::new();
+		let interceptors = self.engine.create_interceptors();
 
 		for instruction in batch.instructions {
 			let flow_id = instruction.flow_id;
@@ -155,6 +156,7 @@ impl FlowWorkerActor {
 				primitive_query,
 				state_query,
 				catalog: self.catalog.clone(),
+				interceptors: interceptors.clone(),
 			};
 
 			for change in &instruction.changes {

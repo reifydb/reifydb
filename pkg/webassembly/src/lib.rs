@@ -133,6 +133,7 @@ impl WasmDB {
 			eventbus,
 			Box::new(StandardInterceptorFactory::default()),
 			Catalog::new(materialized_catalog, SchemaRegistry::new(single)),
+			runtime.clock().clone(),
 			Functions::empty(),
 			ioc,
 		);

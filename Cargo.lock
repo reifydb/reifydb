@@ -1788,6 +1788,7 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-rql",
+ "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-type",
  "serde",

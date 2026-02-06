@@ -676,6 +676,7 @@ pub mod tests {
 	};
 	use reifydb_function::registry::Functions;
 	use reifydb_rql::expression::ColumnExpression;
+	use reifydb_runtime::clock::Clock;
 	use reifydb_type::{fragment::Fragment, params::Params};
 
 	use crate::{
@@ -699,7 +700,7 @@ pub mod tests {
 			is_aggregate_context: false,
 		};
 
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build());
+		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
 
 		// Try to access a column that doesn't exist
 		let result = evaluator

@@ -87,7 +87,12 @@ impl QueryNode for PatchNode {
 					}
 				}
 
-				let column = evaluate(&eval_ctx, expr, &stored_ctx.services.functions)?;
+				let column = evaluate(
+					&eval_ctx,
+					expr,
+					&stored_ctx.services.functions,
+					&stored_ctx.services.clock,
+				)?;
 				patch_columns.push(column);
 			}
 

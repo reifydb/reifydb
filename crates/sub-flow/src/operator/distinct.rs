@@ -19,7 +19,10 @@ use reifydb_engine::{
 };
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::hash::{Hash128, xxh3_128};
+use reifydb_runtime::{
+	clock::Clock,
+	hash::{Hash128, xxh3_128},
+};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
@@ -179,13 +182,14 @@ impl DistinctOperator {
 		node: FlowNodeId,
 		expressions: Vec<Expression>,
 		functions: Functions,
+		clock: Clock,
 	) -> Self {
 		Self {
 			parent,
 			node,
 			expressions,
 			schema: Schema::testing(&[Type::Blob]),
-			column_evaluator: StandardColumnEvaluator::new(functions),
+			column_evaluator: StandardColumnEvaluator::new(functions, clock),
 		}
 	}
 

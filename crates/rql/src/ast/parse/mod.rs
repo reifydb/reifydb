@@ -323,6 +323,18 @@ impl<'bump> Parser<'bump> {
 		self.advance()
 	}
 
+	pub(crate) fn consume_keyword_as_ident(&mut self) -> crate::Result<Token<'bump>> {
+		let token = self.advance()?;
+		if matches!(token.kind, TokenKind::Keyword(_)) {
+			Ok(Token {
+				kind: TokenKind::Identifier,
+				..token
+			})
+		} else {
+			Err(reifydb_type::error::Error(ast::expected_identifier_error(token.fragment.to_owned())))
+		}
+	}
+
 	pub(crate) fn current(&self) -> crate::Result<Token<'bump>> {
 		if self.position >= self.tokens.len() {
 			return Err(reifydb_type::error::Error(ast::unexpected_eof_error()));

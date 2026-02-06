@@ -83,6 +83,10 @@ path = "examples/storage/02_sqlite_storage.rs"
 name = "intercept-table-view"
 path = "examples/intercept/01_table_view_interceptors.rs"
 
+[[bin]]
+name = "intercept-deferred-view"
+path = "examples/intercept/02_deferred_view_interceptors.rs"
+
 # Subscription examples
 [[bin]]
 name = "subscription-cursor"

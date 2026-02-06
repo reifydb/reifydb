@@ -48,6 +48,10 @@ use crate::{
 			TableDefPreUpdateInterceptor,
 		},
 		transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
+		view::{
+			ViewPostDeleteInterceptor, ViewPostInsertInterceptor, ViewPostUpdateInterceptor,
+			ViewPreDeleteInterceptor, ViewPreInsertInterceptor, ViewPreUpdateInterceptor,
+		},
 		view_def::{
 			ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
 			ViewDefPreUpdateInterceptor,
@@ -485,6 +489,30 @@ impl WithInterceptors for AdminTransaction {
 
 	fn table_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TableDefPreDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.table_def_pre_delete
+	}
+
+	fn view_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPreInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.view_pre_insert
+	}
+
+	fn view_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPostInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.view_post_insert
+	}
+
+	fn view_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.view_pre_update
+	}
+
+	fn view_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.view_post_update
+	}
+
+	fn view_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.view_pre_delete
+	}
+
+	fn view_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPostDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.view_post_delete
 	}
 
 	fn view_def_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostCreateInterceptor + Send + Sync> {

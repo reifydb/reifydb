@@ -9,6 +9,6 @@ pub mod traits;
 
 pub use database::DatabaseBuilder;
 pub use embedded::EmbeddedBuilder;
-pub use intercept::WithInterceptorBuilder;
+pub use intercept::{InterceptBuilder, WithInterceptorBuilder};
 pub use server::ServerBuilder;
 pub use traits::WithSubsystem;

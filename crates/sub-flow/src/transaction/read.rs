@@ -357,6 +357,7 @@ pub mod tests {
 		key::{EncodedKey, EncodedKeyRange},
 	};
 	use reifydb_engine::test_utils::create_test_engine;
+	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
@@ -373,7 +374,7 @@ pub mod tests {
 	#[test]
 	fn test_get_from_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -404,7 +405,7 @@ pub mod tests {
 		let version = parent.version();
 
 		// Create FlowTransaction - should see committed value
-		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing(), Interceptors::new());
 
 		// Should get value from query transaction
 		let result = txn.get(&key).unwrap();
@@ -419,7 +420,7 @@ pub mod tests {
 		parent.set(&key, make_value("old")).unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing(), Interceptors::new());
 
 		// Override with new value in pending
 		let new_value = make_value("new");
@@ -438,7 +439,7 @@ pub mod tests {
 		parent.set(&key, make_value("value1")).unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing(), Interceptors::new());
 
 		// Remove in pending
 		txn.remove(&key).unwrap();
@@ -451,7 +452,7 @@ pub mod tests {
 	#[test]
 	fn test_get_nonexistent_key() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let result = txn.get(&make_key("missing")).unwrap();
 		assert_eq!(result, None);
@@ -460,7 +461,7 @@ pub mod tests {
 	#[test]
 	fn test_contains_key_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -484,7 +485,7 @@ pub mod tests {
 		// Create new command transaction
 		let parent = engine.begin_admin().unwrap();
 		let version = parent.version();
-		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing(), Interceptors::new());
 
 		assert!(txn.contains_key(&key).unwrap());
 	}
@@ -497,7 +498,7 @@ pub mod tests {
 		parent.set(&key, make_value("value1")).unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing(), Interceptors::new());
 		txn.remove(&key).unwrap();
 
 		assert!(!txn.contains_key(&key).unwrap());
@@ -506,7 +507,7 @@ pub mod tests {
 	#[test]
 	fn test_contains_key_nonexistent() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		assert!(!txn.contains_key(&make_key("missing")).unwrap());
 	}
@@ -514,7 +515,7 @@ pub mod tests {
 	#[test]
 	fn test_scan_empty() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let mut iter = txn.range(EncodedKeyRange::all(), 1024);
 		assert!(iter.next().is_none());
@@ -523,7 +524,7 @@ pub mod tests {
 	#[test]
 	fn test_scan_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("b"), make_value("2")).unwrap();
 		txn.set(&make_key("a"), make_value("1")).unwrap();
@@ -541,7 +542,7 @@ pub mod tests {
 	#[test]
 	fn test_scan_filters_removes() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.remove(&make_key("b")).unwrap();
@@ -558,7 +559,7 @@ pub mod tests {
 	#[test]
 	fn test_range_empty() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let range = EncodedKeyRange::start_end(Some(make_key("a")), Some(make_key("z")));
 		let mut iter = txn.range(range, 1024);
@@ -568,7 +569,7 @@ pub mod tests {
 	#[test]
 	fn test_range_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.set(&make_key("b"), make_value("2")).unwrap();
@@ -587,7 +588,7 @@ pub mod tests {
 	#[test]
 	fn test_prefix_empty() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let prefix = make_key("test_");
 		let iter = txn.prefix(&prefix).unwrap();
@@ -597,7 +598,7 @@ pub mod tests {
 	#[test]
 	fn test_prefix_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("test_a"), make_value("1")).unwrap();
 		txn.set(&make_key("test_b"), make_value("2")).unwrap();

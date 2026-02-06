@@ -161,6 +161,7 @@ impl FlowEngine {
 						node.id,
 						conditions,
 						self.executor.functions.clone(),
+						self.clock.clone(),
 					))),
 				);
 			}
@@ -179,6 +180,7 @@ impl FlowEngine {
 						node.id,
 						expressions,
 						self.executor.functions.clone(),
+						self.clock.clone(),
 					))),
 				);
 			}
@@ -279,6 +281,7 @@ impl FlowEngine {
 						node.id,
 						expressions,
 						self.executor.functions.clone(),
+						self.clock.clone(),
 					))),
 				);
 			}
