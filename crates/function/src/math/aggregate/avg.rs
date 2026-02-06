@@ -22,7 +22,7 @@ impl Avg {
 }
 
 impl AggregateFunction for Avg {
-	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::AggregateFunctionResult<()> {
+	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::error::AggregateFunctionResult<()> {
 		let column = ctx.column;
 		let groups = &ctx.groups;
 
@@ -146,7 +146,7 @@ impl AggregateFunction for Avg {
 		}
 	}
 
-	fn finalize(&mut self) -> crate::AggregateFunctionResult<(Vec<Vec<Value>>, ColumnData)> {
+	fn finalize(&mut self) -> crate::error::AggregateFunctionResult<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.sums.len());
 		let mut data = ColumnData::float8_with_capacity(self.sums.len());
 

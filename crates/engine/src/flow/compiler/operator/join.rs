@@ -7,10 +7,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{
 	expression::Expression,
-	flow::{
-		conversion::{to_owned_expressions, to_owned_physical_plan},
-		node::FlowNodeType,
-	},
+	flow::node::FlowNodeType,
 	nodes::{JoinInnerNode, JoinLeftNode, PhysicalPlan},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -30,9 +27,9 @@ impl From<JoinInnerNode> for JoinCompiler {
 	fn from(node: JoinInnerNode) -> Self {
 		Self {
 			join_type: Inner,
-			left: Box::new(to_owned_physical_plan(*node.left)),
-			right: Box::new(to_owned_physical_plan(*node.right)),
-			on: to_owned_expressions(node.on),
+			left: node.left,
+			right: node.right,
+			on: node.on,
 			alias: node.alias.map(|f| f.text().to_string()),
 		}
 	}
@@ -42,9 +39,9 @@ impl From<JoinLeftNode> for JoinCompiler {
 	fn from(node: JoinLeftNode) -> Self {
 		Self {
 			join_type: Left,
-			left: Box::new(to_owned_physical_plan(*node.left)),
-			right: Box::new(to_owned_physical_plan(*node.right)),
-			on: to_owned_expressions(node.on),
+			left: node.left,
+			right: node.right,
+			on: node.on,
 			alias: node.alias.map(|f| f.text().to_string()),
 		}
 	}

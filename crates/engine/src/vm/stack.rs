@@ -4,8 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::{internal, value::column::columns::Columns};
-// Re-export ScopeType from rql crate
-pub use reifydb_rql::instruction::{CompiledFunctionDef, ScopeType};
+use reifydb_rql::instruction::{CompiledFunctionDef, ScopeType};
 use reifydb_type::{error, error::diagnostic, value::Value};
 
 /// A value on the VM data stack

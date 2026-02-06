@@ -4,10 +4,7 @@
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
 	expression::Expression,
-	flow::{
-		conversion::{to_owned_expressions, to_owned_physical_plan},
-		node::FlowNodeType::Extend,
-	},
+	flow::node::FlowNodeType::Extend,
 	nodes::{ExtendNode, PhysicalPlan},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -23,8 +20,8 @@ pub(crate) struct ExtendCompiler {
 impl From<ExtendNode> for ExtendCompiler {
 	fn from(node: ExtendNode) -> Self {
 		Self {
-			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
-			expressions: to_owned_expressions(node.extend),
+			input: node.input,
+			expressions: node.extend,
 		}
 	}
 }

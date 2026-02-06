@@ -4,10 +4,7 @@
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
 	expression::Expression,
-	flow::{
-		conversion::{to_owned_expressions, to_owned_fragment, to_owned_physical_plan},
-		node::FlowNodeType::Apply,
-	},
+	flow::node::FlowNodeType::Apply,
 	nodes::{ApplyNode, PhysicalPlan},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -24,9 +21,9 @@ pub(crate) struct ApplyCompiler {
 impl From<ApplyNode> for ApplyCompiler {
 	fn from(node: ApplyNode) -> Self {
 		Self {
-			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
-			operator: to_owned_fragment(node.operator),
-			arguments: to_owned_expressions(node.expressions),
+			input: node.input,
+			operator: node.operator,
+			arguments: node.expressions,
 		}
 	}
 }

@@ -7,10 +7,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{
 	expression::Expression,
-	flow::{
-		conversion::{to_owned_expressions, to_owned_physical_plan},
-		node::FlowNodeType::Window,
-	},
+	flow::node::FlowNodeType::Window,
 	nodes::{PhysicalPlan, WindowNode},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -33,12 +30,12 @@ pub(crate) struct WindowCompiler {
 impl From<WindowNode> for WindowCompiler {
 	fn from(node: WindowNode) -> Self {
 		Self {
-			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
+			input: node.input,
 			window_type: node.window_type,
 			size: node.size,
 			slide: node.slide,
-			group_by: to_owned_expressions(node.group_by),
-			aggregations: to_owned_expressions(node.aggregations),
+			group_by: node.group_by,
+			aggregations: node.aggregations,
 			min_events: node.min_events,
 			max_window_count: node.max_window_count,
 			max_window_age: node.max_window_age,

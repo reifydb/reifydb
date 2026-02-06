@@ -8,7 +8,7 @@ use reifydb_core::interface::{
 };
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
-	flow::{conversion::to_owned_physical_plan, node::FlowNodeType::Distinct},
+	flow::node::FlowNodeType::Distinct,
 	nodes::{DistinctNode, PhysicalPlan},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -24,7 +24,7 @@ pub(crate) struct DistinctCompiler {
 impl From<DistinctNode> for DistinctCompiler {
 	fn from(node: DistinctNode) -> Self {
 		Self {
-			input: Box::new(to_owned_physical_plan(*node.input)),
+			input: node.input,
 			columns: node.columns.into_iter().collect(),
 		}
 	}

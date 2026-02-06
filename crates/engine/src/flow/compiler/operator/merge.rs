@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
-	flow::{conversion::to_owned_physical_plan, node::FlowNodeType},
+	flow::node::FlowNodeType,
 	nodes::{MergeNode, PhysicalPlan},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -19,8 +19,8 @@ pub(crate) struct MergeCompiler {
 impl From<MergeNode> for MergeCompiler {
 	fn from(node: MergeNode) -> Self {
 		Self {
-			left: Box::new(to_owned_physical_plan(*node.left)),
-			right: Box::new(to_owned_physical_plan(*node.right)),
+			left: node.left,
+			right: node.right,
 		}
 	}
 }

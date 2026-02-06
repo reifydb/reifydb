@@ -5,7 +5,7 @@ use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, vi
 use reifydb_function::{AggregateFunction, AggregateFunctionContext, ScalarFunctionContext};
 use reifydb_rql::{
 	expression::{CallExpression, Expression},
-	instruction::{CompiledFunctionDef, Instruction},
+	instruction::{CompiledFunctionDef, Instruction, ScopeType},
 	query::QueryPlan,
 };
 use reifydb_type::{error, error::diagnostic::function, fragment::Fragment, params::Params, value::Value};
@@ -13,7 +13,7 @@ use reifydb_type::{error, error::diagnostic::function, fragment::Fragment, param
 use super::StandardColumnEvaluator;
 use crate::{
 	evaluate::ColumnEvaluationContext,
-	vm::stack::{ScopeType, SymbolTable, Variable},
+	vm::stack::{SymbolTable, Variable},
 };
 
 /// Strip the leading `$` from a variable name if present

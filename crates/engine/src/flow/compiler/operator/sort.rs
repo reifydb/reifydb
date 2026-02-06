@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::catalog::flow::FlowNodeId, sort::SortKey};
 use reifydb_rql::{
-	flow::{conversion::to_owned_physical_plan, node::FlowNodeType::Sort},
+	flow::node::FlowNodeType::Sort,
 	nodes::{PhysicalPlan, SortNode},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -19,8 +19,8 @@ pub(crate) struct SortCompiler {
 impl From<SortNode> for SortCompiler {
 	fn from(node: SortNode) -> Self {
 		Self {
-			input: Box::new(to_owned_physical_plan(*node.input)),
-			by: node.by, // SortKey doesn't contain fragments
+			input: node.input,
+			by: node.by,
 		}
 	}
 }

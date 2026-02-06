@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
 use reifydb_rql::{
 	expression::{CallExpression, Expression, IdentExpression},
-	instruction::Instruction,
+	instruction::{Instruction, ScopeType},
 	nodes::{AssignValue, LetValue, PhysicalPlan},
 	query::QueryPlan,
 };
@@ -15,7 +15,7 @@ use reifydb_type::{params::Params, value::frame::frame::Frame};
 use super::{
 	interpret::TransactionAccess,
 	services::Services,
-	stack::{ControlFlow, ScopeType, Stack, StackValue, SymbolTable, Variable},
+	stack::{ControlFlow, Stack, StackValue, SymbolTable, Variable},
 	volcano::{
 		compile::compile,
 		query::{QueryContext, QueryNode},

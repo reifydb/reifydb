@@ -5,7 +5,7 @@ use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
 use super::format_bytes::{format_bytes_internal, process_decimal_column, process_float_column, process_int_column};
-use crate::{ScalarFunction, ScalarFunctionContext, ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
 
 const SI_UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
 
@@ -19,7 +19,7 @@ impl FormatBytesSi {
 }
 
 impl ScalarFunction for FormatBytesSi {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 

@@ -20,7 +20,7 @@ impl InspectSubscription {
 }
 
 impl GeneratorFunction for InspectSubscription {
-	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::GeneratorFunctionResult<Columns> {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::error::GeneratorFunctionResult<Columns> {
 		let txn = ctx.txn;
 
 		let params = &ctx.params;

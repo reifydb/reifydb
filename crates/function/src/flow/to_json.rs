@@ -208,7 +208,7 @@ impl FlowNodeToJson {
 }
 
 impl ScalarFunction for FlowNodeToJson {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
