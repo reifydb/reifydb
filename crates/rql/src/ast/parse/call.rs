@@ -61,7 +61,11 @@ impl Parser {
 			namespace_fragments.push(current_ident_token.fragment.clone());
 
 			self.advance()?; // consume ::
-			let next_ident_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
+			let next_ident_token = if self.current()?.is_identifier() {
+				self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?
+			} else {
+				self.consume_keyword_as_ident()?
+			};
 
 			// Check if this is the function name (followed by
 			// opening paren)
@@ -118,7 +122,8 @@ impl Parser {
 			}
 			pos += 1;
 
-			if !unsafe { self.tokens.get_unchecked(pos) }.is_identifier() {
+			let token = unsafe { self.tokens.get_unchecked(pos) };
+			if !token.is_identifier() && !token.is_keyword_as_ident() {
 				return false;
 			}
 			pos += 1;
@@ -196,6 +201,18 @@ pub mod tests {
 
 		// Should be parsed as identifier, not function call
 		assert!(result[0].first_unchecked().as_identifier().text() == "identifier");
+	}
+
+	#[test]
+	fn test_namespaced_function_call_with_keyword_name() {
+		let tokens = tokenize("clock::set(1000)").unwrap();
+		let result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let call = result[0].first_unchecked().as_call_function();
+		assert_eq!(call.function.name.text(), "set");
+		assert_eq!(call.function.namespaces.len(), 1);
+		assert_eq!(call.function.namespaces[0].text(), "clock");
 	}
 
 	#[test]

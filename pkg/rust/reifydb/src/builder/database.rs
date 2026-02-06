@@ -28,7 +28,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine};
 use reifydb_function::{
-	blob,
+	blob, clock,
 	flow::to_json::FlowNodeToJson,
 	math, meta,
 	registry::{Functions, FunctionsBuilder},
@@ -215,6 +215,9 @@ impl DatabaseBuilder {
 			.register_aggregate("math::avg", math::aggregate::avg::Avg::new)
 			.register_aggregate("math::count", math::aggregate::count::Count::new)
 			.register_scalar("flow_node::to_json", FlowNodeToJson::new)
+			.register_scalar("clock::now", clock::now::Now::new)
+			.register_scalar("clock::set", clock::set::Set::new)
+			.register_scalar("clock::advance", clock::advance::Advance::new)
 			.register_scalar("blob::b58", blob::b58::BlobB58::new)
 			.register_scalar("blob::b64", blob::b64::BlobB64::new)
 			.register_scalar("blob::b64url", blob::b64url::BlobB64url::new)

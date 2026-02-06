@@ -6,6 +6,7 @@ pub mod factory;
 pub mod filter;
 pub mod from;
 pub mod get;
+pub use get::FromColumnData;
 pub mod reorder;
 pub mod slice;
 pub mod take;

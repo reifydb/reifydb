@@ -36,6 +36,9 @@ impl Token {
 	pub fn is_operator(&self, operator: Operator) -> bool {
 		self.kind == TokenKind::Operator(operator)
 	}
+	pub fn is_keyword_as_ident(&self) -> bool {
+		matches!(self.kind, TokenKind::Keyword(_))
+	}
 	pub fn is_variable(&self) -> bool {
 		self.kind == TokenKind::Variable
 	}
