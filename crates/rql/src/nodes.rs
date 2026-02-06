@@ -27,6 +27,7 @@ use crate::{
 		logical,
 		physical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
 	},
+	query::QueryPlan,
 };
 
 #[derive(Debug, Clone)]
@@ -108,7 +109,7 @@ pub struct CreateDeferredViewNode {
 	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub as_clause: Box<PhysicalPlan>,
+	pub as_clause: Box<QueryPlan>,
 	pub primary_key: Option<logical::PrimaryKeyDef>,
 }
 
@@ -117,7 +118,7 @@ pub struct CreateFlowNode {
 	pub namespace: NamespaceDef,
 	pub flow: Fragment,
 	pub if_not_exists: bool,
-	pub as_clause: Box<PhysicalPlan>,
+	pub as_clause: Box<QueryPlan>,
 }
 
 #[derive(Debug, Clone)]
@@ -126,7 +127,7 @@ pub struct CreateTransactionalViewNode {
 	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub as_clause: Box<PhysicalPlan>,
+	pub as_clause: Box<QueryPlan>,
 	pub primary_key: Option<logical::PrimaryKeyDef>,
 }
 
@@ -167,7 +168,7 @@ pub struct CreateDictionaryNode {
 #[derive(Debug, Clone)]
 pub struct CreateSubscriptionNode {
 	pub columns: Vec<SubscriptionColumnToCreate>,
-	pub as_clause: Option<Box<PhysicalPlan>>,
+	pub as_clause: Option<Box<QueryPlan>>,
 }
 
 #[derive(Debug, Clone)]
@@ -299,26 +300,26 @@ pub struct CallFunctionNode {
 
 #[derive(Debug, Clone)]
 pub struct ScalarizeNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone)]
 pub struct AggregateNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DistinctNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FilterNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub conditions: Vec<Expression>,
 }
 
@@ -366,61 +367,61 @@ pub struct UpdateRingBufferNode {
 
 #[derive(Debug, Clone)]
 pub struct JoinInnerNode {
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
+	pub left: Box<QueryPlan>,
+	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
 pub struct JoinLeftNode {
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
+	pub left: Box<QueryPlan>,
+	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
 pub struct JoinNaturalNode {
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
+	pub left: Box<QueryPlan>,
+	pub right: Box<QueryPlan>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MergeNode {
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
+	pub left: Box<QueryPlan>,
+	pub right: Box<QueryPlan>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SortNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub by: Vec<SortKey>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MapNode {
-	pub input: Option<Box<PhysicalPlan>>,
+	pub input: Option<Box<QueryPlan>>,
 	pub map: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ExtendNode {
-	pub input: Option<Box<PhysicalPlan>>,
+	pub input: Option<Box<QueryPlan>>,
 	pub extend: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
 pub struct PatchNode {
-	pub input: Option<Box<PhysicalPlan>>,
+	pub input: Option<Box<QueryPlan>>,
 	pub assignments: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ApplyNode {
-	pub input: Option<Box<PhysicalPlan>>,
+	pub input: Option<Box<QueryPlan>>,
 	pub operator: Fragment, // FIXME becomes OperatorIdentifier
 	pub expressions: Vec<Expression>,
 }
@@ -483,13 +484,13 @@ pub struct TableVirtualPushdownContext {
 
 #[derive(Debug, Clone)]
 pub struct TakeNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub take: usize,
 }
 
 #[derive(Debug, Clone)]
 pub struct WindowNode {
-	pub input: Option<Box<PhysicalPlan>>,
+	pub input: Option<Box<QueryPlan>>,
 	pub window_type: WindowType,
 	pub size: WindowSize,
 	pub slide: Option<WindowSlide>,

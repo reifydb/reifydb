@@ -23,13 +23,18 @@ use reifydb_catalog::vtable::{
 	tables::VTables,
 };
 use reifydb_core::interface::catalog::id::{IndexId, NamespaceId};
-use reifydb_rql::nodes::{
-	AggregateNode as PhysicalAggregateNode, ExtendNode as PhysicalExtendNode, FilterNode as PhysicalFilterNode,
-	GeneratorNode as PhysicalGeneratorNode, InlineDataNode as PhysicalInlineDataNode,
-	JoinInnerNode as PhysicalJoinInnerNode, JoinLeftNode as PhysicalJoinLeftNode,
-	JoinNaturalNode as PhysicalJoinNaturalNode, MapNode as PhysicalMapNode, PatchNode as PhysicalPatchNode,
-	PhysicalPlan, RowListLookupNode as PhysicalRowListLookupNode, RowPointLookupNode as PhysicalRowPointLookupNode,
-	RowRangeScanNode as PhysicalRowRangeScanNode, SortNode as PhysicalSortNode, TakeNode as PhysicalTakeNode,
+use reifydb_rql::{
+	nodes::{
+		AggregateNode as PhysicalAggregateNode, ExtendNode as PhysicalExtendNode,
+		FilterNode as PhysicalFilterNode, GeneratorNode as PhysicalGeneratorNode,
+		InlineDataNode as PhysicalInlineDataNode, JoinInnerNode as PhysicalJoinInnerNode,
+		JoinLeftNode as PhysicalJoinLeftNode, JoinNaturalNode as PhysicalJoinNaturalNode,
+		MapNode as PhysicalMapNode, PatchNode as PhysicalPatchNode, PhysicalPlan,
+		RowListLookupNode as PhysicalRowListLookupNode, RowPointLookupNode as PhysicalRowPointLookupNode,
+		RowRangeScanNode as PhysicalRowRangeScanNode, SortNode as PhysicalSortNode,
+		TakeNode as PhysicalTakeNode,
+	},
+	query::QueryPlan as RqlQueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -58,17 +63,17 @@ use crate::vm::volcano::{
 	variable::VariableNode,
 };
 
-// Extract the source name from a physical plan if it's a scan node
-fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan) -> Option<Fragment> {
+// Extract the source name from a query plan if it's a scan node
+fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 	match plan {
-		PhysicalPlan::TableScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
-		PhysicalPlan::ViewScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
-		PhysicalPlan::RingBufferScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
-		PhysicalPlan::DictionaryScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		RqlQueryPlan::TableScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		RqlQueryPlan::ViewScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		RqlQueryPlan::RingBufferScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		RqlQueryPlan::DictionaryScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		// For other node types, try to recursively find the source
-		PhysicalPlan::Filter(node) => extract_source_name_from_physical(&node.input),
-		PhysicalPlan::Map(node) => node.input.as_ref().and_then(|p| extract_source_name_from_physical(p)),
-		PhysicalPlan::Take(node) => extract_source_name_from_physical(&node.input),
+		RqlQueryPlan::Filter(node) => extract_source_name_from_query(&node.input),
+		RqlQueryPlan::Map(node) => node.input.as_ref().and_then(|p| extract_source_name_from_query(p)),
+		RqlQueryPlan::Take(node) => extract_source_name_from_query(&node.input),
 		_ => None,
 	}
 }
@@ -81,7 +86,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			map,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context.clone()));
+			let input_node = Box::new(compile((*input).into(), rx, context.clone()));
 			QueryPlan::Aggregate(AggregateNode::new(input_node, by, map, context))
 		}
 
@@ -89,7 +94,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			conditions,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context));
+			let input_node = Box::new(compile((*input).into(), rx, context));
 			QueryPlan::Filter(FilterNode::new(input_node, conditions))
 		}
 
@@ -97,15 +102,11 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			take,
 			input,
 		}) => {
-			if let PhysicalPlan::Sort(PhysicalSortNode {
-				by,
-				input: sort_input,
-			}) = *input
-			{
-				let input_node = Box::new(compile(*sort_input, rx, context));
-				return QueryPlan::TopK(TopKNode::new(input_node, by, take));
+			if let RqlQueryPlan::Sort(sort_node) = *input {
+				let input_node = Box::new(compile((*sort_node.input).into(), rx, context));
+				return QueryPlan::TopK(TopKNode::new(input_node, sort_node.by, take));
 			}
-			let input_node = Box::new(compile(*input, rx, context));
+			let input_node = Box::new(compile((*input).into(), rx, context));
 			QueryPlan::Take(TakeNode::new(input_node, take))
 		}
 
@@ -113,7 +114,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			by,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context));
+			let input_node = Box::new(compile((*input).into(), rx, context));
 			QueryPlan::Sort(SortNode::new(input_node, by))
 		}
 
@@ -122,7 +123,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile(*input, rx, context));
+				let input_node = Box::new(compile((*input).into(), rx, context));
 				QueryPlan::Map(MapNode::new(input_node, map))
 			} else {
 				QueryPlan::MapWithoutInput(MapWithoutInputNode::new(map))
@@ -134,7 +135,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile(*input, rx, context));
+				let input_node = Box::new(compile((*input).into(), rx, context));
 				QueryPlan::Extend(ExtendNode::new(input_node, extend))
 			} else {
 				QueryPlan::ExtendWithoutInput(ExtendWithoutInputNode::new(extend))
@@ -147,7 +148,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 		}) => {
 			// Patch requires input - it merges with existing row
 			let input = input.expect("Patch requires input");
-			let input_node = Box::new(compile(*input, rx, context));
+			let input_node = Box::new(compile((*input).into(), rx, context));
 			QueryPlan::Patch(PatchNode::new(input_node, assignments))
 		}
 
@@ -158,14 +159,14 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			alias,
 		}) => {
 			// Extract source name from right plan for fallback alias
-			let source_name = extract_source_name_from_physical(&right);
+			let source_name = extract_source_name_from_query(&right);
 
 			// Use explicit alias, or fall back to extracted source name, or use "other"
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
+			let left_node = Box::new(compile((*left).into(), rx, context.clone()));
+			let right_node = Box::new(compile((*right).into(), rx, context.clone()));
 			QueryPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
@@ -176,14 +177,14 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			alias,
 		}) => {
 			// Extract source name from right plan for fallback alias
-			let source_name = extract_source_name_from_physical(&right);
+			let source_name = extract_source_name_from_query(&right);
 
 			// Use explicit alias, or fall back to extracted source name, or use "other"
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
+			let left_node = Box::new(compile((*left).into(), rx, context.clone()));
+			let right_node = Box::new(compile((*right).into(), rx, context.clone()));
 			QueryPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
@@ -194,13 +195,13 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			alias,
 		}) => {
 			// Extract source name from right plan for fallback alias
-			let source_name = extract_source_name_from_physical(&right);
+			let source_name = extract_source_name_from_query(&right);
 			// Use explicit alias, or fall back to extracted source name, or use "other"
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
+			let left_node = Box::new(compile((*left).into(), rx, context.clone()));
+			let right_node = Box::new(compile((*right).into(), rx, context.clone()));
 			QueryPlan::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type, effective_alias))
 		}
 
@@ -349,7 +350,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 		PhysicalPlan::Environment(_) => QueryPlan::Environment(EnvironmentNode::new()),
 
 		PhysicalPlan::Scalarize(scalarize_node) => {
-			let input = compile(*scalarize_node.input, rx, context.clone());
+			let input = compile((*scalarize_node.input).into(), rx, context.clone());
 			QueryPlan::Scalarize(ScalarizeNode::new(Box::new(input)))
 		}
 

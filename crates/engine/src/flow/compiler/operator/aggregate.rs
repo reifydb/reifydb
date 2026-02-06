@@ -3,9 +3,7 @@
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
-	expression::Expression,
-	flow::node::FlowNodeType::Aggregate,
-	nodes::{AggregateNode, PhysicalPlan},
+	expression::Expression, flow::node::FlowNodeType::Aggregate, nodes::AggregateNode, query::QueryPlan,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
@@ -13,7 +11,7 @@ use reifydb_type::Result;
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct AggregateCompiler {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
 }

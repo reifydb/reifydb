@@ -6,9 +6,12 @@ use reifydb_core::error::diagnostic::catalog::namespace_not_found;
 use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
-use crate::plan::{
-	logical,
-	physical::{Compiler, CreateFlowNode, PhysicalPlan},
+use crate::{
+	plan::{
+		logical,
+		physical::{Compiler, CreateFlowNode, PhysicalPlan},
+	},
+	query::QueryPlan,
 };
 
 impl Compiler {
@@ -28,11 +31,14 @@ impl Compiler {
 			return_error!(namespace_not_found(ns_fragment, namespace_name));
 		};
 
+		let physical_plan = self.compile(rx, create.as_clause)?.unwrap();
+		let query_plan: QueryPlan = physical_plan.try_into().expect("AS clause must be a query plan");
+
 		Ok(CreateFlow(CreateFlowNode {
 			namespace,
 			flow: create.flow.name.clone(), // Extract just the name Fragment
 			if_not_exists: create.if_not_exists,
-			as_clause: self.compile(rx, create.as_clause)?.map(Box::new).unwrap(),
+			as_clause: Box::new(query_plan),
 		}))
 	}
 }

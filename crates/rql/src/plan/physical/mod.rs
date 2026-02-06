@@ -51,10 +51,16 @@ use crate::{
 			row_predicate::{RowPredicate, extract_row_predicate},
 		},
 	},
+	query::QueryPlan,
 };
 
 pub(crate) struct Compiler {
 	pub catalog: Catalog,
+}
+
+/// Helper to convert PhysicalPlan to QueryPlan for node inputs
+fn to_query_plan(plan: PhysicalPlan) -> QueryPlan {
+	plan.try_into().expect("node input must be a query plan")
 }
 
 #[instrument(name = "rql::compile::physical", level = "trace", skip(catalog, rx, logical))]
@@ -87,7 +93,7 @@ impl Compiler {
 					stack.push(PhysicalPlan::Aggregate(AggregateNode {
 						by: aggregate.by,
 						map: aggregate.map,
-						input: Box::new(input),
+						input: Box::new(to_query_plan(input)),
 					}));
 				}
 
@@ -198,7 +204,7 @@ impl Compiler {
 					// Default: generic filter
 					stack.push(PhysicalPlan::Filter(FilterNode {
 						conditions: vec![filter.condition],
-						input: Box::new(input),
+						input: Box::new(to_query_plan(input)),
 					}));
 				}
 
@@ -582,8 +588,8 @@ impl Compiler {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
 					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
-						left: Box::new(left),
-						right: Box::new(right),
+						left: Box::new(to_query_plan(left)),
+						right: Box::new(to_query_plan(right)),
 						on: join.on,
 						alias: join.alias,
 					}));
@@ -593,8 +599,8 @@ impl Compiler {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
 					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
-						left: Box::new(left),
-						right: Box::new(right),
+						left: Box::new(to_query_plan(left)),
+						right: Box::new(to_query_plan(right)),
 						on: join.on,
 						alias: join.alias,
 					}));
@@ -604,8 +610,8 @@ impl Compiler {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
 					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
-						left: Box::new(left),
-						right: Box::new(right),
+						left: Box::new(to_query_plan(left)),
+						right: Box::new(to_query_plan(right)),
 						join_type: join.join_type,
 						alias: join.alias,
 					}));
@@ -615,8 +621,8 @@ impl Compiler {
 					let left = stack.pop().unwrap();
 					let right = self.compile(rx, merge.with)?.unwrap();
 					stack.push(PhysicalPlan::Merge(MergeNode {
-						left: Box::new(left),
-						right: Box::new(right),
+						left: Box::new(to_query_plan(left)),
+						right: Box::new(to_query_plan(right)),
 					}));
 				}
 
@@ -624,7 +630,7 @@ impl Compiler {
 					let input = stack.pop().unwrap(); // FIXME
 					stack.push(PhysicalPlan::Sort(SortNode {
 						by: order.by,
-						input: Box::new(input),
+						input: Box::new(to_query_plan(input)),
 					}));
 				}
 
@@ -678,12 +684,12 @@ impl Compiler {
 
 					stack.push(PhysicalPlan::Distinct(DistinctNode {
 						columns: resolved_columns,
-						input: Box::new(input),
+						input: Box::new(to_query_plan(input)),
 					}));
 				}
 
 				LogicalPlan::Map(map) => {
-					let input = stack.pop().map(Box::new);
+					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
 					stack.push(PhysicalPlan::Map(MapNode {
 						map: map.map,
 						input,
@@ -691,7 +697,7 @@ impl Compiler {
 				}
 
 				LogicalPlan::Extend(extend) => {
-					let input = stack.pop().map(Box::new);
+					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
 					stack.push(PhysicalPlan::Extend(ExtendNode {
 						extend: extend.extend,
 						input,
@@ -699,7 +705,7 @@ impl Compiler {
 				}
 
 				LogicalPlan::Patch(patch) => {
-					let input = stack.pop().map(Box::new);
+					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
 					stack.push(PhysicalPlan::Patch(PatchNode {
 						assignments: patch.assignments,
 						input,
@@ -707,7 +713,7 @@ impl Compiler {
 				}
 
 				LogicalPlan::Apply(apply) => {
-					let input = stack.pop().map(Box::new);
+					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
 					stack.push(PhysicalPlan::Apply(ApplyNode {
 						operator: apply.operator,
 						expressions: apply.arguments,
@@ -831,12 +837,12 @@ impl Compiler {
 					let input = stack.pop().unwrap(); // FIXME
 					stack.push(PhysicalPlan::Take(TakeNode {
 						take: take.take,
-						input: Box::new(input),
+						input: Box::new(to_query_plan(input)),
 					}));
 				}
 
 				LogicalPlan::Window(window) => {
-					let input = stack.pop().map(Box::new);
+					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
 					stack.push(PhysicalPlan::Window(WindowNode {
 						window_type: window.window_type,
 						size: window.size,
@@ -981,7 +987,7 @@ impl Compiler {
 					// Compile the input plan
 					let input_plan =
 						if let Some(plan) = self.compile(rx, vec![*scalarize_node.input])? {
-							Box::new(plan)
+							Box::new(to_query_plan(plan))
 						} else {
 							return Err(reifydb_type::error::Error(internal_error(
 								"compile_physical".into(),

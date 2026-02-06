@@ -2,18 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{
-	expression::Expression,
-	flow::node::FlowNodeType::Apply,
-	nodes::{ApplyNode, PhysicalPlan},
-};
+use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Apply, nodes::ApplyNode, query::QueryPlan};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{Result, fragment::Fragment};
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct ApplyCompiler {
-	pub input: Option<Box<PhysicalPlan>>,
+	pub input: Option<Box<QueryPlan>>,
 	pub operator: Fragment,
 	pub arguments: Vec<Expression>,
 }

@@ -9,7 +9,8 @@ use reifydb_core::interface::{
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
 	flow::node::FlowNodeType::Distinct,
-	nodes::{DistinctNode, PhysicalPlan},
+	nodes::DistinctNode,
+	query::QueryPlan,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{Result, fragment::Fragment};
@@ -17,7 +18,7 @@ use reifydb_type::{Result, fragment::Fragment};
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct DistinctCompiler {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
 }
 

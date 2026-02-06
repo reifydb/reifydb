@@ -17,7 +17,7 @@ use reifydb_rql::{
 		flow::{FlowBuilder, FlowDag},
 		node::{FlowEdge, FlowNode, FlowNodeType},
 	},
-	nodes::PhysicalPlan,
+	query::QueryPlan,
 };
 use reifydb_type::{Result, value::blob::Blob};
 
@@ -42,7 +42,7 @@ use crate::flow::compiler::{
 pub fn compile_flow(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
-	plan: PhysicalPlan,
+	plan: QueryPlan,
 	sink: Option<&ViewDef>,
 	flow_id: FlowId,
 ) -> Result<FlowDag> {
@@ -53,7 +53,7 @@ pub fn compile_flow(
 pub fn compile_subscription_flow(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
-	plan: PhysicalPlan,
+	plan: QueryPlan,
 	subscription: &SubscriptionDef,
 	flow_id: FlowId,
 ) -> Result<FlowDag> {
@@ -143,11 +143,11 @@ impl FlowCompiler {
 		Ok(node_id)
 	}
 
-	/// Compiles a physical plan into a FlowGraph
+	/// Compiles a query plan into a FlowGraph
 	pub(crate) fn compile(
 		mut self,
 		txn: &mut AdminTransaction,
-		plan: PhysicalPlan,
+		plan: QueryPlan,
 		sink: Option<&ViewDef>,
 	) -> Result<FlowDag> {
 		// Store sink view for terminal nodes (if provided)
@@ -169,11 +169,11 @@ impl FlowCompiler {
 		Ok(self.builder.build())
 	}
 
-	/// Compiles a physical plan into a FlowGraph with a subscription sink
+	/// Compiles a query plan into a FlowGraph with a subscription sink
 	pub(crate) fn compile_with_subscription(
 		mut self,
 		txn: &mut AdminTransaction,
-		plan: PhysicalPlan,
+		plan: QueryPlan,
 		subscription: &SubscriptionDef,
 	) -> Result<FlowDag> {
 		let root_node_id = self.compile_plan(txn, plan)?;
@@ -191,128 +191,71 @@ impl FlowCompiler {
 		Ok(self.builder.build())
 	}
 
-	/// Compiles a physical plan operator into the FlowGraph
-	///
-	/// Uses async_recursion to handle the recursive async calls.
-	/// With the concrete AdminTransaction type, the future is Send.
-
-	pub(crate) fn compile_plan(&mut self, txn: &mut AdminTransaction, plan: PhysicalPlan) -> Result<FlowNodeId> {
+	/// Compiles a query plan operator into the FlowGraph
+	pub(crate) fn compile_plan(&mut self, txn: &mut AdminTransaction, plan: QueryPlan) -> Result<FlowNodeId> {
 		match plan {
-			PhysicalPlan::IndexScan(_index_scan) => {
+			QueryPlan::IndexScan(_index_scan) => {
 				// TODO: Implement IndexScanCompiler for flow
 				unimplemented!("IndexScan compilation not yet implemented for flow")
 			}
-			PhysicalPlan::TableScan(table_scan) => TableScanCompiler::from(table_scan).compile(self, txn),
-			PhysicalPlan::ViewScan(view_scan) => ViewScanCompiler::from(view_scan).compile(self, txn),
-			PhysicalPlan::InlineData(inline_data) => {
-				InlineDataCompiler::from(inline_data).compile(self, txn)
-			}
-			PhysicalPlan::Filter(filter) => FilterCompiler::from(filter).compile(self, txn),
-			PhysicalPlan::Map(map) => MapCompiler::from(map).compile(self, txn),
-			PhysicalPlan::Extend(extend) => ExtendCompiler::from(extend).compile(self, txn),
-			PhysicalPlan::Apply(apply) => ApplyCompiler::from(apply).compile(self, txn),
-			PhysicalPlan::Aggregate(aggregate) => AggregateCompiler::from(aggregate).compile(self, txn),
-			PhysicalPlan::Distinct(distinct) => DistinctCompiler::from(distinct).compile(self, txn),
-			PhysicalPlan::Take(take) => TakeCompiler::from(take).compile(self, txn),
-			PhysicalPlan::Sort(sort) => SortCompiler::from(sort).compile(self, txn),
-			PhysicalPlan::JoinInner(join) => JoinCompiler::from(join).compile(self, txn),
-			PhysicalPlan::JoinLeft(join) => JoinCompiler::from(join).compile(self, txn),
-			PhysicalPlan::JoinNatural(_) => {
+			QueryPlan::TableScan(table_scan) => TableScanCompiler::from(table_scan).compile(self, txn),
+			QueryPlan::ViewScan(view_scan) => ViewScanCompiler::from(view_scan).compile(self, txn),
+			QueryPlan::InlineData(inline_data) => InlineDataCompiler::from(inline_data).compile(self, txn),
+			QueryPlan::Filter(filter) => FilterCompiler::from(filter).compile(self, txn),
+			QueryPlan::Map(map) => MapCompiler::from(map).compile(self, txn),
+			QueryPlan::Extend(extend) => ExtendCompiler::from(extend).compile(self, txn),
+			QueryPlan::Apply(apply) => ApplyCompiler::from(apply).compile(self, txn),
+			QueryPlan::Aggregate(aggregate) => AggregateCompiler::from(aggregate).compile(self, txn),
+			QueryPlan::Distinct(distinct) => DistinctCompiler::from(distinct).compile(self, txn),
+			QueryPlan::Take(take) => TakeCompiler::from(take).compile(self, txn),
+			QueryPlan::Sort(sort) => SortCompiler::from(sort).compile(self, txn),
+			QueryPlan::JoinInner(join) => JoinCompiler::from(join).compile(self, txn),
+			QueryPlan::JoinLeft(join) => JoinCompiler::from(join).compile(self, txn),
+			QueryPlan::JoinNatural(_) => {
 				unimplemented!()
 			}
-			PhysicalPlan::Merge(merge) => MergeCompiler::from(merge).compile(self, txn),
-
-			PhysicalPlan::CreateNamespace(_)
-			| PhysicalPlan::CreateTable(_)
-			| PhysicalPlan::CreateRingBuffer(_)
-			| PhysicalPlan::CreateFlow(_)
-			| PhysicalPlan::CreateDictionary(_)
-			| PhysicalPlan::CreateSubscription(_)
-			| PhysicalPlan::AlterSequence(_)
-			| PhysicalPlan::AlterTable(_)
-			| PhysicalPlan::AlterView(_)
-			| PhysicalPlan::AlterFlow(_)
-			| PhysicalPlan::CreateDeferredView(_)
-			| PhysicalPlan::CreateTransactionalView(_)
-			| PhysicalPlan::InsertTable(_)
-			| PhysicalPlan::InsertRingBuffer(_)
-			| PhysicalPlan::InsertDictionary(_)
-			| PhysicalPlan::Update(_)
-			| PhysicalPlan::UpdateRingBuffer(_)
-			| PhysicalPlan::Delete(_)
-			| PhysicalPlan::DeleteRingBuffer(_)
-			| PhysicalPlan::Patch(_) => {
-				unreachable!()
+			QueryPlan::Merge(merge) => MergeCompiler::from(merge).compile(self, txn),
+			QueryPlan::Patch(_) => {
+				unimplemented!("Patch compilation not yet implemented for flow")
 			}
-			PhysicalPlan::FlowScan(flow_scan) => FlowScanCompiler::from(flow_scan).compile(self, txn),
-			PhysicalPlan::TableVirtualScan(_scan) => {
+			QueryPlan::FlowScan(flow_scan) => FlowScanCompiler::from(flow_scan).compile(self, txn),
+			QueryPlan::TableVirtualScan(_scan) => {
 				// TODO: Implement VirtualScanCompiler
-				// For now, return a placeholder
 				unimplemented!("VirtualScan compilation not yet implemented")
 			}
-			PhysicalPlan::RingBufferScan(_scan) => {
+			QueryPlan::RingBufferScan(_scan) => {
 				// TODO: Implement RingBufferScanCompiler for flow
 				unimplemented!("RingBufferScan compilation not yet implemented for flow")
 			}
-			PhysicalPlan::Generator(_generator) => {
+			QueryPlan::Generator(_generator) => {
 				// TODO: Implement GeneratorCompiler for flow
 				unimplemented!("Generator compilation not yet implemented for flow")
 			}
-			PhysicalPlan::Window(window) => WindowCompiler::from(window).compile(self, txn),
-			PhysicalPlan::Declare(_) => {
-				panic!("Declare statements are not supported in flow graphs");
-			}
-
-			PhysicalPlan::Assign(_) => {
-				panic!("Assign statements are not supported in flow graphs");
-			}
-
-			PhysicalPlan::Conditional(_) => {
-				panic!("Conditional statements are not supported in flow graphs");
-			}
-
-			PhysicalPlan::Variable(_) => {
+			QueryPlan::Window(window) => WindowCompiler::from(window).compile(self, txn),
+			QueryPlan::Variable(_) => {
 				panic!("Variable references are not supported in flow graphs");
 			}
-
-			PhysicalPlan::Scalarize(_) => {
+			QueryPlan::Scalarize(_) => {
 				panic!("Scalarize operations are not supported in flow graphs");
 			}
-
-			PhysicalPlan::Environment(_) => {
+			QueryPlan::Environment(_) => {
 				panic!("Environment operations are not supported in flow graphs");
 			}
-
-			PhysicalPlan::RowPointLookup(_) => {
+			QueryPlan::RowPointLookup(_) => {
 				// TODO: Implement optimized row point lookup for flow graphs
 				unimplemented!("RowPointLookup compilation not yet implemented for flow")
 			}
-
-			PhysicalPlan::RowListLookup(_) => {
+			QueryPlan::RowListLookup(_) => {
 				// TODO: Implement optimized row list lookup for flow graphs
 				unimplemented!("RowListLookup compilation not yet implemented for flow")
 			}
-
-			PhysicalPlan::RowRangeScan(_) => {
+			QueryPlan::RowRangeScan(_) => {
 				// TODO: Implement optimized row range scan for flow graphs
 				unimplemented!("RowRangeScan compilation not yet implemented for flow")
 			}
-
-			PhysicalPlan::DictionaryScan(_) => {
+			QueryPlan::DictionaryScan(_) => {
 				// TODO: Implement DictionaryScan for flow graphs
 				unimplemented!("DictionaryScan compilation not yet implemented for flow")
-			}
-
-			PhysicalPlan::Loop(_)
-			| PhysicalPlan::While(_)
-			| PhysicalPlan::For(_)
-			| PhysicalPlan::Break
-			| PhysicalPlan::Continue => {
-				unimplemented!("Loop constructs are not supported in flow compilation")
-			}
-
-			PhysicalPlan::DefineFunction(_) | PhysicalPlan::Return(_) | PhysicalPlan::CallFunction(_) => {
-				unimplemented!("User-defined functions are not supported in flow compilation")
 			}
 		}
 	}

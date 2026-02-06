@@ -8,7 +8,8 @@ use reifydb_core::{
 use reifydb_rql::{
 	expression::Expression,
 	flow::node::FlowNodeType,
-	nodes::{JoinInnerNode, JoinLeftNode, PhysicalPlan},
+	nodes::{JoinInnerNode, JoinLeftNode},
+	query::QueryPlan,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
@@ -17,8 +18,8 @@ use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct JoinCompiler {
 	pub join_type: JoinType,
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
+	pub left: Box<QueryPlan>,
+	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<String>,
 }
@@ -47,17 +48,17 @@ impl From<JoinLeftNode> for JoinCompiler {
 	}
 }
 
-// Extract the source name from a physical plan if it's a scan node
-fn extract_source_name(plan: &PhysicalPlan) -> Option<String> {
+// Extract the source name from a query plan if it's a scan node
+fn extract_source_name(plan: &QueryPlan) -> Option<String> {
 	match plan {
-		PhysicalPlan::TableScan(node) => Some(node.source.def().name.clone()),
-		PhysicalPlan::ViewScan(node) => Some(node.source.def().name.clone()),
-		PhysicalPlan::RingBufferScan(node) => Some(node.source.def().name.clone()),
-		PhysicalPlan::DictionaryScan(node) => Some(node.source.def().name.clone()),
+		QueryPlan::TableScan(node) => Some(node.source.def().name.clone()),
+		QueryPlan::ViewScan(node) => Some(node.source.def().name.clone()),
+		QueryPlan::RingBufferScan(node) => Some(node.source.def().name.clone()),
+		QueryPlan::DictionaryScan(node) => Some(node.source.def().name.clone()),
 		// For other node types, try to recursively find the source
-		PhysicalPlan::Filter(node) => extract_source_name(&node.input),
-		PhysicalPlan::Map(node) => node.input.as_ref().and_then(|p| extract_source_name(p)),
-		PhysicalPlan::Take(node) => extract_source_name(&node.input),
+		QueryPlan::Filter(node) => extract_source_name(&node.input),
+		QueryPlan::Map(node) => node.input.as_ref().and_then(|p| extract_source_name(p)),
+		QueryPlan::Take(node) => extract_source_name(&node.input),
 		_ => None,
 	}
 }

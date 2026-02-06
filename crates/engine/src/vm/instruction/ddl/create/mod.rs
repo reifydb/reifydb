@@ -7,7 +7,7 @@ use reifydb_core::interface::catalog::{
 	subscription::{SubscriptionDef, subscription_flow_name, subscription_flow_namespace},
 	view::ViewDef,
 };
-use reifydb_rql::nodes::PhysicalPlan;
+use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::flow::compiler::{compile_flow, compile_subscription_flow};
@@ -31,7 +31,7 @@ pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
 	view: &ViewDef,
-	plan: Box<PhysicalPlan>,
+	plan: QueryPlan,
 ) -> crate::Result<()> {
 	let flow_def = catalog.create_flow(
 		txn,
@@ -43,7 +43,7 @@ pub(crate) fn create_deferred_view_flow(
 		},
 	)?;
 
-	let _flow = compile_flow(catalog, txn, *plan, Some(view), flow_def.id)?;
+	let _flow = compile_flow(catalog, txn, plan, Some(view), flow_def.id)?;
 	Ok(())
 }
 
@@ -55,7 +55,7 @@ pub(crate) fn create_subscription_flow(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
 	subscription: &SubscriptionDef,
-	plan: PhysicalPlan,
+	plan: QueryPlan,
 ) -> crate::Result<()> {
 	use reifydb_core::interface::catalog::flow::FlowId;
 

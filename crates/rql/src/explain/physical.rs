@@ -15,6 +15,7 @@ use crate::{
 		TakeNode,
 	},
 	plan::{logical::compile_logical, physical::compile_physical},
+	query::QueryPlan,
 };
 
 pub fn explain_physical_plan<T: AsTransaction>(catalog: &Catalog, rx: &mut T, query: &str) -> crate::Result<String> {
@@ -62,6 +63,12 @@ fn with_child_prefix<F: FnOnce(&str)>(prefix: &str, is_last: bool, f: F) {
 	f(&child_prefix);
 }
 
+/// Helper to render a QueryPlan by converting to PhysicalPlan
+fn render_query_plan(plan: &QueryPlan, prefix: &str, is_last: bool, output: &mut String) {
+	let physical: PhysicalPlan = plan.clone().into();
+	render_physical_plan_inner(&physical, prefix, is_last, output);
+}
+
 fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, output: &mut String) {
 	match plan {
 		PhysicalPlan::Loop(_) => {
@@ -96,9 +103,10 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 
 			write_node_header(output, prefix, is_last, &label);
 
-			// Render the WITH query as a child
+			// Render the WITH query as a child (convert QueryPlan to PhysicalPlan for rendering)
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(&create_flow.as_clause, child_prefix, true, output);
+				let physical: PhysicalPlan = (*create_flow.as_clause.clone()).into();
+				render_physical_plan_inner(&physical, child_prefix, true, output);
 			});
 		}
 		PhysicalPlan::AlterSequence(AlterSequenceNode {
@@ -173,7 +181,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 				// Show Source branch
 				writeln!(output, "{}└── Source", child_prefix).unwrap();
 				let source_prefix = format!("{}    ", child_prefix);
-				render_physical_plan_inner(input, &source_prefix, true, output);
+				render_query_plan(input, &source_prefix, true, output);
 			});
 		}
 
@@ -187,7 +195,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			);
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(input, child_prefix, true, output);
+				render_query_plan(input, child_prefix, true, output);
 			});
 		}
 
@@ -198,7 +206,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			let label = format!("Take {}", take);
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(input, child_prefix, true, output);
+				render_query_plan(input, child_prefix, true, output);
 			});
 		}
 
@@ -210,7 +218,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 				format!("Sort: [{}]", by.iter().map(|o| o.to_string()).collect::<Vec<_>>().join(", "));
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(input, child_prefix, true, output);
+				render_query_plan(input, child_prefix, true, output);
 			});
 		}
 
@@ -223,7 +231,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
 				if let Some(input) = input {
-					render_physical_plan_inner(input, child_prefix, true, output);
+					render_query_plan(input, child_prefix, true, output);
 				}
 			});
 		}
@@ -239,7 +247,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
 				if let Some(input) = input {
-					render_physical_plan_inner(input, child_prefix, true, output);
+					render_query_plan(input, child_prefix, true, output);
 				}
 			});
 		}
@@ -255,7 +263,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
 				if let Some(input) = input {
-					render_physical_plan_inner(input, child_prefix, true, output);
+					render_query_plan(input, child_prefix, true, output);
 				}
 			});
 		}
@@ -272,8 +280,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			);
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(left, child_prefix, false, output);
-				render_physical_plan_inner(right, child_prefix, true, output);
+				render_query_plan(left, child_prefix, false, output);
+				render_query_plan(right, child_prefix, true, output);
 			});
 		}
 
@@ -289,8 +297,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			);
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(left, child_prefix, false, output);
-				render_physical_plan_inner(right, child_prefix, true, output);
+				render_query_plan(left, child_prefix, false, output);
+				render_query_plan(right, child_prefix, true, output);
 			});
 		}
 
@@ -307,8 +315,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			let label = format!("Join(Natural {}) [using common columns]", join_type_str);
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(left, child_prefix, false, output);
-				render_physical_plan_inner(right, child_prefix, true, output);
+				render_query_plan(left, child_prefix, false, output);
+				render_query_plan(right, child_prefix, true, output);
 			});
 		}
 
@@ -318,8 +326,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		}) => {
 			write_node_header(output, prefix, is_last, "Merge");
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(left, child_prefix, false, output);
-				render_physical_plan_inner(right, child_prefix, true, output);
+				render_query_plan(left, child_prefix, false, output);
+				render_query_plan(right, child_prefix, true, output);
 			});
 		}
 
@@ -374,7 +382,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
 				if let Some(input) = input {
-					render_physical_plan_inner(input, child_prefix, true, output);
+					render_query_plan(input, child_prefix, true, output);
 				}
 			});
 		}
@@ -398,7 +406,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			};
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(input, &child_prefix, true, output);
+				render_query_plan(input, &child_prefix, true, output);
 			});
 		}
 		PhysicalPlan::AlterTable(_) => {
@@ -454,7 +462,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 
 			if let Some(ref input) = node.input {
 				let child_prefix = format!("{}    ", prefix);
-				render_physical_plan_inner(input, &child_prefix, true, output);
+				render_query_plan(input, &child_prefix, true, output);
 			}
 		}
 		PhysicalPlan::Declare(declare_node) => {
@@ -526,7 +534,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::Scalarize(scalarize) => {
 			write_node_header(output, prefix, is_last, "Scalarize (convert 1x1 frame to scalar)");
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(&scalarize.input, child_prefix, true, output);
+				render_query_plan(&scalarize.input, child_prefix, true, output);
 			});
 		}
 

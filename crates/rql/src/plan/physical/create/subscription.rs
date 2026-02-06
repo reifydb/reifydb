@@ -3,10 +3,13 @@
 
 use reifydb_transaction::transaction::AsTransaction;
 
-use crate::plan::{
-	logical,
-	logical::compile_logical,
-	physical::{Compiler, CreateSubscriptionNode, PhysicalPlan},
+use crate::{
+	plan::{
+		logical,
+		logical::compile_logical,
+		physical::{Compiler, CreateSubscriptionNode, PhysicalPlan},
+	},
+	query::QueryPlan,
 };
 
 impl Compiler {
@@ -18,8 +21,10 @@ impl Compiler {
 		let as_clause = if let Some(as_clause_ast) = create.as_clause {
 			let logical_plans = compile_logical(&self.catalog, rx, as_clause_ast)?;
 
-			// Compile logical plans to physical plan
-			self.compile(rx, logical_plans)?.map(Box::new)
+			// Compile logical plans to physical plan, then convert to QueryPlan
+			let physical_plan = self.compile(rx, logical_plans)?.unwrap();
+			let query_plan: QueryPlan = physical_plan.try_into().expect("AS clause must be a query plan");
+			Some(Box::new(query_plan))
 		} else {
 			None
 		};

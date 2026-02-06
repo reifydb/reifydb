@@ -2,18 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{
-	flow::node::FlowNodeType,
-	nodes::{MergeNode, PhysicalPlan},
-};
+use reifydb_rql::{flow::node::FlowNodeType, nodes::MergeNode, query::QueryPlan};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct MergeCompiler {
-	pub left: Box<PhysicalPlan>,
-	pub right: Box<PhysicalPlan>,
+	pub left: Box<QueryPlan>,
+	pub right: Box<QueryPlan>,
 }
 
 impl From<MergeNode> for MergeCompiler {

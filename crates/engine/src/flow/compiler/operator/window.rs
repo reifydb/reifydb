@@ -5,18 +5,14 @@ use reifydb_core::{
 	common::{WindowSize, WindowSlide, WindowType},
 	interface::catalog::flow::FlowNodeId,
 };
-use reifydb_rql::{
-	expression::Expression,
-	flow::node::FlowNodeType::Window,
-	nodes::{PhysicalPlan, WindowNode},
-};
+use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Window, nodes::WindowNode, query::QueryPlan};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct WindowCompiler {
-	pub input: Option<Box<PhysicalPlan>>,
+	pub input: Option<Box<QueryPlan>>,
 	pub window_type: WindowType,
 	pub size: WindowSize,
 	pub slide: Option<WindowSlide>,

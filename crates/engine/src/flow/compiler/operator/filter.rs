@@ -2,18 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{
-	expression::Expression,
-	flow::node::FlowNodeType::Filter,
-	nodes::{FilterNode, PhysicalPlan},
-};
+use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Filter, nodes::FilterNode, query::QueryPlan};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct FilterCompiler {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub conditions: Vec<Expression>,
 }
 

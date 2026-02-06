@@ -84,3 +84,43 @@ impl From<QueryPlan> for PhysicalPlan {
 		}
 	}
 }
+
+impl TryFrom<PhysicalPlan> for QueryPlan {
+	type Error = PhysicalPlan;
+
+	fn try_from(plan: PhysicalPlan) -> Result<Self, Self::Error> {
+		match plan {
+			PhysicalPlan::TableScan(node) => Ok(QueryPlan::TableScan(node)),
+			PhysicalPlan::TableVirtualScan(node) => Ok(QueryPlan::TableVirtualScan(node)),
+			PhysicalPlan::ViewScan(node) => Ok(QueryPlan::ViewScan(node)),
+			PhysicalPlan::RingBufferScan(node) => Ok(QueryPlan::RingBufferScan(node)),
+			PhysicalPlan::FlowScan(node) => Ok(QueryPlan::FlowScan(node)),
+			PhysicalPlan::DictionaryScan(node) => Ok(QueryPlan::DictionaryScan(node)),
+			PhysicalPlan::IndexScan(node) => Ok(QueryPlan::IndexScan(node)),
+			PhysicalPlan::RowPointLookup(node) => Ok(QueryPlan::RowPointLookup(node)),
+			PhysicalPlan::RowListLookup(node) => Ok(QueryPlan::RowListLookup(node)),
+			PhysicalPlan::RowRangeScan(node) => Ok(QueryPlan::RowRangeScan(node)),
+			PhysicalPlan::Aggregate(node) => Ok(QueryPlan::Aggregate(node)),
+			PhysicalPlan::Distinct(node) => Ok(QueryPlan::Distinct(node)),
+			PhysicalPlan::Filter(node) => Ok(QueryPlan::Filter(node)),
+			PhysicalPlan::JoinInner(node) => Ok(QueryPlan::JoinInner(node)),
+			PhysicalPlan::JoinLeft(node) => Ok(QueryPlan::JoinLeft(node)),
+			PhysicalPlan::JoinNatural(node) => Ok(QueryPlan::JoinNatural(node)),
+			PhysicalPlan::Merge(node) => Ok(QueryPlan::Merge(node)),
+			PhysicalPlan::Take(node) => Ok(QueryPlan::Take(node)),
+			PhysicalPlan::Sort(node) => Ok(QueryPlan::Sort(node)),
+			PhysicalPlan::Map(node) => Ok(QueryPlan::Map(node)),
+			PhysicalPlan::Extend(node) => Ok(QueryPlan::Extend(node)),
+			PhysicalPlan::Patch(node) => Ok(QueryPlan::Patch(node)),
+			PhysicalPlan::Apply(node) => Ok(QueryPlan::Apply(node)),
+			PhysicalPlan::InlineData(node) => Ok(QueryPlan::InlineData(node)),
+			PhysicalPlan::Generator(node) => Ok(QueryPlan::Generator(node)),
+			PhysicalPlan::Window(node) => Ok(QueryPlan::Window(node)),
+			PhysicalPlan::Variable(node) => Ok(QueryPlan::Variable(node)),
+			PhysicalPlan::Environment(node) => Ok(QueryPlan::Environment(node)),
+			PhysicalPlan::Scalarize(node) => Ok(QueryPlan::Scalarize(node)),
+			// Non-query plans cannot be converted
+			other => Err(other),
+		}
+	}
+}
