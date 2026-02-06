@@ -79,6 +79,7 @@ pub mod tests {
 		common::CommitVersion, interface::catalog::flow::FlowNodeId,
 		util::encoding::keycode::serializer::KeySerializer,
 	};
+	use reifydb_transaction::interceptor::interceptors::Interceptors;
 
 	use super::*;
 	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
@@ -127,7 +128,7 @@ pub mod tests {
 	#[test]
 	fn test_load_save_window_state() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let window_key = test_window_key(42);
 
@@ -148,7 +149,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_windows() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create states for multiple windows
@@ -170,7 +171,7 @@ pub mod tests {
 	#[test]
 	fn test_expire_before() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 9
@@ -206,7 +207,7 @@ pub mod tests {
 	#[test]
 	fn test_expire_empty_range() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 5 through 9
@@ -234,7 +235,7 @@ pub mod tests {
 	#[test]
 	fn test_expire_all() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 4
@@ -262,7 +263,7 @@ pub mod tests {
 	#[test]
 	fn test_sliding_window_simulation() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let operator = TestOperator::new(FlowNodeId(1));
 
 		// Simulate a sliding window maintaining last 3 windows

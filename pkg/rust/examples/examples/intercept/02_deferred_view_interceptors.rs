@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! # Table Interceptors
+//! # Deferred View Interceptors
 //!
-//! Demonstrates the fluent interceptor API for ReifyDB:
-//! - Registering pre/post insert hooks on tables
-//! - Filtering interceptors by namespace.table pattern
-//! - Using closures for lightweight interceptor logic
+//! Demonstrates the fluent interceptor API for deferred views:
+//! - Registering post_insert and post_delete hooks on view data
+//! - Filtering interceptors by namespace.view pattern
+//! - Inspecting view metadata (name, kind, columns) in interceptor callbacks
 //!
-//! Interceptors allow you to:
-//! - Audit data changes
-//! - Validate data before/after operations
-//! - Trigger side effects (notifications, logging, etc.)
+//! View data interceptors allow you to:
+//! - Audit row-level changes in materialized views
+//! - React to inserts, updates, and deletes on view data
+//! - Trigger side effects when view rows change
 //!
-//! Run with: `make intercept-table-view` or `cargo run --bin intercept-table-view`
+//! Run with: `make intercept-deferred-view` or `cargo run --bin intercept-deferred-view`
 
 use std::{thread::sleep, time::Duration};
 
@@ -28,21 +28,21 @@ fn main() {
 		.with(EnvFilter::from_default_env())
 		.init();
 
-	// Step 1: Create database with interceptors configured
-	// The fluent API allows chaining interceptor registrations
-	info!("Creating database with interceptors...");
+	// Step 1: Create database with view interceptors configured
+	// The fluent API allows chaining interceptor registrations for views
+	info!("Creating database with view interceptors...");
 
 	let mut db = embedded::memory()
 		.intercept()
-		.table("test.users")
-			.pre_insert(|ctx| {
-				info!("[TABLE INTERCEPTOR] Pre-insert into: {}", ctx.table.name);
-				Ok(())
-			})
-			.post_insert(|ctx| {
-				info!("[TABLE INTERCEPTOR] Post-insert into: {}", ctx.table.name);
-				Ok(())
-			})
+		.view("test.active_users")
+		.post_insert(|ctx| {
+			info!("[VIEW INTERCEPTOR] Post-insert into view: {}", ctx.view.name);
+			Ok(())
+		})
+		.post_delete(|ctx| {
+			info!("[VIEW INTERCEPTOR] Post-delete from view: {}", ctx.view.name);
+			Ok(())
+		})
 		.done()
 		// Enable required subsystems
 		.with_tracing(|t| t.with_console(|c| c.color(true)).with_filter("debug"))
@@ -60,24 +60,19 @@ fn main() {
 	db.admin_as_root(r#"create table test.users { id: int4, username: utf8, active: bool }"#, Params::None)
 		.unwrap();
 
-	// Step 3: Create a deferred view that filters active users
+	// Step 3: Create a deferred view
 	info!("\n--- Creating deferred view ---");
 	log_query(
 		"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }",
 	);
 	db.admin_as_root(
-		r#"create deferred view test.active_users {
-				id: int4,
-				username: utf8
-			} as {
-				from test.users filter active == true map { id: id, username: username }
-			}"#,
+		r#"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }"#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Step 4: Insert data - this triggers the table interceptors
-	info!("\n--- Inserting users (triggers table interceptors) ---");
+	// Step 4: Insert data into the source table — triggers post_insert on the view
+	info!("\n--- Inserting users into source table (triggers view post_insert interceptor) ---");
 	log_query(
 		r#"INSERT test.users [
     {id: 1, username: "alice", active: true},
@@ -99,18 +94,14 @@ fn main() {
 	info!("\n--- Waiting for deferred view to process ---");
 	sleep(Duration::from_millis(100));
 
-	// Step 5: Query the results
-	info!("\n--- All users (from table) ---");
-	log_query("from test.users");
-	for frame in db.query_as_root(r#"from test.users"#, Params::None).unwrap() {
-		info!("{}", frame);
-	}
-
-	info!("\n--- Active users only (from deferred view) ---");
+	// Step 5: Query the deferred view to verify it works
+	info!("\n--- Active users (from deferred view) ---");
 	log_query("from test.active_users");
 	for frame in db.query_as_root(r#"from test.active_users"#, Params::None).unwrap() {
 		info!("{}", frame);
 	}
 
-	info!("\nExample complete. Notice how table interceptors fired for each insert.");
+	info!(
+		"\nExample complete. Notice how the view data interceptors fired when rows were inserted into the materialized view."
+	);
 }

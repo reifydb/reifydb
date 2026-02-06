@@ -117,6 +117,7 @@ impl Counter {
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::common::CommitVersion;
+	use reifydb_transaction::interceptor::interceptors::Interceptors;
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;
@@ -124,7 +125,7 @@ mod tests {
 	#[test]
 	fn test_counter_starts_at_one() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
 
 		let value = counter.next(&mut txn).unwrap();
@@ -134,7 +135,7 @@ mod tests {
 	#[test]
 	fn test_counter_increments() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
 
 		let v1 = counter.next(&mut txn).unwrap();
@@ -149,7 +150,7 @@ mod tests {
 	#[test]
 	fn test_counter_persistence() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node = FlowNodeId(1);
 
 		// First counter instance
@@ -171,7 +172,7 @@ mod tests {
 	#[test]
 	fn test_counter_current() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
 
 		// First call returns default (1)
@@ -191,7 +192,7 @@ mod tests {
 	#[test]
 	fn test_counter_set() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
 
 		// Set to a specific value
@@ -208,7 +209,7 @@ mod tests {
 	#[test]
 	fn test_counter_with_custom_key() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		// Create a custom key
 		let custom_key = {
@@ -229,7 +230,7 @@ mod tests {
 	#[test]
 	fn test_multiple_counters_isolated() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node = FlowNodeId(1);
 
 		// Different prefixes should be isolated
@@ -251,7 +252,7 @@ mod tests {
 	#[test]
 	fn test_different_nodes_isolated() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		// Same prefix, different nodes should be isolated
 		let counter1 = Counter::with_prefix(FlowNodeId(1), b'X', CounterDirection::Ascending);
@@ -268,7 +269,7 @@ mod tests {
 	#[test]
 	fn test_wrapping_behavior() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		// Test wrapping from MAX to 0
 		let counter = Counter::with_prefix(FlowNodeId(1), b'W', CounterDirection::Ascending);
@@ -299,7 +300,7 @@ mod tests {
 	#[test]
 	fn test_counter_descending_starts_at_max() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Descending);
 
 		let value = counter.next(&mut txn).unwrap();
@@ -309,7 +310,7 @@ mod tests {
 	#[test]
 	fn test_counter_descending_decrements() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Descending);
 
 		let v1 = counter.next(&mut txn).unwrap();
@@ -324,7 +325,7 @@ mod tests {
 	#[test]
 	fn test_counter_descending_wrapping() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let counter = Counter::with_prefix(FlowNodeId(1), b'W', CounterDirection::Descending);
 
 		// Set to 1, next should give 1, then wrap to 0, then MAX

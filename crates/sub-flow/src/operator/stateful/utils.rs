@@ -176,6 +176,7 @@ pub mod tests {
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::common::CommitVersion;
+	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
 	use super::*;
@@ -184,7 +185,7 @@ pub mod tests {
 	#[test]
 	fn test_state_get_existing() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("get");
 		let value = test_row();
@@ -201,7 +202,7 @@ pub mod tests {
 	#[test]
 	fn test_state_get_non_existing() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("nonexistent");
 
@@ -212,7 +213,7 @@ pub mod tests {
 	#[test]
 	fn test_state_set_and_update() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("set");
 		let value1 = EncodedValues(CowVec::new(vec![1, 2, 3]));
@@ -232,7 +233,7 @@ pub mod tests {
 	#[test]
 	fn test_state_remove() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("remove");
 		let value = test_row();
@@ -249,7 +250,7 @@ pub mod tests {
 	#[test]
 	fn test_state_scan() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 
 		// Add multiple entries
@@ -272,7 +273,7 @@ pub mod tests {
 	#[test]
 	fn test_state_range() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 
 		// Add entries with different keys
@@ -294,7 +295,7 @@ pub mod tests {
 	#[test]
 	fn test_state_range_open_ended() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 
 		// Add some entries
@@ -333,7 +334,7 @@ pub mod tests {
 	#[test]
 	fn test_state_clear() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 
 		// Add multiple entries
@@ -376,7 +377,7 @@ pub mod tests {
 	#[test]
 	fn test_load_or_create_row_existing() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_existing");
 		let value = test_row();
@@ -393,7 +394,7 @@ pub mod tests {
 	#[test]
 	fn test_load_or_create_row_new() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_new");
 		let schema = Schema::testing(&[Type::Int4]);
@@ -407,7 +408,7 @@ pub mod tests {
 	#[test]
 	fn test_save_row() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("save");
 		let value = test_row();
@@ -431,7 +432,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_nodes_isolation() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
 		let key = test_key("shared");
@@ -458,7 +459,7 @@ pub mod tests {
 	#[test]
 	fn test_large_values() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("large");
 

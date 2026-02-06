@@ -26,7 +26,7 @@ pub mod tests {
 		common::CommitVersion,
 		encoded::{encoded::EncodedValues, key::EncodedKey},
 	};
-	use reifydb_transaction::transaction::admin::AdminTransaction;
+	use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
@@ -47,7 +47,7 @@ pub mod tests {
 	#[test]
 	fn test_set_buffers_to_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -62,7 +62,7 @@ pub mod tests {
 	#[test]
 	fn test_set_multiple_keys() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
 		txn.set(&make_key("key2"), make_value("value2")).unwrap();
@@ -77,7 +77,7 @@ pub mod tests {
 	#[test]
 	fn test_set_overwrites_same_key() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -91,7 +91,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_buffers_to_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
@@ -104,7 +104,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_multiple_keys() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.remove(&make_key("key1")).unwrap();
 		txn.remove(&make_key("key2")).unwrap();
@@ -119,7 +119,7 @@ pub mod tests {
 	#[test]
 	fn test_set_then_remove() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -133,7 +133,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_then_set() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
@@ -147,7 +147,7 @@ pub mod tests {
 	#[test]
 	fn test_writes_not_visible_to_parent() {
 		let mut parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -171,7 +171,7 @@ pub mod tests {
 
 		// Create FlowTransaction and remove the key
 		let parent_version = parent.version();
-		let mut txn = FlowTransaction::new(&parent, parent_version, Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, parent_version, Catalog::testing(), Interceptors::new());
 		txn.remove(&key).unwrap();
 
 		// Parent should still see the value
@@ -181,7 +181,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_writes_and_removes() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing());
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("write1"), make_value("v1")).unwrap();
 		txn.remove(&make_key("remove1")).unwrap();
