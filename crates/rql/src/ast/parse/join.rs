@@ -4,10 +4,12 @@
 use reifydb_core::common::JoinType;
 use reifydb_type::{error::diagnostic::ast, return_error};
 
-use crate::ast::{
-	ast::{AstJoin, AstJoinExpressionPair, AstUsingClause, JoinConnector},
-	parse::{Parser, Precedence},
-	tokenize::{
+use crate::{
+	ast::{
+		ast::{AstJoin, AstJoinExpressionPair, AstUsingClause, JoinConnector},
+		parse::{Parser, Precedence},
+	},
+	token::{
 		keyword::Keyword::{Inner, Join, Left, Natural, Using},
 		operator::Operator::{And, As, CloseParen, OpenParen, Or},
 		separator::Separator::Comma,
@@ -161,10 +163,12 @@ impl Parser {
 pub mod tests {
 	use reifydb_core::common::JoinType;
 
-	use crate::ast::{
-		ast::{Ast, AstFrom, AstJoin, AstLiteral, InfixOperator},
-		parse::Parser,
-		tokenize::tokenize,
+	use crate::{
+		ast::{
+			ast::{Ast, AstFrom, AstJoin, AstLiteral, InfixOperator},
+			parse::Parser,
+		},
+		token::tokenize,
 	};
 
 	#[test]

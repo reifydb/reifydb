@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::tokenize::{
+use crate::token::{
 	cursor::Cursor,
 	identifier::is_identifier_char,
 	token::{Literal, Token, TokenKind},
@@ -140,7 +140,7 @@ pub mod tests {
 	use Literal::Number;
 
 	use super::*;
-	use crate::ast::tokenize::{operator::Operator, tokenize};
+	use crate::token::{operator::Operator, tokenize};
 
 	#[test]
 	fn test_decimal_integer() {

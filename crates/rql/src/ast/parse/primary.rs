@@ -3,10 +3,12 @@
 
 use reifydb_type::{error::diagnostic::ast, return_error};
 
-use crate::ast::{
-	ast::{Ast, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard},
-	parse::Parser,
-	tokenize::{
+use crate::{
+	ast::{
+		ast::{Ast, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard},
+		parse::Parser,
+	},
+	token::{
 		keyword::Keyword,
 		operator::Operator,
 		separator::Separator::NewLine,

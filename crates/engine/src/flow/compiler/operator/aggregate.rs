@@ -4,11 +4,8 @@
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
 	expression::Expression,
-	flow::{
-		conversion::{to_owned_expressions, to_owned_physical_plan},
-		node::FlowNodeType::Aggregate,
-	},
-	plan::physical::{AggregateNode, PhysicalPlan},
+	flow::node::FlowNodeType::Aggregate,
+	nodes::{AggregateNode, PhysicalPlan},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
@@ -24,9 +21,9 @@ pub(crate) struct AggregateCompiler {
 impl From<AggregateNode> for AggregateCompiler {
 	fn from(node: AggregateNode) -> Self {
 		Self {
-			input: Box::new(to_owned_physical_plan(*node.input)),
-			by: to_owned_expressions(node.by),
-			map: to_owned_expressions(node.map),
+			input: node.input,
+			by: node.by,
+			map: node.map,
 		}
 	}
 }

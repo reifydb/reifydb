@@ -14,7 +14,9 @@ pub mod system;
 pub mod vendor;
 
 pub use api::*;
-pub use builder::{DatabaseBuilder, EmbeddedBuilder, ServerBuilder, WithInterceptorBuilder, WithSubsystem};
+pub use builder::{
+	DatabaseBuilder, EmbeddedBuilder, InterceptBuilder, ServerBuilder, WithInterceptorBuilder, WithSubsystem,
+};
 pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::Database;
 pub use health::HealthMonitor;

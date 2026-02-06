@@ -8,10 +8,12 @@ use reifydb_type::{
 	fragment::Fragment,
 };
 
-use crate::ast::{
-	identifier::{MaybeQualifiedColumnIdentifier, UnqualifiedIdentifier},
-	parse::Parser,
-	tokenize::{
+use crate::{
+	ast::{
+		identifier::{MaybeQualifiedColumnIdentifier, UnqualifiedIdentifier},
+		parse::Parser,
+	},
+	token::{
 		operator::Operator,
 		token::{Literal, Token, TokenKind},
 	},
@@ -207,13 +209,15 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{
+	use crate::{
 		ast::{
-			Ast::{Create, Identifier},
-			AstCreate::Namespace,
+			ast::{
+				Ast::{Create, Identifier},
+				AstCreate::Namespace,
+			},
+			parse::parse,
 		},
-		parse::parse,
-		tokenize::tokenize,
+		token::tokenize,
 	};
 
 	#[test]

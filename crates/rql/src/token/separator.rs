@@ -52,7 +52,7 @@ pub fn scan_separator(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::ast::tokenize::tokenize;
+	use crate::token::tokenize;
 
 	#[test]
 	fn test_parse_separator_invalid() {

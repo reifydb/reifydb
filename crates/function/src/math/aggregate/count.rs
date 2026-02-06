@@ -20,7 +20,7 @@ impl Count {
 }
 
 impl AggregateFunction for Count {
-	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::AggregateFunctionResult<()> {
+	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::error::AggregateFunctionResult<()> {
 		let column = ctx.column;
 		let groups = &ctx.groups;
 
@@ -137,7 +137,7 @@ impl AggregateFunction for Count {
 		Ok(())
 	}
 
-	fn finalize(&mut self) -> crate::AggregateFunctionResult<(Vec<Vec<Value>>, ColumnData)> {
+	fn finalize(&mut self) -> crate::error::AggregateFunctionResult<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.counts.len());
 		let mut data = ColumnData::int8_with_capacity(self.counts.len());
 

@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::data::ColumnData;
 
-use crate::{ScalarFunction, ScalarFunctionContext, ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
 
 pub struct Now;
 

@@ -3,10 +3,9 @@
 
 use reifydb_type::error::diagnostic::ast::unexpected_token_error;
 
-use crate::ast::{
-	ast::AstBlock,
-	parse::Parser,
-	tokenize::{operator::Operator, separator::Separator, token::TokenKind},
+use crate::{
+	ast::{ast::AstBlock, parse::Parser},
+	token::{operator::Operator, separator::Separator, token::TokenKind},
 };
 
 impl Parser {

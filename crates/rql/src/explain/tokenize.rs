@@ -3,11 +3,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::ast::tokenize::token::{Token, TokenKind};
+use crate::token::token::{Token, TokenKind};
 
 pub fn explain_tokenize(query: &str) -> crate::Result<String> {
 	// Use the new tokenizer directly
-	let tokens = crate::ast::tokenize::tokenize(query)?;
+	let tokens = crate::token::tokenize(query)?;
 
 	let mut lines: BTreeMap<u32, Vec<(usize, &Token)>> = BTreeMap::new();
 	for (i, token) in tokens.iter().enumerate() {

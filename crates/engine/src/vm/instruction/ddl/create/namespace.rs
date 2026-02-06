@@ -5,7 +5,7 @@ use reifydb_catalog::catalog::namespace::NamespaceToCreate;
 use reifydb_core::{
 	interface::catalog::change::CatalogTrackNamespaceChangeOperations, value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::CreateNamespaceNode;
+use reifydb_rql::nodes::CreateNamespaceNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
@@ -42,45 +42,63 @@ pub(crate) fn create_namespace(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_rql::plan::physical::{CreateNamespaceNode, PhysicalPlan};
-	use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+	use reifydb_core::interface::auth::Identity;
+	use reifydb_type::{params::Params, value::Value};
 
-	use crate::{test_utils::create_test_admin_transaction, vm::executor::Executor};
+	use crate::{
+		test_utils::create_test_admin_transaction,
+		vm::{Admin, executor::Executor},
+	};
 
 	#[test]
 	fn test_create_namespace() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-
-		let mut plan = CreateNamespaceNode {
-			namespace: Fragment::internal("my_schema"),
-			if_not_exists: false,
-		};
+		let identity = Identity::root();
 
 		// First creation should succeed
 		let frames = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateNamespace(plan.clone()), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE NAMESPACE my_schema",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap();
 		let frame = &frames[0];
 
 		assert_eq!(frame[0].get_value(0), Value::Utf8("my_schema".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Boolean(true));
 
-		// Creating the same namespace again with `if_not_exists = true`
+		// Creating the same namespace again with `IF NOT EXISTS`
 		// should not error
-		plan.if_not_exists = true;
 		let frames = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateNamespace(plan.clone()), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE NAMESPACE IF NOT EXISTS my_schema",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap();
 		let frame = &frames[0];
 		assert_eq!(frame[0].get_value(0), Value::Utf8("my_schema".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Boolean(false));
 
-		// Creating the same namespace again with `if_not_exists =
-		// false` should return error
-		plan.if_not_exists = false;
+		// Creating the same namespace again without `IF NOT EXISTS`
+		// should return error
 		let err = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateNamespace(plan), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE NAMESPACE my_schema",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");
 	}

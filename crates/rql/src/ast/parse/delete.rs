@@ -4,11 +4,13 @@
 use reifydb_core::error::diagnostic::operation::{delete_missing_filter_clause, delete_missing_target};
 use reifydb_type::return_error;
 
-use crate::ast::{
-	ast::{Ast, AstDelete},
-	identifier::UnresolvedPrimitiveIdentifier,
-	parse::Parser,
-	tokenize::{keyword::Keyword, operator::Operator, token::TokenKind},
+use crate::{
+	ast::{
+		ast::{Ast, AstDelete},
+		identifier::UnresolvedPrimitiveIdentifier,
+		parse::Parser,
+	},
+	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
 impl Parser {
@@ -45,10 +47,12 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{
-		ast::{Ast, InfixOperator},
-		parse::Parser,
-		tokenize::tokenize,
+	use crate::{
+		ast::{
+			ast::{Ast, InfixOperator},
+			parse::Parser,
+		},
+		token::tokenize,
 	};
 
 	#[test]

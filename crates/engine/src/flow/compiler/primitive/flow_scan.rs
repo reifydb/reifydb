@@ -4,7 +4,7 @@
 //! Compilation of flow scan operations
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{flow::node::FlowNodeType::SourceFlow, plan::physical::FlowScanNode};
+use reifydb_rql::{flow::node::FlowNodeType::SourceFlow, nodes::FlowScanNode};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
 

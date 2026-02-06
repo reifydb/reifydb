@@ -4,11 +4,8 @@
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
 	expression::Expression,
-	flow::{
-		conversion::{to_owned_expressions, to_owned_physical_plan},
-		node::FlowNodeType::Map,
-	},
-	plan::physical::{MapNode, PhysicalPlan},
+	flow::node::FlowNodeType::Map,
+	nodes::{MapNode, PhysicalPlan},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
@@ -23,8 +20,8 @@ pub(crate) struct MapCompiler {
 impl From<MapNode> for MapCompiler {
 	fn from(node: MapNode) -> Self {
 		Self {
-			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
-			expressions: to_owned_expressions(node.map),
+			input: node.input,
+			expressions: node.map,
 		}
 	}
 }

@@ -10,6 +10,7 @@ use reifydb_catalog::{
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_function::{math, registry::Functions, series, subscription};
 use reifydb_metric::metric::MetricReader;
+use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
 
@@ -20,6 +21,7 @@ use reifydb_store_single::SingleStore;
 pub struct Services {
 	pub catalog: Catalog,
 	pub clock: Clock,
+	pub compiler: Compiler,
 	pub functions: Functions,
 	pub flow_operator_store: FlowOperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
@@ -37,6 +39,7 @@ impl Services {
 		ioc: IocContainer,
 	) -> Self {
 		Self {
+			compiler: Compiler::new(catalog.clone()),
 			catalog,
 			clock,
 			functions,

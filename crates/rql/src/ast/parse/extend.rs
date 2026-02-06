@@ -4,7 +4,10 @@
 use reifydb_core::error::diagnostic::operation::extend_missing_braces;
 use reifydb_type::return_error;
 
-use crate::ast::{ast::AstExtend, parse::Parser, tokenize::keyword::Keyword};
+use crate::{
+	ast::{ast::AstExtend, parse::Parser},
+	token::keyword::Keyword,
+};
 
 impl Parser {
 	pub(crate) fn parse_extend(&mut self) -> crate::Result<AstExtend> {
@@ -26,7 +29,7 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::ast::{ast::InfixOperator, tokenize::tokenize};
+	use crate::{ast::ast::InfixOperator, token::tokenize};
 
 	#[test]
 	fn test_extend_constant_number() {

@@ -3,10 +3,12 @@
 
 use reifydb_core::{common::IndexType, sort::SortDirection};
 
-use crate::ast::{
-	ast::{AstCreate, AstCreateIndex, AstIndexColumn},
-	parse::{Parser, Precedence},
-	tokenize::{
+use crate::{
+	ast::{
+		ast::{AstCreate, AstCreateIndex, AstIndexColumn},
+		parse::{Parser, Precedence},
+	},
+	token::{
 		keyword::Keyword::{Asc, Desc, Filter, Index, Map, On, Unique},
 		operator::Operator,
 		separator::Separator::Comma,

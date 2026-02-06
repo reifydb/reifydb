@@ -9,7 +9,7 @@ use reifydb_core::{
 	internal_error,
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::UpdateRingBufferNode;
+use reifydb_rql::nodes::UpdateRingBufferNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, params::Params, return_error, value::Value};
 

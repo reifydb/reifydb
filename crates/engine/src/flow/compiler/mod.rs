@@ -17,7 +17,7 @@ use reifydb_rql::{
 		flow::{FlowBuilder, FlowDag},
 		node::{FlowEdge, FlowNode, FlowNodeType},
 	},
-	plan::physical::PhysicalPlan,
+	nodes::PhysicalPlan,
 };
 use reifydb_type::{Result, value::blob::Blob};
 

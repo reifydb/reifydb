@@ -14,6 +14,7 @@ pub mod ringbuffer_def;
 pub mod table;
 pub mod table_def;
 pub mod transaction;
+pub mod view;
 pub mod view_def;
 
 // Re-import types for use in WithInterceptors trait
@@ -39,6 +40,10 @@ use table_def::{
 	TableDefPreUpdateInterceptor,
 };
 use transaction::{PostCommitInterceptor, PreCommitInterceptor};
+use view::{
+	ViewPostDeleteInterceptor, ViewPostInsertInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
+	ViewPreInsertInterceptor, ViewPreUpdateInterceptor,
+};
 use view_def::{
 	ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
 	ViewDefPreUpdateInterceptor,
@@ -135,6 +140,24 @@ pub trait WithInterceptors {
 
 	/// Access table definition pre-delete interceptor chain
 	fn table_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TableDefPreDeleteInterceptor + Send + Sync>;
+
+	/// Access view pre-insert interceptor chain
+	fn view_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPreInsertInterceptor + Send + Sync>;
+
+	/// Access view post-insert interceptor chain
+	fn view_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPostInsertInterceptor + Send + Sync>;
+
+	/// Access view pre-update interceptor chain
+	fn view_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync>;
+
+	/// Access view post-update interceptor chain
+	fn view_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewPostUpdateInterceptor + Send + Sync>;
+
+	/// Access view pre-delete interceptor chain
+	fn view_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPreDeleteInterceptor + Send + Sync>;
+
+	/// Access view post-delete interceptor chain
+	fn view_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPostDeleteInterceptor + Send + Sync>;
 
 	/// Access view post-create interceptor chain
 	fn view_def_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostCreateInterceptor + Send + Sync>;

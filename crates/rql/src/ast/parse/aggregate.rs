@@ -4,10 +4,12 @@
 use reifydb_core::error::diagnostic::operation::{aggregate_by_missing_braces, aggregate_missing_braces};
 use reifydb_type::return_error;
 
-use crate::ast::{
-	ast::AstAggregate,
-	parse::{Parser, Precedence},
-	tokenize::{
+use crate::{
+	ast::{
+		ast::AstAggregate,
+		parse::{Parser, Precedence},
+	},
+	token::{
 		keyword::Keyword,
 		operator::Operator::{CloseCurly, OpenCurly},
 		separator::Separator::Comma,
@@ -116,9 +118,9 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::ast::{
-		ast::{Ast, InfixOperator},
-		tokenize::tokenize,
+	use crate::{
+		ast::ast::{Ast, InfixOperator},
+		token::tokenize,
 	};
 
 	#[test]

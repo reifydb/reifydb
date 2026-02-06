@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::{
-	ast::{AstDrop, AstDropFlow},
-	identifier::MaybeQualifiedFlowIdentifier,
-	parse::Parser,
-	tokenize::{
+use crate::{
+	ast::{
+		ast::{AstDrop, AstDropFlow},
+		identifier::MaybeQualifiedFlowIdentifier,
+		parse::Parser,
+	},
+	token::{
 		keyword::Keyword,
 		operator::Operator,
 		token::{Token, TokenKind},
@@ -72,7 +74,7 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::ast::{parse::Parser, tokenize::tokenize};
+	use crate::{ast::parse::Parser, token::tokenize};
 
 	#[test]
 	fn test_drop_flow_basic() {

@@ -9,15 +9,15 @@ use reifydb_core::{
 };
 use reifydb_type::fragment::Fragment;
 
-use crate::ast::{
-	identifier::{
+use crate::{
+	ast::identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier, MaybeQualifiedFunctionIdentifier,
 		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
 		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
 		UnresolvedPrimitiveIdentifier,
 	},
-	tokenize::token::{Literal, Token, TokenKind},
+	token::token::{Literal, Token, TokenKind},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -38,6 +38,11 @@ impl AstStatement {
 
 	pub fn len(&self) -> usize {
 		self.nodes.len()
+	}
+
+	/// Returns true if this statement contains any DDL nodes (CREATE, ALTER, DROP).
+	pub fn contains_ddl(&self) -> bool {
+		self.nodes.iter().any(|node| node.is_ddl())
 	}
 }
 
@@ -209,6 +214,11 @@ impl Ast {
 }
 
 impl Ast {
+	/// Returns true if this AST node is a DDL statement (CREATE, ALTER, DROP).
+	pub fn is_ddl(&self) -> bool {
+		matches!(self, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_))
+	}
+
 	pub fn is_aggregate(&self) -> bool {
 		matches!(self, Ast::Aggregate(_))
 	}

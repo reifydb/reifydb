@@ -7,7 +7,7 @@ use reifydb_core::interface::catalog::{
 	subscription::{SubscriptionDef, subscription_flow_name, subscription_flow_namespace},
 	view::ViewDef,
 };
-use reifydb_rql::plan::physical::PhysicalPlan;
+use reifydb_rql::nodes::PhysicalPlan;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::flow::compiler::{compile_flow, compile_subscription_flow};

@@ -46,10 +46,12 @@ use Operator::*;
 use Separator::NewLine;
 use reifydb_type::{error::diagnostic::ast, return_error};
 
-use crate::ast::{
-	ast::{Ast, AstInfix, AstStatement, InfixOperator},
-	parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
-	tokenize::{
+use crate::{
+	ast::{
+		ast::{Ast, AstInfix, AstStatement, InfixOperator},
+		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
+	},
+	token::{
 		keyword::Keyword,
 		operator::Operator,
 		separator::Separator,
@@ -562,10 +564,12 @@ pub mod tests {
 		error::{Error, diagnostic::ast},
 	};
 
-	use crate::ast::{
-		ast::Ast,
-		parse::{Parser, Precedence, Precedence::Term},
-		tokenize::{
+	use crate::{
+		ast::{
+			ast::Ast,
+			parse::{Parser, Precedence, Precedence::Term},
+		},
+		token::{
 			operator::Operator::Plus,
 			separator::Separator::Semicolon,
 			token::{
@@ -670,7 +674,7 @@ pub mod tests {
 
 	#[test]
 	fn test_semicolon_statement_separation() {
-		use crate::ast::tokenize::tokenize;
+		use crate::token::tokenize;
 		let tokens = tokenize("let $x = 1; FROM users").unwrap();
 		let mut parser = Parser::new(tokens);
 		let statements = parser.parse().unwrap();
@@ -689,7 +693,7 @@ pub mod tests {
 
 	#[test]
 	fn test_variable_multiline_separation() {
-		use crate::ast::tokenize::tokenize;
+		use crate::token::tokenize;
 		let sql = r#"
 		let $user_data = FROM [{ name: "Alice", age: 25 }, { name: "Bob", age: 17 }, { name: "Carol", age: 30 }] | FILTER {age > 21};
 		FROM $user_data

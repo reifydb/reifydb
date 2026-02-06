@@ -5,7 +5,7 @@ use reifydb_catalog::catalog::subscription::SubscriptionToCreate;
 use reifydb_core::{
 	interface::catalog::change::CatalogTrackSubscriptionChangeOperations, value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::CreateSubscriptionNode;
+use reifydb_rql::nodes::CreateSubscriptionNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 

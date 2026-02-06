@@ -3,8 +3,8 @@
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
-	flow::{conversion::to_owned_physical_plan, node::FlowNodeType::Take},
-	plan::physical::{PhysicalPlan, TakeNode},
+	flow::node::FlowNodeType::Take,
+	nodes::{PhysicalPlan, TakeNode},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
@@ -19,7 +19,7 @@ pub(crate) struct TakeCompiler {
 impl From<TakeNode> for TakeCompiler {
 	fn from(node: TakeNode) -> Self {
 		Self {
-			input: Box::new(to_owned_physical_plan(*node.input)),
+			input: node.input,
 			limit: node.take,
 		}
 	}

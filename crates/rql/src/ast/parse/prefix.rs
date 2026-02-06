@@ -5,10 +5,12 @@ use std::sync::Arc;
 
 use reifydb_type::{error::diagnostic::ast, fragment::Fragment, return_error};
 
-use crate::ast::{
-	ast::{Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator},
-	parse::{Parser, Precedence},
-	tokenize::{
+use crate::{
+	ast::{
+		ast::{Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator},
+		parse::{Parser, Precedence},
+	},
+	token::{
 		operator::Operator,
 		token::{Literal::Number, Token, TokenKind},
 	},
@@ -64,10 +66,15 @@ impl Parser {
 pub mod tests {
 	use std::ops::Deref;
 
-	use crate::ast::{
-		ast::{Ast, Ast::Literal, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, InfixOperator},
-		parse::parse,
-		tokenize::tokenize,
+	use crate::{
+		ast::{
+			ast::{
+				Ast, Ast::Literal, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator,
+				InfixOperator,
+			},
+			parse::parse,
+		},
+		token::tokenize,
 	};
 
 	#[test]

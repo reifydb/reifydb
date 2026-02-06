@@ -14,7 +14,7 @@ impl GenerateSeries {
 }
 
 impl GeneratorFunction for GenerateSeries {
-	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::GeneratorFunctionResult<Columns> {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::error::GeneratorFunctionResult<Columns> {
 		// Extract parameters: start and end
 		let params = &ctx.params;
 

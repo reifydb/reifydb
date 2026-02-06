@@ -8,10 +8,8 @@ use tracing::instrument;
 use crate::{
 	ast::ast::AstStatement,
 	expression::Expression,
-	plan::{
-		logical::compile_logical,
-		physical::{PhysicalPlan, compile_physical},
-	},
+	nodes::PhysicalPlan,
+	plan::{logical::compile_logical, physical::compile_physical},
 };
 
 pub mod logical;

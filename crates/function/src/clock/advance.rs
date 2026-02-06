@@ -5,7 +5,7 @@ use reifydb_core::value::column::data::ColumnData;
 use reifydb_runtime::clock::Clock;
 use reifydb_type::value::r#type::Type;
 
-use crate::{ScalarFunction, ScalarFunctionContext, ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
 
 pub struct Advance;
 

@@ -7,7 +7,7 @@
 
 use reifydb_type::fragment::Fragment;
 
-use crate::ast::tokenize::token::Token;
+use crate::token::token::Token;
 
 /// Represents a source identifier that hasn't been resolved to a specific type yet
 /// Used in AST parsing before we know whether it's a table, view, or ring buffer
@@ -53,7 +53,7 @@ impl UnqualifiedIdentifier {
 	}
 
 	pub fn from_fragment(fragment: Fragment) -> Self {
-		use crate::ast::tokenize::token::TokenKind;
+		use crate::token::token::TokenKind;
 		Self {
 			token: Token {
 				kind: TokenKind::Identifier,

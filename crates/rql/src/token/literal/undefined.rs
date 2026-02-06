@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::tokenize::{
+use crate::token::{
 	cursor::Cursor,
 	identifier::is_identifier_char,
 	token::{Literal::Undefined, Token, TokenKind},
@@ -30,7 +30,7 @@ pub fn scan_undefined(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::ast::tokenize::{keyword::Keyword, tokenize};
+	use crate::token::{keyword::Keyword, tokenize};
 
 	#[test]
 	fn test_undefined() {

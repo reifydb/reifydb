@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::{
-	ast::{AstBreak, AstContinue, AstFor, AstLoop, AstVariable, AstWhile},
-	parse::{Parser, Precedence},
-	tokenize::{keyword::Keyword, token::TokenKind},
+use crate::{
+	ast::{
+		ast::{AstBreak, AstContinue, AstFor, AstLoop, AstVariable, AstWhile},
+		parse::{Parser, Precedence},
+	},
+	token::{keyword::Keyword, token::TokenKind},
 };
 
 impl Parser {

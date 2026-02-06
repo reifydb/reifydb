@@ -61,7 +61,7 @@ pub fn scan_parameter(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::ast::tokenize::tokenize;
+	use crate::token::tokenize;
 
 	#[test]
 	fn test_positional_parameter() {

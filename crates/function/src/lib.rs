@@ -22,10 +22,7 @@ pub mod series;
 pub mod subscription;
 pub mod text;
 
-pub use error::{
-	AggregateFunctionError, AggregateFunctionResult, GeneratorFunctionError, GeneratorFunctionResult,
-	ScalarFunctionError, ScalarFunctionResult,
-};
+use error::{AggregateFunctionResult, GeneratorFunctionResult, ScalarFunctionResult};
 use reifydb_catalog::catalog::Catalog;
 
 pub struct GeneratorContext<'a> {

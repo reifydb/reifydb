@@ -7,7 +7,7 @@ use reifydb_type::{
 	value::{blob::Blob, r#type::Type},
 };
 
-use crate::{ScalarFunction, ScalarFunctionContext, ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
 
 pub struct BlobHex;
 
@@ -18,7 +18,7 @@ impl BlobHex {
 }
 
 impl ScalarFunction for BlobHex {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 

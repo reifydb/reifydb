@@ -13,6 +13,7 @@ default = []
 [dependencies]
 reifydb-core = {workspace = true}
 reifydb-catalog = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 tracing = { workspace = true }

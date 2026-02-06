@@ -4,11 +4,7 @@
 //! Compilation of inline data operations
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{
-	expression::{AliasExpression, IdentExpression},
-	flow::{conversion::to_owned_expression, node::FlowNodeType},
-	plan::physical::InlineDataNode,
-};
+use reifydb_rql::{flow::node::FlowNodeType, nodes::InlineDataNode};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
 
@@ -20,25 +16,8 @@ pub(crate) struct InlineDataCompiler {
 
 impl From<InlineDataNode> for InlineDataCompiler {
 	fn from(inline_data: InlineDataNode) -> Self {
-		// Convert InlineDataNode to InlineDataNode
-		let converted_rows = inline_data
-			.rows
-			.into_iter()
-			.map(|row| {
-				row.into_iter()
-					.map(|alias_expr| AliasExpression {
-						alias: IdentExpression(alias_expr.alias.0),
-						expression: Box::new(to_owned_expression(*alias_expr.expression)),
-						fragment: alias_expr.fragment,
-					})
-					.collect()
-			})
-			.collect();
-
 		Self {
-			_inline_data: InlineDataNode {
-				rows: converted_rows,
-			},
+			_inline_data: inline_data,
 		}
 	}
 }

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::{ast::AstCast, parse::Parser, tokenize::keyword::Keyword::Cast};
+use crate::{
+	ast::{ast::AstCast, parse::Parser},
+	token::keyword::Keyword::Cast,
+};
 
 impl Parser {
 	pub(crate) fn parse_cast(&mut self) -> crate::Result<AstCast> {
@@ -16,7 +19,10 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{ast::AstCast, parse::parse, tokenize::tokenize};
+	use crate::{
+		ast::{ast::AstCast, parse::parse},
+		token::tokenize,
+	};
 
 	#[test]
 	fn test_cast() {

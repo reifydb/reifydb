@@ -7,7 +7,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::dictionary_not_found,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_rql::plan::physical::InsertDictionaryNode;
+use reifydb_rql::nodes::InsertDictionaryNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,

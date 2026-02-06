@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedPrimitive},
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::AlterSequenceNode;
+use reifydb_rql::nodes::AlterSequenceNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{params::Params, return_error, value::Value};
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::tokenize::{
+use crate::token::{
 	cursor::Cursor,
 	token::{Literal, Token, TokenKind},
 };
@@ -51,7 +51,7 @@ pub mod tests {
 	use Literal::Temporal;
 
 	use super::*;
-	use crate::ast::tokenize::tokenize;
+	use crate::token::tokenize;
 
 	#[test]
 	fn test_temporal_date() {

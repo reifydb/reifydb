@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::DeleteTableNode;
+use reifydb_rql::nodes::DeleteTableNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, fragment::Fragment, params::Params, return_error, value::Value};
 

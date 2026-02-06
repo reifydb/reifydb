@@ -33,17 +33,16 @@ fn main() {
 	info!("Creating database with interceptors...");
 
 	let mut db = embedded::memory()
-		// Register interceptors for the users table
-		// These will fire ONLY for operations on test.users
-		.intercept_table("test.users")
-		.pre_insert(|ctx| {
-			info!("[TABLE INTERCEPTOR] Pre-insert into: {}", ctx.table.name);
-			Ok(())
-		})
-		.post_insert(|ctx| {
-			info!("[TABLE INTERCEPTOR] Post-insert into: {}", ctx.table.name);
-			Ok(())
-		})
+		.intercept()
+		.table("test.users")
+			.pre_insert(|ctx| {
+				info!("[TABLE INTERCEPTOR] Pre-insert into: {}", ctx.table.name);
+				Ok(())
+			})
+			.post_insert(|ctx| {
+				info!("[TABLE INTERCEPTOR] Post-insert into: {}", ctx.table.name);
+				Ok(())
+			})
 		.done()
 		// Enable required subsystems
 		.with_tracing(|t| t.with_console(|c| c.color(true)).with_filter("debug"))
@@ -67,10 +66,14 @@ fn main() {
 		"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }",
 	);
 	db.admin_as_root(
-		r#"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }"#,
+		r#"create deferred view test.active_users {
+				id: int4,
+				username: utf8
+			} as {
+				from test.users filter active == true map { id: id, username: username }
+			}"#,
 		Params::None,
 	)
-
 	.unwrap();
 
 	// Step 4: Insert data - this triggers the table interceptors

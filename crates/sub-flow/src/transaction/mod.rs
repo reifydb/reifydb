@@ -4,7 +4,45 @@
 use pending::{Pending, PendingWrites};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::CommitVersion;
-use reifydb_transaction::{multi::transaction::read::MultiReadTransaction, transaction::admin::AdminTransaction};
+use reifydb_transaction::{
+	interceptor::{
+		WithInterceptors,
+		chain::InterceptorChain as Chain,
+		interceptors::Interceptors,
+		namespace_def::{
+			NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
+			NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor,
+		},
+		ringbuffer::{
+			RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
+			RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
+			RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor,
+		},
+		ringbuffer_def::{
+			RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
+			RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+		},
+		table::{
+			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
+			TablePreDeleteInterceptor, TablePreInsertInterceptor, TablePreUpdateInterceptor,
+		},
+		table_def::{
+			TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
+			TableDefPreUpdateInterceptor,
+		},
+		transaction::{PostCommitInterceptor, PreCommitInterceptor},
+		view::{
+			ViewPostDeleteInterceptor, ViewPostInsertInterceptor, ViewPostUpdateInterceptor,
+			ViewPreDeleteInterceptor, ViewPreInsertInterceptor, ViewPreUpdateInterceptor,
+		},
+		view_def::{
+			ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
+			ViewDefPreUpdateInterceptor,
+		},
+	},
+	multi::transaction::read::MultiReadTransaction,
+	transaction::admin::AdminTransaction,
+};
 use tracing::instrument;
 
 pub mod pending;
@@ -137,6 +175,9 @@ pub struct FlowTransaction {
 
 	/// Catalog for metadata access (cloned from parent, Arc-based so cheap)
 	pub(crate) catalog: Catalog,
+
+	/// Interceptors for view data operations
+	pub(crate) interceptors: Interceptors,
 }
 
 impl FlowTransaction {
@@ -150,8 +191,13 @@ impl FlowTransaction {
 	/// * `parent` - The parent command transaction to derive from
 	/// * `version` - The CDC event version for snapshot isolation (NOT parent.version())
 	/// * `catalog` - The catalog for metadata access
-	#[instrument(name = "flow::transaction::new", level = "debug", skip(parent, catalog), fields(version = version.0))]
-	pub fn new(parent: &AdminTransaction, version: CommitVersion, catalog: Catalog) -> Self {
+	#[instrument(name = "flow::transaction::new", level = "debug", skip(parent, catalog, interceptors), fields(version = version.0))]
+	pub fn new(
+		parent: &AdminTransaction,
+		version: CommitVersion,
+		catalog: Catalog,
+		interceptors: Interceptors,
+	) -> Self {
 		let mut primitive_query = parent.multi.begin_query().unwrap();
 		primitive_query.read_as_of_version_inclusive(version);
 
@@ -162,6 +208,7 @@ impl FlowTransaction {
 			primitive_query,
 			state_query,
 			catalog,
+			interceptors,
 		}
 	}
 
@@ -174,5 +221,183 @@ impl FlowTransaction {
 	/// Get access to the catalog for reading metadata
 	pub(crate) fn catalog(&self) -> &Catalog {
 		&self.catalog
+	}
+}
+
+impl WithInterceptors for FlowTransaction {
+	fn table_pre_insert_interceptors(&mut self) -> &mut Chain<dyn TablePreInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.table_pre_insert
+	}
+
+	fn table_post_insert_interceptors(&mut self) -> &mut Chain<dyn TablePostInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.table_post_insert
+	}
+
+	fn table_pre_update_interceptors(&mut self) -> &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.table_pre_update
+	}
+
+	fn table_post_update_interceptors(&mut self) -> &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.table_post_update
+	}
+
+	fn table_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.table_pre_delete
+	}
+
+	fn table_post_delete_interceptors(&mut self) -> &mut Chain<dyn TablePostDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.table_post_delete
+	}
+
+	fn ringbuffer_pre_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferPreInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_pre_insert
+	}
+
+	fn ringbuffer_post_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferPostInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_post_insert
+	}
+
+	fn ringbuffer_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_pre_update
+	}
+
+	fn ringbuffer_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_post_update
+	}
+
+	fn ringbuffer_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_pre_delete
+	}
+
+	fn ringbuffer_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferPostDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_post_delete
+	}
+
+	fn pre_commit_interceptors(&mut self) -> &mut Chain<dyn PreCommitInterceptor + Send + Sync> {
+		&mut self.interceptors.pre_commit
+	}
+
+	fn post_commit_interceptors(&mut self) -> &mut Chain<dyn PostCommitInterceptor + Send + Sync> {
+		&mut self.interceptors.post_commit
+	}
+
+	fn namespace_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn NamespaceDefPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.namespace_def_post_create
+	}
+
+	fn namespace_def_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn NamespaceDefPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.namespace_def_pre_update
+	}
+
+	fn namespace_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn NamespaceDefPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.namespace_def_post_update
+	}
+
+	fn namespace_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn NamespaceDefPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.namespace_def_pre_delete
+	}
+
+	fn table_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn TableDefPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.table_def_post_create
+	}
+
+	fn table_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn TableDefPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.table_def_pre_update
+	}
+
+	fn table_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn TableDefPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.table_def_post_update
+	}
+
+	fn table_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TableDefPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.table_def_pre_delete
+	}
+
+	fn view_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPreInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.view_pre_insert
+	}
+
+	fn view_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPostInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.view_post_insert
+	}
+
+	fn view_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.view_pre_update
+	}
+
+	fn view_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.view_post_update
+	}
+
+	fn view_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.view_pre_delete
+	}
+
+	fn view_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPostDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.view_post_delete
+	}
+
+	fn view_def_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.view_def_post_create
+	}
+
+	fn view_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewDefPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.view_def_pre_update
+	}
+
+	fn view_def_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.view_def_post_update
+	}
+
+	fn view_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewDefPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.view_def_pre_delete
+	}
+
+	fn ringbuffer_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferDefPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_def_post_create
+	}
+
+	fn ringbuffer_def_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferDefPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_def_pre_update
+	}
+
+	fn ringbuffer_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferDefPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_def_post_update
+	}
+
+	fn ringbuffer_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferDefPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_def_pre_delete
 	}
 }

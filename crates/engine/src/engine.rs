@@ -315,6 +315,11 @@ impl StandardEngine {
 		}))
 	}
 
+	/// Create a new set of interceptors from the factory.
+	pub fn create_interceptors(&self) -> reifydb_transaction::interceptor::interceptors::Interceptors {
+		self.interceptors.create()
+	}
+
 	/// Begin a query transaction at a specific version.
 	///
 	/// This is used for parallel query execution where multiple tasks need to

@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::{internal, value::column::columns::Columns};
-use reifydb_rql::plan::physical::DefineFunctionNode;
+use reifydb_rql::instruction::{CompiledFunctionDef, ScopeType};
 use reifydb_type::{error, error::diagnostic, value::Value};
 
 /// A value on the VM data stack
@@ -100,8 +100,8 @@ impl Variable {
 #[derive(Debug, Clone)]
 pub struct SymbolTable {
 	scopes: Vec<Scope>,
-	/// User-defined functions
-	functions: HashMap<String, DefineFunctionNode>,
+	/// User-defined functions (pre-compiled)
+	functions: HashMap<String, CompiledFunctionDef>,
 }
 
 /// Represents a single scope containing variables
@@ -109,16 +109,6 @@ pub struct SymbolTable {
 struct Scope {
 	variables: HashMap<String, VariableBinding>,
 	scope_type: ScopeType,
-}
-
-/// Different types of scopes for organizational purposes
-#[derive(Debug, Clone, PartialEq)]
-pub enum ScopeType {
-	Global,
-	Function,
-	Block,
-	Conditional,
-	Loop,
 }
 
 /// Control flow signal for loop constructs
@@ -304,13 +294,13 @@ impl SymbolTable {
 		self.functions.clear();
 	}
 
-	/// Define a user-defined function
-	pub fn define_function(&mut self, name: String, func: DefineFunctionNode) {
+	/// Define a user-defined function (pre-compiled)
+	pub fn define_function(&mut self, name: String, func: CompiledFunctionDef) {
 		self.functions.insert(name, func);
 	}
 
 	/// Get a user-defined function by name
-	pub fn get_function(&self, name: &str) -> Option<&DefineFunctionNode> {
+	pub fn get_function(&self, name: &str) -> Option<&CompiledFunctionDef> {
 		self.functions.get(name)
 	}
 

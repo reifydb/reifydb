@@ -4,11 +4,8 @@
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
 	expression::Expression,
-	flow::{
-		conversion::{to_owned_expressions, to_owned_physical_plan},
-		node::FlowNodeType::Filter,
-	},
-	plan::physical::{FilterNode, PhysicalPlan},
+	flow::node::FlowNodeType::Filter,
+	nodes::{FilterNode, PhysicalPlan},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
@@ -23,8 +20,8 @@ pub(crate) struct FilterCompiler {
 impl From<FilterNode> for FilterCompiler {
 	fn from(node: FilterNode) -> Self {
 		Self {
-			input: Box::new(to_owned_physical_plan(*node.input)),
-			conditions: to_owned_expressions(node.conditions),
+			input: node.input,
+			conditions: node.conditions,
 		}
 	}
 }

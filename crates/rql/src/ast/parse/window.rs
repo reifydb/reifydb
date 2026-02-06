@@ -3,10 +3,12 @@
 
 use reifydb_type::{error::diagnostic::ast::unexpected_token_error, return_error};
 
-use crate::ast::{
-	ast::{AstWindow, AstWindowConfig},
-	parse::{Parser, Precedence},
-	tokenize::{
+use crate::{
+	ast::{
+		ast::{AstWindow, AstWindowConfig},
+		parse::{Parser, Precedence},
+	},
+	token::{
 		keyword::Keyword::{By, Window, With},
 		operator::Operator::{CloseCurly, Colon, OpenCurly},
 		separator::Separator::Comma,
@@ -160,7 +162,7 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{parse::Parser, tokenize::tokenize};
+	use crate::{ast::parse::Parser, token::tokenize};
 
 	#[test]
 	fn test_parse_time_window() {

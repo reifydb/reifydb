@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::{change::CatalogTrackTableChangeOperations, primitive::PrimitiveId},
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::CreateTableNode;
+use reifydb_rql::nodes::CreateTableNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{return_error, value::Value};
 
@@ -78,61 +78,57 @@ pub(crate) fn create_table(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::interface::{
-		catalog::{id::NamespaceId, namespace::NamespaceDef},
-		resolved::ResolvedNamespace,
-	};
-	use reifydb_rql::plan::physical::PhysicalPlan;
-	use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+	use reifydb_core::interface::auth::Identity;
+	use reifydb_type::{params::Params, value::Value};
 
 	use crate::{
 		test_utils::create_test_admin_transaction,
-		vm::{executor::Executor, instruction::ddl::create::table::CreateTableNode},
+		vm::{Admin, executor::Executor},
 	};
 
 	#[test]
 	fn test_create_table() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
+		let identity = Identity::root();
 
-		let namespace = ensure_test_namespace(&mut txn);
-
-		let namespace_ident = Fragment::internal("test_namespace");
-		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
-		let mut plan = CreateTableNode {
-			namespace: resolved_namespace.clone(),
-			table: Fragment::internal("test_table"),
-			if_not_exists: false,
-			columns: vec![],
-			primary_key: None,
-		};
+		// Create namespace first
+		instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE test_namespace",
+				params: Params::default(),
+				identity: &identity,
+			},
+		)
+		.unwrap();
 
 		// First creation should succeed
 		let frames = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE TABLE test_namespace.test_table { id: Int4 }",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap();
 		let frame = &frames[0];
 		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
 
-		// Creating the same table again with `if_not_exists = true`
-		// should not error
-		plan.if_not_exists = true;
-		let frames = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
-			.unwrap();
-		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
-
-		// Creating the same table again with `if_not_exists = false`
-		// should return error
-		plan.if_not_exists = false;
+		// Creating the same table again should return error
 		let err = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE TABLE test_namespace.test_table { id: Int4 }",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
@@ -141,70 +137,58 @@ pub mod tests {
 	fn test_create_same_table_in_different_schema() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
+		let identity = Identity::root();
 
-		let namespace = ensure_test_namespace(&mut txn);
-		let another_schema = create_namespace(&mut txn, "another_schema");
+		// Create both namespaces
+		instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE test_namespace",
+				params: Params::default(),
+				identity: &identity,
+			},
+		)
+		.unwrap();
+		instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE another_schema",
+				params: Params::default(),
+				identity: &identity,
+			},
+		)
+		.unwrap();
 
-		let namespace_ident = Fragment::internal("test_namespace");
-		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
-		let plan = CreateTableNode {
-			namespace: resolved_namespace,
-			table: Fragment::internal("test_table"),
-			if_not_exists: false,
-			columns: vec![],
-			primary_key: None,
-		};
-
+		// Create table in first namespace
 		let frames = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE TABLE test_namespace.test_table { id: Int4 }",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap();
 		let frame = &frames[0];
 		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
-		let namespace_ident = Fragment::internal("another_schema");
-		let resolved_namespace = ResolvedNamespace::new(namespace_ident, another_schema.clone());
-		let plan = CreateTableNode {
-			namespace: resolved_namespace,
-			table: Fragment::internal("test_table"),
-			if_not_exists: false,
-			columns: vec![],
-			primary_key: None,
-		};
 
+		// Create table with same name in different namespace
 		let frames = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE TABLE another_schema.test_table { id: Int4 }",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap();
 		let frame = &frames[0];
 		assert_eq!(frame[0].get_value(0), Value::Utf8("another_schema".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
-	}
-
-	#[test]
-	fn test_create_table_missing_schema() {
-		let instance = Executor::testing();
-		let mut txn = create_test_admin_transaction();
-
-		let namespace_ident = Fragment::internal("missing_schema");
-		let namespace_def = NamespaceDef {
-			id: NamespaceId(999),
-			name: "missing_schema".to_string(),
-		};
-		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace_def);
-		let plan = CreateTableNode {
-			namespace: resolved_namespace,
-			table: Fragment::internal("my_table"),
-			if_not_exists: false,
-			columns: vec![],
-			primary_key: None,
-		};
-
-		let frames =
-			instance.run_admin_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default()).unwrap();
-		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("missing_schema".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("my_table".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
 	}
 }

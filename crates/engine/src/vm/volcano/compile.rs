@@ -23,7 +23,14 @@ use reifydb_catalog::vtable::{
 	tables::VTables,
 };
 use reifydb_core::interface::catalog::id::{IndexId, NamespaceId};
-use reifydb_rql::plan::{physical, physical::PhysicalPlan};
+use reifydb_rql::nodes::{
+	AggregateNode as PhysicalAggregateNode, ExtendNode as PhysicalExtendNode, FilterNode as PhysicalFilterNode,
+	GeneratorNode as PhysicalGeneratorNode, InlineDataNode as PhysicalInlineDataNode,
+	JoinInnerNode as PhysicalJoinInnerNode, JoinLeftNode as PhysicalJoinLeftNode,
+	JoinNaturalNode as PhysicalJoinNaturalNode, MapNode as PhysicalMapNode, PatchNode as PhysicalPatchNode,
+	PhysicalPlan, RowListLookupNode as PhysicalRowListLookupNode, RowPointLookupNode as PhysicalRowPointLookupNode,
+	RowRangeScanNode as PhysicalRowRangeScanNode, SortNode as PhysicalSortNode, TakeNode as PhysicalTakeNode,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 use tracing::instrument;
@@ -69,7 +76,7 @@ fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan) -> Option<Fragment
 #[instrument(name = "volcano::compile", level = "trace", skip(plan, rx, context))]
 pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context: Arc<QueryContext>) -> QueryPlan {
 	match plan {
-		PhysicalPlan::Aggregate(physical::AggregateNode {
+		PhysicalPlan::Aggregate(PhysicalAggregateNode {
 			by,
 			map,
 			input,
@@ -78,7 +85,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			QueryPlan::Aggregate(AggregateNode::new(input_node, by, map, context))
 		}
 
-		PhysicalPlan::Filter(physical::FilterNode {
+		PhysicalPlan::Filter(PhysicalFilterNode {
 			conditions,
 			input,
 		}) => {
@@ -86,11 +93,11 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			QueryPlan::Filter(FilterNode::new(input_node, conditions))
 		}
 
-		PhysicalPlan::Take(physical::TakeNode {
+		PhysicalPlan::Take(PhysicalTakeNode {
 			take,
 			input,
 		}) => {
-			if let PhysicalPlan::Sort(physical::SortNode {
+			if let PhysicalPlan::Sort(PhysicalSortNode {
 				by,
 				input: sort_input,
 			}) = *input
@@ -102,7 +109,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			QueryPlan::Take(TakeNode::new(input_node, take))
 		}
 
-		PhysicalPlan::Sort(physical::SortNode {
+		PhysicalPlan::Sort(PhysicalSortNode {
 			by,
 			input,
 		}) => {
@@ -110,7 +117,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			QueryPlan::Sort(SortNode::new(input_node, by))
 		}
 
-		PhysicalPlan::Map(physical::MapNode {
+		PhysicalPlan::Map(PhysicalMapNode {
 			map,
 			input,
 		}) => {
@@ -122,7 +129,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			}
 		}
 
-		PhysicalPlan::Extend(physical::ExtendNode {
+		PhysicalPlan::Extend(PhysicalExtendNode {
 			extend,
 			input,
 		}) => {
@@ -134,7 +141,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			}
 		}
 
-		PhysicalPlan::Patch(physical::PatchNode {
+		PhysicalPlan::Patch(PhysicalPatchNode {
 			assignments,
 			input,
 		}) => {
@@ -144,7 +151,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			QueryPlan::Patch(PatchNode::new(input_node, assignments))
 		}
 
-		PhysicalPlan::JoinInner(physical::JoinInnerNode {
+		PhysicalPlan::JoinInner(PhysicalJoinInnerNode {
 			left,
 			right,
 			on,
@@ -162,7 +169,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			QueryPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
-		PhysicalPlan::JoinLeft(physical::JoinLeftNode {
+		PhysicalPlan::JoinLeft(PhysicalJoinLeftNode {
 			left,
 			right,
 			on,
@@ -180,7 +187,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			QueryPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
-		PhysicalPlan::JoinNatural(physical::JoinNaturalNode {
+		PhysicalPlan::JoinNatural(PhysicalJoinNaturalNode {
 			left,
 			right,
 			join_type,
@@ -197,11 +204,11 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			QueryPlan::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type, effective_alias))
 		}
 
-		PhysicalPlan::InlineData(physical::InlineDataNode {
+		PhysicalPlan::InlineData(PhysicalInlineDataNode {
 			rows,
 		}) => QueryPlan::InlineData(InlineDataNode::new(rows, context)),
 
-		PhysicalPlan::Generator(physical::GeneratorNode {
+		PhysicalPlan::Generator(PhysicalGeneratorNode {
 			name,
 			expressions,
 		}) => QueryPlan::Generator(GeneratorNode::new(name, expressions)),
@@ -391,7 +398,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 		}
 
 		// Row-number optimized access nodes
-		PhysicalPlan::RowPointLookup(physical::RowPointLookupNode {
+		PhysicalPlan::RowPointLookup(PhysicalRowPointLookupNode {
 			source,
 			row_number,
 		}) => {
@@ -401,7 +408,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 					.expect("Failed to create RowPointLookupNode"),
 			)
 		}
-		PhysicalPlan::RowListLookup(physical::RowListLookupNode {
+		PhysicalPlan::RowListLookup(PhysicalRowListLookupNode {
 			source,
 			row_numbers,
 		}) => {
@@ -411,7 +418,7 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 					.expect("Failed to create RowListLookupNode"),
 			)
 		}
-		PhysicalPlan::RowRangeScan(physical::RowRangeScanNode {
+		PhysicalPlan::RowRangeScan(PhysicalRowRangeScanNode {
 			source,
 			start,
 			end,

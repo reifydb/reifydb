@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::{
-	ast::{AstStatement, AstSubQuery},
-	parse::{Parser, Precedence},
-	tokenize::operator::Operator::{self, CloseCurly, OpenCurly},
+use crate::{
+	ast::{
+		ast::{AstStatement, AstSubQuery},
+		parse::{Parser, Precedence},
+	},
+	token::operator::Operator::{self, CloseCurly, OpenCurly},
 };
 
 impl Parser {

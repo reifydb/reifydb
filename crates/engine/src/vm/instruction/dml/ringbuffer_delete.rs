@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::DeleteRingBufferNode;
+use reifydb_rql::nodes::DeleteRingBufferNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,

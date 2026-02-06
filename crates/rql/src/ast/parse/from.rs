@@ -3,10 +3,12 @@
 
 use reifydb_type::error::{Error, diagnostic::ast::unexpected_token_error};
 
-use crate::ast::{
-	ast::{Ast, AstFrom, AstGenerator, AstList},
-	parse::Parser,
-	tokenize::{
+use crate::{
+	ast::{
+		ast::{Ast, AstFrom, AstGenerator, AstList},
+		parse::Parser,
+	},
+	token::{
 		keyword::Keyword,
 		operator::{
 			Operator,
@@ -194,10 +196,12 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::ast::{
-		ast::{AstFrom, InfixOperator::As},
-		parse::Parser,
-		tokenize::tokenize,
+	use crate::{
+		ast::{
+			ast::{AstFrom, InfixOperator::As},
+			parse::Parser,
+		},
+		token::tokenize,
 	};
 
 	#[test]
