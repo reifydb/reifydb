@@ -12,8 +12,8 @@ use crate::{
 	token::{keyword::Keyword, operator::Operator},
 };
 
-impl Parser {
-	pub(crate) fn parse_take(&mut self) -> crate::Result<AstTake> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_take(&mut self) -> crate::Result<AstTake<'bump>> {
 		let token = self.consume_keyword(Keyword::Take)?;
 
 		// Check if braces are used (optional)
@@ -34,7 +34,9 @@ impl Parser {
 				AstLiteral::Number(number) => {
 					let take_value: i64 = number.value().parse().unwrap();
 					if take_value < 0 {
-						return_error!(operation::take_negative_value(number.0.fragment));
+						return_error!(operation::take_negative_value(
+							number.0.fragment.to_owned()
+						));
 					}
 					Ok(AstTake {
 						token,
@@ -51,12 +53,13 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::token::tokenize;
+	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_take_with_braces() {
-		let tokens = tokenize("TAKE {10}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "TAKE {10}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -67,8 +70,9 @@ pub mod tests {
 
 	#[test]
 	fn test_take_without_braces() {
-		let tokens = tokenize("TAKE 10").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "TAKE 10").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -79,8 +83,9 @@ pub mod tests {
 
 	#[test]
 	fn test_take_zero() {
-		let tokens = tokenize("TAKE 0").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "TAKE 0").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -91,8 +96,9 @@ pub mod tests {
 
 	#[test]
 	fn test_take_negative() {
-		let tokens = tokenize("TAKE -1").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "TAKE -1").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse();
 
 		let error = result.unwrap_err();

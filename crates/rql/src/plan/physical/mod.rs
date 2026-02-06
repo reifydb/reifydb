@@ -30,6 +30,7 @@ use reifydb_type::{
 use tracing::instrument;
 
 use crate::{
+	bump::BumpBox,
 	expression::VariableExpression,
 	nodes::{
 		AggregateNode, AlterSequenceNode, ApplyNode, AssignNode, AssignValue, CallFunctionNode,
@@ -63,11 +64,27 @@ fn to_query_plan(plan: PhysicalPlan) -> QueryPlan {
 	plan.try_into().expect("node input must be a query plan")
 }
 
+/// Materialize a bump-allocated PrimaryKeyDef to an owned version
+pub(crate) fn materialize_primary_key(
+	pk: Option<crate::plan::logical::PrimaryKeyDef<'_>>,
+) -> Option<crate::nodes::PrimaryKeyDef> {
+	pk.map(|pk_def| crate::nodes::PrimaryKeyDef {
+		columns: pk_def
+			.columns
+			.into_iter()
+			.map(|col| crate::nodes::PrimaryKeyColumn {
+				column: col.column.to_owned(),
+				order: col.order,
+			})
+			.collect(),
+	})
+}
+
 #[instrument(name = "rql::compile::physical", level = "trace", skip(catalog, rx, logical))]
-pub fn compile_physical<T: AsTransaction>(
+pub fn compile_physical<'a, T: AsTransaction>(
 	catalog: &Catalog,
 	rx: &mut T,
-	logical: Vec<LogicalPlan>,
+	logical: impl IntoIterator<Item = LogicalPlan<'a>>,
 ) -> crate::Result<Option<PhysicalPlan>> {
 	Compiler {
 		catalog: catalog.clone(),
@@ -76,15 +93,11 @@ pub fn compile_physical<T: AsTransaction>(
 }
 
 impl Compiler {
-	pub fn compile<T: AsTransaction>(
+	pub fn compile<'a, T: AsTransaction>(
 		&self,
 		rx: &mut T,
-		logical: Vec<LogicalPlan>,
+		logical: impl IntoIterator<Item = LogicalPlan<'a>>,
 	) -> crate::Result<Option<PhysicalPlan>> {
-		if logical.is_empty() {
-			return Ok(None);
-		}
-
 		let mut stack: Vec<PhysicalPlan> = Vec::new();
 		for plan in logical {
 			match plan {
@@ -216,7 +229,7 @@ impl Compiler {
 
 				LogicalPlan::Generator(generator) => {
 					stack.push(PhysicalPlan::Generator(GeneratorNode {
-						name: generator.name,
+						name: generator.name.to_owned(),
 						expressions: generator.expressions,
 					}));
 				}
@@ -227,7 +240,10 @@ impl Compiler {
 					let input = if let Some(delete_input) = delete.input {
 						// Recursively compile the input pipeline
 						let sub_plan = self
-							.compile(rx, vec![*delete_input])?
+							.compile(
+								rx,
+								std::iter::once(BumpBox::into_inner(delete_input)),
+							)?
 							.expect("Delete input must produce a plan");
 						Some(Box::new(sub_plan))
 					} else {
@@ -256,20 +272,20 @@ impl Compiler {
 						)?
 						else {
 							return_error!(table_not_found(
-								table_id.name.clone(),
+								table_id.name.to_owned(),
 								&namespace_def.name,
 								table_id.name.text()
 							));
 						};
 
-						let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
-							use reifydb_type::fragment::Fragment;
-							Fragment::internal(namespace_def.name.clone())
-						});
+						let namespace_id =
+							table_id.namespace.map(|n| n.to_owned()).unwrap_or_else(|| {
+								Fragment::internal(namespace_def.name.clone())
+							});
 						let resolved_namespace =
 							ResolvedNamespace::new(namespace_id, namespace_def);
 						Some(ResolvedTable::new(
-							table_id.name.clone(),
+							table_id.name.to_owned(),
 							resolved_namespace,
 							table_def,
 						))
@@ -289,7 +305,10 @@ impl Compiler {
 					let input = if let Some(delete_input) = delete.input {
 						// Recursively compile the input pipeline
 						let sub_plan = self
-							.compile(rx, vec![*delete_input])?
+							.compile(
+								rx,
+								std::iter::once(BumpBox::into_inner(delete_input)),
+							)?
 							.expect("Delete input must produce a plan");
 						Some(Box::new(sub_plan))
 					} else {
@@ -301,7 +320,7 @@ impl Compiler {
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
-					let ringbuffer_id = delete.target.clone();
+					let ringbuffer_id = delete.target;
 					let namespace_name =
 						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
@@ -313,19 +332,19 @@ impl Compiler {
 					)?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.clone(),
+							ringbuffer_id.name.to_owned(),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
-						use reifydb_type::fragment::Fragment;
-						Fragment::internal(namespace_def.name.clone())
-					});
+					let namespace_id = ringbuffer_id
+						.namespace
+						.map(|n| n.to_owned())
+						.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ringbuffer_id.name.clone(),
+						ringbuffer_id.name.to_owned(),
 						resolved_namespace,
 						ringbuffer_def,
 					);
@@ -339,13 +358,13 @@ impl Compiler {
 				LogicalPlan::InsertTable(insert) => {
 					// Compile the source from the INSERT node
 					let input = self
-						.compile(rx, vec![*insert.source])?
+						.compile(rx, std::iter::once(BumpBox::into_inner(insert.source)))?
 						.expect("Insert source must produce a plan");
 
 					// Resolve the table
 					use reifydb_core::interface::resolved::{ResolvedNamespace, ResolvedTable};
 
-					let table = insert.target.clone();
+					let table = insert.target;
 					let namespace_name =
 						table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
@@ -357,19 +376,22 @@ impl Compiler {
 					)?
 					else {
 						return_error!(table_not_found(
-							table.name.clone(),
+							table.name.to_owned(),
 							&namespace_def.name,
 							table.name.text()
 						));
 					};
 
-					let namespace_id = table.namespace.clone().unwrap_or_else(|| {
-						use reifydb_type::fragment::Fragment;
-						Fragment::internal(namespace_def.name.clone())
-					});
+					let namespace_id = table
+						.namespace
+						.map(|n| n.to_owned())
+						.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
-					let target =
-						ResolvedTable::new(table.name.clone(), resolved_namespace, table_def);
+					let target = ResolvedTable::new(
+						table.name.to_owned(),
+						resolved_namespace,
+						table_def,
+					);
 
 					stack.push(PhysicalPlan::InsertTable(InsertTableNode {
 						input: Box::new(input),
@@ -380,7 +402,7 @@ impl Compiler {
 				LogicalPlan::InsertRingBuffer(insert_rb) => {
 					// Compile the source from the INSERT node
 					let input = self
-						.compile(rx, vec![*insert_rb.source])?
+						.compile(rx, std::iter::once(BumpBox::into_inner(insert_rb.source)))?
 						.expect("Insert source must produce a plan");
 
 					// Resolve the ring buffer
@@ -388,7 +410,7 @@ impl Compiler {
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
-					let ringbuffer_id = insert_rb.target.clone();
+					let ringbuffer_id = insert_rb.target;
 					let namespace_name =
 						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
@@ -400,19 +422,19 @@ impl Compiler {
 					)?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.clone(),
+							ringbuffer_id.name.to_owned(),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
-						use reifydb_type::fragment::Fragment;
-						Fragment::internal(namespace_def.name.clone())
-					});
+					let namespace_id = ringbuffer_id
+						.namespace
+						.map(|n| n.to_owned())
+						.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ringbuffer_id.name.clone(),
+						ringbuffer_id.name.to_owned(),
 						resolved_namespace,
 						ringbuffer_def,
 					);
@@ -426,11 +448,11 @@ impl Compiler {
 				LogicalPlan::InsertDictionary(insert_dict) => {
 					// Compile the source from the INSERT node
 					let input = self
-						.compile(rx, vec![*insert_dict.source])?
+						.compile(rx, std::iter::once(BumpBox::into_inner(insert_dict.source)))?
 						.expect("Insert source must produce a plan");
 
 					// Resolve the dictionary
-					let dictionary_id = insert_dict.target.clone();
+					let dictionary_id = insert_dict.target;
 					let namespace_name =
 						dictionary_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
@@ -442,19 +464,19 @@ impl Compiler {
 					)?
 					else {
 						return_error!(dictionary_not_found(
-							dictionary_id.name.clone(),
+							dictionary_id.name.to_owned(),
 							&namespace_def.name,
 							dictionary_id.name.text()
 						));
 					};
 
-					let namespace_id = dictionary_id.namespace.clone().unwrap_or_else(|| {
-						use reifydb_type::fragment::Fragment;
-						Fragment::internal(namespace_def.name.clone())
-					});
+					let namespace_id = dictionary_id
+						.namespace
+						.map(|n| n.to_owned())
+						.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedDictionary::new(
-						dictionary_id.name.clone(),
+						dictionary_id.name.to_owned(),
 						resolved_namespace,
 						dictionary_def,
 					);
@@ -473,7 +495,10 @@ impl Compiler {
 						// Recursively compile
 						// the input pipeline
 						let sub_plan = self
-							.compile(rx, vec![*update_input])?
+							.compile(
+								rx,
+								std::iter::once(BumpBox::into_inner(update_input)),
+							)?
 							.expect("Update input must produce a plan");
 						Box::new(sub_plan)
 					} else {
@@ -502,20 +527,20 @@ impl Compiler {
 						)?
 						else {
 							return_error!(table_not_found(
-								table_id.name.clone(),
+								table_id.name.to_owned(),
 								&namespace_def.name,
 								table_id.name.text()
 							));
 						};
 
-						let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
-							use reifydb_type::fragment::Fragment;
-							Fragment::internal(namespace_def.name.clone())
-						});
+						let namespace_id =
+							table_id.namespace.map(|n| n.to_owned()).unwrap_or_else(|| {
+								Fragment::internal(namespace_def.name.clone())
+							});
 						let resolved_namespace =
 							ResolvedNamespace::new(namespace_id, namespace_def);
 						Some(ResolvedTable::new(
-							table_id.name.clone(),
+							table_id.name.to_owned(),
 							resolved_namespace,
 							table_def,
 						))
@@ -537,7 +562,10 @@ impl Compiler {
 						// Recursively compile
 						// the input pipeline
 						let sub_plan = self
-							.compile(rx, vec![*update_input])?
+							.compile(
+								rx,
+								std::iter::once(BumpBox::into_inner(update_input)),
+							)?
 							.expect("UpdateRingBuffer input must produce a plan");
 						Box::new(sub_plan)
 					} else {
@@ -549,7 +577,7 @@ impl Compiler {
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
-					let ringbuffer_id = update_rb.target.clone();
+					let ringbuffer_id = update_rb.target;
 					let namespace_name =
 						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
@@ -561,19 +589,19 @@ impl Compiler {
 					)?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.clone(),
+							ringbuffer_id.name.to_owned(),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
-						use reifydb_type::fragment::Fragment;
-						Fragment::internal(namespace_def.name.clone())
-					});
+					let namespace_id = ringbuffer_id
+						.namespace
+						.map(|n| n.to_owned())
+						.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ringbuffer_id.name.clone(),
+						ringbuffer_id.name.to_owned(),
 						resolved_namespace,
 						ringbuffer_def,
 					);
@@ -591,7 +619,7 @@ impl Compiler {
 						left: Box::new(to_query_plan(left)),
 						right: Box::new(to_query_plan(right)),
 						on: join.on,
-						alias: join.alias,
+						alias: join.alias.map(|a| a.to_owned()),
 					}));
 				}
 
@@ -602,7 +630,7 @@ impl Compiler {
 						left: Box::new(to_query_plan(left)),
 						right: Box::new(to_query_plan(right)),
 						on: join.on,
-						alias: join.alias,
+						alias: join.alias.map(|a| a.to_owned()),
 					}));
 				}
 
@@ -613,7 +641,7 @@ impl Compiler {
 						left: Box::new(to_query_plan(left)),
 						right: Box::new(to_query_plan(right)),
 						join_type: join.join_type,
-						alias: join.alias,
+						alias: join.alias.map(|a| a.to_owned()),
 					}));
 				}
 
@@ -678,7 +706,11 @@ impl Compiler {
 								dictionary_id: None,
 							};
 
-							ResolvedColumn::new(col.name, resolved_source, column_def)
+							ResolvedColumn::new(
+								col.name.to_owned(),
+								resolved_source,
+								column_def,
+							)
 						})
 						.collect();
 
@@ -715,7 +747,7 @@ impl Compiler {
 				LogicalPlan::Apply(apply) => {
 					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
 					stack.push(PhysicalPlan::Apply(ApplyNode {
-						operator: apply.operator,
+						operator: apply.operator.to_owned(),
 						expressions: apply.arguments,
 						input,
 					}));
@@ -874,7 +906,7 @@ impl Compiler {
 							let mut physical_plans = Vec::new();
 							for logical_plan in logical_plans {
 								if let Some(physical_plan) =
-									self.compile(rx, vec![logical_plan])?
+									self.compile(rx, std::iter::once(logical_plan))?
 								{
 									physical_plans.push(physical_plan);
 								}
@@ -884,7 +916,7 @@ impl Compiler {
 					};
 
 					stack.push(PhysicalPlan::Declare(DeclareNode {
-						name: declare_node.name,
+						name: declare_node.name.to_owned(),
 						value,
 					}));
 				}
@@ -897,7 +929,7 @@ impl Compiler {
 							let mut physical_plans = Vec::new();
 							for logical_plan in logical_plans {
 								if let Some(physical_plan) =
-									self.compile(rx, vec![logical_plan])?
+									self.compile(rx, std::iter::once(logical_plan))?
 								{
 									physical_plans.push(physical_plan);
 								}
@@ -907,7 +939,7 @@ impl Compiler {
 					};
 
 					stack.push(PhysicalPlan::Assign(AssignNode {
-						name: assign_node.name,
+						name: assign_node.name.to_owned(),
 						value,
 					}));
 				}
@@ -915,7 +947,7 @@ impl Compiler {
 				LogicalPlan::VariableSource(source) => {
 					// Create a variable expression to resolve at runtime
 					let variable_expr = VariableExpression {
-						fragment: source.name.clone(),
+						fragment: source.name.to_owned(),
 					};
 
 					stack.push(PhysicalPlan::Variable(VariableNode {
@@ -929,9 +961,10 @@ impl Compiler {
 
 				LogicalPlan::Conditional(conditional_node) => {
 					// Compile the then branch
-					let then_branch = if let Some(then_plan) =
-						self.compile(rx, vec![*conditional_node.then_branch])?
-					{
+					let then_branch = if let Some(then_plan) = self.compile(
+						rx,
+						std::iter::once(BumpBox::into_inner(conditional_node.then_branch)),
+					)? {
 						Box::new(then_plan)
 					} else {
 						return Err(reifydb_type::error::Error(internal_error(
@@ -944,9 +977,10 @@ impl Compiler {
 					let mut else_ifs = Vec::new();
 					for else_if in conditional_node.else_ifs {
 						let condition = else_if.condition;
-						let then_branch = if let Some(plan) =
-							self.compile(rx, vec![*else_if.then_branch])?
-						{
+						let then_branch = if let Some(plan) = self.compile(
+							rx,
+							std::iter::once(BumpBox::into_inner(else_if.then_branch)),
+						)? {
 							Box::new(plan)
 						} else {
 							return Err(reifydb_type::error::Error(internal_error(
@@ -963,7 +997,10 @@ impl Compiler {
 
 					// Compile optional else branch
 					let else_branch = if let Some(else_logical) = conditional_node.else_branch {
-						if let Some(plan) = self.compile(rx, vec![*else_logical])? {
+						if let Some(plan) = self.compile(
+							rx,
+							std::iter::once(BumpBox::into_inner(else_logical)),
+						)? {
 							Some(Box::new(plan))
 						} else {
 							return Err(reifydb_type::error::Error(internal_error(
@@ -985,19 +1022,21 @@ impl Compiler {
 
 				LogicalPlan::Scalarize(scalarize_node) => {
 					// Compile the input plan
-					let input_plan =
-						if let Some(plan) = self.compile(rx, vec![*scalarize_node.input])? {
-							Box::new(to_query_plan(plan))
-						} else {
-							return Err(reifydb_type::error::Error(internal_error(
-								"compile_physical".into(),
-								"Failed to compile scalarize input".to_string(),
-							)));
-						};
+					let input_plan = if let Some(plan) = self.compile(
+						rx,
+						std::iter::once(BumpBox::into_inner(scalarize_node.input)),
+					)? {
+						Box::new(to_query_plan(plan))
+					} else {
+						return Err(reifydb_type::error::Error(internal_error(
+							"compile_physical".into(),
+							"Failed to compile scalarize input".to_string(),
+						)));
+					};
 
 					stack.push(PhysicalPlan::Scalarize(ScalarizeNode {
 						input: input_plan,
-						fragment: scalarize_node.fragment,
+						fragment: scalarize_node.fragment.to_owned(),
 					}));
 				}
 
@@ -1006,7 +1045,7 @@ impl Compiler {
 					for statement_plans in loop_node.body {
 						for logical_plan in statement_plans {
 							if let Some(physical_plan) =
-								self.compile(rx, vec![logical_plan])?
+								self.compile(rx, std::iter::once(logical_plan))?
 							{
 								body.push(physical_plan);
 							}
@@ -1022,7 +1061,7 @@ impl Compiler {
 					for statement_plans in while_node.body {
 						for logical_plan in statement_plans {
 							if let Some(physical_plan) =
-								self.compile(rx, vec![logical_plan])?
+								self.compile(rx, std::iter::once(logical_plan))?
 							{
 								body.push(physical_plan);
 							}
@@ -1042,14 +1081,14 @@ impl Compiler {
 					for statement_plans in for_node.body {
 						for logical_plan in statement_plans {
 							if let Some(physical_plan) =
-								self.compile(rx, vec![logical_plan])?
+								self.compile(rx, std::iter::once(logical_plan))?
 							{
 								body.push(physical_plan);
 							}
 						}
 					}
 					stack.push(PhysicalPlan::For(ForPhysicalNode {
-						variable_name: for_node.variable_name,
+						variable_name: for_node.variable_name.to_owned(),
 						iterable: Box::new(iterable),
 						body,
 					}));
@@ -1069,7 +1108,7 @@ impl Compiler {
 						.parameters
 						.into_iter()
 						.map(|p| FunctionParameter {
-							name: p.name,
+							name: p.name.to_owned(),
 							type_constraint: p.type_constraint,
 						})
 						.collect();
@@ -1079,7 +1118,7 @@ impl Compiler {
 					for statement_plans in def_node.body {
 						for logical_plan in statement_plans {
 							if let Some(physical_plan) =
-								self.compile(rx, vec![logical_plan])?
+								self.compile(rx, std::iter::once(logical_plan))?
 							{
 								body.push(physical_plan);
 							}
@@ -1087,7 +1126,7 @@ impl Compiler {
 					}
 
 					stack.push(PhysicalPlan::DefineFunction(DefineFunctionNode {
-						name: def_node.name,
+						name: def_node.name.to_owned(),
 						parameters,
 						return_type: def_node.return_type,
 						body,
@@ -1102,13 +1141,17 @@ impl Compiler {
 
 				LogicalPlan::CallFunction(call_node) => {
 					stack.push(PhysicalPlan::CallFunction(CallFunctionNode {
-						name: call_node.name,
+						name: call_node.name.to_owned(),
 						arguments: call_node.arguments,
 					}));
 				}
 
 				_ => unimplemented!(),
 			}
+		}
+
+		if stack.is_empty() {
+			return Ok(None);
 		}
 
 		if stack.len() != 1 {

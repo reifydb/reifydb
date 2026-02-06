@@ -9,6 +9,7 @@ use crate::{
 		ast::{AstJoin, AstJoinExpressionPair, AstUsingClause, JoinConnector},
 		parse::{Parser, Precedence},
 	},
+	bump::BumpBox,
 	token::{
 		keyword::Keyword::{Inner, Join, Left, Natural, Using},
 		operator::Operator::{And, As, CloseParen, OpenParen, Or},
@@ -17,8 +18,8 @@ use crate::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_join(&mut self) -> crate::Result<AstJoin> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_join(&mut self) -> crate::Result<AstJoin<'bump>> {
 		let token = self.consume_keyword(Join)?;
 		let with = self.parse_sub_query()?;
 
@@ -37,7 +38,7 @@ impl Parser {
 		})
 	}
 
-	pub(crate) fn parse_natural_join(&mut self) -> crate::Result<AstJoin> {
+	pub(crate) fn parse_natural_join(&mut self) -> crate::Result<AstJoin<'bump>> {
 		let token = self.consume_keyword(Natural)?;
 
 		let join_type = if self.current()?.is_keyword(Left) {
@@ -66,7 +67,7 @@ impl Parser {
 		})
 	}
 
-	pub(crate) fn parse_inner_join(&mut self) -> crate::Result<AstJoin> {
+	pub(crate) fn parse_inner_join(&mut self) -> crate::Result<AstJoin<'bump>> {
 		let token = self.consume_keyword(Inner)?;
 		self.consume_keyword(Join)?;
 
@@ -87,7 +88,7 @@ impl Parser {
 		})
 	}
 
-	pub(crate) fn parse_left_join(&mut self) -> crate::Result<AstJoin> {
+	pub(crate) fn parse_left_join(&mut self) -> crate::Result<AstJoin<'bump>> {
 		let token = self.consume_keyword(Left)?;
 		self.consume_keyword(Join)?;
 
@@ -109,7 +110,7 @@ impl Parser {
 	}
 
 	/// Parse: using (expr, expr) and|or (expr, expr) ...
-	fn parse_using_clause(&mut self) -> crate::Result<AstUsingClause> {
+	fn parse_using_clause(&mut self) -> crate::Result<AstUsingClause<'bump>> {
 		let using_token = self.consume_keyword(Using)?;
 		let mut pairs = Vec::new();
 
@@ -142,8 +143,8 @@ impl Parser {
 
 			let has_more = connector.is_some();
 			pairs.push(AstJoinExpressionPair {
-				first: Box::new(first),
-				second: Box::new(second),
+				first: BumpBox::new_in(first, self.bump()),
+				second: BumpBox::new_in(second, self.bump()),
 				connector,
 			});
 
@@ -168,14 +169,19 @@ pub mod tests {
 			ast::{Ast, AstFrom, AstJoin, AstLiteral, InfixOperator},
 			parse::Parser,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_left_join_with_using() {
+		let bump = Bump::new();
 		let tokens =
-			tokenize("left join { from namespace.orders } as orders using (id, orders.user_id)").unwrap();
-		let mut parser = Parser::new(tokens);
+			tokenize(&bump, "left join { from namespace.orders } as orders using (id, orders.user_id)")
+				.unwrap()
+				.into_iter()
+				.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -224,8 +230,12 @@ pub mod tests {
 
 	#[test]
 	fn test_left_join_with_alias() {
-		let tokens = tokenize("left join { from test.customers } as c using (id, c.customer_id)").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "left join { from test.customers } as c using (id, c.customer_id)")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -272,11 +282,16 @@ pub mod tests {
 
 	#[test]
 	fn test_complex_query_with_aliases() {
+		let bump = Bump::new();
 		// Test the full example query with aliases
-		let tokens =
-			tokenize("from test.orders left join { from test.customers } as c using (customer_id, c.id)")
-				.unwrap();
-		let mut parser = Parser::new(tokens);
+		let tokens = tokenize(
+			&bump,
+			"from test.orders left join { from test.customers } as c using (customer_id, c.id)",
+		)
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -339,9 +354,13 @@ pub mod tests {
 
 	#[test]
 	fn test_left_join_with_multiple_conditions() {
-		let tokens = tokenize("left join { from orders } as o using (id, o.user_id) and (tenant, o.tenant)")
-			.unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "left join { from orders } as o using (id, o.user_id) and (tenant, o.tenant)")
+				.unwrap()
+				.into_iter()
+				.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -395,9 +414,13 @@ pub mod tests {
 
 	#[test]
 	fn test_left_join_with_or_connector() {
+		let bump = Bump::new();
 		let tokens =
-			tokenize("left join { from orders } as o using (id, o.user_id) or (tenant, o.tenant)").unwrap();
-		let mut parser = Parser::new(tokens);
+			tokenize(&bump, "left join { from orders } as o using (id, o.user_id) or (tenant, o.tenant)")
+				.unwrap()
+				.into_iter()
+				.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -418,8 +441,12 @@ pub mod tests {
 
 	#[test]
 	fn test_using_with_literal_expression() {
-		let tokens = tokenize("left join { from orders } as o using (id, o.type) and (category, 123)").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "left join { from orders } as o using (id, o.type) and (category, 123)")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -451,8 +478,9 @@ pub mod tests {
 
 	#[test]
 	fn test_natural_join_simple() {
-		let tokens = tokenize("natural join { from orders } as o").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "natural join { from orders } as o").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -485,8 +513,9 @@ pub mod tests {
 
 	#[test]
 	fn test_natural_join_with_alias() {
-		let tokens = tokenize("natural join { from orders } as ord").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "natural join { from orders } as ord").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -506,8 +535,9 @@ pub mod tests {
 
 	#[test]
 	fn test_natural_left_join() {
-		let tokens = tokenize("natural left join { from orders } as o").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "natural left join { from orders } as o").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -529,8 +559,9 @@ pub mod tests {
 
 	#[test]
 	fn test_natural_inner_join() {
-		let tokens = tokenize("natural inner join { from orders } as o").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "natural inner join { from orders } as o").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -552,8 +583,12 @@ pub mod tests {
 
 	#[test]
 	fn test_inner_join_with_using() {
-		let tokens = tokenize("inner join { from orders } as o using (id, o.user_id)").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "inner join { from orders } as o using (id, o.user_id)")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -590,8 +625,12 @@ pub mod tests {
 
 	#[test]
 	fn test_join_implicit_inner_with_using() {
-		let tokens = tokenize("join { from orders } as o using (id, o.user_id)").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "join { from orders } as o using (id, o.user_id)")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

@@ -9,14 +9,14 @@ use crate::{
 	token::{keyword::Keyword, operator::Operator, separator::Separator},
 };
 
-impl Parser {
-	pub(crate) fn parse_distinct(&mut self) -> crate::Result<AstDistinct> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_distinct(&mut self) -> crate::Result<AstDistinct<'bump>> {
 		let token = self.consume_keyword(Keyword::Distinct)?;
 
 		let (columns, has_braces) = self.parse_identifiers()?;
 
 		if !has_braces {
-			return_error!(distinct_missing_braces(token.fragment));
+			return_error!(distinct_missing_braces(token.fragment.to_owned()));
 		}
 
 		Ok(AstDistinct {
@@ -25,7 +25,7 @@ impl Parser {
 		})
 	}
 
-	fn parse_identifiers(&mut self) -> crate::Result<(Vec<MaybeQualifiedColumnIdentifier>, bool)> {
+	fn parse_identifiers(&mut self) -> crate::Result<(Vec<MaybeQualifiedColumnIdentifier<'bump>>, bool)> {
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
 			return Ok((vec![], false));
 		}
@@ -65,12 +65,13 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::token::tokenize;
+	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_distinct_empty_braces() {
-		let tokens = tokenize("DISTINCT {}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DISTINCT {}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -83,8 +84,9 @@ pub mod tests {
 
 	#[test]
 	fn test_distinct_single_column() {
-		let tokens = tokenize("DISTINCT {name}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DISTINCT {name}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -98,8 +100,9 @@ pub mod tests {
 
 	#[test]
 	fn test_distinct_multiple_columns() {
-		let tokens = tokenize("DISTINCT {name, age}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DISTINCT {name, age}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -114,8 +117,9 @@ pub mod tests {
 
 	#[test]
 	fn test_distinct_without_braces_fails() {
-		let tokens = tokenize("DISTINCT name").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DISTINCT name").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse();
 
 		assert!(result.is_err());

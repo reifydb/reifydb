@@ -6,14 +6,15 @@ use crate::{
 		ast::AstDescribe,
 		parse::{Parser, Precedence},
 	},
+	bump::BumpBox,
 	token::{keyword::Keyword, operator::Operator},
 };
 
-impl Parser {
-	pub(crate) fn parse_describe(&mut self) -> crate::Result<AstDescribe> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_describe(&mut self) -> crate::Result<AstDescribe<'bump>> {
 		let token = self.consume_keyword(Keyword::Describe)?;
 		self.consume_operator(Operator::OpenCurly)?;
-		let node = Box::new(self.parse_node(Precedence::None)?);
+		let node = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 		self.consume_operator(Operator::CloseCurly)?;
 		Ok(AstDescribe::Query {
 			token,
@@ -29,13 +30,15 @@ pub mod tests {
 			ast::{AstCast, AstDescribe},
 			parse::parse,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn describe_query() {
-		let tokens = tokenize("describe { map {cast(9924, int8)} }").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "describe { map {cast(9924, int8)} }").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		match result.first().unwrap().first_unchecked().as_describe() {

@@ -1,31 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::fragment::Fragment;
-
 use crate::{
 	ast::{
 		ast::{Ast, AstAlterSequence},
 		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedColumnPrimitive},
 	},
+	bump::BumpFragment,
 	expression::ExpressionCompiler,
 	plan::logical::{AlterSequenceNode, Compiler, LogicalPlan, resolver},
 };
 
-impl Compiler {
-	pub(crate) fn compile_alter_sequence(&self, ast: AstAlterSequence) -> crate::Result<LogicalPlan> {
-		let (namespace, sequence_name) = {
-			// Use the resolve's resolve_maybe_sequence method if
-			// we add one For now, just use default namespace
-			// through resolve
-			let namespace = ast
-				.sequence
-				.namespace
-				.as_ref()
-				.cloned()
-				.unwrap_or_else(|| Fragment::internal(resolver::DEFAULT_NAMESPACE));
-			(namespace, ast.sequence.name.clone())
-		};
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_alter_sequence(&self, ast: AstAlterSequence<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+		let namespace = ast
+			.sequence
+			.namespace
+			.unwrap_or_else(|| BumpFragment::internal(self.bump, resolver::DEFAULT_NAMESPACE));
+		let sequence_name = ast.sequence.name;
 
 		// Create a maybe qualified column identifier
 		// The column belongs to the same table as the sequence
@@ -34,11 +26,11 @@ impl Compiler {
 				namespace: Some(namespace),
 				primitive: sequence_name,
 			},
-			name: ast.column.clone(),
+			name: ast.column,
 		};
 
 		Ok(LogicalPlan::AlterSequence(AlterSequenceNode {
-			sequence: ast.sequence.clone(),
+			sequence: ast.sequence,
 			column,
 			value: ExpressionCompiler::compile(Ast::Literal(ast.value))?,
 		}))

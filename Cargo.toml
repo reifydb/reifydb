@@ -198,7 +198,7 @@ crossbeam-skiplist = { version = "0.1.3" }
 dashmap = { version = "7.0.0-rc2" }
 indexmap = { version = "2.11", features = ["serde"] }
 rayon = { version = "1.11.0" }
-bumpalo = { version = "3.19.0", features = ["collections"] }
+bumpalo = { version = "3.19.0", features = ["collections", "boxed"] }
 parking_lot = {version = "0.12.5"}
 crossbeam-channel = { version = "0.5.13" }
 

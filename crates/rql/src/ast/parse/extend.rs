@@ -9,14 +9,14 @@ use crate::{
 	token::keyword::Keyword,
 };
 
-impl Parser {
-	pub(crate) fn parse_extend(&mut self) -> crate::Result<AstExtend> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_extend(&mut self) -> crate::Result<AstExtend<'bump>> {
 		let token = self.consume_keyword(Keyword::Extend)?;
 
 		let (nodes, has_braces) = self.parse_expressions(true, false)?;
 
 		if !has_braces {
-			return_error!(extend_missing_braces(token.fragment));
+			return_error!(extend_missing_braces(token.fragment.to_owned()));
 		}
 
 		Ok(AstExtend {
@@ -29,12 +29,13 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::{ast::ast::InfixOperator, token::tokenize};
+	use crate::{ast::ast::InfixOperator, bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_extend_constant_number() {
-		let tokens = tokenize("EXTEND {1}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "EXTEND {1}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -50,8 +51,9 @@ pub mod tests {
 
 	#[test]
 	fn test_extend_colon_syntax() {
-		let tokens = tokenize("EXTEND {total: price * quantity}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "EXTEND {total: price * quantity}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -72,8 +74,12 @@ pub mod tests {
 
 	#[test]
 	fn test_extend_multiple_columns() {
-		let tokens = tokenize("EXTEND {total: price * quantity, tax: price * 0.1}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "EXTEND {total: price * quantity, tax: price * 0.1}")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -91,8 +97,9 @@ pub mod tests {
 
 	#[test]
 	fn test_extend_without_braces_fails() {
-		let tokens = tokenize("EXTEND 1").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "EXTEND 1").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "EXTEND_002");

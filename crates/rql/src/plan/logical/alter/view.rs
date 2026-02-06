@@ -2,39 +2,39 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::sort::SortDirection;
-use reifydb_type::fragment::Fragment;
 
 use crate::{
 	ast::{
 		ast::{AstAlterView, AstAlterViewOperation},
 		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedViewIdentifier},
 	},
+	bump::BumpFragment,
 	plan::logical::{Compiler, LogicalPlan},
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewNode {
-	pub view: MaybeQualifiedViewIdentifier,
-	pub operations: Vec<AlterViewOperation>,
+#[derive(Debug)]
+pub struct AlterViewNode<'bump> {
+	pub view: MaybeQualifiedViewIdentifier<'bump>,
+	pub operations: Vec<AlterViewOperation<'bump>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum AlterViewOperation {
+#[derive(Debug)]
+pub enum AlterViewOperation<'bump> {
 	CreatePrimaryKey {
-		name: Option<Fragment>,
-		columns: Vec<AlterIndexColumn>,
+		name: Option<BumpFragment<'bump>>,
+		columns: Vec<AlterIndexColumn<'bump>>,
 	},
 	DropPrimaryKey,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterIndexColumn {
-	pub column: MaybeQualifiedColumnIdentifier,
+#[derive(Debug)]
+pub struct AlterIndexColumn<'bump> {
+	pub column: MaybeQualifiedColumnIdentifier<'bump>,
 	pub order: Option<SortDirection>,
 }
 
-impl Compiler {
-	pub(crate) fn compile_alter_view(&self, ast: AstAlterView) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_alter_view(&self, ast: AstAlterView<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		// Use the view identifier directly from AST
 		let view = ast.view.clone();
 

@@ -45,8 +45,8 @@ pub struct WindowConfig {
 	pub is_rolling: bool,
 }
 
-impl Compiler {
-	pub(crate) fn compile_window(&self, ast: AstWindow) -> Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_window(&self, ast: AstWindow<'bump>) -> Result<LogicalPlan<'bump>> {
 		let mut config = WindowConfig::default();
 		let mut group_by = Vec::new();
 
@@ -56,15 +56,15 @@ impl Compiler {
 		}
 
 		// Compile group by expressions from AST
-		for group_ast in &ast.group_by {
-			let group_expr = ExpressionCompiler::compile(group_ast.clone())?;
+		for group_ast in ast.group_by {
+			let group_expr = ExpressionCompiler::compile(group_ast)?;
 			group_by.push(group_expr);
 		}
 
 		// Compile aggregation expressions
 		let mut aggregations = Vec::new();
-		for agg_ast in &ast.aggregations {
-			let agg_expr = ExpressionCompiler::compile(agg_ast.clone())?;
+		for agg_ast in ast.aggregations {
+			let agg_expr = ExpressionCompiler::compile(agg_ast)?;
 			aggregations.push(agg_expr);
 		}
 
@@ -94,7 +94,7 @@ impl Compiler {
 				} else {
 					return_error!(unexpected_token_error(
 						"duration string",
-						config_item.value.token().fragment.clone()
+						config_item.value.token().fragment.to_owned()
 					));
 				}
 			}
@@ -105,7 +105,7 @@ impl Compiler {
 				} else {
 					return_error!(unexpected_token_error(
 						"number",
-						config_item.value.token().fragment.clone()
+						config_item.value.token().fragment.to_owned()
 					));
 				}
 			}
@@ -118,7 +118,7 @@ impl Compiler {
 				} else {
 					return_error!(unexpected_token_error(
 						"duration string or number",
-						config_item.value.token().fragment.clone()
+						config_item.value.token().fragment.to_owned()
 					));
 				}
 			}
@@ -133,7 +133,7 @@ impl Compiler {
 				} else {
 					return_error!(unexpected_token_error(
 						"column name string",
-						config_item.value.token().fragment.clone()
+						config_item.value.token().fragment.to_owned()
 					));
 				}
 			}
@@ -142,14 +142,14 @@ impl Compiler {
 					if min_events_val < 1 {
 						return_error!(unexpected_token_error(
 							"min_events must be >= 1",
-							config_item.value.token().fragment.clone()
+							config_item.value.token().fragment.to_owned()
 						));
 					}
 					config.min_events = Some(min_events_val as usize);
 				} else {
 					return_error!(unexpected_token_error(
 						"number",
-						config_item.value.token().fragment.clone()
+						config_item.value.token().fragment.to_owned()
 					));
 				}
 			}
@@ -158,14 +158,14 @@ impl Compiler {
 					if max_window_count_val < 1 {
 						return_error!(unexpected_token_error(
 							"max_window_count must be >= 1",
-							config_item.value.token().fragment.clone()
+							config_item.value.token().fragment.to_owned()
 						));
 					}
 					config.max_window_count = Some(max_window_count_val as usize);
 				} else {
 					return_error!(unexpected_token_error(
 						"number",
-						config_item.value.token().fragment.clone()
+						config_item.value.token().fragment.to_owned()
 					));
 				}
 			}
@@ -175,7 +175,7 @@ impl Compiler {
 				} else {
 					return_error!(unexpected_token_error(
 						"duration string",
-						config_item.value.token().fragment.clone()
+						config_item.value.token().fragment.to_owned()
 					));
 				}
 			}
@@ -185,14 +185,14 @@ impl Compiler {
 				} else {
 					return_error!(unexpected_token_error(
 						"boolean value",
-						config_item.value.token().fragment.clone()
+						config_item.value.token().fragment.to_owned()
 					));
 				}
 			}
 			_ => {
 				return_error!(unexpected_token_error(
 					"interval, count, slide, timestamp_column, min_events, max_window_count, max_window_age, or rolling",
-					config_item.key.token.fragment.clone()
+					config_item.key.token.fragment.to_owned()
 				));
 			}
 		}

@@ -229,7 +229,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 });
 
 /// Scan for a keyword token  
-pub fn scan_keyword(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	// Keywords must start with a letter, so check that first
 	let first_char = cursor.peek()?;
 	if !first_char.is_ascii_alphabetic() {
@@ -277,16 +277,18 @@ pub fn scan_keyword(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::token::tokenize;
+	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_desc() {
-		let tokens = tokenize("desc").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "desc").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Desc));
 	}
 
 	fn check_keyword(keyword: Keyword, repr: &str) {
+		let bump = Bump::new();
 		for mode in [false, true] {
 			let input_str = if mode {
 				format!("{repr} rest")
@@ -294,7 +296,7 @@ pub mod tests {
 				format!("{} rest", repr.to_lowercase())
 			};
 
-			let tokens = tokenize(&input_str).unwrap();
+			let tokens = tokenize(&bump, &input_str).unwrap();
 			assert!(tokens.len() >= 2);
 			assert_eq!(TokenKind::Keyword(keyword), tokens[0].kind, "type mismatch for keyword: {}", repr);
 			assert_eq!(tokens[0].fragment.text().to_lowercase(), repr.to_lowercase());
@@ -399,6 +401,7 @@ pub mod tests {
 	test_keyword_output => (Output, "OUTPUT")}
 
 	fn check_no_keyword(repr: &str) {
+		let bump = Bump::new();
 		// Test that keywords with additional characters are not parsed
 		// as keywords For example, "map123" should be an identifier,
 		// not the MAP keyword
@@ -411,7 +414,7 @@ pub mod tests {
 
 		for input_str in test_cases {
 			let input = format!("{input_str} rest");
-			let tokens = tokenize(&input).unwrap();
+			let tokens = tokenize(&bump, &input).unwrap();
 			assert!(tokens.len() >= 1);
 			// The first token should be an identifier, not a
 			// keyword
@@ -427,7 +430,7 @@ pub mod tests {
 		// Also test that the bare lowercase word IS parsed as a keyword
 		// (since keywords are case-insensitive)
 		let input = format!("{repr} rest");
-		let tokens = tokenize(&input).unwrap();
+		let tokens = tokenize(&bump, &input).unwrap();
 		assert!(tokens.len() >= 2);
 		// In a case-insensitive system, "map" should be parsed as the
 		// MAP keyword

@@ -6,7 +6,6 @@
 use reifydb_type::{
 	Result,
 	error::diagnostic::ast::unrecognized_type,
-	fragment::Fragment,
 	return_error,
 	value::{
 		constraint::{Constraint, TypeConstraint},
@@ -14,9 +13,13 @@ use reifydb_type::{
 	},
 };
 
-use crate::ast::ast::{AstDataType, AstLiteral};
+use crate::{
+	ast::ast::{AstDataType, AstLiteral},
+	bump::BumpFragment,
+};
 
 pub mod ast;
+pub mod bump;
 pub mod compiler;
 pub mod error;
 pub mod explain;
@@ -29,7 +32,7 @@ pub mod plan;
 pub mod query;
 pub mod token;
 
-pub(crate) fn convert_data_type(ast: &Fragment) -> Result<Type> {
+pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<Type> {
 	Ok(match ast.text().to_ascii_lowercase().as_str() {
 		"bool" => Type::Boolean,
 		"boolean" => Type::Boolean,
@@ -57,7 +60,7 @@ pub(crate) fn convert_data_type(ast: &Fragment) -> Result<Type> {
 		"int" => Type::Int,
 		"uint" => Type::Uint,
 		"decimal" => Type::Decimal,
-		_ => return_error!(unrecognized_type(ast.clone())),
+		_ => return_error!(unrecognized_type(ast.to_owned())),
 	})
 }
 

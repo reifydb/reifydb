@@ -10,9 +10,9 @@ use reifydb_core::{
 	interface::catalog::primitive::PrimitiveId,
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::{logical::alter::view::AlterViewOperation, physical::alter::view::AlterViewNode};
+use reifydb_rql::plan::physical::alter::view::{AlterViewNode, AlterViewOperation};
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::{return_error, value::Value};
+use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
 use crate::vm::services::Services;
 
@@ -21,28 +21,26 @@ pub(crate) fn execute_alter_view<'a>(
 	txn: &mut AdminTransaction,
 	plan: AlterViewNode,
 ) -> crate::Result<Columns> {
-	// Get namespace and view names from MaybeQualified type
-	let namespace_name = plan.node.view.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-	let view_name = plan.node.view.name.text();
+	// Get namespace and view names
+	let namespace_name = plan.view.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+	let view_name = plan.view.name.text();
 
 	// Find the namespace
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
-		let ns_fragment = plan.node.view.namespace.clone().unwrap_or_else(|| {
-			use reifydb_type::fragment::Fragment;
-			Fragment::internal("default".to_string())
-		});
+		let ns_fragment =
+			plan.view.namespace.clone().unwrap_or_else(|| Fragment::internal("default".to_string()));
 		return_error!(namespace_not_found(ns_fragment, namespace_name,));
 	};
 
 	// Find the view
 	let Some(view) = services.catalog.find_view_by_name(txn, namespace.id, view_name)? else {
-		return_error!(view_not_found(plan.node.view.name.clone(), &namespace.name, view_name,));
+		return_error!(view_not_found(plan.view.name.clone(), &namespace.name, view_name,));
 	};
 
 	let mut results = Vec::new();
 
 	// Process each operation
-	for operation in plan.node.operations {
+	for operation in plan.operations {
 		match operation {
 			AlterViewOperation::CreatePrimaryKey {
 				name,

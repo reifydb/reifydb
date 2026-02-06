@@ -8,12 +8,12 @@ use crate::{
 	plan::logical::{Compiler, CreateFlowNode, LogicalPlan},
 };
 
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_flow<T: AsTransaction>(
 		&self,
-		ast: AstCreateFlow,
+		ast: AstCreateFlow<'bump>,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	) -> crate::Result<LogicalPlan<'bump>> {
 		// Use the flow identifier directly from AST
 		let flow = ast.flow;
 

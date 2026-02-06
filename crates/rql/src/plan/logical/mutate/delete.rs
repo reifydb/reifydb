@@ -8,16 +8,17 @@ use crate::{
 		ast::{Ast, AstDelete, AstFrom},
 		identifier::{MaybeQualifiedRingBufferIdentifier, MaybeQualifiedTableIdentifier},
 	},
+	bump::{BumpBox, BumpVec},
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, DeleteRingBufferNode, DeleteTableNode, FilterNode, LogicalPlan, PipelineNode},
 };
 
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_delete<T: AsTransaction>(
 		&self,
-		ast: AstDelete,
+		ast: AstDelete<'bump>,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	) -> crate::Result<LogicalPlan<'bump>> {
 		// Build internal pipeline: FROM -> FILTER
 
 		// 1. Create FROM scan from target
@@ -29,58 +30,63 @@ impl Compiler {
 		let from_plan = self.compile_from(from_ast, tx)?;
 
 		// 2. Create FILTER node from the filter clause
-		let filter_ast = match *ast.filter {
+		let filter_ast = match BumpBox::into_inner(ast.filter) {
 			Ast::Filter(f) => f,
 			_ => unreachable!("filter should always be Ast::Filter"),
 		};
 		let filter_plan = LogicalPlan::Filter(FilterNode {
-			condition: ExpressionCompiler::compile(*filter_ast.node)?,
+			condition: ExpressionCompiler::compile(BumpBox::into_inner(filter_ast.node))?,
 		});
 
 		// 3. Build pipeline: FROM -> FILTER
+		let mut steps = BumpVec::with_capacity_in(2, self.bump);
+		steps.push(from_plan);
+		steps.push(filter_plan);
 		let pipeline = LogicalPlan::Pipeline(PipelineNode {
-			steps: vec![from_plan, filter_plan],
+			steps,
 		});
 
 		// 4. Wrap in DELETE node
 		// Check in the catalog whether the target is a table or ring buffer
 		let namespace_name = ast.target.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 		let target_name = ast.target.name.text();
+		let name = ast.target.name;
+		let namespace = ast.target.namespace;
 
 		// Try to find namespace
 		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_name(tx, namespace_name)? {
 			ns.id
 		} else {
 			// If namespace doesn't exist, default to table (will error during physical plan)
-			let mut target = MaybeQualifiedTableIdentifier::new(ast.target.name.clone());
-			if let Some(ns) = ast.target.namespace.clone() {
+			let mut target = MaybeQualifiedTableIdentifier::new(name);
+			if let Some(ns) = namespace {
 				target = target.with_namespace(ns);
 			}
 			return Ok(LogicalPlan::DeleteTable(DeleteTableNode {
 				target: Some(target),
-				input: Some(Box::new(pipeline)),
+				input: Some(BumpBox::new_in(pipeline, self.bump)),
 			}));
 		};
 
 		// Check if it's a ring buffer first
 		if self.catalog.find_ringbuffer_by_name(tx, namespace_id, target_name)?.is_some() {
-			let mut target = MaybeQualifiedRingBufferIdentifier::new(ast.target.name.clone());
-			if let Some(ns) = ast.target.namespace.clone() {
+			let mut target = MaybeQualifiedRingBufferIdentifier::new(name);
+			if let Some(ns) = namespace {
 				target = target.with_namespace(ns);
 			}
 			Ok(LogicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
 				target,
-				input: Some(Box::new(pipeline)),
+				input: Some(BumpBox::new_in(pipeline, self.bump)),
 			}))
 		} else {
 			// Assume it's a table (will error during physical plan if not found)
-			let mut target = MaybeQualifiedTableIdentifier::new(ast.target.name.clone());
-			if let Some(ns) = ast.target.namespace.clone() {
+			let mut target = MaybeQualifiedTableIdentifier::new(name);
+			if let Some(ns) = namespace {
 				target = target.with_namespace(ns);
 			}
 			Ok(LogicalPlan::DeleteTable(DeleteTableNode {
 				target: Some(target),
-				input: Some(Box::new(pipeline)),
+				input: Some(BumpBox::new_in(pipeline, self.bump)),
 			}))
 		}
 	}

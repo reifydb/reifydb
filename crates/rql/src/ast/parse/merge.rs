@@ -6,8 +6,8 @@ use crate::{
 	token::keyword::Keyword::Merge,
 };
 
-impl Parser {
-	pub(crate) fn parse_merge(&mut self) -> crate::Result<AstMerge> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_merge(&mut self) -> crate::Result<AstMerge<'bump>> {
 		let token = self.consume_keyword(Merge)?;
 		let with = self.parse_sub_query()?;
 		Ok(AstMerge {
@@ -24,13 +24,15 @@ pub mod tests {
 			ast::{Ast, AstFrom},
 			parse::Parser,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_merge_basic() {
-		let tokens = tokenize("merge { from test.orders }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "merge { from test.orders }").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -52,8 +54,10 @@ pub mod tests {
 
 	#[test]
 	fn test_merge_with_query() {
-		let tokens = tokenize("from test.source1 merge { from test.source2 }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "from test.source1 merge { from test.source2 }").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -81,9 +85,13 @@ pub mod tests {
 
 	#[test]
 	fn test_merge_chained() {
+		let bump = Bump::new();
 		let tokens =
-			tokenize("from test.source1 merge { from test.source2 } merge { from test.source3 }").unwrap();
-		let mut parser = Parser::new(tokens);
+			tokenize(&bump, "from test.source1 merge { from test.source2 } merge { from test.source3 }")
+				.unwrap()
+				.into_iter()
+				.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

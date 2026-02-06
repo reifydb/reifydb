@@ -7,8 +7,8 @@ use crate::{
 	plan::logical::{ApplyNode, Compiler, LogicalPlan},
 };
 
-impl Compiler {
-	pub(crate) fn compile_apply(ast: AstApply) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_apply(&self, ast: AstApply<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::Apply(ApplyNode {
 			operator: ast.operator.into_fragment(),
 			arguments: ast

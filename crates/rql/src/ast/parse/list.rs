@@ -13,8 +13,8 @@ use crate::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_list(&mut self) -> crate::Result<AstList> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_list(&mut self) -> crate::Result<AstList<'bump>> {
 		let token = self.consume_operator(Operator::OpenBracket)?;
 
 		let mut nodes = Vec::with_capacity(4);
@@ -47,12 +47,13 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::{ast::parse::Parser, token::tokenize};
+	use crate::{ast::parse::Parser, bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_empty() {
-		let tokens = tokenize("[]").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "[]").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -63,8 +64,9 @@ pub mod tests {
 
 	#[test]
 	fn test_single() {
-		let tokens = tokenize("[ 'ReifyDB' ]").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "[ 'ReifyDB' ]").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -78,8 +80,9 @@ pub mod tests {
 
 	#[test]
 	fn test_numbers() {
-		let tokens = tokenize("[1, 2.2 , 2.34142]").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "[1, 2.2 , 2.34142]").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -99,8 +102,9 @@ pub mod tests {
 
 	#[test]
 	fn test_row() {
-		let tokens = tokenize("[ { field: 'value' }]").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "[ { field: 'value' }]").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

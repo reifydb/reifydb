@@ -8,18 +8,19 @@ use crate::{
 		ast::{AstLet, LetValue},
 		parse::{Parser, Precedence},
 	},
+	bump::BumpBox,
 	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
-impl Parser {
-	pub(crate) fn parse_let(&mut self) -> crate::Result<AstLet> {
-		let token = self.current()?.clone();
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_let(&mut self) -> crate::Result<AstLet<'bump>> {
+		let token = self.current()?;
 
 		// Expect 'let' keyword
 		if !self.current()?.is_keyword(Keyword::Let) {
 			return Err(reifydb_type::error::Error(unexpected_token_error(
 				"expected 'let'",
-				self.current()?.fragment.clone(),
+				self.current()?.fragment.to_owned(),
 			)));
 		}
 		self.advance()?; // consume 'let'
@@ -29,7 +30,7 @@ impl Parser {
 		if !matches!(variable_token.kind, TokenKind::Variable) {
 			return Err(reifydb_type::error::Error(unexpected_token_error(
 				"expected variable name starting with '$'",
-				variable_token.fragment.clone(),
+				variable_token.fragment.to_owned(),
 			)));
 		}
 
@@ -47,7 +48,7 @@ impl Parser {
 			let statement = self.parse_statement_content()?;
 			LetValue::Statement(statement)
 		} else {
-			let expr = Box::new(self.parse_node(Precedence::None)?);
+			let expr = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 			LetValue::Expression(expr)
 		};
 

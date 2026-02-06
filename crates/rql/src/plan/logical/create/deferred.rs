@@ -7,30 +7,33 @@ use reifydb_type::fragment::Fragment;
 
 use crate::{
 	ast::ast::{AstCreateDeferredView, AstDataType},
+	bump::BumpVec,
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan},
 };
 
-impl Compiler {
+// Note: Fragment is imported for use at the materialization boundary (ViewColumnToCreate uses owned Fragment)
+
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_deferred_view<T: AsTransaction>(
 		&self,
-		ast: AstCreateDeferredView,
+		ast: AstCreateDeferredView<'bump>,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	) -> crate::Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.text().to_string();
 			let constraint = convert_data_type_with_constraints(&col.ty)?;
 
 			let ty_fragment = match &col.ty {
-				AstDataType::Unconstrained(fragment) => fragment.clone(),
+				AstDataType::Unconstrained(fragment) => fragment.to_owned(),
 				AstDataType::Constrained {
 					name,
 					..
-				} => name.clone(),
+				} => name.to_owned(),
 			};
 
-			let fragment = Some(Fragment::merge_all([col.name.clone(), ty_fragment]));
+			let fragment = Some(Fragment::merge_all([col.name.to_owned(), ty_fragment]));
 
 			columns.push(ViewColumnToCreate {
 				name: column_name,
@@ -45,7 +48,7 @@ impl Compiler {
 		let with = if let Some(as_statement) = ast.as_clause {
 			self.compile(as_statement, tx)?
 		} else {
-			vec![]
+			BumpVec::new_in(self.bump)
 		};
 
 		// Convert AST primary key to logical plan primary key

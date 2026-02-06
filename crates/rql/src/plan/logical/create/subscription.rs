@@ -2,15 +2,21 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::catalog::subscription::SubscriptionColumnToCreate;
+use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	ast::ast::{AstCreateSubscription, AstDataType},
+	bump::BumpVec,
 	convert_data_type,
 	plan::logical::{Compiler, CreateSubscriptionNode, LogicalPlan},
 };
 
-impl Compiler {
-	pub(crate) fn compile_create_subscription(&self, ast: AstCreateSubscription) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_create_subscription<T: AsTransaction>(
+		&self,
+		ast: AstCreateSubscription<'bump>,
+		tx: &mut T,
+	) -> crate::Result<LogicalPlan<'bump>> {
 		let mut columns = Vec::with_capacity(ast.columns.len());
 
 		for col in ast.columns.iter() {
@@ -30,8 +36,12 @@ impl Compiler {
 			});
 		}
 
-		// Pass the AS clause through without compiling it (will be compiled in execution layer)
-		let as_clause = ast.as_clause;
+		// Compile the AS clause to logical plans
+		let as_clause = if let Some(as_statement) = ast.as_clause {
+			self.compile(as_statement, tx)?
+		} else {
+			BumpVec::new_in(self.bump)
+		};
 
 		Ok(LogicalPlan::CreateSubscription(CreateSubscriptionNode {
 			columns,

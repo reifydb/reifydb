@@ -10,20 +10,21 @@ use crate::{
 		identifier::UnresolvedPrimitiveIdentifier,
 		parse::Parser,
 	},
+	bump::BumpBox,
 	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
-impl Parser {
+impl<'bump> Parser<'bump> {
 	/// Parse INSERT statement with keyword-first syntax:
 	/// INSERT table [...]              - inline array (no FROM)
 	/// INSERT table $variable          - variable (no FROM)
 	/// INSERT namespace.table FROM source_table  - table source (FROM required)
-	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert> {
+	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert<'bump>> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
 		// 1. Parse target (REQUIRED) - namespace.table or just table
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
-			return_error!(insert_missing_target(token.fragment));
+			return_error!(insert_missing_target(token.fragment.to_owned()));
 		}
 
 		let first = self.parse_identifier_with_hyphens()?;
@@ -43,7 +44,7 @@ impl Parser {
 		// - `$` → variable (no FROM keyword)
 		// - `FROM` keyword → table/generator source (parse FROM clause)
 		if self.is_eof() {
-			return_error!(insert_missing_source(token.fragment));
+			return_error!(insert_missing_source(token.fragment.to_owned()));
 		}
 
 		let current = self.current()?;
@@ -52,7 +53,7 @@ impl Parser {
 			// Reuse parse_static from from.rs
 			let list = self.parse_static()?;
 			Ast::From(AstFrom::Inline {
-				token: list.token.clone(),
+				token: list.token,
 				list,
 			})
 		} else if matches!(current.kind, TokenKind::Variable) {
@@ -65,7 +66,7 @@ impl Parser {
 				})
 			} else {
 				let variable = AstVariable {
-					token: var_token.clone(),
+					token: var_token,
 				};
 				Ast::From(AstFrom::Variable {
 					token: var_token,
@@ -76,13 +77,13 @@ impl Parser {
 			// Table/generator source - use FROM clause
 			Ast::From(self.parse_from()?)
 		} else {
-			return_error!(insert_missing_source(token.fragment));
+			return_error!(insert_missing_source(token.fragment.to_owned()));
 		};
 
 		Ok(AstInsert {
 			token,
 			target,
-			source: Box::new(source),
+			source: BumpBox::new_in(source, self.bump()),
 		})
 	}
 }
@@ -94,19 +95,24 @@ pub mod tests {
 			ast::{Ast, AstFrom},
 			parse::Parser,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_insert_with_inline_array() {
+		let bump = Bump::new();
 		// New syntax: no FROM keyword for inline arrays
 		let tokens = tokenize(
+			&bump,
 			r#"
         INSERT users [{ id: 1, name: "Alice" }]
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -123,14 +129,18 @@ pub mod tests {
 
 	#[test]
 	fn test_insert_with_namespace() {
+		let bump = Bump::new();
 		// New syntax: no FROM keyword for inline arrays
 		let tokens = tokenize(
+			&bump,
 			r#"
         INSERT test.users [{ id: 1, name: "Bob" }]
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -144,14 +154,18 @@ pub mod tests {
 
 	#[test]
 	fn test_insert_from_source_table() {
+		let bump = Bump::new();
 		// Table sources still use FROM keyword
 		let tokens = tokenize(
+			&bump,
 			r#"
         INSERT target_table FROM source_table
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -176,14 +190,18 @@ pub mod tests {
 
 	#[test]
 	fn test_insert_variable() {
+		let bump = Bump::new();
 		// New syntax: no FROM keyword for variables
 		let tokens = tokenize(
+			&bump,
 			r#"
         INSERT users $data
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -200,34 +218,44 @@ pub mod tests {
 
 	#[test]
 	fn test_insert_missing_source_fails() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         INSERT users
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
 
 	#[test]
 	fn test_insert_missing_target_fails() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         INSERT [{ id: 1 }]
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
 
 	#[test]
 	fn test_insert_multiple_rows() {
+		let bump = Bump::new();
 		// New syntax: no FROM keyword for inline arrays
 		let tokens = tokenize(
+			&bump,
 			r#"
         INSERT users [
           { id: 1, name: "Alice" },
@@ -236,8 +264,10 @@ pub mod tests {
         ]
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

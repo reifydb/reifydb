@@ -8,7 +8,7 @@ use super::{
 };
 
 /// Scan for a variable token ($variable_name)
-pub fn scan_variable(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_variable<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek() != Some('$') {
 		return None;
 	}
@@ -40,42 +40,45 @@ pub fn scan_variable(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::token::tokenize;
+	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_variable_basic() {
-		let tokens = tokenize("$name").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "$name").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Variable);
 		assert_eq!(tokens[0].fragment.text(), "$name");
 
-		let tokens = tokenize("$user_id").unwrap();
+		let tokens = tokenize(&bump, "$user_id").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Variable);
 		assert_eq!(tokens[0].fragment.text(), "$user_id");
 
-		let tokens = tokenize("$_private").unwrap();
+		let tokens = tokenize(&bump, "$_private").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Variable);
 		assert_eq!(tokens[0].fragment.text(), "$_private");
 	}
 
 	#[test]
 	fn test_variable_with_numbers() {
-		let tokens = tokenize("$var123").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "$var123").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Variable);
 		assert_eq!(tokens[0].fragment.text(), "$var123");
 
-		let tokens = tokenize("$test_2").unwrap();
+		let tokens = tokenize(&bump, "$test_2").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Variable);
 		assert_eq!(tokens[0].fragment.text(), "$test_2");
 	}
 
 	#[test]
 	fn test_numeric_variables() {
+		let bump = Bump::new();
 		// $1, $2 are now variables too (no more parameters)
-		let tokens = tokenize("$1").unwrap();
+		let tokens = tokenize(&bump, "$1").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Variable);
 		assert_eq!(tokens[0].fragment.text(), "$1");
 
-		let tokens = tokenize("$42").unwrap();
+		let tokens = tokenize(&bump, "$42").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Variable);
 		assert_eq!(tokens[0].fragment.text(), "$42");
 	}

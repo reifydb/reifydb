@@ -9,15 +9,15 @@ use crate::{
 	token::keyword::Keyword,
 };
 
-impl Parser {
-	pub(crate) fn parse_map(&mut self) -> crate::Result<AstMap> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_map(&mut self) -> crate::Result<AstMap<'bump>> {
 		let token = self.consume_keyword(Keyword::Map)?;
 
 		let (nodes, has_braces) = self.parse_expressions(true, false)?;
 
 		// Always require braces
 		if !has_braces {
-			return_error!(map_missing_braces(token.fragment));
+			return_error!(map_missing_braces(token.fragment.to_owned()));
 		}
 
 		Ok(AstMap {
@@ -32,13 +32,15 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		ast::ast::{Ast, AstInfix, InfixOperator},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_constant_number() {
-		let tokens = tokenize("MAP {1}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {1}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -52,8 +54,9 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_expressions() {
-		let tokens = tokenize("MAP {1 + 2, 4 * 3}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {1 + 2, 4 * 3}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -74,8 +77,9 @@ pub mod tests {
 
 	#[test]
 	fn test_star() {
-		let tokens = tokenize("MAP {*}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {*}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -87,8 +91,9 @@ pub mod tests {
 
 	#[test]
 	fn test_keyword() {
-		let tokens = tokenize("MAP {value}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {value}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -100,8 +105,9 @@ pub mod tests {
 
 	#[test]
 	fn test_single_column() {
-		let tokens = tokenize("MAP {name}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {name}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -113,8 +119,9 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_columns() {
-		let tokens = tokenize("MAP {name, age}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {name, age}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -129,8 +136,9 @@ pub mod tests {
 
 	#[test]
 	fn test_colon_alias() {
-		let tokens = tokenize("MAP {a: 1}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {a: 1}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -155,8 +163,9 @@ pub mod tests {
 
 	#[test]
 	fn test_single_expression_with_braces() {
-		let tokens = tokenize("MAP {1}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {1}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -170,16 +179,18 @@ pub mod tests {
 
 	#[test]
 	fn test_without_braces_fails() {
-		let tokens = tokenize("MAP 1").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP 1").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "MAP_002");
 	}
 
 	#[test]
 	fn test_single_column_with_braces() {
-		let tokens = tokenize("MAP {name}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {name}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -191,8 +202,9 @@ pub mod tests {
 
 	#[test]
 	fn test_colon_syntax_single() {
-		let tokens = tokenize("MAP {col: 1 + 2}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {col: 1 + 2}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -214,8 +226,9 @@ pub mod tests {
 
 	#[test]
 	fn test_colon_syntax_with_braces() {
-		let tokens = tokenize("MAP {name: id, age: years}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {name: id, age: years}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -235,8 +248,9 @@ pub mod tests {
 
 	#[test]
 	fn test_colon_syntax_comptokenize_expression() {
-		let tokens = tokenize("MAP {total: price * quantity}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {total: price * quantity}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -257,8 +271,9 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_syntax() {
-		let tokens = tokenize("MAP {name, total: price * quantity, age}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP {name, total: price * quantity, age}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();

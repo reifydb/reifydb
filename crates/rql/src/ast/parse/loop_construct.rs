@@ -6,12 +6,13 @@ use crate::{
 		ast::{AstBreak, AstContinue, AstFor, AstLoop, AstVariable, AstWhile},
 		parse::{Parser, Precedence},
 	},
+	bump::BumpBox,
 	token::{keyword::Keyword, token::TokenKind},
 };
 
-impl Parser {
+impl<'bump> Parser<'bump> {
 	/// Parse `LOOP { ... }`
-	pub(crate) fn parse_loop(&mut self) -> crate::Result<AstLoop> {
+	pub(crate) fn parse_loop(&mut self) -> crate::Result<AstLoop<'bump>> {
 		let token = self.consume_keyword(Keyword::Loop)?;
 		let body = self.parse_block()?;
 		Ok(AstLoop {
@@ -21,9 +22,9 @@ impl Parser {
 	}
 
 	/// Parse `WHILE condition { ... }`
-	pub(crate) fn parse_while(&mut self) -> crate::Result<AstWhile> {
+	pub(crate) fn parse_while(&mut self) -> crate::Result<AstWhile<'bump>> {
 		let token = self.consume_keyword(Keyword::While)?;
-		let condition = Box::new(self.parse_node(Precedence::None)?);
+		let condition = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 		let body = self.parse_block()?;
 		Ok(AstWhile {
 			token,
@@ -33,7 +34,7 @@ impl Parser {
 	}
 
 	/// Parse `FOR $var IN expr { ... }`
-	pub(crate) fn parse_for(&mut self) -> crate::Result<AstFor> {
+	pub(crate) fn parse_for(&mut self) -> crate::Result<AstFor<'bump>> {
 		let token = self.consume_keyword(Keyword::For)?;
 
 		// Parse variable
@@ -46,7 +47,7 @@ impl Parser {
 		self.consume_keyword(Keyword::In)?;
 
 		// Parse iterable expression
-		let iterable = Box::new(self.parse_node(Precedence::None)?);
+		let iterable = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 		// Parse body block
 		let body = self.parse_block()?;
@@ -60,7 +61,7 @@ impl Parser {
 	}
 
 	/// Parse `BREAK`
-	pub(crate) fn parse_break(&mut self) -> crate::Result<AstBreak> {
+	pub(crate) fn parse_break(&mut self) -> crate::Result<AstBreak<'bump>> {
 		let token = self.consume_keyword(Keyword::Break)?;
 		Ok(AstBreak {
 			token,
@@ -68,7 +69,7 @@ impl Parser {
 	}
 
 	/// Parse `CONTINUE`
-	pub(crate) fn parse_continue(&mut self) -> crate::Result<AstContinue> {
+	pub(crate) fn parse_continue(&mut self) -> crate::Result<AstContinue<'bump>> {
 		let token = self.consume_keyword(Keyword::Continue)?;
 		Ok(AstContinue {
 			token,

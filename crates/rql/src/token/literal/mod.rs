@@ -16,7 +16,7 @@ use text::scan_text;
 use undefined::scan_undefined;
 
 /// Scan for any literal token
-pub fn scan_literal(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_literal<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	// Try each literal type
 	if let Some(token) = scan_text(cursor) {
 		Some(token)

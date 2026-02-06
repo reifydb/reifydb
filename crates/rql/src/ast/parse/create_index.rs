@@ -8,6 +8,7 @@ use crate::{
 		ast::{AstCreate, AstCreateIndex, AstIndexColumn},
 		parse::{Parser, Precedence},
 	},
+	bump::BumpBox,
 	token::{
 		keyword::Keyword::{Asc, Desc, Filter, Index, Map, On, Unique},
 		operator::Operator,
@@ -16,12 +17,12 @@ use crate::{
 	},
 };
 
-impl Parser {
+impl<'bump> Parser<'bump> {
 	pub(crate) fn peek_is_index_creation(&mut self) -> crate::Result<bool> {
 		Ok(matches!(self.current()?.kind, TokenKind::Keyword(Index) | TokenKind::Keyword(Unique)))
 	}
 
-	pub(crate) fn parse_create_index(&mut self, create_token: Token) -> crate::Result<AstCreate> {
+	pub(crate) fn parse_create_index(&mut self, create_token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		let index_type = self.parse_index_type()?;
 
 		let name_token = self.consume(TokenKind::Identifier)?;
@@ -34,19 +35,18 @@ impl Parser {
 
 		// Create MaybeQualifiedIndexIdentifier
 		use crate::ast::identifier::MaybeQualifiedIndexIdentifier;
-		let index =
-			MaybeQualifiedIndexIdentifier::new(table_token.fragment.clone(), name_token.fragment.clone())
-				.with_schema(namespace_token.fragment.clone());
+		let index = MaybeQualifiedIndexIdentifier::new(table_token.fragment, name_token.fragment)
+			.with_schema(namespace_token.fragment);
 
 		let columns = self.parse_index_columns()?;
 
 		let mut filters = Vec::new();
 		while self.consume_if(TokenKind::Keyword(Filter))?.is_some() {
-			filters.push(Box::new(self.parse_node(Precedence::None)?));
+			filters.push(BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump()));
 		}
 
 		let map = if self.consume_if(TokenKind::Keyword(Map))?.is_some() {
-			Some(Box::new(self.parse_node(Precedence::None)?))
+			Some(BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump()))
 		} else {
 			None
 		};
@@ -71,7 +71,7 @@ impl Parser {
 		}
 	}
 
-	fn parse_index_columns(&mut self) -> crate::Result<Vec<AstIndexColumn>> {
+	fn parse_index_columns(&mut self) -> crate::Result<Vec<AstIndexColumn<'bump>>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -113,16 +113,23 @@ impl Parser {
 pub mod tests {
 	use reifydb_core::{common::IndexType, sort::SortDirection};
 
-	use crate::ast::{
-		ast::{AstCreate, AstCreateIndex},
-		parse::Parser,
-		tokenize,
+	use crate::{
+		ast::{
+			ast::{AstCreate, AstCreateIndex},
+			parse::Parser,
+			tokenize,
+		},
+		bump::Bump,
 	};
 
 	#[test]
 	fn test_create_index() {
-		let tokens = tokenize(r#"create index idx_email on test.users {email}"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"create index idx_email on test.users {email}"#)
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -152,8 +159,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_unique_index() {
-		let tokens = tokenize(r#"create unique index idx_email on test.users {email}"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"create unique index idx_email on test.users {email}"#)
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -182,8 +193,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_composite_index() {
-		let tokens = tokenize(r#"create index idx_name on test.users {last_name, first_name}"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"create index idx_name on test.users {last_name, first_name}"#)
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -207,9 +222,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_index_with_ordering() {
-		let tokens =
-			tokenize(r#"create index idx_status on test.users {created_at desc, status asc}"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"create index idx_status on test.users {created_at desc, status asc}"#)
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -235,9 +253,13 @@ pub mod tests {
 
 	#[test]
 	fn test_create_index_with_single_filter() {
-		let tokens = tokenize(r#"create index idx_active_email on test.users {email} filter active == true"#)
-			.unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, r#"create index idx_active_email on test.users {email} filter active == true"#)
+				.unwrap()
+				.into_iter()
+				.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -263,11 +285,15 @@ pub mod tests {
 
 	#[test]
 	fn test_create_index_with_multiple_filters() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"create index idx_filtered on test.users {email} filter active == true filter age > 18 filter country == "US""#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -294,11 +320,15 @@ pub mod tests {
 
 	#[test]
 	fn test_create_index_with_filters_and_map() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"create index idx_comptokenize on test.users {email} filter active == true filter age > 18 map email"#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

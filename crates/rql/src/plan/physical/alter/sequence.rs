@@ -19,7 +19,7 @@ impl Compiler {
 	pub(crate) fn compile_alter_sequence<T: AsTransaction>(
 		&self,
 		rx: &mut T,
-		alter: logical::AlterSequenceNode,
+		alter: logical::AlterSequenceNode<'_>,
 	) -> crate::Result<PhysicalPlan> {
 		// Get the namespace name from the sequence identifier
 		let namespace_name = alter.sequence.namespace.as_ref().map(|f| f.text()).unwrap_or(DEFAULT_NAMESPACE);
@@ -33,7 +33,7 @@ impl Compiler {
 		// Query the catalog for the actual table
 		let table_name = alter.sequence.name.text();
 		let Some(table_def) = self.catalog.find_table_by_name(rx, namespace_def.id, table_name)? else {
-			return_error!(table_not_found(alter.sequence.name.clone(), &namespace_def.name, table_name));
+			return_error!(table_not_found(alter.sequence.name.to_owned(), &namespace_def.name, table_name));
 		};
 
 		// Find the column in the table
@@ -56,7 +56,7 @@ impl Compiler {
 			increment: 1,
 		};
 		let resolved_sequence =
-			ResolvedSequence::new(alter.sequence.name.clone(), resolved_namespace.clone(), sequence_def);
+			ResolvedSequence::new(alter.sequence.name.to_owned(), resolved_namespace.clone(), sequence_def);
 
 		// Create resolved table
 		let table_fragment = Fragment::internal(table_name.to_string());
@@ -64,7 +64,7 @@ impl Compiler {
 
 		// Create resolved source and column
 		let resolved_source = ResolvedPrimitive::Table(resolved_table);
-		let resolved_column = ResolvedColumn::new(alter.column.name.clone(), resolved_source, column_def);
+		let resolved_column = ResolvedColumn::new(alter.column.name.to_owned(), resolved_source, column_def);
 
 		Ok(PhysicalPlan::AlterSequence(AlterSequenceNode {
 			sequence: resolved_sequence,

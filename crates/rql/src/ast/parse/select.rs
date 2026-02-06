@@ -9,14 +9,14 @@ use crate::{
 	token::keyword::Keyword,
 };
 
-impl Parser {
-	pub(crate) fn parse_select(&mut self) -> crate::Result<AstMap> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_select(&mut self) -> crate::Result<AstMap<'bump>> {
 		let token = self.consume_keyword(Keyword::Select)?;
 
 		let (nodes, has_braces) = self.parse_expressions(true, false)?;
 
 		if !has_braces {
-			return_error!(select_missing_braces(token.fragment));
+			return_error!(select_missing_braces(token.fragment.to_owned()));
 		}
 
 		Ok(AstMap {
@@ -31,13 +31,15 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		ast::ast::{Ast, AstInfix, InfixOperator},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_select_constant_number() {
-		let tokens = tokenize("SELECT {1}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "SELECT {1}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -51,8 +53,9 @@ pub mod tests {
 
 	#[test]
 	fn test_select_multiple_expressions() {
-		let tokens = tokenize("SELECT {1 + 2, 4 * 3}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "SELECT {1 + 2, 4 * 3}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -73,8 +76,9 @@ pub mod tests {
 
 	#[test]
 	fn test_select_star() {
-		let tokens = tokenize("SELECT {*}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "SELECT {*}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -86,8 +90,9 @@ pub mod tests {
 
 	#[test]
 	fn test_select_columns() {
-		let tokens = tokenize("SELECT {name, age}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "SELECT {name, age}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -102,8 +107,9 @@ pub mod tests {
 
 	#[test]
 	fn test_select_colon_alias() {
-		let tokens = tokenize("SELECT {a: 1}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "SELECT {a: 1}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -128,8 +134,9 @@ pub mod tests {
 
 	#[test]
 	fn test_select_colon_syntax() {
-		let tokens = tokenize("SELECT {total: price * quantity}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "SELECT {total: price * quantity}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -150,8 +157,9 @@ pub mod tests {
 
 	#[test]
 	fn test_select_mixed_case() {
-		let tokens = tokenize("select {name}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "select {name}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -163,8 +171,9 @@ pub mod tests {
 
 	#[test]
 	fn test_select_without_braces_fails() {
-		let tokens = tokenize("SELECT 1").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "SELECT 1").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "SELECT_002");
 	}

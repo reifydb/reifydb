@@ -33,7 +33,7 @@ pub fn resolve_unresolved_source<T: AsTransaction>(
 
 	// Get namespace
 	let ns_def = if let Some(ref ns_fragment) = unresolved.namespace {
-		catalog.get_namespace_by_name(tx, ns_fragment.clone())?
+		catalog.get_namespace_by_name(tx, ns_fragment.to_owned())?
 	} else {
 		catalog.get_namespace_by_name(tx, DEFAULT_NAMESPACE)?
 	};
@@ -122,7 +122,7 @@ pub fn resolve_unresolved_source<T: AsTransaction>(
 	Err(crate::error::IdentifierError::SourceNotFound(crate::error::PrimitiveNotFoundError {
 		namespace: namespace_str.to_string(),
 		name: name_str.to_string(),
-		fragment: unresolved.name.clone(),
+		fragment: unresolved.name.to_owned(),
 	})
 	.into())
 }

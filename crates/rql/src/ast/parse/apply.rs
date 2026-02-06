@@ -12,14 +12,14 @@ use crate::{
 	token::{keyword::Keyword, operator::Operator, separator::Separator},
 };
 
-impl Parser {
-	pub(crate) fn parse_apply(&mut self) -> crate::Result<AstApply> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_apply(&mut self) -> crate::Result<AstApply<'bump>> {
 		let token = self.consume_keyword(Keyword::Apply)?;
 
 		let operator = self.parse_identifier()?;
 
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
-			return_error!(apply_missing_braces(token.fragment));
+			return_error!(apply_missing_braces(token.fragment.to_owned()));
 		}
 
 		self.advance()?;
@@ -54,12 +54,13 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::token::tokenize;
+	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_apply_counter_no_args() {
-		let tokens = tokenize("APPLY counter {}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "APPLY counter {}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -71,8 +72,9 @@ pub mod tests {
 
 	#[test]
 	fn test_apply_with_single_expression() {
-		let tokens = tokenize("APPLY running_sum {value}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "APPLY running_sum {value}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -85,8 +87,12 @@ pub mod tests {
 
 	#[test]
 	fn test_apply_with_block() {
-		let tokens = tokenize("APPLY counter {row_number: row_number, id: id}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "APPLY counter {row_number: row_number, id: id}")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -98,8 +104,9 @@ pub mod tests {
 
 	#[test]
 	fn test_apply_without_braces_fails() {
-		let tokens = tokenize("APPLY some_op value").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "APPLY some_op value").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "APPLY_002");
 	}

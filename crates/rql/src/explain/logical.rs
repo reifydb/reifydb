@@ -7,6 +7,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::parse_str,
+	bump::Bump,
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, MergeNode,
@@ -20,12 +21,14 @@ use crate::{
 };
 
 pub fn explain_logical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query: &str) -> crate::Result<String> {
-	let statements = parse_str(query)?;
+	let bump = Bump::new();
+	let statements = parse_str(&bump, query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {
 		let compiler = crate::plan::logical::Compiler {
 			catalog: catalog.clone(),
+			bump: &bump,
 		};
 		plans.extend(compiler.compile(statement, rx)?);
 	}
@@ -33,7 +36,7 @@ pub fn explain_logical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query: 
 	explain_logical_plans(&plans)
 }
 
-pub fn explain_logical_plans(plans: &[LogicalPlan]) -> crate::Result<String> {
+pub fn explain_logical_plans(plans: &[LogicalPlan<'_>]) -> crate::Result<String> {
 	let mut result = String::new();
 	for plan in plans {
 		let mut output = String::new();
@@ -44,7 +47,7 @@ pub fn explain_logical_plans(plans: &[LogicalPlan]) -> crate::Result<String> {
 	Ok(result)
 }
 
-fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, output: &mut String) {
+fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool, output: &mut String) {
 	let branch = if is_last {
 		"└──"
 	} else {

@@ -7,8 +7,8 @@ use crate::{
 	plan::logical::{AggregateNode, Compiler, LogicalPlan},
 };
 
-impl Compiler {
-	pub(crate) fn compile_aggregate(&self, ast: AstAggregate) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_aggregate(&self, ast: AstAggregate<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::Aggregate(AggregateNode {
 			by: ast.by.into_iter().map(ExpressionCompiler::compile).collect::<crate::Result<Vec<_>>>()?,
 			map: ast.map.into_iter().map(ExpressionCompiler::compile).collect::<crate::Result<Vec<_>>>()?,

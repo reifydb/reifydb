@@ -30,7 +30,7 @@ separator! {
 }
 
 /// Scan for a separator token
-pub fn scan_separator(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_separator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -52,18 +52,20 @@ pub fn scan_separator(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::token::tokenize;
+	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_parse_separator_invalid() {
-		let tokens = tokenize("foobar rest").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "foobar rest").unwrap();
 		// Should parse as identifier, not separator
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 	}
 
 	fn check_separator(op: Separator, symbol: &str) {
+		let bump = Bump::new();
 		let input_str = format!("{symbol} rest");
-		let tokens = tokenize(&input_str).unwrap();
+		let tokens = tokenize(&bump, &input_str).unwrap();
 
 		assert!(tokens.len() >= 2);
 		assert_eq!(TokenKind::Separator(op), tokens[0].kind, "type mismatch for symbol: {}", symbol);
@@ -94,9 +96,10 @@ pub mod tests {
 	// implementation
 	#[test]
 	fn test_separator_new_line() {
+		let bump = Bump::new();
 		// Newlines are skipped as whitespace, so "\n rest" just
 		// produces "rest"
-		let tokens = tokenize("\n rest").unwrap();
+		let tokens = tokenize(&bump, "\n rest").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "rest");

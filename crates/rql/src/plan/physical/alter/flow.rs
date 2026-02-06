@@ -4,18 +4,21 @@
 use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
-use crate::{
-	ast::identifier::MaybeQualifiedFlowIdentifier,
-	plan::{
-		logical,
-		physical::{Compiler, PhysicalPlan},
-	},
+use crate::plan::{
+	logical,
+	physical::{Compiler, PhysicalPlan},
 };
 
 #[derive(Debug, Clone)]
 pub struct AlterFlowNode {
-	pub flow: MaybeQualifiedFlowIdentifier,
+	pub flow: AlterFlowIdentifier,
 	pub action: AlterFlowAction,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterFlowIdentifier {
+	pub namespace: Option<Fragment>,
+	pub name: Fragment,
 }
 
 #[derive(Debug, Clone)]
@@ -34,13 +37,18 @@ impl Compiler {
 	pub(crate) fn compile_alter_flow<T: AsTransaction>(
 		&self,
 		rx: &mut T,
-		alter: logical::alter::flow::AlterFlowNode,
+		alter: logical::alter::flow::AlterFlowNode<'_>,
 	) -> crate::Result<PhysicalPlan> {
+		let flow = AlterFlowIdentifier {
+			namespace: alter.flow.namespace.map(|n| n.to_owned()),
+			name: alter.flow.name.to_owned(),
+		};
+
 		let action = match alter.action {
 			logical::alter::flow::AlterFlowAction::Rename {
 				new_name,
 			} => AlterFlowAction::Rename {
-				new_name,
+				new_name: new_name.to_owned(),
 			},
 			logical::alter::flow::AlterFlowAction::SetQuery {
 				query,
@@ -56,7 +64,7 @@ impl Compiler {
 		};
 
 		let plan = AlterFlowNode {
-			flow: alter.flow,
+			flow,
 			action,
 		};
 		Ok(PhysicalPlan::AlterFlow(plan))

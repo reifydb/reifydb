@@ -1,33 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
-
-use reifydb_type::{
-	error::{Error, diagnostic::ast::unexpected_token_error},
-	fragment::Fragment,
-};
+use reifydb_type::error::{Error, diagnostic::ast::unexpected_token_error};
 
 use crate::{
 	ast::{
 		identifier::{MaybeQualifiedColumnIdentifier, UnqualifiedIdentifier},
 		parse::Parser,
 	},
+	bump::BumpFragment,
 	token::{
 		operator::Operator,
 		token::{Literal, Token, TokenKind},
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier<'bump>> {
 		let token = self.consume(TokenKind::Identifier)?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
 	/// Parse an identifier or keyword as an identifier (simple, no hyphen handling)
 	/// Used in expression contexts where hyphens should remain as operators
-	pub(crate) fn parse_as_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier> {
+	pub(crate) fn parse_as_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier<'bump>> {
 		let token = self.advance()?;
 		debug_assert!(matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)));
 		Ok(UnqualifiedIdentifier::new(token))
@@ -37,7 +33,7 @@ impl Parser {
 	/// Used in DDL contexts where hyphenated identifiers are supported
 	/// Consumes: (identifier|keyword) [-(identifier|keyword)]*
 	/// Returns: UnqualifiedIdentifier with combined text
-	pub(crate) fn parse_identifier_with_hyphens(&mut self) -> crate::Result<UnqualifiedIdentifier> {
+	pub(crate) fn parse_identifier_with_hyphens(&mut self) -> crate::Result<UnqualifiedIdentifier<'bump>> {
 		let first_token = self.advance()?;
 
 		// Helper to check if a token can be used as an identifier part
@@ -61,13 +57,13 @@ impl Parser {
 		if matches!(first_token.kind, TokenKind::Literal(Literal::Number)) {
 			return Err(Error(unexpected_token_error(
 				"identifier (identifiers cannot start with digits)",
-				first_token.fragment.clone(),
+				first_token.fragment.to_owned(),
 			)));
 		}
 		let mut parts = vec![first_token.fragment.text().to_string()];
 		let start_line = first_token.fragment.line();
 		let start_column = first_token.fragment.column();
-		let first_fragment = first_token.fragment.clone();
+		let first_fragment = first_token.fragment;
 
 		// Check if next token is hyphen followed by identifier or keyword
 		// If not, return what we have so far
@@ -77,8 +73,9 @@ impl Parser {
 			|| !is_identifier_like(&self.tokens[self.position + 1])
 		{
 			let combined_text = parts.join("");
-			let fragment = Fragment::Statement {
-				text: Arc::from(combined_text),
+			let text = self.bump().alloc_str(&combined_text);
+			let fragment = BumpFragment::Statement {
+				text,
 				line: start_line,
 				column: start_column,
 			};
@@ -116,13 +113,14 @@ impl Parser {
 		if combined_text.contains("--") {
 			return Err(Error(unexpected_token_error(
 				"identifier without consecutive hyphens",
-				first_fragment.clone(),
+				first_fragment.to_owned(),
 			)));
 		}
 
 		// Create Fragment with combined text
-		let fragment = Fragment::Statement {
-			text: Arc::from(combined_text),
+		let text = self.bump().alloc_str(&combined_text);
+		let fragment = BumpFragment::Statement {
+			text,
 			line: start_line,
 			column: start_column,
 		};
@@ -134,7 +132,7 @@ impl Parser {
 	/// Handles patterns like: column, table.column, namespace.table.column,
 	/// alias.column
 	/// Supports hyphenated identifiers like: my-column, my-table.my-column
-	pub(crate) fn parse_column_identifier(&mut self) -> crate::Result<MaybeQualifiedColumnIdentifier> {
+	pub(crate) fn parse_column_identifier(&mut self) -> crate::Result<MaybeQualifiedColumnIdentifier<'bump>> {
 		let first = self.parse_identifier_with_hyphens()?;
 
 		// Check for qualification
@@ -172,7 +170,9 @@ impl Parser {
 	}
 
 	/// Parse a column identifier, but also accept keywords as column names
-	pub(crate) fn parse_column_identifier_or_keyword(&mut self) -> crate::Result<MaybeQualifiedColumnIdentifier> {
+	pub(crate) fn parse_column_identifier_or_keyword(
+		&mut self,
+	) -> crate::Result<MaybeQualifiedColumnIdentifier<'bump>> {
 		// For simple cases where keywords can be column names
 		let first = self.advance()?;
 
@@ -188,21 +188,21 @@ impl Parser {
 
 				// namespace.table.column
 				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
-					Some(first.fragment.clone()),
-					second.fragment.clone(),
-					third.fragment.clone(),
+					Some(first.fragment),
+					second.fragment,
+					third.fragment,
 				))
 			} else {
 				// table.column or alias.column
 				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
 					None,
-					first.fragment.clone(),
-					second.fragment.clone(),
+					first.fragment,
+					second.fragment,
 				))
 			}
 		} else {
 			// Unqualified column
-			Ok(MaybeQualifiedColumnIdentifier::unqualified(first.fragment.clone()))
+			Ok(MaybeQualifiedColumnIdentifier::unqualified(first.fragment))
 		}
 	}
 }
@@ -217,13 +217,15 @@ pub mod tests {
 			},
 			parse::parse,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn identifier() {
-		let tokens = tokenize("x").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "x").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -234,8 +236,9 @@ pub mod tests {
 
 	#[test]
 	fn identifier_with_underscore() {
-		let tokens = tokenize("some_identifier").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "some_identifier").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -246,9 +249,10 @@ pub mod tests {
 
 	#[test]
 	fn identifier_with_hyphen_context_aware() {
+		let bump = Bump::new();
 		// Test hyphenated identifier in CREATE NAMESPACE context
-		let tokens = tokenize("CREATE NAMESPACE my-identifier").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let tokens = tokenize(&bump, "CREATE NAMESPACE my-identifier").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -264,9 +268,10 @@ pub mod tests {
 
 	#[test]
 	fn identifier_with_multiple_hyphens() {
+		let bump = Bump::new();
 		// Test identifier with multiple hyphens in CREATE NAMESPACE context
-		let tokens = tokenize("CREATE NAMESPACE user-profile-data").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let tokens = tokenize(&bump, "CREATE NAMESPACE user-profile-data").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -282,6 +287,7 @@ pub mod tests {
 
 	#[test]
 	fn identifier_with_double_hyphens_should_fail() {
+		let bump = Bump::new();
 		// When using unquoted identifiers, double hyphens are tokenized as two minus operators
 		// Input: "CREATE NAMESPACE name--space"
 		// Tokens: [CREATE, NAMESPACE, name, -, -, space]
@@ -294,10 +300,10 @@ pub mod tests {
 		// Rationale: CREATE statements (and all DDL) should stand alone. Trailing tokens
 		// are almost certainly a user error. If consecutive hyphens are intended, use backticks.
 
-		let tokens = tokenize("CREATE NAMESPACE name--space").unwrap();
+		let tokens: Vec<_> = tokenize(&bump, "CREATE NAMESPACE name--space").unwrap().into_iter().collect();
 		assert_eq!(tokens.len(), 6); // CREATE, NAMESPACE, name, -, -, space
 
-		let result = parse(tokens);
+		let result = parse(&bump, tokens);
 
 		// Parser should reject this with an error about unexpected trailing tokens
 		assert!(result.is_err(), "Parser should reject trailing tokens after CREATE statement");
@@ -315,8 +321,9 @@ pub mod tests {
 
 	#[test]
 	fn identifier_backtick_with_hyphen() {
-		let tokens = tokenize("`my-identifier`").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "`my-identifier`").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -327,9 +334,10 @@ pub mod tests {
 
 	#[test]
 	fn identifier_backtick_without_hyphen() {
+		let bump = Bump::new();
 		// Test that backticks work for simple identifiers without special characters
-		let tokens = tokenize("`myidentifier`").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let tokens = tokenize(&bump, "`myidentifier`").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -340,9 +348,10 @@ pub mod tests {
 
 	#[test]
 	fn identifier_backtick_with_underscore() {
+		let bump = Bump::new();
 		// Test that backticks work for identifiers with underscores
-		let tokens = tokenize("`my_identifier`").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let tokens = tokenize(&bump, "`my_identifier`").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -353,9 +362,10 @@ pub mod tests {
 
 	#[test]
 	fn identifier_with_hyphen_and_number_suffix() {
+		let bump = Bump::new();
 		// Number suffix is valid: twap-10min
-		let tokens = tokenize("CREATE NAMESPACE twap-10min").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let tokens = tokenize(&bump, "CREATE NAMESPACE twap-10min").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -371,9 +381,10 @@ pub mod tests {
 
 	#[test]
 	fn identifier_with_hyphen_and_number_middle() {
+		let bump = Bump::new();
 		// Number in middle is valid: avg-10min-window
-		let tokens = tokenize("CREATE NAMESPACE avg-10min-window").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let tokens = tokenize(&bump, "CREATE NAMESPACE avg-10min-window").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -389,8 +400,9 @@ pub mod tests {
 
 	#[test]
 	fn identifier_with_keyword_and_number() {
-		let tokens = tokenize("CREATE NAMESPACE create-2024-table").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE NAMESPACE create-2024-table").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {

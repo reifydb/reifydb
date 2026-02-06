@@ -13,13 +13,13 @@ use crate::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_tuple(&mut self) -> crate::Result<AstTuple> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_tuple(&mut self) -> crate::Result<AstTuple<'bump>> {
 		let token = self.consume_operator(Operator::OpenParen)?;
 		self.parse_tuple_call(token)
 	}
 
-	pub(crate) fn parse_tuple_call(&mut self, operator: Token) -> crate::Result<AstTuple> {
+	pub(crate) fn parse_tuple_call(&mut self, operator: Token<'bump>) -> crate::Result<AstTuple<'bump>> {
 		let mut nodes = Vec::with_capacity(4);
 		loop {
 			self.skip_new_line()?;
@@ -53,23 +53,26 @@ pub mod tests {
 			},
 			parse::parse,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_empty_tuple() {
-		let tokens = tokenize("()").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "()").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
-		assert_eq!(node.nodes, vec![]);
+		assert!(node.nodes.is_empty());
 	}
 
 	#[test]
 	fn test_tuple_with_number() {
-		let tokens = tokenize("(9924)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "(9924)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -84,8 +87,9 @@ pub mod tests {
 
 	#[test]
 	fn test_nested_tuple() {
-		let tokens = tokenize("(1 * ( 2 + 3 ))").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "(1 * ( 2 + 3 ))").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -129,8 +133,9 @@ pub mod tests {
 
 	#[test]
 	fn test_tuple_with_identifier() {
-		let tokens = tokenize("(u)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "(u)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = &result[0].first_unchecked().as_tuple();
@@ -145,8 +150,9 @@ pub mod tests {
 
 	#[test]
 	fn test_tuple_with_identifier_and_type() {
-		let tokens = tokenize("(u: Bool)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "(u: Bool)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -171,8 +177,9 @@ pub mod tests {
 
 	#[test]
 	fn test_tuple_with_multiple_identifiers() {
-		let tokens = tokenize("(u,v)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "(u,v)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -190,8 +197,9 @@ pub mod tests {
 
 	#[test]
 	fn test_tuple_with_identifiers_and_types() {
-		let tokens = tokenize("(u: Bool, v: Text)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "(u: Bool, v: Text)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -239,8 +247,9 @@ pub mod tests {
 
 	#[test]
 	fn test_tuple_with_identifiers_and_declaration() {
-		let tokens = tokenize("(u = 1, v = 2)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "(u = 1, v = 2)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -292,14 +301,18 @@ pub mod tests {
 
 	#[test]
 	fn test_multiline_tuple() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"(
         u: Bool,
         v: Text
         )"#,
 		)
-		.unwrap();
-		let result = parse(tokens).unwrap();
+		.unwrap()
+		.into_iter()
+		.collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -347,8 +360,9 @@ pub mod tests {
 
 	#[test]
 	fn test_regression() {
-		let tokens = tokenize("(-1 -2)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "(-1 -2)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();

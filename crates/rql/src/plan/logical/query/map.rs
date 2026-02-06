@@ -7,8 +7,8 @@ use crate::{
 	plan::logical::{Compiler, LogicalPlan, MapNode},
 };
 
-impl Compiler {
-	pub(crate) fn compile_map(&self, ast: AstMap) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_map(&self, ast: AstMap<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::Map(MapNode {
 			map: ast.nodes
 				.into_iter()

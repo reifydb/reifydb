@@ -8,32 +8,33 @@ use crate::{
 		ast::{Ast, AstInfix, InfixOperator},
 		parse::{Parser, Precedence},
 	},
+	bump::BumpBox,
 	token::{operator::Operator, token::TokenKind},
 };
 
-impl Parser {
-	pub(crate) fn parse_infix(&mut self, left: Ast) -> crate::Result<AstInfix> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_infix(&mut self, left: Ast<'bump>) -> crate::Result<AstInfix<'bump>> {
 		let precedence = self.current_precedence()?;
 		let operator = self.parse_infix_operator()?;
 
 		// Determine the right side based on operator type
 		let right = match &operator {
-			InfixOperator::Call(token) => Ast::Tuple(self.parse_tuple_call(token.clone())?),
+			InfixOperator::Call(token) => Ast::Tuple(self.parse_tuple_call(*token)?),
 			InfixOperator::As(_) => self.parse_node(Precedence::None)?,
 			_ => self.parse_node(precedence)?,
 		};
 
 		Ok(AstInfix {
-			token: left.token().clone(),
-			left: Box::new(left),
+			token: *left.token(),
+			left: BumpBox::new_in(left, self.bump()),
 			operator,
-			right: Box::new(right),
+			right: BumpBox::new_in(right, self.bump()),
 		})
 	}
 
-	pub(crate) fn parse_infix_operator(&mut self) -> crate::Result<InfixOperator> {
+	pub(crate) fn parse_infix_operator(&mut self) -> crate::Result<InfixOperator<'bump>> {
 		let token = self.advance()?;
-		match &token.kind {
+		match token.kind {
 			TokenKind::Operator(operator) => match operator {
 				Operator::OpenParen => Ok(InfixOperator::Call(token)),
 				Operator::Plus => Ok(InfixOperator::Add(token)),
@@ -56,9 +57,9 @@ impl Parser {
 				Operator::And => Ok(InfixOperator::And(token)),
 				Operator::Or => Ok(InfixOperator::Or(token)),
 				Operator::Xor => Ok(InfixOperator::Xor(token)),
-				_ => return_error!(ast::unsupported_token_error(token.fragment)),
+				_ => return_error!(ast::unsupported_token_error(token.fragment.to_owned())),
 			},
-			_ => return_error!(ast::unsupported_token_error(token.fragment)),
+			_ => return_error!(ast::unsupported_token_error(token.fragment.to_owned())),
 		}
 	}
 }
@@ -75,13 +76,15 @@ pub mod tests {
 			},
 			parse::parse,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_as_one() {
-		let tokens = tokenize("1 as one").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 as one").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let infix = result[0].first_unchecked().as_infix();
@@ -92,8 +95,9 @@ pub mod tests {
 
 	#[test]
 	fn test_as_a() {
-		let tokens = tokenize("1 as a").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 as a").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let infix = result[0].first_unchecked().as_infix();
@@ -104,8 +108,9 @@ pub mod tests {
 
 	#[test]
 	fn test_add() {
-		let tokens = tokenize("1 + 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 + 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -133,8 +138,9 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_infix() {
-		let tokens = tokenize("cast(-1, int1) < cast(1, int16)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "cast(-1, int1) < cast(1, int16)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let AstInfix {
@@ -151,8 +157,9 @@ pub mod tests {
 
 	#[test]
 	fn test_subtract() {
-		let tokens = tokenize("1 - 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 - 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -180,8 +187,9 @@ pub mod tests {
 
 	#[test]
 	fn test_subtract_negative() {
-		let tokens = tokenize("-1 -2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "-1 -2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let AstInfix {
@@ -202,8 +210,9 @@ pub mod tests {
 
 	#[test]
 	fn test_multiply() {
-		let tokens = tokenize("1 * 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 * 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -231,8 +240,9 @@ pub mod tests {
 
 	#[test]
 	fn test_divide() {
-		let tokens = tokenize("1 / 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 / 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -260,8 +270,9 @@ pub mod tests {
 
 	#[test]
 	fn test_remainder() {
-		let tokens = tokenize("1 % 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 % 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -289,8 +300,9 @@ pub mod tests {
 
 	#[test]
 	fn test_greater_than() {
-		let tokens = tokenize("1 > 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 > 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -318,8 +330,9 @@ pub mod tests {
 
 	#[test]
 	fn test_greater_than_or_equal() {
-		let tokens = tokenize("1 >= 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 >= 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -347,8 +360,9 @@ pub mod tests {
 
 	#[test]
 	fn test_less_than() {
-		let tokens = tokenize("1 < 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 < 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -376,8 +390,9 @@ pub mod tests {
 
 	#[test]
 	fn test_less_than_or_equal() {
-		let tokens = tokenize("1 <= 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 <= 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -405,8 +420,9 @@ pub mod tests {
 
 	#[test]
 	fn test_equal() {
-		let tokens = tokenize("1 == 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 == 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -434,8 +450,9 @@ pub mod tests {
 
 	#[test]
 	fn test_not_equal() {
-		let tokens = tokenize("1 != 2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 != 2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {

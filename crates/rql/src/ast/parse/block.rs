@@ -8,11 +8,11 @@ use crate::{
 	token::{operator::Operator, separator::Separator, token::TokenKind},
 };
 
-impl Parser {
+impl<'bump> Parser<'bump> {
 	/// Parse a block: `{ stmt; stmt; ... }`
 	/// Consumes the opening `{`, parses statements separated by `;` or newlines,
 	/// and consumes the closing `}`.
-	pub(crate) fn parse_block(&mut self) -> crate::Result<AstBlock> {
+	pub(crate) fn parse_block(&mut self) -> crate::Result<AstBlock<'bump>> {
 		let token = self.consume_operator(Operator::OpenCurly)?;
 
 		let mut statements = Vec::new();
@@ -23,7 +23,7 @@ impl Parser {
 			if self.is_eof() {
 				return Err(reifydb_type::error::Error(unexpected_token_error(
 					"expected '}' to close block",
-					token.fragment.clone(),
+					token.fragment.to_owned(),
 				)));
 			}
 
@@ -49,7 +49,7 @@ impl Parser {
 
 	/// Parse a single statement inside a block.
 	/// Stops at `;`, `}`, or EOF without consuming `}`.
-	fn parse_block_statement(&mut self) -> crate::Result<crate::ast::ast::AstStatement> {
+	fn parse_block_statement(&mut self) -> crate::Result<crate::ast::ast::AstStatement<'bump>> {
 		let mut nodes = Vec::with_capacity(4);
 		let mut has_pipes = false;
 

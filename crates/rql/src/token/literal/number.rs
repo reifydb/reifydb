@@ -8,7 +8,7 @@ use crate::token::{
 };
 
 /// Scan for a number literal
-pub fn scan_number(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -140,86 +140,98 @@ pub mod tests {
 	use Literal::Number;
 
 	use super::*;
-	use crate::token::{operator::Operator, tokenize};
+	use crate::{
+		bump::Bump,
+		token::{operator::Operator, tokenize},
+	};
 
 	#[test]
 	fn test_decimal_integer() {
-		let tokens = tokenize("42").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "42").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "42");
 	}
 
 	#[test]
 	fn test_decimal_float() {
-		let tokens = tokenize("3.14").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "3.14").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "3.14");
 	}
 
 	#[test]
 	fn test_decimal_with_underscores() {
-		let tokens = tokenize("1_234_567").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1_234_567").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "1_234_567");
 	}
 
 	#[test]
 	fn test_scientific_notation() {
-		let tokens = tokenize("1.23e10").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1.23e10").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "1.23e10");
 
-		let tokens = tokenize("5E-3").unwrap();
+		let tokens = tokenize(&bump, "5E-3").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "5E-3");
 	}
 
 	#[test]
 	fn test_hex_number() {
-		let tokens = tokenize("0x2A").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "0x2A").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "0x2A");
 
-		let tokens = tokenize("0xDEAD_BEEF").unwrap();
+		let tokens = tokenize(&bump, "0xDEAD_BEEF").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "0xDEAD_BEEF");
 	}
 
 	#[test]
 	fn test_binary_number() {
-		let tokens = tokenize("0b1010").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "0b1010").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "0b1010");
 
-		let tokens = tokenize("0b1111_0000").unwrap();
+		let tokens = tokenize(&bump, "0b1111_0000").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "0b1111_0000");
 	}
 
 	#[test]
 	fn test_octal_number() {
-		let tokens = tokenize("0o777").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "0o777").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "0o777");
 
-		let tokens = tokenize("0o12_34").unwrap();
+		let tokens = tokenize(&bump, "0o12_34").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "0o12_34");
 	}
 
 	#[test]
 	fn test_leading_dot() {
-		let tokens = tokenize(".5").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, ".5").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), ".5");
 	}
 
 	#[test]
 	fn test_leading_dot_decimal_with_identifier() {
+		let bump = Bump::new();
 		// Leading dot followed by digit and then identifier tokenizes as separate tokens
 		// This allows qualified identifiers like "namespace.5sec-cache"
 		// The parser will reject "5sec" as an identifier prefix
-		let tokens = tokenize(".5sec").unwrap();
+		let tokens = tokenize(&bump, ".5sec").unwrap();
 		assert_eq!(tokens.len(), 3); // Dot, Number("5"), Identifier("sec")
 		assert_eq!(tokens[0].kind, TokenKind::Operator(Operator::Dot));
 		assert_eq!(tokens[1].kind, TokenKind::Literal(Number));
@@ -230,8 +242,9 @@ pub mod tests {
 
 	#[test]
 	fn test_leading_dot_decimal_standalone() {
+		let bump = Bump::new();
 		// Leading dot decimals should work when standalone or with spacing
-		let tokens = tokenize(".5").unwrap();
+		let tokens = tokenize(&bump, ".5").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), ".5");
@@ -239,9 +252,10 @@ pub mod tests {
 
 	#[test]
 	fn test_number_with_trailing() {
+		let bump = Bump::new();
 		// Numbers directly followed by letters now token as separate tokens
 		// This enables hyphenated identifiers like "twap-10min"
-		let tokens = tokenize("42abc").unwrap();
+		let tokens = tokenize(&bump, "42abc").unwrap();
 		assert_eq!(tokens.len(), 2);
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "42");
@@ -249,19 +263,20 @@ pub mod tests {
 		assert_eq!(tokens[1].fragment.text(), "abc");
 
 		// With proper spacing, it also works
-		let tokens = tokenize("42 abc").unwrap();
+		let tokens = tokenize(&bump, "42 abc").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "42");
 	}
 
 	#[test]
 	fn test_invalid_numbers() {
+		let bump = Bump::new();
 		// Invalid hex (starts with _)
-		let result = tokenize("0x_FF");
+		let result = tokenize(&bump, "0x_FF");
 		assert!(result.is_err() || result.unwrap()[0].fragment.text() != "0x_FF");
 
 		// Invalid binary (contains 2)
-		let result = tokenize("0b102");
+		let result = tokenize(&bump, "0b102");
 		assert!(result.is_ok()); // Will be parsed as 0b10 followed by 2
 		let tokens = result.unwrap();
 		assert_eq!(tokens[0].fragment.text(), "0b10");

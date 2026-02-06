@@ -14,7 +14,7 @@ pub enum ParameterKind {
 }
 
 /// Scan for a parameter token ($1, $name, etc.)
-pub fn scan_parameter(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_parameter<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek() != Some('$') {
 		return None;
 	}
@@ -61,49 +61,53 @@ pub fn scan_parameter(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
+	use crate::bump::Bump;
 	use crate::token::tokenize;
 
 	#[test]
 	fn test_positional_parameter() {
-		let tokens = tokenize("$1").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "$1").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Parameter(ParameterKind::Positional(1)));
 		assert_eq!(tokens[0].fragment.text(), "$1");
 
-		let tokens = tokenize("$42").unwrap();
+		let tokens = tokenize(&bump, "$42").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Parameter(ParameterKind::Positional(42)));
 		assert_eq!(tokens[0].fragment.text(), "$42");
 	}
 
 	#[test]
 	fn test_named_parameter() {
-		let tokens = tokenize("$name").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "$name").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Parameter(ParameterKind::Named));
 		assert_eq!(tokens[0].fragment.text(), "$name");
 
-		let tokens = tokenize("$user_id").unwrap();
+		let tokens = tokenize(&bump, "$user_id").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Parameter(ParameterKind::Named));
 		assert_eq!(tokens[0].fragment.text(), "$user_id");
 
-		let tokens = tokenize("$_private").unwrap();
+		let tokens = tokenize(&bump, "$_private").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Parameter(ParameterKind::Named));
 		assert_eq!(tokens[0].fragment.text(), "$_private");
 	}
 
 	#[test]
 	fn test_invalid_parameters() {
+		let bump = Bump::new();
 		// $0 is not valid - should be parsed as $ and 0
-		let result = tokenize("$0");
+		let result = tokenize(&bump, "$0");
 		assert!(result.is_err()
 			|| result.as_ref().unwrap()[0].kind != TokenKind::Parameter(ParameterKind::Positional(0)));
 
 		// $ alone is not valid
-		let result = tokenize("$");
+		let result = tokenize(&bump, "$");
 		assert!(result.is_err()
 			|| (result.is_ok()
 				&& result.unwrap().iter().all(|t| !matches!(t.kind, TokenKind::Parameter(_)))));
 
 		// $123name is parsed as $123 followed by name
-		let tokens = tokenize("$123name").unwrap();
+		let tokens = tokenize(&bump, "$123name").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Parameter(ParameterKind::Positional(123)));
 		assert_eq!(tokens[0].fragment.text(), "$123");
 		assert_eq!(tokens[1].kind, TokenKind::Identifier);

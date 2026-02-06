@@ -29,10 +29,7 @@ use tracing::instrument;
 
 use crate::{
 	ast::{
-		ast::{
-			Ast, AstDataType, AstInfix, AstLiteral, AstLiteralText, AstMap, AstPolicy, AstPolicyKind,
-			AstStatement, InfixOperator,
-		},
+		ast::{Ast, AstDataType, AstInfix, AstPolicy, AstPolicyKind, AstStatement, InfixOperator},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
@@ -41,54 +38,59 @@ use crate::{
 			MaybeQualifiedTransactionalViewIdentifier,
 		},
 	},
+	bump::{Bump, BumpBox, BumpFragment, BumpVec},
 	expression::{AliasExpression, Expression},
 	plan::logical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
-	token::{
-		keyword::Keyword,
-		operator::Operator,
-		token::{Literal, Token, TokenKind},
-	},
 };
 
-pub(crate) struct Compiler {
+pub(crate) struct Compiler<'bump> {
 	pub catalog: Catalog,
+	pub bump: &'bump Bump,
 }
 
 /// Compile AST to logical plan using any transaction type that implements IntoTransaction
-#[instrument(name = "rql::compile::logical", level = "trace", skip(catalog, tx, ast))]
-pub fn compile_logical<T: AsTransaction>(
+#[instrument(name = "rql::compile::logical", level = "trace", skip(bump, catalog, tx, ast))]
+pub fn compile_logical<'b, T: AsTransaction>(
+	bump: &'b Bump,
 	catalog: &Catalog,
 	tx: &mut T,
-	ast: AstStatement,
-) -> crate::Result<Vec<LogicalPlan>> {
+	ast: AstStatement<'b>,
+) -> crate::Result<BumpVec<'b, LogicalPlan<'b>>> {
 	Compiler {
 		catalog: catalog.clone(),
+		bump,
 	}
 	.compile(ast, tx)
 }
 
-#[instrument(name = "rql::compile::logical_query", level = "trace", skip(catalog, tx, ast))]
-pub fn compile_logical_query(
+#[instrument(name = "rql::compile::logical_query", level = "trace", skip(bump, catalog, tx, ast))]
+pub fn compile_logical_query<'b>(
+	bump: &'b Bump,
 	catalog: &Catalog,
 	tx: &mut QueryTransaction,
-	ast: AstStatement,
-) -> crate::Result<Vec<LogicalPlan>> {
-	compile_logical(catalog, tx, ast)
+	ast: AstStatement<'b>,
+) -> crate::Result<BumpVec<'b, LogicalPlan<'b>>> {
+	compile_logical(bump, catalog, tx, ast)
 }
 
-#[instrument(name = "rql::compile::logical_command", level = "trace", skip(catalog, tx, ast))]
-pub fn compile_logical_command(
+#[instrument(name = "rql::compile::logical_command", level = "trace", skip(bump, catalog, tx, ast))]
+pub fn compile_logical_command<'b>(
+	bump: &'b Bump,
 	catalog: &Catalog,
 	tx: &mut CommandTransaction,
-	ast: AstStatement,
-) -> crate::Result<Vec<LogicalPlan>> {
-	compile_logical(catalog, tx, ast)
+	ast: AstStatement<'b>,
+) -> crate::Result<BumpVec<'b, LogicalPlan<'b>>> {
+	compile_logical(bump, catalog, tx, ast)
 }
 
-impl Compiler {
-	pub fn compile<T: AsTransaction>(&self, ast: AstStatement, tx: &mut T) -> crate::Result<Vec<LogicalPlan>> {
+impl<'bump> Compiler<'bump> {
+	pub fn compile<T: AsTransaction>(
+		&self,
+		ast: AstStatement<'bump>,
+		tx: &mut T,
+	) -> crate::Result<BumpVec<'bump, LogicalPlan<'bump>>> {
 		if ast.is_empty() {
-			return Ok(vec![]);
+			return Ok(BumpVec::new_in(self.bump));
 		}
 
 		let ast_len = ast.len();
@@ -101,17 +103,19 @@ impl Compiler {
 		// Pipeline
 		if has_pipes && ast_len > 1 {
 			// This uses pipe operators - create a Pipeline operator
-			let mut pipeline_nodes = Vec::new();
+			let mut pipeline_nodes = BumpVec::with_capacity_in(ast_len, self.bump);
 			for node in ast_vec {
 				pipeline_nodes.push(self.compile_single(node, tx)?);
 			}
-			return Ok(vec![LogicalPlan::Pipeline(PipelineNode {
+			let mut result = BumpVec::with_capacity_in(1, self.bump);
+			result.push(LogicalPlan::Pipeline(PipelineNode {
 				steps: pipeline_nodes,
-			})]);
+			}));
+			return Ok(result);
 		}
 
 		// Normal compilation (not piped)
-		let mut result = Vec::with_capacity(ast_len);
+		let mut result = BumpVec::with_capacity_in(ast_len, self.bump);
 		for node in ast_vec {
 			result.push(self.compile_single(node, tx)?);
 		}
@@ -119,7 +123,11 @@ impl Compiler {
 	}
 
 	// Helper to compile a single AST operator
-	pub fn compile_single<T: AsTransaction>(&self, node: Ast, tx: &mut T) -> crate::Result<LogicalPlan> {
+	pub fn compile_single<T: AsTransaction>(
+		&self,
+		node: Ast<'bump>,
+		tx: &mut T,
+	) -> crate::Result<LogicalPlan<'bump>> {
 		match node {
 			Ast::Create(node) => self.compile_create(node, tx),
 			Ast::Alter(node) => self.compile_alter(node, tx),
@@ -135,20 +143,18 @@ impl Compiler {
 			Ast::Let(node) => self.compile_let(node, tx),
 			Ast::StatementExpression(node) => {
 				// Compile the inner expression and wrap it in a MAP
-				let map_node = Self::wrap_scalar_in_map(*node.expression.clone());
-				self.compile_map(map_node)
+				self.compile_scalar_as_map(BumpBox::into_inner(node.expression))
 			}
 			Ast::Prefix(node) => {
 				// Prefix operations as statements - wrap in MAP
-				let map_node = Self::wrap_scalar_in_map(Ast::Prefix(node));
-				self.compile_map(map_node)
+				self.compile_scalar_as_map(Ast::Prefix(node))
 			}
-			Ast::Infix(ref infix_node) => {
+			Ast::Infix(infix_node) => {
 				match infix_node.operator {
 					// Assignment operations - variable assignment with = operator
-					InfixOperator::Assign(ref _token) => {
+					InfixOperator::Assign(_) => {
 						// This is a variable assignment statement
-						Self::compile_infix(infix_node.clone())
+						self.compile_infix(infix_node)
 					}
 					// Expression-like operations - wrap in MAP
 					InfixOperator::Add(_)
@@ -169,15 +175,12 @@ impl Compiler {
 					| InfixOperator::As(_)
 					| InfixOperator::TypeAscription(_)
 					| InfixOperator::In(_)
-					| InfixOperator::NotIn(_) => {
-						let wrapped_map = Self::wrap_scalar_in_map(node);
-						self.compile_map(wrapped_map)
-					}
+					| InfixOperator::NotIn(_) => self.compile_scalar_as_map(Ast::Infix(infix_node)),
 
 					// Statement-like operations - compile directly
 					InfixOperator::Arrow(_)
 					| InfixOperator::AccessTable(_)
-					| InfixOperator::AccessNamespace(_) => Self::compile_infix(infix_node.clone()),
+					| InfixOperator::AccessNamespace(_) => self.compile_infix(infix_node),
 				}
 			}
 			Ast::Aggregate(node) => self.compile_aggregate(node),
@@ -190,93 +193,81 @@ impl Compiler {
 			Ast::Distinct(node) => self.compile_distinct(node),
 			Ast::Map(node) => self.compile_map(node),
 			Ast::Extend(node) => self.compile_extend(node),
-			Ast::Apply(node) => Self::compile_apply(node),
+			Ast::Apply(node) => self.compile_apply(node),
 			Ast::Window(node) => self.compile_window(node),
 			Ast::Identifier(ref id) => {
-				return_error!(unsupported_ast_node(id.token.fragment.clone(), "standalone identifier"))
+				return_error!(unsupported_ast_node(
+					id.token.fragment.to_owned(),
+					"standalone identifier"
+				))
 			}
 			// Auto-wrap scalar expressions into MAP constructs
-			Ast::Literal(_) | Ast::Variable(_) => {
-				let wrapped_map = Self::wrap_scalar_in_map(node);
-				self.compile_map(wrapped_map)
-			}
+			Ast::Literal(_) | Ast::Variable(_) => self.compile_scalar_as_map(node),
 			// Function calls: check if it's potentially a user-defined function
-			Ast::CallFunction(ref call_node) => {
+			Ast::CallFunction(call_node) => {
 				// If no namespaces, treat as potential user-defined function call
 				if call_node.function.namespaces.is_empty() {
-					self.compile_call_function(call_node.clone())
+					self.compile_call_function(call_node)
 				} else {
 					// Namespaced function calls are always built-in functions
-					let wrapped_map = Self::wrap_scalar_in_map(node);
-					self.compile_map(wrapped_map)
+					self.compile_scalar_as_map(Ast::CallFunction(call_node))
 				}
 			}
 			Ast::Block(_) => {
 				// Blocks are handled by their parent constructs (IF, LOOP, etc.)
-				return_error!(unsupported_ast_node(node.token().fragment.clone(), "standalone block"))
+				return_error!(unsupported_ast_node(
+					node.token().fragment.to_owned(),
+					"standalone block"
+				))
 			}
 			Ast::DefFunction(node) => self.compile_def_function(node, tx),
 			Ast::Return(node) => self.compile_return(node),
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
-				return_error!(unsupported_ast_node(node.token().fragment.clone(), &node_type))
+				return_error!(unsupported_ast_node(node.token().fragment.to_owned(), &node_type))
 			}
 		}
 	}
 
-	// Helper to wrap scalar expressions in MAP { "value": expression }
-	fn wrap_scalar_in_map(scalar_node: Ast) -> crate::ast::ast::AstMap {
-		let scalar_fragment = scalar_node.token().fragment.clone();
+	// Helper to wrap a scalar expression in a MAP { "value": expression }
+	// Instead of creating synthetic AST nodes (which would require a bump allocator),
+	// this directly compiles the scalar and wraps the result in a MapNode.
+	fn compile_scalar_as_map(&self, scalar_node: Ast<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+		use crate::expression::{AliasExpression, ExpressionCompiler, IdentExpression};
 
-		// Create synthetic tokens for the MAP structure
-		let map_token = Token {
-			kind: TokenKind::Keyword(Keyword::Map),
-			fragment: scalar_fragment.clone(),
+		let fragment = scalar_node.token().fragment.to_owned();
+		let expr = ExpressionCompiler::compile(scalar_node)?;
+		let alias_expr = AliasExpression {
+			alias: IdentExpression(Fragment::internal("value")),
+			expression: Box::new(expr),
+			fragment,
 		};
 
-		let key_token = Token {
-			kind: TokenKind::Literal(Literal::Text),
-			fragment: Fragment::internal("value"),
-		};
-
-		let colon_token = Token {
-			kind: TokenKind::Operator(Operator::Colon),
-			fragment: scalar_fragment.clone(),
-		};
-
-		// Create the key-value pair: "value": scalar_node
-		let key_literal = Ast::Literal(AstLiteral::Text(AstLiteralText(key_token.clone())));
-		let key_value_pair = Ast::Infix(AstInfix {
-			token: key_token,
-			left: Box::new(key_literal),
-			operator: InfixOperator::TypeAscription(colon_token),
-			right: Box::new(scalar_node),
-		});
-
-		AstMap {
-			token: map_token,
-			nodes: vec![key_value_pair],
-		}
+		Ok(LogicalPlan::Map(MapNode {
+			map: vec![crate::expression::Expression::Alias(alias_expr)],
+		}))
 	}
 
-	fn compile_infix(node: AstInfix) -> crate::Result<LogicalPlan> {
+	fn compile_infix(&self, node: AstInfix<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		match node.operator {
 			InfixOperator::Assign(_token) => {
 				// This is a variable assignment statement
 				// Extract the variable name from the left side
-				let variable = match *node.left {
+				let variable = match BumpBox::into_inner(node.left) {
 					crate::ast::ast::Ast::Variable(var) => var,
 					_ => {
 						return_error!(unsupported_ast_node(
-							node.token.fragment,
+							node.token.fragment.to_owned(),
 							"assignment to non-variable"
 						))
 					}
 				};
 
 				// Convert the right side to an expression
-				let expr = crate::expression::ExpressionCompiler::compile(*node.right)?;
+				let expr = crate::expression::ExpressionCompiler::compile(BumpBox::into_inner(
+					node.right,
+				))?;
 				let value = AssignValue::Expression(expr);
 
 				// Extract variable name (remove $ prefix if present)
@@ -288,101 +279,104 @@ impl Compiler {
 				};
 
 				Ok(LogicalPlan::Assign(AssignNode {
-					name: Fragment::internal(clean_name),
+					name: BumpFragment::internal(self.bump, clean_name),
 					value,
 				}))
 			}
 			_ => {
 				// Other infix operations are not supported as standalone statements
-				return_error!(unsupported_ast_node(node.token.fragment, "infix operation as statement"))
+				return_error!(unsupported_ast_node(
+					node.token.fragment.to_owned(),
+					"infix operation as statement"
+				))
 			}
 		}
 	}
 }
 
 #[derive(Debug)]
-pub enum LogicalPlan {
-	CreateDeferredView(CreateDeferredViewNode),
-	CreateTransactionalView(CreateTransactionalViewNode),
-	CreateNamespace(CreateNamespaceNode),
-	CreateSequence(CreateSequenceNode),
-	CreateTable(CreateTableNode),
-	CreateRingBuffer(CreateRingBufferNode),
-	CreateDictionary(CreateDictionaryNode),
-	CreateFlow(CreateFlowNode),
-	CreateIndex(CreateIndexNode),
-	CreateSubscription(CreateSubscriptionNode),
+pub enum LogicalPlan<'bump> {
+	CreateDeferredView(CreateDeferredViewNode<'bump>),
+	CreateTransactionalView(CreateTransactionalViewNode<'bump>),
+	CreateNamespace(CreateNamespaceNode<'bump>),
+	CreateSequence(CreateSequenceNode<'bump>),
+	CreateTable(CreateTableNode<'bump>),
+	CreateRingBuffer(CreateRingBufferNode<'bump>),
+	CreateDictionary(CreateDictionaryNode<'bump>),
+	CreateFlow(CreateFlowNode<'bump>),
+	CreateIndex(CreateIndexNode<'bump>),
+	CreateSubscription(CreateSubscriptionNode<'bump>),
 	// Alter
-	AlterSequence(AlterSequenceNode),
-	AlterTable(AlterTableNode),
-	AlterView(AlterViewNode),
-	AlterFlow(AlterFlowNode),
+	AlterSequence(AlterSequenceNode<'bump>),
+	AlterTable(AlterTableNode<'bump>),
+	AlterView(AlterViewNode<'bump>),
+	AlterFlow(AlterFlowNode<'bump>),
 	// Mutate
-	DeleteTable(DeleteTableNode),
-	DeleteRingBuffer(DeleteRingBufferNode),
-	InsertTable(InsertTableNode),
-	InsertRingBuffer(InsertRingBufferNode),
-	InsertDictionary(InsertDictionaryNode),
-	Update(UpdateTableNode),
-	UpdateRingBuffer(UpdateRingBufferNode),
+	DeleteTable(DeleteTableNode<'bump>),
+	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
+	InsertTable(InsertTableNode<'bump>),
+	InsertRingBuffer(InsertRingBufferNode<'bump>),
+	InsertDictionary(InsertDictionaryNode<'bump>),
+	Update(UpdateTableNode<'bump>),
+	UpdateRingBuffer(UpdateRingBufferNode<'bump>),
 	// Variable assignment
-	Declare(DeclareNode),
-	Assign(AssignNode),
+	Declare(DeclareNode<'bump>),
+	Assign(AssignNode<'bump>),
 	// Control flow
-	Conditional(ConditionalNode),
-	Loop(LoopNode),
-	While(WhileNode),
-	For(ForNode),
+	Conditional(ConditionalNode<'bump>),
+	Loop(LoopNode<'bump>),
+	While(WhileNode<'bump>),
+	For(ForNode<'bump>),
 	Break,
 	Continue,
 	// Query
 	Aggregate(AggregateNode),
-	Distinct(DistinctNode),
+	Distinct(DistinctNode<'bump>),
 	Filter(FilterNode),
-	JoinInner(JoinInnerNode),
-	JoinLeft(JoinLeftNode),
-	JoinNatural(JoinNaturalNode),
-	Merge(MergeNode),
+	JoinInner(JoinInnerNode<'bump>),
+	JoinLeft(JoinLeftNode<'bump>),
+	JoinNatural(JoinNaturalNode<'bump>),
+	Merge(MergeNode<'bump>),
 	Take(TakeNode),
 	Order(OrderNode),
 	Map(MapNode),
 	Extend(ExtendNode),
 	Patch(PatchNode),
-	Apply(ApplyNode),
+	Apply(ApplyNode<'bump>),
 	InlineData(InlineDataNode),
 	PrimitiveScan(PrimitiveScanNode),
 	Window(WindowNode),
-	Generator(GeneratorNode),
-	VariableSource(VariableSourceNode),
+	Generator(GeneratorNode<'bump>),
+	VariableSource(VariableSourceNode<'bump>),
 	Environment(EnvironmentNode),
 	// Auto-scalarization for 1x1 frames in scalar contexts
-	Scalarize(ScalarizeNode),
+	Scalarize(ScalarizeNode<'bump>),
 	// Pipeline wrapper for piped operations
-	Pipeline(PipelineNode),
+	Pipeline(PipelineNode<'bump>),
 	// User-defined functions
-	DefineFunction(function::DefineFunctionNode),
+	DefineFunction(function::DefineFunctionNode<'bump>),
 	Return(function::ReturnNode),
-	CallFunction(function::CallFunctionNode),
+	CallFunction(function::CallFunctionNode<'bump>),
 }
 
 #[derive(Debug)]
-pub struct PipelineNode {
-	pub steps: Vec<LogicalPlan>,
+pub struct PipelineNode<'bump> {
+	pub steps: BumpVec<'bump, LogicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct ScalarizeNode {
-	pub input: Box<LogicalPlan>,
-	pub fragment: Fragment,
+pub struct ScalarizeNode<'bump> {
+	pub input: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub fragment: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]
-pub enum LetValue {
-	Expression(Expression),      // scalar/column expression
-	Statement(Vec<LogicalPlan>), // query pipeline as logical plans
+pub enum LetValue<'bump> {
+	Expression(Expression),                        // scalar/column expression
+	Statement(BumpVec<'bump, LogicalPlan<'bump>>), // query pipeline as logical plans
 }
 
-impl std::fmt::Display for LetValue {
+impl<'bump> std::fmt::Display for LetValue<'bump> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
@@ -392,12 +386,12 @@ impl std::fmt::Display for LetValue {
 }
 
 #[derive(Debug)]
-pub enum AssignValue {
-	Expression(Expression),      // scalar/column expression
-	Statement(Vec<LogicalPlan>), // query pipeline as logical plans
+pub enum AssignValue<'bump> {
+	Expression(Expression),                        // scalar/column expression
+	Statement(BumpVec<'bump, LogicalPlan<'bump>>), // query pipeline as logical plans
 }
 
-impl std::fmt::Display for AssignValue {
+impl<'bump> std::fmt::Display for AssignValue<'bump> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			AssignValue::Expression(expr) => write!(f, "{}", expr),
@@ -407,190 +401,190 @@ impl std::fmt::Display for AssignValue {
 }
 
 #[derive(Debug)]
-pub struct DeclareNode {
-	pub name: Fragment,
-	pub value: LetValue,
+pub struct DeclareNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub value: LetValue<'bump>,
 }
 
 #[derive(Debug)]
-pub struct AssignNode {
-	pub name: Fragment,
-	pub value: AssignValue,
+pub struct AssignNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub value: AssignValue<'bump>,
 }
 
 #[derive(Debug)]
-pub struct ConditionalNode {
+pub struct ConditionalNode<'bump> {
 	pub condition: Expression,
-	pub then_branch: Box<LogicalPlan>,
-	pub else_ifs: Vec<ElseIfBranch>,
-	pub else_branch: Option<Box<LogicalPlan>>,
+	pub then_branch: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub else_ifs: Vec<ElseIfBranch<'bump>>,
+	pub else_branch: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
 }
 
 #[derive(Debug)]
-pub struct ElseIfBranch {
+pub struct ElseIfBranch<'bump> {
 	pub condition: Expression,
-	pub then_branch: Box<LogicalPlan>,
+	pub then_branch: BumpBox<'bump, LogicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct LoopNode {
-	pub body: Vec<Vec<LogicalPlan>>,
+pub struct LoopNode<'bump> {
+	pub body: Vec<BumpVec<'bump, LogicalPlan<'bump>>>,
 }
 
 #[derive(Debug)]
-pub struct WhileNode {
+pub struct WhileNode<'bump> {
 	pub condition: Expression,
-	pub body: Vec<Vec<LogicalPlan>>,
+	pub body: Vec<BumpVec<'bump, LogicalPlan<'bump>>>,
 }
 
 #[derive(Debug)]
-pub struct ForNode {
-	pub variable_name: Fragment,
-	pub iterable: Vec<LogicalPlan>,
-	pub body: Vec<Vec<LogicalPlan>>,
+pub struct ForNode<'bump> {
+	pub variable_name: BumpFragment<'bump>,
+	pub iterable: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub body: Vec<BumpVec<'bump, LogicalPlan<'bump>>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct PrimaryKeyDef {
-	pub columns: Vec<PrimaryKeyColumn>,
+pub struct PrimaryKeyDef<'bump> {
+	pub columns: Vec<PrimaryKeyColumn<'bump>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct PrimaryKeyColumn {
-	pub column: Fragment,
+pub struct PrimaryKeyColumn<'bump> {
+	pub column: BumpFragment<'bump>,
 	pub order: Option<SortDirection>,
 }
 
 #[derive(Debug)]
-pub struct CreateDeferredViewNode {
-	pub view: MaybeQualifiedDeferredViewIdentifier,
+pub struct CreateDeferredViewNode<'bump> {
+	pub view: MaybeQualifiedDeferredViewIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub as_clause: Vec<LogicalPlan>,
-	pub primary_key: Option<PrimaryKeyDef>,
+	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub primary_key: Option<PrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct CreateTransactionalViewNode {
-	pub view: MaybeQualifiedTransactionalViewIdentifier,
+pub struct CreateTransactionalViewNode<'bump> {
+	pub view: MaybeQualifiedTransactionalViewIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub as_clause: Vec<LogicalPlan>,
-	pub primary_key: Option<PrimaryKeyDef>,
+	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub primary_key: Option<PrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct CreateNamespaceNode {
-	pub namespace: Fragment,
+pub struct CreateNamespaceNode<'bump> {
+	pub namespace: BumpFragment<'bump>,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
-pub struct CreateSequenceNode {
-	pub sequence: MaybeQualifiedSequenceIdentifier,
+pub struct CreateSequenceNode<'bump> {
+	pub sequence: MaybeQualifiedSequenceIdentifier<'bump>,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
-pub struct CreateTableNode {
-	pub table: MaybeQualifiedTableIdentifier,
+pub struct CreateTableNode<'bump> {
+	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
-	pub primary_key: Option<PrimaryKeyDef>,
+	pub primary_key: Option<PrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct CreateRingBufferNode {
-	pub ringbuffer: MaybeQualifiedRingBufferIdentifier,
+pub struct CreateRingBufferNode<'bump> {
+	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
-	pub primary_key: Option<PrimaryKeyDef>,
+	pub primary_key: Option<PrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct CreateDictionaryNode {
-	pub dictionary: MaybeQualifiedDictionaryIdentifier,
+pub struct CreateDictionaryNode<'bump> {
+	pub dictionary: MaybeQualifiedDictionaryIdentifier<'bump>,
 	pub if_not_exists: bool,
-	pub value_type: AstDataType,
-	pub id_type: AstDataType,
+	pub value_type: AstDataType<'bump>,
+	pub id_type: AstDataType<'bump>,
 }
 
 #[derive(Debug)]
-pub struct CreateFlowNode {
-	pub flow: MaybeQualifiedFlowIdentifier,
+pub struct CreateFlowNode<'bump> {
+	pub flow: MaybeQualifiedFlowIdentifier<'bump>,
 	pub if_not_exists: bool,
-	pub as_clause: Vec<LogicalPlan>,
+	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct AlterSequenceNode {
-	pub sequence: MaybeQualifiedSequenceIdentifier,
-	pub column: MaybeQualifiedColumnIdentifier,
+pub struct AlterSequenceNode<'bump> {
+	pub sequence: MaybeQualifiedSequenceIdentifier<'bump>,
+	pub column: MaybeQualifiedColumnIdentifier<'bump>,
 	pub value: Expression,
 }
 
 #[derive(Debug)]
-pub struct CreateIndexNode {
+pub struct CreateIndexNode<'bump> {
 	pub index_type: IndexType,
-	pub index: MaybeQualifiedIndexIdentifier,
-	pub columns: Vec<IndexColumn>,
+	pub index: MaybeQualifiedIndexIdentifier<'bump>,
+	pub columns: Vec<IndexColumn<'bump>>,
 	pub filter: Vec<Expression>,
 	pub map: Option<Expression>,
 }
 
 #[derive(Debug)]
-pub struct CreateSubscriptionNode {
+pub struct CreateSubscriptionNode<'bump> {
 	pub columns: Vec<SubscriptionColumnToCreate>,
-	pub as_clause: Option<AstStatement>,
+	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct IndexColumn {
-	pub column: Fragment,
+pub struct IndexColumn<'bump> {
+	pub column: BumpFragment<'bump>,
 	pub order: Option<SortDirection>,
 }
 
 #[derive(Debug)]
-pub struct DeleteTableNode {
-	pub target: Option<MaybeQualifiedTableIdentifier>,
-	pub input: Option<Box<LogicalPlan>>,
+pub struct DeleteTableNode<'bump> {
+	pub target: Option<MaybeQualifiedTableIdentifier<'bump>>,
+	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
 }
 
 #[derive(Debug)]
-pub struct DeleteRingBufferNode {
-	pub target: MaybeQualifiedRingBufferIdentifier,
-	pub input: Option<Box<LogicalPlan>>,
+pub struct DeleteRingBufferNode<'bump> {
+	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
+	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
 }
 
 #[derive(Debug)]
-pub struct InsertTableNode {
-	pub target: MaybeQualifiedTableIdentifier,
-	pub source: Box<LogicalPlan>,
+pub struct InsertTableNode<'bump> {
+	pub target: MaybeQualifiedTableIdentifier<'bump>,
+	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct InsertRingBufferNode {
-	pub target: MaybeQualifiedRingBufferIdentifier,
-	pub source: Box<LogicalPlan>,
+pub struct InsertRingBufferNode<'bump> {
+	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
+	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct InsertDictionaryNode {
-	pub target: MaybeQualifiedDictionaryIdentifier,
-	pub source: Box<LogicalPlan>,
+pub struct InsertDictionaryNode<'bump> {
+	pub target: MaybeQualifiedDictionaryIdentifier<'bump>,
+	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct UpdateTableNode {
-	pub target: Option<MaybeQualifiedTableIdentifier>,
-	pub input: Option<Box<LogicalPlan>>,
+pub struct UpdateTableNode<'bump> {
+	pub target: Option<MaybeQualifiedTableIdentifier<'bump>>,
+	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
 }
 
 #[derive(Debug)]
-pub struct UpdateRingBufferNode {
-	pub target: MaybeQualifiedRingBufferIdentifier,
-	pub input: Option<Box<LogicalPlan>>,
+pub struct UpdateRingBufferNode<'bump> {
+	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
+	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
 }
 
 #[derive(Debug)]
@@ -600,8 +594,8 @@ pub struct AggregateNode {
 }
 
 #[derive(Debug)]
-pub struct DistinctNode {
-	pub columns: Vec<MaybeQualifiedColumnIdentifier>,
+pub struct DistinctNode<'bump> {
+	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
 }
 
 #[derive(Debug)]
@@ -610,29 +604,29 @@ pub struct FilterNode {
 }
 
 #[derive(Debug)]
-pub struct JoinInnerNode {
-	pub with: Vec<LogicalPlan>,
+pub struct JoinInnerNode<'bump> {
+	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
-	pub alias: Option<Fragment>,
+	pub alias: Option<BumpFragment<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct JoinLeftNode {
-	pub with: Vec<LogicalPlan>,
+pub struct JoinLeftNode<'bump> {
+	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
-	pub alias: Option<Fragment>,
+	pub alias: Option<BumpFragment<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct JoinNaturalNode {
-	pub with: Vec<LogicalPlan>,
+pub struct JoinNaturalNode<'bump> {
+	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub join_type: JoinType,
-	pub alias: Option<Fragment>,
+	pub alias: Option<BumpFragment<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct MergeNode {
-	pub with: Vec<LogicalPlan>,
+pub struct MergeNode<'bump> {
+	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
@@ -661,8 +655,8 @@ pub struct PatchNode {
 }
 
 #[derive(Debug)]
-pub struct ApplyNode {
-	pub operator: Fragment,
+pub struct ApplyNode<'bump> {
+	pub operator: BumpFragment<'bump>,
 	pub arguments: Vec<Expression>,
 }
 
@@ -679,14 +673,14 @@ pub struct PrimitiveScanNode {
 }
 
 #[derive(Debug)]
-pub struct GeneratorNode {
-	pub name: Fragment,
+pub struct GeneratorNode<'bump> {
+	pub name: BumpFragment<'bump>,
 	pub expressions: Vec<Expression>,
 }
 
 #[derive(Debug)]
-pub struct VariableSourceNode {
-	pub name: Fragment,
+pub struct VariableSourceNode<'bump> {
+	pub name: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]

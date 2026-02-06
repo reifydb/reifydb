@@ -6,12 +6,13 @@ use crate::{
 		ast::{AstDataType, AstDefFunction, AstFunctionParameter, AstReturn, AstVariable},
 		parse::{Parser, Precedence},
 	},
+	bump::BumpBox,
 	token::{keyword::Keyword, operator::Operator, separator::Separator, token::TokenKind},
 };
 
-impl Parser {
+impl<'bump> Parser<'bump> {
 	/// Parse `DEF name ($param: type, ...) -> return_type { body }`
-	pub(crate) fn parse_def_function(&mut self) -> crate::Result<AstDefFunction> {
+	pub(crate) fn parse_def_function(&mut self) -> crate::Result<AstDefFunction<'bump>> {
 		let token = self.consume_keyword(Keyword::Def)?;
 		let name = self.parse_identifier()?;
 
@@ -40,7 +41,7 @@ impl Parser {
 	}
 
 	/// Parse function parameters: $var: type, $var2: type
-	fn parse_function_parameters(&mut self) -> crate::Result<Vec<AstFunctionParameter>> {
+	fn parse_function_parameters(&mut self) -> crate::Result<Vec<AstFunctionParameter<'bump>>> {
 		let mut parameters = Vec::new();
 
 		loop {
@@ -54,7 +55,7 @@ impl Parser {
 			// Parse parameter: $name or $name: type
 			let param_token = self.consume(TokenKind::Variable)?;
 			let variable = AstVariable {
-				token: param_token.clone(),
+				token: param_token,
 			};
 
 			// Optional type annotation: : type
@@ -88,7 +89,7 @@ impl Parser {
 	}
 
 	/// Parse a type annotation (identifier with optional parameters)
-	fn parse_type_annotation(&mut self) -> crate::Result<AstDataType> {
+	fn parse_type_annotation(&mut self) -> crate::Result<AstDataType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
 		// Check for type with parameters like DECIMAL(10,2)
@@ -116,7 +117,7 @@ impl Parser {
 	}
 
 	/// Parse `RETURN` or `RETURN expr`
-	pub(crate) fn parse_return(&mut self) -> crate::Result<AstReturn> {
+	pub(crate) fn parse_return(&mut self) -> crate::Result<AstReturn<'bump>> {
 		let token = self.consume_keyword(Keyword::Return)?;
 
 		// Check if there's a value to return (not at EOF, semicolon, or closing brace)
@@ -128,7 +129,7 @@ impl Parser {
 			{
 				None
 			} else {
-				Some(Box::new(self.parse_node(Precedence::None)?))
+				Some(BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump()))
 			}
 		} else {
 			None
@@ -148,13 +149,18 @@ pub mod tests {
 			ast::{Ast, AstDataType},
 			parse::parse,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_def_function_no_params() {
-		let tokens = tokenize("DEF hello () { MAP { \"message\": \"Hello\" } }").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DEF hello () { MAP { \"message\": \"Hello\" } }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -168,8 +174,12 @@ pub mod tests {
 
 	#[test]
 	fn test_def_function_with_params() {
-		let tokens = tokenize("DEF greet ($name) { MAP { \"message\": $name } }").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DEF greet ($name) { MAP { \"message\": $name } }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -184,8 +194,9 @@ pub mod tests {
 
 	#[test]
 	fn test_def_function_with_typed_params() {
-		let tokens = tokenize("DEF add ($a: int, $b: int) { $a + $b }").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DEF add ($a: int, $b: int) { $a + $b }").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -210,8 +221,10 @@ pub mod tests {
 
 	#[test]
 	fn test_def_function_with_return_type() {
-		let tokens = tokenize("DEF add ($a: int, $b: int) -> int { $a + $b }").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "DEF add ($a: int, $b: int) -> int { $a + $b }").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -227,8 +240,9 @@ pub mod tests {
 
 	#[test]
 	fn test_def_function_mixed_typed_params() {
-		let tokens = tokenize("DEF example ($x, $y: int) { $x + $y }").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DEF example ($x, $y: int) { $x + $y }").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -247,8 +261,9 @@ pub mod tests {
 
 	#[test]
 	fn test_return_with_value() {
-		let tokens = tokenize("RETURN 42").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "RETURN 42").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Return(ret) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -260,8 +275,9 @@ pub mod tests {
 
 	#[test]
 	fn test_return_without_value() {
-		let tokens = tokenize("RETURN;").unwrap();
-		let mut result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "RETURN;").unwrap().into_iter().collect();
+		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Return(ret) = result.pop().unwrap().nodes.pop().unwrap() else {

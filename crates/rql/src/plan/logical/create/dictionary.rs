@@ -6,8 +6,11 @@ use crate::{
 	plan::logical::{Compiler, CreateDictionaryNode, LogicalPlan},
 };
 
-impl Compiler {
-	pub(crate) fn compile_create_dictionary(&self, ast: AstCreateDictionary) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_create_dictionary(
+		&self,
+		ast: AstCreateDictionary<'bump>,
+	) -> crate::Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::CreateDictionary(CreateDictionaryNode {
 			dictionary: ast.dictionary,
 			if_not_exists: ast.if_not_exists,

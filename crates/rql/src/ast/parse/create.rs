@@ -34,13 +34,13 @@ use crate::{
 };
 
 /// Structure to hold WITH block options
-struct WithOptions {
+struct WithOptions<'bump> {
 	capacity: Option<u64>,
-	primary_key: Option<AstPrimaryKeyDef>,
+	primary_key: Option<AstPrimaryKeyDef<'bump>>,
 }
 
-impl Parser {
-	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate<'bump>> {
 		let token = self.consume_keyword(Create)?;
 
 		// Check for CREATE OR REPLACE
@@ -61,7 +61,7 @@ impl Parser {
 			return Err(reifydb_type::error::Error(
 				reifydb_type::error::diagnostic::ast::unexpected_token_error(
 					"FLOW after CREATE OR REPLACE",
-					self.current()?.fragment.clone(),
+					self.current()?.fragment.to_owned(),
 				),
 			));
 		}
@@ -111,7 +111,7 @@ impl Parser {
 		unimplemented!();
 	}
 
-	fn parse_namespace(&mut self, token: Token) -> crate::Result<AstCreate> {
+	fn parse_namespace(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		// Check for IF NOT EXISTS BEFORE identifier
 		let mut if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
@@ -138,7 +138,7 @@ impl Parser {
 		}))
 	}
 
-	fn parse_series(&mut self, token: Token) -> crate::Result<AstCreate> {
+	fn parse_series(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -154,7 +154,7 @@ impl Parser {
 		}))
 	}
 
-	fn parse_subscription(&mut self, token: Token) -> crate::Result<AstCreate> {
+	fn parse_subscription(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		// Subscriptions don't have names - they're identified only by UUID v7
 		// Syntax: CREATE SUBSCRIPTION { columns... } AS { query }
 		// Or schema-less: CREATE SUBSCRIPTION AS { query }
@@ -170,7 +170,7 @@ impl Parser {
 			return Err(reifydb_type::error::Error(
 				reifydb_type::error::diagnostic::ast::unexpected_token_error(
 					"'{' or 'AS'",
-					self.current()?.fragment.clone(),
+					self.current()?.fragment.to_owned(),
 				),
 			));
 		};
@@ -220,9 +220,9 @@ impl Parser {
 			return Err(reifydb_type::error::Error(
 				reifydb_type::error::diagnostic::ast::unexpected_token_error(
 					"AS clause (schema-less CREATE SUBSCRIPTION requires AS clause)",
-					self.current().ok().and_then(|t| Some(t.fragment.clone())).unwrap_or_else(
-						|| reifydb_type::fragment::Fragment::internal("end of input"),
-					),
+					self.current().ok().map(|t| t.fragment.to_owned()).unwrap_or_else(|| {
+						reifydb_type::fragment::Fragment::internal("end of input")
+					}),
 				),
 			));
 		}
@@ -234,7 +234,7 @@ impl Parser {
 		}))
 	}
 
-	fn parse_deferred_view(&mut self, token: Token) -> crate::Result<AstCreate> {
+	fn parse_deferred_view(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -304,7 +304,7 @@ impl Parser {
 		}))
 	}
 
-	fn parse_transactional_view(&mut self, token: Token) -> crate::Result<AstCreate> {
+	fn parse_transactional_view(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -375,7 +375,7 @@ impl Parser {
 		}))
 	}
 
-	fn parse_table(&mut self, token: Token) -> crate::Result<AstCreate> {
+	fn parse_table(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -404,7 +404,7 @@ impl Parser {
 		}))
 	}
 
-	fn parse_ringbuffer(&mut self, token: Token) -> crate::Result<AstCreate> {
+	fn parse_ringbuffer(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -418,7 +418,7 @@ impl Parser {
 				"'capacity' is required for RINGBUFFER",
 				self.current()
 					.ok()
-					.and_then(|t| Some(t.fragment.clone()))
+					.map(|t| t.fragment.to_owned())
 					.unwrap_or_else(|| reifydb_type::fragment::Fragment::internal("end of input")),
 			))
 		})?;
@@ -439,7 +439,7 @@ impl Parser {
 
 	/// Parse primary key definition: {col1: DESC, col2: ASC}
 	/// Defaults to DESC when sort order is not specified
-	fn parse_primary_key_definition(&mut self) -> crate::Result<AstPrimaryKeyDef> {
+	fn parse_primary_key_definition(&mut self) -> crate::Result<AstPrimaryKeyDef<'bump>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -494,7 +494,7 @@ impl Parser {
 			return Err(reifydb_type::error::Error(
 				reifydb_type::error::diagnostic::ast::unexpected_token_error(
 					"at least one column in primary key",
-					self.current()?.fragment.clone(),
+					self.current()?.fragment.to_owned(),
 				),
 			));
 		}
@@ -505,7 +505,7 @@ impl Parser {
 	}
 
 	/// Parse WITH block: WITH { capacity: N, primary_key: {col1, col2} }
-	fn parse_with_block(&mut self) -> crate::Result<WithOptions> {
+	fn parse_with_block(&mut self) -> crate::Result<WithOptions<'bump>> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -531,7 +531,7 @@ impl Parser {
 							reifydb_type::error::Error(
 								reifydb_type::error::diagnostic::ast::unexpected_token_error(
 									"valid capacity number",
-									capacity_token.fragment.clone(),
+									capacity_token.fragment.to_owned(),
 								),
 							)
 						})?);
@@ -543,7 +543,7 @@ impl Parser {
 					return Err(reifydb_type::error::Error(
 						reifydb_type::error::diagnostic::ast::unexpected_token_error(
 							"'capacity' or 'primary_key'",
-							key.fragment.clone(),
+							key.fragment.to_owned(),
 						),
 					));
 				}
@@ -569,7 +569,7 @@ impl Parser {
 		})
 	}
 
-	fn parse_dictionary(&mut self, token: Token) -> crate::Result<AstCreate> {
+	fn parse_dictionary(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		// Check for IF NOT EXISTS
 		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
@@ -609,7 +609,7 @@ impl Parser {
 		}))
 	}
 
-	fn parse_type(&mut self) -> crate::Result<AstDataType> {
+	fn parse_type(&mut self) -> crate::Result<AstDataType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
 		// Check for type with parameters like DECIMAL(10,2)
@@ -636,7 +636,7 @@ impl Parser {
 		}
 	}
 
-	fn parse_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate>> {
+	fn parse_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate<'bump>>> {
 		let mut result = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -661,7 +661,7 @@ impl Parser {
 		Ok(result)
 	}
 
-	fn parse_column(&mut self) -> crate::Result<AstColumnToCreate> {
+	fn parse_column(&mut self) -> crate::Result<AstColumnToCreate<'bump>> {
 		let name_identifier = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Colon)?;
 		let ty_token = self.consume(TokenKind::Identifier)?;
@@ -736,7 +736,7 @@ impl Parser {
 		})
 	}
 
-	fn parse_flow(&mut self, token: Token, or_replace: bool) -> crate::Result<AstCreate> {
+	fn parse_flow(&mut self, token: Token<'bump>, or_replace: bool) -> crate::Result<AstCreate<'bump>> {
 		use crate::ast::identifier::MaybeQualifiedFlowIdentifier;
 
 		// Check for IF NOT EXISTS
@@ -754,11 +754,10 @@ impl Parser {
 		let flow = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
 			// namespace.name format
 			let second_token = self.consume(TokenKind::Identifier)?;
-			MaybeQualifiedFlowIdentifier::new(second_token.fragment.clone())
-				.with_namespace(first_token.fragment.clone())
+			MaybeQualifiedFlowIdentifier::new(second_token.fragment).with_namespace(first_token.fragment)
 		} else {
 			// just name format
-			MaybeQualifiedFlowIdentifier::new(first_token.fragment.clone())
+			MaybeQualifiedFlowIdentifier::new(first_token.fragment)
 		};
 
 		// Parse required AS clause
@@ -860,13 +859,15 @@ pub mod tests {
 			},
 			parse::Parser,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_create_namespace() {
-		let tokens = tokenize("CREATE NAMESPACE REIFYDB").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE NAMESPACE REIFYDB").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -888,8 +889,9 @@ pub mod tests {
 
 	#[test]
 	fn test_create_namespace_with_hyphen() {
-		let tokens = tokenize("CREATE NAMESPACE my-namespace").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE NAMESPACE my-namespace").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -911,8 +913,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_namespace_if_not_exists() {
-		let tokens = tokenize("CREATE NAMESPACE IF NOT EXISTS my_namespace").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "CREATE NAMESPACE IF NOT EXISTS my_namespace").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -934,8 +938,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_namespace_if_not_exists_with_hyphen() {
-		let tokens = tokenize("CREATE NAMESPACE IF NOT EXISTS my-test-namespace").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE NAMESPACE IF NOT EXISTS my-test-namespace")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -957,8 +965,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_namespace_if_not_exists_with_backtick() {
-		let tokens = tokenize("CREATE NAMESPACE IF NOT EXISTS `my-namespace`").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "CREATE NAMESPACE IF NOT EXISTS `my-namespace`").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -980,8 +990,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_namespace_name_if_not_exists() {
-		let tokens = tokenize("CREATE NAMESPACE my_namespace IF NOT EXISTS").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "CREATE NAMESPACE my_namespace IF NOT EXISTS").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1003,8 +1015,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_namespace_name_if_not_exists_with_hyphen() {
-		let tokens = tokenize("CREATE NAMESPACE my-test-namespace IF NOT EXISTS").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE NAMESPACE my-test-namespace IF NOT EXISTS")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1026,8 +1042,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_namespace_name_if_not_exists_with_backtick() {
-		let tokens = tokenize("CREATE NAMESPACE `my-namespace` IF NOT EXISTS").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "CREATE NAMESPACE `my-namespace` IF NOT EXISTS").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1049,8 +1067,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_table_with_hyphen() {
-		let tokens = tokenize("CREATE TABLE my-schema.my-table { id: Int4 }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "CREATE TABLE my-schema.my-table { id: Int4 }").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1071,8 +1091,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_ringbuffer_with_hyphen() {
-		let tokens = tokenize("CREATE RINGBUFFER my-ns.my-buffer { id: Int4 } WITH { capacity: 100 }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE RINGBUFFER my-ns.my-buffer { id: Int4 } WITH { capacity: 100 }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1095,8 +1119,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_dictionary_with_hyphen() {
-		let tokens = tokenize("CREATE DICTIONARY my-dict FOR Text AS Int4").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "CREATE DICTIONARY my-dict FOR Text AS Int4").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1116,8 +1142,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_table_with_hyphenated_columns() {
-		let tokens = tokenize("CREATE TABLE test.user-data { user-id: Int4, user-name: Text }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE TABLE test.user-data { user-id: Int4, user-name: Text }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1141,8 +1171,9 @@ pub mod tests {
 
 	#[test]
 	fn test_create_namespace_with_backtick() {
-		let tokens = tokenize("CREATE NAMESPACE `my-namespace`").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE NAMESPACE `my-namespace`").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1162,13 +1193,17 @@ pub mod tests {
 
 	#[test]
 	fn test_create_series() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
             create series test.metrics{value: Int2}
         "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1201,13 +1236,17 @@ pub mod tests {
 
 	#[test]
 	fn test_create_table() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         create table test.users{id: int2, name: text, is_premium: bool}
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1268,13 +1307,17 @@ pub mod tests {
 
 	#[test]
 	fn test_create_table_with_saturation_policy() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         create table test.items{field: int2 policy {saturation error} }
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1314,13 +1357,17 @@ pub mod tests {
 
 	#[test]
 	fn test_create_table_with_auto_increment() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         create table test.users { id: int4 AUTO INCREMENT, name: utf8 }
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1369,13 +1416,17 @@ pub mod tests {
 
 	#[test]
 	fn test_create_deferred_view() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         create deferred view test.views{field: int2 policy { saturation error} }
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1414,13 +1465,17 @@ pub mod tests {
 
 	#[test]
 	fn test_create_transactional_view() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         create transactional view test.myview{id: int4, name: utf8}
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1469,13 +1524,17 @@ pub mod tests {
 
 	#[test]
 	fn test_create_ringbuffer() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         create ringbuffer test.events { id: int4, data: utf8 } with { capacity: 10 }
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1524,7 +1583,9 @@ pub mod tests {
 
 	#[test]
 	fn test_create_transactional_view_with_query() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         create transactional view test.myview{id: int4, name: utf8} as {
             from test.users
@@ -1532,8 +1593,10 @@ pub mod tests {
         }
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1563,8 +1626,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_flow_basic() {
-		let tokens = tokenize("CREATE FLOW my_flow AS FROM orders WHERE status = 'pending'").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE FLOW my_flow AS FROM orders WHERE status = 'pending'")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1585,8 +1652,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_flow_or_replace() {
-		let tokens = tokenize("CREATE OR REPLACE FLOW my_flow AS FROM orders").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "CREATE OR REPLACE FLOW my_flow AS FROM orders").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1605,8 +1674,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_flow_if_not_exists() {
-		let tokens = tokenize("CREATE FLOW IF NOT EXISTS my_flow AS FROM orders").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE FLOW IF NOT EXISTS my_flow AS FROM orders")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1625,8 +1698,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_flow_qualified_name() {
-		let tokens = tokenize("CREATE FLOW analytics.sales_flow AS FROM sales.orders").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE FLOW analytics.sales_flow AS FROM sales.orders")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1644,7 +1721,9 @@ pub mod tests {
 
 	#[test]
 	fn test_create_flow_complex_query() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
 			CREATE FLOW aggregated AS {
 				FROM raw_events
@@ -1654,8 +1733,10 @@ pub mod tests {
 			}
 		"#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1673,8 +1754,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_or_replace_flow_if_not_exists() {
-		let tokens = tokenize("CREATE OR REPLACE FLOW IF NOT EXISTS test.my_flow AS FROM orders").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE OR REPLACE FLOW IF NOT EXISTS test.my_flow AS FROM orders")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1694,8 +1779,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_dictionary_basic() {
-		let tokens = tokenize("CREATE DICTIONARY token_mints FOR Utf8 AS Uint2").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE DICTIONARY token_mints FOR Utf8 AS Uint2")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1721,8 +1810,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_dictionary_qualified() {
-		let tokens = tokenize("CREATE DICTIONARY analytics.token_mints FOR Utf8 AS Uint4").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE DICTIONARY analytics.token_mints FOR Utf8 AS Uint4")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1748,8 +1841,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_dictionary_blob_value() {
-		let tokens = tokenize("CREATE DICTIONARY hashes FOR Blob AS Uint8").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "CREATE DICTIONARY hashes FOR Blob AS Uint8").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1774,8 +1869,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_dictionary_if_not_exists() {
-		let tokens = tokenize("CREATE DICTIONARY IF NOT EXISTS token_mints FOR Utf8 AS Uint4").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE DICTIONARY IF NOT EXISTS token_mints FOR Utf8 AS Uint4")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1802,8 +1901,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_basic() {
-		let tokens = tokenize("CREATE SUBSCRIPTION { id: Int4, name: Utf8 }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "CREATE SUBSCRIPTION { id: Int4, name: Utf8 }").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1845,8 +1946,9 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_single_column() {
-		let tokens = tokenize("CREATE SUBSCRIPTION { value: Float8 }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { value: Float8 }").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1873,9 +1975,12 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_with_simple_query() {
-		let tokens =
-			tokenize("CREATE SUBSCRIPTION { id: Int4, name: Utf8 } AS { from test.products }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { id: Int4, name: Utf8 } AS { from test.products }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1910,11 +2015,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_with_piped_query() {
-		let tokens = tokenize(
-			"CREATE SUBSCRIPTION { id: Int4, price: Float8 } AS { from test.products | filter {price > 50} | filter {stock > 0} }",
-		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump,"CREATE SUBSCRIPTION { id: Int4, price: Float8 } AS { from test.products | filter {price > 50} | filter {stock > 0} }",
+		).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1945,9 +2049,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_without_as_clause() {
+		let bump = Bump::new();
 		// Ensure subscriptions without AS clause still work (backwards compatibility)
-		let tokens = tokenize("CREATE SUBSCRIPTION { value: Float8 }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { value: Float8 }").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1967,9 +2072,11 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_schemaless() {
+		let bump = Bump::new();
 		// Test schema-less subscription: CREATE SUBSCRIPTION AS { FROM demo.events }
-		let tokens = tokenize("CREATE SUBSCRIPTION AS { FROM demo.events }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let tokens =
+			tokenize(&bump, "CREATE SUBSCRIPTION AS { FROM demo.events }").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2001,9 +2108,13 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_schemaless_with_filter() {
+		let bump = Bump::new();
 		let tokens =
-			tokenize("CREATE SUBSCRIPTION AS { FROM demo.events | FILTER {id > 1 and id < 3} }").unwrap();
-		let mut parser = Parser::new(tokens);
+			tokenize(&bump, "CREATE SUBSCRIPTION AS { FROM demo.events | FILTER {id > 1 and id < 3} }")
+				.unwrap()
+				.into_iter()
+				.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2034,9 +2145,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_schemaless_missing_as_fails() {
+		let bump = Bump::new();
 		// Test that schema-less subscription without AS clause fails
-		let tokens = tokenize("CREATE SUBSCRIPTION").unwrap();
-		let mut parser = Parser::new(tokens);
+		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse();
 
 		// Should fail with an error
@@ -2045,9 +2157,13 @@ pub mod tests {
 
 	#[test]
 	fn test_create_subscription_backward_compat_with_columns() {
+		let bump = Bump::new();
 		// Test backward compatibility: subscriptions with columns and AS still work
-		let tokens = tokenize("CREATE SUBSCRIPTION { id: Int4 } AS { FROM demo.events }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { id: Int4 } AS { FROM demo.events }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

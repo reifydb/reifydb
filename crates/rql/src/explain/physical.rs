@@ -9,6 +9,7 @@ use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	ast::parse_str,
+	bump::Bump,
 	nodes::{
 		AggregateNode, AlterSequenceNode, ApplyNode, DistinctNode, ExtendNode, FilterNode, InlineDataNode,
 		JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, MergeNode, PatchNode, PhysicalPlan, SortNode,
@@ -19,11 +20,12 @@ use crate::{
 };
 
 pub fn explain_physical_plan<T: AsTransaction>(catalog: &Catalog, rx: &mut T, query: &str) -> crate::Result<String> {
-	let statements = parse_str(query)?;
+	let bump = Bump::new();
+	let statements = parse_str(&bump, query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		let logical = compile_logical(catalog, rx, statement)?;
+		let logical = compile_logical(&bump, catalog, rx, statement)?;
 		plans.push(compile_physical(catalog, rx, logical)?);
 	}
 

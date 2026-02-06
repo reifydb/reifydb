@@ -13,8 +13,12 @@ pub mod sequence;
 pub mod table;
 pub mod view;
 
-impl Compiler {
-	pub(crate) fn compile_alter<T: AsTransaction>(&self, ast: AstAlter, tx: &mut T) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_alter<T: AsTransaction>(
+		&self,
+		ast: AstAlter<'bump>,
+		tx: &mut T,
+	) -> crate::Result<LogicalPlan<'bump>> {
 		match ast {
 			AstAlter::Sequence(node) => self.compile_alter_sequence(node),
 			AstAlter::Table(node) => self.compile_alter_table(node),

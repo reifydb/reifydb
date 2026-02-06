@@ -6,6 +6,7 @@ use reifydb_type::{err, error::diagnostic::Diagnostic, fragment::Fragment};
 
 use crate::{
 	ast::ast::{Ast, AstFrom},
+	bump::BumpBox,
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
 		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, PrimitiveScanNode,
@@ -13,8 +14,14 @@ use crate::{
 	},
 };
 
-impl Compiler {
-	pub(crate) fn compile_from<T: AsTransaction>(&self, ast: AstFrom, tx: &mut T) -> crate::Result<LogicalPlan> {
+// Note: Fragment is still imported for use at materialization boundaries (Expression types use owned Fragment)
+
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_from<T: AsTransaction>(
+		&self,
+		ast: AstFrom<'bump>,
+		tx: &mut T,
+	) -> crate::Result<LogicalPlan<'bump>> {
 		match ast {
 			AstFrom::Source {
 				source,
@@ -39,10 +46,10 @@ impl Compiler {
 						Ast::Inline(row) => {
 							let mut alias_fields = Vec::new();
 							for field in row.keyed_values {
-								let key_fragment = field.key.token.fragment.clone();
+								let key_fragment = field.key.token.fragment.to_owned();
 								let alias = IdentExpression(key_fragment.clone());
 								let expr = ExpressionCompiler::compile(
-									field.value.as_ref().clone(),
+									BumpBox::into_inner(field.value),
 								)?;
 
 								let alias_expr = AliasExpression {
@@ -92,7 +99,7 @@ impl Compiler {
 				..
 			} => {
 				// Create a variable source node for regular variables
-				let variable_name = variable.token.fragment.clone();
+				let variable_name = variable.token.fragment;
 				Ok(LogicalPlan::VariableSource(VariableSourceNode {
 					name: variable_name,
 				}))

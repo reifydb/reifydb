@@ -8,7 +8,7 @@ use crate::token::{
 };
 
 /// Scan for a boolean literal (true/false)
-pub fn scan_boolean(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_boolean<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -43,42 +43,46 @@ pub mod tests {
 	use Literal::{False, True};
 
 	use super::*;
-	use crate::token::tokenize;
+	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_boolean_true() {
-		let tokens = tokenize("true").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "true").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(True));
 		assert_eq!(tokens[0].fragment.text(), "true");
 	}
 
 	#[test]
 	fn test_boolean_false() {
-		let tokens = tokenize("false").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "false").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(False));
 		assert_eq!(tokens[0].fragment.text(), "false");
 	}
 
 	#[test]
 	fn test_boolean_case_insensitive() {
-		let tokens = tokenize("TRUE").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "TRUE").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(True));
 
-		let tokens = tokenize("False").unwrap();
+		let tokens = tokenize(&bump, "False").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(False));
 
-		let tokens = tokenize("TrUe").unwrap();
+		let tokens = tokenize(&bump, "TrUe").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(True));
 	}
 
 	#[test]
 	fn test_boolean_with_trailing() {
-		let tokens = tokenize("true123").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "true123").unwrap();
 		// Should parse as identifier, not boolean
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "true123");
 
-		let tokens = tokenize("false_value").unwrap();
+		let tokens = tokenize(&bump, "false_value").unwrap();
 		// Should parse as identifier, not boolean
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "false_value");
@@ -86,11 +90,12 @@ pub mod tests {
 
 	#[test]
 	fn test_boolean_separated() {
-		let tokens = tokenize("true false").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "true false").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(True));
 		assert_eq!(tokens[1].kind, TokenKind::Literal(False));
 
-		let tokens = tokenize("true,false").unwrap();
+		let tokens = tokenize(&bump, "true,false").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(True));
 		assert_eq!(tokens[2].kind, TokenKind::Literal(False));
 	}

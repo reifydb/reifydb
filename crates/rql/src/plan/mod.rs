@@ -7,6 +7,7 @@ use tracing::instrument;
 
 use crate::{
 	ast::ast::AstStatement,
+	bump::Bump,
 	expression::Expression,
 	nodes::PhysicalPlan,
 	plan::{logical::compile_logical, physical::compile_physical},
@@ -17,13 +18,14 @@ pub mod physical;
 
 pub type RowToInsert = Vec<Expression>;
 
-#[instrument(name = "rql::plan", level = "trace", skip(catalog, rx, statement))]
-pub fn plan<T: AsTransaction>(
+#[instrument(name = "rql::plan", level = "trace", skip(bump, catalog, rx, statement))]
+pub fn plan<'a, T: AsTransaction>(
+	bump: &'a Bump,
 	catalog: &Catalog,
 	rx: &mut T,
-	statement: AstStatement,
+	statement: AstStatement<'a>,
 ) -> crate::Result<Option<PhysicalPlan>> {
-	let logical = compile_logical(catalog, rx, statement)?;
+	let logical = compile_logical(bump, catalog, rx, statement)?;
 	let physical = compile_physical(catalog, rx, logical)?;
 	Ok(physical)
 }

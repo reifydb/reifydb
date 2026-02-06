@@ -10,7 +10,8 @@ use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{Result, error::diagnostic::runtime};
 
 use crate::{
-	ast::{ast::AstStatement, parse_str},
+	ast::parse_str,
+	bump::Bump,
 	instruction::{Addr, CompiledFunctionDef, Instruction, ScopeType},
 	nodes::{ConditionalNode, ForPhysicalNode, LoopPhysicalNode, PhysicalPlan, WhilePhysicalNode},
 	plan::plan,
@@ -33,7 +34,8 @@ pub enum CompilationResult {
 
 /// Opaque state for incremental compilation.
 pub struct IncrementalCompilation {
-	statements: Vec<AstStatement>,
+	query: String,
+	total_statements: usize,
 	current: usize,
 }
 
@@ -70,13 +72,16 @@ impl Compiler {
 			return Ok(CompilationResult::Ready(cached));
 		}
 
-		let statements = parse_str(query)?;
+		let bump = Bump::new();
+		let statements = parse_str(&bump, query)?;
 		let has_ddl = statements.iter().any(|s| s.contains_ddl());
-		let needs_incremental = statements.len() > 1 && has_ddl;
+		let total_statements = statements.len();
+		let needs_incremental = total_statements > 1 && has_ddl;
 
 		if needs_incremental {
 			return Ok(CompilationResult::Incremental(IncrementalCompilation {
-				statements,
+				query: query.to_string(),
+				total_statements,
 				current: 0,
 			}));
 		}
@@ -85,7 +90,7 @@ impl Compiler {
 		let mut plans = Vec::new();
 		for statement in statements {
 			let is_output = statement.is_output;
-			if let Some(physical) = plan(&self.0.catalog, tx, statement)? {
+			if let Some(physical) = plan(&bump, &self.0.catalog, tx, statement)? {
 				plans.push(Compiled {
 					instructions: compile_instructions(vec![physical])?,
 					is_output,
@@ -107,15 +112,18 @@ impl Compiler {
 		tx: &mut T,
 		state: &mut IncrementalCompilation,
 	) -> Result<Option<Compiled>> {
-		if state.current >= state.statements.len() {
+		if state.current >= state.total_statements {
 			return Ok(None);
 		}
 
-		let statement = state.statements[state.current].clone();
+		let bump = Bump::new();
+		let statements = parse_str(&bump, &state.query)?;
+		let idx = state.current;
 		state.current += 1;
 
+		let statement = statements.into_iter().nth(idx).unwrap();
 		let is_output = statement.is_output;
-		if let Some(physical) = plan(&self.0.catalog, tx, statement)? {
+		if let Some(physical) = plan(&bump, &self.0.catalog, tx, statement)? {
 			Ok(Some(Compiled {
 				instructions: compile_instructions(vec![physical])?,
 				is_output,

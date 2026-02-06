@@ -104,7 +104,7 @@ static WORD_OPERATORS: LazyLock<HashMap<&'static str, Operator>> = LazyLock::new
 });
 
 /// Scan for an operator token
-pub fn scan_operator(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_operator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -242,18 +242,20 @@ pub fn scan_operator(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::token::tokenize;
+	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_parse_operator_invalid() {
-		let tokens = tokenize("foobar rest").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "foobar rest").unwrap();
 		// Should parse as identifier, not operator
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 	}
 
 	fn check_operator(op: Operator, symbol: &str) {
+		let bump = Bump::new();
 		let input_str = format!("{symbol} rest");
-		let tokens = tokenize(&input_str).unwrap();
+		let tokens = tokenize(&bump, &input_str).unwrap();
 
 		assert!(tokens.len() >= 2);
 		assert_eq!(TokenKind::Operator(op), tokens[0].kind, "type mismatch for symbol: {}", symbol);

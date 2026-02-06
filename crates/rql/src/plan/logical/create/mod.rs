@@ -19,12 +19,12 @@ use crate::{
 	plan::logical::{Compiler, LogicalPlan},
 };
 
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create<T: AsTransaction>(
 		&self,
-		ast: AstCreate,
+		ast: AstCreate<'bump>,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	) -> crate::Result<LogicalPlan<'bump>> {
 		match ast {
 			AstCreate::DeferredView(node) => self.compile_deferred_view(node, tx),
 			AstCreate::TransactionalView(node) => self.compile_transactional_view(node, tx),
@@ -35,7 +35,7 @@ impl Compiler {
 			AstCreate::RingBuffer(node) => self.compile_create_ringbuffer(node, tx),
 			AstCreate::Dictionary(node) => self.compile_create_dictionary(node),
 			AstCreate::Index(node) => self.compile_create_index(node),
-			AstCreate::Subscription(node) => self.compile_create_subscription(node),
+			AstCreate::Subscription(node) => self.compile_create_subscription(node, tx),
 		}
 	}
 }

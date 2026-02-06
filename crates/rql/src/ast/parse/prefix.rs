@@ -1,23 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
-
-use reifydb_type::{error::diagnostic::ast, fragment::Fragment, return_error};
+use reifydb_type::{error::diagnostic::ast, return_error};
 
 use crate::{
 	ast::{
 		ast::{Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator},
 		parse::{Parser, Precedence},
 	},
+	bump::{BumpBox, BumpFragment},
 	token::{
 		operator::Operator,
 		token::{Literal::Number, Token, TokenKind},
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_prefix(&mut self) -> crate::Result<Ast> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_prefix(&mut self) -> crate::Result<Ast<'bump>> {
 		let operator = self.parse_prefix_operator()?;
 
 		// Determine precedence based on operator type
@@ -30,12 +29,13 @@ impl Parser {
 
 		if matches!(operator, AstPrefixOperator::Negate(_)) {
 			if let Ast::Literal(AstLiteral::Number(literal)) = &expr {
+				let text = self.bump().alloc_str(&format!("-{}", literal.0.fragment.text()));
 				return Ok(Ast::Literal(AstLiteral::Number(AstLiteralNumber(Token {
 					kind: TokenKind::Literal(Number),
-					fragment: Fragment::Statement {
+					fragment: BumpFragment::Statement {
 						column: operator.token().fragment.column(),
 						line: operator.token().fragment.line(),
-						text: Arc::from(format!("-{}", literal.0.fragment.text())),
+						text,
 					},
 				}))));
 			}
@@ -43,21 +43,21 @@ impl Parser {
 
 		Ok(Ast::Prefix(AstPrefix {
 			operator,
-			node: Box::new(expr),
+			node: BumpBox::new_in(expr, self.bump()),
 		}))
 	}
 
-	fn parse_prefix_operator(&mut self) -> crate::Result<AstPrefixOperator> {
+	fn parse_prefix_operator(&mut self) -> crate::Result<AstPrefixOperator<'bump>> {
 		let token = self.advance()?;
-		match &token.kind {
+		match token.kind {
 			TokenKind::Operator(operator) => match operator {
 				Operator::Plus => Ok(AstPrefixOperator::Plus(token)),
 				Operator::Minus => Ok(AstPrefixOperator::Negate(token)),
 				Operator::Bang => Ok(AstPrefixOperator::Not(token)),
 				Operator::Not => Ok(AstPrefixOperator::Not(token)),
-				_ => return_error!(ast::unsupported_token_error(token.fragment)),
+				_ => return_error!(ast::unsupported_token_error(token.fragment.to_owned())),
 			},
-			_ => return_error!(ast::unsupported_token_error(token.fragment)),
+			_ => return_error!(ast::unsupported_token_error(token.fragment.to_owned())),
 		}
 	}
 }
@@ -74,13 +74,15 @@ pub mod tests {
 			},
 			parse::parse,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_negative_number() {
-		let tokens = tokenize("-2").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "-2").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Number(AstLiteralNumber(token))) = &result[0].first_unchecked() else {
@@ -91,8 +93,9 @@ pub mod tests {
 
 	#[test]
 	fn test_group_plus() {
-		let tokens = tokenize("+(2)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "+(2)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Prefix(AstPrefix {
@@ -115,8 +118,9 @@ pub mod tests {
 
 	#[test]
 	fn test_group_negate() {
-		let tokens = tokenize("-(2)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "-(2)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Prefix(AstPrefix {
@@ -139,8 +143,9 @@ pub mod tests {
 
 	#[test]
 	fn test_group_negate_negative_number() {
-		let tokens = tokenize("-(-2)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "-(-2)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Prefix(AstPrefix {
@@ -163,8 +168,9 @@ pub mod tests {
 
 	#[test]
 	fn test_not_false() {
-		let tokens = tokenize("!false").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "!false").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Prefix(AstPrefix {
@@ -184,8 +190,9 @@ pub mod tests {
 
 	#[test]
 	fn test_not_word_false() {
-		let tokens = tokenize("not false").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "not false").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Prefix(AstPrefix {
@@ -205,8 +212,9 @@ pub mod tests {
 
 	#[test]
 	fn test_not_comparison_precedence() {
-		let tokens = tokenize("not x == 5").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "not x == 5").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		// Should parse as: not (x == 5), not (not x) == 5

@@ -14,7 +14,7 @@ use reifydb_core::{
 			ResolvedRingBuffer, ResolvedSequence, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
-	sort::SortKey,
+	sort::{SortDirection, SortKey},
 };
 use reifydb_type::{
 	fragment::Fragment,
@@ -23,12 +23,22 @@ use reifydb_type::{
 
 use crate::{
 	expression::{AliasExpression, Expression, VariableExpression},
-	plan::{
-		logical,
-		physical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
-	},
+	plan::physical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
 	query::QueryPlan,
 };
+
+/// Owned primary key definition for physical plan nodes (materialized from bump-allocated logical plan)
+#[derive(Debug, Clone)]
+pub struct PrimaryKeyDef {
+	pub columns: Vec<PrimaryKeyColumn>,
+}
+
+/// Owned primary key column for physical plan nodes
+#[derive(Debug, Clone)]
+pub struct PrimaryKeyColumn {
+	pub column: Fragment,
+	pub order: Option<SortDirection>,
+}
 
 #[derive(Debug, Clone)]
 pub enum PhysicalPlan {
@@ -110,7 +120,7 @@ pub struct CreateDeferredViewNode {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
-	pub primary_key: Option<logical::PrimaryKeyDef>,
+	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
@@ -128,7 +138,7 @@ pub struct CreateTransactionalViewNode {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
-	pub primary_key: Option<logical::PrimaryKeyDef>,
+	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
@@ -143,7 +153,7 @@ pub struct CreateTableNode {
 	pub table: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
-	pub primary_key: Option<logical::PrimaryKeyDef>,
+	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
@@ -153,7 +163,7 @@ pub struct CreateRingBufferNode {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
-	pub primary_key: Option<logical::PrimaryKeyDef>,
+	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]

@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
-
-use reifydb_type::fragment::{Fragment, StatementColumn, StatementLine};
+use crate::bump::{BumpFragment, StatementColumn, StatementLine};
 
 /// A cursor over the input string that tracks position for tokenization
-pub struct Cursor<'a> {
-	input: &'a str,
+pub struct Cursor<'bump> {
+	input: &'bump str,
 	pos: usize,
 	line: u32,
 	column: u32,
@@ -17,9 +15,9 @@ pub struct Cursor<'a> {
 	current_char_len: usize,
 }
 
-impl<'a> Cursor<'a> {
+impl<'bump> Cursor<'bump> {
 	/// Create a new cursor at the beginning of the input
-	pub fn new(input: &'a str) -> Self {
+	pub fn new(input: &'bump str) -> Self {
 		let (current_char, current_char_len) = if input.is_empty() {
 			(None, 0)
 		} else {
@@ -98,7 +96,7 @@ impl<'a> Cursor<'a> {
 	}
 
 	/// Consume characters while the predicate is true
-	pub fn consume_while<F>(&mut self, mut predicate: F) -> &'a str
+	pub fn consume_while<F>(&mut self, mut predicate: F) -> &'bump str
 	where
 		F: FnMut(char) -> bool,
 	{
@@ -173,27 +171,27 @@ impl<'a> Cursor<'a> {
 		self.column
 	}
 
-	/// Create a Fragment (owned) from a start position to current
-	/// position
-	pub fn make_fragment(&self, start_pos: usize, start_line: u32, start_column: u32) -> Fragment {
-		Fragment::Statement {
-			text: Arc::from(self.input[start_pos..self.pos].to_string()),
+	/// Create a BumpFragment from a start position to current position.
+	/// Zero-copy: returns a slice of the original input string.
+	pub fn make_fragment(&self, start_pos: usize, start_line: u32, start_column: u32) -> BumpFragment<'bump> {
+		BumpFragment::Statement {
+			text: &self.input[start_pos..self.pos],
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
 		}
 	}
 
 	/// Create a fragment for UTF-8 text content (without surrounding
-	/// quotes)
+	/// quotes). Zero-copy: returns a slice of the original input string.
 	pub fn make_utf8_fragment(
 		&self,
 		text_start: usize,
 		text_end: usize,
 		start_line: u32,
 		start_column: u32,
-	) -> Fragment {
-		Fragment::Statement {
-			text: Arc::from(self.input[text_start..text_end].to_string()),
+	) -> BumpFragment<'bump> {
+		BumpFragment::Statement {
+			text: &self.input[text_start..text_end],
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
 		}
@@ -222,7 +220,7 @@ impl<'a> Cursor<'a> {
 	}
 
 	/// Get a slice of the remaining input from current position
-	pub fn remaining_input(&self) -> &'a str {
+	pub fn remaining_input(&self) -> &'bump str {
 		&self.input[self.pos..]
 	}
 }

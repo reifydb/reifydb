@@ -8,6 +8,7 @@ use crate::{
 		ast::{AstPolicy, AstPolicyBlock, AstPolicyKind},
 		parse::{Parser, Precedence},
 	},
+	bump::BumpBox,
 	token::{
 		keyword::Keyword,
 		operator::Operator,
@@ -16,15 +17,15 @@ use crate::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_policy_block(&mut self) -> crate::Result<AstPolicyBlock> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_policy_block(&mut self) -> crate::Result<AstPolicyBlock<'bump>> {
 		let token = self.consume_keyword(Keyword::Policy)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut policies = Vec::new();
 		loop {
 			let (token, policy) = self.parse_policy_kind()?;
-			let value = Box::new(self.parse_node(Precedence::None)?);
+			let value = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 			policies.push(AstPolicy {
 				token,
@@ -44,7 +45,7 @@ impl Parser {
 		})
 	}
 
-	fn parse_policy_kind(&mut self) -> crate::Result<(Token, AstPolicyKind)> {
+	fn parse_policy_kind(&mut self) -> crate::Result<(Token<'bump>, AstPolicyKind)> {
 		let identifier = self.consume(TokenKind::Identifier)?;
 		let ty = match identifier.fragment.text() {
 			"saturation" => AstPolicyKind::Saturation,
@@ -53,7 +54,7 @@ impl Parser {
 				self.consume_literal(Literal::Undefined)?;
 				AstPolicyKind::NotUndefined
 			}
-			_ => return_error!(ast::invalid_policy_error(identifier.fragment)),
+			_ => return_error!(ast::invalid_policy_error(identifier.fragment.to_owned())),
 		};
 
 		Ok((identifier, ty))
@@ -67,14 +68,16 @@ pub mod tests {
 			ast::{AstCreate, AstCreateTable, AstDataType, AstPolicyKind},
 			parse::Parser,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_saturation_error() {
-		let tokens = tokenize(r#"policy {saturation error}"#).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"policy {saturation error}"#).unwrap().into_iter().collect();
 
-		let mut parser = Parser::new(tokens);
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse_policy_block().unwrap();
 		assert_eq!(result.policies.len(), 1);
 
@@ -88,9 +91,10 @@ pub mod tests {
 
 	#[test]
 	fn test_saturation_undefined() {
-		let tokens = tokenize(r#"policy {saturation undefined}"#).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"policy {saturation undefined}"#).unwrap().into_iter().collect();
 
-		let mut parser = Parser::new(tokens);
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse_policy_block().unwrap();
 		assert_eq!(result.policies.len(), 1);
 
@@ -104,7 +108,9 @@ pub mod tests {
 
 	#[test]
 	fn test_table_with_policy_block() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         create table test.items{
             field:  int2
@@ -115,9 +121,11 @@ pub mod tests {
         }
     "#,
 		)
-		.unwrap();
+		.unwrap()
+		.into_iter()
+		.collect();
 
-		let mut parser = Parser::new(tokens);
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

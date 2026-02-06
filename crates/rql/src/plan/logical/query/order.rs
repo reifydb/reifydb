@@ -8,8 +8,8 @@ use crate::{
 	plan::logical::{Compiler, LogicalPlan, OrderNode},
 };
 
-impl Compiler {
-	pub(crate) fn compile_sort(&self, ast: AstSort) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_sort(&self, ast: AstSort<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::Order(OrderNode {
 			by: ast.columns
 				.into_iter()
@@ -23,7 +23,7 @@ impl Compiler {
 						.unwrap_or(SortDirection::Desc);
 
 					SortKey {
-						column: column.name,
+						column: column.name.to_owned(),
 						direction,
 					}
 				})

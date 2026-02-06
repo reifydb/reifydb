@@ -12,16 +12,17 @@ use crate::{
 		identifier::UnresolvedPrimitiveIdentifier,
 		parse::Parser,
 	},
+	bump::BumpBox,
 	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
-impl Parser {
-	pub(crate) fn parse_update(&mut self) -> crate::Result<AstUpdate> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_update(&mut self) -> crate::Result<AstUpdate<'bump>> {
 		let token = self.consume_keyword(Keyword::Update)?;
 
 		// 1. Parse target (REQUIRED) - namespace.table or just table
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
-			return_error!(update_missing_assignments_block(token.fragment));
+			return_error!(update_missing_assignments_block(token.fragment.to_owned()));
 		}
 
 		let first = self.parse_identifier_with_hyphens()?;
@@ -35,16 +36,16 @@ impl Parser {
 
 		// 2. Parse assignments block { name: 'value', ... } - REQUIRED
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
-			return_error!(update_missing_assignments_block(token.fragment));
+			return_error!(update_missing_assignments_block(token.fragment.to_owned()));
 		}
 		let (assignments, _) = self.parse_expressions(true, false)?;
 		if assignments.is_empty() {
-			return_error!(update_empty_assignments_block(token.fragment));
+			return_error!(update_empty_assignments_block(token.fragment.to_owned()));
 		}
 
 		// 3. Parse FILTER clause - REQUIRED
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Filter) {
-			return_error!(update_missing_filter_clause(token.fragment));
+			return_error!(update_missing_filter_clause(token.fragment.to_owned()));
 		}
 		let filter = self.parse_filter()?;
 
@@ -52,7 +53,7 @@ impl Parser {
 			token,
 			target,
 			assignments,
-			filter: Box::new(Ast::Filter(filter)),
+			filter: BumpBox::new_in(Ast::Filter(filter), self.bump()),
 		})
 	}
 }
@@ -64,18 +65,23 @@ pub mod tests {
 			ast::{Ast, InfixOperator},
 			parse::Parser,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_basic_update_syntax() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         UPDATE users { name: 'alice' } FILTER {id == 1}
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -94,13 +100,17 @@ pub mod tests {
 
 	#[test]
 	fn test_update_with_namespace() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         UPDATE test.users { name: 'alice' } FILTER {id == 1}
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -113,13 +123,17 @@ pub mod tests {
 
 	#[test]
 	fn test_update_multiple_assignments() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         UPDATE users { name: 'alice', age: 30, active: true } FILTER {id == 1}
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -131,13 +145,17 @@ pub mod tests {
 
 	#[test]
 	fn test_update_complex_filter() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         UPDATE users { status: 'inactive' } FILTER {age > 18 and active == true}
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -151,39 +169,51 @@ pub mod tests {
 
 	#[test]
 	fn test_update_missing_filter_fails() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         UPDATE users { name: 'alice' }
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
 
 	#[test]
 	fn test_update_missing_assignments_fails() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         UPDATE users FILTER id == 1
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
 
 	#[test]
 	fn test_update_empty_assignments_fails() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
         UPDATE users { } FILTER id == 1
     "#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}

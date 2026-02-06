@@ -9,8 +9,8 @@ use crate::{
 	token::{keyword::Keyword, operator::Operator},
 };
 
-impl Parser {
-	pub(crate) fn parse_call(&mut self) -> crate::Result<AstCall> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_call(&mut self) -> crate::Result<AstCall<'bump>> {
 		let token = self.consume_keyword(Keyword::Call)?;
 
 		// Parse the operator name (e.g., counter, sequence,
@@ -27,9 +27,9 @@ impl Parser {
 		})
 	}
 
-	pub(crate) fn parse_function_call(&mut self) -> crate::Result<AstCallFunction> {
+	pub(crate) fn parse_function_call(&mut self) -> crate::Result<AstCallFunction<'bump>> {
 		let first_ident_token = self.consume(crate::token::token::TokenKind::Identifier)?;
-		let start_token = first_ident_token.clone();
+		let start_token = first_ident_token;
 
 		// Check if this is a simple function call: identifier(
 		if self.current()?.is_operator(Operator::OpenParen) {
@@ -41,7 +41,7 @@ impl Parser {
 			// Create MaybeQualifiedFunctionIdentifier without
 			// namespaces
 			use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
-			let function = MaybeQualifiedFunctionIdentifier::new(first_ident_token.fragment.clone());
+			let function = MaybeQualifiedFunctionIdentifier::new(first_ident_token.fragment);
 
 			return Ok(AstCallFunction {
 				token: start_token,
@@ -60,7 +60,7 @@ impl Parser {
 		while self.current()?.is_operator(Operator::DoubleColon) {
 			// Add current identifier to namespace chain before
 			// parsing next
-			namespace_fragments.push(current_ident_token.fragment.clone());
+			namespace_fragments.push(current_ident_token.fragment);
 
 			self.advance()?; // consume ::
 			let next_ident_token = self.consume(crate::token::token::TokenKind::Identifier)?;
@@ -76,7 +76,7 @@ impl Parser {
 				// Create MaybeQualifiedFunctionIdentifier with
 				// namespaces
 				use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
-				let function = MaybeQualifiedFunctionIdentifier::new(next_ident_token.fragment.clone())
+				let function = MaybeQualifiedFunctionIdentifier::new(next_ident_token.fragment)
 					.with_namespaces(namespace_fragments);
 
 				return Ok(AstCallFunction {
@@ -136,12 +136,13 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::{ast::parse::parse, token::tokenize};
+	use crate::{ast::parse::parse, bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_simple_function_call() {
-		let tokens = tokenize("func()").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "func()").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
@@ -152,8 +153,9 @@ pub mod tests {
 
 	#[test]
 	fn test_function_call_with_args() {
-		let tokens = tokenize("func('arg')").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "func('arg')").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
@@ -164,8 +166,9 @@ pub mod tests {
 
 	#[test]
 	fn test_namespaced_function_call() {
-		let tokens = tokenize("blob::hex('deadbeef')").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "blob::hex('deadbeef')").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
@@ -177,8 +180,9 @@ pub mod tests {
 
 	#[test]
 	fn test_deeply_nested_function_call() {
-		let tokens = tokenize("ext::crypto::hash::sha256('data')").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ext::crypto::hash::sha256('data')").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
@@ -192,8 +196,9 @@ pub mod tests {
 
 	#[test]
 	fn test_identifier_without_parens_not_function_call() {
-		let tokens = tokenize("identifier").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "identifier").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		// Should be parsed as identifier, not function call
@@ -202,8 +207,9 @@ pub mod tests {
 
 	#[test]
 	fn test_namespace_access_without_parens_not_function_call() {
-		let tokens = tokenize("namespace::identifier").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "namespace::identifier").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		// Should be parsed as infix expression, not function call

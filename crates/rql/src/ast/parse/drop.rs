@@ -14,8 +14,8 @@ use crate::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_drop(&mut self) -> crate::Result<AstDrop> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_drop(&mut self) -> crate::Result<AstDrop<'bump>> {
 		let token = self.consume_keyword(Keyword::Drop)?;
 
 		// Check what we're dropping
@@ -26,11 +26,11 @@ impl Parser {
 		// Future: Add other DROP variants here (TABLE, VIEW, etc.)
 		Err(reifydb_type::error::Error(reifydb_type::error::diagnostic::ast::unexpected_token_error(
 			"FLOW, TABLE, VIEW, or other droppable object",
-			self.current()?.fragment.clone(),
+			self.current()?.fragment.to_owned(),
 		)))
 	}
 
-	fn parse_drop_flow(&mut self, token: Token) -> crate::Result<AstDrop> {
+	fn parse_drop_flow(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
 		// Check for IF EXISTS
 		let if_exists = if (self.consume_if(TokenKind::Keyword(Keyword::If))?).is_some() {
 			self.consume_keyword(Keyword::Exists)?;
@@ -45,11 +45,10 @@ impl Parser {
 		let flow = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
 			// namespace.name format
 			let second_token = self.consume(TokenKind::Identifier)?;
-			MaybeQualifiedFlowIdentifier::new(second_token.fragment.clone())
-				.with_namespace(first_token.fragment.clone())
+			MaybeQualifiedFlowIdentifier::new(second_token.fragment).with_namespace(first_token.fragment)
 		} else {
 			// just name format
-			MaybeQualifiedFlowIdentifier::new(first_token.fragment.clone())
+			MaybeQualifiedFlowIdentifier::new(first_token.fragment)
 		};
 
 		// Check for CASCADE or RESTRICT
@@ -74,12 +73,13 @@ impl Parser {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::{ast::parse::Parser, token::tokenize};
+	use crate::{ast::parse::Parser, bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_drop_flow_basic() {
-		let tokens = tokenize("DROP FLOW my_flow").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DROP FLOW my_flow").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {
@@ -94,8 +94,9 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_flow_if_exists() {
-		let tokens = tokenize("DROP FLOW IF EXISTS my_flow").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DROP FLOW IF EXISTS my_flow").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {
@@ -108,8 +109,9 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_flow_qualified() {
-		let tokens = tokenize("DROP FLOW analytics.sales_flow").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DROP FLOW analytics.sales_flow").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {
@@ -122,8 +124,9 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_flow_cascade() {
-		let tokens = tokenize("DROP FLOW my_flow CASCADE").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DROP FLOW my_flow CASCADE").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {
@@ -136,8 +139,9 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_flow_restrict() {
-		let tokens = tokenize("DROP FLOW my_flow RESTRICT").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DROP FLOW my_flow RESTRICT").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {
@@ -150,8 +154,9 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_flow_if_exists_cascade() {
-		let tokens = tokenize("DROP FLOW IF EXISTS test.my_flow CASCADE").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DROP FLOW IF EXISTS test.my_flow CASCADE").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {

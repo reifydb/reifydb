@@ -7,7 +7,7 @@ use crate::token::{
 };
 
 /// Scan for a text literal ('...' or "...")
-pub fn scan_text(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_text<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let quote = cursor.peek()?;
 	if quote != '\'' && quote != '"' {
 		return None;
@@ -47,39 +47,47 @@ pub fn scan_text(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::token::{token::Literal::Number, tokenize};
+	use crate::{
+		bump::Bump,
+		token::{token::Literal::Number, tokenize},
+	};
 
 	#[test]
 	fn test_text_single_quotes() {
-		let tokens = tokenize("'hello'").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "'hello'").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(tokens[0].fragment.text(), "hello");
 	}
 
 	#[test]
 	fn test_text_double_quotes() {
-		let tokens = tokenize("\"hello\"").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "\"hello\"").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(tokens[0].fragment.text(), "hello");
 	}
 
 	#[test]
 	fn test_text_single_quotes_with_double_inside() {
-		let tokens = tokenize("'some text\"xx\"no problem'").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "'some text\"xx\"no problem'").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(tokens[0].fragment.text(), "some text\"xx\"no problem");
 	}
 
 	#[test]
 	fn test_text_double_quotes_with_single_inside() {
-		let tokens = tokenize("\"some text'xx'no problem\"").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "\"some text'xx'no problem\"").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(tokens[0].fragment.text(), "some text'xx'no problem");
 	}
 
 	#[test]
 	fn test_text_with_trailing() {
-		let tokens = tokenize("'data' 123").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "'data' 123").unwrap();
 		assert_eq!(tokens[0].fragment.text(), "data");
 		assert_eq!(tokens[1].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[1].fragment.text(), "123");
@@ -87,7 +95,8 @@ pub mod tests {
 
 	#[test]
 	fn test_text_double_quotes_with_trailing() {
-		let tokens = tokenize("\"data\" 123").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "\"data\" 123").unwrap();
 		assert_eq!(tokens[0].fragment.text(), "data");
 		assert_eq!(tokens[1].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[1].fragment.text(), "123");
@@ -95,42 +104,48 @@ pub mod tests {
 
 	#[test]
 	fn test_text_single_unterminated_fails() {
-		let tokens = tokenize("'not closed");
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "'not closed");
 		// Should fail or return no text token
 		assert!(tokens.is_err() || tokens.unwrap().iter().all(|t| !matches!(t.kind, TokenKind::Literal(Text))));
 	}
 
 	#[test]
 	fn test_text_double_unterminated_fails() {
-		let tokens = tokenize("\"not closed");
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "\"not closed");
 		// Should fail or return no text token
 		assert!(tokens.is_err() || tokens.unwrap().iter().all(|t| !matches!(t.kind, TokenKind::Literal(Text))));
 	}
 
 	#[test]
 	fn test_text_empty_single_quotes() {
-		let tokens = tokenize("''").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "''").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(tokens[0].fragment.text(), "");
 	}
 
 	#[test]
 	fn test_text_empty_double_quotes() {
-		let tokens = tokenize("\"\"").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "\"\"").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(tokens[0].fragment.text(), "");
 	}
 
 	#[test]
 	fn test_text_mixed_quotes_comptokenize() {
-		let tokens = tokenize("'He said \"Hello\" and she replied \"Hi\"'").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "'He said \"Hello\" and she replied \"Hi\"'").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(tokens[0].fragment.text(), "He said \"Hello\" and she replied \"Hi\"");
 	}
 
 	#[test]
 	fn test_text_multiple_nested_quotes() {
-		let tokens = tokenize("\"It's a 'nice' day, isn't it?\"").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "\"It's a 'nice' day, isn't it?\"").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
 		assert_eq!(tokens[0].fragment.text(), "It's a 'nice' day, isn't it?");
 	}

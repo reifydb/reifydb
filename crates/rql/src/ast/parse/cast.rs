@@ -6,8 +6,8 @@ use crate::{
 	token::keyword::Keyword::Cast,
 };
 
-impl Parser {
-	pub(crate) fn parse_cast(&mut self) -> crate::Result<AstCast> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_cast(&mut self) -> crate::Result<AstCast<'bump>> {
 		let token = self.consume_keyword(Cast)?;
 		let tuple = self.parse_tuple()?;
 		Ok(AstCast {
@@ -21,13 +21,15 @@ impl Parser {
 pub mod tests {
 	use crate::{
 		ast::{ast::AstCast, parse::parse},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_cast() {
-		let tokens = tokenize("cast(9924, int8)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "cast(9924, int8)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let AstCast {

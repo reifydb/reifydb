@@ -15,8 +15,8 @@ use crate::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_window(&mut self) -> crate::Result<AstWindow> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_window(&mut self) -> crate::Result<AstWindow<'bump>> {
 		let token = self.consume_keyword(Window)?;
 
 		// Parse computation block
@@ -26,7 +26,7 @@ impl Parser {
 		// Parse aggregation expressions in main window block
 		loop {
 			if self.is_eof() {
-				return_error!(unexpected_token_error("}", self.current()?.fragment.clone()));
+				return_error!(unexpected_token_error("}", self.current()?.fragment.to_owned()));
 			}
 
 			if self.current()?.is_operator(CloseCurly) {
@@ -42,7 +42,7 @@ impl Parser {
 			} else if self.current()?.is_operator(CloseCurly) {
 				break;
 			} else {
-				return_error!(unexpected_token_error(", or }", self.current()?.fragment.clone()));
+				return_error!(unexpected_token_error(", or }", self.current()?.fragment.to_owned()));
 			}
 		}
 
@@ -82,14 +82,14 @@ impl Parser {
 	}
 
 	/// Parse WITH { interval: "5m", slide: "1m" } clause
-	fn parse_with_clause(&mut self) -> crate::Result<Vec<AstWindowConfig>> {
+	fn parse_with_clause(&mut self) -> crate::Result<Vec<AstWindowConfig<'bump>>> {
 		self.consume_operator(OpenCurly)?;
 
 		let mut config = Vec::new();
 
 		loop {
 			if self.is_eof() {
-				return_error!(unexpected_token_error("}", self.current()?.fragment.clone()));
+				return_error!(unexpected_token_error("}", self.current()?.fragment.to_owned()));
 			}
 
 			if self.current()?.is_operator(CloseCurly) {
@@ -100,7 +100,7 @@ impl Parser {
 			if !self.current()?.is_identifier() {
 				return_error!(unexpected_token_error(
 					"configuration parameter name",
-					self.current()?.fragment.clone()
+					self.current()?.fragment.to_owned()
 				));
 			}
 
@@ -119,7 +119,7 @@ impl Parser {
 			} else if self.current()?.is_operator(CloseCurly) {
 				break;
 			} else {
-				return_error!(unexpected_token_error(", or }", self.current()?.fragment.clone()));
+				return_error!(unexpected_token_error(", or }", self.current()?.fragment.to_owned()));
 			}
 		}
 
@@ -128,14 +128,14 @@ impl Parser {
 	}
 
 	/// Parse BY { field1, field2 } clause
-	fn parse_by_clause(&mut self) -> crate::Result<Vec<crate::ast::ast::Ast>> {
+	fn parse_by_clause(&mut self) -> crate::Result<Vec<crate::ast::ast::Ast<'bump>>> {
 		self.consume_operator(OpenCurly)?;
 
 		let mut group_by = Vec::new();
 
 		loop {
 			if self.is_eof() {
-				return_error!(unexpected_token_error("}", self.current()?.fragment.clone()));
+				return_error!(unexpected_token_error("}", self.current()?.fragment.to_owned()));
 			}
 
 			if self.current()?.is_operator(CloseCurly) {
@@ -151,7 +151,7 @@ impl Parser {
 			} else if self.current()?.is_operator(CloseCurly) {
 				break;
 			} else {
-				return_error!(unexpected_token_error(", or }", self.current()?.fragment.clone()));
+				return_error!(unexpected_token_error(", or }", self.current()?.fragment.to_owned()));
 			}
 		}
 
@@ -162,12 +162,16 @@ impl Parser {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::{ast::parse::Parser, token::tokenize};
+	use crate::{ast::parse::Parser, bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_parse_time_window() {
-		let tokens = tokenize(r#"window { count(*) } with { interval: "5m" }"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"window { count(*) } with { interval: "5m" }"#)
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -180,8 +184,10 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_count_window() {
-		let tokens = tokenize(r#"window { sum(value) } with { count: 100 }"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, r#"window { sum(value) } with { count: 100 }"#).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -194,9 +200,12 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_sliding_window() {
-		let tokens =
-			tokenize(r#"window { count(*), avg(value) } with { interval: "5m", slide: "1m" }"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"window { count(*), avg(value) } with { interval: "5m", slide: "1m" }"#)
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -208,8 +217,12 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_grouped_window() {
-		let tokens = tokenize(r#"window { count(*) } with { interval: "1h" } by { user_id }"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"window { count(*) } with { interval: "1h" } by { user_id }"#)
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -222,8 +235,12 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_window_by_then_with() {
-		let tokens = tokenize(r#"window { count(*) } by { user_id, region } with { interval: "1h" }"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"window { count(*) } by { user_id, region } with { interval: "1h" }"#)
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -236,8 +253,9 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_window_multiple_aggregations_and_grouping() {
-		let tokens = tokenize(r#"window { count(*), sum(amount), avg(price) } with { interval: "30m", slide: "5m" } by { customer_id, product_category }"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"window { count(*), sum(amount), avg(price) } with { interval: "30m", slide: "5m" } by { customer_id, product_category }"#).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -250,10 +268,15 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_rolling_count_window() {
-		let tokens =
-			tokenize(r#"window { count(*), avg(value) } with { count: 10, rolling: true } by { user_id }"#)
-				.unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(
+			&bump,
+			r#"window { count(*), avg(value) } with { count: 10, rolling: true } by { user_id }"#,
+		)
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -268,8 +291,12 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_rolling_time_window() {
-		let tokens = tokenize(r#"window { sum(amount) } with { interval: "5m", rolling: true }"#).unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"window { sum(amount) } with { interval: "5m", rolling: true }"#)
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);

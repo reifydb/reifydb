@@ -17,22 +17,26 @@ use cursor::Cursor;
 use reifydb_type::error::Error;
 use variable::scan_variable;
 
-use crate::token::{
-	identifier::{scan_identifier, scan_quoted_identifier},
-	keyword::scan_keyword,
-	literal::scan_literal,
-	operator::scan_operator,
-	separator::scan_separator,
-	token::Token,
+use crate::{
+	bump::{Bump, BumpVec},
+	token::{
+		identifier::{scan_identifier, scan_quoted_identifier},
+		keyword::scan_keyword,
+		literal::scan_literal,
+		operator::scan_operator,
+		separator::scan_separator,
+		token::Token,
+	},
 };
 
-/// Tokenize the input string into a vector of tokens
-pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
+/// Tokenize the input string into a vector of tokens.
+/// The input lifetime is tied to the bump lifetime, enabling zero-copy fragments.
+pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> crate::Result<BumpVec<'b, Token<'b>>> {
 	let mut cursor = Cursor::new(input);
 	// Estimate token count: rough heuristic of 1 token per 6 characters
 	// with minimum of 8 and maximum reasonable limit
 	let estimated_tokens = (input.len() / 6).max(8).min(2048);
-	let mut tokens = Vec::with_capacity(estimated_tokens);
+	let mut tokens = BumpVec::with_capacity_in(estimated_tokens, bump);
 
 	while !cursor.is_eof() {
 		// Skip whitespace at the beginning of each token
@@ -134,10 +138,12 @@ pub mod tests {
 		token::{Literal, TokenKind},
 		tokenize,
 	};
+	use crate::bump::Bump;
 
 	#[test]
 	fn test_tokenize_simple() {
-		let tokens = tokenize("MAP * FROM users").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP * FROM users").unwrap();
 		assert_eq!(tokens.len(), 4);
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Map));
 		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Asterisk));
@@ -147,7 +153,8 @@ pub mod tests {
 
 	#[test]
 	fn test_tokenize_with_whitespace() {
-		let tokens = tokenize("   MAP   *   FROM   users   ").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "   MAP   *   FROM   users   ").unwrap();
 		assert_eq!(tokens.len(), 4);
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Map));
 		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Asterisk));
@@ -157,7 +164,8 @@ pub mod tests {
 
 	#[test]
 	fn test_tokenize_numbers() {
-		let tokens = tokenize("42 3.14 0x2A 0b1010 0o777").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "42 3.14 0x2A 0b1010 0o777").unwrap();
 		assert_eq!(tokens.len(), 5);
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Literal::Number));
 		assert_eq!(tokens[0].value(), "42");
@@ -173,7 +181,8 @@ pub mod tests {
 
 	#[test]
 	fn test_tokenize_strings() {
-		let tokens = tokenize("'hello' \"world\"").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "'hello' \"world\"").unwrap();
 		assert_eq!(tokens.len(), 2);
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Literal::Text));
 		assert_eq!(tokens[0].value(), "hello");
@@ -183,7 +192,8 @@ pub mod tests {
 
 	#[test]
 	fn test_tokenize_variables() {
-		let tokens = tokenize("$1 + $user_id").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "$1 + $user_id").unwrap();
 		assert_eq!(tokens.len(), 3);
 		assert_eq!(tokens[0].kind, TokenKind::Variable);
 		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Plus));
@@ -192,7 +202,8 @@ pub mod tests {
 
 	#[test]
 	fn test_tokenize_operators() {
-		let tokens = tokenize("a >= b && c != d").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "a >= b && c != d").unwrap();
 		assert_eq!(tokens.len(), 7);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::RightAngleEqual));
@@ -205,7 +216,8 @@ pub mod tests {
 
 	#[test]
 	fn test_tokenize_keywords_case_insensitive() {
-		let tokens = tokenize("map Map MAP").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "map Map MAP").unwrap();
 		assert_eq!(tokens.len(), 3);
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Map));
 		assert_eq!(tokens[1].kind, TokenKind::Keyword(Keyword::Map));
@@ -214,8 +226,9 @@ pub mod tests {
 
 	#[test]
 	fn test_tokenize_comptokenize_query() {
+		let bump = Bump::new();
 		let query = "MAP name, age FROM users WHERE age > 18 AND status = 'active'";
-		let tokens = tokenize(query).unwrap();
+		let tokens = tokenize(&bump, query).unwrap();
 
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Map));
 		assert_eq!(tokens[1].kind, TokenKind::Identifier);
@@ -236,14 +249,16 @@ pub mod tests {
 
 	#[test]
 	fn test_tokenize_desc_keyword() {
-		let tokens = tokenize("DESC").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DESC").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Desc));
 	}
 
 	#[test]
 	fn test_tokenize_single_char_identifier() {
-		let tokens = tokenize("a").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "a").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].value(), "a");
@@ -251,7 +266,8 @@ pub mod tests {
 
 	#[test]
 	fn test_tokenize_boolean_literals() {
-		let tokens = tokenize("true false TRUE FALSE").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "true false TRUE FALSE").unwrap();
 		assert_eq!(tokens.len(), 4);
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Literal::True));
 		assert_eq!(tokens[1].kind, TokenKind::Literal(Literal::False));

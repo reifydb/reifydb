@@ -20,8 +20,8 @@ use crate::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_alter(&mut self) -> crate::Result<AstAlter> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_alter(&mut self) -> crate::Result<AstAlter<'bump>> {
 		let token = self.consume_keyword(Keyword::Alter)?;
 
 		if self.current()?.is_keyword(Keyword::Sequence) {
@@ -47,7 +47,7 @@ impl Parser {
 		unimplemented!("Only ALTER SEQUENCE, ALTER TABLE, ALTER VIEW, and ALTER FLOW are supported");
 	}
 
-	fn parse_alter_sequence(&mut self, token: Token) -> crate::Result<AstAlter> {
+	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
 		// Parse namespace.table.column or table.column
 		let first_identifier_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 
@@ -69,9 +69,8 @@ impl Parser {
 				// Create MaybeQualifiedSequenceIdentifier with
 				// namespace
 				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
-				let sequence =
-					MaybeQualifiedSequenceIdentifier::new(second_identifier_token.fragment.clone())
-						.with_namespace(first_identifier_token.fragment.clone());
+				let sequence = MaybeQualifiedSequenceIdentifier::new(second_identifier_token.fragment)
+					.with_namespace(first_identifier_token.fragment);
 
 				let column = column_token.fragment;
 				let value = crate::ast::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(
@@ -95,8 +94,7 @@ impl Parser {
 				// Create MaybeQualifiedSequenceIdentifier
 				// without namespace
 				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
-				let sequence =
-					MaybeQualifiedSequenceIdentifier::new(first_identifier_token.fragment.clone());
+				let sequence = MaybeQualifiedSequenceIdentifier::new(first_identifier_token.fragment);
 
 				let column = second_identifier_token.fragment;
 				let value = crate::ast::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(
@@ -115,7 +113,7 @@ impl Parser {
 		}
 	}
 
-	fn parse_alter_table(&mut self, token: Token) -> crate::Result<AstAlter> {
+	fn parse_alter_table(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
 		// Parse namespace.table
 		let namespace_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
@@ -123,8 +121,8 @@ impl Parser {
 
 		// Create MaybeQualifiedTableIdentifier
 		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
-		let table = MaybeQualifiedTableIdentifier::new(table_token.fragment.clone())
-			.with_namespace(namespace_token.fragment.clone());
+		let table = MaybeQualifiedTableIdentifier::new(table_token.fragment)
+			.with_namespace(namespace_token.fragment);
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -189,7 +187,7 @@ impl Parser {
 		}))
 	}
 
-	fn parse_alter_view(&mut self, token: Token) -> crate::Result<AstAlter> {
+	fn parse_alter_view(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
 		// Parse namespace.view
 		let namespace_token = self.consume(crate::token::token::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
@@ -197,8 +195,8 @@ impl Parser {
 
 		// Create MaybeQualifiedViewIdentifier for view
 		use crate::ast::identifier::MaybeQualifiedViewIdentifier;
-		let view = MaybeQualifiedViewIdentifier::new(view_token.fragment.clone())
-			.with_namespace(namespace_token.fragment.clone());
+		let view =
+			MaybeQualifiedViewIdentifier::new(view_token.fragment).with_namespace(namespace_token.fragment);
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -263,7 +261,7 @@ impl Parser {
 		}))
 	}
 
-	fn parse_primary_key_columns(&mut self) -> crate::Result<Vec<AstIndexColumn>> {
+	fn parse_primary_key_columns(&mut self) -> crate::Result<Vec<AstIndexColumn<'bump>>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -319,18 +317,17 @@ impl Parser {
 		Ok(columns)
 	}
 
-	fn parse_alter_flow(&mut self, token: Token) -> crate::Result<AstAlter> {
+	fn parse_alter_flow(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
 		// Parse the flow identifier (namespace.name or just name)
 		let first_token = self.consume(TokenKind::Identifier)?;
 
 		let flow = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
 			// namespace.name format
 			let second_token = self.consume(TokenKind::Identifier)?;
-			MaybeQualifiedFlowIdentifier::new(second_token.fragment.clone())
-				.with_namespace(first_token.fragment.clone())
+			MaybeQualifiedFlowIdentifier::new(second_token.fragment).with_namespace(first_token.fragment)
 		} else {
 			// just name format
-			MaybeQualifiedFlowIdentifier::new(first_token.fragment.clone())
+			MaybeQualifiedFlowIdentifier::new(first_token.fragment)
 		};
 
 		// Parse the action
@@ -418,7 +415,7 @@ impl Parser {
 			return Err(reifydb_type::error::Error(
 				reifydb_type::error::diagnostic::ast::unexpected_token_error(
 					"RENAME, SET, PAUSE, or RESUME",
-					self.current()?.fragment.clone(),
+					self.current()?.fragment.to_owned(),
 				),
 			));
 		};
@@ -441,13 +438,16 @@ pub mod tests {
 			},
 			parse::Parser,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_alter_sequence_with_schema() {
-		let tokens = tokenize("ALTER SEQUENCE test.users.id SET VALUE 1000").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "ALTER SEQUENCE test.users.id SET VALUE 1000").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -478,8 +478,9 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_sequence_without_schema() {
-		let tokens = tokenize("ALTER SEQUENCE users.id SET VALUE 500").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER SEQUENCE users.id SET VALUE 500").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -509,8 +510,12 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_table_create_primary_key() {
-		let tokens = tokenize("ALTER TABLE test.users { create primary key pk_users {id} }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER TABLE test.users { create primary key pk_users {id} }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -547,8 +552,12 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_table_create_primary_key_no_name() {
-		let tokens = tokenize("ALTER TABLE test.users { create primary key {id, email} }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER TABLE test.users { create primary key {id, email} }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -585,8 +594,12 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_view_create_primary_key() {
-		let tokens = tokenize("ALTER VIEW test.user_view { create primary key pk_view {user_id} }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER VIEW test.user_view { create primary key pk_view {user_id} }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -623,9 +636,12 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_view_create_primary_key_no_name() {
-		let tokens =
-			tokenize("ALTER VIEW test.user_view { create primary key {user_id, created_at} }").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER VIEW test.user_view { create primary key {user_id, created_at} }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -662,8 +678,9 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_flow_rename() {
-		let tokens = tokenize("ALTER FLOW old_flow RENAME TO new_flow").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER FLOW old_flow RENAME TO new_flow").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -690,8 +707,10 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_flow_rename_qualified() {
-		let tokens = tokenize("ALTER FLOW test.old_flow RENAME TO new_flow").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "ALTER FLOW test.old_flow RENAME TO new_flow").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -718,9 +737,12 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_flow_set_query() {
-		let tokens =
-			tokenize("ALTER FLOW my_flow SET QUERY AS FROM new_source FILTER {active = true}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER FLOW my_flow SET QUERY AS FROM new_source FILTER {active = true}")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -746,7 +768,9 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_flow_set_query_with_braces() {
+		let bump = Bump::new();
 		let tokens = tokenize(
+			&bump,
 			r#"
 			ALTER FLOW my_flow SET QUERY AS {
 				FROM new_source
@@ -755,8 +779,10 @@ pub mod tests {
 			}
 		"#,
 		)
-		.unwrap();
-		let mut parser = Parser::new(tokens);
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -782,8 +808,9 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_flow_pause() {
-		let tokens = tokenize("ALTER FLOW my_flow PAUSE").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER FLOW my_flow PAUSE").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -807,8 +834,9 @@ pub mod tests {
 
 	#[test]
 	fn test_alter_flow_resume() {
-		let tokens = tokenize("ALTER FLOW analytics.my_flow RESUME").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER FLOW analytics.my_flow RESUME").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

@@ -7,8 +7,8 @@ use crate::{
 	plan::logical::{Compiler, ExtendNode, LogicalPlan},
 };
 
-impl Compiler {
-	pub(crate) fn compile_extend(&self, ast: AstExtend) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_extend(&self, ast: AstExtend<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::Extend(ExtendNode {
 			extend: ast
 				.nodes

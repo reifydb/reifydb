@@ -8,8 +8,12 @@ use crate::{
 	plan::logical::{Compiler, LogicalPlan, MergeNode},
 };
 
-impl Compiler {
-	pub(crate) fn compile_merge<T: AsTransaction>(&self, ast: AstMerge, tx: &mut T) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_merge<T: AsTransaction>(
+		&self,
+		ast: AstMerge<'bump>,
+		tx: &mut T,
+	) -> crate::Result<LogicalPlan<'bump>> {
 		// Compile the subquery into logical plans
 		let with = self.compile(ast.with.statement, tx)?;
 		Ok(LogicalPlan::Merge(MergeNode {

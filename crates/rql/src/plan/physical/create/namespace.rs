@@ -12,11 +12,11 @@ impl Compiler {
 	pub(crate) fn compile_create_namespace<T: AsTransaction>(
 		&self,
 		_rx: &mut T,
-		create: logical::CreateNamespaceNode,
+		create: logical::CreateNamespaceNode<'_>,
 	) -> crate::Result<PhysicalPlan> {
 		// FIXME validate catalog
 		Ok(PhysicalPlan::CreateNamespace(CreateNamespaceNode {
-			namespace: create.namespace,
+			namespace: create.namespace.to_owned(),
 			if_not_exists: create.if_not_exists,
 		}))
 	}

@@ -7,8 +7,8 @@ use crate::{
 	plan::logical::{Compiler, LogicalPlan, PatchNode},
 };
 
-impl Compiler {
-	pub(crate) fn compile_patch(&self, ast: AstPatch) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_patch(&self, ast: AstPatch<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::Patch(PatchNode {
 			assignments: ast
 				.assignments

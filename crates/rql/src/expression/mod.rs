@@ -12,11 +12,13 @@ use crate::{
 		ast::{Ast, AstInfix, AstLiteral, InfixOperator},
 		parse_str,
 	},
+	bump::{Bump, BumpBox},
 	convert_data_type,
 };
 
 pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
-	let statements = parse_str(rql)?;
+	let bump = Bump::new();
+	let statements = parse_str(&bump, rql)?;
 	if statements.is_empty() {
 		return Ok(vec![]);
 	}
@@ -846,23 +848,23 @@ impl Display for TupleExpression {
 pub struct ExpressionCompiler {}
 
 impl ExpressionCompiler {
-	pub fn compile(ast: Ast) -> crate::Result<Expression> {
+	pub fn compile(ast: Ast<'_>) -> crate::Result<Expression> {
 		match ast {
 			Ast::Literal(literal) => match literal {
 				AstLiteral::Boolean(_) => Ok(Expression::Constant(ConstantExpression::Bool {
-					fragment: literal.fragment(),
+					fragment: literal.fragment().to_owned(),
 				})),
 				AstLiteral::Number(_) => Ok(Expression::Constant(ConstantExpression::Number {
-					fragment: literal.fragment(),
+					fragment: literal.fragment().to_owned(),
 				})),
 				AstLiteral::Temporal(_) => Ok(Expression::Constant(ConstantExpression::Temporal {
-					fragment: literal.fragment(),
+					fragment: literal.fragment().to_owned(),
 				})),
 				AstLiteral::Text(_) => Ok(Expression::Constant(ConstantExpression::Text {
-					fragment: literal.fragment(),
+					fragment: literal.fragment().to_owned(),
 				})),
 				AstLiteral::Undefined(_) => Ok(Expression::Constant(ConstantExpression::Undefined {
-					fragment: literal.fragment(),
+					fragment: literal.fragment().to_owned(),
 				})),
 			},
 			Ast::Identifier(identifier) => {
@@ -879,7 +881,7 @@ impl ExpressionCompiler {
 							text: Arc::new("_context".to_string()),
 						},
 					},
-					name: identifier.token.fragment.clone(),
+					name: identifier.token.fragment.to_owned(),
 				};
 				Ok(Expression::Column(ColumnExpression(column)))
 			}
@@ -907,20 +909,20 @@ impl ExpressionCompiler {
 				Ok(Expression::Call(CallExpression {
 					func: IdentExpression(Fragment::testing(&full_name)),
 					args: arg_expressions,
-					fragment: call.token.fragment,
+					fragment: call.token.fragment.to_owned(),
 				}))
 			}
 			Ast::Infix(ast) => Self::infix(ast),
 			Ast::Between(between) => {
-				let value = Self::compile(*between.value)?;
-				let lower = Self::compile(*between.lower)?;
-				let upper = Self::compile(*between.upper)?;
+				let value = Self::compile(BumpBox::into_inner(between.value))?;
+				let lower = Self::compile(BumpBox::into_inner(between.lower))?;
+				let upper = Self::compile(BumpBox::into_inner(between.upper))?;
 
 				Ok(Expression::Between(BetweenExpression {
 					value: Box::new(value),
 					lower: Box::new(lower),
 					upper: Box::new(upper),
-					fragment: between.token.fragment,
+					fragment: between.token.fragment.to_owned(),
 				}))
 			}
 			Ast::Tuple(tuple) => {
@@ -932,38 +934,42 @@ impl ExpressionCompiler {
 
 				Ok(Expression::Tuple(TupleExpression {
 					expressions,
-					fragment: tuple.token.fragment,
+					fragment: tuple.token.fragment.to_owned(),
 				}))
 			}
 			Ast::Prefix(prefix) => {
 				let (fragment, operator) = match prefix.operator {
-					ast::ast::AstPrefixOperator::Plus(token) => {
-						(token.fragment.clone(), PrefixOperator::Plus(token.fragment))
-					}
-					ast::ast::AstPrefixOperator::Negate(token) => {
-						(token.fragment.clone(), PrefixOperator::Minus(token.fragment))
-					}
-					ast::ast::AstPrefixOperator::Not(token) => {
-						(token.fragment.clone(), PrefixOperator::Not(token.fragment))
-					}
+					ast::ast::AstPrefixOperator::Plus(token) => (
+						token.fragment.to_owned(),
+						PrefixOperator::Plus(token.fragment.to_owned()),
+					),
+					ast::ast::AstPrefixOperator::Negate(token) => (
+						token.fragment.to_owned(),
+						PrefixOperator::Minus(token.fragment.to_owned()),
+					),
+					ast::ast::AstPrefixOperator::Not(token) => (
+						token.fragment.to_owned(),
+						PrefixOperator::Not(token.fragment.to_owned()),
+					),
 				};
 
 				Ok(Expression::Prefix(PrefixExpression {
 					operator,
-					expression: Box::new(Self::compile(*prefix.node)?),
+					expression: Box::new(Self::compile(BumpBox::into_inner(prefix.node))?),
 					fragment,
 				}))
 			}
 			Ast::Cast(node) => {
 				let mut tuple = node.tuple;
 				let node = tuple.nodes.pop().unwrap();
-				let fragment = node.as_identifier().token.fragment.clone();
-				let ty = convert_data_type(&fragment)?;
+				let bump_fragment = node.as_identifier().token.fragment;
+				let ty = convert_data_type(&bump_fragment)?;
+				let fragment = bump_fragment.to_owned();
 
 				let expr = tuple.nodes.pop().unwrap();
 
 				Ok(Expression::Cast(CastExpression {
-					fragment: tuple.token.fragment,
+					fragment: tuple.token.fragment.to_owned(),
 					expression: Box::new(Self::compile(expr)?),
 					to: TypeExpression {
 						fragment,
@@ -972,7 +978,7 @@ impl ExpressionCompiler {
 				}))
 			}
 			Ast::Variable(var) => Ok(Expression::Variable(VariableExpression {
-				fragment: var.token.fragment,
+				fragment: var.token.fragment.to_owned(),
 			})),
 			Ast::Rownum(_rownum) => {
 				// Compile rownum to a column reference for rownum
@@ -996,25 +1002,26 @@ impl ExpressionCompiler {
 			}
 			Ast::If(if_ast) => {
 				// Compile condition
-				let condition = Box::new(Self::compile(*if_ast.condition)?);
+				let condition = Box::new(Self::compile(BumpBox::into_inner(if_ast.condition))?);
 
 				// Compile then expression (take first expression from first statement in block)
-				let then_expr = Box::new(Self::compile_block_as_expr(&if_ast.then_block)?);
+				let then_expr = Box::new(Self::compile_block_as_expr(if_ast.then_block)?);
 
 				// Compile else_if chains
 				let mut else_ifs = Vec::new();
 				for else_if in if_ast.else_ifs {
-					let else_if_condition = Box::new(Self::compile(*else_if.condition)?);
-					let else_if_then = Box::new(Self::compile_block_as_expr(&else_if.then_block)?);
+					let else_if_condition =
+						Box::new(Self::compile(BumpBox::into_inner(else_if.condition))?);
+					let else_if_then = Box::new(Self::compile_block_as_expr(else_if.then_block)?);
 					else_ifs.push(ElseIfExpression {
 						condition: else_if_condition,
 						then_expr: else_if_then,
-						fragment: else_if.token.fragment,
+						fragment: else_if.token.fragment.to_owned(),
 					});
 				}
 
 				// Compile optional else expression
-				let else_expr = if let Some(ref else_block) = if_ast.else_block {
+				let else_expr = if let Some(else_block) = if_ast.else_block {
 					Some(Box::new(Self::compile_block_as_expr(else_block)?))
 				} else {
 					None
@@ -1025,7 +1032,7 @@ impl ExpressionCompiler {
 					then_expr,
 					else_ifs,
 					else_expr,
-					fragment: if_ast.token.fragment,
+					fragment: if_ast.token.fragment.to_owned(),
 				}))
 			}
 			Ast::Map(map) => {
@@ -1037,7 +1044,7 @@ impl ExpressionCompiler {
 
 				Ok(Expression::Map(MapExpression {
 					expressions,
-					fragment: map.token.fragment,
+					fragment: map.token.fragment.to_owned(),
 				}))
 			}
 			Ast::Extend(extend) => {
@@ -1049,7 +1056,7 @@ impl ExpressionCompiler {
 
 				Ok(Expression::Extend(ExtendExpression {
 					expressions,
-					fragment: extend.token.fragment,
+					fragment: extend.token.fragment.to_owned(),
 				}))
 			}
 			Ast::List(list) => {
@@ -1060,7 +1067,7 @@ impl ExpressionCompiler {
 				}
 				Ok(Expression::Tuple(TupleExpression {
 					expressions,
-					fragment: list.token.fragment,
+					fragment: list.token.fragment.to_owned(),
 				}))
 			}
 			ast => unimplemented!("{:?}", ast),
@@ -1070,68 +1077,69 @@ impl ExpressionCompiler {
 	/// Compile an AstBlock as a single expression.
 	/// Takes the first expression from the first statement in the block.
 	/// Used for IF/ELSE blocks in expression context.
-	fn compile_block_as_expr(block: &crate::ast::ast::AstBlock) -> crate::Result<Expression> {
-		if let Some(first_stmt) = block.statements.first() {
-			if let Some(first_node) = first_stmt.nodes.first() {
-				return Self::compile(first_node.clone());
+	fn compile_block_as_expr(block: crate::ast::ast::AstBlock<'_>) -> crate::Result<Expression> {
+		let fragment = block.token.fragment.to_owned();
+		if let Some(first_stmt) = block.statements.into_iter().next() {
+			if let Some(first_node) = first_stmt.nodes.into_iter().next() {
+				return Self::compile(first_node);
 			}
 		}
 		// Empty block → undefined
 		Ok(Expression::Constant(ConstantExpression::Undefined {
-			fragment: block.token.fragment.clone(),
+			fragment,
 		}))
 	}
 
-	fn infix(ast: AstInfix) -> crate::Result<Expression> {
+	fn infix(ast: AstInfix<'_>) -> crate::Result<Expression> {
 		match ast.operator {
 			InfixOperator::Add(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 				Ok(Expression::Add(AddExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::Divide(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 				Ok(Expression::Div(DivExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::Subtract(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 				Ok(Expression::Sub(SubExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::Rem(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 				Ok(Expression::Rem(RemExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::Multiply(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 				Ok(Expression::Mul(MulExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::Call(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				let Expression::Column(ColumnExpression(column)) = left else {
 					panic!()
@@ -1143,73 +1151,73 @@ impl ExpressionCompiler {
 				Ok(Expression::Call(CallExpression {
 					func: IdentExpression(column.name),
 					args: tuple.expressions,
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::GreaterThan(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::GreaterThan(GreaterThanExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::GreaterThanEqual(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::GreaterThanEqual(GreaterThanEqExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::LessThan(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::LessThan(LessThanExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::LessThanEqual(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::LessThanEqual(LessThanEqExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::Equal(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::Equal(EqExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::NotEqual(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::NotEqual(NotEqExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 			InfixOperator::As(token) => {
-				let left = Self::compile(*ast.left)?;
-				let alias_fragment = match *ast.right {
-					Ast::Identifier(ident) => ident.token.fragment,
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let alias_fragment = match BumpBox::into_inner(ast.right) {
+					Ast::Identifier(ident) => ident.token.fragment.to_owned(),
 					Ast::Literal(AstLiteral::Text(text)) => {
 						let raw = text.0.fragment.text();
 						let unquoted = raw.trim_matches('"');
@@ -1221,64 +1229,64 @@ impl ExpressionCompiler {
 				Ok(Expression::Alias(AliasExpression {
 					alias: IdentExpression(alias_fragment),
 					expression: Box::new(left),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 
 			InfixOperator::And(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::And(AndExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 
 			InfixOperator::Or(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::Or(OrExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 
 			InfixOperator::Xor(token) => {
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::Xor(XorExpression {
 					left: Box::new(left),
 					right: Box::new(right),
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 
 			InfixOperator::In(token) => {
-				let value = Self::compile(*ast.left)?;
-				let list = Self::compile(*ast.right)?;
+				let value = Self::compile(BumpBox::into_inner(ast.left))?;
+				let list = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::In(InExpression {
 					value: Box::new(value),
 					list: Box::new(list),
 					negated: false,
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 
 			InfixOperator::NotIn(token) => {
-				let value = Self::compile(*ast.left)?;
-				let list = Self::compile(*ast.right)?;
+				let value = Self::compile(BumpBox::into_inner(ast.left))?;
+				let list = Self::compile(BumpBox::into_inner(ast.right))?;
 
 				Ok(Expression::In(InExpression {
 					value: Box::new(value),
 					list: Box::new(list),
 					negated: true,
-					fragment: token.fragment,
+					fragment: token.fragment.to_owned(),
 				}))
 			}
 
@@ -1286,28 +1294,30 @@ impl ExpressionCompiler {
 				// Assignment operator (=) is not valid in expression context
 				// Use == for equality comparison
 				use reifydb_type::error::diagnostic::ast as diag_ast;
-				reifydb_type::return_error!(diag_ast::unsupported_token_error(token.fragment))
+				reifydb_type::return_error!(diag_ast::unsupported_token_error(
+					token.fragment.to_owned()
+				))
 			}
 
 			InfixOperator::TypeAscription(token) => {
-				match *ast.left {
+				match BumpBox::into_inner(ast.left) {
 					Ast::Identifier(alias) => {
-						let right = Self::compile(*ast.right)?;
+						let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 						Ok(Expression::Alias(AliasExpression {
-							alias: IdentExpression(alias.token.fragment),
+							alias: IdentExpression(alias.token.fragment.to_owned()),
 							expression: Box::new(right),
-							fragment: token.fragment,
+							fragment: token.fragment.to_owned(),
 						}))
 					}
 					Ast::Literal(AstLiteral::Text(text)) => {
 						// Handle string literals as alias names (common in MAP syntax)
-						let right = Self::compile(*ast.right)?;
+						let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
 						Ok(Expression::Alias(AliasExpression {
-							alias: IdentExpression(text.0.fragment),
+							alias: IdentExpression(text.0.fragment.to_owned()),
 							expression: Box::new(right),
-							fragment: token.fragment,
+							fragment: token.fragment.to_owned(),
 						}))
 					}
 					_ => {

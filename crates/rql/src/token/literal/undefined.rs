@@ -8,7 +8,7 @@ use crate::token::{
 };
 
 /// Scan for undefined literal
-pub fn scan_undefined(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_undefined<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -30,35 +30,41 @@ pub fn scan_undefined(cursor: &mut Cursor) -> Option<Token> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::token::{keyword::Keyword, tokenize};
+	use crate::{
+		bump::Bump,
+		token::{keyword::Keyword, tokenize},
+	};
 
 	#[test]
 	fn test_undefined() {
-		let tokens = tokenize("undefined").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "undefined").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Undefined));
 		assert_eq!(tokens[0].fragment.text(), "undefined");
 	}
 
 	#[test]
 	fn test_undefined_case_insensitive() {
-		let tokens = tokenize("UNDEFINED").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "UNDEFINED").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Undefined));
 
-		let tokens = tokenize("Undefined").unwrap();
+		let tokens = tokenize(&bump, "Undefined").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Undefined));
 
-		let tokens = tokenize("UnDeFiNeD").unwrap();
+		let tokens = tokenize(&bump, "UnDeFiNeD").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Undefined));
 	}
 
 	#[test]
 	fn test_undefined_with_trailing() {
-		let tokens = tokenize("undefined123").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "undefined123").unwrap();
 		// Should parse as identifier, not undefined
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "undefined123");
 
-		let tokens = tokenize("undefined_value").unwrap();
+		let tokens = tokenize(&bump, "undefined_value").unwrap();
 		// Should parse as identifier, not undefined
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "undefined_value");
@@ -66,14 +72,16 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_separated() {
-		let tokens = tokenize("undefined, undefined").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "undefined, undefined").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Undefined));
 		assert_eq!(tokens[2].kind, TokenKind::Literal(Undefined));
 	}
 
 	#[test]
 	fn test_undefined_in_expression() {
-		let tokens = tokenize("value == undefined").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "value == undefined").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Value));
 		assert_eq!(tokens[0].fragment.text(), "value");
 		assert_eq!(tokens[2].kind, TokenKind::Literal(Undefined));

@@ -10,7 +10,7 @@ use reifydb_core::{
 	interface::catalog::primitive::PrimitiveId,
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::{logical::alter::table::AlterTableOperation, physical::alter::table::AlterTableNode};
+use reifydb_rql::plan::physical::alter::table::{AlterTableNode, AlterTableOperation};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
@@ -21,26 +21,26 @@ pub(crate) fn alter_table<'a>(
 	txn: &mut AdminTransaction,
 	plan: AlterTableNode,
 ) -> crate::Result<Columns> {
-	// Get namespace and table names from MaybeQualified type
-	let namespace_name = plan.node.table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-	let table_name = plan.node.table.name.text();
+	// Get namespace and table names
+	let namespace_name = plan.table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+	let table_name = plan.table.name.text();
 
 	// Find the namespace
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		let ns_fragment =
-			plan.node.table.namespace.clone().unwrap_or_else(|| Fragment::internal("default".to_string()));
+			plan.table.namespace.clone().unwrap_or_else(|| Fragment::internal("default".to_string()));
 		return_error!(namespace_not_found(ns_fragment, namespace_name));
 	};
 
 	// Find the table
 	let Some(table) = services.catalog.find_table_by_name(txn, namespace.id, table_name)? else {
-		return_error!(table_not_found(plan.node.table.name.clone(), &namespace.name, table_name,));
+		return_error!(table_not_found(plan.table.name.clone(), &namespace.name, table_name,));
 	};
 
 	let mut results = Vec::new();
 
 	// Process each operation
-	for operation in plan.node.operations {
+	for operation in plan.operations {
 		match operation {
 			AlterTableOperation::CreatePrimaryKey {
 				name,

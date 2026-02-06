@@ -19,8 +19,8 @@ use crate::{
 	},
 };
 
-impl Parser {
-	pub(crate) fn parse_primary(&mut self) -> crate::Result<Ast> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_primary(&mut self) -> crate::Result<Ast<'bump>> {
 		loop {
 			if self.is_eof() {
 				return Ok(Ast::Nop);
@@ -34,7 +34,7 @@ impl Parser {
 		}
 
 		let current = self.current()?;
-		match &current.kind {
+		match current.kind {
 			TokenKind::Operator(operator) => match operator {
 				Operator::Plus | Operator::Minus | Operator::Bang | Operator::Not => {
 					self.parse_prefix()
@@ -43,7 +43,7 @@ impl Parser {
 				Operator::OpenBracket => Ok(Ast::List(self.parse_list()?)),
 				Operator::OpenParen => Ok(Ast::Tuple(self.parse_tuple()?)),
 				Operator::OpenCurly => Ok(Ast::Inline(self.parse_inline()?)),
-				_ => return_error!(ast::unsupported_token_error(self.advance()?.fragment)),
+				_ => return_error!(ast::unsupported_token_error(self.advance()?.fragment.to_owned())),
 			},
 			TokenKind::Keyword(keyword) => {
 				// Keywords that can start statements at the top
@@ -121,7 +121,7 @@ impl Parser {
 						}
 						// Check if there's a pipe ahead - if so, treat as frame source
 						if self.has_pipe_ahead() {
-							let from_token = var_token.clone(); // Create FROM token before moving var_token
+							let from_token = var_token; // Token is Copy
 							let variable = AstVariable {
 								token: var_token,
 							};
@@ -137,7 +137,9 @@ impl Parser {
 							}))
 						}
 					} else {
-						return_error!(ast::unsupported_token_error(self.advance()?.fragment))
+						return_error!(ast::unsupported_token_error(
+							self.advance()?.fragment.to_owned()
+						))
 					}
 				}
 			},

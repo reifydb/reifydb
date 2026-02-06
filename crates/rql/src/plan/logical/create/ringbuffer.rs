@@ -15,12 +15,12 @@ use crate::{
 	plan::logical::{Compiler, CreateRingBufferNode, LogicalPlan, convert_policy},
 };
 
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_ringbuffer<T: AsTransaction>(
 		&self,
-		ast: AstCreateRingBuffer,
+		ast: AstCreateRingBuffer<'bump>,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	) -> crate::Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<RingBufferColumnToCreate> = vec![];
 
 		// Get the ring buffer's namespace for dictionary resolution
@@ -39,14 +39,14 @@ impl Compiler {
 			};
 
 			let ty_fragment = match &col.ty {
-				crate::ast::ast::AstDataType::Unconstrained(fragment) => fragment.clone(),
+				crate::ast::ast::AstDataType::Unconstrained(fragment) => fragment.to_owned(),
 				crate::ast::ast::AstDataType::Constrained {
 					name,
 					..
-				} => name.clone(),
+				} => name.to_owned(),
 			};
 
-			let fragment = Some(Fragment::merge_all([col.name.clone(), ty_fragment]));
+			let fragment = Some(Fragment::merge_all([col.name.to_owned(), ty_fragment]));
 
 			// Resolve dictionary if specified
 			let dictionary_id = if let Some(ref dict_ident) = col.dictionary {
@@ -62,7 +62,7 @@ impl Compiler {
 				let Some(namespace) = self.catalog.find_namespace_by_name(tx, dict_namespace_name)?
 				else {
 					return_error!(dictionary_not_found(
-						dict_ident.name.clone(),
+						dict_ident.name.to_owned(),
 						dict_namespace_name,
 						dict_name,
 					));
@@ -73,7 +73,7 @@ impl Compiler {
 					self.catalog.find_dictionary_by_name(tx, namespace.id, dict_name)?
 				else {
 					return_error!(dictionary_not_found(
-						dict_ident.name.clone(),
+						dict_ident.name.to_owned(),
 						dict_namespace_name,
 						dict_name,
 					));
@@ -82,7 +82,7 @@ impl Compiler {
 				// Validate type compatibility: column type must match dictionary's value_type
 				if column_type != dictionary.value_type {
 					return_error!(dictionary_type_mismatch(
-						col.name.clone(),
+						col.name.to_owned(),
 						&column_name,
 						column_type,
 						dict_name,

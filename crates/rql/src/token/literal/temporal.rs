@@ -7,7 +7,7 @@ use crate::token::{
 };
 
 /// Scan for temporal literal (dates/times starting with @)
-pub fn scan_temporal(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_temporal<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek() != Some('@') {
 		return None;
 	}
@@ -51,53 +51,60 @@ pub mod tests {
 	use Literal::Temporal;
 
 	use super::*;
-	use crate::token::tokenize;
+	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_temporal_date() {
-		let tokens = tokenize("@2024-01-15").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-01-15").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(tokens[0].fragment.text(), "2024-01-15");
 	}
 
 	#[test]
 	fn test_temporal_datetime() {
-		let tokens = tokenize("@2024-01-15T10:30:00").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-01-15T10:30:00").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(tokens[0].fragment.text(), "2024-01-15T10:30:00");
 	}
 
 	#[test]
 	fn test_temporal_with_timezone() {
-		let tokens = tokenize("@2024-01-15T10:30:00+05:30").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-01-15T10:30:00+05:30").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(tokens[0].fragment.text(), "2024-01-15T10:30:00+05:30");
 	}
 
 	#[test]
 	fn test_temporal_time_only() {
-		let tokens = tokenize("@10:30:00").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@10:30:00").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(tokens[0].fragment.text(), "10:30:00");
 	}
 
 	#[test]
 	fn test_temporal_with_microseconds() {
-		let tokens = tokenize("@2024-01-15T10:30:00.123456").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-01-15T10:30:00.123456").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(tokens[0].fragment.text(), "2024-01-15T10:30:00.123456");
 	}
 
 	#[test]
 	fn test_temporal_alternative_format() {
-		let tokens = tokenize("@2024/01/15").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024/01/15").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(tokens[0].fragment.text(), "2024/01/15");
 	}
 
 	#[test]
 	fn test_temporal_with_trailing() {
-		let tokens = tokenize("@2024-01-15 rest").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-01-15 rest").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
 		assert_eq!(tokens[0].fragment.text(), "2024-01-15");
 		assert_eq!(tokens[1].kind, TokenKind::Identifier);
@@ -106,16 +113,17 @@ pub mod tests {
 
 	#[test]
 	fn test_invalid_temporal() {
+		let bump = Bump::new();
 		// Just @ without content should fail to token
-		let result = tokenize("@");
+		let result = tokenize(&bump, "@");
 		assert!(result.is_err(), "@ alone should fail to tokenize");
 
 		// @ followed by invalid characters should fail
-		let result = tokenize("@#invalid");
+		let result = tokenize(&bump, "@#invalid");
 		assert!(result.is_err(), "@# should fail to tokenize as # is not valid");
 
 		// @ followed by space should fail since @ alone is not valid
-		let result = tokenize("@ 2024");
+		let result = tokenize(&bump, "@ 2024");
 		assert!(result.is_err(), "@ followed by space should fail to tokenize");
 	}
 }

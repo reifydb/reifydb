@@ -1829,6 +1829,7 @@ dependencies = [
 name = "reifydb-rql"
 version = "0.2.0"
 dependencies = [
+ "bumpalo",
  "postcard",
  "reifydb-catalog",
  "reifydb-core",

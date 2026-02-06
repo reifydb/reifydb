@@ -6,8 +6,11 @@ use crate::{
 	plan::logical::{Compiler, CreateNamespaceNode, LogicalPlan},
 };
 
-impl Compiler {
-	pub(crate) fn compile_create_namespace(&self, ast: AstCreateNamespace) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_create_namespace(
+		&self,
+		ast: AstCreateNamespace<'bump>,
+	) -> crate::Result<LogicalPlan<'bump>> {
 		// Use Fragment directly instead of NamespaceIdentifier
 		let namespace = ast.namespace.name;
 

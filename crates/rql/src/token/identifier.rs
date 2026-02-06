@@ -7,7 +7,7 @@ use super::{
 };
 
 /// Scan for an identifier token
-pub fn scan_identifier(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -25,7 +25,7 @@ pub fn scan_identifier(cursor: &mut Cursor) -> Option<Token> {
 }
 
 /// Scan for a backtick-quoted identifier (`...`)
-pub fn scan_quoted_identifier(cursor: &mut Cursor) -> Option<Token> {
+pub fn scan_quoted_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek()? != '`' {
 		return None;
 	}
@@ -64,11 +64,15 @@ pub fn is_identifier_char(ch: char) -> bool {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::token::{token::TokenKind, tokenize};
+	use crate::{
+		bump::Bump,
+		token::{token::TokenKind, tokenize},
+	};
 
 	#[test]
 	fn test_identifier() {
-		let tokens = tokenize("user_referral").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "user_referral").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "user_referral");
@@ -76,7 +80,8 @@ pub mod tests {
 
 	#[test]
 	fn test_quoted_identifier_simple() {
-		let tokens = tokenize("`my-identifier`").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "`my-identifier`").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "my-identifier");
@@ -84,7 +89,8 @@ pub mod tests {
 
 	#[test]
 	fn test_quoted_identifier_with_spaces() {
-		let tokens = tokenize("`my table name`").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "`my table name`").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "my table name");
@@ -92,7 +98,8 @@ pub mod tests {
 
 	#[test]
 	fn test_quoted_identifier_with_special_chars() {
-		let tokens = tokenize("`user@domain.com`").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "`user@domain.com`").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "user@domain.com");
@@ -100,7 +107,8 @@ pub mod tests {
 
 	#[test]
 	fn test_quoted_identifier_starting_with_digit() {
-		let tokens = tokenize("`123-table`").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "`123-table`").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "123-table");
@@ -108,7 +116,8 @@ pub mod tests {
 
 	#[test]
 	fn test_quoted_identifier_empty() {
-		let tokens = tokenize("``").unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "``").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "");
@@ -116,7 +125,8 @@ pub mod tests {
 
 	#[test]
 	fn test_quoted_identifier_unterminated() {
-		let tokens = tokenize("`unclosed");
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "`unclosed");
 		// Should fail or return no identifier token
 		assert!(tokens.is_err() || tokens.unwrap().iter().all(|t| !matches!(t.kind, TokenKind::Identifier)));
 	}

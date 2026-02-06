@@ -51,6 +51,7 @@ use crate::{
 		ast::{Ast, AstInfix, AstStatement, InfixOperator},
 		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
 	},
+	bump::{Bump, BumpBox},
 	token::{
 		keyword::Keyword,
 		operator::Operator,
@@ -89,25 +90,32 @@ const fn get_precedence_for_operator(op: Operator) -> Precedence {
 	}
 }
 
-pub fn parse(tokens: Vec<Token>) -> crate::Result<Vec<AstStatement>> {
-	let mut parser = Parser::new(tokens);
+pub fn parse<'bump>(bump: &'bump Bump, tokens: Vec<Token<'bump>>) -> crate::Result<Vec<AstStatement<'bump>>> {
+	let mut parser = Parser::new(bump, tokens);
 	parser.parse()
 }
 
-pub(crate) struct Parser {
-	tokens: Vec<Token>,
+pub(crate) struct Parser<'bump> {
+	bump: &'bump Bump,
+	tokens: Vec<Token<'bump>>,
 	position: usize,
 }
 
-impl Parser {
-	fn new(tokens: Vec<Token>) -> Self {
+impl<'bump> Parser<'bump> {
+	fn new(bump: &'bump Bump, tokens: Vec<Token<'bump>>) -> Self {
 		Self {
+			bump,
 			tokens,
 			position: 0,
 		}
 	}
 
-	fn parse(&mut self) -> crate::Result<Vec<AstStatement>> {
+	#[inline(always)]
+	pub(crate) fn bump(&self) -> &'bump Bump {
+		self.bump
+	}
+
+	fn parse(&mut self) -> crate::Result<Vec<AstStatement<'bump>>> {
 		let mut result = Vec::with_capacity(4);
 		loop {
 			if self.is_eof() {
@@ -120,7 +128,7 @@ impl Parser {
 	}
 
 	/// Parse a single statement (possibly with pipes)
-	pub(crate) fn parse_statement(&mut self) -> crate::Result<AstStatement> {
+	pub(crate) fn parse_statement(&mut self) -> crate::Result<AstStatement<'bump>> {
 		// Check for OUTPUT prefix
 		let is_output = if !self.is_eof() && self.current()?.is_keyword(Keyword::Output) {
 			self.advance()?;
@@ -162,7 +170,7 @@ impl Parser {
 				) {
 					return Err(reifydb_type::error::Error(ast::unexpected_token_error(
 						"semicolon or end of statement after DDL command",
-						self.current()?.fragment.clone(),
+						self.current()?.fragment.to_owned(),
 					)));
 				}
 			}
@@ -176,7 +184,7 @@ impl Parser {
 	}
 
 	/// Parse statement content without handling termination (for use within other constructs)
-	pub(crate) fn parse_statement_content(&mut self) -> crate::Result<AstStatement> {
+	pub(crate) fn parse_statement_content(&mut self) -> crate::Result<AstStatement<'bump>> {
 		let mut nodes = Vec::with_capacity(8);
 		let mut has_pipes = false;
 		loop {
@@ -211,7 +219,7 @@ impl Parser {
 		})
 	}
 
-	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> crate::Result<Ast> {
+	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> crate::Result<Ast<'bump>> {
 		let mut left = self.parse_primary()?;
 
 		// DDL statements (CREATE, ALTER, DROP) cannot be used in infix expressions
@@ -234,7 +242,7 @@ impl Parser {
 			}
 
 			let special = if let Ok(current) = self.current() {
-				match &current.kind {
+				match current.kind {
 					TokenKind::Keyword(Keyword::Between) => Some(SpecialInfix::Between),
 					TokenKind::Keyword(Keyword::In) => Some(SpecialInfix::In),
 					TokenKind::Operator(Operator::Not) => {
@@ -269,21 +277,21 @@ impl Parser {
 		Ok(left)
 	}
 
-	pub(crate) fn advance(&mut self) -> crate::Result<Token> {
+	pub(crate) fn advance(&mut self) -> crate::Result<Token<'bump>> {
 		if self.position >= self.tokens.len() {
 			return Err(reifydb_type::error::Error(ast::unexpected_eof_error()));
 		}
-		let token = self.tokens[self.position].clone();
+		let token = self.tokens[self.position];
 		self.position += 1;
 		Ok(token)
 	}
 
-	pub(crate) fn consume(&mut self, expected: TokenKind) -> crate::Result<Token> {
+	pub(crate) fn consume(&mut self, expected: TokenKind) -> crate::Result<Token<'bump>> {
 		self.current_expect(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_if(&mut self, expected: TokenKind) -> crate::Result<Option<Token>> {
+	pub(crate) fn consume_if(&mut self, expected: TokenKind) -> crate::Result<Option<Token<'bump>>> {
 		if self.is_eof() || self.current()?.kind != expected {
 			return Ok(None);
 		}
@@ -300,26 +308,26 @@ impl Parser {
 		}
 	}
 
-	pub(crate) fn consume_literal(&mut self, expected: Literal) -> crate::Result<Token> {
+	pub(crate) fn consume_literal(&mut self, expected: Literal) -> crate::Result<Token<'bump>> {
 		self.current_expect_literal(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_operator(&mut self, expected: Operator) -> crate::Result<Token> {
+	pub(crate) fn consume_operator(&mut self, expected: Operator) -> crate::Result<Token<'bump>> {
 		self.current_expect_operator(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_keyword(&mut self, expected: Keyword) -> crate::Result<Token> {
+	pub(crate) fn consume_keyword(&mut self, expected: Keyword) -> crate::Result<Token<'bump>> {
 		self.current_expect_keyword(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn current(&self) -> crate::Result<&Token> {
+	pub(crate) fn current(&self) -> crate::Result<Token<'bump>> {
 		if self.position >= self.tokens.len() {
 			return Err(reifydb_type::error::Error(ast::unexpected_eof_error()));
 		}
-		Ok(&self.tokens[self.position])
+		Ok(self.tokens[self.position])
 	}
 
 	/// Check if the next token (position + 1) is a specific keyword
@@ -338,11 +346,11 @@ impl Parser {
 			// Use specific error for identifier expectations to
 			// match test format
 			if let TokenKind::Identifier = expected {
-				return_error!(ast::expected_identifier_error(got.clone().fragment))
+				return_error!(ast::expected_identifier_error(got.fragment.to_owned()))
 			} else {
 				return_error!(ast::unexpected_token_error(
 					&format!("{:?}", expected),
-					got.fragment.clone()
+					got.fragment.to_owned()
 				))
 			}
 		}
@@ -366,13 +374,13 @@ impl Parser {
 		};
 
 		let current = self.current()?;
-		match &current.kind {
+		match current.kind {
 			TokenKind::Operator(operator) => {
 				// Check for NOT IN (NOT followed by IN keyword)
-				if *operator == Operator::Not && self.is_next_keyword(Keyword::In) {
+				if operator == Operator::Not && self.is_next_keyword(Keyword::In) {
 					return Ok(Precedence::Comparison);
 				}
-				Ok(get_precedence_for_operator(*operator))
+				Ok(get_precedence_for_operator(operator))
 			}
 			TokenKind::Keyword(Keyword::Between) => Ok(Precedence::Comparison),
 			TokenKind::Keyword(Keyword::In) => Ok(Precedence::Comparison),
@@ -408,22 +416,22 @@ impl Parser {
 		Ok(())
 	}
 
-	pub(crate) fn parse_between(&mut self, value: Ast) -> crate::Result<crate::ast::ast::AstBetween> {
+	pub(crate) fn parse_between(&mut self, value: Ast<'bump>) -> crate::Result<crate::ast::ast::AstBetween<'bump>> {
 		let token = self.consume_keyword(Keyword::Between)?;
-		let lower = Box::new(self.parse_node(Precedence::Comparison)?);
+		let lower = BumpBox::new_in(self.parse_node(Precedence::Comparison)?, self.bump());
 		self.consume_operator(Operator::And)?;
-		let upper = Box::new(self.parse_node(Precedence::Comparison)?);
+		let upper = BumpBox::new_in(self.parse_node(Precedence::Comparison)?, self.bump());
 
 		Ok(crate::ast::ast::AstBetween {
 			token,
-			value: Box::new(value),
+			value: BumpBox::new_in(value, self.bump()),
 			lower,
 			upper,
 		})
 	}
 
 	/// Parse an IN expression: `value IN [list]` or `value NOT IN [list]`
-	pub(crate) fn parse_in(&mut self, value: Ast, negated: bool) -> crate::Result<AstInfix> {
+	pub(crate) fn parse_in(&mut self, value: Ast<'bump>, negated: bool) -> crate::Result<AstInfix<'bump>> {
 		// For NOT IN, consume NOT first
 		if negated {
 			self.consume_operator(Operator::Not)?;
@@ -438,10 +446,10 @@ impl Parser {
 		};
 
 		Ok(AstInfix {
-			token: value.token().clone(),
-			left: Box::new(value),
+			token: *value.token(),
+			left: BumpBox::new_in(value, self.bump()),
 			operator,
-			right: Box::new(right),
+			right: BumpBox::new_in(right, self.bump()),
 		})
 	}
 
@@ -454,7 +462,7 @@ impl Parser {
 		&mut self,
 		allow_colon_alias: bool,
 		allow_as_keyword: bool,
-	) -> crate::Result<(Vec<Ast>, bool)> {
+	) -> crate::Result<(Vec<Ast<'bump>>, bool)> {
 		let has_braces = self.current()?.is_operator(Operator::OpenCurly);
 
 		if has_braces {
@@ -502,10 +510,10 @@ impl Parser {
 
 	/// Try to parse "key: expression" syntax and convert it to
 	/// "expression AS key" where key can be identifier, keyword, or string literal
-	pub(crate) fn try_parse_colon_alias(&mut self) -> crate::Result<Ast> {
+	pub(crate) fn try_parse_colon_alias(&mut self) -> crate::Result<Ast<'bump>> {
 		// Check if we have enough tokens from current position
 		if self.position + 1 >= self.tokens.len() {
-			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
+			return_error!(ast::unsupported_token_error(self.current()?.fragment.to_owned()));
 		}
 
 		// Check if current token is identifier, keyword, or string literal (all can be used as field names)
@@ -514,12 +522,12 @@ impl Parser {
 			|| matches!(self.tokens[self.position].kind, TokenKind::Literal(Literal::Text));
 
 		if !is_valid_key {
-			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
+			return_error!(ast::unsupported_token_error(self.current()?.fragment.to_owned()));
 		}
 
 		// Check if next token is colon
 		if !self.tokens[self.position + 1].is_operator(Operator::Colon) {
-			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
+			return_error!(ast::unsupported_token_error(self.current()?.fragment.to_owned()));
 		}
 
 		// Parse the key (identifier, keyword, or string literal)
@@ -537,10 +545,10 @@ impl Parser {
 
 		// Return as "expression AS key"
 		Ok(Ast::Infix(AstInfix {
-			token: expression.token().clone(),
-			left: Box::new(expression),
+			token: *expression.token(),
+			left: BumpBox::new_in(expression, self.bump()),
 			operator: InfixOperator::As(colon_token),
-			right: Box::new(key),
+			right: BumpBox::new_in(key, self.bump()),
 		}))
 	}
 }
@@ -557,6 +565,7 @@ pub mod tests {
 			ast::Ast,
 			parse::{Parser, Precedence, Precedence::Term},
 		},
+		bump::Bump,
 		token::{
 			operator::Operator::Plus,
 			separator::Separator::Semicolon,
@@ -571,15 +580,17 @@ pub mod tests {
 
 	#[test]
 	fn test_advance_but_eof() {
-		let mut parser = Parser::new(vec![]);
+		let bump = Bump::new();
+		let mut parser = Parser::new(&bump, vec![]);
 		let result = parser.advance();
 		assert_eq!(result, err!(ast::unexpected_eof_error()))
 	}
 
 	#[test]
 	fn test_advance() {
-		let tokens = tokenize("1 + 2").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "1 + 2").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 
 		let one = parser.advance().unwrap();
 		assert_eq!(one.kind, Literal(Number));
@@ -596,16 +607,18 @@ pub mod tests {
 
 	#[test]
 	fn test_consume_but_eof() {
-		let tokens = tokenize("").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let err = parser.consume(Identifier).err().unwrap();
 		assert_eq!(err, Error(ast::unexpected_eof_error()))
 	}
 
 	#[test]
 	fn test_consume_but_unexpected_token() {
-		let tokens = tokenize("false").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "false").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.consume(Literal(True));
 		assert!(result.is_err());
 
@@ -616,8 +629,9 @@ pub mod tests {
 
 	#[test]
 	fn test_consume() {
-		let tokens = tokenize("true 99").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "true 99").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.consume(Literal(True)).unwrap();
 		assert_eq!(result.kind, Literal(True));
 
@@ -627,24 +641,27 @@ pub mod tests {
 
 	#[test]
 	fn test_consume_if_but_eof() {
-		let tokens = tokenize("").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.consume_if(Literal(True));
 		assert_eq!(result, Ok(None))
 	}
 
 	#[test]
 	fn test_consume_if_but_unexpected_token() {
-		let tokens = tokenize("false").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "false").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.consume_if(Literal(True));
 		assert_eq!(result, Ok(None));
 	}
 
 	#[test]
 	fn test_consume_if() {
-		let tokens = tokenize("true 0x99").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "true 0x99").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.consume_if(Literal(True)).unwrap().unwrap();
 		assert_eq!(result.kind, Literal(True));
 
@@ -654,17 +671,18 @@ pub mod tests {
 
 	#[test]
 	fn test_current_but_eof() {
-		let tokens = tokenize("").unwrap();
-		let parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, tokens);
 		let result = parser.current();
 		assert_eq!(result, err!(ast::unexpected_eof_error()))
 	}
 
 	#[test]
 	fn test_semicolon_statement_separation() {
-		use crate::token::tokenize;
-		let tokens = tokenize("let $x = 1; FROM users").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "let $x = 1; FROM users").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let statements = parser.parse().unwrap();
 		assert_eq!(statements.len(), 2, "Should parse two separate statements");
 
@@ -681,13 +699,13 @@ pub mod tests {
 
 	#[test]
 	fn test_variable_multiline_separation() {
-		use crate::token::tokenize;
+		let bump = Bump::new();
 		let sql = r#"
 		let $user_data = FROM [{ name: "Alice", age: 25 }, { name: "Bob", age: 17 }, { name: "Carol", age: 30 }] | FILTER {age > 21};
 		FROM $user_data
 		"#;
-		let tokens = tokenize(sql).unwrap();
-		let mut parser = Parser::new(tokens);
+		let tokens = tokenize(&bump, sql).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let statements = parser.parse().unwrap();
 		assert_eq!(statements.len(), 2, "Should parse two separate statements from multiline input");
 
@@ -706,30 +724,33 @@ pub mod tests {
 
 	#[test]
 	fn test_current() {
-		let tokens = tokenize("true false").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "true false").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 
-		let true_token = parser.current().unwrap().clone();
+		let true_token = parser.current().unwrap();
 		assert_eq!(true_token.kind, Literal(True));
 
 		parser.advance().unwrap();
 
-		let false_token = parser.current().unwrap().clone();
+		let false_token = parser.current().unwrap();
 		assert_eq!(false_token.kind, Literal(False));
 	}
 
 	#[test]
 	fn test_current_expect_but_eof() {
-		let tokens = tokenize("").unwrap();
-		let parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, tokens);
 		let result = parser.current_expect(Separator(Semicolon));
 		assert_eq!(result, err!(ast::unexpected_eof_error()))
 	}
 
 	#[test]
 	fn test_current_expect() {
-		let tokens = tokenize("true false").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "true false").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 
 		let result = parser.current_expect(Literal(True));
 		assert!(result.is_ok());
@@ -742,8 +763,9 @@ pub mod tests {
 
 	#[test]
 	fn test_current_expect_but_different() {
-		let tokens = tokenize("true").unwrap();
-		let parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "true").unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, tokens);
 
 		let result = parser.current_expect(Literal(False));
 		assert!(result.is_err());
@@ -755,32 +777,36 @@ pub mod tests {
 
 	#[test]
 	fn test_current_precedence_but_eof() {
-		let tokens = tokenize("").unwrap();
-		let parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Precedence::None))
 	}
 
 	#[test]
 	fn test_current_precedence() {
-		let tokens = tokenize("+").unwrap();
-		let parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "+").unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Term))
 	}
 
 	#[test]
 	fn test_between_precedence() {
-		let tokens = tokenize("BETWEEN").unwrap();
-		let parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "BETWEEN").unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Precedence::Comparison))
 	}
 
 	#[test]
 	fn test_parse_between_expression() {
-		let tokens = tokenize("x BETWEEN 1 AND 10").unwrap();
-		let result = crate::ast::parse::parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "x BETWEEN 1 AND 10").unwrap().into_iter().collect();
+		let result = crate::ast::parse::parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let between = result[0].first_unchecked().as_between();
@@ -792,8 +818,9 @@ pub mod tests {
 	#[test]
 	fn test_pipe_operator_simple() {
 		use crate::ast::ast::Ast;
-		let tokens = tokenize("from users | sort {name}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "from users | sort {name}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -807,8 +834,12 @@ pub mod tests {
 	#[test]
 	fn test_pipe_operator_multiple() {
 		use crate::ast::ast::Ast;
-		let tokens = tokenize("from users | filter {age > 18} | sort {name} | take {10}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "from users | filter {age > 18} | sort {name} | take {10}")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -824,8 +855,9 @@ pub mod tests {
 	#[test]
 	fn test_pipe_with_system_tables() {
 		use crate::ast::ast::Ast;
-		let tokens = tokenize("from system.tables | sort {id}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "from system.tables | sort {id}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -839,8 +871,9 @@ pub mod tests {
 	#[test]
 	fn test_newline_still_works() {
 		use crate::ast::ast::Ast;
-		let tokens = tokenize("from users\nsort {name}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "from users\nsort {name}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -854,8 +887,9 @@ pub mod tests {
 	#[test]
 	fn test_output_prefix_first_statement() {
 		use crate::ast::ast::Ast;
-		let tokens = tokenize("OUTPUT FROM users; FROM orders").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "OUTPUT FROM users; FROM orders").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 2);
@@ -867,8 +901,9 @@ pub mod tests {
 
 	#[test]
 	fn test_output_prefix_not_present() {
-		let tokens = tokenize("FROM users; FROM orders").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "FROM users; FROM orders").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 2);
@@ -878,8 +913,12 @@ pub mod tests {
 
 	#[test]
 	fn test_output_prefix_multiple() {
-		let tokens = tokenize("OUTPUT FROM users; OUTPUT FROM products; FROM orders").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "OUTPUT FROM users; OUTPUT FROM products; FROM orders")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 3);
@@ -890,8 +929,12 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_pipe_and_newline() {
-		let tokens = tokenize("from users | filter {age > 18}\nsort {name} | take {10}").unwrap();
-		let mut parser = Parser::new(tokens);
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "from users | filter {age > 18}\nsort {name} | take {10}")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);

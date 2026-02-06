@@ -3,14 +3,15 @@
 
 use crate::{
 	ast::ast::AstFilter,
+	bump::BumpBox,
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, FilterNode, LogicalPlan},
 };
 
-impl Compiler {
-	pub(crate) fn compile_filter(&self, ast: AstFilter) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_filter(&self, ast: AstFilter<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::Filter(FilterNode {
-			condition: ExpressionCompiler::compile(*ast.node)?,
+			condition: ExpressionCompiler::compile(BumpBox::into_inner(ast.node))?,
 		}))
 	}
 }

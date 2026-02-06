@@ -6,8 +6,8 @@ use crate::{
 	plan::logical::{Compiler, LogicalPlan},
 };
 
-impl Compiler {
-	pub(crate) fn compile_create_series(&self, _ast: AstCreateSeries) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_create_series(&self, _ast: AstCreateSeries<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		unimplemented!()
 	}
 }

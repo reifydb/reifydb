@@ -12,33 +12,33 @@ use crate::{
 	token::token::Literal,
 };
 
-impl Parser {
-	pub(crate) fn parse_literal_number(&mut self) -> crate::Result<AstLiteral> {
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_literal_number(&mut self) -> crate::Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::Number)?;
 		Ok(AstLiteral::Number(AstLiteralNumber(token)))
 	}
 
-	pub(crate) fn parse_literal_text(&mut self) -> crate::Result<AstLiteral> {
+	pub(crate) fn parse_literal_text(&mut self) -> crate::Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::Text)?;
 		Ok(AstLiteral::Text(AstLiteralText(token)))
 	}
 
-	pub(crate) fn parse_literal_true(&mut self) -> crate::Result<AstLiteral> {
+	pub(crate) fn parse_literal_true(&mut self) -> crate::Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::True)?;
 		Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
 	}
 
-	pub(crate) fn parse_literal_false(&mut self) -> crate::Result<AstLiteral> {
+	pub(crate) fn parse_literal_false(&mut self) -> crate::Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::False)?;
 		Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
 	}
 
-	pub(crate) fn parse_literal_undefined(&mut self) -> crate::Result<AstLiteral> {
+	pub(crate) fn parse_literal_undefined(&mut self) -> crate::Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::Undefined)?;
 		Ok(AstLiteral::Undefined(AstLiteralUndefined(token)))
 	}
 
-	pub(crate) fn parse_literal_temporal(&mut self) -> crate::Result<AstLiteral> {
+	pub(crate) fn parse_literal_temporal(&mut self) -> crate::Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::Temporal)?;
 		Ok(AstLiteral::Temporal(AstLiteralTemporal(token)))
 	}
@@ -51,13 +51,15 @@ pub mod tests {
 			ast::{Ast::Literal, AstLiteral},
 			parse::parse,
 		},
+		bump::Bump,
 		token::tokenize,
 	};
 
 	#[test]
 	fn test_text() {
-		let tokens = tokenize("'ElodiE'").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "'ElodiE'").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Text(node)) = &result[0].first_unchecked() else {
@@ -68,8 +70,9 @@ pub mod tests {
 
 	#[test]
 	fn test_number_42() {
-		let tokens = tokenize("42").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "42").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Number(node)) = &result[0].first_unchecked() else {
@@ -80,8 +83,9 @@ pub mod tests {
 
 	#[test]
 	fn test_true() {
-		let tokens = tokenize("true").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "true").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Boolean(node)) = &result[0].first_unchecked() else {
@@ -92,8 +96,9 @@ pub mod tests {
 
 	#[test]
 	fn test_false() {
-		let tokens = tokenize("false").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "false").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Boolean(node)) = &result[0].first_unchecked() else {
@@ -104,8 +109,9 @@ pub mod tests {
 
 	#[test]
 	fn test_date() {
-		let tokens = tokenize("@2024-03-15").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -116,8 +122,9 @@ pub mod tests {
 
 	#[test]
 	fn test_time() {
-		let tokens = tokenize("@14:30:00").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@14:30:00").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -128,8 +135,9 @@ pub mod tests {
 
 	#[test]
 	fn test_time_milliseconds() {
-		let tokens = tokenize("@14:30:00.123").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@14:30:00.123").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -140,8 +148,9 @@ pub mod tests {
 
 	#[test]
 	fn test_time_microseconds() {
-		let tokens = tokenize("@14:30:00.123456").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@14:30:00.123456").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -152,8 +161,9 @@ pub mod tests {
 
 	#[test]
 	fn test_time_nanoseconds() {
-		let tokens = tokenize("@14:30:00.123456789").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@14:30:00.123456789").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -164,8 +174,9 @@ pub mod tests {
 
 	#[test]
 	fn test_time_with_timezone() {
-		let tokens = tokenize("@14:30:00Z").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@14:30:00Z").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -176,8 +187,9 @@ pub mod tests {
 
 	#[test]
 	fn test_time_milliseconds_with_timezone() {
-		let tokens = tokenize("@14:30:00.123Z").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@14:30:00.123Z").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -188,8 +200,9 @@ pub mod tests {
 
 	#[test]
 	fn test_time_microseconds_with_timezone() {
-		let tokens = tokenize("@14:30:00.123456Z").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@14:30:00.123456Z").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -200,8 +213,9 @@ pub mod tests {
 
 	#[test]
 	fn test_time_nanoseconds_with_timezone() {
-		let tokens = tokenize("@14:30:00.123456789Z").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@14:30:00.123456789Z").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -212,8 +226,9 @@ pub mod tests {
 
 	#[test]
 	fn test_time_with_offset_timezone() {
-		let tokens = tokenize("@14:30:00+05:30").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@14:30:00+05:30").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -224,8 +239,9 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime() {
-		let tokens = tokenize("@2024-03-15T14:30:00Z").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15T14:30:00Z").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -236,8 +252,9 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_milliseconds() {
-		let tokens = tokenize("@2024-03-15T14:30:00.123Z").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15T14:30:00.123Z").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -248,8 +265,9 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_microseconds() {
-		let tokens = tokenize("@2024-03-15T14:30:00.123456Z").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15T14:30:00.123456Z").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -260,8 +278,9 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_nanoseconds() {
-		let tokens = tokenize("@2024-03-15T14:30:00.123456789Z").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15T14:30:00.123456789Z").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -272,8 +291,9 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_without_timezone() {
-		let tokens = tokenize("@2024-03-15T14:30:00").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15T14:30:00").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -284,8 +304,9 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_milliseconds_without_timezone() {
-		let tokens = tokenize("@2024-03-15T14:30:00.123").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15T14:30:00.123").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -296,8 +317,9 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_microseconds_without_timezone() {
-		let tokens = tokenize("@2024-03-15T14:30:00.123456").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15T14:30:00.123456").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -308,8 +330,9 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_nanoseconds_without_timezone() {
-		let tokens = tokenize("@2024-03-15T14:30:00.123456789").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15T14:30:00.123456789").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -320,8 +343,9 @@ pub mod tests {
 
 	#[test]
 	fn test_range_interval_date() {
-		let tokens = tokenize("@2024-03-15..2024-03-16").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15..2024-03-16").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -332,8 +356,9 @@ pub mod tests {
 
 	#[test]
 	fn test_range_interval_time() {
-		let tokens = tokenize("@14:30:00..15:30:00").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@14:30:00..15:30:00").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -344,8 +369,10 @@ pub mod tests {
 
 	#[test]
 	fn test_range_interval_datetime() {
-		let tokens = tokenize("@2024-03-15T14:30:00..2024-03-15T15:30:00").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "@2024-03-15T14:30:00..2024-03-15T15:30:00").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -356,8 +383,9 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_range_interval() {
-		let tokens = tokenize("@2024-03-15..14:30:00").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@2024-03-15..14:30:00").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -368,8 +396,9 @@ pub mod tests {
 
 	#[test]
 	fn test_duration_interval_date() {
-		let tokens = tokenize("@P1D").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@P1D").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -380,8 +409,9 @@ pub mod tests {
 
 	#[test]
 	fn test_duration_interval_time() {
-		let tokens = tokenize("@PT2H30M").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@PT2H30M").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
@@ -392,8 +422,9 @@ pub mod tests {
 
 	#[test]
 	fn test_duration_interval_datetime() {
-		let tokens = tokenize("@P1Y2M3DT4H5M6S").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "@P1Y2M3DT4H5M6S").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {

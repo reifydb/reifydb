@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::fragment::Fragment;
-
 use super::{keyword::Keyword, operator::Operator, separator::Separator};
+use crate::bump::BumpFragment;
 
-#[derive(Debug, Clone)]
-pub struct Token {
+#[derive(Debug, Clone, Copy)]
+pub struct Token<'bump> {
 	pub kind: TokenKind,
-	pub fragment: Fragment,
+	pub fragment: BumpFragment<'bump>,
 }
 
-impl PartialEq for Token {
+impl PartialEq for Token<'_> {
 	fn eq(&self, other: &Self) -> bool {
 		self.kind == other.kind && self.value() == other.value()
 	}
 }
 
-impl Token {
+impl Eq for Token<'_> {}
+
+impl<'bump> Token<'bump> {
 	pub fn is_eof(&self) -> bool {
 		self.kind == TokenKind::EOF
 	}

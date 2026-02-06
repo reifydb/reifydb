@@ -2,39 +2,39 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::sort::SortDirection;
-use reifydb_type::fragment::Fragment;
 
 use crate::{
 	ast::{
 		ast::{AstAlterTable, AstAlterTableOperation},
 		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedTableIdentifier},
 	},
+	bump::BumpFragment,
 	plan::logical::{Compiler, LogicalPlan},
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterTableNode {
-	pub table: MaybeQualifiedTableIdentifier,
-	pub operations: Vec<AlterTableOperation>,
+#[derive(Debug)]
+pub struct AlterTableNode<'bump> {
+	pub table: MaybeQualifiedTableIdentifier<'bump>,
+	pub operations: Vec<AlterTableOperation<'bump>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum AlterTableOperation {
+#[derive(Debug)]
+pub enum AlterTableOperation<'bump> {
 	CreatePrimaryKey {
-		name: Option<Fragment>,
-		columns: Vec<AlterIndexColumn>,
+		name: Option<BumpFragment<'bump>>,
+		columns: Vec<AlterIndexColumn<'bump>>,
 	},
 	DropPrimaryKey,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterIndexColumn {
-	pub column: MaybeQualifiedColumnIdentifier,
+#[derive(Debug)]
+pub struct AlterIndexColumn<'bump> {
+	pub column: MaybeQualifiedColumnIdentifier<'bump>,
 	pub order: Option<SortDirection>,
 }
 
-impl Compiler {
-	pub(crate) fn compile_alter_table(&self, ast: AstAlterTable) -> crate::Result<LogicalPlan> {
+impl<'bump> Compiler<'bump> {
+	pub(crate) fn compile_alter_table(&self, ast: AstAlterTable<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		// Use the table identifier directly from AST
 		let table = ast.table.clone();
 

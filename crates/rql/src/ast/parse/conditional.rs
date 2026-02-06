@@ -8,24 +8,25 @@ use crate::{
 		ast::{AstElseIf, AstIf},
 		parse::{Parser, Precedence},
 	},
+	bump::BumpBox,
 	token::keyword::Keyword,
 };
 
-impl Parser {
-	pub(crate) fn parse_if(&mut self) -> crate::Result<AstIf> {
-		let token = self.current()?.clone();
+impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_if(&mut self) -> crate::Result<AstIf<'bump>> {
+		let token = self.current()?;
 
 		// Consume 'if' keyword
 		if !self.current()?.is_keyword(Keyword::If) {
 			return Err(reifydb_type::error::Error(unexpected_token_error(
 				"expected 'if'",
-				self.current()?.fragment.clone(),
+				self.current()?.fragment.to_owned(),
 			)));
 		}
 		self.advance()?; // consume 'if'
 
 		// Parse condition expression
-		let condition = Box::new(self.parse_node(Precedence::None)?);
+		let condition = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 		// Parse the then block
 		let then_block = self.parse_block()?;
@@ -45,7 +46,7 @@ impl Parser {
 		})
 	}
 
-	fn parse_else_if_chain(&mut self) -> crate::Result<Vec<AstElseIf>> {
+	fn parse_else_if_chain(&mut self) -> crate::Result<Vec<AstElseIf<'bump>>> {
 		let mut else_ifs = Vec::new();
 
 		while !self.is_eof() {
@@ -72,7 +73,7 @@ impl Parser {
 			self.advance()?; // consume 'if'
 
 			// Parse condition
-			let condition = Box::new(self.parse_node(Precedence::None)?);
+			let condition = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 			// Parse the then block
 			let then_block = self.parse_block()?;
@@ -87,7 +88,7 @@ impl Parser {
 		Ok(else_ifs)
 	}
 
-	fn parse_else_block(&mut self) -> crate::Result<Option<crate::ast::ast::AstBlock>> {
+	fn parse_else_block(&mut self) -> crate::Result<Option<crate::ast::ast::AstBlock<'bump>>> {
 		// Check if we have a final 'else' block
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Else) {
 			return Ok(None);
