@@ -6,7 +6,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::view_already_exists, interface::catalog::change::CatalogTrackViewChangeOperations,
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::CreateTransactionalViewNode;
+use reifydb_rql::nodes::CreateTransactionalViewNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{return_error, value::Value};
 

@@ -9,7 +9,7 @@ use reifydb_core::interface::{
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
 	flow::{conversion::to_owned_physical_plan, node::FlowNodeType::Distinct},
-	plan::physical::{DistinctNode, PhysicalPlan},
+	nodes::{DistinctNode, PhysicalPlan},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{Result, fragment::Fragment};

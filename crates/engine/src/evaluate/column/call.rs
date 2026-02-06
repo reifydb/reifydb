@@ -5,17 +5,15 @@ use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, vi
 use reifydb_function::{AggregateFunction, AggregateFunctionContext, ScalarFunctionContext};
 use reifydb_rql::{
 	expression::{CallExpression, Expression},
-	plan::physical::{DefineFunctionNode, PhysicalPlan},
+	instruction::{CompiledFunctionDef, Instruction},
+	query::QueryPlan,
 };
 use reifydb_type::{error, error::diagnostic::function, fragment::Fragment, params::Params, value::Value};
 
 use super::StandardColumnEvaluator;
 use crate::{
 	evaluate::ColumnEvaluationContext,
-	vm::{
-		instruction::{Instruction, compile::compile as compile_instructions},
-		stack::{ScopeType, SymbolTable, Variable},
-	},
+	vm::stack::{ScopeType, SymbolTable, Variable},
 };
 
 /// Strip the leading `$` from a variable name if present
@@ -82,14 +80,14 @@ impl StandardColumnEvaluator {
 		&self,
 		ctx: &ColumnEvaluationContext,
 		call: &CallExpression,
-		func_def: DefineFunctionNode,
+		func_def: CompiledFunctionDef,
 		arguments: &Columns,
 	) -> crate::Result<Column> {
 		let row_count = ctx.row_count;
 		let mut results: Vec<Value> = Vec::with_capacity(row_count);
 
-		// Compile function body once
-		let body_instructions = compile_instructions(func_def.body.clone())?;
+		// Function body is already pre-compiled
+		let body_instructions = &func_def.body;
 
 		// For each row, execute the function
 		for row_idx in 0..row_count {
@@ -157,7 +155,7 @@ impl StandardColumnEvaluator {
 				}
 
 				Instruction::Query(plan) => match plan {
-					PhysicalPlan::Map(map_node) => {
+					QueryPlan::Map(map_node) => {
 						if map_node.input.is_none() && !map_node.map.is_empty() {
 							let evaluation_context = ColumnEvaluationContext {
 								target: None,

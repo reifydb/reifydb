@@ -1,22 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::FlowOperatorStore};
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::CompilationResult;
-#[cfg(test)]
-use reifydb_rql::plan::physical::PhysicalPlan;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction};
 use reifydb_type::{params::Params, value::frame::frame::Frame};
 use tracing::instrument;
 
 use crate::vm::{
-	Admin, Command, Query, instruction,
+	Admin, Command, Query,
 	interpret::TransactionAccess,
 	services::Services,
 	stack::{SymbolTable, Variable},
@@ -32,7 +30,7 @@ impl Clone for Executor {
 	}
 }
 
-impl std::ops::Deref for Executor {
+impl Deref for Executor {
 	type Target = Services;
 
 	fn deref(&self) -> &Self::Target {
@@ -91,31 +89,27 @@ impl Executor {
 
 		match self.compiler.compile(txn, cmd.rql)? {
 			CompilationResult::Ready(compiled) => {
-				for compiled_plan in compiled.iter() {
+				for compiled in compiled.iter() {
 					result.clear();
-					let instructions =
-						instruction::compile::compile(vec![compiled_plan.plan.clone()])?;
 					let mut tx = TransactionAccess::Admin(txn);
 					let mut vm = Vm::new(symbol_table);
-					vm.run(&self.0, &mut tx, &instructions, &cmd.params, &mut result)?;
+					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbol_table = vm.symbol_table;
 
-					if compiled_plan.is_output {
+					if compiled.is_output {
 						output_results.append(&mut result);
 					}
 				}
 			}
 			CompilationResult::Incremental(mut state) => {
-				while let Some(compiled_plan) = self.compiler.compile_next(txn, &mut state)? {
+				while let Some(compiled) = self.compiler.compile_next(txn, &mut state)? {
 					result.clear();
-					let instructions =
-						instruction::compile::compile(vec![compiled_plan.plan.clone()])?;
 					let mut tx = TransactionAccess::Admin(txn);
 					let mut vm = Vm::new(symbol_table);
-					vm.run(&self.0, &mut tx, &instructions, &cmd.params, &mut result)?;
+					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbol_table = vm.symbol_table;
 
-					if compiled_plan.is_output {
+					if compiled.is_output {
 						output_results.append(&mut result);
 					}
 				}
@@ -141,15 +135,14 @@ impl Executor {
 			}
 		};
 
-		for compiled_plan in compiled.iter() {
+		for compiled in compiled.iter() {
 			result.clear();
-			let instructions = instruction::compile::compile(vec![compiled_plan.plan.clone()])?;
 			let mut tx = TransactionAccess::Command(txn);
 			let mut vm = Vm::new(symbol_table);
-			vm.run(&self.0, &mut tx, &instructions, &cmd.params, &mut result)?;
+			vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 			symbol_table = vm.symbol_table;
 
-			if compiled_plan.is_output {
+			if compiled.is_output {
 				output_results.append(&mut result);
 			}
 		}
@@ -173,15 +166,14 @@ impl Executor {
 			}
 		};
 
-		for compiled_plan in compiled.iter() {
+		for compiled in compiled.iter() {
 			result.clear();
-			let instructions = instruction::compile::compile(vec![compiled_plan.plan.clone()])?;
 			let mut tx = TransactionAccess::Query(txn);
 			let mut vm = Vm::new(symbol_table);
-			vm.run(&self.0, &mut tx, &instructions, &qry.params, &mut result)?;
+			vm.run(&self.0, &mut tx, &compiled.instructions, &qry.params, &mut result)?;
 			symbol_table = vm.symbol_table;
 
-			if compiled_plan.is_output {
+			if compiled.is_output {
 				output_results.append(&mut result);
 			}
 		}
@@ -189,20 +181,5 @@ impl Executor {
 		let mut final_result = output_results;
 		final_result.append(&mut result);
 		Ok(final_result)
-	}
-
-	#[cfg(test)]
-	pub(crate) fn run_admin_plan(
-		&self,
-		txn: &mut AdminTransaction,
-		plan: PhysicalPlan,
-		params: Params,
-	) -> crate::Result<Vec<Frame>> {
-		let instructions = instruction::compile::compile(vec![plan])?;
-		let mut tx = TransactionAccess::Admin(txn);
-		let mut result = Vec::new();
-		let mut vm = Vm::new(SymbolTable::new());
-		vm.run(&self.0, &mut tx, &instructions, &params, &mut result)?;
-		Ok(result)
 	}
 }

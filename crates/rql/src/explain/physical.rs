@@ -9,11 +9,12 @@ use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	ast::parse_str,
-	plan::{
-		logical::compile_logical,
-		physical,
-		physical::{DistinctNode, PhysicalPlan, compile_physical},
+	nodes::{
+		AggregateNode, AlterSequenceNode, ApplyNode, DistinctNode, ExtendNode, FilterNode, InlineDataNode,
+		JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, MergeNode, PatchNode, PhysicalPlan, SortNode,
+		TakeNode,
 	},
+	plan::{logical::compile_logical, physical::compile_physical},
 };
 
 pub fn explain_physical_plan<T: AsTransaction>(catalog: &Catalog, rx: &mut T, query: &str) -> crate::Result<String> {
@@ -100,7 +101,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 				render_physical_plan_inner(&create_flow.as_clause, child_prefix, true, output);
 			});
 		}
-		PhysicalPlan::AlterSequence(physical::AlterSequenceNode {
+		PhysicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,
 			value,
@@ -116,7 +117,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::InsertDictionary(_) => unimplemented!(),
 		PhysicalPlan::Update(_) => unimplemented!(),
 		PhysicalPlan::UpdateRingBuffer(_) => unimplemented!(),
-		PhysicalPlan::Aggregate(physical::AggregateNode {
+		PhysicalPlan::Aggregate(AggregateNode {
 			by,
 			map,
 			input,
@@ -176,7 +177,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::Filter(physical::FilterNode {
+		PhysicalPlan::Filter(FilterNode {
 			conditions,
 			input,
 		}) => {
@@ -190,7 +191,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::Take(physical::TakeNode {
+		PhysicalPlan::Take(TakeNode {
 			take,
 			input,
 		}) => {
@@ -201,7 +202,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::Sort(physical::SortNode {
+		PhysicalPlan::Sort(SortNode {
 			by,
 			input,
 		}) => {
@@ -213,7 +214,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::Map(physical::MapNode {
+		PhysicalPlan::Map(MapNode {
 			map,
 			input,
 		}) => {
@@ -227,7 +228,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::Extend(physical::ExtendNode {
+		PhysicalPlan::Extend(ExtendNode {
 			extend,
 			input,
 		}) => {
@@ -243,7 +244,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::Patch(physical::PatchNode {
+		PhysicalPlan::Patch(PatchNode {
 			assignments,
 			input,
 		}) => {
@@ -259,7 +260,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::JoinInner(physical::JoinInnerNode {
+		PhysicalPlan::JoinInner(JoinInnerNode {
 			left,
 			right,
 			on,
@@ -276,7 +277,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::JoinLeft(physical::JoinLeftNode {
+		PhysicalPlan::JoinLeft(JoinLeftNode {
 			left,
 			right,
 			on,
@@ -293,7 +294,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::JoinNatural(physical::JoinNaturalNode {
+		PhysicalPlan::JoinNatural(JoinNaturalNode {
 			left,
 			right,
 			join_type,
@@ -311,7 +312,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::Merge(physical::MergeNode {
+		PhysicalPlan::Merge(MergeNode {
 			left,
 			right,
 		}) => {
@@ -356,7 +357,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			write_node_header(output, prefix, is_last, &label);
 		}
 
-		PhysicalPlan::Apply(physical::ApplyNode {
+		PhysicalPlan::Apply(ApplyNode {
 			operator,
 			expressions: arguments,
 			input,
@@ -378,7 +379,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::InlineData(physical::InlineDataNode {
+		PhysicalPlan::InlineData(InlineDataNode {
 			rows,
 		}) => {
 			let total_fields: usize = rows.iter().map(|row| row.len()).sum();

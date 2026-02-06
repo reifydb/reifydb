@@ -11,7 +11,7 @@ use reifydb_rql::{
 		conversion::{to_owned_expressions, to_owned_physical_plan},
 		node::FlowNodeType::Window,
 	},
-	plan::physical::{PhysicalPlan, WindowNode},
+	nodes::{PhysicalPlan, WindowNode},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;

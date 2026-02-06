@@ -4,7 +4,7 @@
 use reifydb_core::{interface::catalog::flow::FlowNodeId, sort::SortKey};
 use reifydb_rql::{
 	flow::{conversion::to_owned_physical_plan, node::FlowNodeType::Sort},
-	plan::physical::{PhysicalPlan, SortNode},
+	nodes::{PhysicalPlan, SortNode},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;

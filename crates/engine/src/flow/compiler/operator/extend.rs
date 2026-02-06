@@ -8,7 +8,7 @@ use reifydb_rql::{
 		conversion::{to_owned_expressions, to_owned_physical_plan},
 		node::FlowNodeType::Extend,
 	},
-	plan::physical::{ExtendNode, PhysicalPlan},
+	nodes::{ExtendNode, PhysicalPlan},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;

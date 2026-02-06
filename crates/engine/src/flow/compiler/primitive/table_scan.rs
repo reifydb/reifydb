@@ -4,7 +4,7 @@
 //! Compilation of table scan operations
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{flow::node::FlowNodeType::SourceTable, plan::physical::TableScanNode};
+use reifydb_rql::{flow::node::FlowNodeType::SourceTable, nodes::TableScanNode};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
 

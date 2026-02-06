@@ -4,7 +4,7 @@
 //! Compilation of view scan operations
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{flow::node::FlowNodeType::SourceView, plan::physical::ViewScanNode};
+use reifydb_rql::{flow::node::FlowNodeType::SourceView, nodes::ViewScanNode};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
 

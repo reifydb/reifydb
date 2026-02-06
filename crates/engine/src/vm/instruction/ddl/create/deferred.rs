@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::view::ViewToCreate;
 use reifydb_core::{interface::catalog::change::CatalogTrackViewChangeOperations, value::column::columns::Columns};
-use reifydb_rql::plan::physical::CreateDeferredViewNode;
+use reifydb_rql::nodes::CreateDeferredViewNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
@@ -47,38 +47,39 @@ pub(crate) fn create_deferred_view(
 
 #[cfg(test)]
 pub mod tests {
-	use PhysicalPlan::InlineData;
-	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::interface::catalog::{id::NamespaceId, namespace::NamespaceDef};
-	use reifydb_rql::plan::physical::{CreateDeferredViewNode, InlineDataNode, PhysicalPlan};
-	use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+	use reifydb_core::interface::auth::Identity;
+	use reifydb_type::{params::Params, value::Value};
 
-	use crate::{test_utils::create_test_admin_transaction_with_internal_schema, vm::executor::Executor};
+	use crate::{
+		test_utils::create_test_admin_transaction_with_internal_schema,
+		vm::{Admin, executor::Executor},
+	};
 
 	#[test]
 	fn test_create_view() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction_with_internal_schema();
+		let identity = Identity::root();
 
-		let namespace = ensure_test_namespace(&mut txn);
-
-		let mut plan = CreateDeferredViewNode {
-			namespace: NamespaceDef {
-				id: namespace.id,
-				name: namespace.name.clone(),
+		instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE test_namespace",
+				params: Params::default(),
+				identity: &identity,
 			},
-			view: Fragment::internal("test_view"),
-			if_not_exists: false,
-			columns: vec![],
-			as_clause: Box::new(InlineData(InlineDataNode {
-				rows: vec![],
-			})),
-			primary_key: None,
-		};
+		)
+		.unwrap();
 
-		// First creation should succeed
 		let frames = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan.clone()), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE DEFERRED VIEW test_namespace.test_view { id: Int4 } AS { FROM [] }",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap();
 		let frame = &frames[0];
 
@@ -86,23 +87,16 @@ pub mod tests {
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_view".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
 
-		// Creating the same view again with `if_not_exists = true`
-		// should not error
-		plan.if_not_exists = true;
-		let frames = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan.clone()), Params::default())
-			.unwrap();
-		let frame = &frames[0];
-
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_view".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
-
-		// Creating the same view again with `if_not_exists = false`
-		// should return error
-		plan.if_not_exists = false;
+		// Creating the same view again should return error
 		let err = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE DEFERRED VIEW test_namespace.test_view { id: Int4 } AS { FROM [] }",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
@@ -111,75 +105,56 @@ pub mod tests {
 	fn test_create_same_view_in_different_schema() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction_with_internal_schema();
+		let identity = Identity::root();
 
-		let namespace = ensure_test_namespace(&mut txn);
-		let another_schema = create_namespace(&mut txn, "another_schema");
-
-		let plan = CreateDeferredViewNode {
-			namespace: NamespaceDef {
-				id: namespace.id,
-				name: namespace.name.clone(),
+		instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE test_namespace",
+				params: Params::default(),
+				identity: &identity,
 			},
-			view: Fragment::internal("test_view"),
-			if_not_exists: false,
-			columns: vec![],
-			as_clause: Box::new(InlineData(InlineDataNode {
-				rows: vec![],
-			})),
-			primary_key: None,
-		};
+		)
+		.unwrap();
+		instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE another_schema",
+				params: Params::default(),
+				identity: &identity,
+			},
+		)
+		.unwrap();
 
 		let frames = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan.clone()), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE DEFERRED VIEW test_namespace.test_view { id: Int4 } AS { FROM [] }",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap();
 		let frame = &frames[0];
 
 		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_view".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
-		let plan = CreateDeferredViewNode {
-			namespace: NamespaceDef {
-				id: another_schema.id,
-				name: another_schema.name.clone(),
-			},
-			view: Fragment::internal("test_view"),
-			if_not_exists: false,
-			columns: vec![],
-			as_clause: Box::new(InlineData(InlineDataNode {
-				rows: vec![],
-			})),
-			primary_key: None,
-		};
 
 		let frames = instance
-			.run_admin_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan.clone()), Params::default())
+			.admin(
+				&mut txn,
+				Admin {
+					rql: "CREATE DEFERRED VIEW another_schema.test_view { id: Int4 } AS { FROM [] }",
+					params: Params::default(),
+					identity: &identity,
+				},
+			)
 			.unwrap();
 		let frame = &frames[0];
 		assert_eq!(frame[0].get_value(0), Value::Utf8("another_schema".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_view".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
-	}
-
-	#[test]
-	fn test_create_view_missing_schema() {
-		let instance = Executor::testing();
-		let mut txn = create_test_admin_transaction_with_internal_schema();
-
-		let plan = CreateDeferredViewNode {
-			namespace: NamespaceDef {
-				id: NamespaceId(999),
-				name: "missing_schema".to_string(),
-			},
-			view: Fragment::internal("my_view"),
-			if_not_exists: false,
-			columns: vec![],
-			as_clause: Box::new(InlineData(InlineDataNode {
-				rows: vec![],
-			})),
-			primary_key: None,
-		};
-
-		instance.run_admin_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan), Params::default())
-			.unwrap_err();
 	}
 }

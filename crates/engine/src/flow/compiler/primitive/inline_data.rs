@@ -7,7 +7,7 @@ use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
 	expression::{AliasExpression, IdentExpression},
 	flow::{conversion::to_owned_expression, node::FlowNodeType},
-	plan::physical::InlineDataNode,
+	nodes::InlineDataNode,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;

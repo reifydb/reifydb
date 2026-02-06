@@ -15,7 +15,7 @@ use crate::{
 		MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator,
 		RemExpression, SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
 	},
-	plan::physical::PhysicalPlan,
+	nodes::PhysicalPlan,
 };
 
 /// Converts an Expression to owned form
@@ -238,52 +238,52 @@ pub fn to_owned_fragment(fragment: Fragment) -> Fragment {
 
 pub fn to_owned_physical_plan(plan: PhysicalPlan) -> PhysicalPlan {
 	match plan {
-		PhysicalPlan::Aggregate(node) => PhysicalPlan::Aggregate(crate::plan::physical::AggregateNode {
+		PhysicalPlan::Aggregate(node) => PhysicalPlan::Aggregate(crate::nodes::AggregateNode {
 			input: Box::new(to_owned_physical_plan(*node.input)),
 			by: to_owned_expressions(node.by),
 			map: to_owned_expressions(node.map),
 		}),
-		PhysicalPlan::Map(node) => PhysicalPlan::Map(crate::plan::physical::MapNode {
+		PhysicalPlan::Map(node) => PhysicalPlan::Map(crate::nodes::MapNode {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			map: to_owned_expressions(node.map),
 		}),
-		PhysicalPlan::Filter(node) => PhysicalPlan::Filter(crate::plan::physical::FilterNode {
+		PhysicalPlan::Filter(node) => PhysicalPlan::Filter(crate::nodes::FilterNode {
 			input: Box::new(to_owned_physical_plan(*node.input)),
 			conditions: to_owned_expressions(node.conditions),
 		}),
-		PhysicalPlan::Sort(node) => PhysicalPlan::Sort(crate::plan::physical::SortNode {
+		PhysicalPlan::Sort(node) => PhysicalPlan::Sort(crate::nodes::SortNode {
 			input: Box::new(to_owned_physical_plan(*node.input)),
 			by: node.by, // SortKey doesn't contain fragments
 		}),
-		PhysicalPlan::Take(node) => PhysicalPlan::Take(crate::plan::physical::TakeNode {
+		PhysicalPlan::Take(node) => PhysicalPlan::Take(crate::nodes::TakeNode {
 			input: Box::new(to_owned_physical_plan(*node.input)),
 			take: node.take,
 		}),
-		PhysicalPlan::Distinct(node) => PhysicalPlan::Distinct(crate::plan::physical::DistinctNode {
+		PhysicalPlan::Distinct(node) => PhysicalPlan::Distinct(crate::nodes::DistinctNode {
 			input: Box::new(to_owned_physical_plan(*node.input)),
 			columns: node.columns.into_iter().map(|c| c).collect(),
 		}),
-		PhysicalPlan::JoinInner(node) => PhysicalPlan::JoinInner(crate::plan::physical::JoinInnerNode {
+		PhysicalPlan::JoinInner(node) => PhysicalPlan::JoinInner(crate::nodes::JoinInnerNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|a| a),
 		}),
-		PhysicalPlan::JoinLeft(node) => PhysicalPlan::JoinLeft(crate::plan::physical::JoinLeftNode {
+		PhysicalPlan::JoinLeft(node) => PhysicalPlan::JoinLeft(crate::nodes::JoinLeftNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|a| a),
 		}),
-		PhysicalPlan::Merge(node) => PhysicalPlan::Merge(crate::plan::physical::MergeNode {
+		PhysicalPlan::Merge(node) => PhysicalPlan::Merge(crate::nodes::MergeNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 		}),
-		PhysicalPlan::Extend(node) => PhysicalPlan::Extend(crate::plan::physical::ExtendNode {
+		PhysicalPlan::Extend(node) => PhysicalPlan::Extend(crate::nodes::ExtendNode {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			extend: to_owned_expressions(node.extend),
 		}),
-		PhysicalPlan::Apply(node) => PhysicalPlan::Apply(crate::plan::physical::ApplyNode {
+		PhysicalPlan::Apply(node) => PhysicalPlan::Apply(crate::nodes::ApplyNode {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			operator: to_owned_fragment(node.operator),
 			expressions: to_owned_expressions(node.expressions),
@@ -291,28 +291,28 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan) -> PhysicalPlan {
 		PhysicalPlan::TableScan(node) => {
 			// For TableScan, we need to extract the namespace and table defs
 			// from the resolved source and convert them to owned versions
-			PhysicalPlan::TableScan(crate::plan::physical::TableScanNode {
+			PhysicalPlan::TableScan(crate::nodes::TableScanNode {
 				source: node.source,
 			})
 		}
 		PhysicalPlan::ViewScan(node) => {
 			// For ViewScan, convert the resolved view to owned
-			PhysicalPlan::ViewScan(crate::plan::physical::ViewScanNode {
+			PhysicalPlan::ViewScan(crate::nodes::ViewScanNode {
 				source: node.source,
 			})
 		}
 		PhysicalPlan::RingBufferScan(node) => {
 			// For RingBufferScan, convert the resolved ring buffer to owned
-			PhysicalPlan::RingBufferScan(crate::plan::physical::RingBufferScanNode {
+			PhysicalPlan::RingBufferScan(crate::nodes::RingBufferScanNode {
 				source: node.source,
 			})
 		}
 		PhysicalPlan::TableVirtualScan(node) => {
 			// For TableVirtualScan, convert resolved table virtual and context to owned
-			PhysicalPlan::TableVirtualScan(crate::plan::physical::TableVirtualScanNode {
+			PhysicalPlan::TableVirtualScan(crate::nodes::TableVirtualScanNode {
 				source: node.source,
 				pushdown_context: node.pushdown_context.map(|ctx| {
-					crate::plan::physical::TableVirtualPushdownContext {
+					crate::nodes::TableVirtualPushdownContext {
 						filters: to_owned_expressions(ctx.filters),
 						projections: to_owned_expressions(ctx.projections),
 						order_by: ctx.order_by.clone(),
@@ -323,12 +323,12 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan) -> PhysicalPlan {
 		}
 		PhysicalPlan::IndexScan(node) => {
 			// For IndexScan, convert the resolved table to owned
-			PhysicalPlan::IndexScan(crate::plan::physical::IndexScanNode {
+			PhysicalPlan::IndexScan(crate::nodes::IndexScanNode {
 				source: node.source,
 				index_name: node.index_name.clone(),
 			})
 		}
-		PhysicalPlan::InlineData(node) => PhysicalPlan::InlineData(crate::plan::physical::InlineDataNode {
+		PhysicalPlan::InlineData(node) => PhysicalPlan::InlineData(crate::nodes::InlineDataNode {
 			rows: node
 				.rows
 				.into_iter()
@@ -345,7 +345,7 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan) -> PhysicalPlan {
 				})
 				.collect(),
 		}),
-		PhysicalPlan::Window(node) => PhysicalPlan::Window(crate::plan::physical::WindowNode {
+		PhysicalPlan::Window(node) => PhysicalPlan::Window(crate::nodes::WindowNode {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			window_type: node.window_type,
 			size: node.size,
@@ -358,29 +358,23 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan) -> PhysicalPlan {
 		}),
 		PhysicalPlan::FlowScan(node) => {
 			// For FlowScan, convert the resolved flow to owned
-			PhysicalPlan::FlowScan(crate::plan::physical::FlowScanNode {
+			PhysicalPlan::FlowScan(crate::nodes::FlowScanNode {
 				source: node.source,
 			})
 		}
-		PhysicalPlan::RowPointLookup(node) => {
-			PhysicalPlan::RowPointLookup(crate::plan::physical::RowPointLookupNode {
-				source: node.source,
-				row_number: node.row_number,
-			})
-		}
-		PhysicalPlan::RowListLookup(node) => {
-			PhysicalPlan::RowListLookup(crate::plan::physical::RowListLookupNode {
-				source: node.source,
-				row_numbers: node.row_numbers,
-			})
-		}
-		PhysicalPlan::RowRangeScan(node) => {
-			PhysicalPlan::RowRangeScan(crate::plan::physical::RowRangeScanNode {
-				source: node.source,
-				start: node.start,
-				end: node.end,
-			})
-		}
+		PhysicalPlan::RowPointLookup(node) => PhysicalPlan::RowPointLookup(crate::nodes::RowPointLookupNode {
+			source: node.source,
+			row_number: node.row_number,
+		}),
+		PhysicalPlan::RowListLookup(node) => PhysicalPlan::RowListLookup(crate::nodes::RowListLookupNode {
+			source: node.source,
+			row_numbers: node.row_numbers,
+		}),
+		PhysicalPlan::RowRangeScan(node) => PhysicalPlan::RowRangeScan(crate::nodes::RowRangeScanNode {
+			source: node.source,
+			start: node.start,
+			end: node.end,
+		}),
 		_ => unimplemented!("Implement conversion for remaining PhysicalPlan variants"),
 	}
 }

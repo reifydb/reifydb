@@ -17,7 +17,7 @@ use reifydb_core::{
 	key::{EncodableKey, index_entry::IndexEntryKey, row::RowKey},
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::UpdateTableNode;
+use reifydb_rql::nodes::UpdateTableNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,

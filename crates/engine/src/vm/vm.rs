@@ -6,12 +6,13 @@ use std::sync::Arc;
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
 use reifydb_rql::{
 	expression::{CallExpression, Expression, IdentExpression},
-	plan::physical::{AssignValue, LetValue, PhysicalPlan},
+	instruction::Instruction,
+	nodes::{AssignValue, LetValue, PhysicalPlan},
+	query::QueryPlan,
 };
 use reifydb_type::{params::Params, value::frame::frame::Frame};
 
 use super::{
-	instruction::Instruction,
 	interpret::TransactionAccess,
 	services::Services,
 	stack::{ControlFlow, ScopeType, Stack, StackValue, SymbolTable, Variable},
@@ -23,6 +24,44 @@ use super::{
 use crate::evaluate::{ColumnEvaluationContext, column::evaluate};
 
 const MAX_ITERATIONS: usize = 10_000;
+
+/// Convert a PhysicalPlan to a QueryPlan for query operations.
+/// This is used when PhysicalPlans are stored in LetValue/AssignValue::Statement.
+fn physical_to_query_plan(plan: PhysicalPlan) -> Option<QueryPlan> {
+	match plan {
+		PhysicalPlan::TableScan(n) => Some(QueryPlan::TableScan(n)),
+		PhysicalPlan::TableVirtualScan(n) => Some(QueryPlan::TableVirtualScan(n)),
+		PhysicalPlan::ViewScan(n) => Some(QueryPlan::ViewScan(n)),
+		PhysicalPlan::RingBufferScan(n) => Some(QueryPlan::RingBufferScan(n)),
+		PhysicalPlan::FlowScan(n) => Some(QueryPlan::FlowScan(n)),
+		PhysicalPlan::DictionaryScan(n) => Some(QueryPlan::DictionaryScan(n)),
+		PhysicalPlan::IndexScan(n) => Some(QueryPlan::IndexScan(n)),
+		PhysicalPlan::RowPointLookup(n) => Some(QueryPlan::RowPointLookup(n)),
+		PhysicalPlan::RowListLookup(n) => Some(QueryPlan::RowListLookup(n)),
+		PhysicalPlan::RowRangeScan(n) => Some(QueryPlan::RowRangeScan(n)),
+		PhysicalPlan::Aggregate(n) => Some(QueryPlan::Aggregate(n)),
+		PhysicalPlan::Distinct(n) => Some(QueryPlan::Distinct(n)),
+		PhysicalPlan::Filter(n) => Some(QueryPlan::Filter(n)),
+		PhysicalPlan::JoinInner(n) => Some(QueryPlan::JoinInner(n)),
+		PhysicalPlan::JoinLeft(n) => Some(QueryPlan::JoinLeft(n)),
+		PhysicalPlan::JoinNatural(n) => Some(QueryPlan::JoinNatural(n)),
+		PhysicalPlan::Merge(n) => Some(QueryPlan::Merge(n)),
+		PhysicalPlan::Take(n) => Some(QueryPlan::Take(n)),
+		PhysicalPlan::Sort(n) => Some(QueryPlan::Sort(n)),
+		PhysicalPlan::Map(n) => Some(QueryPlan::Map(n)),
+		PhysicalPlan::Extend(n) => Some(QueryPlan::Extend(n)),
+		PhysicalPlan::Patch(n) => Some(QueryPlan::Patch(n)),
+		PhysicalPlan::Apply(n) => Some(QueryPlan::Apply(n)),
+		PhysicalPlan::InlineData(n) => Some(QueryPlan::InlineData(n)),
+		PhysicalPlan::Generator(n) => Some(QueryPlan::Generator(n)),
+		PhysicalPlan::Window(n) => Some(QueryPlan::Window(n)),
+		PhysicalPlan::Variable(n) => Some(QueryPlan::Variable(n)),
+		PhysicalPlan::Environment(n) => Some(QueryPlan::Environment(n)),
+		PhysicalPlan::Scalarize(n) => Some(QueryPlan::Scalarize(n)),
+		// Non-query plans return None
+		_ => None,
+	}
+}
 
 fn strip_dollar_prefix(name: &str) -> String {
 	if name.starts_with('$') {
@@ -672,9 +711,8 @@ impl Vm {
 							)?;
 						}
 
-						// Compile the function body into instructions
-						let body_instructions =
-							super::instruction::compile::compile(func_def.body.clone())?;
+						// Function body is already pre-compiled
+						let body_instructions = &func_def.body;
 
 						// Execute the function body instructions
 						let mut body_ip = 0;
@@ -868,11 +906,13 @@ impl Vm {
 					return Ok(Columns::empty());
 				}
 				let last_plan = physical_plans.last().unwrap();
+				let query_plan = physical_to_query_plan(last_plan.clone())
+					.expect("LetValue::Statement should contain query plans");
 				let mut std_txn = tx.as_transaction();
 				let result = run_query_plan(
 					services,
 					&mut std_txn,
-					last_plan.clone(),
+					query_plan,
 					params.clone(),
 					&mut self.symbol_table,
 				)?;
@@ -907,11 +947,13 @@ impl Vm {
 					return Ok(Columns::empty());
 				}
 				let last_plan = physical_plans.last().unwrap();
+				let query_plan = physical_to_query_plan(last_plan.clone())
+					.expect("AssignValue::Statement should contain query plans");
 				let mut std_txn = tx.as_transaction();
 				let result = run_query_plan(
 					services,
 					&mut std_txn,
-					last_plan.clone(),
+					query_plan,
 					params.clone(),
 					&mut self.symbol_table,
 				)?;
@@ -974,10 +1016,12 @@ impl Vm {
 fn run_query_plan(
 	services: &Arc<Services>,
 	txn: &mut reifydb_transaction::transaction::Transaction<'_>,
-	plan: PhysicalPlan,
+	plan: QueryPlan,
 	params: Params,
 	symbol_table: &mut SymbolTable,
 ) -> crate::Result<Option<Columns>> {
+	// Convert QueryPlan to PhysicalPlan for the volcano executor
+	let physical_plan: PhysicalPlan = plan.into();
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,
@@ -986,7 +1030,7 @@ fn run_query_plan(
 		stack: symbol_table.clone(),
 	});
 
-	let mut query_node = compile(plan, txn, context.clone());
+	let mut query_node = compile(physical_plan, txn, context.clone());
 
 	// Initialize the operator
 	query_node.initialize(txn, &context)?;

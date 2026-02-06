@@ -23,7 +23,10 @@ pub mod explain;
 pub mod expression;
 #[allow(dead_code, unused_variables)]
 pub mod flow;
+pub mod instruction;
+pub mod nodes;
 pub mod plan;
+pub mod query;
 pub mod token;
 
 pub(crate) fn convert_data_type(ast: &Fragment) -> Result<Type> {

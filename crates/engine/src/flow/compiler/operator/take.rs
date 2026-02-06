@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
 	flow::{conversion::to_owned_physical_plan, node::FlowNodeType::Take},
-	plan::physical::{PhysicalPlan, TakeNode},
+	nodes::{PhysicalPlan, TakeNode},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
