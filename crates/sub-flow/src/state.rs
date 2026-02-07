@@ -40,6 +40,14 @@ impl FlowState {
 		}
 	}
 
+	/// Create a new flow state that starts immediately active at the given checkpoint.
+	pub fn new_active(checkpoint: CommitVersion) -> Self {
+		Self {
+			checkpoint,
+			status: FlowStatus::Active,
+		}
+	}
+
 	/// Check if the flow is currently backfilling.
 	pub fn is_backfilling(&self) -> bool {
 		self.status == FlowStatus::Backfilling
@@ -83,6 +91,11 @@ impl FlowStates {
 	/// Register a new flow in backfilling status.
 	pub fn register_backfilling(&mut self, flow_id: FlowId) {
 		self.states.insert(flow_id, FlowState::new_backfilling());
+	}
+
+	/// Register a new flow as immediately active at the given checkpoint.
+	pub fn register_active(&mut self, flow_id: FlowId, checkpoint: CommitVersion) {
+		self.states.insert(flow_id, FlowState::new_active(checkpoint));
 	}
 
 	/// Get all active flow IDs.

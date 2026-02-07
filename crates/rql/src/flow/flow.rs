@@ -8,7 +8,7 @@ use reifydb_type::Result;
 
 use super::{
 	graph::DirectedGraph,
-	node::{FlowEdge, FlowNode},
+	node::{FlowEdge, FlowNode, FlowNodeType},
 };
 
 #[derive(Debug, Clone)]
@@ -121,5 +121,12 @@ impl FlowDag {
 	/// Get the number of edges in the flow
 	pub fn edge_count(&self) -> usize {
 		self.inner.graph.edge_count()
+	}
+
+	/// Check whether this flow has a subscription sink.
+	pub fn is_subscription(&self) -> bool {
+		self.get_node_ids().any(|id| {
+			self.get_node(&id).is_some_and(|n| matches!(n.ty, FlowNodeType::SinkSubscription { .. }))
+		})
 	}
 }

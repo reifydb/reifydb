@@ -313,8 +313,13 @@ impl CoordinatorActor {
 			let flow_id = flow.id;
 
 			state.analyzer.add(flow.clone());
-			state.states.register_backfilling(flow_id);
-			debug!(flow_id = flow_id.0, "registered new flow in backfilling status");
+			if flow.is_subscription() {
+				state.states.register_active(flow_id, consume_ctx.current_version);
+				debug!(flow_id = flow_id.0, "registered new subscription flow as active");
+			} else {
+				state.states.register_backfilling(flow_id);
+				debug!(flow_id = flow_id.0, "registered new flow in backfilling status");
+			}
 
 			let self_ref = ctx.self_ref().clone();
 			let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
@@ -371,8 +376,19 @@ impl CoordinatorActor {
 					let flow_id = flow.id;
 
 					state.analyzer.add(flow.clone());
-					state.states.register_backfilling(flow_id);
-					debug!(flow_id = flow_id.0, "registered new flow in backfilling status");
+					if flow.is_subscription() {
+						state.states.register_active(flow_id, consume_ctx.current_version);
+						debug!(
+							flow_id = flow_id.0,
+							"registered new subscription flow as active"
+						);
+					} else {
+						state.states.register_backfilling(flow_id);
+						debug!(
+							flow_id = flow_id.0,
+							"registered new flow in backfilling status"
+						);
+					}
 
 					let self_ref = ctx.self_ref().clone();
 					let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
