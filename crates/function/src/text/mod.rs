@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod concat;
+pub mod contains;
 pub mod count;
 pub mod ends_with;
 pub mod format_bytes;

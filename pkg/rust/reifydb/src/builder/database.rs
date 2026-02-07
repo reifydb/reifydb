@@ -230,6 +230,7 @@ impl DatabaseBuilder {
 			.register_scalar("math::round", math::scalar::round::Round::new)
 			.register_scalar("math::power", math::scalar::power::Power::new)
 			.register_scalar("text::concat", text::concat::TextConcat::new)
+			.register_scalar("text::contains", text::contains::TextContains::new)
 			.register_scalar("text::count", text::count::TextCount::new)
 			.register_scalar("text::ends_with", text::ends_with::TextEndsWith::new)
 			.register_scalar("text::replace", text::replace::TextReplace::new)
