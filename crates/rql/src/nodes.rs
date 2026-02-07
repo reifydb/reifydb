@@ -190,15 +190,15 @@ pub struct AlterSequenceNode {
 
 #[derive(Debug, Clone)]
 pub enum LetValue {
-	Expression(Expression),       // scalar/column expression
-	Statement(Vec<PhysicalPlan>), // query pipeline as physical plans
+	Expression(Expression),
+	Statement(QueryPlan),
 }
 
 impl std::fmt::Display for LetValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
-			LetValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
+			LetValue::Statement(query) => write!(f, "Statement({:?})", query),
 		}
 	}
 }
@@ -211,15 +211,15 @@ pub struct DeclareNode {
 
 #[derive(Debug, Clone)]
 pub enum AssignValue {
-	Expression(Expression),       // scalar/column expression
-	Statement(Vec<PhysicalPlan>), // query pipeline as physical plans
+	Expression(Expression),
+	Statement(QueryPlan),
 }
 
 impl std::fmt::Display for AssignValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			AssignValue::Expression(expr) => write!(f, "{}", expr),
-			AssignValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
+			AssignValue::Statement(query) => write!(f, "Statement({:?})", query),
 		}
 	}
 }

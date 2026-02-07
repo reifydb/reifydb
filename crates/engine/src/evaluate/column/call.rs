@@ -13,7 +13,10 @@ use reifydb_type::{error, error::diagnostic::function, fragment::Fragment, param
 use super::StandardColumnEvaluator;
 use crate::{
 	evaluate::ColumnEvaluationContext,
-	vm::stack::{SymbolTable, Variable},
+	vm::{
+		scalar,
+		stack::{SymbolTable, Variable},
+	},
 };
 
 /// Strip the leading `$` from a variable name if present
@@ -90,10 +93,11 @@ impl StandardColumnEvaluator {
 		// Function body is already pre-compiled
 		let body_instructions = &func_def.body;
 
+		let mut func_symbol_table = ctx.symbol_table.clone();
+
 		// For each row, execute the function
 		for row_idx in 0..row_count {
-			// Clone symbol table for this execution
-			let mut func_symbol_table = ctx.symbol_table.clone();
+			let base_depth = func_symbol_table.scope_depth();
 			func_symbol_table.enter_scope(ScopeType::Function);
 
 			// Bind arguments to parameters
@@ -110,6 +114,10 @@ impl StandardColumnEvaluator {
 				ctx.params,
 			)?;
 
+			while func_symbol_table.scope_depth() > base_depth {
+				let _ = func_symbol_table.exit_scope();
+			}
+
 			results.push(result);
 		}
 
@@ -121,7 +129,8 @@ impl StandardColumnEvaluator {
 		})
 	}
 
-	/// Execute function body instructions and return a scalar result
+	/// Execute function body instructions and return a scalar result.
+	/// Uses a simple stack-based interpreter matching the new bytecode ISA.
 	fn execute_function_body_for_scalar(
 		&self,
 		instructions: &[Instruction],
@@ -129,32 +138,212 @@ impl StandardColumnEvaluator {
 		params: &Params,
 	) -> crate::Result<Value> {
 		let mut ip = 0;
-		let mut last_value = Value::Undefined;
+		let mut stack: Vec<Value> = Vec::new();
 
 		while ip < instructions.len() {
 			match &instructions[ip] {
 				Instruction::Halt => break,
 				Instruction::Nop => {}
 
-				Instruction::Return(ret_node) => {
-					if let Some(ref expr) = ret_node.value {
-						let evaluation_context = ColumnEvaluationContext {
-							target: None,
-							columns: Columns::empty(),
-							row_count: 1,
-							take: None,
-							params,
-							symbol_table,
-							is_aggregate_context: false,
-						};
-						let result_column = self.evaluate(&evaluation_context, expr)?;
-						if result_column.data.len() > 0 {
-							return Ok(result_column.data.get_value(0));
-						}
+				// === Stack ===
+				Instruction::PushConst(v) => stack.push(v.clone()),
+				Instruction::PushUndefined => stack.push(Value::Undefined),
+				Instruction::Pop => {
+					stack.pop();
+				}
+				Instruction::Dup => {
+					if let Some(v) = stack.last() {
+						stack.push(v.clone());
 					}
+				}
+
+				// === Variables ===
+				Instruction::LoadVar(name) => {
+					let var_name = strip_dollar_prefix(name.text());
+					let val = symbol_table
+						.get(&var_name)
+						.map(|v| match v {
+							Variable::Scalar(s) => s.clone(),
+							_ => Value::Undefined,
+						})
+						.unwrap_or(Value::Undefined);
+					stack.push(val);
+				}
+				Instruction::StoreVar(name) => {
+					let val = stack.pop().unwrap_or(Value::Undefined);
+					let var_name = strip_dollar_prefix(name.text());
+					symbol_table.set(var_name, Variable::Scalar(val), true)?;
+				}
+				Instruction::DeclareVar(name) => {
+					let val = stack.pop().unwrap_or(Value::Undefined);
+					let var_name = strip_dollar_prefix(name.text());
+					symbol_table.set(var_name, Variable::Scalar(val), true)?;
+				}
+
+				// === Arithmetic ===
+				Instruction::Add => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_add(l, r)?);
+				}
+				Instruction::Sub => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_sub(l, r)?);
+				}
+				Instruction::Mul => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_mul(l, r)?);
+				}
+				Instruction::Div => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_div(l, r)?);
+				}
+				Instruction::Rem => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_rem(l, r)?);
+				}
+
+				// === Unary ===
+				Instruction::Negate => {
+					let v = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_negate(v)?);
+				}
+				Instruction::LogicNot => {
+					let v = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(Value::Boolean(!scalar::value_is_truthy(&v)));
+				}
+
+				// === Comparison ===
+				Instruction::CmpEq => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_eq(&l, &r));
+				}
+				Instruction::CmpNe => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_ne(&l, &r));
+				}
+				Instruction::CmpLt => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_lt(&l, &r));
+				}
+				Instruction::CmpLe => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_le(&l, &r));
+				}
+				Instruction::CmpGt => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_gt(&l, &r));
+				}
+				Instruction::CmpGe => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_ge(&l, &r));
+				}
+
+				// === Logic ===
+				Instruction::LogicAnd => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_and(&l, &r));
+				}
+				Instruction::LogicOr => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_or(&l, &r));
+				}
+				Instruction::LogicXor => {
+					let r = stack.pop().unwrap_or(Value::Undefined);
+					let l = stack.pop().unwrap_or(Value::Undefined);
+					let lb = scalar::value_is_truthy(&l);
+					let rb = scalar::value_is_truthy(&r);
+					stack.push(Value::Boolean(lb ^ rb));
+				}
+
+				// === Compound ===
+				Instruction::Cast(target) => {
+					let v = stack.pop().unwrap_or(Value::Undefined);
+					stack.push(scalar::scalar_cast(v, *target)?);
+				}
+				Instruction::Between => {
+					let upper = stack.pop().unwrap_or(Value::Undefined);
+					let lower = stack.pop().unwrap_or(Value::Undefined);
+					let val = stack.pop().unwrap_or(Value::Undefined);
+					let ge = scalar::scalar_ge(&val, &lower);
+					let le = scalar::scalar_le(&val, &upper);
+					let result = match (ge, le) {
+						(Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a && b),
+						_ => Value::Undefined,
+					};
+					stack.push(result);
+				}
+				Instruction::InList {
+					count,
+					negated,
+				} => {
+					let count = *count as usize;
+					let negated = *negated;
+					let mut items: Vec<Value> = Vec::with_capacity(count);
+					for _ in 0..count {
+						items.push(stack.pop().unwrap_or(Value::Undefined));
+					}
+					items.reverse();
+					let val = stack.pop().unwrap_or(Value::Undefined);
+					let found = items.iter().any(|item| {
+						matches!(scalar::scalar_eq(&val, item), Value::Boolean(true))
+					});
+					stack.push(Value::Boolean(if negated {
+						!found
+					} else {
+						found
+					}));
+				}
+
+				// === Control flow ===
+				Instruction::Jump(addr) => {
+					ip = *addr;
+					continue;
+				}
+				Instruction::JumpIfFalsePop(addr) => {
+					let v = stack.pop().unwrap_or(Value::Undefined);
+					if !scalar::value_is_truthy(&v) {
+						ip = *addr;
+						continue;
+					}
+				}
+				Instruction::JumpIfTruePop(addr) => {
+					let v = stack.pop().unwrap_or(Value::Undefined);
+					if scalar::value_is_truthy(&v) {
+						ip = *addr;
+						continue;
+					}
+				}
+
+				Instruction::EnterScope(scope_type) => {
+					symbol_table.enter_scope(scope_type.clone());
+				}
+				Instruction::ExitScope => {
+					let _ = symbol_table.exit_scope();
+				}
+
+				// === Return ===
+				Instruction::ReturnValue => {
+					let v = stack.pop().unwrap_or(Value::Undefined);
+					return Ok(v);
+				}
+				Instruction::ReturnVoid => {
 					return Ok(Value::Undefined);
 				}
 
+				// === Query ===
 				Instruction::Query(plan) => match plan {
 					QueryPlan::Map(map_node) => {
 						if map_node.input.is_none() && !map_node.map.is_empty() {
@@ -170,68 +359,89 @@ impl StandardColumnEvaluator {
 							let result_column =
 								self.evaluate(&evaluation_context, &map_node.map[0])?;
 							if result_column.data.len() > 0 {
-								last_value = result_column.data.get_value(0);
+								stack.push(result_column.data.get_value(0));
 							}
 						}
 					}
 					_ => {
-						unreachable!("Other plan types would need full VM execution");
+						// Other plan types would need full VM execution
 					}
 				},
 
 				Instruction::Emit => {
-					// Emit is handled - the last computed value is what we return
+					// Emit in function body context - the stack top is the result
 				}
 
-				Instruction::EvalCondition(expr) => {
-					let evaluation_context = ColumnEvaluationContext {
-						target: None,
-						columns: Columns::empty(),
-						row_count: 1,
-						take: None,
-						params,
-						symbol_table,
-						is_aggregate_context: false,
-					};
-					let result_column = self.evaluate(&evaluation_context, expr)?;
-					if result_column.data.len() > 0 {
-						last_value = result_column.data.get_value(0);
+				// === Function calls within function body ===
+				Instruction::Call {
+					name,
+					arity,
+				} => {
+					let arity = *arity as usize;
+					let mut args: Vec<Value> = Vec::with_capacity(arity);
+					for _ in 0..arity {
+						args.push(stack.pop().unwrap_or(Value::Undefined));
+					}
+					args.reverse();
+
+					// Try user-defined function
+					if let Some(func_def) = symbol_table.get_function(name.text()) {
+						let func_def = func_def.clone();
+						let base_depth = symbol_table.scope_depth();
+						symbol_table.enter_scope(ScopeType::Function);
+						for (param, arg_val) in func_def.parameters.iter().zip(args.iter()) {
+							let param_name = strip_dollar_prefix(param.name.text());
+							symbol_table.set(
+								param_name,
+								Variable::Scalar(arg_val.clone()),
+								true,
+							)?;
+						}
+						let result = self.execute_function_body_for_scalar(
+							&func_def.body,
+							symbol_table,
+							params,
+						)?;
+						while symbol_table.scope_depth() > base_depth {
+							let _ = symbol_table.exit_scope();
+						}
+						stack.push(result);
+					} else if let Some(functor) = self.functions.get_scalar(name.text()) {
+						let mut arg_cols = Vec::with_capacity(args.len());
+						for arg in &args {
+							let mut data = ColumnData::undefined(0);
+							data.push_value(arg.clone());
+							arg_cols.push(Column::new("_", data));
+						}
+						let columns = Columns::new(arg_cols);
+						let result_data = functor.scalar(ScalarFunctionContext {
+							fragment: name.clone(),
+							columns: &columns,
+							row_count: 1,
+							clock: &self.clock,
+						})?;
+						if result_data.len() > 0 {
+							stack.push(result_data.get_value(0));
+						} else {
+							stack.push(Value::Undefined);
+						}
 					}
 				}
 
-				Instruction::JumpIfFalsePop(addr) => {
-					let is_false = match &last_value {
-						Value::Boolean(false) => true,
-						Value::Boolean(true) => false,
-						_ => true,
-					};
-					if is_false {
-						ip = *addr;
-						continue;
-					}
-				}
-
-				Instruction::Jump(addr) => {
-					ip = *addr;
-					continue;
-				}
-
-				Instruction::EnterScope(scope_type) => {
-					symbol_table.enter_scope(scope_type.clone());
-				}
-
-				Instruction::ExitScope => {
-					let _ = symbol_table.exit_scope();
+				Instruction::DefineFunction(func_def) => {
+					symbol_table
+						.define_function(func_def.name.text().to_string(), func_def.clone());
 				}
 
 				_ => {
-					// Handle other instructions as needed
+					// DDL/DML instructions not expected in function body
 				}
 			}
 			ip += 1;
 		}
 
-		Ok(last_value)
+		// Return top of stack or Undefined
+		Ok(stack.pop().unwrap_or(Value::Undefined))
 	}
 
 	fn handle_aggregate_function<'a>(

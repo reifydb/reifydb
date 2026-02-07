@@ -10,6 +10,8 @@ pub mod resolver;
 pub mod row_predicate;
 pub mod variable;
 
+use std::fmt::{Display, Formatter};
+
 use query::window::WindowNode;
 use reifydb_catalog::catalog::{
 	Catalog, ringbuffer::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate,
@@ -376,8 +378,8 @@ pub enum LetValue<'bump> {
 	Statement(BumpVec<'bump, LogicalPlan<'bump>>), // query pipeline as logical plans
 }
 
-impl<'bump> std::fmt::Display for LetValue<'bump> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'bump> Display for LetValue<'bump> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
 			LetValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
@@ -391,8 +393,8 @@ pub enum AssignValue<'bump> {
 	Statement(BumpVec<'bump, LogicalPlan<'bump>>), // query pipeline as logical plans
 }
 
-impl<'bump> std::fmt::Display for AssignValue<'bump> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'bump> Display for AssignValue<'bump> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			AssignValue::Expression(expr) => write!(f, "{}", expr),
 			AssignValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),

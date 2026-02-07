@@ -7,13 +7,17 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::util::lru::LruCache;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::AsTransaction;
-use reifydb_type::{Result, error::diagnostic::runtime};
+use reifydb_type::{Result, error::diagnostic::runtime, value::Value};
 
 use crate::{
 	ast::parse_str,
 	bump::Bump,
+	expression::{Expression, ParameterExpression, PrefixOperator},
 	instruction::{Addr, CompiledFunctionDef, Instruction, ScopeType},
-	nodes::{ConditionalNode, ForPhysicalNode, LoopPhysicalNode, PhysicalPlan, WhilePhysicalNode},
+	nodes::{
+		AssignValue, ConditionalNode, ForPhysicalNode, LetValue, LoopPhysicalNode, PhysicalPlan,
+		WhilePhysicalNode,
+	},
 	plan::plan,
 	query::QueryPlan,
 };
@@ -203,11 +207,244 @@ impl InstructionCompiler {
 		self.instructions.len()
 	}
 
-	/// Emit EvalCondition + JumpIfFalsePop, return the index of JumpIfFalsePop for backpatching
-	fn emit_conditional_jump(&mut self, condition: crate::expression::Expression) -> usize {
-		self.emit(Instruction::EvalCondition(condition));
+	/// Compile an expression to bytecode and emit a JumpIfFalsePop, returning its index for backpatching.
+	fn emit_conditional_jump(&mut self, condition: Expression) -> usize {
+		self.compile_expression(&condition);
 		self.emit(Instruction::JumpIfFalsePop(0))
 	}
+
+	// ========================================================================
+	// Expression compilation
+	// ========================================================================
+	fn compile_expression(&mut self, expr: &Expression) {
+		match expr {
+			Expression::Constant(c) => {
+				let value = c.to_value();
+				if matches!(value, Value::Undefined) {
+					self.emit(Instruction::PushUndefined);
+				} else {
+					self.emit(Instruction::PushConst(value));
+				}
+			}
+			Expression::Variable(v) => {
+				self.emit(Instruction::LoadVar(v.fragment.clone()));
+			}
+			Expression::Add(a) => {
+				self.compile_expression(&a.left);
+				self.compile_expression(&a.right);
+				self.emit(Instruction::Add);
+			}
+			Expression::Sub(s) => {
+				self.compile_expression(&s.left);
+				self.compile_expression(&s.right);
+				self.emit(Instruction::Sub);
+			}
+			Expression::Mul(m) => {
+				self.compile_expression(&m.left);
+				self.compile_expression(&m.right);
+				self.emit(Instruction::Mul);
+			}
+			Expression::Div(d) => {
+				self.compile_expression(&d.left);
+				self.compile_expression(&d.right);
+				self.emit(Instruction::Div);
+			}
+			Expression::Rem(r) => {
+				self.compile_expression(&r.left);
+				self.compile_expression(&r.right);
+				self.emit(Instruction::Rem);
+			}
+			Expression::Equal(e) => {
+				self.compile_expression(&e.left);
+				self.compile_expression(&e.right);
+				self.emit(Instruction::CmpEq);
+			}
+			Expression::NotEqual(e) => {
+				self.compile_expression(&e.left);
+				self.compile_expression(&e.right);
+				self.emit(Instruction::CmpNe);
+			}
+			Expression::GreaterThan(e) => {
+				self.compile_expression(&e.left);
+				self.compile_expression(&e.right);
+				self.emit(Instruction::CmpGt);
+			}
+			Expression::GreaterThanEqual(e) => {
+				self.compile_expression(&e.left);
+				self.compile_expression(&e.right);
+				self.emit(Instruction::CmpGe);
+			}
+			Expression::LessThan(e) => {
+				self.compile_expression(&e.left);
+				self.compile_expression(&e.right);
+				self.emit(Instruction::CmpLt);
+			}
+			Expression::LessThanEqual(e) => {
+				self.compile_expression(&e.left);
+				self.compile_expression(&e.right);
+				self.emit(Instruction::CmpLe);
+			}
+			Expression::And(a) => {
+				self.compile_expression(&a.left);
+				self.compile_expression(&a.right);
+				self.emit(Instruction::LogicAnd);
+			}
+			Expression::Or(o) => {
+				self.compile_expression(&o.left);
+				self.compile_expression(&o.right);
+				self.emit(Instruction::LogicOr);
+			}
+			Expression::Xor(x) => {
+				self.compile_expression(&x.left);
+				self.compile_expression(&x.right);
+				self.emit(Instruction::LogicXor);
+			}
+			Expression::Prefix(p) => match &p.operator {
+				PrefixOperator::Minus(_) => {
+					self.compile_expression(&p.expression);
+					self.emit(Instruction::Negate);
+				}
+				PrefixOperator::Not(_) => {
+					self.compile_expression(&p.expression);
+					self.emit(Instruction::LogicNot);
+				}
+				PrefixOperator::Plus(_) => {
+					self.compile_expression(&p.expression);
+				}
+			},
+			Expression::Call(c) => {
+				let arity = c.args.len();
+				for arg in &c.args {
+					self.compile_expression(arg);
+				}
+				self.emit(Instruction::Call {
+					name: c.func.0.clone(),
+					arity: arity as u8,
+				});
+			}
+			Expression::Cast(c) => {
+				self.compile_expression(&c.expression);
+				self.emit(Instruction::Cast(c.to.ty));
+			}
+			Expression::Between(b) => {
+				self.compile_expression(&b.value);
+				self.compile_expression(&b.lower);
+				self.compile_expression(&b.upper);
+				self.emit(Instruction::Between);
+			}
+			Expression::In(i) => {
+				self.compile_expression(&i.value);
+				// The list is a Tuple expression
+				let items = match i.list.as_ref() {
+					Expression::Tuple(t) => &t.expressions,
+					_ => {
+						// Single-item list
+						self.compile_expression(&i.list);
+						self.emit(Instruction::InList {
+							count: 1,
+							negated: i.negated,
+						});
+						return;
+					}
+				};
+				let count = items.len();
+				for item in items {
+					self.compile_expression(item);
+				}
+				self.emit(Instruction::InList {
+					count: count as u16,
+					negated: i.negated,
+				});
+			}
+			Expression::If(i) => {
+				// Conditional expression via jumps
+				self.compile_expression(&i.condition);
+				let false_jump = self.emit(Instruction::JumpIfFalsePop(0));
+
+				// Then branch
+				self.compile_expression(&i.then_expr);
+				let end_jump = self.emit(Instruction::Jump(0));
+
+				// Patch false jump to else-if/else
+				let else_start = self.current_addr();
+				self.patch_jump_if_false_pop(false_jump, else_start);
+
+				// Else-if chains
+				let mut end_patches = vec![end_jump];
+				for else_if in &i.else_ifs {
+					self.compile_expression(&else_if.condition);
+					let false_jump = self.emit(Instruction::JumpIfFalsePop(0));
+					self.compile_expression(&else_if.then_expr);
+					let end_jump = self.emit(Instruction::Jump(0));
+					end_patches.push(end_jump);
+					let next_start = self.current_addr();
+					self.patch_jump_if_false_pop(false_jump, next_start);
+				}
+
+				// Else branch or undefined
+				if let Some(else_expr) = &i.else_expr {
+					self.compile_expression(else_expr);
+				} else {
+					self.emit(Instruction::PushUndefined);
+				}
+
+				let end_addr = self.current_addr();
+				for patch_idx in end_patches {
+					self.patch_jump(patch_idx, end_addr);
+				}
+			}
+			Expression::Parameter(p) => {
+				// Parameters resolve to LoadVar at runtime
+				match p {
+					ParameterExpression::Positional {
+						fragment,
+					} => {
+						self.emit(Instruction::LoadVar(fragment.clone()));
+					}
+					ParameterExpression::Named {
+						fragment,
+					} => {
+						self.emit(Instruction::LoadVar(fragment.clone()));
+					}
+				}
+			}
+			// Tuple: parenthesized expressions
+			Expression::Tuple(t) => {
+				if t.expressions.len() == 1 {
+					// Single-element tuple = parenthesized expression, compile transparently
+					self.compile_expression(&t.expressions[0]);
+				} else {
+					// Multi-element tuple - not supported in scripting context
+					self.emit(Instruction::PushUndefined);
+				}
+			}
+			Expression::Map(m) => {
+				if m.expressions.len() == 1 {
+					match &m.expressions[0] {
+						Expression::Alias(a) => {
+							self.compile_expression(&a.expression);
+						}
+						other => {
+							self.compile_expression(other);
+						}
+					}
+				} else {
+					self.emit(Instruction::PushUndefined);
+				}
+			}
+			Expression::Column(_)
+			| Expression::AccessSource(_)
+			| Expression::Alias(_)
+			| Expression::Extend(_)
+			| Expression::Type(_) => {
+				self.emit(Instruction::PushUndefined);
+			}
+		}
+	}
+
+	// ========================================================================
+	// Plan compilation
+	// ========================================================================
 
 	fn compile_plan(&mut self, plan: PhysicalPlan) -> crate::Result<()> {
 		match plan {
@@ -293,10 +530,26 @@ impl InstructionCompiler {
 
 			// Variables
 			PhysicalPlan::Declare(node) => {
-				self.emit(Instruction::Declare(node));
+				match node.value {
+					LetValue::Expression(expr) => {
+						self.compile_expression(&expr);
+					}
+					LetValue::Statement(query) => {
+						self.emit(Instruction::Query(query));
+					}
+				}
+				self.emit(Instruction::DeclareVar(node.name));
 			}
 			PhysicalPlan::Assign(node) => {
-				self.emit(Instruction::Assign(node));
+				match node.value {
+					AssignValue::Expression(expr) => {
+						self.compile_expression(&expr);
+					}
+					AssignValue::Statement(query) => {
+						self.emit(Instruction::Query(query));
+					}
+				}
+				self.emit(Instruction::StoreVar(node.name));
 			}
 
 			// Control flow
@@ -321,7 +574,6 @@ impl InstructionCompiler {
 
 			// User-defined functions
 			PhysicalPlan::DefineFunction(node) => {
-				// Pre-compile the function body to instructions
 				let body_instructions = compile_instructions(node.body)?;
 				let compiled_func = CompiledFunctionDef {
 					name: node.name,
@@ -332,11 +584,23 @@ impl InstructionCompiler {
 				self.emit(Instruction::DefineFunction(compiled_func));
 			}
 			PhysicalPlan::CallFunction(node) => {
-				self.emit(Instruction::CallFunction(node));
+				let arity = node.arguments.len();
+				for arg in &node.arguments {
+					self.compile_expression(arg);
+				}
+				self.emit(Instruction::Call {
+					name: node.name,
+					arity: arity as u8,
+				});
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Return(node) => {
-				self.emit(Instruction::Return(node));
+				if let Some(expr) = node.value {
+					self.compile_expression(&expr);
+					self.emit(Instruction::ReturnValue);
+				} else {
+					self.emit(Instruction::ReturnVoid);
+				}
 			}
 
 			// Query operations - convert to QueryPlan
@@ -461,7 +725,6 @@ impl InstructionCompiler {
 	}
 
 	fn compile_conditional(&mut self, node: ConditionalNode) -> crate::Result<()> {
-		// Collect all jump-to-end patches
 		let mut end_patches: Vec<usize> = Vec::new();
 
 		// IF cond THEN body
@@ -471,10 +734,9 @@ impl InstructionCompiler {
 		self.compile_plan(*node.then_branch)?;
 		self.scope_depth -= 1;
 		self.emit(Instruction::ExitScope);
-		let end_jump = self.emit(Instruction::Jump(0)); // backpatched
+		let end_jump = self.emit(Instruction::Jump(0));
 		end_patches.push(end_jump);
 
-		// Patch the false jump to point here (start of else-if chain or else or end)
 		let else_if_start = self.current_addr();
 		self.patch_jump_if_false_pop(false_jump, else_if_start);
 
@@ -486,7 +748,7 @@ impl InstructionCompiler {
 			self.compile_plan(*else_if.then_branch)?;
 			self.scope_depth -= 1;
 			self.emit(Instruction::ExitScope);
-			let end_jump = self.emit(Instruction::Jump(0)); // backpatched
+			let end_jump = self.emit(Instruction::Jump(0));
 			end_patches.push(end_jump);
 
 			let next_start = self.current_addr();
@@ -502,13 +764,12 @@ impl InstructionCompiler {
 			self.emit(Instruction::ExitScope);
 		}
 
-		// Patch all end jumps
 		let end_addr = self.current_addr();
 		for patch_idx in end_patches {
 			self.patch_jump(patch_idx, end_addr);
 		}
 
-		self.emit(Instruction::Nop); // end marker
+		self.emit(Instruction::Nop);
 		Ok(())
 	}
 
@@ -533,9 +794,8 @@ impl InstructionCompiler {
 		self.emit(Instruction::Jump(loop_start));
 
 		let loop_end = self.current_addr();
-		self.emit(Instruction::Nop); // loop_end target
+		self.emit(Instruction::Nop);
 
-		// Backpatch breaks
 		let ctx = self.loop_stack.pop().unwrap();
 		for patch_idx in ctx.break_patches {
 			self.patch_break_or_continue(patch_idx, loop_end);
@@ -577,7 +837,6 @@ impl InstructionCompiler {
 	}
 
 	fn compile_for(&mut self, node: ForPhysicalNode) -> crate::Result<()> {
-		// Compile the iterable and emit it as a query
 		self.compile_plan_for_iterable(*node.iterable)?;
 		self.emit(Instruction::ForInit {
 			variable_name: node.variable_name.clone(),
@@ -586,7 +845,7 @@ impl InstructionCompiler {
 		let for_next_addr = self.current_addr();
 		let for_next_idx = self.emit(Instruction::ForNext {
 			variable_name: node.variable_name,
-			addr: 0, // backpatched to loop_end
+			addr: 0,
 		});
 
 		self.emit(Instruction::EnterScope(ScopeType::Loop));
@@ -609,7 +868,6 @@ impl InstructionCompiler {
 		let loop_end = self.current_addr();
 		self.emit(Instruction::Nop);
 
-		// Patch ForNext to jump to loop_end when exhausted
 		self.patch_for_next(for_next_idx, loop_end);
 
 		let ctx = self.loop_stack.pop().unwrap();
@@ -620,10 +878,8 @@ impl InstructionCompiler {
 	}
 
 	/// Compile a plan that will be used as an iterable (for FOR loops).
-	/// This is similar to compile_plan but doesn't emit Emit at the end.
 	fn compile_plan_for_iterable(&mut self, plan: PhysicalPlan) -> crate::Result<()> {
 		match plan {
-			// Query operations - convert to QueryPlan (no Emit since ForInit will use it)
 			PhysicalPlan::TableScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::TableScan(node)));
 			}
@@ -711,7 +967,6 @@ impl InstructionCompiler {
 			PhysicalPlan::Scalarize(node) => {
 				self.emit(Instruction::Query(QueryPlan::Scalarize(node)));
 			}
-			// Anything else should go through compile_plan
 			other => {
 				self.compile_plan(other)?;
 			}
@@ -727,9 +982,8 @@ impl InstructionCompiler {
 		let exit_scopes = self.scope_depth - loop_ctx.scope_depth;
 		let idx = self.emit(Instruction::Break {
 			exit_scopes,
-			addr: 0, // backpatched
+			addr: 0,
 		});
-		// We need to reborrow since emit takes &mut self
 		self.loop_stack.last_mut().unwrap().break_patches.push(idx);
 		Ok(())
 	}

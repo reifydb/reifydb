@@ -28,6 +28,7 @@ pub struct Query<'a> {
 pub mod executor;
 pub mod instruction;
 pub(crate) mod interpret;
+pub(crate) mod scalar;
 pub mod services;
 pub mod stack;
 pub mod vm;

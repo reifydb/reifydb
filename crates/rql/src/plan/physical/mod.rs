@@ -4,6 +4,8 @@
 pub mod alter;
 pub mod create;
 
+use std::iter::once;
+
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, ringbuffer_not_found, table_not_found},
@@ -31,7 +33,7 @@ use tracing::instrument;
 
 use crate::{
 	bump::BumpBox,
-	expression::VariableExpression,
+	expression::{ConstantExpression::Undefined, Expression::Constant, VariableExpression},
 	nodes::{
 		AggregateNode, AlterSequenceNode, ApplyNode, AssignNode, AssignValue, CallFunctionNode,
 		ConditionalNode, CreateDeferredViewNode, CreateDictionaryNode, CreateFlowNode, CreateNamespaceNode,
@@ -243,10 +245,7 @@ impl Compiler {
 					let input = if let Some(delete_input) = delete.input {
 						// Recursively compile the input pipeline
 						let sub_plan = self
-							.compile(
-								rx,
-								std::iter::once(BumpBox::into_inner(delete_input)),
-							)?
+							.compile(rx, once(BumpBox::into_inner(delete_input)))?
 							.expect("Delete input must produce a plan");
 						Some(Box::new(sub_plan))
 					} else {
@@ -308,10 +307,7 @@ impl Compiler {
 					let input = if let Some(delete_input) = delete.input {
 						// Recursively compile the input pipeline
 						let sub_plan = self
-							.compile(
-								rx,
-								std::iter::once(BumpBox::into_inner(delete_input)),
-							)?
+							.compile(rx, once(BumpBox::into_inner(delete_input)))?
 							.expect("Delete input must produce a plan");
 						Some(Box::new(sub_plan))
 					} else {
@@ -361,7 +357,7 @@ impl Compiler {
 				LogicalPlan::InsertTable(insert) => {
 					// Compile the source from the INSERT node
 					let input = self
-						.compile(rx, std::iter::once(BumpBox::into_inner(insert.source)))?
+						.compile(rx, once(BumpBox::into_inner(insert.source)))?
 						.expect("Insert source must produce a plan");
 
 					// Resolve the table
@@ -405,7 +401,7 @@ impl Compiler {
 				LogicalPlan::InsertRingBuffer(insert_rb) => {
 					// Compile the source from the INSERT node
 					let input = self
-						.compile(rx, std::iter::once(BumpBox::into_inner(insert_rb.source)))?
+						.compile(rx, once(BumpBox::into_inner(insert_rb.source)))?
 						.expect("Insert source must produce a plan");
 
 					// Resolve the ring buffer
@@ -451,7 +447,7 @@ impl Compiler {
 				LogicalPlan::InsertDictionary(insert_dict) => {
 					// Compile the source from the INSERT node
 					let input = self
-						.compile(rx, std::iter::once(BumpBox::into_inner(insert_dict.source)))?
+						.compile(rx, once(BumpBox::into_inner(insert_dict.source)))?
 						.expect("Insert source must produce a plan");
 
 					// Resolve the dictionary
@@ -498,10 +494,7 @@ impl Compiler {
 						// Recursively compile
 						// the input pipeline
 						let sub_plan = self
-							.compile(
-								rx,
-								std::iter::once(BumpBox::into_inner(update_input)),
-							)?
+							.compile(rx, once(BumpBox::into_inner(update_input)))?
 							.expect("Update input must produce a plan");
 						Box::new(sub_plan)
 					} else {
@@ -565,10 +558,7 @@ impl Compiler {
 						// Recursively compile
 						// the input pipeline
 						let sub_plan = self
-							.compile(
-								rx,
-								std::iter::once(BumpBox::into_inner(update_input)),
-							)?
+							.compile(rx, once(BumpBox::into_inner(update_input)))?
 							.expect("UpdateRingBuffer input must produce a plan");
 						Box::new(sub_plan)
 					} else {
@@ -905,16 +895,24 @@ impl Compiler {
 					let value = match declare_node.value {
 						logical::LetValue::Expression(expr) => LetValue::Expression(expr),
 						logical::LetValue::Statement(logical_plans) => {
-							// Compile the logical plans to physical plans
-							let mut physical_plans = Vec::new();
+							let mut last_plan = None;
 							for logical_plan in logical_plans {
 								if let Some(physical_plan) =
-									self.compile(rx, std::iter::once(logical_plan))?
+									self.compile(rx, once(logical_plan))?
 								{
-									physical_plans.push(physical_plan);
+									last_plan = Some(physical_plan);
 								}
 							}
-							LetValue::Statement(physical_plans)
+							match last_plan {
+								Some(plan) => {
+									LetValue::Statement(plan.try_into().expect(
+										"declare statement value must be a query plan",
+									))
+								}
+								None => LetValue::Expression(Constant(Undefined {
+									fragment: Fragment::internal("undefined"),
+								})),
+							}
 						}
 					};
 
@@ -928,16 +926,25 @@ impl Compiler {
 					let value = match assign_node.value {
 						logical::AssignValue::Expression(expr) => AssignValue::Expression(expr),
 						logical::AssignValue::Statement(logical_plans) => {
-							// Compile the logical plans to physical plans
-							let mut physical_plans = Vec::new();
+							let mut last_plan = None;
 							for logical_plan in logical_plans {
 								if let Some(physical_plan) =
-									self.compile(rx, std::iter::once(logical_plan))?
+									self.compile(rx, once(logical_plan))?
 								{
-									physical_plans.push(physical_plan);
+									last_plan = Some(physical_plan);
+								} else {
 								}
 							}
-							AssignValue::Statement(physical_plans)
+							match last_plan {
+								Some(plan) => {
+									AssignValue::Statement(plan.try_into().expect(
+										"assign statement value must be a query plan",
+									))
+								}
+								None => AssignValue::Expression(Constant(Undefined {
+									fragment: Fragment::internal("undefined"),
+								})),
+							}
 						}
 					};
 
@@ -964,10 +971,9 @@ impl Compiler {
 
 				LogicalPlan::Conditional(conditional_node) => {
 					// Compile the then branch
-					let then_branch = if let Some(then_plan) = self.compile(
-						rx,
-						std::iter::once(BumpBox::into_inner(conditional_node.then_branch)),
-					)? {
+					let then_branch = if let Some(then_plan) = self
+						.compile(rx, once(BumpBox::into_inner(conditional_node.then_branch)))?
+					{
 						Box::new(then_plan)
 					} else {
 						return Err(reifydb_type::error::Error(internal_error(
@@ -980,10 +986,9 @@ impl Compiler {
 					let mut else_ifs = Vec::new();
 					for else_if in conditional_node.else_ifs {
 						let condition = else_if.condition;
-						let then_branch = if let Some(plan) = self.compile(
-							rx,
-							std::iter::once(BumpBox::into_inner(else_if.then_branch)),
-						)? {
+						let then_branch = if let Some(plan) = self
+							.compile(rx, once(BumpBox::into_inner(else_if.then_branch)))?
+						{
 							Box::new(plan)
 						} else {
 							return Err(reifydb_type::error::Error(internal_error(
@@ -1000,10 +1005,9 @@ impl Compiler {
 
 					// Compile optional else branch
 					let else_branch = if let Some(else_logical) = conditional_node.else_branch {
-						if let Some(plan) = self.compile(
-							rx,
-							std::iter::once(BumpBox::into_inner(else_logical)),
-						)? {
+						if let Some(plan) =
+							self.compile(rx, once(BumpBox::into_inner(else_logical)))?
+						{
 							Some(Box::new(plan))
 						} else {
 							return Err(reifydb_type::error::Error(internal_error(
@@ -1025,10 +1029,9 @@ impl Compiler {
 
 				LogicalPlan::Scalarize(scalarize_node) => {
 					// Compile the input plan
-					let input_plan = if let Some(plan) = self.compile(
-						rx,
-						std::iter::once(BumpBox::into_inner(scalarize_node.input)),
-					)? {
+					let input_plan = if let Some(plan) =
+						self.compile(rx, once(BumpBox::into_inner(scalarize_node.input)))?
+					{
 						Box::new(to_query_plan(plan))
 					} else {
 						return Err(reifydb_type::error::Error(internal_error(
@@ -1048,7 +1051,7 @@ impl Compiler {
 					for statement_plans in loop_node.body {
 						for logical_plan in statement_plans {
 							if let Some(physical_plan) =
-								self.compile(rx, std::iter::once(logical_plan))?
+								self.compile(rx, once(logical_plan))?
 							{
 								body.push(physical_plan);
 							}
@@ -1064,7 +1067,7 @@ impl Compiler {
 					for statement_plans in while_node.body {
 						for logical_plan in statement_plans {
 							if let Some(physical_plan) =
-								self.compile(rx, std::iter::once(logical_plan))?
+								self.compile(rx, once(logical_plan))?
 							{
 								body.push(physical_plan);
 							}
@@ -1084,7 +1087,7 @@ impl Compiler {
 					for statement_plans in for_node.body {
 						for logical_plan in statement_plans {
 							if let Some(physical_plan) =
-								self.compile(rx, std::iter::once(logical_plan))?
+								self.compile(rx, once(logical_plan))?
 							{
 								body.push(physical_plan);
 							}
@@ -1120,7 +1123,7 @@ impl Compiler {
 					for statement_plans in def_node.body {
 						for logical_plan in statement_plans {
 							if let Some(physical_plan) =
-								self.compile(rx, std::iter::once(logical_plan))?
+								self.compile(rx, once(logical_plan))?
 							{
 								body.push(physical_plan);
 							}

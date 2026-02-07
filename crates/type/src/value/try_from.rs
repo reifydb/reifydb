@@ -524,10 +524,12 @@ impl TryFromValueCoerce for f64 {
 			Value::Int2(v) => Ok(*v as f64),
 			Value::Int4(v) => Ok(*v as f64),
 			Value::Int8(v) => Ok(*v as f64),
+			Value::Int16(v) => Ok(*v as f64),
 			Value::Uint1(v) => Ok(*v as f64),
 			Value::Uint2(v) => Ok(*v as f64),
 			Value::Uint4(v) => Ok(*v as f64),
 			Value::Uint8(v) => Ok(*v as f64),
+			Value::Uint16(v) => Ok(*v as f64),
 			_ => Err(FromValueError::TypeMismatch {
 				expected: Type::Float8,
 				found: value.get_type(),

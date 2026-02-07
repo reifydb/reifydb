@@ -111,12 +111,19 @@ struct Scope {
 	scope_type: ScopeType,
 }
 
-/// Control flow signal for loop constructs
-#[derive(Debug, Clone, PartialEq)]
+/// Control flow signal for loop and function constructs
+#[derive(Debug, Clone)]
 pub enum ControlFlow {
 	Normal,
 	Break,
 	Continue,
+	Return(Option<Value>),
+}
+
+impl ControlFlow {
+	pub fn is_normal(&self) -> bool {
+		matches!(self, ControlFlow::Normal)
+	}
 }
 
 /// Represents a variable binding with its value and mutability

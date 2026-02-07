@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{
+	fragment::Fragment,
+	value::{
+		Value,
+		boolean::parse::parse_bool,
+		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
+	},
+};
 
 use crate::expression::{
 	AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
@@ -109,6 +116,41 @@ impl ConstantExpression {
 				fragment,
 			} => fragment.clone(),
 		}
+	}
+
+	pub fn to_value(&self) -> Value {
+		match self {
+			Self::Undefined {
+				..
+			} => Value::Undefined,
+			Self::Bool {
+				fragment,
+			} => parse_bool(fragment.clone()).map(Value::Boolean).unwrap_or(Value::Undefined),
+			Self::Number {
+				fragment,
+			} => Self::parse_number(fragment),
+			Self::Text {
+				fragment,
+			} => Value::Utf8(fragment.text().to_string()),
+			Self::Temporal {
+				fragment,
+			} => Value::Utf8(fragment.text().to_string()),
+		}
+	}
+
+	fn parse_number(fragment: &Fragment) -> Value {
+		let text = fragment.text();
+		if text.contains('.') || text.contains('e') || text.contains('E') {
+			return parse_float::<f64>(fragment.clone()).map(Value::float8).unwrap_or(Value::Undefined);
+		}
+		parse_primitive_int::<i8>(fragment.clone())
+			.map(Value::Int1)
+			.or_else(|_| parse_primitive_int::<i16>(fragment.clone()).map(Value::Int2))
+			.or_else(|_| parse_primitive_int::<i32>(fragment.clone()).map(Value::Int4))
+			.or_else(|_| parse_primitive_int::<i64>(fragment.clone()).map(Value::Int8))
+			.or_else(|_| parse_primitive_int::<i128>(fragment.clone()).map(Value::Int16))
+			.or_else(|_| parse_primitive_uint::<u128>(fragment.clone()).map(Value::Uint16))
+			.unwrap_or(Value::Undefined)
 	}
 }
 
