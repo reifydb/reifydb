@@ -8,6 +8,7 @@ pub mod format_bytes_si;
 pub mod length;
 pub mod lower;
 pub mod replace;
+pub mod reverse;
 pub mod substring;
 pub mod trim;
 pub mod upper;

@@ -232,6 +232,7 @@ impl DatabaseBuilder {
 			.register_scalar("text::concat", text::concat::TextConcat::new)
 			.register_scalar("text::count", text::count::TextCount::new)
 			.register_scalar("text::replace", text::replace::TextReplace::new)
+			.register_scalar("text::reverse", text::reverse::TextReverse::new)
 			.register_scalar("text::length", text::length::TextLength::new)
 			.register_scalar("text::trim", text::trim::TextTrim::new)
 			.register_scalar("text::upper", text::upper::TextUpper::new)
