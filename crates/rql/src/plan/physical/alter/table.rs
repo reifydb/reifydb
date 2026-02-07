@@ -1,54 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::sort::SortDirection;
 use reifydb_transaction::transaction::AsTransaction;
-use reifydb_type::fragment::Fragment;
 
-use crate::plan::{
-	logical,
-	physical::{Compiler, PhysicalPlan},
+use crate::{
+	nodes::{
+		AlterTableColumnIdentifier, AlterTableIdentifier, AlterTableIndexColumn, AlterTableNode,
+		AlterTableOperation,
+	},
+	plan::{
+		logical,
+		physical::{Compiler, PhysicalPlan},
+	},
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterTableNode {
-	pub table: AlterTableIdentifier,
-	pub operations: Vec<AlterTableOperation>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterTableIdentifier {
-	pub namespace: Option<Fragment>,
-	pub name: Fragment,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AlterTableOperation {
-	CreatePrimaryKey {
-		name: Option<Fragment>,
-		columns: Vec<AlterIndexColumn>,
-	},
-	DropPrimaryKey,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterIndexColumn {
-	pub column: AlterColumnIdentifier,
-	pub order: Option<SortDirection>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterColumnIdentifier {
-	pub namespace: Option<Fragment>,
-	pub name: Fragment,
-}
-
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_alter_table<T: AsTransaction>(
 		&mut self,
 		_rx: &mut T,
 		alter: logical::alter::table::AlterTableNode<'_>,
-	) -> crate::Result<PhysicalPlan> {
+	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Materialize logical node to physical node
 		let table = AlterTableIdentifier {
 			namespace: alter.table.namespace.map(|n| self.interner.intern_fragment(&n)),
@@ -72,8 +43,8 @@ impl Compiler {
 							} => namespace.map(|n| self.interner.intern_fragment(&n)),
 							_ => None,
 						};
-						physical_columns.push(AlterIndexColumn {
-							column: AlterColumnIdentifier {
+						physical_columns.push(AlterTableIndexColumn {
+							column: AlterTableColumnIdentifier {
 								namespace,
 								name: self.interner.intern_fragment(&col.column.name),
 							},

@@ -7,11 +7,11 @@ use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 
-use crate::vm::volcano::query::{QueryContext, QueryNode, QueryPlan};
+use crate::vm::volcano::query::{QueryContext, QueryNode, QueryOperator};
 
 /// Load and merge all batches from a node into a single Columns
 pub(crate) fn load_and_merge_all<'a>(
-	node: &mut Box<QueryPlan>,
+	node: &mut Box<QueryOperator>,
 	rx: &mut Transaction<'a>,
 	ctx: &mut QueryContext,
 ) -> crate::Result<Columns> {

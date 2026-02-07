@@ -7,16 +7,16 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode, QueryPlan};
+use crate::vm::volcano::query::{QueryContext, QueryNode, QueryOperator};
 
 pub(crate) struct ScalarizeNode {
-	input: Box<QueryPlan>,
+	input: Box<QueryOperator>,
 	initialized: Option<()>,
 	frame_consumed: bool,
 }
 
 impl<'a> ScalarizeNode {
-	pub(crate) fn new(input: Box<QueryPlan>) -> Self {
+	pub(crate) fn new(input: Box<QueryOperator>) -> Self {
 		Self {
 			input,
 			initialized: None,

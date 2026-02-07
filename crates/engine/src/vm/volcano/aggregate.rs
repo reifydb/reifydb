@@ -16,7 +16,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode, QueryPlan};
+use crate::vm::volcano::query::{QueryContext, QueryNode, QueryOperator};
 
 enum Projection {
 	Aggregate {
@@ -32,7 +32,7 @@ enum Projection {
 }
 
 pub(crate) struct AggregateNode {
-	input: Box<QueryPlan>,
+	input: Box<QueryOperator>,
 	by: Vec<Expression>,
 	map: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
@@ -41,7 +41,7 @@ pub(crate) struct AggregateNode {
 
 impl AggregateNode {
 	pub fn new(
-		input: Box<QueryPlan>,
+		input: Box<QueryOperator>,
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 		context: Arc<QueryContext>,

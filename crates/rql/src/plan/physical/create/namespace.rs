@@ -8,12 +8,12 @@ use crate::plan::{
 	physical::{Compiler, CreateNamespaceNode, PhysicalPlan},
 };
 
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_namespace<T: AsTransaction>(
 		&mut self,
 		_rx: &mut T,
 		create: logical::CreateNamespaceNode<'_>,
-	) -> crate::Result<PhysicalPlan> {
+	) -> crate::Result<PhysicalPlan<'bump>> {
 		// FIXME validate catalog
 		Ok(PhysicalPlan::CreateNamespace(CreateNamespaceNode {
 			namespace: self.interner.intern_fragment(&create.namespace),

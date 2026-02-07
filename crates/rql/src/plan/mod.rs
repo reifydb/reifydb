@@ -9,8 +9,10 @@ use crate::{
 	ast::ast::AstStatement,
 	bump::Bump,
 	expression::Expression,
-	nodes::PhysicalPlan,
-	plan::{logical::compile_logical, physical::compile_physical},
+	plan::{
+		logical::compile_logical,
+		physical::{PhysicalPlan, compile_physical},
+	},
 };
 
 pub mod logical;
@@ -24,8 +26,8 @@ pub fn plan<'a, T: AsTransaction>(
 	catalog: &Catalog,
 	rx: &mut T,
 	statement: AstStatement<'a>,
-) -> crate::Result<Option<PhysicalPlan>> {
+) -> crate::Result<Option<PhysicalPlan<'a>>> {
 	let logical = compile_logical(bump, catalog, rx, statement)?;
-	let physical = compile_physical(catalog, rx, logical)?;
+	let physical = compile_physical(bump, catalog, rx, logical)?;
 	Ok(physical)
 }

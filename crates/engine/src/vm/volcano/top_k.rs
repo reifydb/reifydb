@@ -16,7 +16,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, util::cowvec::CowVec, value::Value};
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode, QueryPlan};
+use crate::vm::volcano::query::{QueryContext, QueryNode, QueryOperator};
 
 /// A heap entry that stores a row index and its cached sort key values.
 /// The Ord implementation is designed so that BinaryHeap (a max-heap) will
@@ -71,14 +71,14 @@ impl Ord for HeapEntry {
 }
 
 pub(crate) struct TopKNode {
-	input: Box<QueryPlan>,
+	input: Box<QueryOperator>,
 	by: Vec<SortKey>,
 	limit: usize,
 	initialized: Option<()>,
 }
 
 impl TopKNode {
-	pub(crate) fn new(input: Box<QueryPlan>, by: Vec<SortKey>, limit: usize) -> Self {
+	pub(crate) fn new(input: Box<QueryOperator>, by: Vec<SortKey>, limit: usize) -> Self {
 		Self {
 			input,
 			by,

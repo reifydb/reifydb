@@ -8,6 +8,7 @@ use std::iter::once;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	common::{JoinType, WindowSize, WindowSlide, WindowType},
 	error::diagnostic::catalog::{dictionary_not_found, ringbuffer_not_found, table_not_found},
 	interface::{
 		catalog::{
@@ -17,10 +18,11 @@ use reifydb_core::{
 			table::TableDef,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedTable,
-			ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive,
+			ResolvedRingBuffer, ResolvedTable, ResolvedView,
 		},
 	},
+	sort::SortKey,
 };
 use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{
@@ -32,20 +34,16 @@ use reifydb_type::{
 use tracing::instrument;
 
 use crate::{
-	bump::BumpBox,
-	expression::{ConstantExpression::Undefined, Expression::Constant, VariableExpression},
+	bump::{Bump, BumpBox},
+	expression::{
+		ConstantExpression::Undefined, Expression, Expression::Constant, VariableExpression,
+	},
 	nodes::{
-		AggregateNode, AlterSequenceNode, ApplyNode, AssignNode, AssignValue, CallFunctionNode,
-		ConditionalNode, CreateDeferredViewNode, CreateDictionaryNode, CreateFlowNode, CreateNamespaceNode,
-		CreateRingBufferNode, CreateSubscriptionNode, CreateTableNode, CreateTransactionalViewNode,
-		DeclareNode, DefineFunctionNode, DeleteRingBufferNode, DeleteTableNode, DictionaryScanNode,
-		DistinctNode, ElseIfBranch, EnvironmentNode, ExtendNode, FilterNode, FlowScanNode, ForPhysicalNode,
-		FunctionParameter, GeneratorNode, IndexScanNode, InlineDataNode, InsertDictionaryNode,
-		InsertRingBufferNode, InsertTableNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LetValue,
-		LoopPhysicalNode, MapNode, MergeNode, PatchNode, PhysicalPlan, ReturnNode, RingBufferScanNode,
-		RowListLookupNode, RowPointLookupNode, RowRangeScanNode, ScalarizeNode, SortNode, TableScanNode,
-		TableVirtualScanNode, TakeNode, UpdateRingBufferNode, UpdateTableNode, VariableNode, ViewScanNode,
-		WhilePhysicalNode, WindowNode,
+		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
+		CreateTableNode, DictionaryScanNode, EnvironmentNode, FlowScanNode, GeneratorNode, IndexScanNode,
+		InlineDataNode, PrimaryKeyDef, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
+		RowRangeScanNode, TableScanNode, TableVirtualScanNode, VariableNode,
+		ViewScanNode,
 	},
 	plan::{
 		logical,
@@ -54,17 +52,389 @@ use crate::{
 			row_predicate::{RowPredicate, extract_row_predicate},
 		},
 	},
-	query::QueryPlan,
 };
 
-pub(crate) struct Compiler {
-	pub catalog: Catalog,
-	pub interner: crate::bump::FragmentInterner,
+// ============================================================================
+// Bump-allocated PhysicalPlan types
+// ============================================================================
+
+/// Bump-allocated physical plan — the intermediate representation between
+/// logical planning and instruction compilation. Uses `BumpBox`/`Vec` for
+/// tree structure while keeping `Fragment` (Arc<str>) for identifiers
+/// (already materialized from `BumpFragment` during physical compilation).
+#[derive(Debug)]
+pub enum PhysicalPlan<'bump> {
+	// DDL
+	CreateDeferredView(CreateDeferredViewNode<'bump>),
+	CreateTransactionalView(CreateTransactionalViewNode<'bump>),
+	CreateNamespace(CreateNamespaceNode),
+	CreateTable(CreateTableNode),
+	CreateRingBuffer(CreateRingBufferNode),
+	CreateFlow(CreateFlowNode<'bump>),
+	CreateDictionary(CreateDictionaryNode),
+	CreateSubscription(CreateSubscriptionNode<'bump>),
+	// Alter
+	AlterSequence(AlterSequenceNode),
+	AlterTable(nodes::AlterTableNode),
+	AlterView(nodes::AlterViewNode),
+	AlterFlow(AlterFlowNode<'bump>),
+	// Mutate
+	Delete(DeleteTableNode<'bump>),
+	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
+	InsertTable(InsertTableNode<'bump>),
+	InsertRingBuffer(InsertRingBufferNode<'bump>),
+	InsertDictionary(InsertDictionaryNode<'bump>),
+	Update(UpdateTableNode<'bump>),
+	UpdateRingBuffer(UpdateRingBufferNode<'bump>),
+	// Variable assignment
+	Declare(DeclareNode<'bump>),
+	Assign(AssignNode<'bump>),
+	// Variable resolution
+	Variable(VariableNode),
+	Environment(EnvironmentNode),
+	// Control flow
+	Conditional(ConditionalNode<'bump>),
+	Loop(LoopNode<'bump>),
+	While(WhileNode<'bump>),
+	For(ForNode<'bump>),
+	Break,
+	Continue,
+	// User-defined functions
+	DefineFunction(DefineFunctionNode<'bump>),
+	Return(ReturnNode),
+	CallFunction(CallFunctionNode),
+	// Query
+	Aggregate(AggregateNode<'bump>),
+	Distinct(DistinctNode<'bump>),
+	Filter(FilterNode<'bump>),
+	IndexScan(IndexScanNode),
+	RowPointLookup(RowPointLookupNode),
+	RowListLookup(RowListLookupNode),
+	RowRangeScan(RowRangeScanNode),
+	JoinInner(JoinInnerNode<'bump>),
+	JoinLeft(JoinLeftNode<'bump>),
+	JoinNatural(JoinNaturalNode<'bump>),
+	Merge(MergeNode<'bump>),
+	Take(TakeNode<'bump>),
+	Sort(SortNode<'bump>),
+	Map(MapNode<'bump>),
+	Extend(ExtendNode<'bump>),
+	Patch(PatchNode<'bump>),
+	Apply(ApplyNode<'bump>),
+	InlineData(InlineDataNode),
+	TableScan(TableScanNode),
+	TableVirtualScan(TableVirtualScanNode),
+	ViewScan(ViewScanNode),
+	RingBufferScan(RingBufferScanNode),
+	FlowScan(FlowScanNode),
+	DictionaryScan(DictionaryScanNode),
+	Generator(GeneratorNode),
+	Window(WindowNode<'bump>),
+	Scalarize(ScalarizeNode<'bump>),
 }
 
-/// Helper to convert PhysicalPlan to QueryPlan for node inputs
-fn to_query_plan(plan: PhysicalPlan) -> QueryPlan {
-	plan.try_into().expect("node input must be a query plan")
+// --- Nodes with recursive children (bump-allocated) ---
+
+#[derive(Debug)]
+pub struct CreateDeferredViewNode<'bump> {
+	pub namespace: NamespaceDef,
+	pub view: Fragment,
+	pub if_not_exists: bool,
+	pub columns: Vec<reifydb_catalog::catalog::view::ViewColumnToCreate>,
+	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub primary_key: Option<PrimaryKeyDef>,
+}
+
+#[derive(Debug)]
+pub struct CreateTransactionalViewNode<'bump> {
+	pub namespace: NamespaceDef,
+	pub view: Fragment,
+	pub if_not_exists: bool,
+	pub columns: Vec<reifydb_catalog::catalog::view::ViewColumnToCreate>,
+	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub primary_key: Option<PrimaryKeyDef>,
+}
+
+#[derive(Debug)]
+pub struct CreateFlowNode<'bump> {
+	pub namespace: NamespaceDef,
+	pub flow: Fragment,
+	pub if_not_exists: bool,
+	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct CreateSubscriptionNode<'bump> {
+	pub columns: Vec<reifydb_catalog::catalog::subscription::SubscriptionColumnToCreate>,
+	pub as_clause: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+}
+
+#[derive(Debug)]
+pub struct AlterFlowNode<'bump> {
+	pub flow: nodes::AlterFlowIdentifier,
+	pub action: AlterFlowAction<'bump>,
+}
+
+#[derive(Debug)]
+pub enum AlterFlowAction<'bump> {
+	Rename {
+		new_name: Fragment,
+	},
+	SetQuery {
+		query: BumpBox<'bump, PhysicalPlan<'bump>>,
+	},
+	Pause,
+	Resume,
+}
+
+#[derive(Debug)]
+pub struct DeleteTableNode<'bump> {
+	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub target: Option<ResolvedTable>,
+}
+
+#[derive(Debug)]
+pub struct DeleteRingBufferNode<'bump> {
+	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub target: ResolvedRingBuffer,
+}
+
+#[derive(Debug)]
+pub struct InsertTableNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub target: ResolvedTable,
+}
+
+#[derive(Debug)]
+pub struct InsertRingBufferNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub target: ResolvedRingBuffer,
+}
+
+#[derive(Debug)]
+pub struct InsertDictionaryNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub target: ResolvedDictionary,
+}
+
+#[derive(Debug)]
+pub struct UpdateTableNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub target: Option<ResolvedTable>,
+}
+
+#[derive(Debug)]
+pub struct UpdateRingBufferNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub target: ResolvedRingBuffer,
+}
+
+#[derive(Debug)]
+pub enum LetValue<'bump> {
+	Expression(Expression),
+	Statement(BumpBox<'bump, PhysicalPlan<'bump>>),
+}
+
+impl std::fmt::Display for LetValue<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			LetValue::Expression(expr) => write!(f, "{}", expr),
+			LetValue::Statement(plan) => write!(f, "Statement({:?})", plan),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct DeclareNode<'bump> {
+	pub name: Fragment,
+	pub value: LetValue<'bump>,
+}
+
+#[derive(Debug)]
+pub enum AssignValue<'bump> {
+	Expression(Expression),
+	Statement(BumpBox<'bump, PhysicalPlan<'bump>>),
+}
+
+impl std::fmt::Display for AssignValue<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			AssignValue::Expression(expr) => write!(f, "{}", expr),
+			AssignValue::Statement(plan) => write!(f, "Statement({:?})", plan),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct AssignNode<'bump> {
+	pub name: Fragment,
+	pub value: AssignValue<'bump>,
+}
+
+#[derive(Debug)]
+pub struct ConditionalNode<'bump> {
+	pub condition: Expression,
+	pub then_branch: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub else_ifs: Vec<ElseIfBranch<'bump>>,
+	pub else_branch: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+}
+
+#[derive(Debug)]
+pub struct ElseIfBranch<'bump> {
+	pub condition: Expression,
+	pub then_branch: BumpBox<'bump, PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct LoopNode<'bump> {
+	pub body: Vec<PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct WhileNode<'bump> {
+	pub condition: Expression,
+	pub body: Vec<PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct ForNode<'bump> {
+	pub variable_name: Fragment,
+	pub iterable: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub body: Vec<PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct DefineFunctionNode<'bump> {
+	pub name: Fragment,
+	pub parameters: Vec<nodes::FunctionParameter>,
+	pub return_type: Option<TypeConstraint>,
+	pub body: Vec<PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct ReturnNode {
+	pub value: Option<Expression>,
+}
+
+#[derive(Debug)]
+pub struct CallFunctionNode {
+	pub name: Fragment,
+	pub arguments: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct AggregateNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub by: Vec<Expression>,
+	pub map: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct DistinctNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub columns: Vec<ResolvedColumn>,
+}
+
+#[derive(Debug)]
+pub struct FilterNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub conditions: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct JoinInnerNode<'bump> {
+	pub left: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub on: Vec<Expression>,
+	pub alias: Option<Fragment>,
+}
+
+#[derive(Debug)]
+pub struct JoinLeftNode<'bump> {
+	pub left: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub on: Vec<Expression>,
+	pub alias: Option<Fragment>,
+}
+
+#[derive(Debug)]
+pub struct JoinNaturalNode<'bump> {
+	pub left: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub join_type: JoinType,
+	pub alias: Option<Fragment>,
+}
+
+#[derive(Debug)]
+pub struct MergeNode<'bump> {
+	pub left: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct TakeNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub take: usize,
+}
+
+#[derive(Debug)]
+pub struct SortNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub by: Vec<SortKey>,
+}
+
+#[derive(Debug)]
+pub struct MapNode<'bump> {
+	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub map: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct ExtendNode<'bump> {
+	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub extend: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct PatchNode<'bump> {
+	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub assignments: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct ApplyNode<'bump> {
+	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub operator: Fragment,
+	pub expressions: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct WindowNode<'bump> {
+	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub window_type: WindowType,
+	pub size: WindowSize,
+	pub slide: Option<WindowSlide>,
+	pub group_by: Vec<Expression>,
+	pub aggregations: Vec<Expression>,
+	pub min_events: usize,
+	pub max_window_count: Option<usize>,
+	pub max_window_age: Option<std::time::Duration>,
+}
+
+#[derive(Debug)]
+pub struct ScalarizeNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub fragment: Fragment,
+}
+
+// ============================================================================
+// Compiler
+// ============================================================================
+
+pub(crate) struct Compiler<'bump> {
+	pub catalog: Catalog,
+	pub interner: crate::bump::FragmentInterner,
+	pub bump: &'bump Bump,
 }
 
 /// Materialize a bump-allocated PrimaryKeyDef to an owned version
@@ -84,26 +454,32 @@ pub(crate) fn materialize_primary_key(
 	})
 }
 
-#[instrument(name = "rql::compile::physical", level = "trace", skip(catalog, rx, logical))]
-pub fn compile_physical<'a, T: AsTransaction>(
+#[instrument(name = "rql::compile::physical", level = "trace", skip(bump, catalog, rx, logical))]
+pub fn compile_physical<'b, T: AsTransaction>(
+	bump: &'b Bump,
 	catalog: &Catalog,
 	rx: &mut T,
-	logical: impl IntoIterator<Item = LogicalPlan<'a>>,
-) -> crate::Result<Option<PhysicalPlan>> {
+	logical: impl IntoIterator<Item = LogicalPlan<'b>>,
+) -> crate::Result<Option<PhysicalPlan<'b>>> {
 	Compiler {
 		catalog: catalog.clone(),
 		interner: crate::bump::FragmentInterner::new(),
+		bump,
 	}
 	.compile(rx, logical)
 }
 
-impl Compiler {
-	pub fn compile<'a, T: AsTransaction>(
+impl<'bump> Compiler<'bump> {
+	fn bump_box(&self, plan: PhysicalPlan<'bump>) -> BumpBox<'bump, PhysicalPlan<'bump>> {
+		BumpBox::new_in(plan, self.bump)
+	}
+
+	pub fn compile<T: AsTransaction>(
 		&mut self,
 		rx: &mut T,
-		logical: impl IntoIterator<Item = LogicalPlan<'a>>,
-	) -> crate::Result<Option<PhysicalPlan>> {
-		let mut stack: Vec<PhysicalPlan> = Vec::new();
+		logical: impl IntoIterator<Item = LogicalPlan<'bump>>,
+	) -> crate::Result<Option<PhysicalPlan<'bump>>> {
+		let mut stack: Vec<PhysicalPlan<'bump>> = Vec::new();
 		for plan in logical {
 			match plan {
 				LogicalPlan::Aggregate(aggregate) => {
@@ -111,7 +487,7 @@ impl Compiler {
 					stack.push(PhysicalPlan::Aggregate(AggregateNode {
 						by: aggregate.by,
 						map: aggregate.map,
-						input: Box::new(to_query_plan(input)),
+						input: self.bump_box(input),
 					}));
 				}
 
@@ -222,7 +598,7 @@ impl Compiler {
 					// Default: generic filter
 					stack.push(PhysicalPlan::Filter(FilterNode {
 						conditions: vec![filter.condition],
-						input: Box::new(to_query_plan(input)),
+						input: self.bump_box(input),
 					}));
 				}
 
@@ -240,19 +616,18 @@ impl Compiler {
 				}
 
 				LogicalPlan::DeleteTable(delete) => {
-					// If delete has its own input, compile it first
-					// Otherwise, try to pop from stack (for pipeline operations)
 					let input = if let Some(delete_input) = delete.input {
-						// Recursively compile the input pipeline
 						let sub_plan = self
-							.compile(rx, once(BumpBox::into_inner(delete_input)))?
+							.compile(
+								rx,
+								once(crate::bump::BumpBox::into_inner(delete_input)),
+							)?
 							.expect("Delete input must produce a plan");
-						Some(Box::new(sub_plan))
+						Some(self.bump_box(sub_plan))
 					} else {
-						stack.pop().map(|i| Box::new(i))
+						stack.pop().map(|i| self.bump_box(i))
 					};
 
-					// Resolve the table if we have a target
 					let target = if let Some(table_id) = delete.target {
 						use reifydb_core::interface::resolved::{
 							ResolvedNamespace, ResolvedTable,
@@ -302,19 +677,18 @@ impl Compiler {
 				}
 
 				LogicalPlan::DeleteRingBuffer(delete) => {
-					// If delete has its own input, compile it first
-					// Otherwise, try to pop from stack (for pipeline operations)
 					let input = if let Some(delete_input) = delete.input {
-						// Recursively compile the input pipeline
 						let sub_plan = self
-							.compile(rx, once(BumpBox::into_inner(delete_input)))?
+							.compile(
+								rx,
+								once(crate::bump::BumpBox::into_inner(delete_input)),
+							)?
 							.expect("Delete input must produce a plan");
-						Some(Box::new(sub_plan))
+						Some(self.bump_box(sub_plan))
 					} else {
-						stack.pop().map(|i| Box::new(i))
+						stack.pop().map(|i| self.bump_box(i))
 					};
 
-					// Resolve the ring buffer
 					use reifydb_core::interface::resolved::{
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
@@ -355,12 +729,10 @@ impl Compiler {
 				}
 
 				LogicalPlan::InsertTable(insert) => {
-					// Compile the source from the INSERT node
 					let input = self
-						.compile(rx, once(BumpBox::into_inner(insert.source)))?
+						.compile(rx, once(crate::bump::BumpBox::into_inner(insert.source)))?
 						.expect("Insert source must produce a plan");
 
-					// Resolve the table
 					use reifydb_core::interface::resolved::{ResolvedNamespace, ResolvedTable};
 
 					let table = insert.target;
@@ -393,18 +765,16 @@ impl Compiler {
 					);
 
 					stack.push(PhysicalPlan::InsertTable(InsertTableNode {
-						input: Box::new(input),
+						input: self.bump_box(input),
 						target,
 					}))
 				}
 
 				LogicalPlan::InsertRingBuffer(insert_rb) => {
-					// Compile the source from the INSERT node
 					let input = self
-						.compile(rx, once(BumpBox::into_inner(insert_rb.source)))?
+						.compile(rx, once(crate::bump::BumpBox::into_inner(insert_rb.source)))?
 						.expect("Insert source must produce a plan");
 
-					// Resolve the ring buffer
 					use reifydb_core::interface::resolved::{
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
@@ -439,18 +809,19 @@ impl Compiler {
 					);
 
 					stack.push(PhysicalPlan::InsertRingBuffer(InsertRingBufferNode {
-						input: Box::new(input),
+						input: self.bump_box(input),
 						target,
 					}))
 				}
 
 				LogicalPlan::InsertDictionary(insert_dict) => {
-					// Compile the source from the INSERT node
 					let input = self
-						.compile(rx, once(BumpBox::into_inner(insert_dict.source)))?
+						.compile(
+							rx,
+							once(crate::bump::BumpBox::into_inner(insert_dict.source)),
+						)?
 						.expect("Insert source must produce a plan");
 
-					// Resolve the dictionary
 					let dictionary_id = insert_dict.target;
 					let namespace_name =
 						dictionary_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
@@ -481,27 +852,24 @@ impl Compiler {
 					);
 
 					stack.push(PhysicalPlan::InsertDictionary(InsertDictionaryNode {
-						input: Box::new(input),
+						input: self.bump_box(input),
 						target,
 					}))
 				}
 
 				LogicalPlan::Update(update) => {
-					// If update has its own input, compile
-					// it first Otherwise, pop from
-					// stack (for pipeline operations)
 					let input = if let Some(update_input) = update.input {
-						// Recursively compile
-						// the input pipeline
 						let sub_plan = self
-							.compile(rx, once(BumpBox::into_inner(update_input)))?
+							.compile(
+								rx,
+								once(crate::bump::BumpBox::into_inner(update_input)),
+							)?
 							.expect("Update input must produce a plan");
-						Box::new(sub_plan)
+						self.bump_box(sub_plan)
 					} else {
-						Box::new(stack.pop().expect("Update requires input"))
+						self.bump_box(stack.pop().expect("Update requires input"))
 					};
 
-					// Resolve the table if we have a target
 					let target = if let Some(table_id) = update.target {
 						use reifydb_core::interface::resolved::{
 							ResolvedNamespace, ResolvedTable,
@@ -551,21 +919,18 @@ impl Compiler {
 				}
 
 				LogicalPlan::UpdateRingBuffer(update_rb) => {
-					// If update has its own input, compile
-					// it first Otherwise, pop from
-					// stack (for pipeline operations)
 					let input = if let Some(update_input) = update_rb.input {
-						// Recursively compile
-						// the input pipeline
 						let sub_plan = self
-							.compile(rx, once(BumpBox::into_inner(update_input)))?
+							.compile(
+								rx,
+								once(crate::bump::BumpBox::into_inner(update_input)),
+							)?
 							.expect("UpdateRingBuffer input must produce a plan");
-						Box::new(sub_plan)
+						self.bump_box(sub_plan)
 					} else {
-						Box::new(stack.pop().expect("UpdateRingBuffer requires input"))
+						self.bump_box(stack.pop().expect("UpdateRingBuffer requires input"))
 					};
 
-					// Resolve the ring buffer
 					use reifydb_core::interface::resolved::{
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
@@ -610,8 +975,8 @@ impl Compiler {
 					let right = self.compile(rx, join.with)?.unwrap();
 					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
 					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
-						left: Box::new(to_query_plan(left)),
-						right: Box::new(to_query_plan(right)),
+						left: self.bump_box(left),
+						right: self.bump_box(right),
 						on: join.on,
 						alias,
 					}));
@@ -622,8 +987,8 @@ impl Compiler {
 					let right = self.compile(rx, join.with)?.unwrap();
 					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
 					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
-						left: Box::new(to_query_plan(left)),
-						right: Box::new(to_query_plan(right)),
+						left: self.bump_box(left),
+						right: self.bump_box(right),
 						on: join.on,
 						alias,
 					}));
@@ -634,8 +999,8 @@ impl Compiler {
 					let right = self.compile(rx, join.with)?.unwrap();
 					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
 					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
-						left: Box::new(to_query_plan(left)),
-						right: Box::new(to_query_plan(right)),
+						left: self.bump_box(left),
+						right: self.bump_box(right),
 						join_type: join.join_type,
 						alias,
 					}));
@@ -645,8 +1010,8 @@ impl Compiler {
 					let left = stack.pop().unwrap();
 					let right = self.compile(rx, merge.with)?.unwrap();
 					stack.push(PhysicalPlan::Merge(MergeNode {
-						left: Box::new(to_query_plan(left)),
-						right: Box::new(to_query_plan(right)),
+						left: self.bump_box(left),
+						right: self.bump_box(right),
 					}));
 				}
 
@@ -654,18 +1019,15 @@ impl Compiler {
 					let input = stack.pop().unwrap(); // FIXME
 					stack.push(PhysicalPlan::Sort(SortNode {
 						by: order.by,
-						input: Box::new(to_query_plan(input)),
+						input: self.bump_box(input),
 					}));
 				}
 
 				LogicalPlan::Distinct(distinct) => {
 					let input = stack.pop().unwrap(); // FIXME
 
-					// For now, create placeholder resolved columns
-					// In a real implementation, this would resolve from the query context
 					let mut resolved_columns = Vec::with_capacity(distinct.columns.len());
 					for col in distinct.columns {
-						// Create a placeholder resolved column
 						let namespace = ResolvedNamespace::new(
 							Fragment::internal("_context"),
 							NamespaceDef {
@@ -709,12 +1071,12 @@ impl Compiler {
 
 					stack.push(PhysicalPlan::Distinct(DistinctNode {
 						columns: resolved_columns,
-						input: Box::new(to_query_plan(input)),
+						input: self.bump_box(input),
 					}));
 				}
 
 				LogicalPlan::Map(map) => {
-					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
+					let input = stack.pop().map(|p| self.bump_box(p));
 					stack.push(PhysicalPlan::Map(MapNode {
 						map: map.map,
 						input,
@@ -722,7 +1084,7 @@ impl Compiler {
 				}
 
 				LogicalPlan::Extend(extend) => {
-					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
+					let input = stack.pop().map(|p| self.bump_box(p));
 					stack.push(PhysicalPlan::Extend(ExtendNode {
 						extend: extend.extend,
 						input,
@@ -730,7 +1092,7 @@ impl Compiler {
 				}
 
 				LogicalPlan::Patch(patch) => {
-					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
+					let input = stack.pop().map(|p| self.bump_box(p));
 					stack.push(PhysicalPlan::Patch(PatchNode {
 						assignments: patch.assignments,
 						input,
@@ -738,7 +1100,7 @@ impl Compiler {
 				}
 
 				LogicalPlan::Apply(apply) => {
-					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
+					let input = stack.pop().map(|p| self.bump_box(p));
 					stack.push(PhysicalPlan::Apply(ApplyNode {
 						operator: self.interner.intern_fragment(&apply.operator),
 						expressions: apply.arguments,
@@ -747,13 +1109,10 @@ impl Compiler {
 				}
 
 				LogicalPlan::PrimitiveScan(scan) => {
-					// Use resolved source directly - no
-					// catalog lookup needed!
 					use reifydb_core::interface::resolved::ResolvedPrimitive;
 
 					match &scan.source {
 						ResolvedPrimitive::Table(resolved_table) => {
-							// Check if an index was specified
 							if let Some(index) = &scan.index {
 								stack.push(PhysicalPlan::IndexScan(IndexScanNode {
 									source: resolved_table.clone(),
@@ -769,7 +1128,6 @@ impl Compiler {
 							}
 						}
 						ResolvedPrimitive::View(resolved_view) => {
-							// Views cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
@@ -778,12 +1136,9 @@ impl Compiler {
 							}));
 						}
 						ResolvedPrimitive::DeferredView(resolved_view) => {
-							// Deferred views cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							// Note: DeferredView shares the same physical operator
-							// as View We need to convert it to ResolvedView
 							let view = ResolvedView::new(
 								resolved_view.identifier().clone(),
 								resolved_view.namespace().clone(),
@@ -794,13 +1149,9 @@ impl Compiler {
 							}));
 						}
 						ResolvedPrimitive::TransactionalView(resolved_view) => {
-							// Transactional views cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							// Note: TransactionalView shares the same physical
-							// operator as View We need to convert it to
-							// ResolvedView
 							let view = ResolvedView::new(
 								resolved_view.identifier().clone(),
 								resolved_view.namespace().clone(),
@@ -812,7 +1163,6 @@ impl Compiler {
 						}
 
 						ResolvedPrimitive::TableVirtual(resolved_virtual) => {
-							// Virtual tables cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!(
 									"virtual tables do not support indexes yet"
@@ -821,13 +1171,11 @@ impl Compiler {
 							stack.push(PhysicalPlan::TableVirtualScan(
 								TableVirtualScanNode {
 									source: resolved_virtual.clone(),
-									pushdown_context: None, /* TODO: Detect
-									                         * pushdown opportunities */
+									pushdown_context: None,
 								},
 							));
 						}
 						ResolvedPrimitive::RingBuffer(resolved_ringbuffer) => {
-							// Ring buffers cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!(
 									"ring buffers do not support indexes yet"
@@ -838,7 +1186,6 @@ impl Compiler {
 							}));
 						}
 						ResolvedPrimitive::Flow(resolved_flow) => {
-							// Flows cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!("flows do not support indexes yet");
 							}
@@ -847,7 +1194,6 @@ impl Compiler {
 							}));
 						}
 						ResolvedPrimitive::Dictionary(resolved_dictionary) => {
-							// Dictionaries cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!("dictionaries do not support indexes");
 							}
@@ -862,12 +1208,12 @@ impl Compiler {
 					let input = stack.pop().unwrap(); // FIXME
 					stack.push(PhysicalPlan::Take(TakeNode {
 						take: take.take,
-						input: Box::new(to_query_plan(input)),
+						input: self.bump_box(input),
 					}));
 				}
 
 				LogicalPlan::Window(window) => {
-					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
+					let input = stack.pop().map(|p| self.bump_box(p));
 					stack.push(PhysicalPlan::Window(WindowNode {
 						window_type: window.window_type,
 						size: window.size,
@@ -882,9 +1228,6 @@ impl Compiler {
 				}
 
 				LogicalPlan::Pipeline(pipeline) => {
-					// Compile the pipeline of operations
-					// This ensures they all share the same
-					// stack
 					let pipeline_result = self.compile(rx, pipeline.steps)?;
 					if let Some(result) = pipeline_result {
 						stack.push(result);
@@ -904,11 +1247,7 @@ impl Compiler {
 								}
 							}
 							match last_plan {
-								Some(plan) => {
-									LetValue::Statement(plan.try_into().expect(
-										"declare statement value must be a query plan",
-									))
-								}
+								Some(plan) => LetValue::Statement(self.bump_box(plan)),
 								None => LetValue::Expression(Constant(Undefined {
 									fragment: Fragment::internal("undefined"),
 								})),
@@ -932,14 +1271,11 @@ impl Compiler {
 									self.compile(rx, once(logical_plan))?
 								{
 									last_plan = Some(physical_plan);
-								} else {
 								}
 							}
 							match last_plan {
 								Some(plan) => {
-									AssignValue::Statement(plan.try_into().expect(
-										"assign statement value must be a query plan",
-									))
+									AssignValue::Statement(self.bump_box(plan))
 								}
 								None => AssignValue::Expression(Constant(Undefined {
 									fragment: Fragment::internal("undefined"),
@@ -955,7 +1291,6 @@ impl Compiler {
 				}
 
 				LogicalPlan::VariableSource(source) => {
-					// Create a variable expression to resolve at runtime
 					let variable_expr = VariableExpression {
 						fragment: self.interner.intern_fragment(&source.name),
 					};
@@ -970,11 +1305,11 @@ impl Compiler {
 				}
 
 				LogicalPlan::Conditional(conditional_node) => {
-					// Compile the then branch
-					let then_branch = if let Some(then_plan) = self
-						.compile(rx, once(BumpBox::into_inner(conditional_node.then_branch)))?
-					{
-						Box::new(then_plan)
+					let then_branch = if let Some(then_plan) = self.compile(
+						rx,
+						once(crate::bump::BumpBox::into_inner(conditional_node.then_branch)),
+					)? {
+						self.bump_box(then_plan)
 					} else {
 						return Err(reifydb_type::error::Error(internal_error(
 							"compile_physical".into(),
@@ -982,14 +1317,14 @@ impl Compiler {
 						)));
 					};
 
-					// Compile else if branches
 					let mut else_ifs = Vec::new();
 					for else_if in conditional_node.else_ifs {
 						let condition = else_if.condition;
-						let then_branch = if let Some(plan) = self
-							.compile(rx, once(BumpBox::into_inner(else_if.then_branch)))?
-						{
-							Box::new(plan)
+						let then_branch = if let Some(plan) = self.compile(
+							rx,
+							once(crate::bump::BumpBox::into_inner(else_if.then_branch)),
+						)? {
+							self.bump_box(plan)
 						} else {
 							return Err(reifydb_type::error::Error(internal_error(
 								"compile_physical".into(),
@@ -1003,12 +1338,12 @@ impl Compiler {
 						});
 					}
 
-					// Compile optional else branch
 					let else_branch = if let Some(else_logical) = conditional_node.else_branch {
-						if let Some(plan) =
-							self.compile(rx, once(BumpBox::into_inner(else_logical)))?
-						{
-							Some(Box::new(plan))
+						if let Some(plan) = self.compile(
+							rx,
+							once(crate::bump::BumpBox::into_inner(else_logical)),
+						)? {
+							Some(self.bump_box(plan))
 						} else {
 							return Err(reifydb_type::error::Error(internal_error(
 								"compile_physical".into(),
@@ -1028,11 +1363,11 @@ impl Compiler {
 				}
 
 				LogicalPlan::Scalarize(scalarize_node) => {
-					// Compile the input plan
-					let input_plan = if let Some(plan) =
-						self.compile(rx, once(BumpBox::into_inner(scalarize_node.input)))?
-					{
-						Box::new(to_query_plan(plan))
+					let input_plan = if let Some(plan) = self.compile(
+						rx,
+						once(crate::bump::BumpBox::into_inner(scalarize_node.input)),
+					)? {
+						self.bump_box(plan)
 					} else {
 						return Err(reifydb_type::error::Error(internal_error(
 							"compile_physical".into(),
@@ -1057,7 +1392,7 @@ impl Compiler {
 							}
 						}
 					}
-					stack.push(PhysicalPlan::Loop(LoopPhysicalNode {
+					stack.push(PhysicalPlan::Loop(LoopNode {
 						body,
 					}));
 				}
@@ -1073,7 +1408,7 @@ impl Compiler {
 							}
 						}
 					}
-					stack.push(PhysicalPlan::While(WhilePhysicalNode {
+					stack.push(PhysicalPlan::While(WhileNode {
 						condition: while_node.condition,
 						body,
 					}));
@@ -1093,9 +1428,9 @@ impl Compiler {
 							}
 						}
 					}
-					stack.push(PhysicalPlan::For(ForPhysicalNode {
+					stack.push(PhysicalPlan::For(ForNode {
 						variable_name: self.interner.intern_fragment(&for_node.variable_name),
-						iterable: Box::new(iterable),
+						iterable: self.bump_box(iterable),
 						body,
 					}));
 				}
@@ -1109,16 +1444,14 @@ impl Compiler {
 				}
 
 				LogicalPlan::DefineFunction(def_node) => {
-					// Convert parameters
 					let mut parameters = Vec::with_capacity(def_node.parameters.len());
 					for p in def_node.parameters {
-						parameters.push(FunctionParameter {
+						parameters.push(nodes::FunctionParameter {
 							name: self.interner.intern_fragment(&p.name),
 							type_constraint: p.type_constraint,
 						});
 					}
 
-					// Compile the body
 					let mut body = Vec::new();
 					for statement_plans in def_node.body {
 						for logical_plan in statement_plans {
@@ -1160,8 +1493,6 @@ impl Compiler {
 		}
 
 		if stack.len() != 1 {
-			// return Err("Logical plan did not reduce to a single
-			// physical plan".into());
 			dbg!(&stack);
 			panic!("logical plan did not reduce to a single physical plan"); // FIXME
 		}

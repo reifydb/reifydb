@@ -6,20 +6,17 @@ use reifydb_core::error::diagnostic::catalog::namespace_not_found;
 use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
-use crate::{
-	plan::{
-		logical,
-		physical::{Compiler, CreateFlowNode, PhysicalPlan},
-	},
-	query::QueryPlan,
+use crate::plan::{
+	logical,
+	physical::{Compiler, CreateFlowNode, PhysicalPlan},
 };
 
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_flow<T: AsTransaction>(
 		&mut self,
 		rx: &mut T,
-		create: logical::CreateFlowNode<'_>,
-	) -> crate::Result<PhysicalPlan> {
+		create: logical::CreateFlowNode<'bump>,
+	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Get namespace name from the MaybeQualified type
 		let namespace_name = create.flow.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 		let Some(namespace) = self.catalog.find_namespace_by_name(rx, namespace_name)? else {
@@ -31,13 +28,12 @@ impl Compiler {
 		};
 
 		let physical_plan = self.compile(rx, create.as_clause)?.unwrap();
-		let query_plan: QueryPlan = physical_plan.try_into().expect("AS clause must be a query plan");
 
 		Ok(CreateFlow(CreateFlowNode {
 			namespace,
 			flow: self.interner.intern_fragment(&create.flow.name),
 			if_not_exists: create.if_not_exists,
-			as_clause: Box::new(query_plan),
+			as_clause: self.bump_box(physical_plan),
 		}))
 	}
 }

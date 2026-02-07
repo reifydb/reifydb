@@ -8,12 +8,12 @@ use reifydb_type::{
 
 use crate::{
 	nodes::{
-		AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateFlowNode, CreateNamespaceNode,
-		CreateRingBufferNode, CreateSubscriptionNode, CreateTableNode, CreateTransactionalViewNode,
-		DeleteRingBufferNode, DeleteTableNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
-		InsertTableNode, UpdateRingBufferNode, UpdateTableNode,
+		AlterFlowNode, AlterSequenceNode, AlterTableNode, AlterViewNode, CreateDeferredViewNode,
+		CreateDictionaryNode, CreateFlowNode, CreateNamespaceNode, CreateRingBufferNode,
+		CreateSubscriptionNode, CreateTableNode, CreateTransactionalViewNode, DeleteRingBufferNode,
+		DeleteTableNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode, InsertTableNode,
+		UpdateRingBufferNode, UpdateTableNode,
 	},
-	plan::physical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
 	query::QueryPlan,
 };
 

@@ -15,16 +15,16 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, util::cowvec::CowVec};
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode, QueryPlan};
+use crate::vm::volcano::query::{QueryContext, QueryNode, QueryOperator};
 
 pub(crate) struct SortNode {
-	input: Box<QueryPlan>,
+	input: Box<QueryOperator>,
 	by: Vec<SortKey>,
 	initialized: Option<()>,
 }
 
 impl<'a> SortNode {
-	pub(crate) fn new(input: Box<QueryPlan>, by: Vec<SortKey>) -> Self {
+	pub(crate) fn new(input: Box<QueryOperator>, by: Vec<SortKey>) -> Self {
 		Self {
 			input,
 			by,

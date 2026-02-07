@@ -14,21 +14,21 @@ use tracing::instrument;
 
 use crate::{
 	evaluate::{ColumnEvaluationContext, column::evaluate},
-	vm::volcano::query::{QueryContext, QueryNode, QueryPlan},
+	vm::volcano::query::{QueryContext, QueryNode, QueryOperator},
 };
 
 /// PatchNode merges assignment values with original row values.
 /// Unlike ExtendNode which adds new columns, PatchNode replaces
 /// columns that have matching names in the assignments.
 pub(crate) struct PatchNode {
-	input: Box<QueryPlan>,
+	input: Box<QueryOperator>,
 	expressions: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
 	context: Option<Arc<QueryContext>>,
 }
 
 impl PatchNode {
-	pub fn new(input: Box<QueryPlan>, expressions: Vec<Expression>) -> Self {
+	pub fn new(input: Box<QueryOperator>, expressions: Vec<Expression>) -> Self {
 		Self {
 			input,
 			expressions,

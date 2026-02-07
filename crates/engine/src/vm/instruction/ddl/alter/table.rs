@@ -10,7 +10,7 @@ use reifydb_core::{
 	interface::catalog::primitive::PrimitiveId,
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::alter::table::{AlterTableNode, AlterTableOperation};
+use reifydb_rql::nodes::{AlterTableNode, AlterTableOperation};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::Value};
 

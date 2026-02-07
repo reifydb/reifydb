@@ -11,12 +11,12 @@ use crate::plan::{
 	physical::{Compiler, CreateTableNode, PhysicalPlan},
 };
 
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_table<T: AsTransaction>(
 		&mut self,
 		rx: &mut T,
 		create: logical::CreateTableNode<'_>,
-	) -> crate::Result<PhysicalPlan> {
+	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Get namespace name from the MaybeQualified type
 		let namespace_name = create.table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, namespace_name)? else {

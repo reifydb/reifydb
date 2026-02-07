@@ -25,14 +25,12 @@ use reifydb_catalog::vtable::{
 use reifydb_core::interface::catalog::id::{IndexId, NamespaceId};
 use reifydb_rql::{
 	nodes::{
-		AggregateNode as PhysicalAggregateNode, ExtendNode as PhysicalExtendNode,
-		FilterNode as PhysicalFilterNode, GeneratorNode as PhysicalGeneratorNode,
-		InlineDataNode as PhysicalInlineDataNode, JoinInnerNode as PhysicalJoinInnerNode,
-		JoinLeftNode as PhysicalJoinLeftNode, JoinNaturalNode as PhysicalJoinNaturalNode,
-		MapNode as PhysicalMapNode, PatchNode as PhysicalPatchNode, PhysicalPlan,
-		RowListLookupNode as PhysicalRowListLookupNode, RowPointLookupNode as PhysicalRowPointLookupNode,
-		RowRangeScanNode as PhysicalRowRangeScanNode, SortNode as PhysicalSortNode,
-		TakeNode as PhysicalTakeNode,
+		AggregateNode as RqlAggregateNode, ExtendNode as RqlExtendNode, FilterNode as RqlFilterNode,
+		GeneratorNode as RqlGeneratorNode, InlineDataNode as RqlInlineDataNode,
+		JoinInnerNode as RqlJoinInnerNode, JoinLeftNode as RqlJoinLeftNode,
+		JoinNaturalNode as RqlJoinNaturalNode, MapNode as RqlMapNode, PatchNode as RqlPatchNode,
+		RowListLookupNode as RqlRowListLookupNode, RowPointLookupNode as RqlRowPointLookupNode,
+		RowRangeScanNode as RqlRowRangeScanNode, SortNode as RqlSortNode, TakeNode as RqlTakeNode,
 	},
 	query::QueryPlan as RqlQueryPlan,
 };
@@ -50,7 +48,7 @@ use crate::vm::volcano::{
 	join::{inner::InnerJoinNode, left::LeftJoinNode, natural::NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
 	patch::PatchNode,
-	query::{QueryContext, QueryPlan},
+	query::{QueryContext, QueryOperator},
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
 	scan::{
@@ -79,80 +77,80 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 }
 
 #[instrument(name = "volcano::compile", level = "trace", skip(plan, rx, context))]
-pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context: Arc<QueryContext>) -> QueryPlan {
+pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context: Arc<QueryContext>) -> QueryOperator {
 	match plan {
-		PhysicalPlan::Aggregate(PhysicalAggregateNode {
+		RqlQueryPlan::Aggregate(RqlAggregateNode {
 			by,
 			map,
 			input,
 		}) => {
-			let input_node = Box::new(compile((*input).into(), rx, context.clone()));
-			QueryPlan::Aggregate(AggregateNode::new(input_node, by, map, context))
+			let input_node = Box::new(compile(*input, rx, context.clone()));
+			QueryOperator::Aggregate(AggregateNode::new(input_node, by, map, context))
 		}
 
-		PhysicalPlan::Filter(PhysicalFilterNode {
+		RqlQueryPlan::Filter(RqlFilterNode {
 			conditions,
 			input,
 		}) => {
-			let input_node = Box::new(compile((*input).into(), rx, context));
-			QueryPlan::Filter(FilterNode::new(input_node, conditions))
+			let input_node = Box::new(compile(*input, rx, context));
+			QueryOperator::Filter(FilterNode::new(input_node, conditions))
 		}
 
-		PhysicalPlan::Take(PhysicalTakeNode {
+		RqlQueryPlan::Take(RqlTakeNode {
 			take,
 			input,
 		}) => {
 			if let RqlQueryPlan::Sort(sort_node) = *input {
-				let input_node = Box::new(compile((*sort_node.input).into(), rx, context));
-				return QueryPlan::TopK(TopKNode::new(input_node, sort_node.by, take));
+				let input_node = Box::new(compile(*sort_node.input, rx, context));
+				return QueryOperator::TopK(TopKNode::new(input_node, sort_node.by, take));
 			}
-			let input_node = Box::new(compile((*input).into(), rx, context));
-			QueryPlan::Take(TakeNode::new(input_node, take))
+			let input_node = Box::new(compile(*input, rx, context));
+			QueryOperator::Take(TakeNode::new(input_node, take))
 		}
 
-		PhysicalPlan::Sort(PhysicalSortNode {
+		RqlQueryPlan::Sort(RqlSortNode {
 			by,
 			input,
 		}) => {
-			let input_node = Box::new(compile((*input).into(), rx, context));
-			QueryPlan::Sort(SortNode::new(input_node, by))
+			let input_node = Box::new(compile(*input, rx, context));
+			QueryOperator::Sort(SortNode::new(input_node, by))
 		}
 
-		PhysicalPlan::Map(PhysicalMapNode {
+		RqlQueryPlan::Map(RqlMapNode {
 			map,
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile((*input).into(), rx, context));
-				QueryPlan::Map(MapNode::new(input_node, map))
+				let input_node = Box::new(compile(*input, rx, context));
+				QueryOperator::Map(MapNode::new(input_node, map))
 			} else {
-				QueryPlan::MapWithoutInput(MapWithoutInputNode::new(map))
+				QueryOperator::MapWithoutInput(MapWithoutInputNode::new(map))
 			}
 		}
 
-		PhysicalPlan::Extend(PhysicalExtendNode {
+		RqlQueryPlan::Extend(RqlExtendNode {
 			extend,
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile((*input).into(), rx, context));
-				QueryPlan::Extend(ExtendNode::new(input_node, extend))
+				let input_node = Box::new(compile(*input, rx, context));
+				QueryOperator::Extend(ExtendNode::new(input_node, extend))
 			} else {
-				QueryPlan::ExtendWithoutInput(ExtendWithoutInputNode::new(extend))
+				QueryOperator::ExtendWithoutInput(ExtendWithoutInputNode::new(extend))
 			}
 		}
 
-		PhysicalPlan::Patch(PhysicalPatchNode {
+		RqlQueryPlan::Patch(RqlPatchNode {
 			assignments,
 			input,
 		}) => {
 			// Patch requires input - it merges with existing row
 			let input = input.expect("Patch requires input");
-			let input_node = Box::new(compile((*input).into(), rx, context));
-			QueryPlan::Patch(PatchNode::new(input_node, assignments))
+			let input_node = Box::new(compile(*input, rx, context));
+			QueryOperator::Patch(PatchNode::new(input_node, assignments))
 		}
 
-		PhysicalPlan::JoinInner(PhysicalJoinInnerNode {
+		RqlQueryPlan::JoinInner(RqlJoinInnerNode {
 			left,
 			right,
 			on,
@@ -165,12 +163,12 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile((*left).into(), rx, context.clone()));
-			let right_node = Box::new(compile((*right).into(), rx, context.clone()));
-			QueryPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on, effective_alias))
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
+			QueryOperator::InnerJoin(InnerJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
-		PhysicalPlan::JoinLeft(PhysicalJoinLeftNode {
+		RqlQueryPlan::JoinLeft(RqlJoinLeftNode {
 			left,
 			right,
 			on,
@@ -183,12 +181,12 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile((*left).into(), rx, context.clone()));
-			let right_node = Box::new(compile((*right).into(), rx, context.clone()));
-			QueryPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on, effective_alias))
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
+			QueryOperator::LeftJoin(LeftJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
-		PhysicalPlan::JoinNatural(PhysicalJoinNaturalNode {
+		RqlQueryPlan::JoinNatural(RqlJoinNaturalNode {
 			left,
 			right,
 			join_type,
@@ -200,51 +198,51 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile((*left).into(), rx, context.clone()));
-			let right_node = Box::new(compile((*right).into(), rx, context.clone()));
-			QueryPlan::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type, effective_alias))
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
+			QueryOperator::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type, effective_alias))
 		}
 
-		PhysicalPlan::InlineData(PhysicalInlineDataNode {
+		RqlQueryPlan::InlineData(RqlInlineDataNode {
 			rows,
-		}) => QueryPlan::InlineData(InlineDataNode::new(rows, context)),
+		}) => QueryOperator::InlineData(InlineDataNode::new(rows, context)),
 
-		PhysicalPlan::Generator(PhysicalGeneratorNode {
+		RqlQueryPlan::Generator(RqlGeneratorNode {
 			name,
 			expressions,
-		}) => QueryPlan::Generator(GeneratorNode::new(name, expressions)),
+		}) => QueryOperator::Generator(GeneratorNode::new(name, expressions)),
 
-		PhysicalPlan::IndexScan(node) => {
+		RqlQueryPlan::IndexScan(node) => {
 			let table = node.source.def().clone();
 			let Some(pk) = table.primary_key.clone() else {
 				unimplemented!()
 			};
 
-			QueryPlan::IndexScan(IndexScanNode::new(table, IndexId::primary(pk.id), context).unwrap())
+			QueryOperator::IndexScan(IndexScanNode::new(table, IndexId::primary(pk.id), context).unwrap())
 		}
 
-		PhysicalPlan::TableScan(node) => {
-			QueryPlan::TableScan(TableScanNode::new(node.source.clone(), context, rx).unwrap())
+		RqlQueryPlan::TableScan(node) => {
+			QueryOperator::TableScan(TableScanNode::new(node.source.clone(), context, rx).unwrap())
 		}
 
-		PhysicalPlan::ViewScan(node) => {
-			QueryPlan::ViewScan(ViewScanNode::new(node.source.clone(), context).unwrap())
+		RqlQueryPlan::ViewScan(node) => {
+			QueryOperator::ViewScan(ViewScanNode::new(node.source.clone(), context).unwrap())
 		}
 
-		PhysicalPlan::RingBufferScan(node) => {
-			QueryPlan::RingBufferScan(RingBufferScan::new(node.source.clone(), context, rx).unwrap())
+		RqlQueryPlan::RingBufferScan(node) => {
+			QueryOperator::RingBufferScan(RingBufferScan::new(node.source.clone(), context, rx).unwrap())
 		}
 
-		PhysicalPlan::FlowScan(_node) => {
+		RqlQueryPlan::FlowScan(_node) => {
 			// TODO: Implement FlowScan execution
 			unimplemented!("FlowScan execution not yet implemented")
 		}
 
-		PhysicalPlan::DictionaryScan(node) => {
-			QueryPlan::DictionaryScan(DictionaryScanNode::new(node.source.clone(), context).unwrap())
+		RqlQueryPlan::DictionaryScan(node) => {
+			QueryOperator::DictionaryScan(DictionaryScanNode::new(node.source.clone(), context).unwrap())
 		}
 
-		PhysicalPlan::TableVirtualScan(node) => {
+		RqlQueryPlan::TableVirtualScan(node) => {
 			// Create the appropriate virtual table implementation
 			let namespace = node.source.namespace().def();
 			let table = node.source.def();
@@ -336,103 +334,68 @@ pub(crate) fn compile<'a>(plan: PhysicalPlan, rx: &mut Transaction<'a>, context:
 					params: context.params.clone(),
 				});
 
-			QueryPlan::VirtualScan(
+			QueryOperator::VirtualScan(
 				VirtualScanNode::new(virtual_table_impl, context, virtual_context).unwrap(),
 			)
 		}
 
-		PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) | PhysicalPlan::Conditional(_) => {
-			unreachable!("Declare/Assign/Conditional are handled at the VM instruction level")
+		RqlQueryPlan::Variable(var_node) => QueryOperator::Variable(VariableNode::new(var_node.variable_expr)),
+
+		RqlQueryPlan::Environment(_) => QueryOperator::Environment(EnvironmentNode::new()),
+
+		RqlQueryPlan::Scalarize(scalarize_node) => {
+			let input = compile(*scalarize_node.input, rx, context.clone());
+			QueryOperator::Scalarize(ScalarizeNode::new(Box::new(input)))
 		}
 
-		PhysicalPlan::Variable(var_node) => QueryPlan::Variable(VariableNode::new(var_node.variable_expr)),
-
-		PhysicalPlan::Environment(_) => QueryPlan::Environment(EnvironmentNode::new()),
-
-		PhysicalPlan::Scalarize(scalarize_node) => {
-			let input = compile((*scalarize_node.input).into(), rx, context.clone());
-			QueryPlan::Scalarize(ScalarizeNode::new(Box::new(input)))
-		}
-
-		PhysicalPlan::AlterSequence(_)
-		| PhysicalPlan::AlterTable(_)
-		| PhysicalPlan::AlterView(_)
-		| PhysicalPlan::AlterFlow(_)
-		| PhysicalPlan::CreateDeferredView(_)
-		| PhysicalPlan::CreateTransactionalView(_)
-		| PhysicalPlan::CreateNamespace(_)
-		| PhysicalPlan::CreateTable(_)
-		| PhysicalPlan::CreateRingBuffer(_)
-		| PhysicalPlan::CreateFlow(_)
-		| PhysicalPlan::CreateDictionary(_)
-		| PhysicalPlan::CreateSubscription(_)
-		| PhysicalPlan::Delete(_)
-		| PhysicalPlan::DeleteRingBuffer(_)
-		| PhysicalPlan::InsertTable(_)
-		| PhysicalPlan::InsertRingBuffer(_)
-		| PhysicalPlan::InsertDictionary(_)
-		| PhysicalPlan::Update(_)
-		| PhysicalPlan::UpdateRingBuffer(_)
-		| PhysicalPlan::Distinct(_) => unreachable!(),
-		PhysicalPlan::Apply(_) => {
+		RqlQueryPlan::Distinct(_) => unreachable!(),
+		RqlQueryPlan::Apply(_) => {
 			unimplemented!(
 				"Apply operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 			)
 		}
-		PhysicalPlan::Window(_) => {
+		RqlQueryPlan::Window(_) => {
 			unimplemented!(
 				"Window operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 			)
 		}
-		PhysicalPlan::Merge(_) => {
+		RqlQueryPlan::Merge(_) => {
 			unimplemented!(
 				"Merge operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 			)
 		}
 
-		PhysicalPlan::Loop(_) | PhysicalPlan::While(_) | PhysicalPlan::For(_) => {
-			unreachable!("Loop constructs are handled at the VM level")
-		}
-
-		PhysicalPlan::Break | PhysicalPlan::Continue => {
-			unreachable!("Break/Continue are handled at the VM instruction level")
-		}
-
 		// Row-number optimized access nodes
-		PhysicalPlan::RowPointLookup(PhysicalRowPointLookupNode {
+		RqlQueryPlan::RowPointLookup(RqlRowPointLookupNode {
 			source,
 			row_number,
 		}) => {
 			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
-			QueryPlan::RowPointLookup(
+			QueryOperator::RowPointLookup(
 				RowPointLookupNode::new(resolved_source, row_number, context)
 					.expect("Failed to create RowPointLookupNode"),
 			)
 		}
-		PhysicalPlan::RowListLookup(PhysicalRowListLookupNode {
+		RqlQueryPlan::RowListLookup(RqlRowListLookupNode {
 			source,
 			row_numbers,
 		}) => {
 			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
-			QueryPlan::RowListLookup(
+			QueryOperator::RowListLookup(
 				RowListLookupNode::new(resolved_source, row_numbers, context)
 					.expect("Failed to create RowListLookupNode"),
 			)
 		}
-		PhysicalPlan::RowRangeScan(PhysicalRowRangeScanNode {
+		RqlQueryPlan::RowRangeScan(RqlRowRangeScanNode {
 			source,
 			start,
 			end,
 		}) => {
 			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
-			QueryPlan::RowRangeScan(
+			QueryOperator::RowRangeScan(
 				RowRangeScanNode::new(resolved_source, start, end, context)
 					.expect("Failed to create RowRangeScanNode"),
 			)
-		}
-
-		PhysicalPlan::DefineFunction(_) | PhysicalPlan::Return(_) | PhysicalPlan::CallFunction(_) => {
-			unreachable!("User-defined functions are handled at the VM instruction level")
 		}
 	}
 }

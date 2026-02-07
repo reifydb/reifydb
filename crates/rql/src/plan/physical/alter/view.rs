@@ -1,54 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::sort::SortDirection;
 use reifydb_transaction::transaction::AsTransaction;
-use reifydb_type::fragment::Fragment;
 
-use crate::plan::{
-	logical,
-	physical::{Compiler, PhysicalPlan},
+use crate::{
+	nodes::{
+		AlterViewColumnIdentifier, AlterViewIdentifier, AlterViewIndexColumn, AlterViewNode, AlterViewOperation,
+	},
+	plan::{
+		logical,
+		physical::{Compiler, PhysicalPlan},
+	},
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewNode {
-	pub view: AlterViewIdentifier,
-	pub operations: Vec<AlterViewOperation>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewIdentifier {
-	pub namespace: Option<Fragment>,
-	pub name: Fragment,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AlterViewOperation {
-	CreatePrimaryKey {
-		name: Option<Fragment>,
-		columns: Vec<AlterIndexColumn>,
-	},
-	DropPrimaryKey,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterIndexColumn {
-	pub column: AlterColumnIdentifier,
-	pub order: Option<SortDirection>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterColumnIdentifier {
-	pub namespace: Option<Fragment>,
-	pub name: Fragment,
-}
-
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_alter_view<T: AsTransaction>(
 		&mut self,
 		_rx: &mut T,
 		alter: logical::alter::view::AlterViewNode<'_>,
-	) -> crate::Result<PhysicalPlan> {
+	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Materialize logical node to physical node
 		let view = AlterViewIdentifier {
 			namespace: alter.view.namespace.map(|n| self.interner.intern_fragment(&n)),
@@ -72,8 +42,8 @@ impl Compiler {
 							} => namespace.map(|n| self.interner.intern_fragment(&n)),
 							_ => None,
 						};
-						physical_columns.push(AlterIndexColumn {
-							column: AlterColumnIdentifier {
+						physical_columns.push(AlterViewIndexColumn {
+							column: AlterViewColumnIdentifier {
 								namespace,
 								name: self.interner.intern_fragment(&col.column.name),
 							},

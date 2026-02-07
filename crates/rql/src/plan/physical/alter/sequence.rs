@@ -10,17 +10,20 @@ use reifydb_core::{
 use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
-use crate::plan::{
-	logical::{self, resolver::DEFAULT_NAMESPACE},
-	physical::{AlterSequenceNode, Compiler, PhysicalPlan},
+use crate::{
+	nodes::AlterSequenceNode,
+	plan::{
+		logical::{self, resolver::DEFAULT_NAMESPACE},
+		physical::{Compiler, PhysicalPlan},
+	},
 };
 
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_alter_sequence<T: AsTransaction>(
 		&mut self,
 		rx: &mut T,
 		alter: logical::AlterSequenceNode<'_>,
-	) -> crate::Result<PhysicalPlan> {
+	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Get the namespace name from the sequence identifier
 		let namespace_name = alter.sequence.namespace.as_ref().map(|f| f.text()).unwrap_or(DEFAULT_NAMESPACE);
 

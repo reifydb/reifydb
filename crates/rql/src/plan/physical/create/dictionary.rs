@@ -13,12 +13,12 @@ use crate::{
 	},
 };
 
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_dictionary<T: AsTransaction>(
 		&mut self,
 		rx: &mut T,
 		create: logical::CreateDictionaryNode<'_>,
-	) -> crate::Result<PhysicalPlan> {
+	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Get namespace name from the MaybeQualified type
 		let namespace_name = create.dictionary.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, namespace_name)? else {

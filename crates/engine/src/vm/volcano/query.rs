@@ -73,7 +73,7 @@ pub struct QueryContext {
 	pub stack: SymbolTable,
 }
 
-pub(crate) enum QueryPlan {
+pub(crate) enum QueryOperator {
 	Aggregate(AggregateNode),
 	DictionaryScan(DictionaryScanNode),
 	Filter(FilterNode),
@@ -104,9 +104,9 @@ pub(crate) enum QueryPlan {
 	RowRangeScan(RowRangeScanNode),
 }
 
-// Implement QueryNode for Box<QueryPlan> to allow chaining
+// Implement QueryNode for Box<QueryOperator> to allow chaining
 
-impl QueryNode for Box<QueryPlan> {
+impl QueryNode for Box<QueryOperator> {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
 		(**self).initialize(rx, ctx)
 	}
@@ -128,68 +128,68 @@ impl QueryNode for Box<QueryPlan> {
 	}
 }
 
-impl QueryNode for QueryPlan {
+impl QueryNode for QueryOperator {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
 		match self {
-			QueryPlan::Aggregate(node) => node.initialize(rx, ctx),
-			QueryPlan::DictionaryScan(node) => node.initialize(rx, ctx),
-			QueryPlan::Filter(node) => node.initialize(rx, ctx),
-			QueryPlan::IndexScan(node) => node.initialize(rx, ctx),
-			QueryPlan::InlineData(node) => node.initialize(rx, ctx),
-			QueryPlan::InnerJoin(node) => node.initialize(rx, ctx),
-			QueryPlan::LeftJoin(node) => node.initialize(rx, ctx),
-			QueryPlan::NaturalJoin(node) => node.initialize(rx, ctx),
-			QueryPlan::Map(node) => node.initialize(rx, ctx),
-			QueryPlan::MapWithoutInput(node) => node.initialize(rx, ctx),
-			QueryPlan::Extend(node) => node.initialize(rx, ctx),
-			QueryPlan::ExtendWithoutInput(node) => node.initialize(rx, ctx),
-			QueryPlan::Patch(node) => node.initialize(rx, ctx),
-			QueryPlan::Sort(node) => node.initialize(rx, ctx),
-			QueryPlan::TableScan(node) => node.initialize(rx, ctx),
-			QueryPlan::Take(node) => node.initialize(rx, ctx),
-			QueryPlan::TopK(node) => node.initialize(rx, ctx),
-			QueryPlan::ViewScan(node) => node.initialize(rx, ctx),
-			QueryPlan::Variable(node) => node.initialize(rx, ctx),
-			QueryPlan::Environment(node) => node.initialize(rx, ctx),
-			QueryPlan::VirtualScan(node) => node.initialize(rx, ctx),
-			QueryPlan::RingBufferScan(node) => node.initialize(rx, ctx),
-			QueryPlan::Generator(node) => node.initialize(rx, ctx),
-			QueryPlan::Scalarize(node) => node.initialize(rx, ctx),
-			QueryPlan::RowPointLookup(node) => node.initialize(rx, ctx),
-			QueryPlan::RowListLookup(node) => node.initialize(rx, ctx),
-			QueryPlan::RowRangeScan(node) => node.initialize(rx, ctx),
+			QueryOperator::Aggregate(node) => node.initialize(rx, ctx),
+			QueryOperator::DictionaryScan(node) => node.initialize(rx, ctx),
+			QueryOperator::Filter(node) => node.initialize(rx, ctx),
+			QueryOperator::IndexScan(node) => node.initialize(rx, ctx),
+			QueryOperator::InlineData(node) => node.initialize(rx, ctx),
+			QueryOperator::InnerJoin(node) => node.initialize(rx, ctx),
+			QueryOperator::LeftJoin(node) => node.initialize(rx, ctx),
+			QueryOperator::NaturalJoin(node) => node.initialize(rx, ctx),
+			QueryOperator::Map(node) => node.initialize(rx, ctx),
+			QueryOperator::MapWithoutInput(node) => node.initialize(rx, ctx),
+			QueryOperator::Extend(node) => node.initialize(rx, ctx),
+			QueryOperator::ExtendWithoutInput(node) => node.initialize(rx, ctx),
+			QueryOperator::Patch(node) => node.initialize(rx, ctx),
+			QueryOperator::Sort(node) => node.initialize(rx, ctx),
+			QueryOperator::TableScan(node) => node.initialize(rx, ctx),
+			QueryOperator::Take(node) => node.initialize(rx, ctx),
+			QueryOperator::TopK(node) => node.initialize(rx, ctx),
+			QueryOperator::ViewScan(node) => node.initialize(rx, ctx),
+			QueryOperator::Variable(node) => node.initialize(rx, ctx),
+			QueryOperator::Environment(node) => node.initialize(rx, ctx),
+			QueryOperator::VirtualScan(node) => node.initialize(rx, ctx),
+			QueryOperator::RingBufferScan(node) => node.initialize(rx, ctx),
+			QueryOperator::Generator(node) => node.initialize(rx, ctx),
+			QueryOperator::Scalarize(node) => node.initialize(rx, ctx),
+			QueryOperator::RowPointLookup(node) => node.initialize(rx, ctx),
+			QueryOperator::RowListLookup(node) => node.initialize(rx, ctx),
+			QueryOperator::RowRangeScan(node) => node.initialize(rx, ctx),
 		}
 	}
 
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
 		match self {
-			QueryPlan::Aggregate(node) => node.next(rx, ctx),
-			QueryPlan::DictionaryScan(node) => node.next(rx, ctx),
-			QueryPlan::Filter(node) => node.next(rx, ctx),
-			QueryPlan::IndexScan(node) => node.next(rx, ctx),
-			QueryPlan::InlineData(node) => node.next(rx, ctx),
-			QueryPlan::InnerJoin(node) => node.next(rx, ctx),
-			QueryPlan::LeftJoin(node) => node.next(rx, ctx),
-			QueryPlan::NaturalJoin(node) => node.next(rx, ctx),
-			QueryPlan::Map(node) => node.next(rx, ctx),
-			QueryPlan::MapWithoutInput(node) => node.next(rx, ctx),
-			QueryPlan::Extend(node) => node.next(rx, ctx),
-			QueryPlan::ExtendWithoutInput(node) => node.next(rx, ctx),
-			QueryPlan::Patch(node) => node.next(rx, ctx),
-			QueryPlan::Sort(node) => node.next(rx, ctx),
-			QueryPlan::TableScan(node) => node.next(rx, ctx),
-			QueryPlan::Take(node) => node.next(rx, ctx),
-			QueryPlan::TopK(node) => node.next(rx, ctx),
-			QueryPlan::ViewScan(node) => node.next(rx, ctx),
-			QueryPlan::Variable(node) => node.next(rx, ctx),
-			QueryPlan::Environment(node) => node.next(rx, ctx),
-			QueryPlan::VirtualScan(node) => node.next(rx, ctx),
-			QueryPlan::RingBufferScan(node) => node.next(rx, ctx),
-			QueryPlan::Generator(node) => node.next(rx, ctx),
-			QueryPlan::Scalarize(node) => node.next(rx, ctx),
-			QueryPlan::RowPointLookup(node) => node.next(rx, ctx),
-			QueryPlan::RowListLookup(node) => node.next(rx, ctx),
-			QueryPlan::RowRangeScan(node) => node.next(rx, ctx),
+			QueryOperator::Aggregate(node) => node.next(rx, ctx),
+			QueryOperator::DictionaryScan(node) => node.next(rx, ctx),
+			QueryOperator::Filter(node) => node.next(rx, ctx),
+			QueryOperator::IndexScan(node) => node.next(rx, ctx),
+			QueryOperator::InlineData(node) => node.next(rx, ctx),
+			QueryOperator::InnerJoin(node) => node.next(rx, ctx),
+			QueryOperator::LeftJoin(node) => node.next(rx, ctx),
+			QueryOperator::NaturalJoin(node) => node.next(rx, ctx),
+			QueryOperator::Map(node) => node.next(rx, ctx),
+			QueryOperator::MapWithoutInput(node) => node.next(rx, ctx),
+			QueryOperator::Extend(node) => node.next(rx, ctx),
+			QueryOperator::ExtendWithoutInput(node) => node.next(rx, ctx),
+			QueryOperator::Patch(node) => node.next(rx, ctx),
+			QueryOperator::Sort(node) => node.next(rx, ctx),
+			QueryOperator::TableScan(node) => node.next(rx, ctx),
+			QueryOperator::Take(node) => node.next(rx, ctx),
+			QueryOperator::TopK(node) => node.next(rx, ctx),
+			QueryOperator::ViewScan(node) => node.next(rx, ctx),
+			QueryOperator::Variable(node) => node.next(rx, ctx),
+			QueryOperator::Environment(node) => node.next(rx, ctx),
+			QueryOperator::VirtualScan(node) => node.next(rx, ctx),
+			QueryOperator::RingBufferScan(node) => node.next(rx, ctx),
+			QueryOperator::Generator(node) => node.next(rx, ctx),
+			QueryOperator::Scalarize(node) => node.next(rx, ctx),
+			QueryOperator::RowPointLookup(node) => node.next(rx, ctx),
+			QueryOperator::RowListLookup(node) => node.next(rx, ctx),
+			QueryOperator::RowRangeScan(node) => node.next(rx, ctx),
 		}
 	}
 
@@ -200,7 +200,7 @@ impl QueryNode for QueryPlan {
 	) -> crate::Result<Option<LazyBatch>> {
 		match self {
 			// Only TableScan supports lazy evaluation for now
-			QueryPlan::TableScan(node) => node.next_lazy(rx, ctx),
+			QueryOperator::TableScan(node) => node.next_lazy(rx, ctx),
 			// All other nodes return None (use default materialized path)
 			_ => Ok(None),
 		}
@@ -208,33 +208,33 @@ impl QueryNode for QueryPlan {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		match self {
-			QueryPlan::Aggregate(node) => node.headers(),
-			QueryPlan::DictionaryScan(node) => node.headers(),
-			QueryPlan::Filter(node) => node.headers(),
-			QueryPlan::IndexScan(node) => node.headers(),
-			QueryPlan::InlineData(node) => node.headers(),
-			QueryPlan::InnerJoin(node) => node.headers(),
-			QueryPlan::LeftJoin(node) => node.headers(),
-			QueryPlan::NaturalJoin(node) => node.headers(),
-			QueryPlan::Map(node) => node.headers(),
-			QueryPlan::MapWithoutInput(node) => node.headers(),
-			QueryPlan::Extend(node) => node.headers(),
-			QueryPlan::ExtendWithoutInput(node) => node.headers(),
-			QueryPlan::Patch(node) => node.headers(),
-			QueryPlan::Sort(node) => node.headers(),
-			QueryPlan::TableScan(node) => node.headers(),
-			QueryPlan::Take(node) => node.headers(),
-			QueryPlan::TopK(node) => node.headers(),
-			QueryPlan::ViewScan(node) => node.headers(),
-			QueryPlan::Variable(node) => node.headers(),
-			QueryPlan::Environment(node) => node.headers(),
-			QueryPlan::VirtualScan(node) => node.headers(),
-			QueryPlan::RingBufferScan(node) => node.headers(),
-			QueryPlan::Generator(node) => node.headers(),
-			QueryPlan::Scalarize(node) => node.headers(),
-			QueryPlan::RowPointLookup(node) => node.headers(),
-			QueryPlan::RowListLookup(node) => node.headers(),
-			QueryPlan::RowRangeScan(node) => node.headers(),
+			QueryOperator::Aggregate(node) => node.headers(),
+			QueryOperator::DictionaryScan(node) => node.headers(),
+			QueryOperator::Filter(node) => node.headers(),
+			QueryOperator::IndexScan(node) => node.headers(),
+			QueryOperator::InlineData(node) => node.headers(),
+			QueryOperator::InnerJoin(node) => node.headers(),
+			QueryOperator::LeftJoin(node) => node.headers(),
+			QueryOperator::NaturalJoin(node) => node.headers(),
+			QueryOperator::Map(node) => node.headers(),
+			QueryOperator::MapWithoutInput(node) => node.headers(),
+			QueryOperator::Extend(node) => node.headers(),
+			QueryOperator::ExtendWithoutInput(node) => node.headers(),
+			QueryOperator::Patch(node) => node.headers(),
+			QueryOperator::Sort(node) => node.headers(),
+			QueryOperator::TableScan(node) => node.headers(),
+			QueryOperator::Take(node) => node.headers(),
+			QueryOperator::TopK(node) => node.headers(),
+			QueryOperator::ViewScan(node) => node.headers(),
+			QueryOperator::Variable(node) => node.headers(),
+			QueryOperator::Environment(node) => node.headers(),
+			QueryOperator::VirtualScan(node) => node.headers(),
+			QueryOperator::RingBufferScan(node) => node.headers(),
+			QueryOperator::Generator(node) => node.headers(),
+			QueryOperator::Scalarize(node) => node.headers(),
+			QueryOperator::RowPointLookup(node) => node.headers(),
+			QueryOperator::RowListLookup(node) => node.headers(),
+			QueryOperator::RowRangeScan(node) => node.headers(),
 		}
 	}
 }

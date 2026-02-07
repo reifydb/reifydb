@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowStatus,
 	value::column::columns::Columns,
 };
-use reifydb_rql::plan::physical::alter::flow::{AlterFlowAction, AlterFlowNode};
+use reifydb_rql::nodes::{AlterFlowAction, AlterFlowNode};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, return_error, value::Value};
 

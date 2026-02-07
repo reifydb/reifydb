@@ -7,7 +7,6 @@ use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, he
 use reifydb_rql::{
 	expression::{CallExpression, Expression, IdentExpression},
 	instruction::{Instruction, ScopeType},
-	nodes::PhysicalPlan,
 	query::QueryPlan,
 };
 use reifydb_type::{
@@ -1002,7 +1001,6 @@ fn run_query_plan(
 	params: Params,
 	symbol_table: &mut SymbolTable,
 ) -> crate::Result<Option<Columns>> {
-	let physical_plan: PhysicalPlan = plan.into();
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,
@@ -1011,7 +1009,7 @@ fn run_query_plan(
 		stack: symbol_table.clone(),
 	});
 
-	let mut query_node = compile(physical_plan, txn, context.clone());
+	let mut query_node = compile(plan, txn, context.clone());
 	query_node.initialize(txn, &context)?;
 
 	let mut all_columns: Option<Columns> = None;

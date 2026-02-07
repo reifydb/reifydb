@@ -2,43 +2,21 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_transaction::transaction::AsTransaction;
-use reifydb_type::fragment::Fragment;
 
-use crate::plan::{
-	logical,
-	physical::{Compiler, PhysicalPlan},
+use crate::{
+	nodes::AlterFlowIdentifier,
+	plan::{
+		logical,
+		physical::{AlterFlowAction, AlterFlowNode, Compiler, PhysicalPlan},
+	},
 };
 
-#[derive(Debug, Clone)]
-pub struct AlterFlowNode {
-	pub flow: AlterFlowIdentifier,
-	pub action: AlterFlowAction,
-}
-
-#[derive(Debug, Clone)]
-pub struct AlterFlowIdentifier {
-	pub namespace: Option<Fragment>,
-	pub name: Fragment,
-}
-
-#[derive(Debug, Clone)]
-pub enum AlterFlowAction {
-	Rename {
-		new_name: Fragment,
-	},
-	SetQuery {
-		query: Box<PhysicalPlan>,
-	},
-	Pause,
-	Resume,
-}
-
-impl Compiler {
+impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_alter_flow<T: AsTransaction>(
 		&mut self,
 		rx: &mut T,
-		alter: logical::alter::flow::AlterFlowNode<'_>,
-	) -> crate::Result<PhysicalPlan> {
+		alter: logical::alter::flow::AlterFlowNode<'bump>,
+	) -> crate::Result<PhysicalPlan<'bump>> {
 		let flow = AlterFlowIdentifier {
 			namespace: alter.flow.namespace.map(|n| self.interner.intern_fragment(&n)),
 			name: self.interner.intern_fragment(&alter.flow.name),
@@ -54,9 +32,9 @@ impl Compiler {
 				query,
 			} => {
 				// Compile logical plans to physical plans
-				let physical_query = self.compile(rx, query)?.map(Box::new).unwrap();
+				let physical_query = self.compile(rx, query)?.unwrap();
 				AlterFlowAction::SetQuery {
-					query: physical_query,
+					query: self.bump_box(physical_query),
 				}
 			}
 			logical::alter::flow::AlterFlowAction::Pause => AlterFlowAction::Pause,

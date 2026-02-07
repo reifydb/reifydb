@@ -23,7 +23,6 @@ use reifydb_type::{
 
 use crate::{
 	expression::{AliasExpression, Expression, VariableExpression},
-	plan::physical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
 	query::QueryPlan,
 };
 
@@ -38,79 +37,6 @@ pub struct PrimaryKeyDef {
 pub struct PrimaryKeyColumn {
 	pub column: Fragment,
 	pub order: Option<SortDirection>,
-}
-
-#[derive(Debug, Clone)]
-pub enum PhysicalPlan {
-	CreateDeferredView(CreateDeferredViewNode),
-	CreateTransactionalView(CreateTransactionalViewNode),
-	CreateNamespace(CreateNamespaceNode),
-	CreateTable(CreateTableNode),
-	CreateRingBuffer(CreateRingBufferNode),
-	CreateFlow(CreateFlowNode),
-	CreateDictionary(CreateDictionaryNode),
-	CreateSubscription(CreateSubscriptionNode),
-	// Alter
-	AlterSequence(AlterSequenceNode),
-	AlterTable(AlterTableNode),
-	AlterView(AlterViewNode),
-	AlterFlow(AlterFlowNode),
-	// Mutate
-	Delete(DeleteTableNode),
-	DeleteRingBuffer(DeleteRingBufferNode),
-	InsertTable(InsertTableNode),
-	InsertRingBuffer(InsertRingBufferNode),
-	InsertDictionary(InsertDictionaryNode),
-	Update(UpdateTableNode),
-	UpdateRingBuffer(UpdateRingBufferNode),
-	// Variable assignment
-	Declare(DeclareNode),
-	Assign(AssignNode),
-	// Variable resolution
-	Variable(VariableNode),
-	Environment(EnvironmentNode),
-	// Control flow
-	Conditional(ConditionalNode),
-	Loop(LoopPhysicalNode),
-	While(WhilePhysicalNode),
-	For(ForPhysicalNode),
-	Break,
-	Continue,
-	// User-defined functions
-	DefineFunction(DefineFunctionNode),
-	Return(ReturnNode),
-	CallFunction(CallFunctionNode),
-
-	// Query
-	Aggregate(AggregateNode),
-	Distinct(DistinctNode),
-	Filter(FilterNode),
-	IndexScan(IndexScanNode),
-	// Row-number optimized access
-	RowPointLookup(RowPointLookupNode),
-	RowListLookup(RowListLookupNode),
-	RowRangeScan(RowRangeScanNode),
-	JoinInner(JoinInnerNode),
-	JoinLeft(JoinLeftNode),
-	JoinNatural(JoinNaturalNode),
-	Merge(MergeNode),
-	Take(TakeNode),
-	Sort(SortNode),
-	Map(MapNode),
-	Extend(ExtendNode),
-	Patch(PatchNode),
-	Apply(ApplyNode),
-	InlineData(InlineDataNode),
-	TableScan(TableScanNode),
-	TableVirtualScan(TableVirtualScanNode),
-	ViewScan(ViewScanNode),
-	RingBufferScan(RingBufferScanNode),
-	FlowScan(FlowScanNode),
-	DictionaryScan(DictionaryScanNode),
-	Generator(GeneratorNode),
-	Window(WindowNode),
-	// Auto-scalarization for 1x1 frames
-	Scalarize(ScalarizeNode),
 }
 
 #[derive(Debug, Clone)]
@@ -188,6 +114,102 @@ pub struct AlterSequenceNode {
 	pub value: Expression,
 }
 
+// Alter Table types
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterTableNode {
+	pub table: AlterTableIdentifier,
+	pub operations: Vec<AlterTableOperation>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterTableIdentifier {
+	pub namespace: Option<Fragment>,
+	pub name: Fragment,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AlterTableOperation {
+	CreatePrimaryKey {
+		name: Option<Fragment>,
+		columns: Vec<AlterTableIndexColumn>,
+	},
+	DropPrimaryKey,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterTableIndexColumn {
+	pub column: AlterTableColumnIdentifier,
+	pub order: Option<SortDirection>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterTableColumnIdentifier {
+	pub namespace: Option<Fragment>,
+	pub name: Fragment,
+}
+
+// Alter View types
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterViewNode {
+	pub view: AlterViewIdentifier,
+	pub operations: Vec<AlterViewOperation>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterViewIdentifier {
+	pub namespace: Option<Fragment>,
+	pub name: Fragment,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AlterViewOperation {
+	CreatePrimaryKey {
+		name: Option<Fragment>,
+		columns: Vec<AlterViewIndexColumn>,
+	},
+	DropPrimaryKey,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterViewIndexColumn {
+	pub column: AlterViewColumnIdentifier,
+	pub order: Option<SortDirection>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlterViewColumnIdentifier {
+	pub namespace: Option<Fragment>,
+	pub name: Fragment,
+}
+
+// Alter Flow types
+
+#[derive(Debug, Clone)]
+pub struct AlterFlowNode {
+	pub flow: AlterFlowIdentifier,
+	pub action: AlterFlowAction,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterFlowIdentifier {
+	pub namespace: Option<Fragment>,
+	pub name: Fragment,
+}
+
+#[derive(Debug, Clone)]
+pub enum AlterFlowAction {
+	Rename {
+		new_name: Fragment,
+	},
+	SetQuery {
+		query: Box<QueryPlan>,
+	},
+	Pause,
+	Resume,
+}
+
 #[derive(Debug, Clone)]
 pub enum LetValue {
 	Expression(Expression),
@@ -238,38 +260,6 @@ pub struct VariableNode {
 #[derive(Debug, Clone)]
 pub struct EnvironmentNode {}
 
-#[derive(Debug, Clone)]
-pub struct ConditionalNode {
-	pub condition: Expression,
-	pub then_branch: Box<PhysicalPlan>,
-	pub else_ifs: Vec<ElseIfBranch>,
-	pub else_branch: Option<Box<PhysicalPlan>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ElseIfBranch {
-	pub condition: Expression,
-	pub then_branch: Box<PhysicalPlan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct LoopPhysicalNode {
-	pub body: Vec<PhysicalPlan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct WhilePhysicalNode {
-	pub condition: Expression,
-	pub body: Vec<PhysicalPlan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ForPhysicalNode {
-	pub variable_name: Fragment,
-	pub iterable: Box<PhysicalPlan>,
-	pub body: Vec<PhysicalPlan>,
-}
-
 /// A function parameter in the physical plan
 #[derive(Debug, Clone)]
 pub struct FunctionParameter {
@@ -277,35 +267,6 @@ pub struct FunctionParameter {
 	pub name: Fragment,
 	/// Optional type constraint
 	pub type_constraint: Option<TypeConstraint>,
-}
-
-/// Define a user-defined function
-#[derive(Debug, Clone)]
-pub struct DefineFunctionNode {
-	/// Function name
-	pub name: Fragment,
-	/// Function parameters
-	pub parameters: Vec<FunctionParameter>,
-	/// Optional return type constraint
-	pub return_type: Option<TypeConstraint>,
-	/// Function body as physical plans
-	pub body: Vec<PhysicalPlan>,
-}
-
-/// Return statement
-#[derive(Debug, Clone)]
-pub struct ReturnNode {
-	/// Optional return value expression
-	pub value: Option<Expression>,
-}
-
-/// Call a function (built-in or user-defined)
-#[derive(Debug, Clone)]
-pub struct CallFunctionNode {
-	/// Function name to call
-	pub name: Fragment,
-	/// Arguments to pass
-	pub arguments: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
@@ -335,43 +296,43 @@ pub struct FilterNode {
 
 #[derive(Debug, Clone)]
 pub struct DeleteTableNode {
-	pub input: Option<Box<PhysicalPlan>>,
+	pub input: Option<Box<QueryPlan>>,
 	pub target: Option<ResolvedTable>,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertTableNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub target: ResolvedTable,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertRingBufferNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub target: ResolvedRingBuffer,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertDictionaryNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub target: ResolvedDictionary,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateTableNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub target: Option<ResolvedTable>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DeleteRingBufferNode {
-	pub input: Option<Box<PhysicalPlan>>,
+	pub input: Option<Box<QueryPlan>>,
 	pub target: ResolvedRingBuffer,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateRingBufferNode {
-	pub input: Box<PhysicalPlan>,
+	pub input: Box<QueryPlan>,
 	pub target: ResolvedRingBuffer,
 }
 
