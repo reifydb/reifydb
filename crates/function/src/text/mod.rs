@@ -3,6 +3,7 @@
 
 pub mod concat;
 pub mod count;
+pub mod ends_with;
 pub mod format_bytes;
 pub mod format_bytes_si;
 pub mod length;

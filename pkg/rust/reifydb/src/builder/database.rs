@@ -231,6 +231,7 @@ impl DatabaseBuilder {
 			.register_scalar("math::power", math::scalar::power::Power::new)
 			.register_scalar("text::concat", text::concat::TextConcat::new)
 			.register_scalar("text::count", text::count::TextCount::new)
+			.register_scalar("text::ends_with", text::ends_with::TextEndsWith::new)
 			.register_scalar("text::replace", text::replace::TextReplace::new)
 			.register_scalar("text::reverse", text::reverse::TextReverse::new)
 			.register_scalar("text::starts_with", text::starts_with::TextStartsWith::new)
