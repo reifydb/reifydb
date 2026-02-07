@@ -77,7 +77,7 @@ macro_rules! impl_to_temporal {
 								// For string literals, if the source text exactly
 								// matches the value being parsed, or contains it
 								// with quotes, it's a string literal
-								if source_text.as_str() == val.as_str()
+								if &**source_text == val.as_str()
 									|| source_text.contains(&format!(
 										"\"{}\"",
 										val.as_str()
@@ -86,7 +86,7 @@ macro_rules! impl_to_temporal {
 									// within the string
 									let offset = val
 										.as_str()
-										.find(error_text.as_str())
+										.find(&**error_text)
 										.unwrap_or(0);
 									e.0.fragment = proper_fragment
 										.sub_fragment(offset, error_text.len());

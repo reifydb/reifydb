@@ -57,6 +57,7 @@ use crate::{
 
 pub(crate) struct Compiler {
 	pub catalog: Catalog,
+	pub interner: crate::bump::FragmentInterner,
 }
 
 /// Helper to convert PhysicalPlan to QueryPlan for node inputs
@@ -66,6 +67,7 @@ fn to_query_plan(plan: PhysicalPlan) -> QueryPlan {
 
 /// Materialize a bump-allocated PrimaryKeyDef to an owned version
 pub(crate) fn materialize_primary_key(
+	interner: &mut crate::bump::FragmentInterner,
 	pk: Option<crate::plan::logical::PrimaryKeyDef<'_>>,
 ) -> Option<crate::nodes::PrimaryKeyDef> {
 	pk.map(|pk_def| crate::nodes::PrimaryKeyDef {
@@ -73,7 +75,7 @@ pub(crate) fn materialize_primary_key(
 			.columns
 			.into_iter()
 			.map(|col| crate::nodes::PrimaryKeyColumn {
-				column: col.column.to_owned(),
+				column: interner.intern_fragment(&col.column),
 				order: col.order,
 			})
 			.collect(),
@@ -88,13 +90,14 @@ pub fn compile_physical<'a, T: AsTransaction>(
 ) -> crate::Result<Option<PhysicalPlan>> {
 	Compiler {
 		catalog: catalog.clone(),
+		interner: crate::bump::FragmentInterner::new(),
 	}
 	.compile(rx, logical)
 }
 
 impl Compiler {
 	pub fn compile<'a, T: AsTransaction>(
-		&self,
+		&mut self,
 		rx: &mut T,
 		logical: impl IntoIterator<Item = LogicalPlan<'a>>,
 	) -> crate::Result<Option<PhysicalPlan>> {
@@ -229,7 +232,7 @@ impl Compiler {
 
 				LogicalPlan::Generator(generator) => {
 					stack.push(PhysicalPlan::Generator(GeneratorNode {
-						name: generator.name.to_owned(),
+						name: self.interner.intern_fragment(&generator.name),
 						expressions: generator.expressions,
 					}));
 				}
@@ -272,20 +275,20 @@ impl Compiler {
 						)?
 						else {
 							return_error!(table_not_found(
-								table_id.name.to_owned(),
+								self.interner.intern_fragment(&table_id.name),
 								&namespace_def.name,
 								table_id.name.text()
 							));
 						};
 
-						let namespace_id =
-							table_id.namespace.map(|n| n.to_owned()).unwrap_or_else(|| {
-								Fragment::internal(namespace_def.name.clone())
-							});
+						let namespace_id = match table_id.namespace {
+							Some(n) => self.interner.intern_fragment(&n),
+							None => Fragment::internal(namespace_def.name.clone()),
+						};
 						let resolved_namespace =
 							ResolvedNamespace::new(namespace_id, namespace_def);
 						Some(ResolvedTable::new(
-							table_id.name.to_owned(),
+							self.interner.intern_fragment(&table_id.name),
 							resolved_namespace,
 							table_def,
 						))
@@ -332,19 +335,19 @@ impl Compiler {
 					)?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.to_owned(),
+							self.interner.intern_fragment(&ringbuffer_id.name),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ringbuffer_id
-						.namespace
-						.map(|n| n.to_owned())
-						.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
+					let namespace_id = match ringbuffer_id.namespace {
+						Some(n) => self.interner.intern_fragment(&n),
+						None => Fragment::internal(namespace_def.name.clone()),
+					};
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ringbuffer_id.name.to_owned(),
+						self.interner.intern_fragment(&ringbuffer_id.name),
 						resolved_namespace,
 						ringbuffer_def,
 					);
@@ -376,19 +379,19 @@ impl Compiler {
 					)?
 					else {
 						return_error!(table_not_found(
-							table.name.to_owned(),
+							self.interner.intern_fragment(&table.name),
 							&namespace_def.name,
 							table.name.text()
 						));
 					};
 
-					let namespace_id = table
-						.namespace
-						.map(|n| n.to_owned())
-						.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
+					let namespace_id = match table.namespace {
+						Some(n) => self.interner.intern_fragment(&n),
+						None => Fragment::internal(namespace_def.name.clone()),
+					};
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedTable::new(
-						table.name.to_owned(),
+						self.interner.intern_fragment(&table.name),
 						resolved_namespace,
 						table_def,
 					);
@@ -422,19 +425,19 @@ impl Compiler {
 					)?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.to_owned(),
+							self.interner.intern_fragment(&ringbuffer_id.name),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ringbuffer_id
-						.namespace
-						.map(|n| n.to_owned())
-						.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
+					let namespace_id = match ringbuffer_id.namespace {
+						Some(n) => self.interner.intern_fragment(&n),
+						None => Fragment::internal(namespace_def.name.clone()),
+					};
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ringbuffer_id.name.to_owned(),
+						self.interner.intern_fragment(&ringbuffer_id.name),
 						resolved_namespace,
 						ringbuffer_def,
 					);
@@ -464,19 +467,19 @@ impl Compiler {
 					)?
 					else {
 						return_error!(dictionary_not_found(
-							dictionary_id.name.to_owned(),
+							self.interner.intern_fragment(&dictionary_id.name),
 							&namespace_def.name,
 							dictionary_id.name.text()
 						));
 					};
 
-					let namespace_id = dictionary_id
-						.namespace
-						.map(|n| n.to_owned())
-						.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
+					let namespace_id = match dictionary_id.namespace {
+						Some(n) => self.interner.intern_fragment(&n),
+						None => Fragment::internal(namespace_def.name.clone()),
+					};
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedDictionary::new(
-						dictionary_id.name.to_owned(),
+						self.interner.intern_fragment(&dictionary_id.name),
 						resolved_namespace,
 						dictionary_def,
 					);
@@ -527,20 +530,20 @@ impl Compiler {
 						)?
 						else {
 							return_error!(table_not_found(
-								table_id.name.to_owned(),
+								self.interner.intern_fragment(&table_id.name),
 								&namespace_def.name,
 								table_id.name.text()
 							));
 						};
 
-						let namespace_id =
-							table_id.namespace.map(|n| n.to_owned()).unwrap_or_else(|| {
-								Fragment::internal(namespace_def.name.clone())
-							});
+						let namespace_id = match table_id.namespace {
+							Some(n) => self.interner.intern_fragment(&n),
+							None => Fragment::internal(namespace_def.name.clone()),
+						};
 						let resolved_namespace =
 							ResolvedNamespace::new(namespace_id, namespace_def);
 						Some(ResolvedTable::new(
-							table_id.name.to_owned(),
+							self.interner.intern_fragment(&table_id.name),
 							resolved_namespace,
 							table_def,
 						))
@@ -589,19 +592,19 @@ impl Compiler {
 					)?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.to_owned(),
+							self.interner.intern_fragment(&ringbuffer_id.name),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ringbuffer_id
-						.namespace
-						.map(|n| n.to_owned())
-						.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
+					let namespace_id = match ringbuffer_id.namespace {
+						Some(n) => self.interner.intern_fragment(&n),
+						None => Fragment::internal(namespace_def.name.clone()),
+					};
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ringbuffer_id.name.to_owned(),
+						self.interner.intern_fragment(&ringbuffer_id.name),
 						resolved_namespace,
 						ringbuffer_def,
 					);
@@ -615,33 +618,36 @@ impl Compiler {
 				LogicalPlan::JoinInner(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
+					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
 					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
 						left: Box::new(to_query_plan(left)),
 						right: Box::new(to_query_plan(right)),
 						on: join.on,
-						alias: join.alias.map(|a| a.to_owned()),
+						alias,
 					}));
 				}
 
 				LogicalPlan::JoinLeft(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
+					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
 					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
 						left: Box::new(to_query_plan(left)),
 						right: Box::new(to_query_plan(right)),
 						on: join.on,
-						alias: join.alias.map(|a| a.to_owned()),
+						alias,
 					}));
 				}
 
 				LogicalPlan::JoinNatural(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
+					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
 					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
 						left: Box::new(to_query_plan(left)),
 						right: Box::new(to_query_plan(right)),
 						join_type: join.join_type,
-						alias: join.alias.map(|a| a.to_owned()),
+						alias,
 					}));
 				}
 
@@ -667,52 +673,49 @@ impl Compiler {
 
 					// For now, create placeholder resolved columns
 					// In a real implementation, this would resolve from the query context
-					let resolved_columns = distinct
-						.columns
-						.into_iter()
-						.map(|col| {
-							// Create a placeholder resolved column
-							let namespace = ResolvedNamespace::new(
-								Fragment::internal("_context"),
-								NamespaceDef {
-									id: NamespaceId(1),
-									name: "_context".to_string(),
-								},
-							);
-
-							let table_def = TableDef {
-								id: TableId(1),
-								namespace: NamespaceId(1),
+					let mut resolved_columns = Vec::with_capacity(distinct.columns.len());
+					for col in distinct.columns {
+						// Create a placeholder resolved column
+						let namespace = ResolvedNamespace::new(
+							Fragment::internal("_context"),
+							NamespaceDef {
+								id: NamespaceId(1),
 								name: "_context".to_string(),
-								columns: vec![],
-								primary_key: None,
-							};
+							},
+						);
 
-							let resolved_table = ResolvedTable::new(
-								Fragment::internal("_context"),
-								namespace,
-								table_def,
-							);
+						let table_def = TableDef {
+							id: TableId(1),
+							namespace: NamespaceId(1),
+							name: "_context".to_string(),
+							columns: vec![],
+							primary_key: None,
+						};
 
-							let resolved_source = ResolvedPrimitive::Table(resolved_table);
+						let resolved_table = ResolvedTable::new(
+							Fragment::internal("_context"),
+							namespace,
+							table_def,
+						);
 
-							let column_def = ColumnDef {
-								id: ColumnId(1),
-								name: col.name.text().to_string(),
-								constraint: TypeConstraint::unconstrained(Type::Utf8),
-								policies: vec![],
-								index: ColumnIndex(0),
-								auto_increment: false,
-								dictionary_id: None,
-							};
+						let resolved_source = ResolvedPrimitive::Table(resolved_table);
 
-							ResolvedColumn::new(
-								col.name.to_owned(),
-								resolved_source,
-								column_def,
-							)
-						})
-						.collect();
+						let column_def = ColumnDef {
+							id: ColumnId(1),
+							name: col.name.text().to_string(),
+							constraint: TypeConstraint::unconstrained(Type::Utf8),
+							policies: vec![],
+							index: ColumnIndex(0),
+							auto_increment: false,
+							dictionary_id: None,
+						};
+
+						resolved_columns.push(ResolvedColumn::new(
+							self.interner.intern_fragment(&col.name),
+							resolved_source,
+							column_def,
+						));
+					}
 
 					stack.push(PhysicalPlan::Distinct(DistinctNode {
 						columns: resolved_columns,
@@ -747,7 +750,7 @@ impl Compiler {
 				LogicalPlan::Apply(apply) => {
 					let input = stack.pop().map(|p| Box::new(to_query_plan(p)));
 					stack.push(PhysicalPlan::Apply(ApplyNode {
-						operator: apply.operator.to_owned(),
+						operator: self.interner.intern_fragment(&apply.operator),
 						expressions: apply.arguments,
 						input,
 					}));
@@ -916,7 +919,7 @@ impl Compiler {
 					};
 
 					stack.push(PhysicalPlan::Declare(DeclareNode {
-						name: declare_node.name.to_owned(),
+						name: self.interner.intern_fragment(&declare_node.name),
 						value,
 					}));
 				}
@@ -939,7 +942,7 @@ impl Compiler {
 					};
 
 					stack.push(PhysicalPlan::Assign(AssignNode {
-						name: assign_node.name.to_owned(),
+						name: self.interner.intern_fragment(&assign_node.name),
 						value,
 					}));
 				}
@@ -947,7 +950,7 @@ impl Compiler {
 				LogicalPlan::VariableSource(source) => {
 					// Create a variable expression to resolve at runtime
 					let variable_expr = VariableExpression {
-						fragment: source.name.to_owned(),
+						fragment: self.interner.intern_fragment(&source.name),
 					};
 
 					stack.push(PhysicalPlan::Variable(VariableNode {
@@ -1036,7 +1039,7 @@ impl Compiler {
 
 					stack.push(PhysicalPlan::Scalarize(ScalarizeNode {
 						input: input_plan,
-						fragment: scalarize_node.fragment.to_owned(),
+						fragment: self.interner.intern_fragment(&scalarize_node.fragment),
 					}));
 				}
 
@@ -1088,7 +1091,7 @@ impl Compiler {
 						}
 					}
 					stack.push(PhysicalPlan::For(ForPhysicalNode {
-						variable_name: for_node.variable_name.to_owned(),
+						variable_name: self.interner.intern_fragment(&for_node.variable_name),
 						iterable: Box::new(iterable),
 						body,
 					}));
@@ -1104,14 +1107,13 @@ impl Compiler {
 
 				LogicalPlan::DefineFunction(def_node) => {
 					// Convert parameters
-					let parameters: Vec<FunctionParameter> = def_node
-						.parameters
-						.into_iter()
-						.map(|p| FunctionParameter {
-							name: p.name.to_owned(),
+					let mut parameters = Vec::with_capacity(def_node.parameters.len());
+					for p in def_node.parameters {
+						parameters.push(FunctionParameter {
+							name: self.interner.intern_fragment(&p.name),
 							type_constraint: p.type_constraint,
-						})
-						.collect();
+						});
+					}
 
 					// Compile the body
 					let mut body = Vec::new();
@@ -1126,7 +1128,7 @@ impl Compiler {
 					}
 
 					stack.push(PhysicalPlan::DefineFunction(DefineFunctionNode {
-						name: def_node.name.to_owned(),
+						name: self.interner.intern_fragment(&def_node.name),
 						parameters,
 						return_type: def_node.return_type,
 						body,
@@ -1141,7 +1143,7 @@ impl Compiler {
 
 				LogicalPlan::CallFunction(call_node) => {
 					stack.push(PhysicalPlan::CallFunction(CallFunctionNode {
-						name: call_node.name.to_owned(),
+						name: self.interner.intern_fragment(&call_node.name),
 						arguments: call_node.arguments,
 					}));
 				}

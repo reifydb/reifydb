@@ -16,18 +16,17 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_create_flow<T: AsTransaction>(
-		&self,
+		&mut self,
 		rx: &mut T,
 		create: logical::CreateFlowNode<'_>,
 	) -> crate::Result<PhysicalPlan> {
 		// Get namespace name from the MaybeQualified type
 		let namespace_name = create.flow.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 		let Some(namespace) = self.catalog.find_namespace_by_name(rx, namespace_name)? else {
-			let ns_fragment = create
-				.flow
-				.namespace
-				.map(|n| n.to_owned())
-				.unwrap_or_else(|| Fragment::internal("default".to_string()));
+			let ns_fragment = match create.flow.namespace {
+				Some(n) => self.interner.intern_fragment(&n),
+				None => Fragment::internal("default".to_string()),
+			};
 			return_error!(namespace_not_found(ns_fragment, namespace_name));
 		};
 
@@ -36,7 +35,7 @@ impl Compiler {
 
 		Ok(CreateFlow(CreateFlowNode {
 			namespace,
-			flow: create.flow.name.to_owned(),
+			flow: self.interner.intern_fragment(&create.flow.name),
 			if_not_exists: create.if_not_exists,
 			as_clause: Box::new(query_plan),
 		}))

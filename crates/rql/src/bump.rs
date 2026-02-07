@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::{collections::HashMap, sync::Arc};
+
 pub(crate) use bumpalo::{Bump, collections::Vec as BumpVec};
-use reifydb_type::fragment::Fragment;
-pub use reifydb_type::fragment::{StatementColumn, StatementLine};
+use reifydb_type::fragment::{Fragment, StatementColumn, StatementLine};
 
 pub(crate) type BumpBox<'b, T> = bumpalo::boxed::Box<'b, T>;
 
@@ -72,10 +73,16 @@ impl<'bump> BumpFragment<'bump> {
 				text,
 				line,
 				column,
-			} => Fragment::statement(*text, line.0, column.0),
+			} => Fragment::Statement {
+				text: Arc::from(*text),
+				line: *line,
+				column: *column,
+			},
 			BumpFragment::Internal {
 				text,
-			} => Fragment::internal(*text),
+			} => Fragment::Internal {
+				text: Arc::from(*text),
+			},
 		}
 	}
 }
@@ -83,5 +90,49 @@ impl<'bump> BumpFragment<'bump> {
 impl Default for BumpFragment<'_> {
 	fn default() -> Self {
 		BumpFragment::None
+	}
+}
+
+/// Deduplicates `Arc<str>` allocations within a single query compilation.
+///
+/// Identifiers like column names, table names, and operators often repeat across
+/// a query (e.g., `SELECT a, b FROM t WHERE a > 5` — `"a"` appears twice).
+/// The interner maps `&str → Arc<str>`, so the second occurrence just bumps a refcount.
+pub(crate) struct FragmentInterner {
+	strings: HashMap<*const str, Arc<str>>,
+}
+
+impl FragmentInterner {
+	pub fn new() -> Self {
+		Self {
+			strings: HashMap::new(),
+		}
+	}
+
+	pub fn intern(&mut self, text: &str) -> Arc<str> {
+		// Use the raw pointer as key — within a single compilation, bump-allocated
+		// strings at the same address are the same string.
+		let key = text as *const str;
+		self.strings.entry(key).or_insert_with(|| Arc::from(text)).clone()
+	}
+
+	pub fn intern_fragment(&mut self, fragment: &BumpFragment<'_>) -> Fragment {
+		match fragment {
+			BumpFragment::None => Fragment::None,
+			BumpFragment::Statement {
+				text,
+				line,
+				column,
+			} => Fragment::Statement {
+				text: self.intern(text),
+				line: *line,
+				column: *column,
+			},
+			BumpFragment::Internal {
+				text,
+			} => Fragment::Internal {
+				text: self.intern(text),
+			},
+		}
 	}
 }

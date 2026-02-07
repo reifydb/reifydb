@@ -10,13 +10,13 @@ use crate::plan::{
 
 impl Compiler {
 	pub(crate) fn compile_create_namespace<T: AsTransaction>(
-		&self,
+		&mut self,
 		_rx: &mut T,
 		create: logical::CreateNamespaceNode<'_>,
 	) -> crate::Result<PhysicalPlan> {
 		// FIXME validate catalog
 		Ok(PhysicalPlan::CreateNamespace(CreateNamespaceNode {
-			namespace: create.namespace.to_owned(),
+			namespace: self.interner.intern_fragment(&create.namespace),
 			if_not_exists: create.if_not_exists,
 		}))
 	}

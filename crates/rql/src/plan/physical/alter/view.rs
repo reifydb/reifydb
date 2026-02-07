@@ -45,54 +45,51 @@ pub struct AlterColumnIdentifier {
 
 impl Compiler {
 	pub(crate) fn compile_alter_view<T: AsTransaction>(
-		&self,
+		&mut self,
 		_rx: &mut T,
 		alter: logical::alter::view::AlterViewNode<'_>,
 	) -> crate::Result<PhysicalPlan> {
 		// Materialize logical node to physical node
 		let view = AlterViewIdentifier {
-			namespace: alter.view.namespace.map(|n| n.to_owned()),
-			name: alter.view.name.to_owned(),
+			namespace: alter.view.namespace.map(|n| self.interner.intern_fragment(&n)),
+			name: self.interner.intern_fragment(&alter.view.name),
 		};
 
-		let operations = alter
-			.operations
-			.into_iter()
-			.map(|op| match op {
+		let mut operations = Vec::with_capacity(alter.operations.len());
+		for op in alter.operations {
+			match op {
 				logical::alter::view::AlterViewOperation::CreatePrimaryKey {
 					name,
 					columns,
 				} => {
-					let columns = columns
-						.into_iter()
-						.map(|col| {
-							use crate::ast::identifier::MaybeQualifiedColumnPrimitive;
-							let namespace = match col.column.primitive {
-								MaybeQualifiedColumnPrimitive::Primitive {
-									namespace,
-									..
-								} => namespace.map(|n| n.to_owned()),
-								_ => None,
-							};
-							AlterIndexColumn {
-								column: AlterColumnIdentifier {
-									namespace,
-									name: col.column.name.to_owned(),
-								},
-								order: col.order,
-							}
-						})
-						.collect();
-					AlterViewOperation::CreatePrimaryKey {
-						name: name.map(|n| n.to_owned()),
-						columns,
+					let mut physical_columns = Vec::with_capacity(columns.len());
+					for col in columns {
+						use crate::ast::identifier::MaybeQualifiedColumnPrimitive;
+						let namespace = match col.column.primitive {
+							MaybeQualifiedColumnPrimitive::Primitive {
+								namespace,
+								..
+							} => namespace.map(|n| self.interner.intern_fragment(&n)),
+							_ => None,
+						};
+						physical_columns.push(AlterIndexColumn {
+							column: AlterColumnIdentifier {
+								namespace,
+								name: self.interner.intern_fragment(&col.column.name),
+							},
+							order: col.order,
+						});
 					}
+					operations.push(AlterViewOperation::CreatePrimaryKey {
+						name: name.map(|n| self.interner.intern_fragment(&n)),
+						columns: physical_columns,
+					});
 				}
 				logical::alter::view::AlterViewOperation::DropPrimaryKey => {
-					AlterViewOperation::DropPrimaryKey
+					operations.push(AlterViewOperation::DropPrimaryKey);
 				}
-			})
-			.collect();
+			}
+		}
 
 		let plan = AlterViewNode {
 			view,

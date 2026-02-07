@@ -55,14 +55,14 @@ pub enum Fragment {
 
 	/// Fragment from a RQL statement with position information
 	Statement {
-		text: Arc<String>,
+		text: Arc<str>,
 		line: StatementLine,
 		column: StatementColumn,
 	},
 
 	/// Fragment from internal/runtime code
 	Internal {
-		text: Arc<String>,
+		text: Arc<str>,
 	},
 }
 
@@ -122,14 +122,14 @@ impl Fragment {
 				column,
 				..
 			} => Fragment::Statement {
-				text: Arc::from(sub_text.to_string()),
+				text: Arc::from(sub_text),
 				line: *line,
 				column: StatementColumn(column.0 + offset as u32),
 			},
 			Fragment::Internal {
 				..
 			} => Fragment::Internal {
-				text: Arc::from(sub_text.to_string()),
+				text: Arc::from(sub_text),
 			},
 		}
 	}
@@ -243,7 +243,7 @@ impl From<String> for Fragment {
 impl From<&str> for Fragment {
 	fn from(s: &str) -> Self {
 		Fragment::Internal {
-			text: Arc::from(s.to_string()),
+			text: Arc::from(s),
 		}
 	}
 }

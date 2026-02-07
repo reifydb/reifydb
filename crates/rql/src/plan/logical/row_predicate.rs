@@ -156,14 +156,14 @@ pub mod tests {
 		let column = ColumnIdentifier {
 			primitive: ColumnPrimitive::Primitive {
 				namespace: Fragment::Internal {
-					text: Arc::new("_context".to_string()),
+					text: Arc::from("_context"),
 				},
 				primitive: Fragment::Internal {
-					text: Arc::new("_context".to_string()),
+					text: Arc::from("_context"),
 				},
 			},
 			name: Fragment::Internal {
-				text: Arc::new(ROW_NUMBER_COLUMN_NAME.to_string()),
+				text: Arc::from(ROW_NUMBER_COLUMN_NAME),
 			},
 		};
 		Expression::Column(ColumnExpression(column))
@@ -246,14 +246,14 @@ pub mod tests {
 		let other_column = ColumnIdentifier {
 			primitive: ColumnPrimitive::Primitive {
 				namespace: Fragment::Internal {
-					text: Arc::new("default".to_string()),
+					text: Arc::from("default"),
 				},
 				primitive: Fragment::Internal {
-					text: Arc::new("users".to_string()),
+					text: Arc::from("users"),
 				},
 			},
 			name: Fragment::Internal {
-				text: Arc::new("id".to_string()),
+				text: Arc::from("id"),
 			},
 		};
 		let eq = EqExpression {

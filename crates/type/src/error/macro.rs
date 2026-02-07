@@ -125,7 +125,7 @@ pub mod tests {
 		let fragment = Fragment::Statement {
 			line: StatementLine(42),
 			column: StatementColumn(10),
-			text: Arc::new("test fragment".to_string()),
+			text: Arc::from("test fragment"),
 		};
 
 		// Test that error! macro with fragment creates correct Error
@@ -156,7 +156,7 @@ pub mod tests {
 			let fragment = Fragment::Statement {
 				line: StatementLine(100),
 				column: StatementColumn(25),
-				text: Arc::new("error location".to_string()),
+				text: Arc::from("error location"),
 			};
 			return_error!(nan_not_allowed(), fragment);
 		}
@@ -185,7 +185,7 @@ pub mod tests {
 		let fragment = Fragment::Statement {
 			line: StatementLine(200),
 			column: StatementColumn(50),
-			text: Arc::new("err fragment test".to_string()),
+			text: Arc::from("err fragment test"),
 		};
 
 		// Test that err! macro with fragment creates correct Result
@@ -217,7 +217,7 @@ pub mod tests {
 		let get_fragment = || Fragment::Statement {
 			line: StatementLine(300),
 			column: StatementColumn(75),
-			text: Arc::new("closure fragment".to_string()),
+			text: Arc::from("closure fragment"),
 		};
 
 		let err = error!(nan_not_allowed(), get_fragment());

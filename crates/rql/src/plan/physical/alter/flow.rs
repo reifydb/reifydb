@@ -35,20 +35,20 @@ pub enum AlterFlowAction {
 
 impl Compiler {
 	pub(crate) fn compile_alter_flow<T: AsTransaction>(
-		&self,
+		&mut self,
 		rx: &mut T,
 		alter: logical::alter::flow::AlterFlowNode<'_>,
 	) -> crate::Result<PhysicalPlan> {
 		let flow = AlterFlowIdentifier {
-			namespace: alter.flow.namespace.map(|n| n.to_owned()),
-			name: alter.flow.name.to_owned(),
+			namespace: alter.flow.namespace.map(|n| self.interner.intern_fragment(&n)),
+			name: self.interner.intern_fragment(&alter.flow.name),
 		};
 
 		let action = match alter.action {
 			logical::alter::flow::AlterFlowAction::Rename {
 				new_name,
 			} => AlterFlowAction::Rename {
-				new_name: new_name.to_owned(),
+				new_name: self.interner.intern_fragment(&new_name),
 			},
 			logical::alter::flow::AlterFlowAction::SetQuery {
 				query,

@@ -201,7 +201,7 @@ fn extract_primitive(cp: &ColumnPrimitive) -> (String, String) {
 // Helper to create an internal fragment
 fn internal_fragment(text: &str) -> Fragment {
 	Fragment::Internal {
-		text: Arc::from(text.to_string()),
+		text: Arc::from(text),
 	}
 }
 

@@ -13,35 +13,33 @@ use crate::plan::{
 
 impl Compiler {
 	pub(crate) fn compile_create_table<T: AsTransaction>(
-		&self,
+		&mut self,
 		rx: &mut T,
 		create: logical::CreateTableNode<'_>,
 	) -> crate::Result<PhysicalPlan> {
 		// Get namespace name from the MaybeQualified type
 		let namespace_name = create.table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, namespace_name)? else {
-			let ns_fragment = create
-				.table
-				.namespace
-				.map(|n| n.to_owned())
-				.unwrap_or_else(|| Fragment::internal("default".to_string()));
+			let ns_fragment = match create.table.namespace {
+				Some(n) => self.interner.intern_fragment(&n),
+				None => Fragment::internal("default".to_string()),
+			};
 			return_error!(namespace_not_found(ns_fragment, namespace_name));
 		};
 
 		// Create a ResolvedNamespace
-		let namespace_id = create
-			.table
-			.namespace
-			.map(|n| n.to_owned())
-			.unwrap_or_else(|| Fragment::internal(namespace_def.name.clone()));
+		let namespace_id = match create.table.namespace {
+			Some(n) => self.interner.intern_fragment(&n),
+			None => Fragment::internal(namespace_def.name.clone()),
+		};
 		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 
 		Ok(CreateTable(CreateTableNode {
 			namespace: resolved_namespace,
-			table: create.table.name.to_owned(),
+			table: self.interner.intern_fragment(&create.table.name),
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
-			primary_key: super::materialize_primary_key(create.primary_key),
+			primary_key: super::materialize_primary_key(&mut self.interner, create.primary_key),
 		}))
 	}
 }

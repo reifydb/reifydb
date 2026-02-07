@@ -212,8 +212,9 @@ pub mod tests {
 
 	#[test]
 	fn test_namespaced_function_call_with_keyword_name() {
-		let tokens = tokenize("clock::set(1000)").unwrap();
-		let result = parse(tokens).unwrap();
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "clock::set(1000)").unwrap().into_iter().collect();
+		let result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();

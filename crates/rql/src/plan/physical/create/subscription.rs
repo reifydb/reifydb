@@ -13,7 +13,7 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_create_subscription<T: AsTransaction>(
-		&self,
+		&mut self,
 		rx: &mut T,
 		create: logical::CreateSubscriptionNode<'_>,
 	) -> crate::Result<PhysicalPlan> {

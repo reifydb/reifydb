@@ -16,18 +16,17 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_create_deferred<T: AsTransaction>(
-		&self,
+		&mut self,
 		rx: &mut T,
 		create: logical::CreateDeferredViewNode<'_>,
 	) -> crate::Result<PhysicalPlan> {
 		// Get namespace name from the MaybeQualified type
 		let namespace_name = create.view.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 		let Some(namespace) = self.catalog.find_namespace_by_name(rx, namespace_name)? else {
-			let ns_fragment = create
-				.view
-				.namespace
-				.map(|n| n.to_owned())
-				.unwrap_or_else(|| Fragment::internal("default".to_string()));
+			let ns_fragment = match create.view.namespace {
+				Some(n) => self.interner.intern_fragment(&n),
+				None => Fragment::internal("default".to_string()),
+			};
 			return_error!(namespace_not_found(ns_fragment, namespace_name));
 		};
 
@@ -36,11 +35,11 @@ impl Compiler {
 
 		Ok(CreateDeferredView(CreateDeferredViewNode {
 			namespace,
-			view: create.view.name.to_owned(),
+			view: self.interner.intern_fragment(&create.view.name),
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
 			as_clause: Box::new(query_plan),
-			primary_key: super::materialize_primary_key(create.primary_key),
+			primary_key: super::materialize_primary_key(&mut self.interner, create.primary_key),
 		}))
 	}
 }
