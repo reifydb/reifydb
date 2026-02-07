@@ -229,6 +229,7 @@ impl DatabaseBuilder {
 			.register_scalar("math::min", math::scalar::min::Min::new)
 			.register_scalar("math::round", math::scalar::round::Round::new)
 			.register_scalar("math::power", math::scalar::power::Power::new)
+			.register_scalar("text::concat", text::concat::TextConcat::new)
 			.register_scalar("text::count", text::count::TextCount::new)
 			.register_scalar("text::length", text::length::TextLength::new)
 			.register_scalar("text::trim", text::trim::TextTrim::new)
