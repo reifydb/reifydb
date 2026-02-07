@@ -14,9 +14,9 @@ use crate::{
 	plan::{
 		logical::compile_logical,
 		physical::{
-			AggregateNode, AlterFlowAction, ApplyNode, DistinctNode, ExtendNode, FilterNode,
-			JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, MergeNode, PatchNode, PhysicalPlan,
-			SortNode, TakeNode, compile_physical,
+			AggregateNode, AlterFlowAction, ApplyNode, DistinctNode, ExtendNode, FilterNode, JoinInnerNode,
+			JoinLeftNode, JoinNaturalNode, MapNode, MergeNode, PatchNode, PhysicalPlan, SortNode, TakeNode,
+			compile_physical,
 		},
 	},
 };

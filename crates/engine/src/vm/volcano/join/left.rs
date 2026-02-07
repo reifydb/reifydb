@@ -10,12 +10,12 @@ use tracing::instrument;
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
 use crate::{
 	evaluate::{ColumnEvaluationContext, column::evaluate},
-	vm::volcano::query::{QueryContext, QueryNode, QueryOperator},
+	vm::volcano::query::{QueryContext, QueryNode},
 };
 
 pub struct LeftJoinNode {
-	left: Box<QueryOperator>,
-	right: Box<QueryOperator>,
+	left: Box<dyn QueryNode>,
+	right: Box<dyn QueryNode>,
 	on: Vec<Expression>,
 	alias: Option<Fragment>,
 	headers: Option<ColumnHeaders>,
@@ -24,8 +24,8 @@ pub struct LeftJoinNode {
 
 impl LeftJoinNode {
 	pub(crate) fn new(
-		left: Box<QueryOperator>,
-		right: Box<QueryOperator>,
+		left: Box<dyn QueryNode>,
+		right: Box<dyn QueryNode>,
 		on: Vec<Expression>,
 		alias: Option<Fragment>,
 	) -> Self {

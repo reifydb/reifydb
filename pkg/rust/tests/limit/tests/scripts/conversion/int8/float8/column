@@ -42,11 +42,11 @@ command 'from test.conversion map {cast(col, float8)}'
 !command 'from test.conversion map {cast(col, float8)}'
 ---
 >  Error CAST_002: failed to cast to Float8
->   at "(colfloat8" (line 1, column 31)
+>   at "col" (line 1, column 32)
 >
 >   1 │ from test.conversion map {cast(col, float8)}
->     │                                ~~~~~~~~~~
->     │                         failed to cast to Float8
+>     │                                ~~~
+>     │                     failed to cast to Float8
 >
 >   ↳  Error NUMBER_004: too large for precise float conversion
 >     at "col" (line 1, column 32)

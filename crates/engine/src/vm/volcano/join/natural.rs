@@ -12,11 +12,11 @@ use reifydb_type::{fragment::Fragment, value::Value};
 use tracing::instrument;
 
 use super::common::{JoinContext, load_and_merge_all, resolve_column_names};
-use crate::vm::volcano::query::{QueryContext, QueryNode, QueryOperator};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub struct NaturalJoinNode {
-	left: Box<QueryOperator>,
-	right: Box<QueryOperator>,
+	left: Box<dyn QueryNode>,
+	right: Box<dyn QueryNode>,
 	join_type: JoinType,
 	alias: Option<Fragment>,
 	headers: Option<ColumnHeaders>,
@@ -25,8 +25,8 @@ pub struct NaturalJoinNode {
 
 impl NaturalJoinNode {
 	pub(crate) fn new(
-		left: Box<QueryOperator>,
-		right: Box<QueryOperator>,
+		left: Box<dyn QueryNode>,
+		right: Box<dyn QueryNode>,
 		join_type: JoinType,
 		alias: Option<Fragment>,
 	) -> Self {

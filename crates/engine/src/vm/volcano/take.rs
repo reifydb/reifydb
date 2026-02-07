@@ -5,16 +5,16 @@ use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode, QueryOperator};
+use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub(crate) struct TakeNode {
-	input: Box<QueryOperator>,
+	input: Box<dyn QueryNode>,
 	remaining: usize,
 	initialized: Option<()>,
 }
 
 impl TakeNode {
-	pub(crate) fn new(input: Box<QueryOperator>, take: usize) -> Self {
+	pub(crate) fn new(input: Box<dyn QueryNode>, take: usize) -> Self {
 		Self {
 			input,
 			remaining: take,

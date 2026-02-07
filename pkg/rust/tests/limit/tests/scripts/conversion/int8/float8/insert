@@ -41,11 +41,11 @@ command 'from test.conversion map {col}'
 !command 'INSERT test.float4_test10 [{ col: cast(cast(16777217, int8), float4) }]'
 ---
 >  Error CAST_002: failed to cast to Float4
->   at "(16777217float4" (line 1, column 39)
+>   at "16777217" (line 1, column 45)
 >
 >   1 │ INSERT test.float4_test10 [{ col: cast(cast(16777217, int8), float4) }]
->     │                                        ~~~~~~~~~~~~~~~
->     │                                   failed to cast to Float4
+>     │                                             ~~~~~~~~
+>     │                                     failed to cast to Float4
 >
 >   ↳  Error NUMBER_004: too large for precise float conversion
 >     at "16777217" (line 1, column 45)

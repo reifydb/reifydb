@@ -48,7 +48,7 @@ use crate::vm::volcano::{
 	join::{inner::InnerJoinNode, left::LeftJoinNode, natural::NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
 	patch::PatchNode,
-	query::{QueryContext, QueryOperator},
+	query::{QueryContext, QueryNode},
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
 	scan::{
@@ -77,23 +77,27 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 }
 
 #[instrument(name = "volcano::compile", level = "trace", skip(plan, rx, context))]
-pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context: Arc<QueryContext>) -> QueryOperator {
+pub(crate) fn compile<'a>(
+	plan: RqlQueryPlan,
+	rx: &mut Transaction<'a>,
+	context: Arc<QueryContext>,
+) -> Box<dyn QueryNode> {
 	match plan {
 		RqlQueryPlan::Aggregate(RqlAggregateNode {
 			by,
 			map,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context.clone()));
-			QueryOperator::Aggregate(AggregateNode::new(input_node, by, map, context))
+			let input_node = compile(*input, rx, context.clone());
+			Box::new(AggregateNode::new(input_node, by, map, context))
 		}
 
 		RqlQueryPlan::Filter(RqlFilterNode {
 			conditions,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context));
-			QueryOperator::Filter(FilterNode::new(input_node, conditions))
+			let input_node = compile(*input, rx, context);
+			Box::new(FilterNode::new(input_node, conditions))
 		}
 
 		RqlQueryPlan::Take(RqlTakeNode {
@@ -101,19 +105,19 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 			input,
 		}) => {
 			if let RqlQueryPlan::Sort(sort_node) = *input {
-				let input_node = Box::new(compile(*sort_node.input, rx, context));
-				return QueryOperator::TopK(TopKNode::new(input_node, sort_node.by, take));
+				let input_node = compile(*sort_node.input, rx, context);
+				return Box::new(TopKNode::new(input_node, sort_node.by, take));
 			}
-			let input_node = Box::new(compile(*input, rx, context));
-			QueryOperator::Take(TakeNode::new(input_node, take))
+			let input_node = compile(*input, rx, context);
+			Box::new(TakeNode::new(input_node, take))
 		}
 
 		RqlQueryPlan::Sort(RqlSortNode {
 			by,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context));
-			QueryOperator::Sort(SortNode::new(input_node, by))
+			let input_node = compile(*input, rx, context);
+			Box::new(SortNode::new(input_node, by))
 		}
 
 		RqlQueryPlan::Map(RqlMapNode {
@@ -121,10 +125,10 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile(*input, rx, context));
-				QueryOperator::Map(MapNode::new(input_node, map))
+				let input_node = compile(*input, rx, context);
+				Box::new(MapNode::new(input_node, map))
 			} else {
-				QueryOperator::MapWithoutInput(MapWithoutInputNode::new(map))
+				Box::new(MapWithoutInputNode::new(map))
 			}
 		}
 
@@ -133,10 +137,10 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile(*input, rx, context));
-				QueryOperator::Extend(ExtendNode::new(input_node, extend))
+				let input_node = compile(*input, rx, context);
+				Box::new(ExtendNode::new(input_node, extend))
 			} else {
-				QueryOperator::ExtendWithoutInput(ExtendWithoutInputNode::new(extend))
+				Box::new(ExtendWithoutInputNode::new(extend))
 			}
 		}
 
@@ -146,8 +150,8 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 		}) => {
 			// Patch requires input - it merges with existing row
 			let input = input.expect("Patch requires input");
-			let input_node = Box::new(compile(*input, rx, context));
-			QueryOperator::Patch(PatchNode::new(input_node, assignments))
+			let input_node = compile(*input, rx, context);
+			Box::new(PatchNode::new(input_node, assignments))
 		}
 
 		RqlQueryPlan::JoinInner(RqlJoinInnerNode {
@@ -163,9 +167,9 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
-			QueryOperator::InnerJoin(InnerJoinNode::new(left_node, right_node, on, effective_alias))
+			let left_node = compile(*left, rx, context.clone());
+			let right_node = compile(*right, rx, context.clone());
+			Box::new(InnerJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
 		RqlQueryPlan::JoinLeft(RqlJoinLeftNode {
@@ -181,9 +185,9 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
-			QueryOperator::LeftJoin(LeftJoinNode::new(left_node, right_node, on, effective_alias))
+			let left_node = compile(*left, rx, context.clone());
+			let right_node = compile(*right, rx, context.clone());
+			Box::new(LeftJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
 		RqlQueryPlan::JoinNatural(RqlJoinNaturalNode {
@@ -198,19 +202,19 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
-			QueryOperator::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type, effective_alias))
+			let left_node = compile(*left, rx, context.clone());
+			let right_node = compile(*right, rx, context.clone());
+			Box::new(NaturalJoinNode::new(left_node, right_node, join_type, effective_alias))
 		}
 
 		RqlQueryPlan::InlineData(RqlInlineDataNode {
 			rows,
-		}) => QueryOperator::InlineData(InlineDataNode::new(rows, context)),
+		}) => Box::new(InlineDataNode::new(rows, context)),
 
 		RqlQueryPlan::Generator(RqlGeneratorNode {
 			name,
 			expressions,
-		}) => QueryOperator::Generator(GeneratorNode::new(name, expressions)),
+		}) => Box::new(GeneratorNode::new(name, expressions)),
 
 		RqlQueryPlan::IndexScan(node) => {
 			let table = node.source.def().clone();
@@ -218,19 +222,17 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 				unimplemented!()
 			};
 
-			QueryOperator::IndexScan(IndexScanNode::new(table, IndexId::primary(pk.id), context).unwrap())
+			Box::new(IndexScanNode::new(table, IndexId::primary(pk.id), context).unwrap())
 		}
 
 		RqlQueryPlan::TableScan(node) => {
-			QueryOperator::TableScan(TableScanNode::new(node.source.clone(), context, rx).unwrap())
+			Box::new(TableScanNode::new(node.source.clone(), context, rx).unwrap())
 		}
 
-		RqlQueryPlan::ViewScan(node) => {
-			QueryOperator::ViewScan(ViewScanNode::new(node.source.clone(), context).unwrap())
-		}
+		RqlQueryPlan::ViewScan(node) => Box::new(ViewScanNode::new(node.source.clone(), context).unwrap()),
 
 		RqlQueryPlan::RingBufferScan(node) => {
-			QueryOperator::RingBufferScan(RingBufferScan::new(node.source.clone(), context, rx).unwrap())
+			Box::new(RingBufferScan::new(node.source.clone(), context, rx).unwrap())
 		}
 
 		RqlQueryPlan::FlowScan(_node) => {
@@ -239,7 +241,7 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 		}
 
 		RqlQueryPlan::DictionaryScan(node) => {
-			QueryOperator::DictionaryScan(DictionaryScanNode::new(node.source.clone(), context).unwrap())
+			Box::new(DictionaryScanNode::new(node.source.clone(), context).unwrap())
 		}
 
 		RqlQueryPlan::TableVirtualScan(node) => {
@@ -334,18 +336,16 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 					params: context.params.clone(),
 				});
 
-			QueryOperator::VirtualScan(
-				VirtualScanNode::new(virtual_table_impl, context, virtual_context).unwrap(),
-			)
+			Box::new(VirtualScanNode::new(virtual_table_impl, context, virtual_context).unwrap())
 		}
 
-		RqlQueryPlan::Variable(var_node) => QueryOperator::Variable(VariableNode::new(var_node.variable_expr)),
+		RqlQueryPlan::Variable(var_node) => Box::new(VariableNode::new(var_node.variable_expr)),
 
-		RqlQueryPlan::Environment(_) => QueryOperator::Environment(EnvironmentNode::new()),
+		RqlQueryPlan::Environment(_) => Box::new(EnvironmentNode::new()),
 
 		RqlQueryPlan::Scalarize(scalarize_node) => {
 			let input = compile(*scalarize_node.input, rx, context.clone());
-			QueryOperator::Scalarize(ScalarizeNode::new(Box::new(input)))
+			Box::new(ScalarizeNode::new(input))
 		}
 
 		RqlQueryPlan::Distinct(_) => unreachable!(),
@@ -371,7 +371,7 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 			row_number,
 		}) => {
 			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
-			QueryOperator::RowPointLookup(
+			Box::new(
 				RowPointLookupNode::new(resolved_source, row_number, context)
 					.expect("Failed to create RowPointLookupNode"),
 			)
@@ -381,7 +381,7 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 			row_numbers,
 		}) => {
 			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
-			QueryOperator::RowListLookup(
+			Box::new(
 				RowListLookupNode::new(resolved_source, row_numbers, context)
 					.expect("Failed to create RowListLookupNode"),
 			)
@@ -392,7 +392,7 @@ pub(crate) fn compile<'a>(plan: RqlQueryPlan, rx: &mut Transaction<'a>, context:
 			end,
 		}) => {
 			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
-			QueryOperator::RowRangeScan(
+			Box::new(
 				RowRangeScanNode::new(resolved_source, start, end, context)
 					.expect("Failed to create RowRangeScanNode"),
 			)

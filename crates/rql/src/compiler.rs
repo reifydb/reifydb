@@ -5,9 +5,9 @@ use std::{fmt::Debug, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::util::lru::LruCache;
-use reifydb_runtime::hash::{xxh3_128, Hash128};
+use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::AsTransaction;
-use reifydb_type::{error::diagnostic::runtime, value::Value, Result};
+use reifydb_type::{Result, error::diagnostic::runtime, value::Value};
 
 use crate::{
 	ast::parse_str,
@@ -598,7 +598,9 @@ impl InstructionCompiler {
 					view: node.view,
 					if_not_exists: node.if_not_exists,
 					columns: node.columns,
-					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.as_clause))),
+					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+						node.as_clause,
+					))),
 					primary_key: node.primary_key,
 				}));
 				self.emit(Instruction::Emit);
@@ -609,7 +611,9 @@ impl InstructionCompiler {
 					view: node.view,
 					if_not_exists: node.if_not_exists,
 					columns: node.columns,
-					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.as_clause))),
+					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+						node.as_clause,
+					))),
 					primary_key: node.primary_key,
 				}));
 				self.emit(Instruction::Emit);
@@ -619,16 +623,18 @@ impl InstructionCompiler {
 					namespace: node.namespace,
 					flow: node.flow,
 					if_not_exists: node.if_not_exists,
-					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.as_clause))),
+					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+						node.as_clause,
+					))),
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::CreateSubscription(node) => {
 				self.emit(Instruction::CreateSubscription(nodes::CreateSubscriptionNode {
 					columns: node.columns,
-					as_clause: node
-						.as_clause
-						.map(|a| Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(a)))),
+					as_clause: node.as_clause.map(|a| {
+						Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(a)))
+					}),
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -644,7 +650,9 @@ impl InstructionCompiler {
 						physical::AlterFlowAction::SetQuery {
 							query,
 						} => nodes::AlterFlowAction::SetQuery {
-							query: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(query))),
+							query: Box::new(materialize_query_plan(
+								crate::bump::BumpBox::into_inner(query),
+							)),
 						},
 						physical::AlterFlowAction::Pause => nodes::AlterFlowAction::Pause,
 						physical::AlterFlowAction::Resume => nodes::AlterFlowAction::Resume,
@@ -674,35 +682,45 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::InsertTable(node) => {
 				self.emit(Instruction::InsertTable(nodes::InsertTableNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+						node.input,
+					))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::InsertRingBuffer(node) => {
 				self.emit(Instruction::InsertRingBuffer(nodes::InsertRingBufferNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+						node.input,
+					))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::InsertDictionary(node) => {
 				self.emit(Instruction::InsertDictionary(nodes::InsertDictionaryNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+						node.input,
+					))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Update(node) => {
 				self.emit(Instruction::Update(nodes::UpdateTableNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+						node.input,
+					))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::UpdateRingBuffer(node) => {
 				self.emit(Instruction::UpdateRingBuffer(nodes::UpdateRingBufferNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+						node.input,
+					))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
@@ -715,7 +733,8 @@ impl InstructionCompiler {
 						self.compile_expression(&expr);
 					}
 					physical::LetValue::Statement(plan) => {
-						let query = materialize_query_plan(crate::bump::BumpBox::into_inner(plan));
+						let query =
+							materialize_query_plan(crate::bump::BumpBox::into_inner(plan));
 						self.emit(Instruction::Query(query));
 					}
 				}
@@ -727,7 +746,8 @@ impl InstructionCompiler {
 						self.compile_expression(&expr);
 					}
 					physical::AssignValue::Statement(plan) => {
-						let query = materialize_query_plan(crate::bump::BumpBox::into_inner(plan));
+						let query =
+							materialize_query_plan(crate::bump::BumpBox::into_inner(plan));
 						self.emit(Instruction::Query(query));
 					}
 				}

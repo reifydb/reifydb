@@ -17,17 +17,17 @@ use tracing::instrument;
 
 use crate::{
 	evaluate::{ColumnEvaluationContext, column::evaluate},
-	vm::volcano::query::{QueryContext, QueryNode, QueryOperator},
+	vm::volcano::query::{QueryContext, QueryNode},
 };
 
 pub(crate) struct FilterNode {
-	input: Box<QueryOperator>,
+	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
 	context: Option<Arc<QueryContext>>,
 }
 
 impl FilterNode {
-	pub fn new(input: Box<QueryOperator>, expressions: Vec<Expression>) -> Self {
+	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>) -> Self {
 		Self {
 			input,
 			expressions,

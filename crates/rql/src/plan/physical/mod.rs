@@ -18,8 +18,8 @@ use reifydb_core::{
 			table::TableDef,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive,
-			ResolvedRingBuffer, ResolvedTable, ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
+			ResolvedTable, ResolvedView,
 		},
 	},
 	sort::SortKey,
@@ -35,15 +35,12 @@ use tracing::instrument;
 
 use crate::{
 	bump::{Bump, BumpBox},
-	expression::{
-		ConstantExpression::Undefined, Expression, Expression::Constant, VariableExpression,
-	},
+	expression::{ConstantExpression::Undefined, Expression, Expression::Constant, VariableExpression},
 	nodes::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
 		CreateTableNode, DictionaryScanNode, EnvironmentNode, FlowScanNode, GeneratorNode, IndexScanNode,
 		InlineDataNode, PrimaryKeyDef, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
-		RowRangeScanNode, TableScanNode, TableVirtualScanNode, VariableNode,
-		ViewScanNode,
+		RowRangeScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
 	plan::{
 		logical,

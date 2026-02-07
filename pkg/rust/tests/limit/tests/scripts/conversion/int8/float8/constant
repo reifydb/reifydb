@@ -31,11 +31,11 @@ command 'map {cast(cast(-9007199254740992, int8), float8)}'
 !command 'map {cast(cast(9007199254740993, int8), float8)}'
 ---
 >  Error CAST_002: failed to cast to Float8
->   at "(9007199254740993float8" (line 1, column 10)
+>   at "9007199254740993" (line 1, column 16)
 >
 >   1 │ map {cast(cast(9007199254740993, int8), float8)}
->     │           ~~~~~~~~~~~~~~~~~~~~~~~
->     │          failed to cast to Float8
+>     │                ~~~~~~~~~~~~~~~~
+>     │            failed to cast to Float8
 >
 >   ↳  Error NUMBER_004: too large for precise float conversion
 >     at "9007199254740993" (line 1, column 16)
@@ -51,11 +51,11 @@ command 'map {cast(cast(-9007199254740992, int8), float8)}'
 !command 'map {cast(cast(-9007199254740993, int8), float8)}'
 ---
 >  Error CAST_002: failed to cast to Float8
->   at "(-9007199254740993float8" (line 1, column 10)
+>   at "-9007199254740993" (line 1, column 16)
 >
 >   1 │ map {cast(cast(-9007199254740993, int8), float8)}
->     │           ~~~~~~~~~~~~~~~~~~~~~~~~
->     │           failed to cast to Float8
+>     │                ~~~~~~~~~~~~~~~~~
+>     │            failed to cast to Float8
 >
 >   ↳  Error NUMBER_004: too large for precise float conversion
 >     at "-9007199254740993" (line 1, column 16)

@@ -15,18 +15,18 @@ use tracing::instrument;
 
 use crate::{
 	evaluate::{ColumnEvaluationContext, column::evaluate},
-	vm::volcano::query::{QueryContext, QueryNode, QueryOperator},
+	vm::volcano::query::{QueryContext, QueryNode},
 };
 
 pub(crate) struct ExtendNode {
-	input: Box<QueryOperator>,
+	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
 	context: Option<Arc<QueryContext>>,
 }
 
 impl ExtendNode {
-	pub fn new(input: Box<QueryOperator>, expressions: Vec<Expression>) -> Self {
+	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>) -> Self {
 		Self {
 			input,
 			expressions,
