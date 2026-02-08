@@ -28,7 +28,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine};
 use reifydb_function::{
-	blob, clock,
+	blob, clock, date,
 	flow::to_json::FlowNodeToJson,
 	math, meta,
 	registry::{Functions, FunctionsBuilder},
@@ -251,6 +251,15 @@ impl DatabaseBuilder {
 			.register_scalar("math::sqrt", math::scalar::sqrt::Sqrt::new)
 			.register_scalar("math::tan", math::scalar::tan::Tan::new)
 			.register_scalar("math::truncate", math::scalar::truncate::Truncate::new)
+			.register_scalar("date::year", date::year::DateYear::new)
+			.register_scalar("date::month", date::month::DateMonth::new)
+			.register_scalar("date::day", date::day::DateDay::new)
+			.register_scalar("date::day_of_year", date::day_of_year::DateDayOfYear::new)
+			.register_scalar("date::day_of_week", date::day_of_week::DateDayOfWeek::new)
+			.register_scalar("date::new", date::new::DateNew::new)
+			.register_scalar("date::add", date::add::DateAdd::new)
+			.register_scalar("date::subtract", date::subtract::DateSubtract::new)
+			.register_scalar("date::diff", date::diff::DateDiff::new)
 			.register_scalar("text::ascii", text::ascii::TextAscii::new)
 			.register_scalar("text::char", text::char::TextChar::new)
 			.register_scalar("text::concat", text::concat::TextConcat::new)

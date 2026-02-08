@@ -13,6 +13,7 @@ use reifydb_type::fragment::Fragment;
 
 pub mod blob;
 pub mod clock;
+pub mod date;
 pub mod error;
 pub mod flow;
 pub mod math;
