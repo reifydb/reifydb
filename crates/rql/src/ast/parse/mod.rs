@@ -3,6 +3,7 @@
 
 pub mod aggregate;
 pub mod alter;
+pub mod append;
 pub mod apply;
 pub mod block;
 pub mod call;

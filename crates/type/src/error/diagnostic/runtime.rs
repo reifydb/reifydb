@@ -125,3 +125,19 @@ pub fn undefined_function(name: Fragment) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+/// APPEND target variable is not a Frame
+pub fn append_target_not_frame(name: &str) -> Diagnostic {
+	Diagnostic {
+		code: "RUNTIME_008".to_string(),
+		statement: None,
+		message: format!("Cannot APPEND to variable '{}' because it is not a Frame", name),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("APPEND can only target Frame variables. Use a new variable name or ensure the target was created by APPEND or FROM".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

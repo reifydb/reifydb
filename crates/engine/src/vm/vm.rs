@@ -956,6 +956,50 @@ impl Vm {
 						self.stack.push(StackValue::Columns(columns));
 					}
 				}
+
+				// === Append ===
+				Instruction::Append {
+					target,
+				} => {
+					let clean_name = strip_dollar_prefix(target.text());
+					let columns = match self.stack.pop()? {
+						StackValue::Columns(cols) => cols,
+						_ => {
+							return Err(reifydb_type::error::Error(
+								reifydb_core::error::diagnostic::internal::internal_with_context(
+									"APPEND requires columns/frame data on stack",
+									file!(), line!(), column!(), module_path!(), module_path!(),
+								),
+							));
+						}
+					};
+
+					match self.symbol_table.get(&clean_name) {
+						Some(Variable::Frame(_)) => {
+							let mut existing =
+								match self.symbol_table.get(&clean_name).unwrap() {
+									Variable::Frame(f) => f.clone(),
+									_ => unreachable!(),
+								};
+							existing.append_columns(columns)?;
+							self.symbol_table
+								.reassign(clean_name, Variable::Frame(existing))?;
+						}
+						None => {
+							// Auto-create the Frame variable
+							self.symbol_table.set(
+								clean_name,
+								Variable::Frame(columns),
+								true,
+							)?;
+						}
+						_ => {
+							return Err(reifydb_type::error::Error(
+								reifydb_type::error::diagnostic::runtime::append_target_not_frame(&clean_name),
+							));
+						}
+					}
+				}
 			}
 
 			self.ip += 1;
@@ -969,7 +1013,6 @@ impl Vm {
 	}
 }
 
-/// Convert a Value to an Expression for passing to the column evaluator (built-in function calls).
 fn value_to_expression(value: &Value) -> Expression {
 	use reifydb_rql::expression::ConstantExpression;
 	use reifydb_type::fragment::Fragment;

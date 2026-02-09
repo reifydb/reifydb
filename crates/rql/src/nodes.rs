@@ -40,6 +40,80 @@ pub struct PrimaryKeyColumn {
 }
 
 #[derive(Debug, Clone)]
+pub enum PhysicalPlan {
+	CreateDeferredView(CreateDeferredViewNode),
+	CreateTransactionalView(CreateTransactionalViewNode),
+	CreateNamespace(CreateNamespaceNode),
+	CreateTable(CreateTableNode),
+	CreateRingBuffer(CreateRingBufferNode),
+	CreateFlow(CreateFlowNode),
+	CreateDictionary(CreateDictionaryNode),
+	CreateSubscription(CreateSubscriptionNode),
+	// Alter
+	AlterSequence(AlterSequenceNode),
+	AlterTable(AlterTableNode),
+	AlterView(AlterViewNode),
+	AlterFlow(AlterFlowNode),
+	// Mutate
+	Delete(DeleteTableNode),
+	DeleteRingBuffer(DeleteRingBufferNode),
+	InsertTable(InsertTableNode),
+	InsertRingBuffer(InsertRingBufferNode),
+	InsertDictionary(InsertDictionaryNode),
+	Update(UpdateTableNode),
+	UpdateRingBuffer(UpdateRingBufferNode),
+	// Variable assignment
+	Declare(DeclareNode),
+	Assign(AssignNode),
+	Append(AppendPhysicalNode),
+	// Variable resolution
+	Variable(VariableNode),
+	Environment(EnvironmentNode),
+	// Control flow
+	Conditional(ConditionalNode),
+	Loop(LoopPhysicalNode),
+	While(WhilePhysicalNode),
+	For(ForPhysicalNode),
+	Break,
+	Continue,
+	// User-defined functions
+	DefineFunction(DefineFunctionNode),
+	Return(ReturnNode),
+	CallFunction(CallFunctionNode),
+
+	// Query
+	Aggregate(AggregateNode),
+	Distinct(DistinctNode),
+	Filter(FilterNode),
+	IndexScan(IndexScanNode),
+	// Row-number optimized access
+	RowPointLookup(RowPointLookupNode),
+	RowListLookup(RowListLookupNode),
+	RowRangeScan(RowRangeScanNode),
+	JoinInner(JoinInnerNode),
+	JoinLeft(JoinLeftNode),
+	JoinNatural(JoinNaturalNode),
+	Merge(MergeNode),
+	Take(TakeNode),
+	Sort(SortNode),
+	Map(MapNode),
+	Extend(ExtendNode),
+	Patch(PatchNode),
+	Apply(ApplyNode),
+	InlineData(InlineDataNode),
+	TableScan(TableScanNode),
+	TableVirtualScan(TableVirtualScanNode),
+	ViewScan(ViewScanNode),
+	RingBufferScan(RingBufferScanNode),
+	FlowScan(FlowScanNode),
+	DictionaryScan(DictionaryScanNode),
+	Generator(GeneratorNode),
+	Window(WindowNode),
+	// Auto-scalarization for 1x1 frames
+	Scalarize(ScalarizeNode),
+}
+
+#[derive(Debug, Clone)]
 pub struct CreateDeferredViewNode {
 	pub namespace: NamespaceDef, // FIXME REsolvedNamespace
 	pub view: Fragment,
@@ -214,6 +288,7 @@ pub enum AlterFlowAction {
 pub enum LetValue {
 	Expression(Expression),
 	Statement(QueryPlan),
+	EmptyFrame,
 }
 
 impl std::fmt::Display for LetValue {
@@ -221,6 +296,7 @@ impl std::fmt::Display for LetValue {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
 			LetValue::Statement(query) => write!(f, "Statement({:?})", query),
+			LetValue::EmptyFrame => write!(f, "EmptyFrame"),
 		}
 	}
 }
@@ -499,4 +575,71 @@ pub struct RowRangeScanNode {
 	pub start: u64,
 	/// End of the range (inclusive)
 	pub end: u64,
+}
+
+/// APPEND statement physical plan node
+#[derive(Debug, Clone)]
+pub struct AppendPhysicalNode {
+	pub target: Fragment,
+	pub source: AppendPhysicalSource,
+}
+
+/// Source for an APPEND physical plan
+#[derive(Debug, Clone)]
+pub enum AppendPhysicalSource {
+	Statement(Vec<PhysicalPlan>),
+	Inline(InlineDataNode),
+}
+
+// --- Control flow and function nodes (owned, for PhysicalPlan enum) ---
+
+#[derive(Debug, Clone)]
+pub struct ConditionalNode {
+	pub condition: Expression,
+	pub then_branch: Box<PhysicalPlan>,
+	pub else_ifs: Vec<ElseIfBranch>,
+	pub else_branch: Option<Box<PhysicalPlan>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ElseIfBranch {
+	pub condition: Expression,
+	pub then_branch: Box<PhysicalPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LoopPhysicalNode {
+	pub body: Vec<PhysicalPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhilePhysicalNode {
+	pub condition: Expression,
+	pub body: Vec<PhysicalPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ForPhysicalNode {
+	pub variable_name: Fragment,
+	pub iterable: Box<PhysicalPlan>,
+	pub body: Vec<PhysicalPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DefineFunctionNode {
+	pub name: Fragment,
+	pub parameters: Vec<FunctionParameter>,
+	pub return_type: Option<TypeConstraint>,
+	pub body: Vec<PhysicalPlan>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReturnNode {
+	pub value: Option<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CallFunctionNode {
+	pub name: Fragment,
+	pub arguments: Vec<Expression>,
 }

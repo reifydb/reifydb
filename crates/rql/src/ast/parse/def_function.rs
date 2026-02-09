@@ -3,7 +3,7 @@
 
 use crate::{
 	ast::{
-		ast::{AstDataType, AstDefFunction, AstFunctionParameter, AstReturn, AstVariable},
+		ast::{AstDefFunction, AstFunctionParameter, AstReturn, AstType, AstVariable},
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
@@ -89,7 +89,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse a type annotation (identifier with optional parameters)
-	fn parse_type_annotation(&mut self) -> crate::Result<AstDataType<'bump>> {
+	fn parse_type_annotation(&mut self) -> crate::Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
 		// Check for type with parameters like DECIMAL(10,2)
@@ -107,12 +107,12 @@ impl<'bump> Parser<'bump> {
 
 			self.consume_operator(Operator::CloseParen)?;
 
-			Ok(AstDataType::Constrained {
+			Ok(AstType::Constrained {
 				name: ty_token.fragment,
 				params,
 			})
 		} else {
-			Ok(AstDataType::Unconstrained(ty_token.fragment))
+			Ok(AstType::Unconstrained(ty_token.fragment))
 		}
 	}
 
@@ -146,7 +146,7 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::{Ast, AstDataType},
+			ast::{Ast, AstType},
 			parse::parse,
 		},
 		bump::Bump,
@@ -208,13 +208,13 @@ pub mod tests {
 
 		assert_eq!(def.parameters[0].variable.name(), "a");
 		match &def.parameters[0].type_annotation {
-			Some(AstDataType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
+			Some(AstType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
 			_ => panic!("Expected unconstrained type"),
 		}
 
 		assert_eq!(def.parameters[1].variable.name(), "b");
 		match &def.parameters[1].type_annotation {
-			Some(AstDataType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
+			Some(AstType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
 			_ => panic!("Expected unconstrained type"),
 		}
 	}
@@ -233,7 +233,7 @@ pub mod tests {
 
 		assert_eq!(def.name.text(), "add");
 		match &def.return_type {
-			Some(AstDataType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
+			Some(AstType::Unconstrained(ty)) => assert_eq!(ty.text(), "int"),
 			_ => panic!("Expected unconstrained return type"),
 		}
 	}

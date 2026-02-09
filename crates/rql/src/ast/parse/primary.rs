@@ -49,6 +49,7 @@ impl<'bump> Parser<'bump> {
 				// Keywords that can start statements at the top
 				// level
 				match keyword {
+					Keyword::Append => Ok(Ast::Append(self.parse_append()?)),
 					Keyword::From => Ok(Ast::From(self.parse_from()?)),
 					Keyword::Map => Ok(Ast::Map(self.parse_map()?)),
 					Keyword::Select => Ok(Ast::Map(self.parse_select()?)),

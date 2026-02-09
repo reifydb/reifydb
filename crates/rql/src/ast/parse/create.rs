@@ -8,7 +8,7 @@ use crate::{
 		ast::{
 			AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
 			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
-			AstCreateTransactionalView, AstDataType, AstIndexColumn, AstPrimaryKeyDef,
+			AstCreateTransactionalView, AstIndexColumn, AstPrimaryKeyDef, AstType,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier,
@@ -609,7 +609,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_type(&mut self) -> crate::Result<AstDataType<'bump>> {
+	fn parse_type(&mut self) -> crate::Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
 		// Check for type with parameters like DECIMAL(10,2)
@@ -627,12 +627,12 @@ impl<'bump> Parser<'bump> {
 
 			self.consume_operator(Operator::CloseParen)?;
 
-			Ok(AstDataType::Constrained {
+			Ok(AstType::Constrained {
 				name: ty_token.fragment,
 				params,
 			})
 		} else {
-			Ok(AstDataType::Unconstrained(ty_token.fragment))
+			Ok(AstType::Unconstrained(ty_token.fragment))
 		}
 	}
 
@@ -685,13 +685,13 @@ impl<'bump> Parser<'bump> {
 
 			self.consume_operator(Operator::CloseParen)?;
 
-			AstDataType::Constrained {
+			AstType::Constrained {
 				name: ty_token.fragment,
 				params,
 			}
 		} else {
 			// Simple type without parameters
-			AstDataType::Unconstrained(ty_token.fragment)
+			AstType::Unconstrained(ty_token.fragment)
 		};
 
 		let auto_increment = if self.current()?.is_keyword(Keyword::Auto) {
@@ -855,7 +855,7 @@ pub mod tests {
 			ast::{
 				Ast, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
 				AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
-				AstCreateTransactionalView, AstDataType, AstPolicyKind,
+				AstCreateTransactionalView, AstPolicyKind, AstType,
 			},
 			parse::Parser,
 		},
@@ -1223,7 +1223,7 @@ pub mod tests {
 
 				assert_eq!(columns[0].name.text(), "value");
 				match &columns[0].ty {
-					AstDataType::Unconstrained(ident) => {
+					AstType::Unconstrained(ident) => {
 						assert_eq!(ident.text(), "Int2")
 					}
 					_ => panic!("Expected simple type"),
@@ -1267,7 +1267,7 @@ pub mod tests {
 					let col = &columns[0];
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "int2")
 						}
 						_ => panic!("Expected simple type"),
@@ -1280,7 +1280,7 @@ pub mod tests {
 					let col = &columns[1];
 					assert_eq!(col.name.text(), "name");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "text")
 						}
 						_ => panic!("Expected simple type"),
@@ -1292,7 +1292,7 @@ pub mod tests {
 					let col = &columns[2];
 					assert_eq!(col.name.text(), "is_premium");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "bool")
 						}
 						_ => panic!("Expected simple type"),
@@ -1338,7 +1338,7 @@ pub mod tests {
 				let col = &columns[0];
 				assert_eq!(col.name.text(), "field");
 				match &col.ty {
-					AstDataType::Unconstrained(ident) => {
+					AstType::Unconstrained(ident) => {
 						assert_eq!(ident.text(), "int2")
 					}
 					_ => panic!("Expected simple type"),
@@ -1388,7 +1388,7 @@ pub mod tests {
 					let col = &columns[0];
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "int4")
 						}
 						_ => panic!("Expected simple type"),
@@ -1401,7 +1401,7 @@ pub mod tests {
 					let col = &columns[1];
 					assert_eq!(col.name.text(), "name");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "utf8")
 						}
 						_ => panic!("Expected simple type"),
@@ -1446,7 +1446,7 @@ pub mod tests {
 				let col = &columns[0];
 				assert_eq!(col.name.text(), "field");
 				match &col.ty {
-					AstDataType::Unconstrained(ident) => {
+					AstType::Unconstrained(ident) => {
 						assert_eq!(ident.text(), "int2")
 					}
 					_ => panic!("Expected simple type"),
@@ -1496,7 +1496,7 @@ pub mod tests {
 					let col = &columns[0];
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "int4")
 						}
 						_ => panic!("Expected simple type"),
@@ -1509,7 +1509,7 @@ pub mod tests {
 					let col = &columns[1];
 					assert_eq!(col.name.text(), "name");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "utf8")
 						}
 						_ => panic!("Expected simple type"),
@@ -1559,7 +1559,7 @@ pub mod tests {
 					let col = &columns[0];
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "int4")
 						}
 						_ => panic!("Expected simple type"),
@@ -1570,7 +1570,7 @@ pub mod tests {
 					let col = &columns[1];
 					assert_eq!(col.name.text(), "data");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "utf8")
 						}
 						_ => panic!("Expected simple type"),
@@ -1796,11 +1796,11 @@ pub mod tests {
 				assert!(dict.dictionary.namespace.is_none());
 				assert_eq!(dict.dictionary.name.text(), "token_mints");
 				match &dict.value_type {
-					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
+					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
 					_ => panic!("Expected unconstrained type"),
 				}
 				match &dict.id_type {
-					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint2"),
+					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint2"),
 					_ => panic!("Expected unconstrained type"),
 				}
 			}
@@ -1827,11 +1827,11 @@ pub mod tests {
 				assert_eq!(dict.dictionary.namespace.as_ref().unwrap().text(), "analytics");
 				assert_eq!(dict.dictionary.name.text(), "token_mints");
 				match &dict.value_type {
-					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
+					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
 					_ => panic!("Expected unconstrained type"),
 				}
 				match &dict.id_type {
-					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint4"),
+					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint4"),
 					_ => panic!("Expected unconstrained type"),
 				}
 			}
@@ -1855,11 +1855,11 @@ pub mod tests {
 			AstCreate::Dictionary(dict) => {
 				assert_eq!(dict.dictionary.name.text(), "hashes");
 				match &dict.value_type {
-					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Blob"),
+					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Blob"),
 					_ => panic!("Expected unconstrained type"),
 				}
 				match &dict.id_type {
-					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint8"),
+					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint8"),
 					_ => panic!("Expected unconstrained type"),
 				}
 			}
@@ -1887,11 +1887,11 @@ pub mod tests {
 				assert!(dict.dictionary.namespace.is_none());
 				assert_eq!(dict.dictionary.name.text(), "token_mints");
 				match &dict.value_type {
-					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
+					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
 					_ => panic!("Expected unconstrained type"),
 				}
 				match &dict.id_type {
-					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint4"),
+					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint4"),
 					_ => panic!("Expected unconstrained type"),
 				}
 			}
@@ -1922,7 +1922,7 @@ pub mod tests {
 					let col = &columns[0];
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "Int4")
 						}
 						_ => panic!("Expected simple type"),
@@ -1933,7 +1933,7 @@ pub mod tests {
 					let col = &columns[1];
 					assert_eq!(col.name.text(), "name");
 					match &col.ty {
-						AstDataType::Unconstrained(ident) => {
+						AstType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "Utf8")
 						}
 						_ => panic!("Expected simple type"),
@@ -1963,7 +1963,7 @@ pub mod tests {
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].name.text(), "value");
 				match &columns[0].ty {
-					AstDataType::Unconstrained(ident) => {
+					AstType::Unconstrained(ident) => {
 						assert_eq!(ident.text(), "Float8")
 					}
 					_ => panic!("Expected simple type"),

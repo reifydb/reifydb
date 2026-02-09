@@ -669,5 +669,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				&format!("CallFunction: {}({})", call.name.text(), args.join(", ")),
 			);
 		}
+		PhysicalPlan::Append(node) => {
+			write_node_header(output, prefix, is_last, &format!("Append: ${}", node.target.text()));
+		}
 	}
 }

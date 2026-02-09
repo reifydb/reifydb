@@ -39,8 +39,8 @@ impl<'bump> Compiler<'bump> {
 			};
 
 			let ty_fragment = match &col.ty {
-				crate::ast::ast::AstDataType::Unconstrained(fragment) => fragment.to_owned(),
-				crate::ast::ast::AstDataType::Constrained {
+				crate::ast::ast::AstType::Unconstrained(fragment) => fragment.to_owned(),
+				crate::ast::ast::AstType::Constrained {
 					name,
 					..
 				} => name.to_owned(),

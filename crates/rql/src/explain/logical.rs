@@ -969,5 +969,8 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				args.join(", ")
 			));
 		}
+		LogicalPlan::Append(node) => {
+			output.push_str(&format!("{}{} Append: ${}\n", prefix, branch, node.target.text()));
+		}
 	}
 }

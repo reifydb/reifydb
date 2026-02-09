@@ -152,6 +152,11 @@ pub enum Instruction {
 	Update(UpdateTableNode),
 	UpdateRingBuffer(UpdateRingBufferNode),
 
+	// === Append ===
+	Append {
+		target: Fragment,
+	},
+
 	// === Output ===
 	Emit,
 

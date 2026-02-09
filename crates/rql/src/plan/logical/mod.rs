@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod alter;
+pub mod append;
 pub mod create;
 pub mod function;
 pub mod mutate;
@@ -31,7 +32,7 @@ use tracing::instrument;
 
 use crate::{
 	ast::{
-		ast::{Ast, AstDataType, AstInfix, AstPolicy, AstPolicyKind, AstStatement, InfixOperator},
+		ast::{Ast, AstInfix, AstPolicy, AstPolicyKind, AstStatement, AstType, InfixOperator},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
@@ -136,6 +137,7 @@ impl<'bump> Compiler<'bump> {
 			Ast::Delete(node) => self.compile_delete(node, tx),
 			Ast::Insert(node) => self.compile_insert(node, tx),
 			Ast::Update(node) => self.compile_update(node, tx),
+			Ast::Append(node) => self.compile_append(node, tx),
 			Ast::If(node) => self.compile_if(node, tx),
 			Ast::Loop(node) => self.compile_loop(node, tx),
 			Ast::While(node) => self.compile_while(node, tx),
@@ -324,6 +326,7 @@ pub enum LogicalPlan<'bump> {
 	// Variable assignment
 	Declare(DeclareNode<'bump>),
 	Assign(AssignNode<'bump>),
+	Append(AppendNode<'bump>),
 	// Control flow
 	Conditional(ConditionalNode<'bump>),
 	Loop(LoopNode<'bump>),
@@ -376,6 +379,7 @@ pub struct ScalarizeNode<'bump> {
 pub enum LetValue<'bump> {
 	Expression(Expression),                        // scalar/column expression
 	Statement(BumpVec<'bump, LogicalPlan<'bump>>), // query pipeline as logical plans
+	EmptyFrame,                                    // LET $x = [] → empty Frame
 }
 
 impl<'bump> Display for LetValue<'bump> {
@@ -383,6 +387,7 @@ impl<'bump> Display for LetValue<'bump> {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
 			LetValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
+			LetValue::EmptyFrame => write!(f, "EmptyFrame"),
 		}
 	}
 }
@@ -508,8 +513,8 @@ pub struct CreateRingBufferNode<'bump> {
 pub struct CreateDictionaryNode<'bump> {
 	pub dictionary: MaybeQualifiedDictionaryIdentifier<'bump>,
 	pub if_not_exists: bool,
-	pub value_type: AstDataType<'bump>,
-	pub id_type: AstDataType<'bump>,
+	pub value_type: AstType<'bump>,
+	pub id_type: AstType<'bump>,
 }
 
 #[derive(Debug)]
@@ -687,6 +692,18 @@ pub struct VariableSourceNode<'bump> {
 
 #[derive(Debug)]
 pub struct EnvironmentNode {}
+
+#[derive(Debug)]
+pub struct AppendNode<'bump> {
+	pub target: BumpFragment<'bump>,
+	pub source: AppendSourcePlan<'bump>,
+}
+
+#[derive(Debug)]
+pub enum AppendSourcePlan<'bump> {
+	Statement(BumpVec<'bump, LogicalPlan<'bump>>),
+	Inline(InlineDataNode),
+}
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 	use ColumnPolicyKind::*;

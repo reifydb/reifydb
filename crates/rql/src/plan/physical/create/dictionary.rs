@@ -31,16 +31,16 @@ impl<'bump> Compiler<'bump> {
 
 		// Convert AstDataType to Type
 		let value_type = match &create.value_type {
-			crate::ast::ast::AstDataType::Unconstrained(name) => convert_data_type(name)?,
-			crate::ast::ast::AstDataType::Constrained {
+			crate::ast::ast::AstType::Unconstrained(name) => convert_data_type(name)?,
+			crate::ast::ast::AstType::Constrained {
 				name,
 				..
 			} => convert_data_type(name)?,
 		};
 
 		let id_type = match &create.id_type {
-			crate::ast::ast::AstDataType::Unconstrained(name) => convert_data_type(name)?,
-			crate::ast::ast::AstDataType::Constrained {
+			crate::ast::ast::AstType::Unconstrained(name) => convert_data_type(name)?,
+			crate::ast::ast::AstType::Constrained {
 				name,
 				..
 			} => convert_data_type(name)?,

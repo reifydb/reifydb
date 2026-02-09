@@ -27,7 +27,13 @@ impl<'bump> Compiler<'bump> {
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let value = match ast.value {
 			AstLetValue::Expression(expr) => {
-				LetValue::Expression(ExpressionCompiler::compile(BumpBox::into_inner(expr))?)
+				let inner = BumpBox::into_inner(expr);
+				// Detect LET $x = [] → empty Frame
+				if matches!(&inner, Ast::List(list) if list.len() == 0) {
+					LetValue::EmptyFrame
+				} else {
+					LetValue::Expression(ExpressionCompiler::compile(inner)?)
+				}
 			}
 			AstLetValue::Statement(statement) => {
 				let plan = self.compile(statement, tx)?;

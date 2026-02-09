@@ -65,7 +65,7 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::{AstCreate, AstCreateTable, AstDataType, AstPolicyKind},
+			ast::{AstCreate, AstCreateTable, AstPolicyKind, AstType},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -145,7 +145,7 @@ pub mod tests {
 				let col = &columns[0];
 				assert_eq!(col.name.text(), "field");
 				match &col.ty {
-					AstDataType::Unconstrained(id) => {
+					AstType::Unconstrained(id) => {
 						assert_eq!(id.text(), "int2")
 					}
 					_ => panic!("Expected simple data type"),

@@ -14,7 +14,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	ast::ast::{AstDataType, AstLiteral},
+	ast::ast::{AstLiteral, AstType},
 	bump::BumpFragment,
 };
 
@@ -64,13 +64,13 @@ pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<Type> {
 	})
 }
 
-pub(crate) fn convert_data_type_with_constraints(ast: &AstDataType) -> Result<TypeConstraint> {
+pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeConstraint> {
 	match ast {
-		AstDataType::Unconstrained(name) => {
+		AstType::Unconstrained(name) => {
 			let base_type = convert_data_type(name)?;
 			Ok(TypeConstraint::unconstrained(base_type))
 		}
-		AstDataType::Constrained {
+		AstType::Constrained {
 			name,
 			params,
 		} => {

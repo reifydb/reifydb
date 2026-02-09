@@ -86,6 +86,7 @@ pub enum PhysicalPlan<'bump> {
 	// Variable assignment
 	Declare(DeclareNode<'bump>),
 	Assign(AssignNode<'bump>),
+	Append(AppendPhysicalNode<'bump>),
 	// Variable resolution
 	Variable(VariableNode),
 	Environment(EnvironmentNode),
@@ -230,6 +231,7 @@ pub struct UpdateRingBufferNode<'bump> {
 pub enum LetValue<'bump> {
 	Expression(Expression),
 	Statement(BumpBox<'bump, PhysicalPlan<'bump>>),
+	EmptyFrame,
 }
 
 impl std::fmt::Display for LetValue<'_> {
@@ -237,6 +239,7 @@ impl std::fmt::Display for LetValue<'_> {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
 			LetValue::Statement(plan) => write!(f, "Statement({:?})", plan),
+			LetValue::EmptyFrame => write!(f, "EmptyFrame"),
 		}
 	}
 }
@@ -266,6 +269,18 @@ impl std::fmt::Display for AssignValue<'_> {
 pub struct AssignNode<'bump> {
 	pub name: Fragment,
 	pub value: AssignValue<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AppendPhysicalNode<'bump> {
+	pub target: Fragment,
+	pub source: AppendPhysicalSource<'bump>,
+}
+
+#[derive(Debug)]
+pub enum AppendPhysicalSource<'bump> {
+	Statement(Vec<PhysicalPlan<'bump>>),
+	Inline(InlineDataNode),
 }
 
 #[derive(Debug)]
@@ -1250,6 +1265,7 @@ impl<'bump> Compiler<'bump> {
 								})),
 							}
 						}
+						logical::LetValue::EmptyFrame => LetValue::EmptyFrame,
 					};
 
 					stack.push(PhysicalPlan::Declare(DeclareNode {
@@ -1284,6 +1300,31 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::Assign(AssignNode {
 						name: self.interner.intern_fragment(&assign_node.name),
 						value,
+					}));
+				}
+
+				LogicalPlan::Append(append_node) => {
+					let source = match append_node.source {
+						logical::AppendSourcePlan::Statement(logical_plans) => {
+							let mut physical_plans = Vec::new();
+							for logical_plan in logical_plans {
+								if let Some(physical_plan) =
+									self.compile(rx, std::iter::once(logical_plan))?
+								{
+									physical_plans.push(physical_plan);
+								}
+							}
+							AppendPhysicalSource::Statement(physical_plans)
+						}
+						logical::AppendSourcePlan::Inline(inline) => {
+							AppendPhysicalSource::Inline(InlineDataNode {
+								rows: inline.rows,
+							})
+						}
+					};
+					stack.push(PhysicalPlan::Append(AppendPhysicalNode {
+						target: self.interner.intern_fragment(&append_node.target),
+						source,
 					}));
 				}
 

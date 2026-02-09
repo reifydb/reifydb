@@ -273,7 +273,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 	}
 }
 
-fn compile_instructions(plan: PhysicalPlan<'_>) -> crate::Result<Vec<Instruction>> {
+fn compile_instructions(plan: PhysicalPlan<'_>) -> Result<Vec<Instruction>> {
 	let mut compiler = InstructionCompiler::new();
 	compiler.compile_plan(plan)?;
 	compiler.emit(Instruction::Halt);
@@ -559,7 +559,7 @@ impl InstructionCompiler {
 	// Plan compilation (operates on bump-allocated PhysicalPlan directly)
 	// ========================================================================
 
-	fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> crate::Result<()> {
+	fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
 		match plan {
 			// DDL — leaf instructions (no query children to materialize)
 			PhysicalPlan::CreateNamespace(node) => {
@@ -737,6 +737,9 @@ impl InstructionCompiler {
 							materialize_query_plan(crate::bump::BumpBox::into_inner(plan));
 						self.emit(Instruction::Query(query));
 					}
+					physical::LetValue::EmptyFrame => {
+						self.emit(Instruction::PushUndefined);
+					}
 				}
 				self.emit(Instruction::DeclareVar(node.name));
 			}
@@ -752,6 +755,9 @@ impl InstructionCompiler {
 					}
 				}
 				self.emit(Instruction::StoreVar(node.name));
+			}
+			PhysicalPlan::Append(node) => {
+				self.compile_append(node)?;
 			}
 
 			// Control flow
@@ -930,7 +936,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_conditional(&mut self, node: physical::ConditionalNode<'_>) -> crate::Result<()> {
+	fn compile_conditional(&mut self, node: physical::ConditionalNode<'_>) -> Result<()> {
 		let mut end_patches: Vec<usize> = Vec::new();
 
 		// IF cond THEN body
@@ -979,7 +985,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_loop(&mut self, node: physical::LoopNode<'_>) -> crate::Result<()> {
+	fn compile_loop(&mut self, node: physical::LoopNode<'_>) -> Result<()> {
 		let loop_start = self.current_addr();
 
 		self.emit(Instruction::EnterScope(ScopeType::Loop));
@@ -1009,7 +1015,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_while(&mut self, node: physical::WhileNode<'_>) -> crate::Result<()> {
+	fn compile_while(&mut self, node: physical::WhileNode<'_>) -> Result<()> {
 		let condition_addr = self.current_addr();
 		let false_jump = self.emit_conditional_jump(node.condition);
 
@@ -1042,7 +1048,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_for(&mut self, node: physical::ForNode<'_>) -> crate::Result<()> {
+	fn compile_for(&mut self, node: physical::ForNode<'_>) -> Result<()> {
 		self.compile_plan_for_iterable(crate::bump::BumpBox::into_inner(node.iterable))?;
 		self.emit(Instruction::ForInit {
 			variable_name: node.variable_name.clone(),
@@ -1085,7 +1091,7 @@ impl InstructionCompiler {
 
 	/// Compile a plan that will be used as an iterable (for FOR loops).
 	/// Query plans emit a Query instruction (no Emit); non-query plans delegate to compile_plan.
-	fn compile_plan_for_iterable(&mut self, plan: PhysicalPlan<'_>) -> crate::Result<()> {
+	fn compile_plan_for_iterable(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
 		match plan {
 			// Query leaf nodes — emit directly without Emit
 			PhysicalPlan::TableScan(node) => {
@@ -1184,7 +1190,25 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_break(&mut self) -> crate::Result<()> {
+	fn compile_append(&mut self, node: physical::AppendPhysicalNode<'_>) -> Result<()> {
+		match node.source {
+			physical::AppendPhysicalSource::Statement(plans) => {
+				// Compile source plans as query (no Emit - we want the value on stack)
+				for plan in plans {
+					self.compile_plan_for_iterable(plan)?;
+				}
+			}
+			physical::AppendPhysicalSource::Inline(inline) => {
+				self.emit(Instruction::Query(QueryPlan::InlineData(inline)));
+			}
+		}
+		self.emit(Instruction::Append {
+			target: node.target,
+		});
+		Ok(())
+	}
+
+	fn compile_break(&mut self) -> Result<()> {
 		let loop_ctx = self
 			.loop_stack
 			.last_mut()
@@ -1198,7 +1222,7 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	fn compile_continue(&mut self) -> crate::Result<()> {
+	fn compile_continue(&mut self) -> Result<()> {
 		let loop_ctx =
 			self.loop_stack.last().ok_or_else(|| reifydb_type::error!(runtime::continue_outside_loop()))?;
 		let exit_scopes = self.scope_depth - loop_ctx.scope_depth;

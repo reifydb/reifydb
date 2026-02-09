@@ -66,6 +66,7 @@ impl<'bump> IntoIterator for AstStatement<'bump> {
 #[derive(Debug)]
 pub enum Ast<'bump> {
 	Aggregate(AstAggregate<'bump>),
+	Append(AstAppend<'bump>),
 	Apply(AstApply<'bump>),
 	Between(AstBetween<'bump>),
 	Block(AstBlock<'bump>),
@@ -128,6 +129,7 @@ impl<'bump> Ast<'bump> {
 	pub fn token(&self) -> &Token<'bump> {
 		match self {
 			Ast::Inline(node) => &node.token,
+			Ast::Append(node) => &node.token,
 			Ast::Apply(node) => &node.token,
 			Ast::Between(node) => &node.token,
 			Ast::Block(node) => &node.token,
@@ -800,8 +802,6 @@ pub struct AstAlterTable<'bump> {
 	pub operations: Vec<AstAlterTableOperation<'bump>>,
 }
 
-/// Represents a subquery - a complete query statement enclosed in braces
-/// Used in contexts like joins, CTEs, and derived tables
 #[derive(Debug)]
 pub struct AstSubQuery<'bump> {
 	pub token: Token<'bump>,
@@ -893,8 +893,6 @@ pub struct AstCreateSeries<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 }
 
-/// CREATE SUBSCRIPTION with columns.
-/// Subscriptions are identified only by UUID v7, not by name.
 #[derive(Debug)]
 pub struct AstCreateSubscription<'bump> {
 	pub token: Token<'bump>,
@@ -924,8 +922,8 @@ pub struct AstCreateDictionary<'bump> {
 	pub token: Token<'bump>,
 	pub if_not_exists: bool,
 	pub dictionary: MaybeQualifiedDictionaryIdentifier<'bump>,
-	pub value_type: AstDataType<'bump>,
-	pub id_type: AstDataType<'bump>,
+	pub value_type: AstType<'bump>,
+	pub id_type: AstType<'bump>,
 }
 
 #[derive(Debug)]
@@ -937,7 +935,7 @@ pub enum AstDescribe<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstDataType<'bump> {
+pub enum AstType<'bump> {
 	Unconstrained(BumpFragment<'bump>), // UTF8, BLOB, etc.
 	Constrained {
 		name: BumpFragment<'bump>,
@@ -948,7 +946,7 @@ pub enum AstDataType<'bump> {
 #[derive(Debug)]
 pub struct AstColumnToCreate<'bump> {
 	pub name: BumpFragment<'bump>,
-	pub ty: AstDataType<'bump>,
+	pub ty: AstType<'bump>,
 	pub policies: Option<AstPolicyBlock<'bump>>,
 	pub auto_increment: bool,
 	pub dictionary: Option<MaybeQualifiedDictionaryIdentifier<'bump>>,
@@ -1598,7 +1596,7 @@ pub struct AstStatementExpression<'bump> {
 pub struct AstFunctionParameter<'bump> {
 	pub token: Token<'bump>,
 	pub variable: AstVariable<'bump>,
-	pub type_annotation: Option<AstDataType<'bump>>,
+	pub type_annotation: Option<AstType<'bump>>,
 }
 
 /// Function definition
@@ -1607,7 +1605,7 @@ pub struct AstDefFunction<'bump> {
 	pub token: Token<'bump>,
 	pub name: UnqualifiedIdentifier<'bump>,
 	pub parameters: Vec<AstFunctionParameter<'bump>>,
-	pub return_type: Option<AstDataType<'bump>>,
+	pub return_type: Option<AstType<'bump>>,
 	pub body: AstBlock<'bump>,
 }
 
@@ -1616,4 +1614,21 @@ pub struct AstDefFunction<'bump> {
 pub struct AstReturn<'bump> {
 	pub token: Token<'bump>,
 	pub value: Option<BumpBox<'bump, Ast<'bump>>>,
+}
+
+/// APPEND statement: `APPEND $target FROM <source>`
+#[derive(Debug)]
+pub struct AstAppend<'bump> {
+	pub token: Token<'bump>,
+	pub target: AstVariable<'bump>,
+	pub source: AstAppendSource<'bump>,
+}
+
+/// Source for an APPEND statement
+#[derive(Debug)]
+pub enum AstAppendSource<'bump> {
+	/// APPEND $x FROM table | FILTER ...
+	Statement(AstStatement<'bump>),
+	/// APPEND $x FROM [{...}]
+	Inline(AstList<'bump>),
 }
