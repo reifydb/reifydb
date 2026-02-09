@@ -19,7 +19,8 @@ use crate::evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
 	pub(crate) fn cast(&self, ctx: &ColumnEvaluationContext, cast: &CastExpression) -> crate::Result<Column> {
-		let cast_fragment = cast.lazy_fragment();
+		// Use the inner expression's fragment for diagnostics, not the full cast expression
+		let inner_fragment = cast.expression.lazy_fragment();
 
 		// FIXME optimization does not apply for prefix expressions,
 		// like cast(-2 as int1) at the moment
@@ -35,7 +36,7 @@ impl StandardColumnEvaluator {
 				let casted =
 					cast_column_data(ctx, &column.data(), cast.to.ty, &lazy_frag).map_err(|e| {
 						error!(cast::invalid_number(
-							cast_fragment(),
+							inner_fragment(),
 							cast.to.ty,
 							e.diagnostic()
 						))
