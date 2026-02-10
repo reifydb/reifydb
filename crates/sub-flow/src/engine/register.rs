@@ -15,8 +15,8 @@ use reifydb_rql::flow::{
 	node::{
 		FlowNode,
 		FlowNodeType::{
-			Aggregate, Apply, Distinct, Extend, Filter, Join, Map, Merge, SinkSubscription, SinkView, Sort,
-			SourceFlow, SourceInlineData, SourceTable, SourceView, Take, Window,
+			Aggregate, Append, Apply, Distinct, Extend, Filter, Join, Map, SinkSubscription, SinkView,
+			Sort, SourceFlow, SourceInlineData, SourceTable, SourceView, Take, Window,
 		},
 	},
 };
@@ -29,13 +29,13 @@ use crate::{
 	engine::FlowEngine,
 	operator::{
 		Operators,
+		append::AppendOperator,
 		apply::ApplyOperator,
 		distinct::DistinctOperator,
 		extend::ExtendOperator,
 		filter::FilterOperator,
 		join::operator::JoinOperator,
 		map::MapOperator,
-		merge::MergeOperator,
 		scan::{flow::PrimitiveFlowOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator},
 		sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator},
 		sort::SortOperator,
@@ -285,10 +285,10 @@ impl FlowEngine {
 					))),
 				);
 			}
-			Merge {} => {
-				// Merge requires at least 2 inputs
+			Append {} => {
+				// Append requires at least 2 inputs
 				if node.inputs.len() < 2 {
-					return Err(Error(internal!("Merge node must have at least 2 inputs")));
+					return Err(Error(internal!("Append node must have at least 2 inputs")));
 				}
 
 				let mut parents = Vec::with_capacity(node.inputs.len());
@@ -309,7 +309,7 @@ impl FlowEngine {
 
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Merge(MergeOperator::new(
+					Arc::new(Operators::Append(AppendOperator::new(
 						node.id,
 						parents,
 						node.inputs.clone(),

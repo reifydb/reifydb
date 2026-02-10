@@ -17,24 +17,41 @@ impl<'bump> Compiler<'bump> {
 		ast: AstAppend<'bump>,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'bump>> {
-		let target_text = ast.target.name();
-		let target = crate::bump::BumpFragment::internal(self.bump, target_text);
+		match ast {
+			AstAppend::IntoVariable {
+				target,
+				source,
+				..
+			} => {
+				let target_text = target.name();
+				let target = crate::bump::BumpFragment::internal(self.bump, target_text);
 
-		let source = match ast.source {
-			AstAppendSource::Statement(statement) => {
-				let plans = self.compile(statement, tx)?;
-				AppendSourcePlan::Statement(plans)
-			}
-			AstAppendSource::Inline(list) => {
-				let inline = compile_inline_list(list)?;
-				AppendSourcePlan::Inline(inline)
-			}
-		};
+				let source = match source {
+					AstAppendSource::Statement(statement) => {
+						let plans = self.compile(statement, tx)?;
+						AppendSourcePlan::Statement(plans)
+					}
+					AstAppendSource::Inline(list) => {
+						let inline = compile_inline_list(list)?;
+						AppendSourcePlan::Inline(inline)
+					}
+				};
 
-		Ok(LogicalPlan::Append(AppendNode {
-			target,
-			source,
-		}))
+				Ok(LogicalPlan::Append(AppendNode::IntoVariable {
+					target,
+					source,
+				}))
+			}
+			AstAppend::Query {
+				with,
+				..
+			} => {
+				let with = self.compile(with.statement, tx)?;
+				Ok(LogicalPlan::Append(AppendNode::Query {
+					with,
+				}))
+			}
+		}
 	}
 }
 

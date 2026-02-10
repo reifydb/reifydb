@@ -63,7 +63,6 @@ Natural    => "NATURAL",
 Join       => "JOIN",
 On         => "ON",
 Using      => "USING",
-Merge      => "MERGE",
 Intersect  => "INTERSECT",
 Except     => "EXCEPT",
 
@@ -161,7 +160,6 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("JOIN", Keyword::Join);
 	map.insert("ON", Keyword::On);
 	map.insert("USING", Keyword::Using);
-	map.insert("MERGE", Keyword::Merge);
 	map.insert("INTERSECT", Keyword::Intersect);
 	map.insert("EXCEPT", Keyword::Except);
 	map.insert("INSERT", Keyword::Insert);
@@ -341,7 +339,6 @@ pub mod tests {
 	test_keyword_join => (Join, "JOIN"),
 	test_keyword_on => (On, "ON"),
 	test_keyword_using => (Using, "USING"),
-	test_keyword_merge => (Merge, "MERGE"),
 	test_keyword_intersect => (Intersect, "INTERSECT"),
 	test_keyword_except => (Except, "EXCEPT"),
 	test_keyword_let => (Let, "LET"),
@@ -478,7 +475,6 @@ pub mod tests {
 	test_not_keyword_join => ( "join"),
 	test_not_keyword_on => ( "on"),
 	test_not_keyword_using => ( "using"),
-	test_not_keyword_merge => ( "merge"),
 	test_not_keyword_intersect => ( "intersect"),
 	test_not_keyword_except => ( "except"),
 	test_not_keyword_let => ( "let"),

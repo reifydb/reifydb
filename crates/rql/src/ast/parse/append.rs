@@ -13,6 +13,16 @@ impl<'bump> Parser<'bump> {
 		// Consume APPEND keyword
 		self.advance()?;
 
+		// Check if next token is '{' — if so, this is the query form (APPEND { subquery })
+		if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+			let with = self.parse_sub_query()?;
+			return Ok(AstAppend::Query {
+				token,
+				with,
+			});
+		}
+
+		// Otherwise, imperative form: APPEND $target FROM <source>
 		// Parse target variable ($name)
 		let variable_token = self.current()?;
 		if !matches!(variable_token.kind, TokenKind::Variable) {
@@ -76,10 +86,112 @@ impl<'bump> Parser<'bump> {
 			AstAppendSource::Statement(statement)
 		};
 
-		Ok(AstAppend {
+		Ok(AstAppend::IntoVariable {
 			token,
 			target,
 			source,
 		})
+	}
+}
+
+#[cfg(test)]
+pub mod tests {
+	use crate::{
+		ast::{
+			ast::{Ast, AstAppend, AstFrom},
+			parse::Parser,
+		},
+		bump::Bump,
+		token::tokenize,
+	};
+
+	#[test]
+	fn test_append_query_basic() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "append { from test.orders }").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let node = result.first_unchecked();
+		if let Ast::Append(AstAppend::Query {
+			with,
+			..
+		}) = node
+		{
+			let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+			if let Ast::From(AstFrom::Source {
+				source,
+				..
+			}) = first_node
+			{
+				assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(source.name.text(), "orders");
+			} else {
+				panic!("Expected From node in subquery");
+			}
+		} else {
+			panic!("Expected Append::Query");
+		}
+	}
+
+	#[test]
+	fn test_append_query_with_from() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "from test.source1 append { from test.source2 }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let statement = &result[0];
+		assert_eq!(statement.nodes.len(), 2);
+
+		// First should be FROM
+		assert!(statement.nodes[0].is_from());
+
+		// Second should be APPEND Query
+		if let Ast::Append(AstAppend::Query {
+			with,
+			..
+		}) = &statement.nodes[1]
+		{
+			let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+			if let Ast::From(AstFrom::Source {
+				source,
+				..
+			}) = first_node
+			{
+				assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(source.name.text(), "source2");
+			} else {
+				panic!("Expected From node in subquery");
+			}
+		} else {
+			panic!("Expected Append::Query");
+		}
+	}
+
+	#[test]
+	fn test_append_query_chained() {
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "from test.source1 append { from test.source2 } append { from test.source3 }")
+				.unwrap()
+				.into_iter()
+				.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let statement = &result[0];
+		assert_eq!(statement.nodes.len(), 3);
+
+		assert!(statement.nodes[0].is_from());
+		assert!(matches!(statement.nodes[1], Ast::Append(AstAppend::Query { .. })));
+		assert!(matches!(statement.nodes[2], Ast::Append(AstAppend::Query { .. })));
 	}
 }

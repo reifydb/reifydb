@@ -191,7 +191,6 @@ impl<'bump> Compiler<'bump> {
 			Ast::Filter(node) => self.compile_filter(node),
 			Ast::From(node) => self.compile_from(node, tx),
 			Ast::Join(node) => self.compile_join(node, tx),
-			Ast::Merge(node) => self.compile_merge(node, tx),
 			Ast::Take(node) => self.compile_take(node),
 			Ast::Sort(node) => self.compile_sort(node),
 			Ast::Distinct(node) => self.compile_distinct(node),
@@ -341,7 +340,6 @@ pub enum LogicalPlan<'bump> {
 	JoinInner(JoinInnerNode<'bump>),
 	JoinLeft(JoinLeftNode<'bump>),
 	JoinNatural(JoinNaturalNode<'bump>),
-	Merge(MergeNode<'bump>),
 	Take(TakeNode),
 	Order(OrderNode),
 	Map(MapNode),
@@ -632,11 +630,6 @@ pub struct JoinNaturalNode<'bump> {
 }
 
 #[derive(Debug)]
-pub struct MergeNode<'bump> {
-	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
-}
-
-#[derive(Debug)]
 pub struct TakeNode {
 	pub take: usize,
 }
@@ -694,9 +687,14 @@ pub struct VariableSourceNode<'bump> {
 pub struct EnvironmentNode {}
 
 #[derive(Debug)]
-pub struct AppendNode<'bump> {
-	pub target: BumpFragment<'bump>,
-	pub source: AppendSourcePlan<'bump>,
+pub enum AppendNode<'bump> {
+	IntoVariable {
+		target: BumpFragment<'bump>,
+		source: AppendSourcePlan<'bump>,
+	},
+	Query {
+		with: BumpVec<'bump, LogicalPlan<'bump>>,
+	},
 }
 
 #[derive(Debug)]

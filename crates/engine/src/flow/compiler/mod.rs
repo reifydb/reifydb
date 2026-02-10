@@ -28,9 +28,9 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::flow::compiler::{
 	operator::{
-		aggregate::AggregateCompiler, apply::ApplyCompiler, distinct::DistinctCompiler, extend::ExtendCompiler,
-		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, merge::MergeCompiler, sort::SortCompiler,
-		take::TakeCompiler, window::WindowCompiler,
+		aggregate::AggregateCompiler, append::AppendCompiler, apply::ApplyCompiler, distinct::DistinctCompiler,
+		extend::ExtendCompiler, filter::FilterCompiler, join::JoinCompiler, map::MapCompiler,
+		sort::SortCompiler, take::TakeCompiler, window::WindowCompiler,
 	},
 	primitive::{
 		flow_scan::FlowScanCompiler, inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
@@ -214,7 +214,7 @@ impl FlowCompiler {
 			QueryPlan::JoinNatural(_) => {
 				unimplemented!()
 			}
-			QueryPlan::Merge(merge) => MergeCompiler::from(merge).compile(self, txn),
+			QueryPlan::Append(append) => AppendCompiler::from(append).compile(self, txn),
 			QueryPlan::Patch(_) => {
 				unimplemented!("Patch compilation not yet implemented for flow")
 			}

@@ -93,7 +93,6 @@ pub enum PhysicalPlan {
 	JoinInner(JoinInnerNode),
 	JoinLeft(JoinLeftNode),
 	JoinNatural(JoinNaturalNode),
-	Merge(MergeNode),
 	Take(TakeNode),
 	Sort(SortNode),
 	Map(MapNode),
@@ -437,7 +436,7 @@ pub struct JoinNaturalNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct MergeNode {
+pub struct AppendQueryNode {
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
 }
@@ -579,9 +578,15 @@ pub struct RowRangeScanNode {
 
 /// APPEND statement physical plan node
 #[derive(Debug, Clone)]
-pub struct AppendPhysicalNode {
-	pub target: Fragment,
-	pub source: AppendPhysicalSource,
+pub enum AppendPhysicalNode {
+	IntoVariable {
+		target: Fragment,
+		source: AppendPhysicalSource,
+	},
+	Query {
+		left: Box<QueryPlan>,
+		right: Box<QueryPlan>,
+	},
 }
 
 /// Source for an APPEND physical plan

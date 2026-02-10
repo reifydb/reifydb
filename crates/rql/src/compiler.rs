@@ -210,10 +210,6 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			join_type: node.join_type,
 			alias: node.alias,
 		}),
-		PhysicalPlan::Merge(node) => QueryPlan::Merge(nodes::MergeNode {
-			left: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.left))),
-			right: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.right))),
-		}),
 		PhysicalPlan::Take(node) => QueryPlan::Take(nodes::TakeNode {
 			input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
 			take: node.take,
@@ -263,6 +259,14 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
 			input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
 			fragment: node.fragment,
+		}),
+
+		PhysicalPlan::Append(physical::AppendPhysicalNode::Query {
+			left,
+			right,
+		}) => QueryPlan::Append(nodes::AppendQueryNode {
+			left: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(left))),
+			right: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(right))),
 		}),
 
 		// Non-query nodes cannot be materialized to QueryPlan
@@ -756,9 +760,25 @@ impl InstructionCompiler {
 				}
 				self.emit(Instruction::StoreVar(node.name));
 			}
-			PhysicalPlan::Append(node) => {
-				self.compile_append(node)?;
-			}
+			PhysicalPlan::Append(node) => match node {
+				physical::AppendPhysicalNode::IntoVariable {
+					..
+				} => {
+					self.compile_append(node)?;
+				}
+				physical::AppendPhysicalNode::Query {
+					left,
+					right,
+				} => {
+					self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
+						physical::AppendPhysicalNode::Query {
+							left,
+							right,
+						},
+					))));
+					self.emit(Instruction::Emit);
+				}
+			},
 
 			// Control flow
 			PhysicalPlan::Conditional(node) => {
@@ -878,10 +898,6 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::JoinNatural(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinNatural(node))));
-				self.emit(Instruction::Emit);
-			}
-			PhysicalPlan::Merge(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Merge(node))));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Take(node) => {
@@ -1155,9 +1171,6 @@ impl InstructionCompiler {
 			PhysicalPlan::JoinNatural(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinNatural(node))));
 			}
-			PhysicalPlan::Merge(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Merge(node))));
-			}
 			PhysicalPlan::Take(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Take(node))));
 			}
@@ -1191,21 +1204,41 @@ impl InstructionCompiler {
 	}
 
 	fn compile_append(&mut self, node: physical::AppendPhysicalNode<'_>) -> Result<()> {
-		match node.source {
-			physical::AppendPhysicalSource::Statement(plans) => {
-				// Compile source plans as query (no Emit - we want the value on stack)
-				for plan in plans {
-					self.compile_plan_for_iterable(plan)?;
+		match node {
+			physical::AppendPhysicalNode::IntoVariable {
+				target,
+				source,
+			} => {
+				match source {
+					physical::AppendPhysicalSource::Statement(plans) => {
+						// Compile source plans as query (no Emit - we want the value on stack)
+						for plan in plans {
+							self.compile_plan_for_iterable(plan)?;
+						}
+					}
+					physical::AppendPhysicalSource::Inline(inline) => {
+						self.emit(Instruction::Query(QueryPlan::InlineData(inline)));
+					}
 				}
+				self.emit(Instruction::Append {
+					target,
+				});
+				Ok(())
 			}
-			physical::AppendPhysicalSource::Inline(inline) => {
-				self.emit(Instruction::Query(QueryPlan::InlineData(inline)));
+			physical::AppendPhysicalNode::Query {
+				left,
+				right,
+			} => {
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
+					physical::AppendPhysicalNode::Query {
+						left,
+						right,
+					},
+				))));
+				self.emit(Instruction::Emit);
+				Ok(())
 			}
 		}
-		self.emit(Instruction::Append {
-			target: node.target,
-		});
-		Ok(())
 	}
 
 	fn compile_break(&mut self) -> Result<()> {

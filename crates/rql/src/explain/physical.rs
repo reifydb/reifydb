@@ -14,9 +14,9 @@ use crate::{
 	plan::{
 		logical::compile_logical,
 		physical::{
-			AggregateNode, AlterFlowAction, ApplyNode, DistinctNode, ExtendNode, FilterNode, JoinInnerNode,
-			JoinLeftNode, JoinNaturalNode, MapNode, MergeNode, PatchNode, PhysicalPlan, SortNode, TakeNode,
-			compile_physical,
+			AggregateNode, AlterFlowAction, AppendPhysicalNode, ApplyNode, DistinctNode, ExtendNode,
+			FilterNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, PhysicalPlan,
+			SortNode, TakeNode, compile_physical,
 		},
 	},
 };
@@ -311,17 +311,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			};
 			let label = format!("Join(Natural {}) [using common columns]", join_type_str);
 			write_node_header(output, prefix, is_last, &label);
-			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(left, child_prefix, false, output);
-				render_physical_plan_inner(right, child_prefix, true, output);
-			});
-		}
-
-		PhysicalPlan::Merge(MergeNode {
-			left,
-			right,
-		}) => {
-			write_node_header(output, prefix, is_last, "Merge");
 			with_child_prefix(prefix, is_last, |child_prefix| {
 				render_physical_plan_inner(left, child_prefix, false, output);
 				render_physical_plan_inner(right, child_prefix, true, output);
@@ -669,8 +658,23 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				&format!("CallFunction: {}({})", call.name.text(), args.join(", ")),
 			);
 		}
-		PhysicalPlan::Append(node) => {
-			write_node_header(output, prefix, is_last, &format!("Append: ${}", node.target.text()));
-		}
+		PhysicalPlan::Append(node) => match node {
+			AppendPhysicalNode::IntoVariable {
+				target,
+				..
+			} => {
+				write_node_header(output, prefix, is_last, &format!("Append: ${}", target.text()));
+			}
+			AppendPhysicalNode::Query {
+				left,
+				right,
+			} => {
+				write_node_header(output, prefix, is_last, "Append");
+				with_child_prefix(prefix, is_last, |child_prefix| {
+					render_physical_plan_inner(left, child_prefix, false, output);
+					render_physical_plan_inner(right, child_prefix, true, output);
+				});
+			}
+		},
 	}
 }

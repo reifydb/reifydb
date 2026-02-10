@@ -7,6 +7,7 @@ use reifydb_type::value::row_number::RowNumber;
 
 use crate::transaction::FlowTransaction;
 
+pub mod append;
 pub mod apply;
 pub mod distinct;
 pub mod extend;
@@ -15,7 +16,6 @@ pub mod ffi;
 pub mod filter;
 pub mod join;
 pub mod map;
-pub mod merge;
 pub mod scan;
 pub mod sink;
 pub mod sort;
@@ -23,13 +23,13 @@ pub mod stateful;
 pub mod take;
 pub mod window;
 
+use append::AppendOperator;
 use apply::ApplyOperator;
 use distinct::DistinctOperator;
 use extend::ExtendOperator;
 use filter::FilterOperator;
 use join::operator::JoinOperator;
 use map::MapOperator;
-use merge::MergeOperator;
 use reifydb_core::interface::change::Change;
 use scan::{flow::PrimitiveFlowOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator};
 use sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator};
@@ -63,7 +63,7 @@ pub enum Operators {
 	Sort(SortOperator),
 	Take(TakeOperator),
 	Distinct(DistinctOperator),
-	Merge(MergeOperator),
+	Append(AppendOperator),
 	Apply(ApplyOperator),
 	SinkView(SinkViewOperator),
 	SinkSubscription(SinkSubscriptionOperator),
@@ -85,7 +85,7 @@ impl Operators {
 			Operators::Sort(op) => op.apply(txn, change, evaluator),
 			Operators::Take(op) => op.apply(txn, change, evaluator),
 			Operators::Distinct(op) => op.apply(txn, change, evaluator),
-			Operators::Merge(op) => op.apply(txn, change, evaluator),
+			Operators::Append(op) => op.apply(txn, change, evaluator),
 			Operators::Apply(op) => op.apply(txn, change, evaluator),
 			Operators::SinkView(op) => op.apply(txn, change, evaluator),
 			Operators::SinkSubscription(op) => op.apply(txn, change, evaluator),
@@ -105,7 +105,7 @@ impl Operators {
 			Operators::Sort(op) => op.pull(txn, rows),
 			Operators::Take(op) => op.pull(txn, rows),
 			Operators::Distinct(op) => op.pull(txn, rows),
-			Operators::Merge(op) => op.pull(txn, rows),
+			Operators::Append(op) => op.pull(txn, rows),
 			Operators::Apply(op) => op.pull(txn, rows),
 			Operators::SinkView(op) => op.pull(txn, rows),
 			Operators::SinkSubscription(op) => op.pull(txn, rows),

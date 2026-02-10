@@ -112,7 +112,6 @@ pub enum PhysicalPlan<'bump> {
 	JoinInner(JoinInnerNode<'bump>),
 	JoinLeft(JoinLeftNode<'bump>),
 	JoinNatural(JoinNaturalNode<'bump>),
-	Merge(MergeNode<'bump>),
 	Take(TakeNode<'bump>),
 	Sort(SortNode<'bump>),
 	Map(MapNode<'bump>),
@@ -272,9 +271,15 @@ pub struct AssignNode<'bump> {
 }
 
 #[derive(Debug)]
-pub struct AppendPhysicalNode<'bump> {
-	pub target: Fragment,
-	pub source: AppendPhysicalSource<'bump>,
+pub enum AppendPhysicalNode<'bump> {
+	IntoVariable {
+		target: Fragment,
+		source: AppendPhysicalSource<'bump>,
+	},
+	Query {
+		left: BumpBox<'bump, PhysicalPlan<'bump>>,
+		right: BumpBox<'bump, PhysicalPlan<'bump>>,
+	},
 }
 
 #[derive(Debug)]
@@ -375,12 +380,6 @@ pub struct JoinNaturalNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
-}
-
-#[derive(Debug)]
-pub struct MergeNode<'bump> {
-	pub left: BumpBox<'bump, PhysicalPlan<'bump>>,
-	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
@@ -1018,15 +1017,6 @@ impl<'bump> Compiler<'bump> {
 					}));
 				}
 
-				LogicalPlan::Merge(merge) => {
-					let left = stack.pop().unwrap();
-					let right = self.compile(rx, merge.with)?.unwrap();
-					stack.push(PhysicalPlan::Merge(MergeNode {
-						left: self.bump_box(left),
-						right: self.bump_box(right),
-					}));
-				}
-
 				LogicalPlan::Order(order) => {
 					let input = stack.pop().unwrap(); // FIXME
 					stack.push(PhysicalPlan::Sort(SortNode {
@@ -1303,30 +1293,46 @@ impl<'bump> Compiler<'bump> {
 					}));
 				}
 
-				LogicalPlan::Append(append_node) => {
-					let source = match append_node.source {
-						logical::AppendSourcePlan::Statement(logical_plans) => {
-							let mut physical_plans = Vec::new();
-							for logical_plan in logical_plans {
-								if let Some(physical_plan) =
-									self.compile(rx, std::iter::once(logical_plan))?
-								{
-									physical_plans.push(physical_plan);
-								}
-							}
-							AppendPhysicalSource::Statement(physical_plans)
-						}
-						logical::AppendSourcePlan::Inline(inline) => {
-							AppendPhysicalSource::Inline(InlineDataNode {
-								rows: inline.rows,
-							})
-						}
-					};
-					stack.push(PhysicalPlan::Append(AppendPhysicalNode {
-						target: self.interner.intern_fragment(&append_node.target),
+				LogicalPlan::Append(append_node) => match append_node {
+					logical::AppendNode::IntoVariable {
+						target,
 						source,
-					}));
-				}
+					} => {
+						let source = match source {
+							logical::AppendSourcePlan::Statement(logical_plans) => {
+								let mut physical_plans = Vec::new();
+								for logical_plan in logical_plans {
+									if let Some(physical_plan) = self.compile(
+										rx,
+										std::iter::once(logical_plan),
+									)? {
+										physical_plans.push(physical_plan);
+									}
+								}
+								AppendPhysicalSource::Statement(physical_plans)
+							}
+							logical::AppendSourcePlan::Inline(inline) => {
+								AppendPhysicalSource::Inline(InlineDataNode {
+									rows: inline.rows,
+								})
+							}
+						};
+						stack.push(PhysicalPlan::Append(AppendPhysicalNode::IntoVariable {
+							target: self.interner.intern_fragment(&target),
+							source,
+						}));
+					}
+					logical::AppendNode::Query {
+						with,
+					} => {
+						let left = stack.pop().unwrap();
+						let right = self.compile(rx, with)?.unwrap();
+						stack.push(PhysicalPlan::Append(AppendPhysicalNode::Query {
+							left: self.bump_box(left),
+							right: self.bump_box(right),
+						}));
+					}
+				},
 
 				LogicalPlan::VariableSource(source) => {
 					let variable_expr = VariableExpression {

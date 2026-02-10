@@ -29,7 +29,6 @@ pub mod list;
 pub mod literal;
 pub mod loop_construct;
 pub mod map;
-pub mod merge;
 pub mod policy;
 pub mod prefix;
 pub mod primary;

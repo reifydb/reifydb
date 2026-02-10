@@ -48,7 +48,7 @@ pub enum JsonFlowNodeType {
 		by: Vec<JsonExpression>,
 		map: Vec<JsonExpression>,
 	},
-	Merge,
+	Append,
 	Sort {
 		by: Vec<SortKey>,
 	},
@@ -143,7 +143,7 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				by: by.iter().map(|e| e.into()).collect(),
 				map: map.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::Merge => JsonFlowNodeType::Merge,
+			FlowNodeType::Append => JsonFlowNodeType::Append,
 			FlowNodeType::Sort {
 				by,
 			} => JsonFlowNodeType::Sort {

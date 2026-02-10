@@ -9,8 +9,8 @@ use crate::{
 	ast::parse_str,
 	bump::Bump,
 	plan::logical::{
-		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
-		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, MergeNode,
+		AggregateNode, AlterSequenceNode, AppendNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode,
+		GeneratorNode, InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode,
 		OrderNode, PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
 		alter::{
 			flow::AlterFlowAction,
@@ -416,16 +416,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				"{}{}Join(Natural {}) [using common columns]\n",
 				prefix, branch, join_type_str
 			));
-
-			for (i, plan) in with.iter().enumerate() {
-				let last = i == with.len() - 1;
-				render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
-			}
-		}
-		LogicalPlan::Merge(MergeNode {
-			with,
-		}) => {
-			output.push_str(&format!("{}{}Merge\n", prefix, branch));
 
 			for (i, plan) in with.iter().enumerate() {
 				let last = i == with.len() - 1;
@@ -969,8 +959,22 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				args.join(", ")
 			));
 		}
-		LogicalPlan::Append(node) => {
-			output.push_str(&format!("{}{} Append: ${}\n", prefix, branch, node.target.text()));
-		}
+		LogicalPlan::Append(node) => match node {
+			AppendNode::IntoVariable {
+				target,
+				..
+			} => {
+				output.push_str(&format!("{}{} Append: ${}\n", prefix, branch, target.text()));
+			}
+			AppendNode::Query {
+				with,
+			} => {
+				output.push_str(&format!("{}{}Append\n", prefix, branch));
+				for (i, plan) in with.iter().enumerate() {
+					let last = i == with.len() - 1;
+					render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
+				}
+			}
+		},
 	}
 }

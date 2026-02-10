@@ -93,7 +93,6 @@ pub enum Ast<'bump> {
 	Insert(AstInsert<'bump>),
 	Update(AstUpdate<'bump>),
 	Join(AstJoin<'bump>),
-	Merge(AstMerge<'bump>),
 	Take(AstTake<'bump>),
 	List(AstList<'bump>),
 	Literal(AstLiteral<'bump>),
@@ -129,7 +128,7 @@ impl<'bump> Ast<'bump> {
 	pub fn token(&self) -> &Token<'bump> {
 		match self {
 			Ast::Inline(node) => &node.token,
-			Ast::Append(node) => &node.token,
+			Ast::Append(node) => node.token(),
 			Ast::Apply(node) => &node.token,
 			Ast::Between(node) => &node.token,
 			Ast::Block(node) => &node.token,
@@ -183,7 +182,6 @@ impl<'bump> Ast<'bump> {
 					..
 				} => token,
 			},
-			Ast::Merge(node) => &node.token,
 			Ast::Nop => unreachable!(),
 			Ast::Variable(node) => &node.token,
 			Ast::Sort(node) => &node.token,
@@ -435,17 +433,6 @@ impl<'bump> Ast<'bump> {
 			result
 		} else {
 			panic!("not join")
-		}
-	}
-
-	pub fn is_merge(&self) -> bool {
-		matches!(self, Ast::Merge(_))
-	}
-	pub fn as_merge(&self) -> &AstMerge<'bump> {
-		if let Ast::Merge(result) = self {
-			result
-		} else {
-			panic!("not merge")
 		}
 	}
 
@@ -1273,12 +1260,6 @@ pub enum AstJoin<'bump> {
 	},
 }
 
-#[derive(Debug)]
-pub struct AstMerge<'bump> {
-	pub token: Token<'bump>,
-	pub with: AstSubQuery<'bump>,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstLiteralNumber<'bump>(pub Token<'bump>);
 
@@ -1616,12 +1597,35 @@ pub struct AstReturn<'bump> {
 	pub value: Option<BumpBox<'bump, Ast<'bump>>>,
 }
 
-/// APPEND statement: `APPEND $target FROM <source>`
+/// APPEND statement
 #[derive(Debug)]
-pub struct AstAppend<'bump> {
-	pub token: Token<'bump>,
-	pub target: AstVariable<'bump>,
-	pub source: AstAppendSource<'bump>,
+pub enum AstAppend<'bump> {
+	/// Imperative form: `APPEND $target FROM <source>`
+	IntoVariable {
+		token: Token<'bump>,
+		target: AstVariable<'bump>,
+		source: AstAppendSource<'bump>,
+	},
+	/// Query form: `APPEND { subquery }`
+	Query {
+		token: Token<'bump>,
+		with: AstSubQuery<'bump>,
+	},
+}
+
+impl<'bump> AstAppend<'bump> {
+	pub fn token(&self) -> &Token<'bump> {
+		match self {
+			AstAppend::IntoVariable {
+				token,
+				..
+			} => token,
+			AstAppend::Query {
+				token,
+				..
+			} => token,
+		}
+	}
 }
 
 /// Source for an APPEND statement

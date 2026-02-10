@@ -21,9 +21,9 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-/// MERGE operator that merges N input flows (N >= 2) with identical schemas
+/// APPEND operator that appends N input flows (N >= 2) with identical schemas
 /// into a single output flow. Keeps all rows including duplicates.
-pub struct MergeOperator {
+pub struct AppendOperator {
 	node: FlowNodeId,
 	/// Parent operators indexed by their position (0..N)
 	parents: Vec<Arc<Operators>>,
@@ -33,10 +33,10 @@ pub struct MergeOperator {
 	row_number_provider: RowNumberProvider,
 }
 
-impl MergeOperator {
+impl AppendOperator {
 	pub fn new(node: FlowNodeId, parents: Vec<Arc<Operators>>, input_nodes: Vec<FlowNodeId>) -> Self {
 		debug_assert_eq!(parents.len(), input_nodes.len());
-		debug_assert!(parents.len() >= 2, "Merge requires at least 2 inputs");
+		debug_assert!(parents.len() >= 2, "Append requires at least 2 inputs");
 
 		Self {
 			node,
@@ -85,7 +85,7 @@ impl MergeOperator {
 	}
 }
 
-impl Operator for MergeOperator {
+impl Operator for AppendOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -98,7 +98,7 @@ impl Operator for MergeOperator {
 	) -> reifydb_type::Result<Change> {
 		// Determine which parent this change came from
 		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
-			Error(internal!("Merge received change from unknown node: {:?}", change.origin))
+			Error(internal!("Append received change from unknown node: {:?}", change.origin))
 		})?;
 
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());
@@ -231,7 +231,7 @@ impl Operator for MergeOperator {
 			let parent_cols = self.parents[parent_index].pull(txn, &[source_row_number])?;
 
 			if !parent_cols.is_empty() {
-				// Replace row number with merge output row number
+				// Replace row number with append output row number
 				let updated = Columns::with_row_numbers(
 					parent_cols.columns.as_ref().to_vec(),
 					vec![row_number],
@@ -253,7 +253,7 @@ impl Operator for MergeOperator {
 				for (i, col) in cols.columns.into_iter().enumerate() {
 					result.columns.make_mut()[i]
 						.extend(col)
-						.expect("schema mismatch in merge pull");
+						.expect("schema mismatch in append pull");
 				}
 			}
 			Ok(result)

@@ -44,7 +44,7 @@ pub enum FlowNodeType {
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 	},
-	Merge,
+	Append,
 	Sort {
 		by: Vec<SortKey>,
 	},
@@ -107,7 +107,7 @@ impl FlowNodeType {
 			FlowNodeType::Aggregate {
 				..
 			} => 8,
-			FlowNodeType::Merge => 9,
+			FlowNodeType::Append => 9,
 			FlowNodeType::Sort {
 				..
 			} => 10,

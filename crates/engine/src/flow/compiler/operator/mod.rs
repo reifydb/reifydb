@@ -4,13 +4,13 @@
 //! Operator-specific compilation implementations
 
 pub mod aggregate;
+pub mod append;
 pub mod apply;
 pub mod distinct;
 pub mod extend;
 pub mod filter;
 pub mod join;
 pub mod map;
-pub mod merge;
 pub mod sort;
 pub mod take;
 pub mod window;

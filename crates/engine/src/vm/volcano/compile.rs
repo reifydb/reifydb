@@ -359,9 +359,9 @@ pub(crate) fn compile<'a>(
 				"Window operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 			)
 		}
-		RqlQueryPlan::Merge(_) => {
+		RqlQueryPlan::Append(_) => {
 			unimplemented!(
-				"Merge operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
+				"Append operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 			)
 		}
 

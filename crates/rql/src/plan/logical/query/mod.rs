@@ -9,7 +9,6 @@ pub mod filter;
 pub mod from;
 pub mod join;
 pub mod map;
-pub mod merge;
 pub mod order;
 pub mod patch;
 pub mod take;

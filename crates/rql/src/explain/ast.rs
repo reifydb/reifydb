@@ -57,7 +57,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::Insert(_) => "Insert",
 		Ast::Update(_) => "Update",
 		Ast::Join(_) => "Join",
-		Ast::Merge(_) => "Merge",
 		Ast::List(_) => "List",
 		Ast::Literal(_) => "Literal",
 		Ast::Nop => "Nop",
