@@ -32,7 +32,7 @@ use reifydb_function::{
 	flow::to_json::FlowNodeToJson,
 	math, meta,
 	registry::{Functions, FunctionsBuilder},
-	series, subscription, text,
+	series, subscription, text, time,
 };
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
@@ -260,6 +260,14 @@ impl DatabaseBuilder {
 			.register_scalar("date::add", date::add::DateAdd::new)
 			.register_scalar("date::subtract", date::subtract::DateSubtract::new)
 			.register_scalar("date::diff", date::diff::DateDiff::new)
+			.register_scalar("time::hour", time::hour::TimeHour::new)
+			.register_scalar("time::minute", time::minute::TimeMinute::new)
+			.register_scalar("time::second", time::second::TimeSecond::new)
+			.register_scalar("time::nanosecond", time::nanosecond::TimeNanosecond::new)
+			.register_scalar("time::new", time::new::TimeNew::new)
+			.register_scalar("time::add", time::add::TimeAdd::new)
+			.register_scalar("time::subtract", time::subtract::TimeSubtract::new)
+			.register_scalar("time::diff", time::diff::TimeDiff::new)
 			.register_scalar("text::ascii", text::ascii::TextAscii::new)
 			.register_scalar("text::char", text::char::TextChar::new)
 			.register_scalar("text::concat", text::concat::TextConcat::new)
