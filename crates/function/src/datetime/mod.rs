@@ -21,5 +21,6 @@ pub mod quarter;
 pub mod second;
 pub mod subtract;
 pub mod time;
+pub mod trunc;
 pub mod week;
 pub mod year;

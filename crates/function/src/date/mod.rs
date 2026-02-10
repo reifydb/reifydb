@@ -16,5 +16,6 @@ pub mod quarter;
 pub mod start_of_month;
 pub mod start_of_year;
 pub mod subtract;
+pub mod trunc;
 pub mod week;
 pub mod year;

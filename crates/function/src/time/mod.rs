@@ -10,3 +10,4 @@ pub mod new;
 pub mod now;
 pub mod second;
 pub mod subtract;
+pub mod trunc;

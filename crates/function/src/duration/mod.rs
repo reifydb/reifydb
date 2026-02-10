@@ -14,5 +14,6 @@ pub mod negate;
 pub mod scale;
 pub mod seconds;
 pub mod subtract;
+pub mod trunc;
 pub mod weeks;
 pub mod years;
