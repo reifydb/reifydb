@@ -342,6 +342,7 @@ impl From<&Value> for Type {
 			Value::Decimal(_) => Type::Decimal,
 			Value::Any(_) => Type::Any,
 			Value::DictionaryId(_) => Type::DictionaryId,
+			Value::Type(t) => *t,
 		}
 	}
 }

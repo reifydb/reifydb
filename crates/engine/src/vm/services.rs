@@ -8,7 +8,7 @@ use reifydb_catalog::{
 	vtable::{system::flow_operator_store::FlowOperatorStore, user::registry::UserVTableRegistry},
 };
 use reifydb_core::util::ioc::IocContainer;
-use reifydb_function::{math, registry::Functions, series, subscription};
+use reifydb_function::{is, math, registry::Functions, series, subscription};
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::clock::Clock;
@@ -64,6 +64,9 @@ impl Services {
 				.register_aggregate("math::count", math::aggregate::count::Count::new)
 				.register_scalar("math::abs", math::scalar::abs::Abs::new)
 				.register_scalar("math::avg", math::scalar::avg::Avg::new)
+				.register_scalar("is::defined", is::defined::Defined::new)
+				.register_scalar("is::undefined", is::undefined::IsUndefined::new)
+				.register_scalar("is::type", is::r#type::IsType::new)
 				.register_generator("generate_series", series::GenerateSeries::new)
 				.register_generator(
 					"inspect_subscription",

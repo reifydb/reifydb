@@ -68,7 +68,7 @@ impl StandardColumnEvaluator {
 			Value::Uint(bu) => ColumnData::uint(vec![bu.clone(); ctx.row_count]),
 			Value::Decimal(bd) => ColumnData::decimal(vec![bd.clone(); ctx.row_count]),
 			Value::Undefined => ColumnData::undefined(ctx.row_count),
-			Value::Any(_) => unreachable!("Any type not supported as parameter"),
+			Value::Type(_) | Value::Any(_) => unreachable!("Any/Type not supported as parameter"),
 		};
 		Ok(Column {
 			name: Fragment::internal("parameter"),

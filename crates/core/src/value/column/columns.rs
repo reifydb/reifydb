@@ -88,6 +88,7 @@ impl Columns {
 			Value::Decimal(v) => ColumnData::decimal(vec![v]),
 			Value::DictionaryId(v) => ColumnData::dictionary_id(vec![v]),
 			Value::Any(v) => ColumnData::any(vec![v]),
+			Value::Type(v) => ColumnData::any(vec![Box::new(Value::Type(v))]),
 		};
 		let column = Column {
 			name: Fragment::internal("value"),
@@ -166,6 +167,7 @@ impl Columns {
 				Value::Uint(v) => ColumnData::uint(vec![v]),
 				Value::Decimal(v) => ColumnData::decimal(vec![v]),
 				Value::DictionaryId(v) => ColumnData::dictionary_id(vec![v]),
+				Value::Type(t) => ColumnData::any(vec![Box::new(Value::Type(t))]),
 				Value::Any(v) => ColumnData::any(vec![v]),
 			};
 

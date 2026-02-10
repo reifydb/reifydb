@@ -3,7 +3,10 @@
 
 use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::{BetweenExpression, GreaterThanEqExpression, LessThanEqExpression};
-use reifydb_type::{error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types, return_error};
+use reifydb_type::{
+	error::diagnostic::operator::between_cannot_be_applied_to_incompatible_types, return_error,
+	value::container::undefined::UndefinedContainer,
+};
 
 use super::super::StandardColumnEvaluator;
 use crate::evaluate::ColumnEvaluationContext;
@@ -26,6 +29,17 @@ impl StandardColumnEvaluator {
 		// Evaluate both comparisons
 		let ge_result = self.greater_than_equal(ctx, &greater_equal_expr)?;
 		let le_result = self.less_than_equal(ctx, &less_equal_expr)?;
+
+		// If either comparison produced Undefined, result is Undefined
+		if matches!(ge_result.data(), ColumnData::Undefined(_))
+			|| matches!(le_result.data(), ColumnData::Undefined(_))
+		{
+			let len = ge_result.data().len();
+			return Ok(Column {
+				name: expr.fragment.clone(),
+				data: ColumnData::Undefined(UndefinedContainer::new(len)),
+			});
+		}
 
 		// Check that both results are boolean (they should be if the
 		// comparison succeeded)

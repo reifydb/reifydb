@@ -10,7 +10,8 @@ use reifydb_type::{
 	return_error,
 	value::{
 		container::{
-			bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container,
+			bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer,
+			undefined::UndefinedContainer, utf8::Utf8Container,
 		},
 		decimal::Decimal,
 		int::Int,
@@ -37,9 +38,6 @@ pub(crate) trait CompareOp {
 	fn compare_ordering(ordering: Option<Ordering>) -> bool;
 	fn compare_bool(_l: bool, _r: bool) -> Option<bool> {
 		None
-	}
-	fn undefined_result() -> bool {
-		false
 	}
 }
 
@@ -172,7 +170,7 @@ where
 					bitvec.push(true);
 				}
 				_ => {
-					data.push(Op::undefined_result());
+					data.push(false);
 					bitvec.push(false);
 				}
 			}
@@ -211,7 +209,7 @@ fn compare_utf8<Op: CompareOp>(l: &Utf8Container, r: &Utf8Container, fragment: F
 					bitvec.push(true);
 				}
 				_ => {
-					data.push(Op::undefined_result());
+					data.push(false);
 					bitvec.push(false);
 				}
 			}
@@ -1517,7 +1515,7 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 		(ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
 			return Ok(Column {
 				name: Fragment::internal(fragment.text()),
-				data: ColumnData::bool(vec![Op::undefined_result(); container.len()]),
+				data: ColumnData::Undefined(UndefinedContainer::new(container.len())),
 			});
 		}
 		_ => {}

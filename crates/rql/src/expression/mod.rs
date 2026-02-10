@@ -36,6 +36,7 @@ pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
 use std::{
 	fmt,
 	fmt::{Display, Formatter},
+	str::FromStr,
 	sync::Arc,
 };
 
@@ -903,7 +904,21 @@ impl ExpressionCompiler {
 				// Compile arguments
 				let mut arg_expressions = Vec::new();
 				for arg_ast in call.arguments.nodes {
-					arg_expressions.push(Self::compile(arg_ast)?);
+					let compiled = Self::compile(arg_ast)?;
+					let compiled = match &compiled {
+						Expression::Column(col_expr) => {
+							if let Ok(ty) = Type::from_str(col_expr.0.name.text()) {
+								Expression::Type(TypeExpression {
+									fragment: col_expr.0.name.clone(),
+									ty,
+								})
+							} else {
+								compiled
+							}
+						}
+						_ => compiled,
+					};
+					arg_expressions.push(compiled);
 				}
 
 				Ok(Expression::Call(CallExpression {
@@ -1339,6 +1354,22 @@ impl ExpressionCompiler {
 					}
 				}
 			}
+			InfixOperator::AccessNamespace(_token) => {
+				// Handle namespace access: `ns::func(args)` → CallExpression with namespaced name
+				// Extract namespace name from left side (always an identifier)
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let namespace = match &left {
+					Expression::Column(ColumnExpression(col)) => col.name.text().to_string(),
+					other => unimplemented!("unsupported namespace expression: {other:?}"),
+				};
+
+				// The right side may contain keywords (e.g. `undefined`) that should be
+				// treated as identifiers in a namespace context. Extract the name from the
+				// raw AST token before compiling, so keywords are treated as identifier_or_keyword.
+				let right_ast = BumpBox::into_inner(ast.right);
+				Self::compile_namespace_right(&namespace, right_ast)
+			}
+
 			operator => {
 				unimplemented!("not implemented: {operator:?}")
 			} /* InfixOperator::Arrow(_) => {}
@@ -1348,6 +1379,113 @@ impl ExpressionCompiler {
 			   * InfixOperator::Divide(_) => {}
 			   * InfixOperator::Rem(_) => {}
 			   * InfixOperator::TypeAscription(_) => {} */
+		}
+	}
+
+	/// Compile the right-hand side of a namespace access (`ns::...`).
+	///
+	/// Keywords like `undefined` or `true` are treated as identifiers in this
+	/// context so that `is::undefined(x)` resolves to a function call rather
+	/// than parsing `undefined` as the literal keyword.
+	fn compile_namespace_right(namespace: &str, right_ast: Ast<'_>) -> crate::Result<Expression> {
+		// Helper: extract a token's text from any AST node that should be treated
+		// as an identifier_or_keyword in namespace position.
+		fn identifier_or_keyword_name(ast: &Ast<'_>) -> Option<String> {
+			Some(ast.token().fragment.text().to_string())
+		}
+
+		match right_ast {
+			// ns::func(args)  where func is parsed as Infix(left, Call, right)
+			Ast::Infix(infix) if matches!(infix.operator, InfixOperator::Call(_)) => {
+				let func_name = identifier_or_keyword_name(&infix.left)
+					.expect("namespace function name must be extractable");
+				let full_name = format!("{}::{}", namespace, func_name);
+
+				let right = Self::compile(BumpBox::into_inner(infix.right))?;
+				let Expression::Tuple(tuple) = right else {
+					panic!("expected tuple arguments for namespaced call");
+				};
+
+				Ok(Expression::Call(CallExpression {
+					func: IdentExpression(Fragment::testing(&full_name)),
+					args: tuple.expressions,
+					fragment: infix.token.fragment.to_owned(),
+				}))
+			}
+			// ns::func(args) where func is parsed as CallFunction
+			// (happens when the namespace token is a keyword like `is`,
+			// so the parser treats the right side as a standalone call)
+			Ast::CallFunction(call) => {
+				let func_name = call.function.name.text().to_string();
+				let full_name = if call.function.namespaces.is_empty() {
+					format!("{}::{}", namespace, func_name)
+				} else {
+					let sub_ns = call
+						.function
+						.namespaces
+						.iter()
+						.map(|ns| ns.text())
+						.collect::<Vec<_>>()
+						.join("::");
+					format!("{}::{}::{}", namespace, sub_ns, func_name)
+				};
+
+				let mut arg_expressions = Vec::new();
+				for arg_ast in call.arguments.nodes {
+					let compiled = Self::compile(arg_ast)?;
+					let compiled = match &compiled {
+						Expression::Column(col_expr) => {
+							if let Ok(ty) = Type::from_str(col_expr.0.name.text()) {
+								Expression::Type(TypeExpression {
+									fragment: col_expr.0.name.clone(),
+									ty,
+								})
+							} else {
+								compiled
+							}
+						}
+						_ => compiled,
+					};
+					arg_expressions.push(compiled);
+				}
+
+				Ok(Expression::Call(CallExpression {
+					func: IdentExpression(Fragment::testing(&full_name)),
+					args: arg_expressions,
+					fragment: call.token.fragment.to_owned(),
+				}))
+			}
+			// ns::name  (bare namespaced reference, no call)
+			other => {
+				if let Some(name) = identifier_or_keyword_name(&other) {
+					let full_name = format!("{}::{}", namespace, name);
+					Ok(Expression::Column(ColumnExpression(ColumnIdentifier {
+						primitive: ColumnPrimitive::Primitive {
+							namespace: Fragment::Internal {
+								text: Arc::from("_context"),
+							},
+							primitive: Fragment::Internal {
+								text: Arc::from("_context"),
+							},
+						},
+						name: Fragment::testing(&full_name),
+					})))
+				} else {
+					let compiled = Self::compile(other)?;
+					match compiled {
+						Expression::Column(ColumnExpression(col)) => {
+							let full_name = format!("{}::{}", namespace, col.name.text());
+							Ok(Expression::Column(ColumnExpression(ColumnIdentifier {
+								primitive: col.primitive,
+								name: Fragment::testing(&full_name),
+							})))
+						}
+						other => unimplemented!(
+							"unsupported namespace right-hand side: {other:?}"
+						),
+					}
+				}
+			}
 		}
 	}
 }

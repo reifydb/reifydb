@@ -204,9 +204,7 @@ impl Vm {
 				}
 				Instruction::LogicNot => {
 					let value = self.pop_value()?;
-					self.stack.push(Variable::scalar(Value::Boolean(!scalar::value_is_truthy(
-						&value,
-					))));
+					self.stack.push(Variable::scalar(scalar::scalar_not(&value)));
 				}
 
 				// === Comparison ===
@@ -255,9 +253,7 @@ impl Vm {
 				Instruction::LogicXor => {
 					let right = self.pop_value()?;
 					let left = self.pop_value()?;
-					let l = scalar::value_is_truthy(&left);
-					let r = scalar::value_is_truthy(&right);
-					self.stack.push(Variable::scalar(Value::Boolean(l ^ r)));
+					self.stack.push(Variable::scalar(scalar::scalar_xor(&left, &right)));
 				}
 
 				// === Compound ===
@@ -285,19 +281,21 @@ impl Vm {
 					}
 					list_items.reverse();
 					let value = self.pop_value()?;
-					let mut found = false;
-					for item in &list_items {
-						if let Value::Boolean(true) = scalar::scalar_eq(&value, item) {
-							found = true;
-							break;
-						}
-					}
-					let result = if negated {
-						!found
+					let has_undefined = matches!(value, Value::Undefined)
+						|| list_items.iter().any(|item| matches!(item, Value::Undefined));
+					if has_undefined {
+						self.stack.push(Variable::scalar(Value::Undefined));
 					} else {
-						found
-					};
-					self.stack.push(Variable::scalar(Value::Boolean(result)));
+						let found = list_items.iter().any(|item| {
+							matches!(scalar::scalar_eq(&value, item), Value::Boolean(true))
+						});
+						let result = if negated {
+							!found
+						} else {
+							found
+						};
+						self.stack.push(Variable::scalar(Value::Boolean(result)));
+					}
 				}
 				Instruction::Cast(target) => {
 					let value = self.pop_value()?;

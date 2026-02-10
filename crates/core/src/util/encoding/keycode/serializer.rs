@@ -341,8 +341,8 @@ impl KeySerializer {
 			Value::Decimal(d) => {
 				self.extend_decimal(d);
 			}
-			Value::Any(_) => {
-				unreachable!("Any type cannot be serialized in keys");
+			Value::Any(_) | Value::Type(_) => {
+				unreachable!("Any/Type values cannot be serialized in keys");
 			}
 			Value::DictionaryId(id) => {
 				self.extend_u128(id.to_u128());

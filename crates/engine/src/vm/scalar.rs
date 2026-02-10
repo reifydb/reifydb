@@ -5,11 +5,11 @@ use reifydb_type::{
 	error,
 	error::diagnostic,
 	fragment::Fragment,
-	value::{Value, try_from::TryFromValueCoerce, r#type::Type},
+	value::{Value, try_from::TryFromValueCoerce, r#type::Type as ValueType},
 };
 
 /// Convert a Value to the given target type (widening/promotion).
-pub fn convert_to(value: Value, target: Type) -> crate::Result<Value> {
+pub fn convert_to(value: Value, target: ValueType) -> crate::Result<Value> {
 	use Value::*;
 	if value.get_type() == target {
 		return Ok(value);
@@ -17,7 +17,7 @@ pub fn convert_to(value: Value, target: Type) -> crate::Result<Value> {
 	match (&value, target) {
 		(Undefined, _) => Ok(Undefined),
 		// To Float8
-		(_, Type::Float8) => {
+		(_, ValueType::Float8) => {
 			let f = f64::try_from_value_coerce(&value).map_err(|_| {
 				error!(diagnostic::cast::unsupported_cast(
 					Fragment::internal(""),
@@ -28,47 +28,47 @@ pub fn convert_to(value: Value, target: Type) -> crate::Result<Value> {
 			Ok(Value::float8(f))
 		}
 		// To Int2
-		(Int1(v), Type::Int2) => Ok(Int2(*v as i16)),
-		(Uint1(v), Type::Int2) => Ok(Int2(*v as i16)),
+		(Int1(v), ValueType::Int2) => Ok(Int2(*v as i16)),
+		(Uint1(v), ValueType::Int2) => Ok(Int2(*v as i16)),
 		// To Int4
-		(Int1(v), Type::Int4) => Ok(Int4(*v as i32)),
-		(Int2(v), Type::Int4) => Ok(Int4(*v as i32)),
-		(Uint1(v), Type::Int4) => Ok(Int4(*v as i32)),
-		(Uint2(v), Type::Int4) => Ok(Int4(*v as i32)),
+		(Int1(v), ValueType::Int4) => Ok(Int4(*v as i32)),
+		(Int2(v), ValueType::Int4) => Ok(Int4(*v as i32)),
+		(Uint1(v), ValueType::Int4) => Ok(Int4(*v as i32)),
+		(Uint2(v), ValueType::Int4) => Ok(Int4(*v as i32)),
 		// To Int8
-		(Int1(v), Type::Int8) => Ok(Int8(*v as i64)),
-		(Int2(v), Type::Int8) => Ok(Int8(*v as i64)),
-		(Int4(v), Type::Int8) => Ok(Int8(*v as i64)),
-		(Uint1(v), Type::Int8) => Ok(Int8(*v as i64)),
-		(Uint2(v), Type::Int8) => Ok(Int8(*v as i64)),
-		(Uint4(v), Type::Int8) => Ok(Int8(*v as i64)),
+		(Int1(v), ValueType::Int8) => Ok(Int8(*v as i64)),
+		(Int2(v), ValueType::Int8) => Ok(Int8(*v as i64)),
+		(Int4(v), ValueType::Int8) => Ok(Int8(*v as i64)),
+		(Uint1(v), ValueType::Int8) => Ok(Int8(*v as i64)),
+		(Uint2(v), ValueType::Int8) => Ok(Int8(*v as i64)),
+		(Uint4(v), ValueType::Int8) => Ok(Int8(*v as i64)),
 		// To Int16
-		(Int1(v), Type::Int16) => Ok(Int16(*v as i128)),
-		(Int2(v), Type::Int16) => Ok(Int16(*v as i128)),
-		(Int4(v), Type::Int16) => Ok(Int16(*v as i128)),
-		(Int8(v), Type::Int16) => Ok(Int16(*v as i128)),
-		(Uint1(v), Type::Int16) => Ok(Int16(*v as i128)),
-		(Uint2(v), Type::Int16) => Ok(Int16(*v as i128)),
-		(Uint4(v), Type::Int16) => Ok(Int16(*v as i128)),
-		(Uint8(v), Type::Int16) => Ok(Int16(*v as i128)),
+		(Int1(v), ValueType::Int16) => Ok(Int16(*v as i128)),
+		(Int2(v), ValueType::Int16) => Ok(Int16(*v as i128)),
+		(Int4(v), ValueType::Int16) => Ok(Int16(*v as i128)),
+		(Int8(v), ValueType::Int16) => Ok(Int16(*v as i128)),
+		(Uint1(v), ValueType::Int16) => Ok(Int16(*v as i128)),
+		(Uint2(v), ValueType::Int16) => Ok(Int16(*v as i128)),
+		(Uint4(v), ValueType::Int16) => Ok(Int16(*v as i128)),
+		(Uint8(v), ValueType::Int16) => Ok(Int16(*v as i128)),
 		// To Uint2
-		(Uint1(v), Type::Uint2) => Ok(Uint2(*v as u16)),
+		(Uint1(v), ValueType::Uint2) => Ok(Uint2(*v as u16)),
 		// To Uint4
-		(Uint1(v), Type::Uint4) => Ok(Uint4(*v as u32)),
-		(Uint2(v), Type::Uint4) => Ok(Uint4(*v as u32)),
+		(Uint1(v), ValueType::Uint4) => Ok(Uint4(*v as u32)),
+		(Uint2(v), ValueType::Uint4) => Ok(Uint4(*v as u32)),
 		// To Uint8
-		(Uint1(v), Type::Uint8) => Ok(Uint8(*v as u64)),
-		(Uint2(v), Type::Uint8) => Ok(Uint8(*v as u64)),
-		(Uint4(v), Type::Uint8) => Ok(Uint8(*v as u64)),
+		(Uint1(v), ValueType::Uint8) => Ok(Uint8(*v as u64)),
+		(Uint2(v), ValueType::Uint8) => Ok(Uint8(*v as u64)),
+		(Uint4(v), ValueType::Uint8) => Ok(Uint8(*v as u64)),
 		// To Uint16
-		(Uint1(v), Type::Uint16) => Ok(Uint16(*v as u128)),
-		(Uint2(v), Type::Uint16) => Ok(Uint16(*v as u128)),
-		(Uint4(v), Type::Uint16) => Ok(Uint16(*v as u128)),
-		(Uint8(v), Type::Uint16) => Ok(Uint16(*v as u128)),
+		(Uint1(v), ValueType::Uint16) => Ok(Uint16(*v as u128)),
+		(Uint2(v), ValueType::Uint16) => Ok(Uint16(*v as u128)),
+		(Uint4(v), ValueType::Uint16) => Ok(Uint16(*v as u128)),
+		(Uint8(v), ValueType::Uint16) => Ok(Uint16(*v as u128)),
 		// To Utf8
-		(_, Type::Utf8) => Ok(Utf8(format!("{}", value))),
+		(_, ValueType::Utf8) => Ok(Utf8(format!("{}", value))),
 		// To Boolean
-		(_, Type::Boolean) => Ok(Boolean(value_is_truthy(&value))),
+		(_, ValueType::Boolean) => Ok(Boolean(value_is_truthy(&value))),
 		_ => Err(error!(diagnostic::cast::unsupported_cast(Fragment::internal(""), value.get_type(), target,))),
 	}
 }
@@ -82,7 +82,7 @@ pub fn scalar_add(left: Value, right: Value) -> crate::Result<Value> {
 		(Utf8(l), Utf8(r)) => return Ok(Utf8(format!("{}{}", l, r))),
 		_ => {}
 	}
-	let target = Type::promote(left.get_type(), right.get_type());
+	let target = ValueType::promote(left.get_type(), right.get_type());
 	let l = convert_to(left, target)?;
 	let r = convert_to(right, target)?;
 	Ok(match (l, r) {
@@ -110,7 +110,7 @@ pub fn scalar_sub(left: Value, right: Value) -> crate::Result<Value> {
 		(Undefined, _) | (_, Undefined) => return Ok(Undefined),
 		_ => {}
 	}
-	let target = Type::promote(left.get_type(), right.get_type());
+	let target = ValueType::promote(left.get_type(), right.get_type());
 	let l = convert_to(left, target)?;
 	let r = convert_to(right, target)?;
 	Ok(match (l, r) {
@@ -136,7 +136,7 @@ pub fn scalar_mul(left: Value, right: Value) -> crate::Result<Value> {
 		(Undefined, _) | (_, Undefined) => return Ok(Undefined),
 		_ => {}
 	}
-	let target = Type::promote(left.get_type(), right.get_type());
+	let target = ValueType::promote(left.get_type(), right.get_type());
 	let l = convert_to(left, target)?;
 	let r = convert_to(right, target)?;
 	Ok(match (l, r) {
@@ -166,7 +166,7 @@ pub fn scalar_div(left: Value, right: Value) -> crate::Result<Value> {
 	let lt = left.get_type();
 	let rt = right.get_type();
 	if lt.is_integer() && rt.is_integer() {
-		let target = Type::promote(lt, rt);
+		let target = ValueType::promote(lt, rt);
 		let l = convert_to(left, target)?;
 		let r = convert_to(right, target)?;
 		return match (&l, &r) {
@@ -198,7 +198,7 @@ pub fn scalar_rem(left: Value, right: Value) -> crate::Result<Value> {
 		(Undefined, _) | (_, Undefined) => return Ok(Undefined),
 		_ => {}
 	}
-	let target = Type::promote(left.get_type(), right.get_type());
+	let target = ValueType::promote(left.get_type(), right.get_type());
 	let l = convert_to(left, target)?;
 	let r = convert_to(right, target)?;
 	Ok(match (l, r) {
@@ -237,7 +237,7 @@ pub fn scalar_negate(value: Value) -> crate::Result<Value> {
 			return Err(error!(diagnostic::cast::unsupported_cast(
 				Fragment::internal(""),
 				value.get_type(),
-				Type::Float8,
+				ValueType::Float8,
 			)));
 		}
 	})
@@ -253,7 +253,7 @@ pub fn scalar_eq(left: &Value, right: &Value) -> Value {
 			if lt == rt {
 				return Value::Boolean(left == right);
 			}
-			let target = Type::promote(lt, rt);
+			let target = ValueType::promote(lt, rt);
 			let l = convert_to(left.clone(), target).unwrap_or(Value::Undefined);
 			let r = convert_to(right.clone(), target).unwrap_or(Value::Undefined);
 			Value::Boolean(l == r)
@@ -279,7 +279,7 @@ pub fn scalar_lt(left: &Value, right: &Value) -> Value {
 			if lt == rt {
 				return Value::Boolean(left < right);
 			}
-			let target = Type::promote(lt, rt);
+			let target = ValueType::promote(lt, rt);
 			let l = convert_to(left.clone(), target).unwrap_or(Value::Undefined);
 			let r = convert_to(right.clone(), target).unwrap_or(Value::Undefined);
 			Value::Boolean(l < r)
@@ -297,7 +297,7 @@ pub fn scalar_le(left: &Value, right: &Value) -> Value {
 			if lt == rt {
 				return Value::Boolean(left <= right);
 			}
-			let target = Type::promote(lt, rt);
+			let target = ValueType::promote(lt, rt);
 			let l = convert_to(left.clone(), target).unwrap_or(Value::Undefined);
 			let r = convert_to(right.clone(), target).unwrap_or(Value::Undefined);
 			Value::Boolean(l <= r)
@@ -315,7 +315,7 @@ pub fn scalar_gt(left: &Value, right: &Value) -> Value {
 			if lt == rt {
 				return Value::Boolean(left > right);
 			}
-			let target = Type::promote(lt, rt);
+			let target = ValueType::promote(lt, rt);
 			let l = convert_to(left.clone(), target).unwrap_or(Value::Undefined);
 			let r = convert_to(right.clone(), target).unwrap_or(Value::Undefined);
 			Value::Boolean(l > r)
@@ -333,7 +333,7 @@ pub fn scalar_ge(left: &Value, right: &Value) -> Value {
 			if lt == rt {
 				return Value::Boolean(left >= right);
 			}
-			let target = Type::promote(lt, rt);
+			let target = ValueType::promote(lt, rt);
 			let l = convert_to(left.clone(), target).unwrap_or(Value::Undefined);
 			let r = convert_to(right.clone(), target).unwrap_or(Value::Undefined);
 			Value::Boolean(l >= r)
@@ -356,6 +356,20 @@ pub fn value_is_truthy(value: &Value) -> bool {
 	}
 }
 
+pub fn scalar_not(value: &Value) -> Value {
+	match value {
+		Value::Undefined => Value::Undefined,
+		v => Value::Boolean(!value_is_truthy(v)),
+	}
+}
+
+pub fn scalar_xor(left: &Value, right: &Value) -> Value {
+	match (left, right) {
+		(Value::Undefined, _) | (_, Value::Undefined) => Value::Undefined,
+		_ => Value::Boolean(value_is_truthy(left) ^ value_is_truthy(right)),
+	}
+}
+
 pub fn scalar_or(left: &Value, right: &Value) -> Value {
 	match (left, right) {
 		(Value::Undefined, _) | (_, Value::Undefined) => Value::Undefined,
@@ -371,7 +385,7 @@ pub fn scalar_and(left: &Value, right: &Value) -> Value {
 }
 
 /// Cast a scalar value to the given target type.
-pub fn scalar_cast(value: Value, target: Type) -> crate::Result<Value> {
+pub fn scalar_cast(value: Value, target: ValueType) -> crate::Result<Value> {
 	use Value::*;
 	if value.get_type() == target {
 		return Ok(value);
@@ -379,9 +393,9 @@ pub fn scalar_cast(value: Value, target: Type) -> crate::Result<Value> {
 	match (&value, target) {
 		(Undefined, _) => Ok(Undefined),
 		// To Boolean
-		(_, Type::Boolean) => Ok(Boolean(value_is_truthy(&value))),
+		(_, ValueType::Boolean) => Ok(Boolean(value_is_truthy(&value))),
 		// To Utf8
-		(_, Type::Utf8) => Ok(Utf8(format!("{}", value))),
+		(_, ValueType::Utf8) => Ok(Utf8(format!("{}", value))),
 		// Number conversions
 		(_, t) if t.is_number() => convert_to(value, target),
 		_ => convert_to(value, target),

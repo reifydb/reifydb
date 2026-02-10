@@ -72,7 +72,13 @@ impl StandardColumnEvaluator {
 			Expression::If(expr) => self.if_expr(ctx, expr),
 			Expression::Map(expr) => self.map_expr(ctx, expr),
 			Expression::Extend(expr) => self.extend_expr(ctx, expr),
-			expr => unimplemented!("{expr:?}"),
+			Expression::Type(type_expr) => {
+				use reifydb_core::value::column::data::ColumnData;
+				use reifydb_type::value::Value;
+				let values: Vec<Box<Value>> =
+					(0..ctx.row_count).map(|_| Box::new(Value::Type(type_expr.ty))).collect();
+				Ok(Column::new(type_expr.fragment.text(), ColumnData::any(values)))
+			}
 		}
 	}
 

@@ -431,6 +431,8 @@ impl ColumnData {
 				_ => unimplemented!(),
 			},
 
+			Value::Type(t) => self.push_value(Value::Any(Box::new(Value::Type(t)))),
+
 			Value::Any(v) => match self {
 				ColumnData::Any(container) => container.push(v),
 				ColumnData::Undefined(container) => {

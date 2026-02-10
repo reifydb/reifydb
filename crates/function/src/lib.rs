@@ -18,6 +18,7 @@ pub mod datetime;
 pub mod duration;
 pub mod error;
 pub mod flow;
+pub mod is;
 pub mod math;
 pub mod meta;
 pub mod registry;

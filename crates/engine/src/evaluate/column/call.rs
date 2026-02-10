@@ -214,7 +214,7 @@ impl StandardColumnEvaluator {
 				}
 				Instruction::LogicNot => {
 					let v = stack.pop().unwrap_or(Value::Undefined);
-					stack.push(Value::Boolean(!scalar::value_is_truthy(&v)));
+					stack.push(scalar::scalar_not(&v));
 				}
 
 				// === Comparison ===
@@ -263,9 +263,7 @@ impl StandardColumnEvaluator {
 				Instruction::LogicXor => {
 					let r = stack.pop().unwrap_or(Value::Undefined);
 					let l = stack.pop().unwrap_or(Value::Undefined);
-					let lb = scalar::value_is_truthy(&l);
-					let rb = scalar::value_is_truthy(&r);
-					stack.push(Value::Boolean(lb ^ rb));
+					stack.push(scalar::scalar_xor(&l, &r));
 				}
 
 				// === Compound ===
@@ -297,14 +295,20 @@ impl StandardColumnEvaluator {
 					}
 					items.reverse();
 					let val = stack.pop().unwrap_or(Value::Undefined);
-					let found = items.iter().any(|item| {
-						matches!(scalar::scalar_eq(&val, item), Value::Boolean(true))
-					});
-					stack.push(Value::Boolean(if negated {
-						!found
+					let has_undefined = matches!(val, Value::Undefined)
+						|| items.iter().any(|item| matches!(item, Value::Undefined));
+					if has_undefined {
+						stack.push(Value::Undefined);
 					} else {
-						found
-					}));
+						let found = items.iter().any(|item| {
+							matches!(scalar::scalar_eq(&val, item), Value::Boolean(true))
+						});
+						stack.push(Value::Boolean(if negated {
+							!found
+						} else {
+							found
+						}));
+					}
 				}
 
 				// === Control flow ===
@@ -492,7 +496,15 @@ impl StandardColumnEvaluator {
 		let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
 
 		for expression in expressions {
-			result.push(self.evaluate(ctx, expression)?)
+			match expression {
+				Expression::Type(type_expr) => {
+					let values: Vec<Box<Value>> = (0..ctx.row_count)
+						.map(|_| Box::new(Value::Type(type_expr.ty)))
+						.collect();
+					result.push(Column::new(type_expr.fragment.text(), ColumnData::any(values)));
+				}
+				_ => result.push(self.evaluate(ctx, expression)?),
+			}
 		}
 
 		Ok(Columns::new(result))

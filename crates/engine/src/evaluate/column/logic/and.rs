@@ -46,20 +46,11 @@ impl StandardColumnEvaluator {
 						let r_val = r_container.get(i); // Option<bool>
 
 						match (l_val, r_val) {
-							(Some(false), _) | (_, Some(false)) => {
-								// FALSE AND anything = FALSE
-								data.push(false);
-								bitvec.push(true);
-							}
-							(Some(true), Some(true)) => {
-								// TRUE AND TRUE = TRUE
-								data.push(true);
+							(Some(l), Some(r)) => {
+								data.push(l && r);
 								bitvec.push(true);
 							}
 							_ => {
-								// At least one is undefined and no FALSE values
-								// undefined AND undefined = undefined, TRUE AND
-								// undefined = undefined
 								data.push(false);
 								bitvec.push(false);
 							}

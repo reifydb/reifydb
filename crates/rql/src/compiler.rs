@@ -556,11 +556,13 @@ impl InstructionCompiler {
 					self.emit(Instruction::PushUndefined);
 				}
 			}
+			Expression::Type(type_expr) => {
+				self.emit(Instruction::PushConst(Value::Type(type_expr.ty)));
+			}
 			Expression::Column(_)
 			| Expression::AccessSource(_)
 			| Expression::Alias(_)
-			| Expression::Extend(_)
-			| Expression::Type(_) => {
+			| Expression::Extend(_) => {
 				self.emit(Instruction::PushUndefined);
 			}
 		}

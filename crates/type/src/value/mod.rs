@@ -108,6 +108,8 @@ pub enum Value {
 	Any(Box<Value>),
 	/// A dictionary entry identifier
 	DictionaryId(DictionaryEntryId),
+	/// A type value (first-class type identifier)
+	Type(Type),
 }
 
 impl Value {
@@ -237,6 +239,7 @@ impl PartialOrd for Value {
 			(Value::Uint(l), Value::Uint(r)) => l.partial_cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => l.partial_cmp(r),
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().partial_cmp(&r.to_u128()),
+			(Value::Type(l), Value::Type(r)) => l.partial_cmp(r),
 			(Value::Any(_), Value::Any(_)) => None, // Any values are not comparable
 			(Value::Undefined, Value::Undefined) => Some(Ordering::Equal),
 			// Undefined sorts after all other values (similar to NULL in SQL)
@@ -278,6 +281,7 @@ impl Ord for Value {
 			(Value::Uint(l), Value::Uint(r)) => l.cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => l.cmp(r),
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().cmp(&r.to_u128()),
+			(Value::Type(l), Value::Type(r)) => l.cmp(r),
 			(Value::Any(_), Value::Any(_)) => unreachable!("Any values are not orderable"),
 			_ => unimplemented!(),
 		}
@@ -315,6 +319,7 @@ impl Display for Value {
 			Value::Decimal(value) => Display::fmt(value, f),
 			Value::Any(value) => Display::fmt(value, f),
 			Value::DictionaryId(value) => Display::fmt(value, f),
+			Value::Type(value) => Display::fmt(value, f),
 			Value::Undefined => f.write_str("undefined"),
 		}
 	}
@@ -351,6 +356,7 @@ impl Value {
 			Value::Decimal(_) => Type::Decimal,
 			Value::Any(_) => Type::Any,
 			Value::DictionaryId(_) => Type::DictionaryId,
+			Value::Type(t) => *t,
 		}
 	}
 }

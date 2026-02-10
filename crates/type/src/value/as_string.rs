@@ -37,6 +37,7 @@ impl AsString for Value {
 			Value::Uint(bu) => bu.to_string(),
 			Value::Decimal(bd) => bd.to_string(),
 			Value::DictionaryId(id) => id.to_string(),
+			Value::Type(t) => t.to_string(),
 			Value::Any(v) => v.as_string(),
 		}
 	}

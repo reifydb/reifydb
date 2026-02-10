@@ -88,25 +88,24 @@ impl StandardColumnEvaluator {
 					let l_val = l.data().get(i);
 					let r_val = r.data().get(i);
 
-					if l_defined && l_val {
-						// TRUE OR anything = TRUE
-						data.push(true);
-						bitvec.push(true);
-					} else if r_defined && r_val {
-						// anything OR TRUE = TRUE
-						data.push(true);
-						bitvec.push(true);
-					} else if l_defined && r_defined {
-						// Both defined and both false
-						data.push(false);
+					if l_defined && r_defined {
+						data.push(l_val || r_val);
 						bitvec.push(true);
 					} else {
-						// At least one undefined and no TRUE
 						data.push(false);
 						bitvec.push(false);
 					}
 				}
 
+				Ok(Column {
+					name: fragment,
+					data: ColumnData::bool_with_bitvec(data, bitvec),
+				})
+			}
+			(ColumnData::Undefined(u), _) | (_, ColumnData::Undefined(u)) => {
+				let len = u.len();
+				let data = vec![false; len];
+				let bitvec = vec![false; len];
 				Ok(Column {
 					name: fragment,
 					data: ColumnData::bool_with_bitvec(data, bitvec),
@@ -144,6 +143,7 @@ impl StandardColumnEvaluator {
 					data: ColumnData::bool_with_bitvec(data, bitvec),
 				}
 			}
+			ColumnData::Undefined(_) => col,
 			_ => unreachable!("negate_column should only be called with boolean columns"),
 		}
 	}
