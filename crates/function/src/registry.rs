@@ -61,6 +61,17 @@ impl FunctionsInner {
 	pub fn generator_names(&self) -> Vec<&str> {
 		self.generators.keys().map(|s| s.as_str()).collect()
 	}
+
+	pub fn get_scalar_factory(&self, name: &str) -> Option<Arc<dyn Fn() -> Box<dyn ScalarFunction> + Send + Sync>> {
+		self.scalars.get(name).cloned()
+	}
+
+	pub fn get_aggregate_factory(
+		&self,
+		name: &str,
+	) -> Option<Arc<dyn Fn() -> Box<dyn AggregateFunction> + Send + Sync>> {
+		self.aggregates.get(name).cloned()
+	}
 }
 
 pub struct FunctionsBuilder(FunctionsInner);

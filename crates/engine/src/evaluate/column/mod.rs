@@ -98,19 +98,24 @@ pub fn evaluate(
 	functions: &Functions,
 	clock: &Clock,
 ) -> crate::Result<Column> {
-	let evaluator = StandardColumnEvaluator::new(functions.clone(), clock.clone());
+	use crate::evaluate::compiled::{CompileContext, ExecContext, compile_expression};
 
-	// Ensures that result column data type matches the expected target
-	// column type
+	let compile_ctx = CompileContext {
+		functions,
+		symbol_table: ctx.symbol_table,
+	};
+	let compiled = compile_expression(&compile_ctx, expr)?;
+	let exec_ctx = ExecContext::from_column_eval_ctx(ctx, functions, clock);
+	let column = compiled.execute(&exec_ctx)?;
+
+	// Ensures that result column data type matches the expected target column type
 	if let Some(ty) = ctx.target.as_ref().map(|c| c.column_type()) {
-		let mut column = evaluator.evaluate(ctx, expr)?;
 		let data = cast::cast_column_data(ctx, &column.data(), ty, &expr.lazy_fragment())?;
-		column = Column {
+		Ok(Column {
 			name: column.name,
 			data,
-		};
-		Ok(column)
+		})
 	} else {
-		evaluator.evaluate(ctx, expr)
+		Ok(column)
 	}
 }

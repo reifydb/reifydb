@@ -3,6 +3,7 @@
 
 pub mod arith;
 pub mod column;
+pub mod compiled;
 pub mod convert;
 
 use reifydb_core::{
@@ -61,10 +62,4 @@ impl<'a> ColumnEvaluationContext<'a> {
 	pub fn pooled(&self, target: Type, capacity: usize) -> ColumnData {
 		ColumnData::with_capacity(target, capacity)
 	}
-}
-
-pub struct RowEvaluationContext<'a> {
-	pub row: Row,
-	pub target: Option<TargetColumn>,
-	pub params: &'a Params,
 }

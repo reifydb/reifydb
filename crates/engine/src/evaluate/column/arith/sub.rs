@@ -22,1108 +22,829 @@ impl StandardColumnEvaluator {
 	pub(crate) fn sub(&self, ctx: &ColumnEvaluationContext, sub: &SubExpression) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &sub.left)?;
 		let right = self.evaluate(ctx, &sub.right)?;
-		let target = Type::promote(left.get_type(), right.get_type());
+		sub_columns(ctx, &left, &right, || sub.full_fragment_owned())
+	}
+}
 
-		match (&left.data(), &right.data()) {
-			// Float4
-			(ColumnData::Float4(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float4(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+pub(crate) fn sub_columns(
+	ctx: &ColumnEvaluationContext,
+	left: &Column,
+	right: &Column,
+	fragment: impl LazyFragment + Copy,
+) -> crate::Result<Column> {
+	let target = Type::promote(left.get_type(), right.get_type());
 
-			(ColumnData::Int1(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int2(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int4(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int8(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int16(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+	match (&left.data(), &right.data()) {
+		// Float4
+		(ColumnData::Float4(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float4(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Uint1(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint2(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint4(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint8(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint16(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Int1(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int2(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int4(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int8(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int16(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			// Float8
-			(ColumnData::Float8(l), ColumnData::Float4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Float8(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Uint1(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint2(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint4(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint8(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint16(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Int1(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int2(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int4(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int8(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int16(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		// Float8
+		(ColumnData::Float8(l), ColumnData::Float4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Float8(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Uint1(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint2(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint4(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint8(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint16(l), ColumnData::Float8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Int1(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int2(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int4(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int8(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int16(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			// Signed × Signed
-			(ColumnData::Int1(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int1(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int1(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int1(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int1(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Uint1(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint2(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint4(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint8(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint16(l), ColumnData::Float8(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Int2(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int2(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int2(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int2(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int2(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		// Signed × Signed
+		(ColumnData::Int1(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int1(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int1(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int1(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int1(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Int4(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int4(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int4(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int4(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int4(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Int2(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int2(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int2(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int2(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int2(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Int8(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int8(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int8(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int8(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int8(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Int4(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int4(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int4(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int4(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int4(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Int16(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int16(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int16(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int16(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int16(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Int8(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int8(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int8(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int8(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int8(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			// Signed × Unsigned
-			(ColumnData::Int1(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int1(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int1(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int1(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int1(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Int16(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int16(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int16(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int16(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int16(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Int2(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int2(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int2(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int2(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int2(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		// Signed × Unsigned
+		(ColumnData::Int1(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int1(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int1(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int1(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int1(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Int4(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int4(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int4(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int4(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int4(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Int2(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int2(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int2(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int2(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int2(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Int8(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int8(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int8(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int8(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int8(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Int4(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int4(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int4(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int4(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int4(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Int16(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int16(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int16(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int16(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Int16(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Int8(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int8(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int8(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int8(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int8(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			// Unsigned × Signed
-			(ColumnData::Uint1(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint1(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint1(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint1(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint1(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Int16(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int16(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int16(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int16(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Int16(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Uint2(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint2(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint2(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint2(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint2(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		// Unsigned × Signed
+		(ColumnData::Uint1(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint1(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint1(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint1(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint1(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Uint4(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint4(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint4(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint4(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint4(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Uint2(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint2(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint2(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint2(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint2(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Uint8(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint8(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint8(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint8(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint8(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Uint4(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint4(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint4(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint4(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint4(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Uint16(l), ColumnData::Int1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint16(l), ColumnData::Int2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint16(l), ColumnData::Int4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint16(l), ColumnData::Int8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint16(l), ColumnData::Int16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Uint8(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint8(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint8(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint8(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint8(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			// Unsigned × Unsigned
-			(ColumnData::Uint1(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint1(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint1(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint1(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint1(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Uint16(l), ColumnData::Int1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint16(l), ColumnData::Int2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint16(l), ColumnData::Int4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint16(l), ColumnData::Int8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint16(l), ColumnData::Int16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Uint2(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint2(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint2(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint2(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint2(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		// Unsigned × Unsigned
+		(ColumnData::Uint1(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint1(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint1(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint1(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint1(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Uint4(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint4(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint4(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint4(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint4(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Uint2(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint2(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint2(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint2(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint2(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Uint8(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint8(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint8(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint8(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint8(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Uint4(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint4(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint4(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint4(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint4(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			(ColumnData::Uint16(l), ColumnData::Uint1(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint16(l), ColumnData::Uint2(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint16(l), ColumnData::Uint4(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint16(l), ColumnData::Uint8(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
-			(ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
-				sub_numeric(ctx, l, r, target, || sub.full_fragment_owned())
-			}
+		(ColumnData::Uint8(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint8(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint8(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint8(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint8(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			// Int operations
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Float4(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Float8(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Int1(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Int2(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Int4(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Int8(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Int16(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Uint1(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Uint2(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Uint4(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Uint8(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Uint16(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
+		(ColumnData::Uint16(l), ColumnData::Uint1(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint16(l), ColumnData::Uint2(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint16(l), ColumnData::Uint4(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint16(l), ColumnData::Uint8(r)) => sub_numeric(ctx, l, r, target, fragment),
+		(ColumnData::Uint16(l), ColumnData::Uint16(r)) => sub_numeric(ctx, l, r, target, fragment),
 
-			// Uint operations
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Float4(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Float8(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Int1(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Int2(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Int4(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Int8(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Int16(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Uint1(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Uint2(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Uint4(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Uint8(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint {
-					container: l,
-					..
-				},
-				ColumnData::Uint16(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
+		// Int operations
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Float4(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Float8(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Int1(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Int2(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Int4(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Int8(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Int16(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Uint1(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Uint2(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Uint4(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Uint8(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int {
+				container: l,
+				..
+			},
+			ColumnData::Uint16(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
 
-			// Decimal operations
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Float4(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Float8(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Int1(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Int2(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Int4(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Int8(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Int16(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Uint1(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Uint2(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Uint4(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Uint8(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Decimal {
-					container: l,
-					..
-				},
-				ColumnData::Uint16(r),
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
+		// Uint operations
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Float4(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Float8(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Int1(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Int2(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Int4(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Int8(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Int16(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Uint1(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Uint2(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Uint4(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Uint8(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint {
+				container: l,
+				..
+			},
+			ColumnData::Uint16(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
 
-			// Reverse operations - transaction types with Int,
-			// Uint, Decimal
-			(
-				ColumnData::Float4(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Float4(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Float4(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Float8(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Float8(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Float8(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int1(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int1(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int1(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int2(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int2(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int2(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int4(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int4(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int4(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int8(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int8(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int8(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int16(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int16(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Int16(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint1(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint1(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint1(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint2(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint2(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint2(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint4(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint4(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint4(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint8(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint8(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint8(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint16(l),
-				ColumnData::Int {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint16(l),
-				ColumnData::Uint {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
-			(
-				ColumnData::Uint16(l),
-				ColumnData::Decimal {
-					container: r,
-					..
-				},
-			) => sub_numeric_clone(ctx, l, r, target, || sub.full_fragment_owned()),
+		// Decimal operations
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Float4(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Float8(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Int1(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Int2(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Int4(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Int8(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Int16(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Uint1(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Uint2(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Uint4(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Uint8(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Decimal {
+				container: l,
+				..
+			},
+			ColumnData::Uint16(r),
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
 
-			// Duration - Duration
-			(ColumnData::Duration(l), ColumnData::Duration(r)) => {
-				let mut container = TemporalContainer::with_capacity(l.len());
-				for i in 0..l.len() {
-					match (l.get(i), r.get(i)) {
-						(Some(lv), Some(rv)) => container.push(*lv - *rv),
-						_ => container.push_undefined(),
-					}
+		// Reverse operations - transaction types with Int,
+		// Uint, Decimal
+		(
+			ColumnData::Float4(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Float4(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Float4(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Float8(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Float8(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Float8(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int1(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int1(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int1(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int2(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int2(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int2(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int4(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int4(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int4(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int8(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int8(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int8(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int16(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int16(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Int16(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint1(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint1(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint1(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint2(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint2(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint2(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint4(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint4(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint4(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint8(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint8(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint8(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint16(l),
+			ColumnData::Int {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint16(l),
+			ColumnData::Uint {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+		(
+			ColumnData::Uint16(l),
+			ColumnData::Decimal {
+				container: r,
+				..
+			},
+		) => sub_numeric_clone(ctx, l, r, target, fragment),
+
+		// Duration - Duration
+		(ColumnData::Duration(l), ColumnData::Duration(r)) => {
+			let mut container = TemporalContainer::with_capacity(l.len());
+			for i in 0..l.len() {
+				match (l.get(i), r.get(i)) {
+					(Some(lv), Some(rv)) => container.push(*lv - *rv),
+					_ => container.push_undefined(),
 				}
-				Ok(Column {
-					name: sub.full_fragment_owned(),
-					data: ColumnData::Duration(container),
-				})
 			}
-
-			// Handle undefined values - any operation with
-			// undefined results in undefined
-			(ColumnData::Undefined(l), _) => Ok(Column {
-				name: sub.full_fragment_owned(),
-				data: ColumnData::Undefined(UndefinedContainer::new(l.len())),
-			}),
-			(_, ColumnData::Undefined(r)) => Ok(Column {
-				name: sub.full_fragment_owned(),
-				data: ColumnData::Undefined(UndefinedContainer::new(r.len())),
-			}),
-
-			_ => return_error!(sub_cannot_be_applied_to_incompatible_types(
-				sub.full_fragment_owned(),
-				left.get_type(),
-				right.get_type(),
-			)),
+			Ok(Column {
+				name: fragment.fragment(),
+				data: ColumnData::Duration(container),
+			})
 		}
+
+		// Handle undefined values - any operation with
+		// undefined results in undefined
+		(ColumnData::Undefined(l), _) => Ok(Column {
+			name: fragment.fragment(),
+			data: ColumnData::Undefined(UndefinedContainer::new(l.len())),
+		}),
+		(_, ColumnData::Undefined(r)) => Ok(Column {
+			name: fragment.fragment(),
+			data: ColumnData::Undefined(UndefinedContainer::new(r.len())),
+		}),
+
+		_ => return_error!(sub_cannot_be_applied_to_incompatible_types(
+			fragment.fragment(),
+			left.get_type(),
+			right.get_type(),
+		)),
 	}
 }
 
