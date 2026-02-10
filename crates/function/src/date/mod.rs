@@ -8,5 +8,6 @@ pub mod day_of_year;
 pub mod diff;
 pub mod month;
 pub mod new;
+pub mod now;
 pub mod subtract;
 pub mod year;

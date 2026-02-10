@@ -20,9 +20,12 @@ fn extract_i32(data: &ColumnData, i: usize) -> Option<i32> {
 		ColumnData::Int2(c) => c.get(i).map(|&v| v as i32),
 		ColumnData::Int4(c) => c.get(i).copied(),
 		ColumnData::Int8(c) => c.get(i).map(|&v| v as i32),
+		ColumnData::Int16(c) => c.get(i).map(|&v| v as i32),
 		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i32),
 		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i32),
 		ColumnData::Uint4(c) => c.get(i).map(|&v| v as i32),
+		ColumnData::Uint8(c) => c.get(i).map(|&v| v as i32),
+		ColumnData::Uint16(c) => c.get(i).map(|&v| v as i32),
 		_ => None,
 	}
 }
@@ -32,9 +35,12 @@ fn is_integer_type(data: &ColumnData) -> bool {
 		data,
 		ColumnData::Int1(_)
 			| ColumnData::Int2(_) | ColumnData::Int4(_)
-			| ColumnData::Int8(_) | ColumnData::Uint1(_)
+			| ColumnData::Int8(_) | ColumnData::Int16(_)
+			| ColumnData::Uint1(_)
 			| ColumnData::Uint2(_)
 			| ColumnData::Uint4(_)
+			| ColumnData::Uint8(_)
+			| ColumnData::Uint16(_)
 	)
 }
 
@@ -64,9 +70,12 @@ impl ScalarFunction for DateNew {
 					Type::Int2,
 					Type::Int4,
 					Type::Int8,
+					Type::Int16,
 					Type::Uint1,
 					Type::Uint2,
 					Type::Uint4,
+					Type::Uint8,
+					Type::Uint16,
 				],
 				actual: year_col.data().get_type(),
 			});
@@ -80,9 +89,12 @@ impl ScalarFunction for DateNew {
 					Type::Int2,
 					Type::Int4,
 					Type::Int8,
+					Type::Int16,
 					Type::Uint1,
 					Type::Uint2,
 					Type::Uint4,
+					Type::Uint8,
+					Type::Uint16,
 				],
 				actual: month_col.data().get_type(),
 			});
@@ -96,9 +108,12 @@ impl ScalarFunction for DateNew {
 					Type::Int2,
 					Type::Int4,
 					Type::Int8,
+					Type::Int16,
 					Type::Uint1,
 					Type::Uint2,
 					Type::Uint4,
+					Type::Uint8,
+					Type::Uint16,
 				],
 				actual: day_col.data().get_type(),
 			});

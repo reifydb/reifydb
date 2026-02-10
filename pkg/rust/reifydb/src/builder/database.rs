@@ -28,7 +28,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine};
 use reifydb_function::{
-	blob, clock, date,
+	blob, clock, date, datetime, duration,
 	flow::to_json::FlowNodeToJson,
 	math, meta,
 	registry::{Functions, FunctionsBuilder},
@@ -257,6 +257,7 @@ impl DatabaseBuilder {
 			.register_scalar("date::day_of_year", date::day_of_year::DateDayOfYear::new)
 			.register_scalar("date::day_of_week", date::day_of_week::DateDayOfWeek::new)
 			.register_scalar("date::new", date::new::DateNew::new)
+			.register_scalar("date::now", date::now::DateNow::new)
 			.register_scalar("date::add", date::add::DateAdd::new)
 			.register_scalar("date::subtract", date::subtract::DateSubtract::new)
 			.register_scalar("date::diff", date::diff::DateDiff::new)
@@ -265,9 +266,44 @@ impl DatabaseBuilder {
 			.register_scalar("time::second", time::second::TimeSecond::new)
 			.register_scalar("time::nanosecond", time::nanosecond::TimeNanosecond::new)
 			.register_scalar("time::new", time::new::TimeNew::new)
+			.register_scalar("time::now", time::now::TimeNow::new)
 			.register_scalar("time::add", time::add::TimeAdd::new)
 			.register_scalar("time::subtract", time::subtract::TimeSubtract::new)
 			.register_scalar("time::diff", time::diff::TimeDiff::new)
+			.register_scalar("datetime::year", datetime::year::DateTimeYear::new)
+			.register_scalar("datetime::month", datetime::month::DateTimeMonth::new)
+			.register_scalar("datetime::day", datetime::day::DateTimeDay::new)
+			.register_scalar("datetime::hour", datetime::hour::DateTimeHour::new)
+			.register_scalar("datetime::minute", datetime::minute::DateTimeMinute::new)
+			.register_scalar("datetime::second", datetime::second::DateTimeSecond::new)
+			.register_scalar("datetime::nanosecond", datetime::nanosecond::DateTimeNanosecond::new)
+			.register_scalar("datetime::day_of_year", datetime::day_of_year::DateTimeDayOfYear::new)
+			.register_scalar("datetime::day_of_week", datetime::day_of_week::DateTimeDayOfWeek::new)
+			.register_scalar("datetime::date", datetime::date::DateTimeDate::new)
+			.register_scalar("datetime::time", datetime::time::DateTimeTime::new)
+			.register_scalar("datetime::epoch", datetime::epoch::DateTimeEpoch::new)
+			.register_scalar("datetime::epoch_millis", datetime::epoch_millis::DateTimeEpochMillis::new)
+			.register_scalar("datetime::new", datetime::new::DateTimeNew::new)
+			.register_scalar("datetime::now", datetime::now::DateTimeNow::new)
+			.register_scalar("datetime::from_epoch", datetime::from_epoch::DateTimeFromEpoch::new)
+			.register_scalar(
+				"datetime::from_epoch_millis",
+				datetime::from_epoch_millis::DateTimeFromEpochMillis::new,
+			)
+			.register_scalar("datetime::add", datetime::add::DateTimeAdd::new)
+			.register_scalar("datetime::subtract", datetime::subtract::DateTimeSubtract::new)
+			.register_scalar("datetime::diff", datetime::diff::DateTimeDiff::new)
+			.register_scalar("duration::years", duration::years::DurationYears::new)
+			.register_scalar("duration::months", duration::months::DurationMonths::new)
+			.register_scalar("duration::weeks", duration::weeks::DurationWeeks::new)
+			.register_scalar("duration::days", duration::days::DurationDays::new)
+			.register_scalar("duration::hours", duration::hours::DurationHours::new)
+			.register_scalar("duration::minutes", duration::minutes::DurationMinutes::new)
+			.register_scalar("duration::seconds", duration::seconds::DurationSeconds::new)
+			.register_scalar("duration::millis", duration::millis::DurationMillis::new)
+			.register_scalar("duration::get_months", duration::get_months::DurationGetMonths::new)
+			.register_scalar("duration::get_days", duration::get_days::DurationGetDays::new)
+			.register_scalar("duration::get_nanos", duration::get_nanos::DurationGetNanos::new)
 			.register_scalar("text::ascii", text::ascii::TextAscii::new)
 			.register_scalar("text::char", text::char::TextChar::new)
 			.register_scalar("text::concat", text::concat::TextConcat::new)
