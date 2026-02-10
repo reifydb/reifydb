@@ -3,6 +3,7 @@
 
 pub mod add;
 pub mod days;
+pub mod format;
 pub mod get_days;
 pub mod get_months;
 pub mod get_nanos;
