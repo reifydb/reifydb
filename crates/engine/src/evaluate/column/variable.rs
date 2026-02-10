@@ -22,7 +22,7 @@ impl StandardColumnEvaluator {
 
 		// Special case: $env variable returns environment dataframe
 		if variable_name == "env" {
-			// Frame variables cannot be used directly in scalar expressions
+			// Columns variables cannot be used directly in scalar expressions
 			// Return a clear error with helpful guidance
 			return_error!(variable_is_dataframe(variable_name));
 		}
@@ -40,11 +40,11 @@ impl StandardColumnEvaluator {
 					data,
 				})
 			}
-			Some(Variable::Frame(_))
+			Some(Variable::Columns(_))
 			| Some(Variable::ForIterator {
 				..
 			}) => {
-				// Frame variables cannot be used directly in scalar expressions
+				// Columns variables cannot be used directly in scalar expressions
 				// Return a clear error with helpful guidance
 				return_error!(variable_is_dataframe(variable_name));
 			}

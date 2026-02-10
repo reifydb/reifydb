@@ -18,7 +18,7 @@ use super::{
 	interpret::TransactionAccess,
 	scalar,
 	services::Services,
-	stack::{ControlFlow, Stack, StackValue, SymbolTable, Variable},
+	stack::{ControlFlow, Stack, SymbolTable, Variable},
 	volcano::{
 		compile::compile,
 		query::{QueryContext, QueryNode},
@@ -57,8 +57,8 @@ impl Vm {
 
 	fn pop_scalar(&mut self) -> crate::Result<Value> {
 		match self.stack.pop()? {
-			StackValue::Scalar(v) => Ok(v),
-			StackValue::Columns(c) if c.len() == 1 && c.row_count() == 1 => {
+			Variable::Scalar(v) => Ok(v),
+			Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => {
 				Ok(c.iter().next().unwrap().data().iter().next().unwrap())
 			}
 			_ => Err(reifydb_type::error::Error(
@@ -89,10 +89,10 @@ impl Vm {
 
 				// === Stack ===
 				Instruction::PushConst(value) => {
-					self.stack.push(StackValue::Scalar(value.clone()));
+					self.stack.push(Variable::Scalar(value.clone()));
 				}
 				Instruction::PushUndefined => {
-					self.stack.push(StackValue::Scalar(Value::Undefined));
+					self.stack.push(Variable::Scalar(Value::Undefined));
 				}
 				Instruction::Pop => {
 					self.stack.pop()?;
@@ -109,9 +109,9 @@ impl Vm {
 					let name = strip_dollar_prefix(fragment.text());
 					match self.symbol_table.get(&name) {
 						Some(Variable::Scalar(v)) => {
-							self.stack.push(StackValue::Scalar(v.clone()));
+							self.stack.push(Variable::Scalar(v.clone()));
 						}
-						Some(Variable::Frame(_)) => {
+						Some(Variable::Columns(_)) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_type::error::diagnostic::runtime::variable_is_dataframe(&name),
 							));
@@ -142,8 +142,12 @@ impl Vm {
 					let name = strip_dollar_prefix(fragment.text());
 					let sv = self.stack.pop()?;
 					let variable = match sv {
-						StackValue::Scalar(v) => Variable::Scalar(v),
-						StackValue::Columns(c) => {
+						Variable::Scalar(v) => Variable::Scalar(v),
+						Variable::Columns(c)
+						| Variable::ForIterator {
+							columns: c,
+							..
+						} => {
 							if c.len() == 1 && c.row_count() == 1 {
 								Variable::Scalar(
 									c.iter().next()
@@ -154,7 +158,7 @@ impl Vm {
 										.unwrap(),
 								)
 							} else {
-								Variable::Frame(c)
+								Variable::Columns(c)
 							}
 						}
 					};
@@ -165,37 +169,37 @@ impl Vm {
 				Instruction::Add => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_add(left, right)?));
+					self.stack.push(Variable::Scalar(scalar::scalar_add(left, right)?));
 				}
 				Instruction::Sub => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_sub(left, right)?));
+					self.stack.push(Variable::Scalar(scalar::scalar_sub(left, right)?));
 				}
 				Instruction::Mul => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_mul(left, right)?));
+					self.stack.push(Variable::Scalar(scalar::scalar_mul(left, right)?));
 				}
 				Instruction::Div => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_div(left, right)?));
+					self.stack.push(Variable::Scalar(scalar::scalar_div(left, right)?));
 				}
 				Instruction::Rem => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_rem(left, right)?));
+					self.stack.push(Variable::Scalar(scalar::scalar_rem(left, right)?));
 				}
 
 				// === Unary ===
 				Instruction::Negate => {
 					let value = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_negate(value)?));
+					self.stack.push(Variable::Scalar(scalar::scalar_negate(value)?));
 				}
 				Instruction::LogicNot => {
 					let value = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(Value::Boolean(!scalar::value_is_truthy(
+					self.stack.push(Variable::Scalar(Value::Boolean(!scalar::value_is_truthy(
 						&value,
 					))));
 				}
@@ -204,51 +208,51 @@ impl Vm {
 				Instruction::CmpEq => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_eq(&left, &right)));
+					self.stack.push(Variable::Scalar(scalar::scalar_eq(&left, &right)));
 				}
 				Instruction::CmpNe => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_ne(&left, &right)));
+					self.stack.push(Variable::Scalar(scalar::scalar_ne(&left, &right)));
 				}
 				Instruction::CmpLt => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_lt(&left, &right)));
+					self.stack.push(Variable::Scalar(scalar::scalar_lt(&left, &right)));
 				}
 				Instruction::CmpLe => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_le(&left, &right)));
+					self.stack.push(Variable::Scalar(scalar::scalar_le(&left, &right)));
 				}
 				Instruction::CmpGt => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_gt(&left, &right)));
+					self.stack.push(Variable::Scalar(scalar::scalar_gt(&left, &right)));
 				}
 				Instruction::CmpGe => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_ge(&left, &right)));
+					self.stack.push(Variable::Scalar(scalar::scalar_ge(&left, &right)));
 				}
 
 				// === Logic ===
 				Instruction::LogicAnd => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_and(&left, &right)));
+					self.stack.push(Variable::Scalar(scalar::scalar_and(&left, &right)));
 				}
 				Instruction::LogicOr => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_or(&left, &right)));
+					self.stack.push(Variable::Scalar(scalar::scalar_or(&left, &right)));
 				}
 				Instruction::LogicXor => {
 					let right = self.pop_scalar()?;
 					let left = self.pop_scalar()?;
 					let l = scalar::value_is_truthy(&left);
 					let r = scalar::value_is_truthy(&right);
-					self.stack.push(StackValue::Scalar(Value::Boolean(l ^ r)));
+					self.stack.push(Variable::Scalar(Value::Boolean(l ^ r)));
 				}
 
 				// === Compound ===
@@ -262,7 +266,7 @@ impl Vm {
 						(Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a && b),
 						_ => Value::Undefined,
 					};
-					self.stack.push(StackValue::Scalar(result));
+					self.stack.push(Variable::Scalar(result));
 				}
 				Instruction::InList {
 					count,
@@ -288,11 +292,11 @@ impl Vm {
 					} else {
 						found
 					};
-					self.stack.push(StackValue::Scalar(Value::Boolean(result)));
+					self.stack.push(Variable::Scalar(Value::Boolean(result)));
 				}
 				Instruction::Cast(target) => {
 					let value = self.pop_scalar()?;
-					self.stack.push(StackValue::Scalar(scalar::scalar_cast(value, *target)?));
+					self.stack.push(Variable::Scalar(scalar::scalar_cast(value, *target)?));
 				}
 
 				// === Control flow ===
@@ -302,8 +306,14 @@ impl Vm {
 						continue;
 					};
 					match value {
-						StackValue::Columns(c) => result.push(Frame::from(c)),
-						StackValue::Scalar(v) => {
+						Variable::Columns(c)
+						| Variable::ForIterator {
+							columns: c,
+							..
+						} => {
+							result.push(Frame::from(c));
+						}
+						Variable::Scalar(v) => {
 							let mut data = ColumnData::undefined(0);
 							data.push_value(v);
 							let col = Column::new("value", data);
@@ -368,8 +378,12 @@ impl Vm {
 					variable_name,
 				} => {
 					let columns = match self.stack.pop()? {
-						StackValue::Columns(c) => c,
-						StackValue::Scalar(_) => {
+						Variable::Columns(c)
+						| Variable::ForIterator {
+							columns: c,
+							..
+						} => c,
+						Variable::Scalar(_) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_core::error::diagnostic::internal::internal_with_context(
 									"ForInit expects Columns on data stack, got Scalar",
@@ -435,7 +449,7 @@ impl Vm {
 						let row_frame = Columns::new(row_columns);
 						self.symbol_table.set(
 							clean_name.to_string(),
-							Variable::Frame(row_frame),
+							Variable::Columns(row_frame),
 							true,
 						)?;
 					}
@@ -499,7 +513,7 @@ impl Vm {
 							ControlFlow::Normal,
 						) {
 							ControlFlow::Return(v) => {
-								StackValue::Scalar(v.unwrap_or(Value::Undefined))
+								Variable::Scalar(v.unwrap_or(Value::Undefined))
 							}
 							_ => {
 								// If no explicit return, check if function body emitted
@@ -524,15 +538,15 @@ impl Vm {
 													Column::new(fc.name.as_str(), data)
 												})
 												.collect();
-										StackValue::Columns(Columns::new(cols))
+										Variable::Columns(Columns::new(cols))
 									} else {
-										StackValue::Scalar(Value::Undefined)
+										Variable::Scalar(Value::Undefined)
 									}
 								} else {
 									// Check if anything was left on the stack by
 									// the function body
 									self.stack.pop().ok().unwrap_or(
-										StackValue::Scalar(Value::Undefined),
+										Variable::Scalar(Value::Undefined),
 									)
 								}
 							}
@@ -577,7 +591,7 @@ impl Vm {
 						} else {
 							Value::Undefined
 						};
-						self.stack.push(StackValue::Scalar(value));
+						self.stack.push(Variable::Scalar(value));
 					}
 				}
 
@@ -607,7 +621,7 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateTable(node) => {
 					let txn = match tx {
@@ -624,7 +638,7 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateRingBuffer(node) => {
 					let txn = match tx {
@@ -641,7 +655,7 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateFlow(node) => {
 					let txn = match tx {
@@ -658,7 +672,7 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateDeferredView(node) => {
 					let txn = match tx {
@@ -675,7 +689,7 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateTransactionalView(node) => {
 					let txn = match tx {
@@ -688,7 +702,7 @@ impl Vm {
 						)),
 					};
 					let columns = super::instruction::ddl::create::transactional::create_transactional_view(services, txn, node.clone())?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateDictionary(node) => {
 					let txn = match tx {
@@ -705,7 +719,7 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateSubscription(node) => {
 					let txn = match tx {
@@ -723,7 +737,7 @@ impl Vm {
 							txn,
 							node.clone(),
 						)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::AlterSequence(node) => {
 					let txn = match tx {
@@ -740,7 +754,7 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::AlterTable(node) => {
 					let txn = match tx {
@@ -757,7 +771,7 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::AlterView(node) => {
 					let txn = match tx {
@@ -774,7 +788,7 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::AlterFlow(node) => {
 					let txn = match tx {
@@ -791,7 +805,7 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 
 				// === DML ===
@@ -814,7 +828,7 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DeleteRingBuffer(node) => {
 					match tx {
@@ -835,7 +849,7 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::InsertTable(node) => {
 					match tx {
@@ -856,7 +870,7 @@ impl Vm {
 						node.clone(),
 						&mut self.symbol_table,
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::InsertRingBuffer(node) => {
 					match tx {
@@ -877,7 +891,7 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::InsertDictionary(node) => {
 					match tx {
@@ -898,7 +912,7 @@ impl Vm {
 						node.clone(),
 						&mut self.symbol_table,
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::Update(node) => {
 					match tx {
@@ -919,7 +933,7 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::UpdateRingBuffer(node) => {
 					match tx {
@@ -940,7 +954,7 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 					)?;
-					self.stack.push(StackValue::Columns(columns));
+					self.stack.push(Variable::Columns(columns));
 				}
 
 				// === Query ===
@@ -953,7 +967,7 @@ impl Vm {
 						params.clone(),
 						&mut self.symbol_table,
 					)? {
-						self.stack.push(StackValue::Columns(columns));
+						self.stack.push(Variable::Columns(columns));
 					}
 				}
 
@@ -963,7 +977,7 @@ impl Vm {
 				} => {
 					let clean_name = strip_dollar_prefix(target.text());
 					let columns = match self.stack.pop()? {
-						StackValue::Columns(cols) => cols,
+						Variable::Columns(cols) => cols,
 						_ => {
 							return Err(reifydb_type::error::Error(
 								reifydb_core::error::diagnostic::internal::internal_with_context(
@@ -975,21 +989,21 @@ impl Vm {
 					};
 
 					match self.symbol_table.get(&clean_name) {
-						Some(Variable::Frame(_)) => {
+						Some(Variable::Columns(_)) => {
 							let mut existing =
 								match self.symbol_table.get(&clean_name).unwrap() {
-									Variable::Frame(f) => f.clone(),
+									Variable::Columns(f) => f.clone(),
 									_ => unreachable!(),
 								};
 							existing.append_columns(columns)?;
 							self.symbol_table
-								.reassign(clean_name, Variable::Frame(existing))?;
+								.reassign(clean_name, Variable::Columns(existing))?;
 						}
 						None => {
-							// Auto-create the Frame variable
+							// Auto-create the Columns variable
 							self.symbol_table.set(
 								clean_name,
-								Variable::Frame(columns),
+								Variable::Columns(columns),
 								true,
 							)?;
 						}

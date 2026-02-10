@@ -64,7 +64,7 @@ impl QueryNode for VariableNode {
 
 				Ok(Some(columns))
 			}
-			Some(Variable::Frame(frame_columns)) => {
+			Some(Variable::Columns(frame_columns)) => {
 				// Return the frame directly
 				self.executed = true;
 
