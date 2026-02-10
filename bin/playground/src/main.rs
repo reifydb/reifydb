@@ -18,6 +18,7 @@ APPEND $data FROM [{id: 2, name: 'Bob'}];
 APPEND $data FROM $data | filter { id == 2 };
 APPEND $data FROM $data | filter { id == 2 };
 APPEND $data FROM $data | filter { id == 1 };
+ASSERT { 1 < 1 };
 FROM $data;
 
 			"#,

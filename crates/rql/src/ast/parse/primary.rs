@@ -50,6 +50,7 @@ impl<'bump> Parser<'bump> {
 				// level
 				match keyword {
 					Keyword::Append => Ok(Ast::Append(self.parse_append()?)),
+					Keyword::Assert => Ok(Ast::Assert(self.parse_assert()?)),
 					Keyword::From => Ok(Ast::From(self.parse_from()?)),
 					Keyword::Map => Ok(Ast::Map(self.parse_map()?)),
 					Keyword::Select => Ok(Ast::Map(self.parse_select()?)),

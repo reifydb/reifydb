@@ -364,6 +364,13 @@ pub struct DistinctNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct AssertNode {
+	pub input: Option<Box<QueryPlan>>,
+	pub conditions: Vec<Expression>,
+	pub message: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct FilterNode {
 	pub input: Box<QueryPlan>,
 	pub conditions: Vec<Expression>,

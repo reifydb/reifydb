@@ -5,6 +5,7 @@ pub mod aggregate;
 pub mod alter;
 pub mod append;
 pub mod apply;
+pub mod assert;
 pub mod block;
 pub mod call;
 pub mod cast;
@@ -405,18 +406,34 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Look ahead from current position to find a pipe operator (|)
-	/// Returns true if pipe found before semicolon or EOF
-	/// Returns false if semicolon or EOF found first
+	/// Returns true if pipe found before semicolon or EOF at depth 0
+	/// Returns false if semicolon or EOF found first, or if a closing
+	/// bracket/brace/paren is hit at depth 0 (we're inside a nested context)
 	pub(crate) fn has_pipe_ahead(&self) -> bool {
 		let mut pos = self.position;
+		let mut depth = 0;
 
 		while pos < self.tokens.len() {
 			let token = &self.tokens[pos];
 			match token.kind {
-				TokenKind::Operator(Operator::Pipe) => return true,
-				TokenKind::Separator(Separator::Semicolon) => return false,
-				_ => pos += 1,
+				TokenKind::Operator(Operator::Pipe) if depth == 0 => return true,
+				TokenKind::Separator(Separator::Semicolon) if depth == 0 => return false,
+				TokenKind::Operator(Operator::OpenCurly)
+				| TokenKind::Operator(Operator::OpenBracket)
+				| TokenKind::Operator(Operator::OpenParen) => {
+					depth += 1;
+				}
+				TokenKind::Operator(Operator::CloseCurly)
+				| TokenKind::Operator(Operator::CloseBracket)
+				| TokenKind::Operator(Operator::CloseParen) => {
+					if depth == 0 {
+						return false;
+					}
+					depth -= 1;
+				}
+				_ => {}
 			}
+			pos += 1;
 		}
 
 		// Reached EOF without finding pipe or semicolon

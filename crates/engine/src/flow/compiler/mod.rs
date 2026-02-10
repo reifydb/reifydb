@@ -257,6 +257,9 @@ impl FlowCompiler {
 				// TODO: Implement DictionaryScan for flow graphs
 				unimplemented!("DictionaryScan compilation not yet implemented for flow")
 			}
+			QueryPlan::Assert(_) => {
+				unimplemented!("Assert compilation not yet implemented for flow")
+			}
 		}
 	}
 }

@@ -67,6 +67,7 @@ impl<'bump> IntoIterator for AstStatement<'bump> {
 pub enum Ast<'bump> {
 	Aggregate(AstAggregate<'bump>),
 	Append(AstAppend<'bump>),
+	Assert(AstAssert<'bump>),
 	Apply(AstApply<'bump>),
 	Between(AstBetween<'bump>),
 	Block(AstBlock<'bump>),
@@ -129,6 +130,7 @@ impl<'bump> Ast<'bump> {
 		match self {
 			Ast::Inline(node) => &node.token,
 			Ast::Append(node) => node.token(),
+			Ast::Assert(node) => &node.token,
 			Ast::Apply(node) => &node.token,
 			Ast::Between(node) => &node.token,
 			Ast::Block(node) => &node.token,
@@ -217,6 +219,17 @@ impl<'bump> Ast<'bump> {
 	/// Returns true if this AST node is a DDL statement (CREATE, ALTER, DROP).
 	pub fn is_ddl(&self) -> bool {
 		matches!(self, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_))
+	}
+
+	pub fn is_assert(&self) -> bool {
+		matches!(self, Ast::Assert(_))
+	}
+	pub fn as_assert(&self) -> &AstAssert<'bump> {
+		if let Ast::Assert(result) = self {
+			result
+		} else {
+			panic!("not assert")
+		}
 	}
 
 	pub fn is_aggregate(&self) -> bool {
@@ -911,6 +924,13 @@ pub struct AstCreateDictionary<'bump> {
 	pub dictionary: MaybeQualifiedDictionaryIdentifier<'bump>,
 	pub value_type: AstType<'bump>,
 	pub id_type: AstType<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstAssert<'bump> {
+	pub token: Token<'bump>,
+	pub node: BumpBox<'bump, Ast<'bump>>,
+	pub message: Option<Token<'bump>>,
 }
 
 #[derive(Debug)]

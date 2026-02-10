@@ -7,6 +7,7 @@ use ::serde::{Deserialize, Serialize};
 
 use crate::{fragment::Fragment, value::r#type::Type};
 
+pub mod assert;
 pub mod ast;
 pub mod auth;
 pub mod blob;

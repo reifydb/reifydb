@@ -9,9 +9,9 @@ use crate::{
 	ast::parse_str,
 	bump::Bump,
 	plan::logical::{
-		AggregateNode, AlterSequenceNode, AppendNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode,
-		GeneratorNode, InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode,
-		OrderNode, PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
+		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, CreateIndexNode, DistinctNode, ExtendNode,
+		FilterNode, GeneratorNode, InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
+		MapNode, OrderNode, PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
 		alter::{
 			flow::AlterFlowAction,
 			table::{AlterTableNode, AlterTableOperation},
@@ -251,6 +251,14 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			take,
 		}) => {
 			output.push_str(&format!("{}{} Take {}\n", prefix, branch, take));
+		}
+		LogicalPlan::Assert(AssertNode {
+			condition,
+			message,
+		}) => {
+			let msg = message.as_deref().unwrap_or("assertion failed");
+			output.push_str(&format!("{}{} Assert \"{}\"\n", prefix, branch, msg));
+			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition.to_string()));
 		}
 		LogicalPlan::Filter(FilterNode {
 			condition,

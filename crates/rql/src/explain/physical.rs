@@ -14,9 +14,9 @@ use crate::{
 	plan::{
 		logical::compile_logical,
 		physical::{
-			AggregateNode, AlterFlowAction, AppendPhysicalNode, ApplyNode, DistinctNode, ExtendNode,
-			FilterNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, PhysicalPlan,
-			SortNode, TakeNode, compile_physical,
+			AggregateNode, AlterFlowAction, AppendPhysicalNode, ApplyNode, AssertNode, DistinctNode,
+			ExtendNode, FilterNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode,
+			PhysicalPlan, SortNode, TakeNode, compile_physical,
 		},
 	},
 };
@@ -193,6 +193,31 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
 				render_physical_plan_inner(input, child_prefix, true, output);
+			});
+		}
+
+		PhysicalPlan::Assert(AssertNode {
+			conditions,
+			input,
+			message,
+		}) => {
+			let label = if let Some(msg) = message {
+				format!(
+					"Assert [{}] \"{}\"",
+					conditions.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "),
+					msg
+				)
+			} else {
+				format!(
+					"Assert [{}]",
+					conditions.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
+				)
+			};
+			write_node_header(output, prefix, is_last, &label);
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				if let Some(input) = input {
+					render_physical_plan_inner(input, child_prefix, true, output);
+				}
 			});
 		}
 

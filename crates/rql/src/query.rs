@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::nodes::{
-	AggregateNode, AppendQueryNode, ApplyNode, DictionaryScanNode, DistinctNode, EnvironmentNode, ExtendNode,
-	FilterNode, FlowScanNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode, JoinLeftNode,
-	JoinNaturalNode, MapNode, PatchNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
+	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, DictionaryScanNode, DistinctNode, EnvironmentNode,
+	ExtendNode, FilterNode, FlowScanNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
+	JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
 	RowRangeScanNode, ScalarizeNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode, VariableNode,
 	ViewScanNode, WindowNode,
 };
@@ -27,6 +27,7 @@ pub enum QueryPlan {
 	RowRangeScan(RowRangeScanNode),
 
 	Aggregate(AggregateNode),
+	Assert(AssertNode),
 	Distinct(DistinctNode),
 	Filter(FilterNode),
 	JoinInner(JoinInnerNode),

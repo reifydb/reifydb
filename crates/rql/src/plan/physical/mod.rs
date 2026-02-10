@@ -103,6 +103,7 @@ pub enum PhysicalPlan<'bump> {
 	CallFunction(CallFunctionNode),
 	// Query
 	Aggregate(AggregateNode<'bump>),
+	Assert(AssertNode<'bump>),
 	Distinct(DistinctNode<'bump>),
 	Filter(FilterNode<'bump>),
 	IndexScan(IndexScanNode),
@@ -353,6 +354,13 @@ pub struct DistinctNode<'bump> {
 }
 
 #[derive(Debug)]
+pub struct AssertNode<'bump> {
+	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub conditions: Vec<Expression>,
+	pub message: Option<String>,
+}
+
+#[derive(Debug)]
 pub struct FilterNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub conditions: Vec<Expression>,
@@ -548,6 +556,15 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::AlterFlow(alter) => {
 					stack.push(self.compile_alter_flow(rx, alter)?);
+				}
+
+				LogicalPlan::Assert(assert_node) => {
+					let input = stack.pop().map(|p| self.bump_box(p));
+					stack.push(PhysicalPlan::Assert(AssertNode {
+						conditions: vec![assert_node.condition],
+						message: assert_node.message,
+						input,
+					}));
 				}
 
 				LogicalPlan::Filter(filter) => {

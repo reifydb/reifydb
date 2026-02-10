@@ -84,6 +84,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::DefFunction(_) => "DefFunction",
 		Ast::Return(_) => "Return",
 		Ast::Append(_) => "Append",
+		Ast::Assert(_) => "Assert",
 	};
 
 	let branch = if is_last {
@@ -444,6 +445,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 			// Return early since we handled the children
 			return;
 		}
+		Ast::Assert(a) => ref_children.push(&a.node),
 		Ast::SubQuery(sq) => {
 			// Add the nodes from the subquery statement as children
 			for node in &sq.statement.nodes {

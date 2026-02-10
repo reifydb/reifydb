@@ -188,6 +188,13 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
 			columns: node.columns,
 		}),
+		PhysicalPlan::Assert(node) => QueryPlan::Assert(nodes::AssertNode {
+			input: node
+				.input
+				.map(|i| Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))),
+			conditions: node.conditions,
+			message: node.message,
+		}),
 		PhysicalPlan::Filter(node) => QueryPlan::Filter(nodes::FilterNode {
 			input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
 			conditions: node.conditions,
@@ -884,6 +891,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Distinct(node))));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::Assert(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Assert(node))));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::Filter(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))));
 				self.emit(Instruction::Emit);
@@ -1158,6 +1169,9 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::Distinct(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Distinct(node))));
+			}
+			PhysicalPlan::Assert(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Assert(node))));
 			}
 			PhysicalPlan::Filter(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))));

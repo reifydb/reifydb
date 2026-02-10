@@ -25,8 +25,8 @@ use reifydb_catalog::vtable::{
 use reifydb_core::interface::catalog::id::{IndexId, NamespaceId};
 use reifydb_rql::{
 	nodes::{
-		AggregateNode as RqlAggregateNode, ExtendNode as RqlExtendNode, FilterNode as RqlFilterNode,
-		GeneratorNode as RqlGeneratorNode, InlineDataNode as RqlInlineDataNode,
+		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, ExtendNode as RqlExtendNode,
+		FilterNode as RqlFilterNode, GeneratorNode as RqlGeneratorNode, InlineDataNode as RqlInlineDataNode,
 		JoinInnerNode as RqlJoinInnerNode, JoinLeftNode as RqlJoinLeftNode,
 		JoinNaturalNode as RqlJoinNaturalNode, MapNode as RqlMapNode, PatchNode as RqlPatchNode,
 		RowListLookupNode as RqlRowListLookupNode, RowPointLookupNode as RqlRowPointLookupNode,
@@ -40,6 +40,7 @@ use tracing::instrument;
 
 use crate::vm::volcano::{
 	aggregate::AggregateNode,
+	assert::{AssertNode, AssertWithoutInputNode},
 	environment::EnvironmentNode,
 	extend::{ExtendNode, ExtendWithoutInputNode},
 	filter::FilterNode,
@@ -69,6 +70,7 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 		RqlQueryPlan::RingBufferScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::DictionaryScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		// For other node types, try to recursively find the source
+		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_source_name_from_query(p)),
 		RqlQueryPlan::Filter(node) => extract_source_name_from_query(&node.input),
 		RqlQueryPlan::Map(node) => node.input.as_ref().and_then(|p| extract_source_name_from_query(p)),
 		RqlQueryPlan::Take(node) => extract_source_name_from_query(&node.input),
@@ -90,6 +92,19 @@ pub(crate) fn compile<'a>(
 		}) => {
 			let input_node = compile(*input, rx, context.clone());
 			Box::new(AggregateNode::new(input_node, by, map, context))
+		}
+
+		RqlQueryPlan::Assert(RqlAssertNode {
+			conditions,
+			input,
+			message,
+		}) => {
+			if let Some(input) = input {
+				let input_node = compile(*input, rx, context);
+				Box::new(AssertNode::new(input_node, conditions, message))
+			} else {
+				Box::new(AssertWithoutInputNode::new(conditions, message))
+			}
 		}
 
 		RqlQueryPlan::Filter(RqlFilterNode {

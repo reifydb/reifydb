@@ -188,6 +188,7 @@ impl<'bump> Compiler<'bump> {
 				}
 			}
 			Ast::Aggregate(node) => self.compile_aggregate(node),
+			Ast::Assert(node) => self.compile_assert(node),
 			Ast::Filter(node) => self.compile_filter(node),
 			Ast::From(node) => self.compile_from(node, tx),
 			Ast::Join(node) => self.compile_join(node, tx),
@@ -336,6 +337,7 @@ pub enum LogicalPlan<'bump> {
 	// Query
 	Aggregate(AggregateNode),
 	Distinct(DistinctNode<'bump>),
+	Assert(AssertNode),
 	Filter(FilterNode),
 	JoinInner(JoinInnerNode<'bump>),
 	JoinLeft(JoinLeftNode<'bump>),
@@ -601,6 +603,12 @@ pub struct AggregateNode {
 #[derive(Debug)]
 pub struct DistinctNode<'bump> {
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AssertNode {
+	pub condition: Expression,
+	pub message: Option<String>,
 }
 
 #[derive(Debug)]
