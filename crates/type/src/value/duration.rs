@@ -194,6 +194,39 @@ impl Ord for Duration {
 	}
 }
 
+impl std::ops::Add for Duration {
+	type Output = Self;
+	fn add(self, rhs: Self) -> Self {
+		Self {
+			months: self.months + rhs.months,
+			days: self.days + rhs.days,
+			nanos: self.nanos + rhs.nanos,
+		}
+	}
+}
+
+impl std::ops::Sub for Duration {
+	type Output = Self;
+	fn sub(self, rhs: Self) -> Self {
+		Self {
+			months: self.months - rhs.months,
+			days: self.days - rhs.days,
+			nanos: self.nanos - rhs.nanos,
+		}
+	}
+}
+
+impl std::ops::Mul<i64> for Duration {
+	type Output = Self;
+	fn mul(self, rhs: i64) -> Self {
+		Self {
+			months: self.months * rhs as i32,
+			days: self.days * rhs as i32,
+			nanos: self.nanos * rhs,
+		}
+	}
+}
+
 impl Display for Duration {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		// ISO 8601 duration format: P[n]Y[n]M[n]DT[n]H[n]M[n.n]S

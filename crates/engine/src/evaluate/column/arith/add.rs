@@ -8,7 +8,7 @@ use reifydb_type::{
 	fragment::{Fragment, LazyFragment},
 	return_error,
 	value::{
-		container::{number::NumberContainer, undefined::UndefinedContainer, utf8::Utf8Container},
+		container::{number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer, utf8::Utf8Container},
 		is::IsNumber,
 		number::{promote::Promote, safe::add::SafeAdd},
 		r#type::{Type, get::GetType},
@@ -1106,6 +1106,21 @@ impl StandardColumnEvaluator {
 					..
 				},
 			) => add_numeric_clone(ctx, l, r, target, || add.full_fragment_owned()),
+
+			// Duration + Duration
+			(ColumnData::Duration(l), ColumnData::Duration(r)) => {
+				let mut container = TemporalContainer::with_capacity(l.len());
+				for i in 0..l.len() {
+					match (l.get(i), r.get(i)) {
+						(Some(lv), Some(rv)) => container.push(*lv + *rv),
+						_ => container.push_undefined(),
+					}
+				}
+				Ok(Column {
+					name: add.full_fragment_owned(),
+					data: ColumnData::Duration(container),
+				})
+			}
 
 			// String concatenation
 			(
