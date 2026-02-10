@@ -138,7 +138,8 @@ Dictionary => "DICTIONARY",
 For => "FOR",
 Output => "OUTPUT",
 Append => "APPEND",
-Assert => "ASSERT"}
+Assert => "ASSERT",
+Patch => "PATCH"}
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
 	let mut map = HashMap::new();
@@ -227,6 +228,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("OUTPUT", Keyword::Output);
 	map.insert("APPEND", Keyword::Append);
 	map.insert("ASSERT", Keyword::Assert);
+	map.insert("PATCH", Keyword::Patch);
 	map
 });
 
@@ -401,7 +403,8 @@ pub mod tests {
 	test_keyword_for => (For, "FOR"),
 	test_keyword_output => (Output, "OUTPUT"),
 	test_keyword_append => (Append, "APPEND"),
-	test_keyword_assert => (Assert, "ASSERT")}
+	test_keyword_assert => (Assert, "ASSERT"),
+	test_keyword_patch => (Patch, "PATCH")}
 
 	fn check_no_keyword(repr: &str) {
 		let bump = Bump::new();
@@ -538,5 +541,6 @@ pub mod tests {
 	test_not_keyword_for => ( "for"),
 	test_not_keyword_output => ( "output"),
 	test_not_keyword_append => ( "append"),
-	test_not_keyword_assert => ( "assert")}
+	test_not_keyword_assert => ( "assert"),
+	test_not_keyword_patch => ( "patch")}
 }

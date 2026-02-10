@@ -445,6 +445,11 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 			// Return early since we handled the children
 			return;
 		}
+		Ast::Patch(p) => {
+			for node in &p.assignments {
+				ref_children.push(node);
+			}
+		}
 		Ast::Assert(a) => ref_children.push(&a.node),
 		Ast::SubQuery(sq) => {
 			// Add the nodes from the subquery statement as children

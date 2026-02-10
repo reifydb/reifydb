@@ -197,6 +197,7 @@ impl<'bump> Compiler<'bump> {
 			Ast::Distinct(node) => self.compile_distinct(node),
 			Ast::Map(node) => self.compile_map(node),
 			Ast::Extend(node) => self.compile_extend(node),
+			Ast::Patch(node) => self.compile_patch(node),
 			Ast::Apply(node) => self.compile_apply(node),
 			Ast::Window(node) => self.compile_window(node),
 			Ast::Identifier(ref id) => {

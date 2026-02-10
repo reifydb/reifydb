@@ -55,6 +55,7 @@ impl<'bump> Parser<'bump> {
 					Keyword::Map => Ok(Ast::Map(self.parse_map()?)),
 					Keyword::Select => Ok(Ast::Map(self.parse_select()?)),
 					Keyword::Extend => Ok(Ast::Extend(self.parse_extend()?)),
+					Keyword::Patch => Ok(Ast::Patch(self.parse_patch()?)),
 					Keyword::Filter => Ok(Ast::Filter(self.parse_filter()?)),
 					Keyword::Aggregate => Ok(Ast::Aggregate(self.parse_aggregate()?)),
 					Keyword::Cast => Ok(Ast::Cast(self.parse_cast()?)),

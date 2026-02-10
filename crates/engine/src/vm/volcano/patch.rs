@@ -124,12 +124,40 @@ impl QueryNode for PatchNode {
 				});
 			}
 
-			return Ok(Some(Columns::with_row_numbers(result_columns, row_numbers)));
+			if row_numbers.is_empty() {
+				return Ok(Some(Columns::new(result_columns)));
+			} else {
+				return Ok(Some(Columns::with_row_numbers(result_columns, row_numbers)));
+			}
 		}
 		Ok(None)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
-		self.headers.clone().or(self.input.headers())
+		if let Some(ref headers) = self.headers {
+			return Some(headers.clone());
+		}
+
+		let input_headers = self.input.headers()?;
+		let patch_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
+
+		let mut result = Vec::new();
+		for col in &input_headers.columns {
+			if let Some(patch_idx) = patch_names.iter().position(|n| n.text() == col.text()) {
+				result.push(patch_names[patch_idx].clone());
+			} else {
+				result.push(col.clone());
+			}
+		}
+
+		for patch_name in &patch_names {
+			if !result.iter().any(|h| h.text() == patch_name.text()) {
+				result.push(patch_name.clone());
+			}
+		}
+
+		Some(ColumnHeaders {
+			columns: result,
+		})
 	}
 }

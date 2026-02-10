@@ -573,6 +573,25 @@ pub fn extend_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+/// PATCH missing braces error
+pub fn patch_missing_braces(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "PATCH_001".to_string(),
+		statement: None,
+		message: "PATCH requires curly braces around expressions".to_string(),
+		column: None,
+		fragment,
+		label: Some("missing curly braces".to_string()),
+		help: Some("Wrap PATCH expressions in curly braces, e.g., 'PATCH {status: \"active\"}'".to_string()),
+		notes: vec![
+			"PATCH always requires curly braces: PATCH {expression}".to_string(),
+			"Multiple expressions: PATCH {expr1, expr2}".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 /// DISTINCT missing braces error
 pub fn distinct_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
