@@ -34,13 +34,13 @@ impl Default for Date {
 impl Date {
 	/// Check if a year is a leap year
 	#[inline]
-	fn is_leap_year(year: i32) -> bool {
+	pub fn is_leap_year(year: i32) -> bool {
 		(year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 	}
 
 	/// Get the number of days in a month
 	#[inline]
-	fn days_in_month(year: i32, month: u32) -> u32 {
+	pub fn days_in_month(year: i32, month: u32) -> u32 {
 		match month {
 			1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
 			4 | 6 | 9 | 11 => 30,
