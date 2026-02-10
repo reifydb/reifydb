@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
+use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::VariableExpression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error::diagnostic::runtime::variable_not_found, fragment::Fragment, return_error};
@@ -47,21 +47,10 @@ impl QueryNode for VariableNode {
 
 		// Look up the variable in the stack
 		match ctx.stack.get(variable_name) {
-			Some(Variable::Scalar(value)) => {
-				// Convert scalar to single-column, single-row dataframe
-				let value_type = value.get_type();
-				let mut data = ColumnData::with_capacity(value_type, 1);
-				data.push_value(value.clone());
-
-				let column = Column {
-					name: Fragment::internal(variable_name),
-					data,
-				};
-
-				let columns = Columns::new(vec![column]);
-
+			Some(Variable::Scalar(columns)) => {
+				let mut columns = columns.clone();
+				columns[0].name = Fragment::internal(variable_name);
 				self.executed = true;
-
 				Ok(Some(columns))
 			}
 			Some(Variable::Columns(frame_columns)) => {

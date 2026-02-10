@@ -104,7 +104,7 @@ impl StandardColumnEvaluator {
 			for (param, arg_col) in func_def.parameters.iter().zip(arguments.iter()) {
 				let param_name = strip_dollar_prefix(param.name.text());
 				let value = arg_col.data().get_value(row_idx);
-				func_symbol_table.set(param_name, Variable::Scalar(value), true)?;
+				func_symbol_table.set(param_name, Variable::scalar(value), true)?;
 			}
 
 			// Execute function body instructions and get result
@@ -163,7 +163,7 @@ impl StandardColumnEvaluator {
 					let val = symbol_table
 						.get(&var_name)
 						.map(|v| match v {
-							Variable::Scalar(s) => s.clone(),
+							Variable::Scalar(c) => c.scalar_value(),
 							_ => Value::Undefined,
 						})
 						.unwrap_or(Value::Undefined);
@@ -172,12 +172,12 @@ impl StandardColumnEvaluator {
 				Instruction::StoreVar(name) => {
 					let val = stack.pop().unwrap_or(Value::Undefined);
 					let var_name = strip_dollar_prefix(name.text());
-					symbol_table.set(var_name, Variable::Scalar(val), true)?;
+					symbol_table.set(var_name, Variable::scalar(val), true)?;
 				}
 				Instruction::DeclareVar(name) => {
 					let val = stack.pop().unwrap_or(Value::Undefined);
 					let var_name = strip_dollar_prefix(name.text());
-					symbol_table.set(var_name, Variable::Scalar(val), true)?;
+					symbol_table.set(var_name, Variable::scalar(val), true)?;
 				}
 
 				// === Arithmetic ===
@@ -393,7 +393,7 @@ impl StandardColumnEvaluator {
 							let param_name = strip_dollar_prefix(param.name.text());
 							symbol_table.set(
 								param_name,
-								Variable::Scalar(arg_val.clone()),
+								Variable::scalar(arg_val.clone()),
 								true,
 							)?;
 						}

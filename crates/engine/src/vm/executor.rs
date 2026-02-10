@@ -68,12 +68,12 @@ fn populate_stack(stack: &mut SymbolTable, params: &Params) -> crate::Result<()>
 		Params::Positional(values) => {
 			for (index, value) in values.iter().enumerate() {
 				let param_name = (index + 1).to_string();
-				stack.set(param_name, Variable::Scalar(value.clone()), false)?;
+				stack.set(param_name, Variable::scalar(value.clone()), false)?;
 			}
 		}
 		Params::Named(map) => {
 			for (name, value) in map {
-				stack.set(name.clone(), Variable::Scalar(value.clone()), false)?;
+				stack.set(name.clone(), Variable::scalar(value.clone()), false)?;
 			}
 		}
 		Params::None => {}

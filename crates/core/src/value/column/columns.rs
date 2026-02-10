@@ -56,6 +56,62 @@ impl IndexMut<usize> for Columns {
 }
 
 impl Columns {
+	/// Create a 1-column, 1-row Columns from a single Value.
+	/// Used to store scalar values inside `Variable::Scalar(Columns)`.
+	pub fn scalar(value: Value) -> Self {
+		let data = match value {
+			Value::Undefined => ColumnData::undefined(1),
+			Value::Boolean(v) => ColumnData::bool([v]),
+			Value::Float4(v) => ColumnData::float4([v.into()]),
+			Value::Float8(v) => ColumnData::float8([v.into()]),
+			Value::Int1(v) => ColumnData::int1([v]),
+			Value::Int2(v) => ColumnData::int2([v]),
+			Value::Int4(v) => ColumnData::int4([v]),
+			Value::Int8(v) => ColumnData::int8([v]),
+			Value::Int16(v) => ColumnData::int16([v]),
+			Value::Utf8(v) => ColumnData::utf8([v]),
+			Value::Uint1(v) => ColumnData::uint1([v]),
+			Value::Uint2(v) => ColumnData::uint2([v]),
+			Value::Uint4(v) => ColumnData::uint4([v]),
+			Value::Uint8(v) => ColumnData::uint8([v]),
+			Value::Uint16(v) => ColumnData::uint16([v]),
+			Value::Date(v) => ColumnData::date([v]),
+			Value::DateTime(v) => ColumnData::datetime([v]),
+			Value::Time(v) => ColumnData::time([v]),
+			Value::Duration(v) => ColumnData::duration([v]),
+			Value::IdentityId(v) => ColumnData::identity_id([v]),
+			Value::Uuid4(v) => ColumnData::uuid4([v]),
+			Value::Uuid7(v) => ColumnData::uuid7([v]),
+			Value::Blob(v) => ColumnData::blob([v]),
+			Value::Int(v) => ColumnData::int(vec![v]),
+			Value::Uint(v) => ColumnData::uint(vec![v]),
+			Value::Decimal(v) => ColumnData::decimal(vec![v]),
+			Value::DictionaryId(v) => ColumnData::dictionary_id(vec![v]),
+			Value::Any(v) => ColumnData::any(vec![v]),
+		};
+		let column = Column {
+			name: Fragment::internal("value"),
+			data,
+		};
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(vec![column]),
+		}
+	}
+
+	/// Extract the single value from a 1-column, 1-row Columns.
+	/// Panics if the Columns does not have exactly 1 column and 1 row.
+	pub fn scalar_value(&self) -> Value {
+		debug_assert_eq!(self.len(), 1, "scalar_value() requires exactly 1 column, got {}", self.len());
+		debug_assert_eq!(
+			self.row_count(),
+			1,
+			"scalar_value() requires exactly 1 row, got {}",
+			self.row_count()
+		);
+		self.columns[0].data().get_value(0)
+	}
+
 	pub fn new(columns: Vec<Column>) -> Self {
 		let n = columns.first().map_or(0, |c| c.data().len());
 		assert!(columns.iter().all(|c| c.data().len() == n));

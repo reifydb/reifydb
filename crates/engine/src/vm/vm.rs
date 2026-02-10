@@ -55,12 +55,12 @@ impl Vm {
 		}
 	}
 
-	fn pop_scalar(&mut self) -> crate::Result<Value> {
+	/// Pop a scalar Value from the stack. Works for Scalar(Columns) and
+	/// 1x1 Columns variants.
+	fn pop_value(&mut self) -> crate::Result<Value> {
 		match self.stack.pop()? {
-			Variable::Scalar(v) => Ok(v),
-			Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => {
-				Ok(c.iter().next().unwrap().data().iter().next().unwrap())
-			}
+			Variable::Scalar(c) => Ok(c.scalar_value()),
+			Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => Ok(c.scalar_value()),
 			_ => Err(reifydb_type::error::Error(
 				reifydb_core::error::diagnostic::internal::internal_with_context(
 					"Expected scalar value on stack",
@@ -71,6 +71,18 @@ impl Vm {
 					module_path!(),
 				),
 			)),
+		}
+	}
+
+	/// Pop the top of stack as Columns. Works for any variant.
+	fn pop_as_columns(&mut self) -> crate::Result<Columns> {
+		match self.stack.pop()? {
+			Variable::Scalar(c)
+			| Variable::Columns(c)
+			| Variable::ForIterator {
+				columns: c,
+				..
+			} => Ok(c),
 		}
 	}
 
@@ -89,10 +101,10 @@ impl Vm {
 
 				// === Stack ===
 				Instruction::PushConst(value) => {
-					self.stack.push(Variable::Scalar(value.clone()));
+					self.stack.push(Variable::scalar(value.clone()));
 				}
 				Instruction::PushUndefined => {
-					self.stack.push(Variable::Scalar(Value::Undefined));
+					self.stack.push(Variable::scalar(Value::Undefined));
 				}
 				Instruction::Pop => {
 					self.stack.pop()?;
@@ -108,8 +120,8 @@ impl Vm {
 				Instruction::LoadVar(fragment) => {
 					let name = strip_dollar_prefix(fragment.text());
 					match self.symbol_table.get(&name) {
-						Some(Variable::Scalar(v)) => {
-							self.stack.push(Variable::Scalar(v.clone()));
+						Some(Variable::Scalar(c)) => {
+							self.stack.push(Variable::Scalar(c.clone()));
 						}
 						Some(Variable::Columns(_)) => {
 							return Err(reifydb_type::error::Error(
@@ -135,28 +147,21 @@ impl Vm {
 				}
 				Instruction::StoreVar(fragment) => {
 					let name = strip_dollar_prefix(fragment.text());
-					let value = self.pop_scalar()?;
-					self.symbol_table.reassign(name, Variable::Scalar(value))?;
+					let value = self.pop_value()?;
+					self.symbol_table.reassign(name, Variable::scalar(value))?;
 				}
 				Instruction::DeclareVar(fragment) => {
 					let name = strip_dollar_prefix(fragment.text());
 					let sv = self.stack.pop()?;
 					let variable = match sv {
-						Variable::Scalar(v) => Variable::Scalar(v),
+						Variable::Scalar(c) => Variable::Scalar(c),
 						Variable::Columns(c)
 						| Variable::ForIterator {
 							columns: c,
 							..
 						} => {
 							if c.len() == 1 && c.row_count() == 1 {
-								Variable::Scalar(
-									c.iter().next()
-										.unwrap()
-										.data()
-										.iter()
-										.next()
-										.unwrap(),
-								)
+								Variable::Scalar(c)
 							} else {
 								Variable::Columns(c)
 							}
@@ -167,106 +172,106 @@ impl Vm {
 
 				// === Arithmetic ===
 				Instruction::Add => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_add(left, right)?));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_add(left, right)?));
 				}
 				Instruction::Sub => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_sub(left, right)?));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_sub(left, right)?));
 				}
 				Instruction::Mul => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_mul(left, right)?));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_mul(left, right)?));
 				}
 				Instruction::Div => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_div(left, right)?));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_div(left, right)?));
 				}
 				Instruction::Rem => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_rem(left, right)?));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_rem(left, right)?));
 				}
 
 				// === Unary ===
 				Instruction::Negate => {
-					let value = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_negate(value)?));
+					let value = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_negate(value)?));
 				}
 				Instruction::LogicNot => {
-					let value = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(Value::Boolean(!scalar::value_is_truthy(
+					let value = self.pop_value()?;
+					self.stack.push(Variable::scalar(Value::Boolean(!scalar::value_is_truthy(
 						&value,
 					))));
 				}
 
 				// === Comparison ===
 				Instruction::CmpEq => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_eq(&left, &right)));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_eq(&left, &right)));
 				}
 				Instruction::CmpNe => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_ne(&left, &right)));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_ne(&left, &right)));
 				}
 				Instruction::CmpLt => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_lt(&left, &right)));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_lt(&left, &right)));
 				}
 				Instruction::CmpLe => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_le(&left, &right)));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_le(&left, &right)));
 				}
 				Instruction::CmpGt => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_gt(&left, &right)));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_gt(&left, &right)));
 				}
 				Instruction::CmpGe => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_ge(&left, &right)));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_ge(&left, &right)));
 				}
 
 				// === Logic ===
 				Instruction::LogicAnd => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_and(&left, &right)));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_and(&left, &right)));
 				}
 				Instruction::LogicOr => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_or(&left, &right)));
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_or(&left, &right)));
 				}
 				Instruction::LogicXor => {
-					let right = self.pop_scalar()?;
-					let left = self.pop_scalar()?;
+					let right = self.pop_value()?;
+					let left = self.pop_value()?;
 					let l = scalar::value_is_truthy(&left);
 					let r = scalar::value_is_truthy(&right);
-					self.stack.push(Variable::Scalar(Value::Boolean(l ^ r)));
+					self.stack.push(Variable::scalar(Value::Boolean(l ^ r)));
 				}
 
 				// === Compound ===
 				Instruction::Between => {
-					let upper = self.pop_scalar()?;
-					let lower = self.pop_scalar()?;
-					let value = self.pop_scalar()?;
+					let upper = self.pop_value()?;
+					let lower = self.pop_value()?;
+					let value = self.pop_value()?;
 					let ge = scalar::scalar_ge(&value, &lower);
 					let le = scalar::scalar_le(&value, &upper);
 					let result = match (ge, le) {
 						(Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a && b),
 						_ => Value::Undefined,
 					};
-					self.stack.push(Variable::Scalar(result));
+					self.stack.push(Variable::scalar(result));
 				}
 				Instruction::InList {
 					count,
@@ -276,10 +281,10 @@ impl Vm {
 					let negated = *negated;
 					let mut list_items = Vec::with_capacity(count);
 					for _ in 0..count {
-						list_items.push(self.pop_scalar()?);
+						list_items.push(self.pop_value()?);
 					}
 					list_items.reverse();
-					let value = self.pop_scalar()?;
+					let value = self.pop_value()?;
 					let mut found = false;
 					for item in &list_items {
 						if let Value::Boolean(true) = scalar::scalar_eq(&value, item) {
@@ -292,11 +297,11 @@ impl Vm {
 					} else {
 						found
 					};
-					self.stack.push(Variable::Scalar(Value::Boolean(result)));
+					self.stack.push(Variable::scalar(Value::Boolean(result)));
 				}
 				Instruction::Cast(target) => {
-					let value = self.pop_scalar()?;
-					self.stack.push(Variable::Scalar(scalar::scalar_cast(value, *target)?));
+					let value = self.pop_value()?;
+					self.stack.push(Variable::scalar(scalar::scalar_cast(value, *target)?));
 				}
 
 				// === Control flow ===
@@ -313,11 +318,8 @@ impl Vm {
 						} => {
 							result.push(Frame::from(c));
 						}
-						Variable::Scalar(v) => {
-							let mut data = ColumnData::undefined(0);
-							data.push_value(v);
-							let col = Column::new("value", data);
-							result.push(Frame::from(Columns::new(vec![col])));
+						Variable::Scalar(c) => {
+							result.push(Frame::from(c));
 						}
 					}
 				}
@@ -333,14 +335,14 @@ impl Vm {
 					continue;
 				}
 				Instruction::JumpIfFalsePop(addr) => {
-					let value = self.pop_scalar()?;
+					let value = self.pop_value()?;
 					if !scalar::value_is_truthy(&value) {
 						self.ip = *addr;
 						continue;
 					}
 				}
 				Instruction::JumpIfTruePop(addr) => {
-					let value = self.pop_scalar()?;
+					let value = self.pop_value()?;
 					if scalar::value_is_truthy(&value) {
 						self.ip = *addr;
 						continue;
@@ -435,7 +437,7 @@ impl Vm {
 						let value = columns.columns[0].data.get_value(index);
 						self.symbol_table.set(
 							clean_name.to_string(),
-							Variable::Scalar(value),
+							Variable::scalar(value),
 							true,
 						)?;
 					} else {
@@ -479,7 +481,7 @@ impl Vm {
 					// Pop arity args (right-to-left on stack), reverse to restore order
 					let mut args = Vec::with_capacity(arity);
 					for _ in 0..arity {
-						args.push(self.pop_scalar()?);
+						args.push(self.pop_value()?);
 					}
 					args.reverse();
 
@@ -497,7 +499,7 @@ impl Vm {
 							let param_name = strip_dollar_prefix(param.name.text());
 							self.symbol_table.set(
 								param_name,
-								Variable::Scalar(arg),
+								Variable::scalar(arg),
 								true,
 							)?;
 						}
@@ -512,9 +514,9 @@ impl Vm {
 							&mut self.control_flow,
 							ControlFlow::Normal,
 						) {
-							ControlFlow::Return(v) => {
-								Variable::Scalar(v.unwrap_or(Value::Undefined))
-							}
+							ControlFlow::Return(c) => Variable::Scalar(
+								c.unwrap_or(Columns::scalar(Value::Undefined)),
+							),
 							_ => {
 								// If no explicit return, check if function body emitted
 								// a result via Emit
@@ -540,13 +542,13 @@ impl Vm {
 												.collect();
 										Variable::Columns(Columns::new(cols))
 									} else {
-										Variable::Scalar(Value::Undefined)
+										Variable::scalar(Value::Undefined)
 									}
 								} else {
 									// Check if anything was left on the stack by
 									// the function body
 									self.stack.pop().ok().unwrap_or(
-										Variable::Scalar(Value::Undefined),
+										Variable::scalar(Value::Undefined),
 									)
 								}
 							}
@@ -591,13 +593,13 @@ impl Vm {
 						} else {
 							Value::Undefined
 						};
-						self.stack.push(Variable::Scalar(value));
+						self.stack.push(Variable::scalar(value));
 					}
 				}
 
 				Instruction::ReturnValue => {
-					let value = self.pop_scalar()?;
-					self.control_flow = ControlFlow::Return(Some(value));
+					let cols = self.pop_as_columns()?;
+					self.control_flow = ControlFlow::Return(Some(cols));
 					return Ok(());
 				}
 				Instruction::ReturnVoid => {

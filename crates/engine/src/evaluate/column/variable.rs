@@ -29,7 +29,8 @@ impl StandardColumnEvaluator {
 
 		// Look up the variable in the stack
 		match ctx.symbol_table.get(variable_name) {
-			Some(Variable::Scalar(value)) => {
+			Some(Variable::Scalar(columns)) => {
+				let value = columns.scalar_value();
 				let mut data = ColumnData::with_capacity(value.get_type(), ctx.row_count);
 				for _ in 0..ctx.row_count {
 					data.push_value(value.clone());

@@ -55,8 +55,8 @@ impl Default for Stack {
 /// A variable can be either a scalar value, columnar data, or a FOR loop iterator
 #[derive(Debug, Clone)]
 pub enum Variable {
-	/// A scalar value that can be used directly in expressions
-	Scalar(Value),
+	/// A scalar value stored as a 1-column, 1-row Columns
+	Scalar(Columns),
 	/// Columnar data that requires explicit conversion to scalar
 	Columns(Columns),
 	/// A FOR loop iterator tracking position in a result set
@@ -67,30 +67,14 @@ pub enum Variable {
 }
 
 impl Variable {
-	/// Create a scalar variable
+	/// Create a scalar variable from a single Value.
 	pub fn scalar(value: Value) -> Self {
-		Variable::Scalar(value)
+		Variable::Scalar(Columns::scalar(value))
 	}
 
 	/// Create a columns variable
 	pub fn columns(columns: Columns) -> Self {
 		Variable::Columns(columns)
-	}
-
-	/// Get the scalar value if this is a scalar variable
-	pub fn as_scalar(&self) -> Option<&Value> {
-		match self {
-			Variable::Scalar(value) => Some(value),
-			_ => None,
-		}
-	}
-
-	/// Get the columns if this is a columns variable
-	pub fn as_columns(&self) -> Option<&Columns> {
-		match self {
-			Variable::Columns(columns) => Some(columns),
-			_ => None,
-		}
 	}
 }
 
@@ -115,7 +99,7 @@ pub enum ControlFlow {
 	Normal,
 	Break,
 	Continue,
-	Return(Option<Value>),
+	Return(Option<Columns>),
 }
 
 impl ControlFlow {
