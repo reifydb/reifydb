@@ -8,7 +8,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 
 use crate::{
-	evaluate::compiled::CompiledExpr,
+	expression::compile::CompiledExpr,
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 

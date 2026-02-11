@@ -16,7 +16,10 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns},
 };
 use reifydb_engine::{
-	evaluate::compiled::{CompileContext, CompiledExpr, EvalContext, compile_expression},
+	expression::{
+		compile::{CompiledExpr, compile_expression},
+		context::{CompileContext, EvalContext},
+	},
 	vm::{executor::Executor, stack::SymbolTable},
 };
 use reifydb_function::registry::Functions;

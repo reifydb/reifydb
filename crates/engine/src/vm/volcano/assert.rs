@@ -10,7 +10,7 @@ use reifydb_type::{error::diagnostic::assert::assertion_failed, return_error};
 use tracing::instrument;
 
 use crate::{
-	evaluate::{EvalContext, column::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 

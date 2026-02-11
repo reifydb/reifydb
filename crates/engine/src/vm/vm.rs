@@ -24,7 +24,7 @@ use super::{
 		query::{QueryContext, QueryNode},
 	},
 };
-use crate::evaluate::{EvalContext, column::evaluate};
+use crate::expression::{context::EvalContext, eval::evaluate};
 
 const MAX_ITERATIONS: usize = 10_000;
 

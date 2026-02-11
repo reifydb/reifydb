@@ -12,7 +12,10 @@ use tracing::instrument;
 
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
 use crate::{
-	evaluate::compiled::{CompileContext, EvalContext, compile_expression},
+	expression::{
+		compile::compile_expression,
+		context::{CompileContext, EvalContext},
+	},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 

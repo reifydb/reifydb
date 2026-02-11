@@ -16,7 +16,10 @@ use reifydb_type::util::bitvec::BitVec;
 use tracing::instrument;
 
 use crate::{
-	evaluate::compiled::{CompileContext, CompiledExpr, EvalContext, compile_expression},
+	expression::{
+		compile::{CompiledExpr, compile_expression},
+		context::{CompileContext, EvalContext},
+	},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 

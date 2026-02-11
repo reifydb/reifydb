@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, error::diagnostic::function::generator_not_found, fragment::Fragment, params::Params};
 
 use crate::{
-	evaluate::{EvalContext, column::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 

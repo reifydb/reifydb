@@ -11,7 +11,7 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{params::Params, return_error, value::Value};
 
 use crate::{
-	evaluate::{EvalContext, column::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::{services::Services, stack::SymbolTable},
 };
 

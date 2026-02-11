@@ -13,9 +13,10 @@ use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
 use crate::{
-	evaluate::{
-		column::cast::cast_column_data,
-		compiled::{CompileContext, CompiledExpr, EvalContext, compile_expression},
+	expression::{
+		cast::cast_column_data,
+		compile::{CompiledExpr, compile_expression},
+		context::{CompileContext, EvalContext},
 	},
 	vm::volcano::query::{QueryContext, QueryNode},
 };

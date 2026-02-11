@@ -18,10 +18,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	evaluate::{
-		EvalContext,
-		column::{cast::cast_column_data, evaluate},
-	},
+	expression::{cast::cast_column_data, context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 

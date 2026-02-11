@@ -5,7 +5,10 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_engine::{
-	evaluate::compiled::{CompileContext, EvalContext, compile_expression},
+	expression::{
+		compile::compile_expression,
+		context::{CompileContext, EvalContext},
+	},
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;

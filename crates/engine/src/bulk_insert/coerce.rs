@@ -12,7 +12,7 @@ use reifydb_runtime::clock::Clock;
 use reifydb_type::{fragment::Fragment, params::Params};
 
 use crate::{
-	evaluate::{EvalContext, column::cast::cast_column_data},
+	expression::{cast::cast_column_data, context::EvalContext},
 	vm::stack::SymbolTable,
 };
 

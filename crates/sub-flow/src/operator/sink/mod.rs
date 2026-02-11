@@ -21,7 +21,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
-	evaluate::{EvalContext, column::cast::cast_column_data},
+	expression::{cast::cast_column_data, context::EvalContext},
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
