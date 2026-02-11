@@ -14,6 +14,21 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	let fragment_value = fragment.text();
 	let mut time_str = fragment_value;
 
+	// Check for lowercase 'z' (invalid - must be uppercase 'Z')
+	if time_str.ends_with('z') {
+		// Calculate position of second component to report error
+		let parts: Vec<&str> = time_str.split(':').collect();
+		if parts.len() == 3 {
+			let hours_len = parts[0].len();
+			let minutes_len = parts[1].len();
+			let offset = hours_len + 1 + minutes_len + 1; // +1 for each colon
+			let second_len = parts[2].len();
+			let sub_frag = fragment.sub_fragment(offset, second_len);
+			return_error!(temporal::invalid_second(sub_frag));
+		}
+		// If format is wrong, fall through to normal error handling
+	}
+
 	if time_str.ends_with('Z') {
 		time_str = &time_str[..time_str.len() - 1];
 	}
@@ -25,7 +40,7 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 		return_error!(temporal::invalid_time_format(fragment));
 	}
 
-	// Check for empty time parts and calculate their positions
+	// Check for empty time parts first (before format validation)
 	let mut offset = 0;
 	if time_fragment_parts[0].trim().is_empty() {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
@@ -42,6 +57,30 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	if time_fragment_parts[2].trim().is_empty() {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
 		return_error!(temporal::empty_time_component(sub_frag));
+	}
+
+	// Validate exactly 2 digits for HH:MM:SS format
+	offset = 0;
+
+	// Validate hour part (exactly 2 digits)
+	if time_fragment_parts[0].len() != 2 {
+		let frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
+		return_error!(temporal::invalid_time_component_format(frag, "hour"));
+	}
+	offset += time_fragment_parts[0].len() + 1; // +1 for the colon
+
+	// Validate minute part (exactly 2 digits)
+	if time_fragment_parts[1].len() != 2 {
+		let frag = fragment.sub_fragment(offset, time_fragment_parts[1].len());
+		return_error!(temporal::invalid_time_component_format(frag, "minute"));
+	}
+	offset += time_fragment_parts[1].len() + 1; // +1 for the colon
+
+	// Validate second part (exactly 2 digits before any fractional part)
+	let second_base = time_fragment_parts[2].split('.').next().unwrap();
+	if second_base.len() != 2 {
+		let frag = fragment.sub_fragment(offset, second_base.len());
+		return_error!(temporal::invalid_time_component_format(frag, "second"));
 	}
 
 	// Reset offset calculation for parsing components
@@ -167,7 +206,7 @@ pub mod tests {
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert_eq!(err.0.code, "TEMPORAL_008");
+		assert_eq!(err.0.code, "TEMPORAL_005");
 	}
 
 	#[test]
@@ -176,7 +215,7 @@ pub mod tests {
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert_eq!(err.0.code, "TEMPORAL_009");
+		assert_eq!(err.0.code, "TEMPORAL_005");
 	}
 
 	#[test]
@@ -185,7 +224,7 @@ pub mod tests {
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert_eq!(err.0.code, "TEMPORAL_010");
+		assert_eq!(err.0.code, "TEMPORAL_005");
 	}
 
 	#[test]
@@ -204,5 +243,14 @@ pub mod tests {
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_011");
+	}
+
+	#[test]
+	fn test_lowercase_z_rejected() {
+		let fragment = Fragment::testing("14:30:00z");
+		let result = parse_time(fragment);
+		assert!(result.is_err());
+		let err = result.unwrap_err();
+		assert_eq!(err.0.code, "TEMPORAL_010"); // invalid_second
 	}
 }

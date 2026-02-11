@@ -8,6 +8,39 @@ use crate::{
 	value::Duration,
 };
 
+fn validate_component_order(
+	component: char,
+	seen: &mut std::collections::HashSet<char>,
+	last_order: &mut u8,
+	current_order: u8,
+	fragment: Fragment,
+	position: usize,
+) -> Result<(), Error> {
+	let key = if component == 'M' {
+		if *last_order > 0 {
+			'M'
+		} else {
+			'M'
+		}
+	} else {
+		component
+	};
+
+	if seen.contains(&key) {
+		let frag = fragment.sub_fragment(position, 1);
+		return_error!(temporal::duplicate_duration_component(frag, component));
+	}
+
+	if current_order <= *last_order {
+		let frag = fragment.sub_fragment(position, 1);
+		return_error!(temporal::out_of_order_duration_component(frag, component));
+	}
+
+	seen.insert(key);
+	*last_order = current_order;
+	Ok(())
+}
+
 pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 	let fragment = fragment;
 	let fragment_value = fragment.text();
@@ -25,13 +58,18 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 	let mut in_time_part = false;
 	let mut current_position = 1; // Start after 'P'
 
+	let mut seen_date_components = std::collections::HashSet::new();
+	let mut seen_time_components = std::collections::HashSet::new();
+	let mut last_date_component_order = 0u8;
+	let mut last_time_component_order = 0u8;
+
 	while let Some(c) = chars.next() {
 		match c {
 			'T' => {
 				in_time_part = true;
 				current_position += 1;
 			}
-			'0'..='9' => {
+			'0'..='9' | '.' => {
 				current_number.push(c);
 				current_position += 1;
 			}
@@ -44,12 +82,28 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
 					return_error!(temporal::incomplete_duration_specification(unit_frag));
 				}
+				if current_number.contains('.') {
+					let start = current_position - current_number.len();
+					let dot_pos = start + current_number.find('.').unwrap();
+					let char_frag = fragment.sub_fragment(dot_pos, 1);
+					return_error!(temporal::invalid_duration_character(char_frag));
+				}
+
+				validate_component_order(
+					'Y',
+					&mut seen_date_components,
+					&mut last_date_component_order,
+					1,
+					fragment.clone(),
+					current_position,
+				)?;
+
 				let years: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
 					Error(temporal::invalid_duration_component_value(number_frag, 'Y'))
 				})?;
-				months += years * 12; // Exact: store as months
+				months += years * 12;
 				current_number.clear();
 				current_position += 1;
 			}
@@ -58,15 +112,42 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
 					return_error!(temporal::incomplete_duration_specification(unit_frag));
 				}
+				if current_number.contains('.') {
+					let start = current_position - current_number.len();
+					let dot_pos = start + current_number.find('.').unwrap();
+					let char_frag = fragment.sub_fragment(dot_pos, 1);
+					return_error!(temporal::invalid_duration_character(char_frag));
+				}
+
+				if in_time_part {
+					validate_component_order(
+						'M',
+						&mut seen_time_components,
+						&mut last_time_component_order,
+						2,
+						fragment.clone(),
+						current_position,
+					)?;
+				} else {
+					validate_component_order(
+						'M',
+						&mut seen_date_components,
+						&mut last_date_component_order,
+						2,
+						fragment.clone(),
+						current_position,
+					)?;
+				}
+
 				let value: i64 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
 					Error(temporal::invalid_duration_component_value(number_frag, 'M'))
 				})?;
 				if in_time_part {
-					nanos += value * 60 * 1_000_000_000; // Minutes
+					nanos += value * 60 * 1_000_000_000;
 				} else {
-					months += value as i32; // Months (exact)
+					months += value as i32;
 				}
 				current_number.clear();
 				current_position += 1;
@@ -80,6 +161,22 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
 					return_error!(temporal::incomplete_duration_specification(unit_frag));
 				}
+				if current_number.contains('.') {
+					let start = current_position - current_number.len();
+					let dot_pos = start + current_number.find('.').unwrap();
+					let char_frag = fragment.sub_fragment(dot_pos, 1);
+					return_error!(temporal::invalid_duration_character(char_frag));
+				}
+
+				validate_component_order(
+					'W',
+					&mut seen_date_components,
+					&mut last_date_component_order,
+					3,
+					fragment.clone(),
+					current_position,
+				)?;
+
 				let weeks: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
@@ -98,6 +195,22 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
 					return_error!(temporal::incomplete_duration_specification(unit_frag));
 				}
+				if current_number.contains('.') {
+					let start = current_position - current_number.len();
+					let dot_pos = start + current_number.find('.').unwrap();
+					let char_frag = fragment.sub_fragment(dot_pos, 1);
+					return_error!(temporal::invalid_duration_character(char_frag));
+				}
+
+				validate_component_order(
+					'D',
+					&mut seen_date_components,
+					&mut last_date_component_order,
+					4,
+					fragment.clone(),
+					current_position,
+				)?;
+
 				let day_value: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
@@ -116,6 +229,22 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
 					return_error!(temporal::incomplete_duration_specification(unit_frag));
 				}
+				if current_number.contains('.') {
+					let start = current_position - current_number.len();
+					let dot_pos = start + current_number.find('.').unwrap();
+					let char_frag = fragment.sub_fragment(dot_pos, 1);
+					return_error!(temporal::invalid_duration_character(char_frag));
+				}
+
+				validate_component_order(
+					'H',
+					&mut seen_time_components,
+					&mut last_time_component_order,
+					1,
+					fragment.clone(),
+					current_position,
+				)?;
+
 				let hours: i64 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
@@ -134,12 +263,32 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
 					return_error!(temporal::incomplete_duration_specification(unit_frag));
 				}
-				let seconds: i64 = current_number.parse().map_err(|_| {
-					let start = current_position - current_number.len();
-					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error(temporal::invalid_duration_component_value(number_frag, 'S'))
-				})?;
-				nanos += seconds * 1_000_000_000;
+
+				validate_component_order(
+					'S',
+					&mut seen_time_components,
+					&mut last_time_component_order,
+					3,
+					fragment.clone(),
+					current_position,
+				)?;
+
+				if current_number.contains('.') {
+					let seconds_float: f64 = current_number.parse().map_err(|_| {
+						let start = current_position - current_number.len();
+						let number_frag = fragment.sub_fragment(start, current_number.len());
+						Error(temporal::invalid_duration_component_value(number_frag, 'S'))
+					})?;
+					nanos += (seconds_float * 1_000_000_000.0) as i64;
+				} else {
+					let seconds: i64 = current_number.parse().map_err(|_| {
+						let start = current_position - current_number.len();
+						let number_frag = fragment.sub_fragment(start, current_number.len());
+						Error(temporal::invalid_duration_component_value(number_frag, 'S'))
+					})?;
+					nanos += seconds * 1_000_000_000;
+				}
+
 				current_number.clear();
 				current_position += 1;
 			}

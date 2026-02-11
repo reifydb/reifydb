@@ -88,6 +88,22 @@ pub fn invalid_year(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+pub fn invalid_time_component_format(fragment: Fragment, component: &str) -> Diagnostic {
+	let label = Some(format!("{} '{}' must be exactly 2 digits", component, fragment.text()));
+	Diagnostic {
+		code: "TEMPORAL_005".to_string(),
+		statement: None,
+		message: format!("invalid {} format '{}'", component, fragment.text()),
+		fragment,
+		label,
+		help: Some(format!("ensure the {} is exactly 2 digits (e.g., 09, 14, 23)", component)),
+		notes: vec![format!("{} must be exactly 2 digits in HH:MM:SS format", component)],
+		column: None,
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn invalid_month(fragment: Fragment) -> Diagnostic {
 	let label = Some(format!("month '{}' cannot be parsed as a number (expected 1-12)", fragment.text()));
 	Diagnostic {
@@ -346,6 +362,44 @@ pub fn empty_time_component(fragment: Fragment) -> Diagnostic {
 		label,
 		help: Some("ensure all time parts (hour, minute, second) are provided".to_string()),
 		notes: vec!["time format: HH:MM:SS (e.g., 14:30:45)".to_string()],
+		column: None,
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn duplicate_duration_component(fragment: Fragment, component: char) -> Diagnostic {
+	let label = Some(format!("duration component '{}' appears multiple times", component));
+	Diagnostic {
+		code: "TEMPORAL_021".to_string(),
+		statement: None,
+		message: format!("duplicate duration component '{}'", component),
+		fragment,
+		label,
+		help: Some("each duration component (Y, M, W, D, H, M, S) can only appear once".to_string()),
+		notes: vec!["valid: P1Y2M3D".to_string(), "invalid: P1Y2Y (duplicate Y)".to_string()],
+		column: None,
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn out_of_order_duration_component(fragment: Fragment, component: char) -> Diagnostic {
+	let label = Some(format!("duration component '{}' appears out of order", component));
+	Diagnostic {
+		code: "TEMPORAL_022".to_string(),
+		statement: None,
+		message: format!("duration component '{}' is out of order", component),
+		fragment,
+		label,
+		help: Some("duration components must appear in order: Y, M, W, D (before T), then H, M, S (after T)"
+			.to_string()),
+		notes: vec![
+			"date part order: Y (years), M (months), W (weeks), D (days)".to_string(),
+			"time part order: H (hours), M (minutes), S (seconds)".to_string(),
+			"valid: P1Y2M3D, PT1H2M3S".to_string(),
+			"invalid: P1D1Y (D before Y), PT1S1H (S before H)".to_string(),
+		],
 		column: None,
 		cause: None,
 		operator_chain: None,
