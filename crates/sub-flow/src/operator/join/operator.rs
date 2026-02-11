@@ -16,11 +16,18 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns},
 };
 use reifydb_engine::{
-	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	evaluate::{
+		ColumnEvaluationContext,
+		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
+	},
 	vm::{executor::Executor, stack::SymbolTable},
 };
+use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::hash::{Hash128, xxh3_128};
+use reifydb_runtime::{
+	clock::Clock,
+	hash::{Hash128, xxh3_128},
+};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
@@ -54,11 +61,14 @@ pub struct JoinOperator {
 	right_node: FlowNodeId,
 	left_exprs: Vec<Expression>,
 	pub(crate) right_exprs: Vec<Expression>,
+	compiled_left_exprs: Vec<CompiledExpr>,
+	compiled_right_exprs: Vec<CompiledExpr>,
 	alias: Option<String>,
 	schema: Schema,
 	row_number_provider: RowNumberProvider,
 	executor: Executor,
-	column_evaluator: StandardColumnEvaluator,
+	functions: Functions,
+	clock: Clock,
 }
 
 impl JoinOperator {
@@ -78,6 +88,29 @@ impl JoinOperator {
 		let schema = Self::state_schema();
 		let row_number_provider = RowNumberProvider::new(node);
 
+		// Create compile context with empty symbol table
+		let compile_ctx = CompileContext {
+			functions: &executor.functions,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
+		};
+
+		// Compile expressions at construction time
+		let compiled_left_exprs: Vec<CompiledExpr> = left_exprs
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e))
+			.collect::<Result<_, _>>()
+			.expect("Failed to compile left expressions");
+
+		let compiled_right_exprs: Vec<CompiledExpr> = right_exprs
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e))
+			.collect::<Result<_, _>>()
+			.expect("Failed to compile right expressions");
+
+		// Extract Functions and Clock from executor
+		let functions = executor.functions.clone();
+		let clock = executor.clock.clone();
+
 		Self {
 			left_parent,
 			right_parent,
@@ -87,14 +120,14 @@ impl JoinOperator {
 			right_node,
 			left_exprs,
 			right_exprs,
+			compiled_left_exprs,
+			compiled_right_exprs,
 			alias,
 			schema,
 			row_number_provider,
-			column_evaluator: StandardColumnEvaluator::new(
-				executor.functions.clone(),
-				executor.clock.clone(),
-			),
 			executor,
+			functions,
+			clock,
 		}
 	}
 
@@ -107,7 +140,7 @@ impl JoinOperator {
 	pub(crate) fn compute_join_keys(
 		&self,
 		columns: &Columns,
-		exprs: &[Expression],
+		compiled_exprs: &[CompiledExpr],
 	) -> reifydb_type::Result<Vec<Option<Hash128>>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -124,19 +157,20 @@ impl JoinOperator {
 			is_aggregate_context: false,
 		};
 
-		// Evaluate all expressions on the entire batch
-		// For AccessSource expressions, use direct column lookup (mimic old StandardRowEvaluator)
-		let mut expr_columns = Vec::with_capacity(exprs.len());
-		for expr in exprs.iter() {
-			let col = match expr {
-				Expression::AccessSource(access_source) => {
-					// Direct column lookup by name - this is what StandardRowEvaluator did
+		// Create ExecContext for compiled expression execution
+		let exec_ctx = ExecContext::from_column_eval_ctx(&ctx, &self.functions, &self.clock);
+
+		// Evaluate all compiled expressions on the entire batch
+		let mut expr_columns = Vec::with_capacity(compiled_exprs.len());
+		for compiled_expr in compiled_exprs.iter() {
+			let col = match compiled_expr {
+				CompiledExpr::AccessSource(access_source) => {
 					let col_name = access_source.column.name.as_ref();
 					columns.column(col_name)
 						.cloned()
 						.unwrap_or_else(|| Column::undefined(col_name, row_count))
 				}
-				_ => self.column_evaluator.evaluate(&ctx, expr)?,
+				_ => compiled_expr.execute(&exec_ctx)?,
 			};
 			expr_columns.push(col);
 		}
@@ -440,12 +474,7 @@ impl Operator for JoinOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		// Check for self-referential calls (should never happen)
 		if let ChangeOrigin::Flow(from_node) = &change.origin {
 			if *from_node == self.node {
@@ -464,9 +493,9 @@ impl Operator for JoinOperator {
 			.determine_side(&change)
 			.ok_or_else(|| Error(internal!("Join operator received change from unknown node")))?;
 
-		let exprs = match side {
-			JoinSide::Left => &self.left_exprs,
-			JoinSide::Right => &self.right_exprs,
+		let compiled_exprs = match side {
+			JoinSide::Left => &self.compiled_left_exprs,
+			JoinSide::Right => &self.compiled_right_exprs,
 		};
 
 		// Process each diff inline, grouping by key within each diff
@@ -476,7 +505,7 @@ impl Operator for JoinOperator {
 					post,
 				} => {
 					// Compute keys for all rows in this Columns batch
-					let keys = self.compute_join_keys(&post, exprs)?;
+					let keys = self.compute_join_keys(&post, compiled_exprs)?;
 					let row_count = post.row_count();
 
 					// Group indices by key hash
@@ -511,7 +540,7 @@ impl Operator for JoinOperator {
 					pre,
 				} => {
 					// Compute keys for all rows
-					let keys = self.compute_join_keys(&pre, exprs)?;
+					let keys = self.compute_join_keys(&pre, compiled_exprs)?;
 					let row_count = pre.row_count();
 
 					// Group indices by key hash
@@ -560,8 +589,8 @@ impl Operator for JoinOperator {
 					post,
 				} => {
 					// Compute keys for pre and post
-					let old_keys = self.compute_join_keys(&pre, exprs)?;
-					let new_keys = self.compute_join_keys(&post, exprs)?;
+					let old_keys = self.compute_join_keys(&pre, compiled_exprs)?;
+					let new_keys = self.compute_join_keys(&post, compiled_exprs)?;
 					let row_count = post.row_count();
 
 					// Group updates by (old_key, new_key) pair

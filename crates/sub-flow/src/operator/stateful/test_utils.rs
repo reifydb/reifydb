@@ -8,7 +8,7 @@ pub mod test {
 		interface::{catalog::flow::FlowNodeId, change::Change},
 		value::column::columns::Columns,
 	};
-	use reifydb_engine::{evaluate::column::StandardColumnEvaluator, test_utils::create_test_engine};
+	use reifydb_engine::test_utils::create_test_engine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_type::{
 		util::cowvec::CowVec,
@@ -58,12 +58,7 @@ pub mod test {
 			self.id
 		}
 
-		fn apply(
-			&self,
-			_txn: &mut FlowTransaction,
-			_change: Change,
-			_evaluator: &StandardColumnEvaluator,
-		) -> reifydb_type::Result<Change> {
+		fn apply(&self, _txn: &mut FlowTransaction, _change: Change) -> reifydb_type::Result<Change> {
 			todo!()
 		}
 

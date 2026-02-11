@@ -13,7 +13,6 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::columns::Columns,
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_type::{error::Error, value::row_number::RowNumber};
 
 use crate::{
@@ -90,13 +89,7 @@ impl Operator for AppendOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
-		// Determine which parent this change came from
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
 			Error(internal!("Append received change from unknown node: {:?}", change.origin))
 		})?;
@@ -113,7 +106,6 @@ impl Operator for AppendOperator {
 						continue;
 					}
 
-					// Collect output row numbers for all source rows
 					let mut output_row_numbers = Vec::with_capacity(row_count);
 					for row_idx in 0..row_count {
 						let source_row_number = post.row_numbers[row_idx];
@@ -126,7 +118,6 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					// Create output Columns with the new row numbers - single batch
 					let output = Columns::with_row_numbers(
 						post.columns.as_ref().to_vec(),
 						output_row_numbers,
@@ -145,7 +136,6 @@ impl Operator for AppendOperator {
 						continue;
 					}
 
-					// Collect output row numbers for all source rows
 					let mut output_row_numbers = Vec::with_capacity(row_count);
 					for row_idx in 0..row_count {
 						let source_row_number = pre.row_numbers[row_idx];
@@ -157,7 +147,6 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					// Create output Columns with the new row numbers - single batch
 					let pre_output = Columns::with_row_numbers(
 						pre.columns.as_ref().to_vec(),
 						output_row_numbers.clone(),
@@ -180,7 +169,6 @@ impl Operator for AppendOperator {
 						continue;
 					}
 
-					// Collect output row numbers for all source rows
 					let mut output_row_numbers = Vec::with_capacity(row_count);
 					for row_idx in 0..row_count {
 						let source_row_number = pre.row_numbers[row_idx];
@@ -192,7 +180,6 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					// Create output Columns with the new row numbers - single batch
 					let output = Columns::with_row_numbers(
 						pre.columns.as_ref().to_vec(),
 						output_row_numbers,
@@ -217,17 +204,14 @@ impl Operator for AppendOperator {
 				continue;
 			};
 
-			// Parse composite key to get parent index and source row number
 			let Some((parent_index, source_row_number)) = Self::parse_composite_key(key.as_ref()) else {
 				continue;
 			};
 
-			// Validate parent index
 			if parent_index >= self.parents.len() {
 				continue;
 			}
 
-			// Delegate to parent operator
 			let parent_cols = self.parents[parent_index].pull(txn, &[source_row_number])?;
 
 			if !parent_cols.is_empty() {
@@ -242,7 +226,6 @@ impl Operator for AppendOperator {
 
 		// Combine found rows
 		if found_columns.is_empty() {
-			// Get schema from first parent (returns empty Columns with schema)
 			self.parents[0].pull(txn, &[])
 		} else if found_columns.len() == 1 {
 			Ok(found_columns.remove(0))

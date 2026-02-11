@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_engine::{evaluate::column::StandardColumnEvaluator, vm::executor::Executor};
+use reifydb_engine::vm::executor::Executor;
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
@@ -36,7 +36,6 @@ use crate::operator::{BoxedOperator, Operators};
 
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
-	pub(crate) evaluator: StandardColumnEvaluator,
 	pub(crate) executor: Executor,
 	pub(crate) operators: HashMap<FlowNodeId, Arc<Operators>>,
 	pub(crate) flows: HashMap<FlowId, FlowDag>,
@@ -50,17 +49,10 @@ pub struct FlowEngine {
 }
 
 impl FlowEngine {
-	#[instrument(name = "flow::engine::new", level = "debug", skip(catalog, evaluator, executor, event_bus, clock))]
-	pub fn new(
-		catalog: Catalog,
-		evaluator: StandardColumnEvaluator,
-		executor: Executor,
-		event_bus: EventBus,
-		clock: Clock,
-	) -> Self {
+	#[instrument(name = "flow::engine::new", level = "debug", skip(catalog, executor, event_bus, clock))]
+	pub fn new(catalog: Catalog, executor: Executor, event_bus: EventBus, clock: Clock) -> Self {
 		Self {
 			catalog,
-			evaluator,
 			executor,
 			operators: HashMap::new(),
 			flows: HashMap::new(),

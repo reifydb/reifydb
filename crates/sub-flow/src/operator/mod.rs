@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::transaction::FlowTransaction;
@@ -40,12 +39,7 @@ use window::WindowOperator;
 pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId;
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change>;
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change>;
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns>;
 }
@@ -71,28 +65,23 @@ pub enum Operators {
 }
 
 impl Operators {
-	pub fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		match self {
-			Operators::Filter(op) => op.apply(txn, change, evaluator),
-			Operators::Map(op) => op.apply(txn, change, evaluator),
-			Operators::Extend(op) => op.apply(txn, change, evaluator),
-			Operators::Join(op) => op.apply(txn, change, evaluator),
-			Operators::Sort(op) => op.apply(txn, change, evaluator),
-			Operators::Take(op) => op.apply(txn, change, evaluator),
-			Operators::Distinct(op) => op.apply(txn, change, evaluator),
-			Operators::Append(op) => op.apply(txn, change, evaluator),
-			Operators::Apply(op) => op.apply(txn, change, evaluator),
-			Operators::SinkView(op) => op.apply(txn, change, evaluator),
-			Operators::SinkSubscription(op) => op.apply(txn, change, evaluator),
-			Operators::Window(op) => op.apply(txn, change, evaluator),
-			Operators::SourceTable(op) => op.apply(txn, change, evaluator),
-			Operators::SourceView(op) => op.apply(txn, change, evaluator),
-			Operators::SourceFlow(op) => op.apply(txn, change, evaluator),
+			Operators::Filter(op) => op.apply(txn, change),
+			Operators::Map(op) => op.apply(txn, change),
+			Operators::Extend(op) => op.apply(txn, change),
+			Operators::Join(op) => op.apply(txn, change),
+			Operators::Sort(op) => op.apply(txn, change),
+			Operators::Take(op) => op.apply(txn, change),
+			Operators::Distinct(op) => op.apply(txn, change),
+			Operators::Append(op) => op.apply(txn, change),
+			Operators::Apply(op) => op.apply(txn, change),
+			Operators::SinkView(op) => op.apply(txn, change),
+			Operators::SinkSubscription(op) => op.apply(txn, change),
+			Operators::Window(op) => op.apply(txn, change),
+			Operators::SourceTable(op) => op.apply(txn, change),
+			Operators::SourceView(op) => op.apply(txn, change),
+			Operators::SourceFlow(op) => op.apply(txn, change),
 		}
 	}
 

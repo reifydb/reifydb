@@ -21,7 +21,6 @@ use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
 use reifydb_type::value::row_number::RowNumber;
 use tracing::{Span, error, instrument};
@@ -133,25 +132,16 @@ impl Operator for FFIOperator {
 		input_diff_count = change.diffs.len(),
 		output_diff_count = tracing::field::Empty
 	))]
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		let mut arena = self.arena.borrow_mut();
 
-		// Phase 1: Marshal the flow change
 		let ffi_input = marshal_input(&mut arena, &change);
 
-		// Create output holder
 		let mut ffi_output = ChangeFFI::empty();
 
-		// Create FFI context
 		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
 		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 
-		// Phase 2: Call FFI vtable
 		let result_code = call_vtable(
 			&self.vtable,
 			self.instance,
@@ -161,14 +151,12 @@ impl Operator for FFIOperator {
 			self.operator_id,
 		);
 
-		// Check result code
 		if result_code != 0 {
 			return Err(
 				FFIError::Other(format!("FFI operator apply failed with code: {}", result_code)).into()
 			);
 		}
 
-		// Phase 3: Unmarshal the output
 		let output_change = unmarshal_output(&mut arena, &ffi_output).map_err(|e| FFIError::Other(e))?;
 
 		// Clear the arena after operation
@@ -181,13 +169,11 @@ impl Operator for FFIOperator {
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		let mut arena = self.arena.borrow_mut();
-		// Convert row numbers to u64 array
+
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
 
-		// Create output holder
 		let mut ffi_output = ColumnsFFI::empty();
 
-		// Create FFI context
 		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
 		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 
@@ -202,7 +188,6 @@ impl Operator for FFIOperator {
 			)
 		}));
 
-		// Handle panics from FFI code - abort process on panic
 		let result_code = match result {
 			Ok(code) => code,
 			Err(panic_info) => {
@@ -218,7 +203,6 @@ impl Operator for FFIOperator {
 			}
 		};
 
-		// Check result code
 		if result_code != 0 {
 			return Err(
 				FFIError::Other(format!("FFI operator pull failed with code: {}", result_code)).into()

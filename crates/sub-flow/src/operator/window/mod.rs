@@ -39,7 +39,10 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
-	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	evaluate::{
+		ColumnEvaluationContext,
+		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
+	},
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
@@ -76,7 +79,6 @@ impl WindowEvent {
 		let names: Vec<String> = row.schema.field_names().map(|s| s.to_string()).collect();
 		let types: Vec<Type> = row.schema.fields().iter().map(|f| f.constraint.get_type()).collect();
 
-		// Debug: Extract and log the actual values being stored
 		let mut stored_values = Vec::new();
 		for (i, _field) in row.schema.fields().iter().enumerate() {
 			let value = row.schema.get_value(&row.encoded, i);
@@ -146,8 +148,10 @@ pub struct WindowOperator {
 	pub slide: Option<WindowSlide>,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
+	pub compiled_group_by: Vec<CompiledExpr>,
+	pub compiled_aggregations: Vec<CompiledExpr>,
 	pub layout: Schema,
-	pub column_evaluator: StandardColumnEvaluator,
+	pub functions: Functions,
 	pub row_number_provider: RowNumberProvider,
 	pub min_events: usize,               // Minimum events required before window becomes visible
 	pub max_window_count: Option<usize>, // Maximum number of windows to keep per group
@@ -170,6 +174,24 @@ impl WindowOperator {
 		clock: Clock,
 		functions: Functions,
 	) -> Self {
+		let symbol_table = SymbolTable::new();
+		let compile_ctx = CompileContext {
+			functions: &functions,
+			symbol_table: &symbol_table,
+		};
+
+		// Compile group_by expressions
+		let compiled_group_by: Vec<CompiledExpr> = group_by
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e).expect("Failed to compile group_by expression"))
+			.collect();
+
+		// Compile aggregation expressions
+		let compiled_aggregations: Vec<CompiledExpr> = aggregations
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e).expect("Failed to compile aggregation expression"))
+			.collect();
+
 		Self {
 			parent,
 			node,
@@ -178,8 +200,10 @@ impl WindowOperator {
 			slide,
 			group_by,
 			aggregations,
+			compiled_group_by,
+			compiled_aggregations,
 			layout: Schema::testing(&[Type::Blob]),
-			column_evaluator: StandardColumnEvaluator::new(functions, clock.clone()),
+			functions,
 			row_number_provider: RowNumberProvider::new(node),
 			min_events: min_events.max(1), // Ensure at least 1 event is required
 			max_window_count,
@@ -200,8 +224,7 @@ impl WindowOperator {
 			return Ok(Vec::new());
 		}
 
-		if self.group_by.is_empty() {
-			// Single global window - all rows have the same hash
+		if self.compiled_group_by.is_empty() {
 			return Ok(vec![Hash128::from(0u128); row_count]);
 		}
 
@@ -215,14 +238,14 @@ impl WindowOperator {
 			is_aggregate_context: false,
 		};
 
-		// Evaluate each group_by expression on the entire batch
+		let exec_ctx = ExecContext::from_column_eval_ctx(&ctx, &self.functions, &self.clock);
+
 		let mut group_columns: Vec<Column> = Vec::new();
-		for expr in &self.group_by {
-			let col = self.column_evaluator.evaluate(&ctx, expr)?;
+		for compiled_expr in &self.compiled_group_by {
+			let col = compiled_expr.execute(&exec_ctx)?;
 			group_columns.push(col);
 		}
 
-		// Compute hash for each row based on group column values
 		let mut hashes = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let mut data = Vec::new();
@@ -247,17 +270,15 @@ impl WindowOperator {
 		match &self.window_type {
 			WindowType::Time(time_mode) => match time_mode {
 				WindowTimeMode::Processing => {
-					// All rows get the current processing timestamp
 					let now = self.current_timestamp();
 					Ok(vec![now; row_count])
 				}
 				WindowTimeMode::EventTime(column_name) => {
-					// Find the timestamp column and extract all values
 					if let Some(col) = columns.column(column_name) {
 						let mut timestamps = Vec::with_capacity(row_count);
 						for row_idx in 0..row_count {
 							let value = col.data().get_value(row_idx);
-							// Convert value to u64 timestamp
+
 							let ts = match value {
 								Value::Int8(v) => v as u64,
 								Value::Uint8(v) => v,
@@ -283,7 +304,6 @@ impl WindowOperator {
 				}
 			},
 			WindowType::Count => {
-				// For count-based windows, return current timestamp for all rows
 				let now = self.current_timestamp();
 				Ok(vec![now; row_count])
 			}
@@ -328,17 +348,13 @@ impl WindowOperator {
 
 	/// Extract group values from window events (all events in a group have the same group values)
 	/// TODO: Refactor to use column-based evaluation when window operator is needed
-	pub fn extract_group_values(
-		&self,
-		events: &[WindowEvent],
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<(Vec<Value>, Vec<String>)> {
+	pub fn extract_group_values(&self, events: &[WindowEvent]) -> reifydb_type::Result<(Vec<Value>, Vec<String>)> {
 		if events.is_empty() || self.group_by.is_empty() {
 			return Ok((Vec::new(), Vec::new()));
 		}
 
 		// DISABLED: Window operator needs refactoring to use column-based evaluation
-		// For now, return empty group values since window operator is not in use
+
 		unimplemented!("Window operator extract_group_values needs refactoring to use column-based evaluation")
 	}
 
@@ -348,17 +364,14 @@ impl WindowOperator {
 			return Ok(Columns::new(Vec::new()));
 		}
 
-		// Use the first event to determine the schema
 		let first_event = &events[0];
 		let mut columns = Vec::new();
 
-		// Create columns for each field in the schema
 		for (field_idx, (field_name, field_type)) in
 			first_event.layout_names.iter().zip(first_event.layout_types.iter()).enumerate()
 		{
 			let mut column_data = ColumnData::with_capacity(*field_type, events.len());
 
-			// Collect values from all events for this column
 			for (_event_idx, event) in events.iter().enumerate() {
 				let row = event.to_row();
 				let value = row.schema.get_value(&row.encoded, field_idx);
@@ -380,7 +393,6 @@ impl WindowOperator {
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 		events: &[WindowEvent],
-		row_evaluator: &StandardColumnEvaluator,
 	) -> reifydb_type::Result<Option<(Row, bool)>> {
 		if events.is_empty() {
 			return Ok(None);
@@ -395,10 +407,8 @@ impl WindowOperator {
 			return Ok(Some((result_row, is_new)));
 		}
 
-		// Convert window events to columnar format
 		let columns = self.events_to_columns(events)?;
 
-		// Create column evaluation context
 		let ctx = ColumnEvaluationContext {
 			target: None,
 			columns,
@@ -409,32 +419,29 @@ impl WindowOperator {
 			is_aggregate_context: true, // Use aggregate functions for window aggregations
 		};
 
-		// Extract group values from window events
-		let (group_values, group_names) = self.extract_group_values(events, row_evaluator)?;
+		let exec_ctx = ExecContext::from_column_eval_ctx(&ctx, &self.functions, &self.clock);
 
-		// Evaluate each aggregation expression and collect results
+		let (group_values, group_names) = self.extract_group_values(events)?;
+
 		let mut result_values = Vec::new();
 		let mut result_names = Vec::new();
 		let mut result_types = Vec::new();
 
-		// Add group-by columns first (if any)
 		for (value, name) in group_values.into_iter().zip(group_names.into_iter()) {
 			result_values.push(value.clone());
 			result_names.push(name);
 			result_types.push(value.get_type());
 		}
 
-		// Apply aggregation expressions
-		for (_i, aggregation) in self.aggregations.iter().enumerate() {
-			let agg_column = self.column_evaluator.evaluate(&ctx, aggregation)?;
-			// For aggregations, we take the computed aggregated value (should be single value)
+		for (i, compiled_aggregation) in self.compiled_aggregations.iter().enumerate() {
+			let agg_column = compiled_aggregation.execute(&exec_ctx)?;
+
 			let value = agg_column.data().get_value(0);
 			result_values.push(value.clone());
-			result_names.push(column_name_from_expression(aggregation).text().to_string());
+			result_names.push(column_name_from_expression(&self.aggregations[i]).text().to_string());
 			result_types.push(value.get_type());
 		}
 
-		// Create result row with aggregated values
 		let fields: Vec<reifydb_core::encoded::schema::SchemaField> = result_names
 			.iter()
 			.zip(result_types.iter())
@@ -444,7 +451,6 @@ impl WindowOperator {
 		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &result_values);
 
-		// Use RowNumberProvider to get unique, stable row number for this window
 		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 
 		let result_row = Row {
@@ -464,12 +470,10 @@ impl WindowOperator {
 	) -> reifydb_type::Result<Vec<Diff>> {
 		let result = Vec::new();
 
-		// For time-based windows, expire windows that are older than the window size + slide
 		if let (WindowType::Time(_), WindowSize::Duration(duration)) = (&self.window_type, &self.size) {
 			let window_size_ms = duration.as_millis() as u64;
 			let expire_before = current_timestamp.saturating_sub(window_size_ms * 2); // Keep 2 window sizes
 
-			// This is a simplified cleanup - real implementation would iterate through
 			// all group keys and clean up expired windows for each group
 			let before_key = self.create_window_key(Hash128::from(0u128), expire_before / window_size_ms);
 			let range =
@@ -541,7 +545,6 @@ impl WindowOperator {
 
 		let new_count = current_count + 1;
 
-		// Save updated count
 		let serialized = postcard::to_stdvec(&new_count)
 			.map_err(|e| Error(internal!("Failed to serialize count: {}", e)))?;
 
@@ -576,19 +579,13 @@ impl Operator for WindowOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
-		// For window operators, we need  operation but trait requires sync.
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		// We'll need to refactor the architecture to support this properly.
-		// For now, return an error indicating  is needed.
+
 		match &self.slide {
-			Some(WindowSlide::Rolling) => apply_rolling_window(self, txn, change, evaluator),
-			Some(_) => apply_sliding_window(self, txn, change, evaluator),
-			None => apply_tumbling_window(self, txn, change, evaluator),
+			Some(WindowSlide::Rolling) => apply_rolling_window(self, txn, change),
+			Some(_) => apply_sliding_window(self, txn, change),
+			None => apply_tumbling_window(self, txn, change),
 		}
 	}
 
@@ -610,10 +607,9 @@ impl WindowOperator {
 				false
 			}
 			// Sliding windows: use time-based triggering
-			// For sliding windows, we should trigger when the window is complete
+
 			// but allow multiple triggers as the window slides
 			(WindowType::Time(_), WindowSize::Duration(duration), Some(_)) => {
-				// For sliding windows, trigger when we have enough content
 				// This allows overlapping windows to emit results independently
 				if state.event_count > 0 {
 					let window_size_ms = duration.as_millis() as u64;
@@ -627,7 +623,6 @@ impl WindowOperator {
 			(WindowType::Count, WindowSize::Count(count), None) => state.event_count >= *count,
 			// Count-based sliding windows: trigger when min_events threshold is met
 			(WindowType::Count, WindowSize::Count(_count), Some(_)) => {
-				// Only trigger when we have enough events for meaningful aggregation
 				state.event_count >= self.min_events as u64
 			}
 			_ => false,

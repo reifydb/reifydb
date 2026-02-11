@@ -11,7 +11,10 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns},
 };
 use reifydb_engine::{
-	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	evaluate::{
+		ColumnEvaluationContext,
+		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
+	},
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
@@ -29,7 +32,9 @@ pub struct MapOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression>,
-	column_evaluator: StandardColumnEvaluator,
+	compiled_expressions: Vec<CompiledExpr>,
+	functions: Functions,
+	clock: Clock,
 }
 
 impl MapOperator {
@@ -40,11 +45,23 @@ impl MapOperator {
 		functions: Functions,
 		clock: Clock,
 	) -> Self {
+		let compile_ctx = CompileContext {
+			functions: &functions,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
+		};
+		let compiled_expressions: Vec<CompiledExpr> = expressions
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e))
+			.collect::<Result<Vec<_>, _>>()
+			.expect("Failed to compile expressions");
+
 		Self {
 			parent,
 			node,
 			expressions,
-			column_evaluator: StandardColumnEvaluator::new(functions, clock),
+			compiled_expressions,
+			functions,
+			clock,
 		}
 	}
 
@@ -65,13 +82,14 @@ impl MapOperator {
 			is_aggregate_context: false,
 		};
 
+		let exec_ctx = ExecContext::from_column_eval_ctx(&ctx, &self.functions, &self.clock);
+
 		let mut result_columns = Vec::with_capacity(self.expressions.len());
 
-		for expr in &self.expressions {
-			// Evaluate the expression on the entire batch
-			let evaluated_col = self.column_evaluator.evaluate(&ctx, expr)?;
+		for (i, compiled_expr) in self.compiled_expressions.iter().enumerate() {
+			let evaluated_col = compiled_expr.execute(&exec_ctx)?;
 
-			// Determine the column name from the expression
+			let expr = &self.expressions[i];
 			let field_name = match expr {
 				Expression::Alias(alias_expr) => alias_expr.alias.name().to_string(),
 				Expression::Column(col_expr) => col_expr.0.name.text().to_string(),
@@ -79,7 +97,6 @@ impl MapOperator {
 				_ => expr.full_fragment_owned().text().to_string(),
 			};
 
-			// Create a new column with the proper name
 			let named_column = Column {
 				name: Fragment::internal(field_name),
 				data: evaluated_col.data().clone(),
@@ -88,7 +105,6 @@ impl MapOperator {
 			result_columns.push(named_column);
 		}
 
-		// Preserve row numbers from the input
 		let row_numbers = if columns.row_numbers.is_empty() {
 			Vec::new()
 		} else {
@@ -104,12 +120,7 @@ impl Operator for MapOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		_txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {

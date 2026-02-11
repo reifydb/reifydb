@@ -13,7 +13,6 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::columns::Columns,
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_transaction::interceptor::view::ViewInterceptor;
 use reifydb_type::value::row_number::RowNumber;
 
@@ -42,13 +41,7 @@ impl Operator for SinkViewOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
-		// Write rows to the view storage
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		let view_def = self.view.def().clone();
 		let schema: Schema = (&view_def.columns).into();
 

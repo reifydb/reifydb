@@ -19,7 +19,6 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_type::{fragment::Fragment, value::row_number::RowNumber};
 
 use super::encode_row_at_index;
@@ -60,16 +59,13 @@ impl SinkSubscriptionOperator {
 	fn add_implicit_columns(columns: &Columns, op: DiffType) -> Columns {
 		let row_count = columns.row_count();
 
-		// Clone existing columns
 		let mut all_columns: Vec<Column> = columns.iter().cloned().collect();
 
-		// Add implicit _op column
 		all_columns.push(Column {
 			name: Fragment::internal(IMPLICIT_COLUMN_OP),
 			data: ColumnData::uint1(vec![op as u8; row_count]),
 		});
 
-		// Preserve row numbers
 		Columns::with_row_numbers(all_columns, columns.row_numbers.to_vec())
 	}
 }
@@ -79,12 +75,7 @@ impl Operator for SinkSubscriptionOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		let subscription_def = self.subscription.def().clone();
 
 		for diff in change.diffs.iter() {
@@ -92,10 +83,8 @@ impl Operator for SinkSubscriptionOperator {
 				Diff::Insert {
 					post,
 				} => {
-					// Add implicit _op column (already decoded at source)
 					let with_implicit = Self::add_implicit_columns(post, DiffType::Insert);
 
-					// Derive and persist schema from columns with implicit fields
 					let schema = {
 						let catalog = txn.catalog();
 						create_schema_from_columns(&with_implicit, catalog)?
@@ -103,7 +92,6 @@ impl Operator for SinkSubscriptionOperator {
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
-						// Get unique, incrementing row number for this notification
 						let row_number = self.counter.next(txn)?;
 
 						let (_, encoded) = encode_row_at_index(
@@ -121,10 +109,8 @@ impl Operator for SinkSubscriptionOperator {
 					pre: _pre,
 					post,
 				} => {
-					// Add implicit _op column (already decoded at source)
 					let with_implicit = Self::add_implicit_columns(post, DiffType::Update);
 
-					// Derive and persist schema from columns with implicit fields
 					let schema = {
 						let catalog = txn.catalog();
 						create_schema_from_columns(&with_implicit, catalog)?
@@ -132,7 +118,6 @@ impl Operator for SinkSubscriptionOperator {
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
-						// Get unique, incrementing row number for this notification
 						let row_number = self.counter.next(txn)?;
 
 						let (_, encoded) = encode_row_at_index(
@@ -149,10 +134,8 @@ impl Operator for SinkSubscriptionOperator {
 				Diff::Remove {
 					pre,
 				} => {
-					// Add implicit _op column (already decoded at source)
 					let with_implicit = Self::add_implicit_columns(pre, DiffType::Remove);
 
-					// Derive and persist schema from columns with implicit fields
 					let schema = {
 						let catalog = txn.catalog();
 						create_schema_from_columns(&with_implicit, catalog)?
@@ -160,7 +143,6 @@ impl Operator for SinkSubscriptionOperator {
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
-						// Get unique, incrementing row number for this notification
 						let row_number = self.counter.next(txn)?;
 
 						let (_, encoded) = encode_row_at_index(

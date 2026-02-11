@@ -5,7 +5,6 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_runtime::hash::Hash128;
 
 use super::{WindowEvent, WindowOperator};
@@ -35,7 +34,6 @@ impl WindowOperator {
 				let window_size_ms = duration.as_millis() as u64;
 				let cutoff_time = current_timestamp - window_size_ms;
 
-				// Remove events older than the window size
 				let original_len = state.events.len();
 				state.events.retain(|event| event.timestamp > cutoff_time);
 				let evicted_count = original_len - state.events.len();
@@ -59,7 +57,6 @@ fn process_rolling_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
-	evaluator: &StandardColumnEvaluator,
 ) -> reifydb_type::Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
@@ -69,22 +66,13 @@ fn process_rolling_insert(
 
 	let current_timestamp = operator.current_timestamp();
 
-	// Batch compute group hashes for all rows
 	let group_hashes = operator.compute_group_keys(columns)?;
 
-	// Partition columns by group hash
 	let groups = columns.partition_by_keys(&group_hashes);
 
-	// Process each group
 	for (group_hash, group_columns) in groups {
-		let group_result = process_rolling_group_insert(
-			operator,
-			txn,
-			&group_columns,
-			group_hash,
-			current_timestamp,
-			evaluator,
-		)?;
+		let group_result =
+			process_rolling_group_insert(operator, txn, &group_columns, group_hash, current_timestamp)?;
 		result.extend(group_result);
 	}
 
@@ -98,7 +86,6 @@ fn process_rolling_group_insert(
 	columns: &Columns,
 	group_hash: Hash128,
 	current_timestamp: u64,
-	evaluator: &StandardColumnEvaluator,
 ) -> reifydb_type::Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
@@ -106,35 +93,28 @@ fn process_rolling_group_insert(
 		return Ok(result);
 	}
 
-	// Extract timestamps for all rows in this group
 	let timestamps = operator.extract_timestamps(columns)?;
 
-	// For rolling windows, we use a single window ID per group (always 0)
 	let window_id = 0u64;
 	let window_key = operator.create_window_key(group_hash, window_id);
 	let mut window_state = operator.load_window_state(txn, &window_key)?;
 
-	// Process each row
 	for row_idx in 0..row_count {
 		let event_timestamp = timestamps[row_idx];
 
-		// Calculate previous aggregation BEFORE adding the new event
 		let previous_aggregation = if window_state.events.len() >= operator.min_events {
-			operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
+			operator.apply_aggregations(txn, &window_key, &window_state.events)?
 		} else {
 			None
 		};
 
-		// Extract this single row and convert to Row for WindowEvent storage
 		let single_row_columns = columns.extract_row(row_idx);
 		let row = single_row_columns.to_single_row();
 
-		// Add new event to window
 		let event = WindowEvent::from_row(&row, event_timestamp);
 		window_state.events.push(event);
 		window_state.event_count += 1;
 
-		// Set window start if this is the first event
 		if window_state.window_start == 0 {
 			window_state.window_start = event_timestamp;
 		}
@@ -145,10 +125,9 @@ fn process_rolling_group_insert(
 		// Always trigger rolling windows (they continuously update)
 		if window_state.events.len() >= operator.min_events {
 			if let Some((aggregated_row, is_new)) =
-				operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
+				operator.apply_aggregations(txn, &window_key, &window_state.events)?
 			{
 				if is_new {
-					// First time this rolling window appears
 					result.push(Diff::Insert {
 						post: Columns::from_row(&aggregated_row),
 					});
@@ -170,7 +149,6 @@ fn process_rolling_group_insert(
 		}
 	}
 
-	// Save window state once after processing all rows in the group
 	operator.save_window_state(txn, &window_key, &window_state)?;
 
 	Ok(result)
@@ -181,25 +159,22 @@ pub fn apply_rolling_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: Change,
-	evaluator: &StandardColumnEvaluator,
 ) -> reifydb_type::Result<Change> {
 	let mut result = Vec::new();
 
-	// Process each incoming change (each diff may contain multiple rows)
 	for diff in change.diffs.iter() {
 		match diff {
 			Diff::Insert {
 				post,
 			} => {
-				let insert_result = process_rolling_insert(operator, txn, post, evaluator)?;
+				let insert_result = process_rolling_insert(operator, txn, post)?;
 				result.extend(insert_result);
 			}
 			Diff::Update {
 				pre: _,
 				post,
 			} => {
-				// For rolling windows, updates are treated as inserts of new values
-				let update_result = process_rolling_insert(operator, txn, post, evaluator)?;
+				let update_result = process_rolling_insert(operator, txn, post)?;
 				result.extend(update_result);
 			}
 			Diff::Remove {

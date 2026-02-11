@@ -5,7 +5,6 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_runtime::hash::Hash128;
 
 use super::{WindowEvent, WindowOperator};
@@ -35,7 +34,6 @@ impl WindowOperator {
 					// Overlapping windows - event belongs to multiple windows
 					let mut windows = Vec::new();
 
-					// For sliding windows, we need to find all windows that contain this timestamp
 					// A window with ID w starts at w * slide_ms and ends at w * slide_ms +
 					// window_size_ms So timestamp T is in window w if: w * slide_ms <= T < w *
 					// slide_ms + window_size_ms Rearranging: (T - window_size_ms + 1) /
@@ -68,7 +66,7 @@ impl WindowOperator {
 			}
 			(WindowType::Count, WindowSize::Count(count), Some(WindowSlide::Count(slide_count))) => {
 				// Count-based sliding windows
-				// For count=3, slide=2 with 1-based row numbering:
+
 				// Window 0: rows 1,2,3 (global_count 0,1,2)
 				// Window 1: rows 3,4,5 (global_count 2,3,4)
 				// Window 2: rows 5,6,7 (global_count 4,5,6)
@@ -76,14 +74,12 @@ impl WindowOperator {
 				let global_count = timestamp_or_row_index; // 0-based global count from get_and_increment_global_count
 				let mut windows = Vec::new();
 
-				// Convert to 1-based row number for window calculations
 				let row_number = global_count + 1; // 1-based row number as expected by test
 
 				// A row N (1-based) belongs to window W if:
 				// W * slide_count + 1 <= N <= W * slide_count + count
 				// Rearranging: (N - count) / slide_count <= W <= (N - 1) / slide_count
 
-				// Find the range of windows this row belongs to
 				// Mathematical definition: row N belongs to window W if:
 				// W * slide_count <= N-1 < W * slide_count + count (using 0-based indexing)
 				// Converting to 1-based: W * slide_count + 1 <= N <= W * slide_count + count
@@ -120,7 +116,6 @@ impl WindowOperator {
 	pub fn set_sliding_window_start(&self, timestamp: u64, window_id: u64) -> u64 {
 		match (&self.window_type, &self.size, &self.slide) {
 			(WindowType::Time(_), WindowSize::Duration(_), Some(WindowSlide::Duration(slide_duration))) => {
-				// For sliding windows, window start is aligned to slide boundaries
 				let slide_ms = slide_duration.as_millis() as u64;
 				let window_start = window_id * slide_ms;
 				window_start
@@ -138,7 +133,6 @@ fn process_sliding_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
-	evaluator: &StandardColumnEvaluator,
 ) -> reifydb_type::Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
@@ -146,15 +140,12 @@ fn process_sliding_insert(
 		return Ok(result);
 	}
 
-	// Batch compute group hashes for all rows
 	let group_hashes = operator.compute_group_keys(columns)?;
 
-	// Partition columns by group hash
 	let groups = columns.partition_by_keys(&group_hashes);
 
-	// Process each group
 	for (group_hash, group_columns) in groups {
-		let group_result = process_sliding_group_insert(operator, txn, &group_columns, group_hash, evaluator)?;
+		let group_result = process_sliding_group_insert(operator, txn, &group_columns, group_hash)?;
 		result.extend(group_result);
 	}
 
@@ -167,7 +158,6 @@ fn process_sliding_group_insert(
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	group_hash: Hash128,
-	evaluator: &StandardColumnEvaluator,
 ) -> reifydb_type::Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
@@ -175,10 +165,8 @@ fn process_sliding_group_insert(
 		return Ok(result);
 	}
 
-	// Extract timestamps for all rows in this group
 	let timestamps = operator.extract_timestamps(columns)?;
 
-	// For sliding windows, process each row (it may go to multiple windows)
 	for row_idx in 0..row_count {
 		let timestamp = timestamps[row_idx];
 		let (event_timestamp, window_ids) = match &operator.window_type {
@@ -187,7 +175,6 @@ fn process_sliding_group_insert(
 				(timestamp, window_ids)
 			}
 			WindowType::Count => {
-				// For count-based windows, use current processing time and calculate
 				// proper sliding window IDs based on event index
 				let event_timestamp = operator.current_timestamp();
 				let group_count = operator.get_and_increment_global_count(txn, group_hash)?;
@@ -196,7 +183,6 @@ fn process_sliding_group_insert(
 			}
 		};
 
-		// Extract this single row
 		let single_row_columns = columns.extract_row(row_idx);
 		let row = single_row_columns.to_single_row();
 
@@ -204,36 +190,29 @@ fn process_sliding_group_insert(
 			let window_key = operator.create_window_key(group_hash, window_id);
 			let mut window_state = operator.load_window_state(txn, &window_key)?;
 
-			// Calculate previous aggregation BEFORE adding the new event (for Update diff)
-			// Only calculate if previous state had enough events for aggregation
 			let previous_aggregation = if window_state.events.len() >= operator.min_events {
-				operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
+				operator.apply_aggregations(txn, &window_key, &window_state.events)?
 			} else {
 				None
 			};
 
-			// Add event to window
 			let event = WindowEvent::from_row(&row, event_timestamp);
 			window_state.events.push(event);
 			window_state.event_count += 1;
 
 			if window_state.window_start == 0 {
-				// Set window start using event timestamp for sliding windows
 				window_state.window_start =
 					operator.set_sliding_window_start(event_timestamp, window_id);
 			}
 
-			// Check if window should be triggered (get fresh timestamp for each check)
 			let trigger_check_time = operator.current_timestamp();
 			let should_trigger = operator.should_trigger_window(&window_state, trigger_check_time);
 
 			if should_trigger {
-				// Apply aggregations and emit result
 				if let Some((aggregated_row, is_new)) =
-					operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
+					operator.apply_aggregations(txn, &window_key, &window_state.events)?
 				{
 					if is_new {
-						// First time this window appears
 						result.push(Diff::Insert {
 							post: Columns::from_row(&aggregated_row),
 						});
@@ -266,7 +245,6 @@ pub fn apply_sliding_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: Change,
-	evaluator: &StandardColumnEvaluator,
 ) -> reifydb_type::Result<Change> {
 	let mut result = Vec::new();
 	let current_timestamp = operator.current_timestamp();
@@ -275,21 +253,19 @@ pub fn apply_sliding_window(
 	let expired_diffs = operator.process_expired_windows(txn, current_timestamp)?;
 	result.extend(expired_diffs);
 
-	// Process each incoming change (each diff may contain multiple rows)
 	for diff in change.diffs.iter() {
 		match diff {
 			Diff::Insert {
 				post,
 			} => {
-				let insert_result = process_sliding_insert(operator, txn, post, evaluator)?;
+				let insert_result = process_sliding_insert(operator, txn, post)?;
 				result.extend(insert_result);
 			}
 			Diff::Update {
 				pre: _,
 				post,
 			} => {
-				// For windows, updates are treated as insert of new value
-				let update_result = process_sliding_insert(operator, txn, post, evaluator)?;
+				let update_result = process_sliding_insert(operator, txn, post)?;
 				result.extend(update_result);
 			}
 			Diff::Remove {

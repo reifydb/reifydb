@@ -8,7 +8,6 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{Operator, transaction::FlowTransaction};
@@ -33,12 +32,7 @@ impl Operator for PrimitiveFlowOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		_txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		Ok(change)
 	}
 

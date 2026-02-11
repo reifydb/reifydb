@@ -7,7 +7,6 @@ use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_rql::expression::Expression;
 use reifydb_type::value::row_number::RowNumber;
 
@@ -35,12 +34,7 @@ impl Operator for ExtendOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		_txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		// TODO: Implement single-encoded extend processing
 		// For now, just pass through all changes with updated from
 		Ok(Change::from_flow(self.node, change.version, change.diffs))

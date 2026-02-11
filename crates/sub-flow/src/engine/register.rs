@@ -229,7 +229,6 @@ impl FlowEngine {
 				right,
 				alias,
 			} => {
-				// Find the left and right node IDs from the flow inputs
 				// The join node should have exactly 2 inputs
 				if node.inputs.len() != 2 {
 					return Err(Error(internal!("Join node must have exactly 2 inputs")));
@@ -332,7 +331,11 @@ impl FlowEngine {
 						unimplemented!("only ffi operators can be used")
 					}
 
-					let config = evaluate_operator_config(expressions.as_slice(), &self.evaluator)?;
+					let config = evaluate_operator_config(
+						expressions.as_slice(),
+						&self.executor.functions,
+						&self.clock,
+					)?;
 					let operator = self.create_ffi_operator(operator.as_str(), node.id, &config)?;
 
 					self.operators.insert(

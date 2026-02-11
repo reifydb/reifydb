@@ -11,7 +11,6 @@ use reifydb_core::{
 		catalog::policy::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
 		evaluate::TargetColumn,
 	},
-	row::Row,
 	value::column::{columns::Columns, data::ColumnData},
 };
 use reifydb_type::{params::Params, value::r#type::Type};

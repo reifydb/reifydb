@@ -7,7 +7,6 @@ use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{
@@ -36,13 +35,8 @@ impl Operator for ApplyOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
-		self.inner.apply(txn, change, evaluator)
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+		self.inner.apply(txn, change)
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {

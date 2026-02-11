@@ -12,7 +12,10 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::{
-	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	evaluate::{
+		ColumnEvaluationContext,
+		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
+	},
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
@@ -34,8 +37,9 @@ static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable:
 pub struct FilterOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	conditions: Vec<Expression>,
-	column_evaluator: StandardColumnEvaluator,
+	compiled_conditions: Vec<CompiledExpr>,
+	functions: Functions,
+	clock: Clock,
 }
 
 impl FilterOperator {
@@ -46,11 +50,21 @@ impl FilterOperator {
 		functions: Functions,
 		clock: Clock,
 	) -> Self {
+		let compile_ctx = CompileContext {
+			functions: &functions,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
+		};
+		let compiled_conditions: Vec<CompiledExpr> = conditions
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e).expect("Failed to compile filter condition"))
+			.collect();
+
 		Self {
 			parent,
 			node,
-			conditions,
-			column_evaluator: StandardColumnEvaluator::new(functions, clock),
+			compiled_conditions,
+			functions,
+			clock,
 		}
 	}
 
@@ -75,10 +89,11 @@ impl FilterOperator {
 		// Start with all rows passing
 		let mut mask = vec![true; row_count];
 
-		for condition in &self.conditions {
-			let result_col = self.column_evaluator.evaluate(&ctx, condition)?;
+		let exec_ctx = ExecContext::from_column_eval_ctx(&ctx, &self.functions, &self.clock);
 
-			// Apply the condition to the mask
+		for compiled_condition in &self.compiled_conditions {
+			let result_col = compiled_condition.execute(&exec_ctx)?;
+
 			for row_idx in 0..row_count {
 				if mask[row_idx] {
 					match result_col.data().get_value(row_idx) {
@@ -128,12 +143,7 @@ impl Operator for FilterOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		_txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
@@ -154,13 +164,11 @@ impl Operator for FilterOperator {
 					pre,
 					post,
 				} => {
-					// Evaluate filter on the new version
 					let mask = self.evaluate(&post)?;
 					let passing = self.filter_passing(&post, &mask);
 					let failing = self.filter_failing(&post, &mask);
 
 					if !passing.is_empty() {
-						// Get the corresponding pre rows for passing post rows
 						let passing_indices: Vec<usize> = mask
 							.iter()
 							.enumerate()

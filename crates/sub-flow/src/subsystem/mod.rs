@@ -26,7 +26,7 @@ use reifydb_core::{
 	key::{EncodableKey, cdc_consumer::CdcConsumerKey},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{engine::StandardEngine, evaluate::column::StandardColumnEvaluator};
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorHandle};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
@@ -77,15 +77,7 @@ impl FlowSubsystem {
 			let bus = event_bus.clone();
 			let clk = clock_for_factory.clone();
 
-			move || {
-				FlowEngine::new(
-					cat,
-					StandardColumnEvaluator::new(exec.functions.clone(), clk.clone()),
-					exec,
-					bus,
-					clk,
-				)
-			}
+			move || FlowEngine::new(cat, exec, bus, clk)
 		};
 
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
@@ -97,7 +89,6 @@ impl FlowSubsystem {
 
 		let actor_system = engine.actor_system();
 
-		// Spawn worker
 		let mut worker_refs = Vec::with_capacity(num_workers);
 		let mut worker_handles = Vec::with_capacity(num_workers);
 		for i in 0..num_workers {
@@ -108,14 +99,12 @@ impl FlowSubsystem {
 			worker_handles.push(handle);
 		}
 
-		// Spawn pool
 		let pool = PoolActor::new(worker_refs, clock.clone());
 		let pool_handle = actor_system.spawn("flow-pool", pool);
 		let pool_ref = pool_handle.actor_ref().clone();
 
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
-		// Spawn coordinator actor
 		let coordinator = CoordinatorActor::new(
 			engine.clone(),
 			flow_catalog.clone(),
@@ -128,7 +117,6 @@ impl FlowSubsystem {
 		let coordinator_handle = actor_system.spawn("flow-coordinator", coordinator);
 		let actor_ref = coordinator_handle.actor_ref().clone();
 
-		// Create the thin CdcConsume impl
 		let consumer_id = CdcConsumerId::new("flow-coordinator");
 		let consumer_key = CdcConsumerKey {
 			consumer: consumer_id.clone(),
@@ -139,7 +127,6 @@ impl FlowSubsystem {
 			consumer_key,
 		};
 
-		// Register FlowLags with access to the flow catalog
 		ioc.register_service::<Arc<dyn FlowLagsProvider>>(Arc::new(FlowLags::new(
 			primitive_tracker,
 			engine.clone(),
@@ -181,20 +168,16 @@ impl Subsystem for FlowSubsystem {
 			return Ok(());
 		}
 
-		// Stop the poll consumer first (signals PollActor to stop)
 		self.consumer.stop()?;
 
-		// Join coordinator (it sends messages to pool and workers)
 		if let Some(handle) = self.coordinator_handle.take() {
 			let _ = handle.join();
 		}
 
-		// Join pool (it sends messages to workers)
 		if let Some(handle) = self.pool_handle.take() {
 			let _ = handle.join();
 		}
 
-		// Join workers last
 		for handle in self.worker_handles.drain(..) {
 			let _ = handle.join();
 		}

@@ -14,7 +14,10 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
-	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	evaluate::{
+		ColumnEvaluationContext,
+		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
+	},
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
@@ -64,7 +67,6 @@ impl SerializedRow {
 	fn from_columns_at_index(columns: &Columns, row_idx: usize) -> Self {
 		let number = columns.row_numbers[row_idx];
 
-		// Collect values for this row directly from column data
 		let values: Vec<Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
 
 		// Serialize values directly with postcard
@@ -82,7 +84,6 @@ impl SerializedRow {
 		let values: Vec<Value> =
 			postcard::from_bytes(&self.values_bytes).expect("Failed to deserialize column values");
 
-		// Build columns directly
 		let mut columns_vec = Vec::with_capacity(layout.names.len());
 		for (i, (name, typ)) in layout.names.iter().zip(layout.types.iter()).enumerate() {
 			let value = values.get(i).cloned().unwrap_or(Value::Undefined);
@@ -124,7 +125,6 @@ impl DistinctLayout {
 			return;
 		}
 
-		// Update types to keep the most specific/defined type
 		for (i, new_type) in types.iter().enumerate() {
 			if i < self.types.len() {
 				if self.types[i] == Type::Undefined && *new_type != Type::Undefined {
@@ -171,9 +171,10 @@ impl Default for DistinctState {
 pub struct DistinctOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	expressions: Vec<Expression>,
+	compiled_expressions: Vec<CompiledExpr>,
 	schema: Schema,
-	column_evaluator: StandardColumnEvaluator,
+	functions: Functions,
+	clock: Clock,
 }
 
 impl DistinctOperator {
@@ -184,12 +185,24 @@ impl DistinctOperator {
 		functions: Functions,
 		clock: Clock,
 	) -> Self {
+		let symbol_table = SymbolTable::new();
+		let compile_ctx = CompileContext {
+			functions: &functions,
+			symbol_table: &symbol_table,
+		};
+		let compiled_expressions: Vec<CompiledExpr> = expressions
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e))
+			.collect::<Result<Vec<_>, _>>()
+			.expect("Failed to compile expressions");
+
 		Self {
 			parent,
 			node,
-			expressions,
+			compiled_expressions,
 			schema: Schema::testing(&[Type::Blob]),
-			column_evaluator: StandardColumnEvaluator::new(functions, clock),
+			functions,
+			clock,
 		}
 	}
 
@@ -200,7 +213,7 @@ impl DistinctOperator {
 			return Ok(Vec::new());
 		}
 
-		if self.expressions.is_empty() {
+		if self.compiled_expressions.is_empty() {
 			// Hash the entire row data for each row
 			let mut hashes = Vec::with_capacity(row_count);
 			for row_idx in 0..row_count {
@@ -224,14 +237,13 @@ impl DistinctOperator {
 				is_aggregate_context: false,
 			};
 
-			// Evaluate each expression on entire batch
+			let exec_ctx = ExecContext::from_column_eval_ctx(&ctx, &self.functions, &self.clock);
 			let mut expr_columns = Vec::new();
-			for expr in &self.expressions {
-				let col = self.column_evaluator.evaluate(&ctx, expr)?;
+			for compiled_expr in &self.compiled_expressions {
+				let col = compiled_expr.execute(&exec_ctx)?;
 				expr_columns.push(col);
 			}
 
-			// Compute hash for each row
 			let mut hashes = Vec::with_capacity(row_count);
 			for row_idx in 0..row_count {
 				let mut data = Vec::new();
@@ -284,7 +296,6 @@ impl DistinctOperator {
 		state.layout.update_from_columns(columns);
 		let hashes = self.compute_hashes(columns)?;
 
-		// Track which rows are new distinct values for batch output
 		let mut new_distinct_indices: Vec<usize> = Vec::new();
 
 		for row_idx in 0..row_count {
@@ -310,7 +321,6 @@ impl DistinctOperator {
 			}
 		}
 
-		// Emit all new distinct rows in a single batch if possible
 		if !new_distinct_indices.is_empty() {
 			let output = columns.extract_by_indices(&new_distinct_indices);
 			result.push(Diff::Insert {
@@ -388,7 +398,6 @@ impl DistinctOperator {
 			}
 		}
 
-		// Emit batched updates
 		if !same_key_update_indices.is_empty() {
 			let pre_output = pre_columns.extract_by_indices(&same_key_update_indices);
 			let post_output = post_columns.extract_by_indices(&same_key_update_indices);
@@ -398,7 +407,6 @@ impl DistinctOperator {
 			});
 		}
 
-		// Emit batched removes
 		if !removed_indices.is_empty() {
 			let output = pre_columns.extract_by_indices(&removed_indices);
 			result.push(Diff::Remove {
@@ -406,7 +414,6 @@ impl DistinctOperator {
 			});
 		}
 
-		// Emit batched inserts
 		if !inserted_indices.is_empty() {
 			let output = post_columns.extract_by_indices(&inserted_indices);
 			result.push(Diff::Insert {
@@ -427,7 +434,6 @@ impl DistinctOperator {
 
 		let hashes = self.compute_hashes(columns)?;
 
-		// Track hashes whose last occurrence was removed
 		let mut removed_hashes: Vec<Hash128> = Vec::new();
 
 		for row_idx in 0..row_count {
@@ -442,7 +448,6 @@ impl DistinctOperator {
 			}
 		}
 
-		// Remove entries and emit removes for each (need stored row data)
 		for hash in removed_hashes {
 			if let Some(entry) = state.entries.shift_remove(&hash) {
 				let stored_columns = entry.first_row.to_columns(&state.layout);
@@ -469,12 +474,7 @@ impl Operator for DistinctOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		let mut state = self.load_distinct_state(txn)?;
 		let mut result = Vec::new();
 

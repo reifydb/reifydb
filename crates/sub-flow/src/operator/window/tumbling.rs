@@ -5,7 +5,6 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_runtime::hash::Hash128;
 
 use super::{WindowEvent, WindowOperator};
@@ -22,8 +21,6 @@ impl WindowOperator {
 				window_start / window_size_ms
 			}
 			(WindowType::Count, WindowSize::Count(count)) => {
-				// For count-based windows, we use a simple incrementing window ID
-				// This is a simplified implementation - real implementation would need
 				// to track event counts per group
 				timestamp / *count
 			}
@@ -75,7 +72,6 @@ fn process_tumbling_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
-	evaluator: &StandardColumnEvaluator,
 ) -> reifydb_type::Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
@@ -83,15 +79,12 @@ fn process_tumbling_insert(
 		return Ok(result);
 	}
 
-	// Batch compute group hashes for all rows
 	let group_hashes = operator.compute_group_keys(columns)?;
 
-	// Partition columns by group hash
 	let groups = columns.partition_by_keys(&group_hashes);
 
-	// Process each group
 	for (group_hash, group_columns) in groups {
-		let group_result = process_tumbling_group_insert(operator, txn, &group_columns, group_hash, evaluator)?;
+		let group_result = process_tumbling_group_insert(operator, txn, &group_columns, group_hash)?;
 		result.extend(group_result);
 	}
 
@@ -104,7 +97,6 @@ fn process_tumbling_group_insert(
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	group_hash: Hash128,
-	evaluator: &StandardColumnEvaluator,
 ) -> reifydb_type::Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
@@ -112,10 +104,8 @@ fn process_tumbling_group_insert(
 		return Ok(result);
 	}
 
-	// Extract timestamps for all rows in this group
 	let timestamps = operator.extract_timestamps(columns)?;
 
-	// For tumbling windows, process each row (they may go to different windows based on timestamp)
 	for row_idx in 0..row_count {
 		let timestamp = timestamps[row_idx];
 		let (event_timestamp, window_id) = match &operator.window_type {
@@ -124,7 +114,6 @@ fn process_tumbling_group_insert(
 				(timestamp, window_id)
 			}
 			WindowType::Count => {
-				// For count-based windows, use current processing time and calculate
 				// window ID based on global event count
 				let event_timestamp = operator.current_timestamp();
 				let global_count = operator.get_and_increment_global_count(txn, group_hash)?;
@@ -141,35 +130,31 @@ fn process_tumbling_group_insert(
 		let window_key = operator.create_window_key(group_hash, window_id);
 		let mut window_state = operator.load_window_state(txn, &window_key)?;
 
-		// Extract this single row as Columns and convert to Row for WindowEvent storage
 		let single_row_columns = columns.extract_row(row_idx);
 		let row = single_row_columns.to_single_row();
 
-		// Add event to window
 		let event = WindowEvent::from_row(&row, event_timestamp);
 		window_state.events.push(event);
 		window_state.event_count += 1;
 
 		if window_state.window_start == 0 {
-			// Set window start aligned to window boundary for tumbling windows
 			window_state.window_start = operator.set_tumbling_window_start(event_timestamp);
 		}
 
 		// Always emit result for count-based windows - Insert for first, Update for subsequent
 		if let Some((aggregated_row, is_new)) =
-			operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
+			operator.apply_aggregations(txn, &window_key, &window_state.events)?
 		{
 			if is_new {
-				// First time we see this window - emit Insert
 				result.push(Diff::Insert {
 					post: Columns::from_row(&aggregated_row),
 				});
 			} else {
 				// Window already exists - emit Update
-				// We need to compute the previous aggregation (without the current event)
+
 				let previous_events = &window_state.events[..window_state.events.len() - 1];
 				if let Some((previous_aggregated, _)) =
-					operator.apply_aggregations(txn, &window_key, previous_events, evaluator)?
+					operator.apply_aggregations(txn, &window_key, previous_events)?
 				{
 					result.push(Diff::Update {
 						pre: Columns::from_row(&previous_aggregated),
@@ -190,7 +175,6 @@ pub fn apply_tumbling_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: Change,
-	evaluator: &StandardColumnEvaluator,
 ) -> reifydb_type::Result<Change> {
 	let mut result = Vec::new();
 	let current_timestamp = operator.current_timestamp();
@@ -199,22 +183,19 @@ pub fn apply_tumbling_window(
 	let expired_diffs = operator.process_expired_windows(txn, current_timestamp)?;
 	result.extend(expired_diffs);
 
-	// Process each incoming change (each diff may contain multiple rows)
 	for diff in change.diffs.iter() {
 		match diff {
 			Diff::Insert {
 				post,
 			} => {
-				let insert_result = process_tumbling_insert(operator, txn, post, evaluator)?;
+				let insert_result = process_tumbling_insert(operator, txn, post)?;
 				result.extend(insert_result);
 			}
 			Diff::Update {
 				pre: _,
 				post,
 			} => {
-				// For windows, updates are treated as insert of new value
-				// Real implementation might need to handle retractions
-				let update_result = process_tumbling_insert(operator, txn, post, evaluator)?;
+				let update_result = process_tumbling_insert(operator, txn, post)?;
 				result.extend(update_result);
 			}
 			Diff::Remove {

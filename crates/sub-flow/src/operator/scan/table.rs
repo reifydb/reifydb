@@ -10,7 +10,6 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
@@ -34,12 +33,7 @@ impl Operator for PrimitiveTableOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs {
 			decoded_diffs.push(match diff {
@@ -84,7 +78,6 @@ impl Operator for PrimitiveTableOperator {
 			return Ok(Columns::from_table_def(&self.table));
 		}
 
-		// Get schema from table def
 		let schema: Schema = (&self.table.columns).into();
 		let fields = schema.fields();
 
@@ -98,7 +91,6 @@ impl Operator for PrimitiveTableOperator {
 		}
 		let mut row_numbers = Vec::with_capacity(rows.len());
 
-		// Fetch and decode each row directly into columns
 		for row_num in rows {
 			let key = RowKey::encoded(PrimitiveId::table(self.table.id), *row_num);
 			if let Some(encoded) = txn.get(&key)? {

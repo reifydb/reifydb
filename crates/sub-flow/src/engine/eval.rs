@@ -5,10 +5,15 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_engine::{
-	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	evaluate::{
+		ColumnEvaluationContext,
+		compiled::{CompileContext, ExecContext, compile_expression},
+	},
 	vm::stack::SymbolTable,
 };
+use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
+use reifydb_runtime::clock::Clock;
 use reifydb_type::{Result, params::Params, value::Value};
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -23,7 +28,8 @@ static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable:
 ///
 /// # Arguments
 /// * `expressions` - The expressions to evaluate (typically from FlowNode::Apply)
-/// * `evaluator` - The StandardColumnEvaluator to use for expression evaluation
+/// * `functions` - The function registry to use for expression evaluation
+/// * `clock` - The clock to use for time-based expressions
 ///
 /// # Returns
 /// HashMap<String, Value> where keys are alias names and values are evaluated results
@@ -32,11 +38,16 @@ static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable:
 /// Returns error if expression evaluation fails
 pub fn evaluate_operator_config(
 	expressions: &[Expression],
-	evaluator: &StandardColumnEvaluator,
+	functions: &Functions,
+	clock: &Clock,
 ) -> Result<HashMap<String, Value>> {
 	let mut result = HashMap::new();
 
-	// Create an empty Columns for evaluating constant expressions
+	let compile_ctx = CompileContext {
+		functions,
+		symbol_table: &EMPTY_SYMBOL_TABLE,
+	};
+
 	let empty_columns = Columns::empty();
 
 	let eval_ctx = ColumnEvaluationContext {
@@ -49,13 +60,16 @@ pub fn evaluate_operator_config(
 		is_aggregate_context: false,
 	};
 
-	// Process each expression
+	let exec_ctx = ExecContext::from_column_eval_ctx(&eval_ctx, functions, clock);
+
 	for expr in expressions {
 		match expr {
 			Expression::Alias(alias_expr) => {
 				let key = alias_expr.alias.name().to_string();
-				let column = evaluator.evaluate(&eval_ctx, &alias_expr.expression)?;
-				// Extract the single value from the column (constant expressions produce 1 value)
+				// Compile and evaluate the expression
+				let compiled = compile_expression(&compile_ctx, &alias_expr.expression)?;
+				let column = compiled.execute(&exec_ctx)?;
+
 				let value = if column.data().len() > 0 {
 					column.data().get_value(0)
 				} else {
@@ -63,9 +77,7 @@ pub fn evaluate_operator_config(
 				};
 				result.insert(key, value);
 			}
-			_ => {
-				// Skip non-Alias expressions
-			}
+			_ => {}
 		}
 	}
 
@@ -74,7 +86,6 @@ pub fn evaluate_operator_config(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 	use reifydb_function::registry::Functions;
 	use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_runtime::clock::Clock;
@@ -116,20 +127,22 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_expressions() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions: Vec<Expression> = vec![];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert!(result.is_empty());
 	}
 
 	#[test]
 	fn test_single_alias_string() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![create_alias_expression("key1", create_constant_text("value1"))];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("key1"), Some(&Value::Utf8("value1".into())));
@@ -137,10 +150,11 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_number() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![create_alias_expression("count", create_constant_number(42))];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("count"), Some(&Value::Int1(42)));
@@ -148,10 +162,11 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_bool() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![create_alias_expression("enabled", create_constant_bool(true))];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("enabled"), Some(&Value::Boolean(true)));
@@ -159,10 +174,11 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_undefined() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![create_alias_expression("optional", create_constant_undefined())];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("optional"), Some(&Value::Undefined));
@@ -170,14 +186,15 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_aliases() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![
 			create_alias_expression("key1", create_constant_text("value1")),
 			create_alias_expression("key2", create_constant_number(100)),
 			create_alias_expression("key3", create_constant_bool(false)),
 		];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 3);
 		assert_eq!(result.get("key1"), Some(&Value::Utf8("value1".into())));
@@ -189,14 +206,15 @@ pub mod tests {
 
 	#[test]
 	fn test_non_alias_expressions_skipped() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![
 			create_alias_expression("valid", create_constant_text("included")),
 			create_constant_text("standalone"), // Non-alias, should be skipped
 			create_constant_number(999),        // Non-alias, should be skipped
 		];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("valid"), Some(&Value::Utf8("included".into())));
@@ -204,11 +222,12 @@ pub mod tests {
 
 	#[test]
 	fn test_only_non_alias_expressions() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions =
 			vec![create_constant_text("text"), create_constant_number(42), create_constant_bool(true)];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert!(result.is_empty());
 	}
@@ -217,7 +236,8 @@ pub mod tests {
 
 	#[test]
 	fn test_all_basic_value_types() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![
 			create_alias_expression("text_val", create_constant_text("hello")),
 			create_alias_expression("num_val", create_constant_number(-42)),
@@ -226,7 +246,7 @@ pub mod tests {
 			create_alias_expression("undef_val", create_constant_undefined()),
 		];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 5);
 		assert_eq!(result.get("text_val"), Some(&Value::Utf8("hello".into())));
@@ -238,14 +258,15 @@ pub mod tests {
 
 	#[test]
 	fn test_duplicate_alias_names_last_wins() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![
 			create_alias_expression("key", create_constant_text("first")),
 			create_alias_expression("key", create_constant_text("second")),
 			create_alias_expression("key", create_constant_number(42)),
 		];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("key"), Some(&Value::Int1(42)));
@@ -253,10 +274,11 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_string_value() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![create_alias_expression("empty", create_constant_text(""))];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("empty"), Some(&Value::Utf8("".into())));
@@ -264,14 +286,15 @@ pub mod tests {
 
 	#[test]
 	fn test_special_characters_in_alias_name() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![
 			create_alias_expression("key_with_underscore", create_constant_number(1)),
 			create_alias_expression("keyWithCamelCase", create_constant_number(2)),
 			create_alias_expression("key123", create_constant_number(3)),
 		];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 3);
 		assert_eq!(result.get("key_with_underscore"), Some(&Value::Int1(1)));
@@ -281,14 +304,15 @@ pub mod tests {
 
 	#[test]
 	fn test_large_number_values() {
-		let evaluator = StandardColumnEvaluator::new(Functions::builder().build(), Clock::default());
+		let functions = Functions::builder().build();
+		let clock = Clock::default();
 		let expressions = vec![
 			create_alias_expression("small", create_constant_number(0)),
 			create_alias_expression("large_positive", create_constant_number(i64::MAX)),
 			create_alias_expression("large_negative", create_constant_number(i64::MIN)),
 		];
 
-		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
+		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 3);
 		assert_eq!(result.get("small"), Some(&Value::Int1(0)));

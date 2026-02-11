@@ -90,7 +90,7 @@ impl FlowEngine {
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
 		let apply_start = self.clock.instant();
-		let result = operator.apply(txn, change, &self.evaluator)?;
+		let result = operator.apply(txn, change)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
 		Ok(result)

@@ -12,7 +12,6 @@ use reifydb_core::{
 	internal,
 	value::column::columns::Columns,
 };
-use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_type::{
 	error::Error,
 	value::{blob::Blob, row_number::RowNumber, r#type::Type},
@@ -155,12 +154,7 @@ impl Operator for TakeOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_evaluator: &StandardColumnEvaluator,
-	) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
 		let mut state = self.load_take_state(txn)?;
 		let mut output_diffs = Vec::new();
 		let version = change.version;
