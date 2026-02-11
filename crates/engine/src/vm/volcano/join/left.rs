@@ -12,7 +12,7 @@ use tracing::instrument;
 
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
 use crate::{
-	evaluate::{ColumnEvaluationContext, column::evaluate},
+	evaluate::compiled::{CompileContext, ExecContext, compile_expression},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -46,6 +46,12 @@ impl LeftJoinNode {
 impl QueryNode for LeftJoinNode {
 	#[instrument(name = "volcano::join::left::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+		let compile_ctx = CompileContext {
+			functions: &ctx.services.functions,
+			symbol_table: &ctx.stack,
+		};
+		self.context.compiled =
+			self.on.iter().map(|e| compile_expression(&compile_ctx, e).expect("compile")).collect();
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
@@ -91,7 +97,7 @@ impl QueryNode for LeftJoinNode {
 					&self.alias,
 				);
 
-				let eval_ctx = ColumnEvaluationContext {
+				let exec_ctx = ExecContext {
 					target: None,
 					columns: Columns::new(eval_columns),
 					row_count: 1,
@@ -99,12 +105,12 @@ impl QueryNode for LeftJoinNode {
 					params: &ctx.params,
 					symbol_table: &ctx.stack,
 					is_aggregate_context: false,
+					functions: &ctx.services.functions,
+					clock: &ctx.services.clock,
 				};
 
-				let all_true = self.on.iter().fold(true, |acc, cond| {
-					let col =
-						evaluate(&eval_ctx, cond, &ctx.services.functions, &ctx.services.clock)
-							.unwrap();
+				let all_true = self.context.compiled.iter().fold(true, |acc, compiled_expr| {
+					let col = compiled_expr.execute(&exec_ctx).unwrap();
 					matches!(col.data().get_value(0), Value::Boolean(true)) && acc
 				});
 

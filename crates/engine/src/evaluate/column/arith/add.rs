@@ -925,10 +925,8 @@ where
 			}
 		}
 
-		let binding = fragment.fragment();
-		let fragment_text = binding.text();
 		return Ok(Column {
-			name: Fragment::internal(fragment_text),
+			name: fragment.fragment(),
 			data,
 		});
 	}
@@ -947,10 +945,8 @@ where
 			_ => data.push_undefined(),
 		}
 	}
-	let binding = fragment.fragment();
-	let fragment_text = binding.text();
 	Ok(Column {
-		name: Fragment::internal(fragment_text),
+		name: fragment.fragment(),
 		data,
 	})
 }
@@ -986,10 +982,8 @@ where
 			_ => data.push_undefined(),
 		}
 	}
-	let binding = fragment.fragment();
-	let fragment_text = binding.text();
 	Ok(Column {
-		name: Fragment::internal(fragment_text),
+		name: fragment.fragment(),
 		data,
 	})
 }
@@ -1039,7 +1033,7 @@ fn concat_strings(
 		}
 	}
 	Ok(Column {
-		name: Fragment::internal(fragment.text()),
+		name: fragment,
 		data,
 	})
 }

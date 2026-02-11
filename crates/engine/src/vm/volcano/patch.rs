@@ -13,7 +13,10 @@ use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
 use crate::{
-	evaluate::{ColumnEvaluationContext, column::evaluate},
+	evaluate::{
+		column::cast::cast_column_data,
+		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
+	},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -24,7 +27,7 @@ pub(crate) struct PatchNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
-	context: Option<Arc<QueryContext>>,
+	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
 impl PatchNode {
@@ -41,7 +44,16 @@ impl PatchNode {
 impl QueryNode for PatchNode {
 	#[instrument(name = "volcano::patch::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
-		self.context = Some(Arc::new(ctx.clone()));
+		let compile_ctx = CompileContext {
+			functions: &ctx.services.functions,
+			symbol_table: &ctx.stack,
+		};
+		let compiled = self
+			.expressions
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
+			.collect();
+		self.context = Some((Arc::new(ctx.clone()), compiled));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
@@ -49,7 +61,7 @@ impl QueryNode for PatchNode {
 	#[instrument(name = "volcano::patch::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "PatchNode::next() called before initialize()");
-		let stored_ctx = self.context.as_ref().unwrap();
+		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
 			let row_count = columns.row_count();
@@ -58,10 +70,10 @@ impl QueryNode for PatchNode {
 			let patch_names: Vec<Fragment> =
 				self.expressions.iter().map(column_name_from_expression).collect();
 
-			let expressions = self.expressions.clone();
+			let expressions = &self.expressions;
 			let mut patch_columns = Vec::with_capacity(expressions.len());
-			for expr in expressions.iter() {
-				let mut eval_ctx = ColumnEvaluationContext {
+			for (expr, compiled_expr) in expressions.iter().zip(compiled.iter()) {
+				let mut exec_ctx = ExecContext {
 					target: None,
 					columns: columns.clone(),
 					row_count,
@@ -69,6 +81,8 @@ impl QueryNode for PatchNode {
 					params: &ctx.params,
 					symbol_table: &ctx.stack,
 					is_aggregate_context: false,
+					functions: &stored_ctx.services.functions,
+					clock: &stored_ctx.services.clock,
 				};
 
 				if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
@@ -83,16 +97,28 @@ impl QueryNode for PatchNode {
 							source.clone(),
 							table_column.clone(),
 						);
-						eval_ctx.target = Some(TargetColumn::Resolved(resolved_column));
+						exec_ctx.target = Some(TargetColumn::Resolved(resolved_column));
 					}
 				}
 
-				let column = evaluate(
-					&eval_ctx,
-					expr,
-					&stored_ctx.services.functions,
-					&stored_ctx.services.clock,
-				)?;
+				let mut column = compiled_expr.execute(&exec_ctx)?;
+
+				if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
+					if column.data.get_type() != target_type {
+						let eval_ctx = exec_ctx.to_column_eval_ctx();
+						let data = cast_column_data(
+							&eval_ctx,
+							&column.data,
+							target_type,
+							&expr.lazy_fragment(),
+						)?;
+						column = reifydb_core::value::column::Column {
+							name: column.name,
+							data,
+						};
+					}
+				}
+
 				patch_columns.push(column);
 			}
 

@@ -14,7 +14,10 @@ use reifydb_type::{fragment::Fragment, return_error};
 use tracing::instrument;
 
 use crate::{
-	evaluate::{ColumnEvaluationContext, column::evaluate},
+	evaluate::{
+		column::cast::cast_column_data,
+		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
+	},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -22,7 +25,7 @@ pub(crate) struct ExtendNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
-	context: Option<Arc<QueryContext>>,
+	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
 impl ExtendNode {
@@ -39,7 +42,16 @@ impl ExtendNode {
 impl QueryNode for ExtendNode {
 	#[instrument(name = "volcano::extend::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
-		self.context = Some(Arc::new(ctx.clone()));
+		let compile_ctx = CompileContext {
+			functions: &ctx.services.functions,
+			symbol_table: &ctx.stack,
+		};
+		let compiled = self
+			.expressions
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
+			.collect();
+		self.context = Some((Arc::new(ctx.clone()), compiled));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
@@ -47,7 +59,7 @@ impl QueryNode for ExtendNode {
 	#[instrument(name = "volcano::extend::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "ExtendNode::next() called before initialize()");
-		let stored_ctx = self.context.as_ref().unwrap();
+		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
 			// Start with all existing columns (EXTEND preserves
@@ -57,11 +69,9 @@ impl QueryNode for ExtendNode {
 			let mut new_columns = columns.into_iter().collect::<Vec<_>>();
 
 			// Add the new derived columns
-			// Clone expressions to avoid lifetime issues
-			let expressions = self.expressions.clone();
-			for expr in expressions.iter() {
-				// Create evaluation context inline to avoid lifetime issues
-				let mut eval_ctx = ColumnEvaluationContext {
+			let expressions = &self.expressions;
+			for (expr, compiled_expr) in expressions.iter().zip(compiled.iter()) {
+				let mut exec_ctx = ExecContext {
 					target: None,
 					columns: Columns::new(new_columns.clone()),
 					row_count,
@@ -69,6 +79,8 @@ impl QueryNode for ExtendNode {
 					params: &ctx.params,
 					symbol_table: &ctx.stack,
 					is_aggregate_context: false,
+					functions: &stored_ctx.services.functions,
+					clock: &stored_ctx.services.clock,
 				};
 
 				// Check if this is an alias expression and we have source information
@@ -87,16 +99,27 @@ impl QueryNode for ExtendNode {
 							table_column.clone(),
 						);
 
-						eval_ctx.target = Some(TargetColumn::Resolved(resolved_column));
+						exec_ctx.target = Some(TargetColumn::Resolved(resolved_column));
 					}
 				}
 
-				let column = evaluate(
-					&eval_ctx,
-					expr,
-					&stored_ctx.services.functions,
-					&stored_ctx.services.clock,
-				)?;
+				let mut column = compiled_expr.execute(&exec_ctx)?;
+
+				if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
+					if column.data.get_type() != target_type {
+						let eval_ctx = exec_ctx.to_column_eval_ctx();
+						let data = cast_column_data(
+							&eval_ctx,
+							&column.data,
+							target_type,
+							&expr.lazy_fragment(),
+						)?;
+						column = reifydb_core::value::column::Column {
+							name: column.name,
+							data,
+						};
+					}
+				}
 
 				new_columns.push(column);
 			}
@@ -187,7 +210,7 @@ impl QueryNode for ExtendNode {
 pub(crate) struct ExtendWithoutInputNode {
 	expressions: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
-	context: Option<Arc<QueryContext>>,
+	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
 impl ExtendWithoutInputNode {
@@ -203,14 +226,23 @@ impl ExtendWithoutInputNode {
 impl QueryNode for ExtendWithoutInputNode {
 	#[instrument(name = "volcano::extend::noinput::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
-		self.context = Some(Arc::new(ctx.clone()));
+		let compile_ctx = CompileContext {
+			functions: &ctx.services.functions,
+			symbol_table: &ctx.stack,
+		};
+		let compiled = self
+			.expressions
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
+			.collect();
+		self.context = Some((Arc::new(ctx.clone()), compiled));
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::extend::noinput::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "ExtendWithoutInputNode::next() called before initialize()");
-		let stored_ctx = self.context.as_ref().unwrap();
+		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 
 		if self.headers.is_some() {
 			return Ok(None);
@@ -219,10 +251,8 @@ impl QueryNode for ExtendWithoutInputNode {
 		let columns = Columns::empty();
 		let mut new_columns = Vec::with_capacity(self.expressions.len());
 
-		// Clone expressions to avoid lifetime issues
-		let expressions = self.expressions.clone();
-		for expr in expressions.iter() {
-			let evaluation_context = ColumnEvaluationContext {
+		for compiled_expr in compiled {
+			let exec_ctx = ExecContext {
 				target: None,
 				columns: columns.clone(),
 				row_count: 1,
@@ -230,18 +260,15 @@ impl QueryNode for ExtendWithoutInputNode {
 				params: &stored_ctx.params,
 				symbol_table: &stored_ctx.stack,
 				is_aggregate_context: false,
+				functions: &stored_ctx.services.functions,
+				clock: &stored_ctx.services.clock,
 			};
 
-			let column = evaluate(
-				&evaluation_context,
-				expr,
-				&stored_ctx.services.functions,
-				&stored_ctx.services.clock,
-			)?;
+			let column = compiled_expr.execute(&exec_ctx)?;
 			new_columns.push(column);
 		}
 
-		let column_names: Vec<Fragment> = expressions.iter().map(column_name_from_expression).collect();
+		let column_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
 
 		// Check for duplicate column names within the new columns
 		for i in 0..column_names.len() {

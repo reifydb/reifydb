@@ -7,7 +7,10 @@ use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	evaluate::compiled::CompiledExpr,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 /// Load and merge all batches from a node into a single Columns
 pub(crate) fn load_and_merge_all<'a>(
@@ -119,12 +122,14 @@ pub fn build_eval_columns(
 /// Common context holder for join nodes
 pub struct JoinContext {
 	pub context: Option<Arc<QueryContext>>,
+	pub compiled: Vec<CompiledExpr>,
 }
 
 impl JoinContext {
 	pub fn new() -> Self {
 		Self {
 			context: None,
+			compiled: vec![],
 		}
 	}
 

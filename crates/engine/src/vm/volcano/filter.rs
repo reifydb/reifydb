@@ -16,14 +16,14 @@ use reifydb_type::util::bitvec::BitVec;
 use tracing::instrument;
 
 use crate::{
-	evaluate::{ColumnEvaluationContext, column::evaluate},
+	evaluate::compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
 pub(crate) struct FilterNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
-	context: Option<Arc<QueryContext>>,
+	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
 impl FilterNode {
@@ -39,7 +39,16 @@ impl FilterNode {
 impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
-		self.context = Some(Arc::new(ctx.clone()));
+		let compile_ctx = CompileContext {
+			functions: &ctx.services.functions,
+			symbol_table: &ctx.stack,
+		};
+		let compiled = self
+			.expressions
+			.iter()
+			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
+			.collect();
+		self.context = Some((Arc::new(ctx.clone()), compiled));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
@@ -47,13 +56,14 @@ impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
-		let stored_ctx = self.context.as_ref().unwrap();
+		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 
 		loop {
 			// Try lazy path first
 			if let Some(mut lazy_batch) = self.input.next_lazy(rx, ctx)? {
 				// Evaluate filter on lazy batch
-				let filter_result = self.evaluate_filter_on_lazy(&lazy_batch, stored_ctx, rx)?;
+				let filter_result =
+					self.evaluate_filter_on_lazy(&lazy_batch, stored_ctx, compiled, rx)?;
 
 				if let Some(filter_mask) = filter_result {
 					lazy_batch.apply_filter(&filter_mask);
@@ -81,14 +91,14 @@ impl QueryNode for FilterNode {
 				let mut row_count = columns.row_count();
 
 				// Apply each filter expression sequentially
-				for filter_expr in &self.expressions {
+				for compiled_expr in compiled {
 					// Early exit if no rows remain
 					if row_count == 0 {
 						break;
 					}
 
-					// Create evaluation context for all current rows
-					let eval_ctx = ColumnEvaluationContext {
+					// Create execution context for all current rows
+					let exec_ctx = ExecContext {
 						target: None,
 						columns: columns.clone(),
 						row_count,
@@ -96,15 +106,12 @@ impl QueryNode for FilterNode {
 						params: &stored_ctx.params,
 						symbol_table: &stored_ctx.stack,
 						is_aggregate_context: false,
+						functions: &stored_ctx.services.functions,
+						clock: &stored_ctx.services.clock,
 					};
 
-					// Evaluate the filter expression
-					let result = evaluate(
-						&eval_ctx,
-						filter_expr,
-						&stored_ctx.services.functions,
-						&stored_ctx.services.clock,
-					)?;
+					// Execute the compiled filter expression
+					let result = compiled_expr.execute(&exec_ctx)?;
 
 					// Create filter mask from result
 					let filter_mask = match result.data() {
@@ -151,6 +158,7 @@ impl FilterNode {
 		&self,
 		lazy_batch: &LazyBatch,
 		ctx: &QueryContext,
+		compiled: &[CompiledExpr],
 		rx: &mut Transaction<'a>,
 	) -> crate::Result<Option<BitVec>> {
 		// Materialize to columns for column-oriented evaluation,
@@ -167,9 +175,8 @@ impl FilterNode {
 
 		let mut mask = BitVec::repeat(row_count, true);
 
-		for filter_expr in &self.expressions {
-			// Use the existing column evaluator
-			let eval_ctx = ColumnEvaluationContext {
+		for compiled_expr in compiled {
+			let exec_ctx = ExecContext {
 				target: None,
 				columns: columns.clone(),
 				row_count,
@@ -177,9 +184,11 @@ impl FilterNode {
 				params: &ctx.params,
 				symbol_table: &ctx.stack,
 				is_aggregate_context: false,
+				functions: &ctx.services.functions,
+				clock: &ctx.services.clock,
 			};
 
-			let result = evaluate(&eval_ctx, filter_expr, &ctx.services.functions, &ctx.services.clock)?;
+			let result = compiled_expr.execute(&exec_ctx)?;
 
 			// Extract mask from boolean column result
 			match result.data() {
