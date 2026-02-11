@@ -4,6 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb_catalog::catalog::{Catalog, namespace::NamespaceToCreate, table::TableToCreate};
+use reifydb_core::interface::catalog::id::NamespaceId;
 use reifydb_engine::test_utils::create_test_admin_transaction;
 use reifydb_rql::explain::{
 	ast::explain_ast, logical::explain_logical_plan, physical::explain_physical_plan, tokenize::explain_tokenize,
@@ -68,6 +69,7 @@ impl Runner for TestRunner {
 							NamespaceToCreate {
 								namespace_fragment: None,
 								name: "default".to_string(),
+								parent_id: NamespaceId::ROOT,
 							},
 						)
 						.unwrap();
@@ -106,6 +108,7 @@ impl Runner for TestRunner {
 							NamespaceToCreate {
 								namespace_fragment: None,
 								name: "test".to_string(),
+								parent_id: NamespaceId::ROOT,
 							},
 						)
 						.unwrap();
@@ -144,6 +147,7 @@ impl Runner for TestRunner {
 							NamespaceToCreate {
 								namespace_fragment: None,
 								name: "default".to_string(),
+								parent_id: NamespaceId::ROOT,
 							},
 						)
 						.unwrap();

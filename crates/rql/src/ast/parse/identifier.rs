@@ -128,44 +128,52 @@ impl<'bump> Parser<'bump> {
 		Ok(UnqualifiedIdentifier::from_fragment(fragment))
 	}
 
+	/// Parse a dot-separated chain of identifiers: `a.b.c.d`
+	/// Returns all segments. Caller splits namespace vs. name.
+	pub(crate) fn parse_dot_separated_identifiers(&mut self) -> crate::Result<Vec<UnqualifiedIdentifier<'bump>>> {
+		let mut segments = vec![self.parse_identifier_with_hyphens()?];
+		while !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
+			self.consume_operator(Operator::Dot)?;
+			segments.push(self.parse_identifier_with_hyphens()?);
+		}
+		Ok(segments)
+	}
+
 	/// Parse a potentially qualified column identifier
-	/// Handles patterns like: column, table.column, namespace.table.column,
-	/// alias.column
+	/// Handles patterns like: column, table.column, ns.table.column, ns1.ns2.table.column
 	/// Supports hyphenated identifiers like: my-column, my-table.my-column
 	pub(crate) fn parse_column_identifier(&mut self) -> crate::Result<MaybeQualifiedColumnIdentifier<'bump>> {
-		let first = self.parse_identifier_with_hyphens()?;
+		let segments = self.parse_dot_separated_identifiers()?;
+		Self::segments_to_column_identifier(segments)
+	}
 
-		// Check for qualification
-		if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
-			self.consume_operator(Operator::Dot)?;
-			let second = self.parse_identifier_with_hyphens()?;
-
-			// Check for further qualification
-			// (namespace.table.column)
-			if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
-				self.consume_operator(Operator::Dot)?;
-				let third = self.parse_identifier_with_hyphens()?;
-
-				// namespace.table.column
+	fn segments_to_column_identifier(
+		mut segments: Vec<UnqualifiedIdentifier<'bump>>,
+	) -> crate::Result<MaybeQualifiedColumnIdentifier<'bump>> {
+		match segments.len() {
+			1 => {
+				let col = segments.remove(0);
+				Ok(MaybeQualifiedColumnIdentifier::unqualified(col.into_fragment()))
+			}
+			2 => {
+				let table = segments.remove(0);
+				let col = segments.remove(0);
 				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
-					Some(first.into_fragment()),
-					second.into_fragment(),
-					third.into_fragment(),
-				))
-			} else {
-				// table.column or alias.column
-				// At parse time, we don't know if first is a
-				// table or alias The resolve will
-				// determine this
-				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
-					None,
-					first.into_fragment(),
-					second.into_fragment(),
+					vec![],
+					table.into_fragment(),
+					col.into_fragment(),
 				))
 			}
-		} else {
-			// Unqualified column
-			Ok(MaybeQualifiedColumnIdentifier::unqualified(first.into_fragment()))
+			_ => {
+				let col = segments.pop().unwrap();
+				let table = segments.pop().unwrap();
+				let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
+					namespace,
+					table.into_fragment(),
+					col.into_fragment(),
+				))
+			}
 		}
 	}
 
@@ -173,37 +181,13 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_column_identifier_or_keyword(
 		&mut self,
 	) -> crate::Result<MaybeQualifiedColumnIdentifier<'bump>> {
-		// For simple cases where keywords can be column names
-		let first = self.advance()?;
-
-		// Check for qualification
-		if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
+		let mut segments = vec![self.advance()?];
+		while !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
 			self.consume_operator(Operator::Dot)?;
-			let second = self.advance()?;
-
-			// Check for further qualification
-			if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
-				self.consume_operator(Operator::Dot)?;
-				let third = self.advance()?;
-
-				// namespace.table.column
-				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
-					Some(first.fragment),
-					second.fragment,
-					third.fragment,
-				))
-			} else {
-				// table.column or alias.column
-				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
-					None,
-					first.fragment,
-					second.fragment,
-				))
-			}
-		} else {
-			// Unqualified column
-			Ok(MaybeQualifiedColumnIdentifier::unqualified(first.fragment))
+			segments.push(self.advance()?);
 		}
+		let identifiers: Vec<_> = segments.into_iter().map(|t| UnqualifiedIdentifier::new(t)).collect();
+		Self::segments_to_column_identifier(identifiers)
 	}
 }
 
@@ -260,7 +244,7 @@ pub mod tests {
 		};
 
 		if let Namespace(ns) = create {
-			assert_eq!(ns.namespace.name.text(), "my-identifier");
+			assert_eq!(ns.namespace.segments[0].text(), "my-identifier");
 		} else {
 			panic!("Expected namespace creation");
 		}
@@ -279,7 +263,7 @@ pub mod tests {
 		};
 
 		if let Namespace(ns) = create {
-			assert_eq!(ns.namespace.name.text(), "user-profile-data");
+			assert_eq!(ns.namespace.segments[0].text(), "user-profile-data");
 		} else {
 			panic!("Expected namespace creation");
 		}
@@ -373,7 +357,7 @@ pub mod tests {
 		};
 
 		if let Namespace(ns) = create {
-			assert_eq!(ns.namespace.name.text(), "twap-10min");
+			assert_eq!(ns.namespace.segments[0].text(), "twap-10min");
 		} else {
 			panic!("Expected namespace creation");
 		}
@@ -392,7 +376,7 @@ pub mod tests {
 		};
 
 		if let Namespace(ns) = create {
-			assert_eq!(ns.namespace.name.text(), "avg-10min-window");
+			assert_eq!(ns.namespace.segments[0].text(), "avg-10min-window");
 		} else {
 			panic!("Expected namespace creation");
 		}
@@ -410,7 +394,7 @@ pub mod tests {
 		};
 
 		if let Namespace(ns) = create {
-			assert_eq!(ns.namespace.name.text(), "create-2024-table");
+			assert_eq!(ns.namespace.segments[0].text(), "create-2024-table");
 		} else {
 			panic!("Expected namespace creation");
 		}

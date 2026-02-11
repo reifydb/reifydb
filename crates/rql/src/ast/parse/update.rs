@@ -25,13 +25,13 @@ impl<'bump> Parser<'bump> {
 			return_error!(update_missing_assignments_block(token.fragment.to_owned()));
 		}
 
-		let first = self.parse_identifier_with_hyphens()?;
-		let target = if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
-			self.consume_operator(Operator::Dot)?;
-			let second = self.parse_identifier_with_hyphens()?;
-			UnresolvedPrimitiveIdentifier::new(Some(first.into_fragment()), second.into_fragment())
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let target = if segments.len() > 1 {
+			let name = segments.pop().unwrap().into_fragment();
+			let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+			UnresolvedPrimitiveIdentifier::new(namespace, name)
 		} else {
-			UnresolvedPrimitiveIdentifier::new(None, first.into_fragment())
+			UnresolvedPrimitiveIdentifier::new(vec![], segments.remove(0).into_fragment())
 		};
 
 		// 2. Parse assignments block { name: 'value', ... } - REQUIRED
@@ -88,7 +88,7 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let update = result.first_unchecked().as_update();
 
-		assert!(update.target.namespace.is_none());
+		assert!(update.target.namespace.is_empty());
 		assert_eq!(update.target.name.text(), "users");
 
 		assert_eq!(update.assignments.len(), 1);
@@ -117,7 +117,7 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let update = result.first_unchecked().as_update();
 
-		assert_eq!(update.target.namespace.as_ref().unwrap().text(), "test");
+		assert_eq!(update.target.namespace[0].text(), "test");
 		assert_eq!(update.target.name.text(), "users");
 	}
 

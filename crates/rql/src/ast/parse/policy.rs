@@ -138,7 +138,7 @@ pub mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(table.namespace[0].text(), "test");
 				assert_eq!(table.name.text(), "items");
 				assert_eq!(columns.len(), 1);
 

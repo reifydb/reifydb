@@ -41,6 +41,15 @@ pub fn namespaces() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
+				ColumnDef {
+					id: PARENT_ID,
+					name: "parent_id".to_string(),
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					policies: vec![],
+					index: ColumnIndex(2),
+					auto_increment: false,
+					dictionary_id: None,
+				},
 			],
 		})
 	})

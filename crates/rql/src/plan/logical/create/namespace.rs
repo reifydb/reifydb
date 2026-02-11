@@ -11,11 +11,8 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateNamespace<'bump>,
 	) -> crate::Result<LogicalPlan<'bump>> {
-		// Use Fragment directly instead of NamespaceIdentifier
-		let namespace = ast.namespace.name;
-
 		Ok(LogicalPlan::CreateNamespace(CreateNamespaceNode {
-			namespace,
+			segments: ast.namespace.segments,
 			if_not_exists: ast.if_not_exists,
 		}))
 	}

@@ -208,7 +208,7 @@ pub mod tests {
 			..
 		}) = first_node
 		{
-			assert_eq!(source.namespace.as_ref().unwrap().text(), "namespace");
+			assert_eq!(source.namespace[0].text(), "namespace");
 			assert_eq!(source.name.text(), "orders");
 		} else {
 			panic!("Expected From node in subquery");
@@ -261,7 +261,7 @@ pub mod tests {
 			..
 		}) = first_node
 		{
-			assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
+			assert_eq!(source.namespace[0].text(), "test");
 			assert_eq!(source.name.text(), "customers");
 		} else {
 			panic!("Expected From node in subquery");
@@ -305,7 +305,7 @@ pub mod tests {
 				source,
 				..
 			} => {
-				assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(source.namespace[0].text(), "test");
 				assert_eq!(source.name.text(), "orders");
 			}
 			_ => panic!("Expected Source"),
@@ -333,7 +333,7 @@ pub mod tests {
 			..
 		}) = first_node
 		{
-			assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
+			assert_eq!(source.namespace[0].text(), "test");
 			assert_eq!(source.name.text(), "customers");
 		} else {
 			panic!("Expected From node in subquery");

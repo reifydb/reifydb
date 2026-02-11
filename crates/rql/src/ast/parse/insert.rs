@@ -27,15 +27,13 @@ impl<'bump> Parser<'bump> {
 			return_error!(insert_missing_target(token.fragment.to_owned()));
 		}
 
-		let first = self.parse_identifier_with_hyphens()?;
-		let target = if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
-			self.consume_operator(Operator::Dot)?;
-			let second = self.parse_identifier_with_hyphens()?;
-			// namespace.table
-			UnresolvedPrimitiveIdentifier::new(Some(first.into_fragment()), second.into_fragment())
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let target = if segments.len() > 1 {
+			let name = segments.pop().unwrap().into_fragment();
+			let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+			UnresolvedPrimitiveIdentifier::new(namespace, name)
 		} else {
-			// table only
-			UnresolvedPrimitiveIdentifier::new(None, first.into_fragment())
+			UnresolvedPrimitiveIdentifier::new(vec![], segments.remove(0).into_fragment())
 		};
 
 		// 2. Parse data source
@@ -120,7 +118,7 @@ pub mod tests {
 		let insert = result.first_unchecked().as_insert();
 
 		// Check target
-		assert!(insert.target.namespace.is_none());
+		assert!(insert.target.namespace.is_empty());
 		assert_eq!(insert.target.name.text(), "users");
 
 		// Check source is FROM with inline data
@@ -148,7 +146,7 @@ pub mod tests {
 		let insert = result.first_unchecked().as_insert();
 
 		// Check target with namespace
-		assert_eq!(insert.target.namespace.as_ref().unwrap().text(), "test");
+		assert_eq!(insert.target.namespace[0].text(), "test");
 		assert_eq!(insert.target.name.text(), "users");
 	}
 
@@ -173,7 +171,7 @@ pub mod tests {
 		let insert = result.first_unchecked().as_insert();
 
 		// Check target
-		assert!(insert.target.namespace.is_none());
+		assert!(insert.target.namespace.is_empty());
 		assert_eq!(insert.target.name.text(), "target_table");
 
 		// Check source is FROM with table source
@@ -209,7 +207,7 @@ pub mod tests {
 		let insert = result.first_unchecked().as_insert();
 
 		// Check target
-		assert!(insert.target.namespace.is_none());
+		assert!(insert.target.namespace.is_empty());
 		assert_eq!(insert.target.name.text(), "users");
 
 		// Check source is FROM with variable

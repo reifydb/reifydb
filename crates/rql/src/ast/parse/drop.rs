@@ -9,7 +9,6 @@ use crate::{
 	},
 	token::{
 		keyword::Keyword,
-		operator::Operator,
 		token::{Token, TokenKind},
 	},
 };
@@ -39,16 +38,13 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		// Parse the flow identifier (namespace.name or just name)
-		let first_token = self.consume(TokenKind::Identifier)?;
-
-		let flow = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
-			// namespace.name format
-			let second_token = self.consume(TokenKind::Identifier)?;
-			MaybeQualifiedFlowIdentifier::new(second_token.fragment).with_namespace(first_token.fragment)
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let flow = if namespace.is_empty() {
+			MaybeQualifiedFlowIdentifier::new(name)
 		} else {
-			// just name format
-			MaybeQualifiedFlowIdentifier::new(first_token.fragment)
+			MaybeQualifiedFlowIdentifier::new(name).with_namespace(namespace)
 		};
 
 		// Check for CASCADE or RESTRICT
@@ -86,7 +82,7 @@ pub mod tests {
 			AstDrop::Flow(drop) => {
 				assert!(!drop.if_exists);
 				assert_eq!(drop.flow.name.text(), "my_flow");
-				assert!(drop.flow.namespace.is_none());
+				assert!(drop.flow.namespace.is_empty());
 				assert!(!drop.cascade); // Default is RESTRICT
 			}
 		}
@@ -116,7 +112,7 @@ pub mod tests {
 
 		match result {
 			AstDrop::Flow(drop) => {
-				assert_eq!(drop.flow.namespace.as_ref().unwrap().text(), "analytics");
+				assert_eq!(drop.flow.namespace[0].text(), "analytics");
 				assert_eq!(drop.flow.name.text(), "sales_flow");
 			}
 		}
@@ -162,7 +158,7 @@ pub mod tests {
 		match result {
 			AstDrop::Flow(drop) => {
 				assert!(drop.if_exists);
-				assert_eq!(drop.flow.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(drop.flow.namespace[0].text(), "test");
 				assert_eq!(drop.flow.name.text(), "my_flow");
 				assert!(drop.cascade);
 			}

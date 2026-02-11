@@ -48,81 +48,46 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
-		// Parse namespace.table.column or table.column
-		let first_identifier_token = self.consume(crate::token::token::TokenKind::Identifier)?;
-
-		if self.current()?.is_operator(Operator::Dot) {
-			self.consume_operator(Operator::Dot)?;
-			let second_identifier_token = self.consume(crate::token::token::TokenKind::Identifier)?;
-
-			if self.current()?.is_operator(Operator::Dot) {
-				self.consume_operator(Operator::Dot)?;
-				let column_token = self.consume(crate::token::token::TokenKind::Identifier)?;
-
-				// Expect SET VALUE <number>
-				self.consume_keyword(Keyword::Set)?;
-				self.consume_keyword(Keyword::Value)?;
-				let value_token = self.consume(crate::token::token::TokenKind::Literal(
-					crate::token::token::Literal::Number,
-				))?;
-
-				// Create MaybeQualifiedSequenceIdentifier with
-				// namespace
-				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
-				let sequence = MaybeQualifiedSequenceIdentifier::new(second_identifier_token.fragment)
-					.with_namespace(first_identifier_token.fragment);
-
-				let column = column_token.fragment;
-				let value = crate::ast::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(
-					value_token,
-				));
-
-				Ok(AstAlter::Sequence(AstAlterSequence {
-					token,
-					sequence,
-					column,
-					value,
-				}))
-			} else {
-				// table.column
-				self.consume_keyword(Keyword::Set)?;
-				self.consume_keyword(Keyword::Value)?;
-				let value_token = self.consume(crate::token::token::TokenKind::Literal(
-					crate::token::token::Literal::Number,
-				))?;
-
-				// Create MaybeQualifiedSequenceIdentifier
-				// without namespace
-				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
-				let sequence = MaybeQualifiedSequenceIdentifier::new(first_identifier_token.fragment);
-
-				let column = second_identifier_token.fragment;
-				let value = crate::ast::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(
-					value_token,
-				));
-
-				Ok(AstAlter::Sequence(AstAlterSequence {
-					token,
-					sequence,
-					column,
-					value,
-				}))
-			}
-		} else {
+		// Parse [namespace...].table.column (at least 2 segments required)
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		if segments.len() < 2 {
 			unimplemented!("ALTER SEQUENCE requires table.column or namespace.table.column");
 		}
+
+		let column_token = segments.pop().unwrap();
+		let table_token = segments.pop().unwrap();
+
+		use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
+		let sequence = if segments.is_empty() {
+			MaybeQualifiedSequenceIdentifier::new(table_token.into_fragment())
+		} else {
+			let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+			MaybeQualifiedSequenceIdentifier::new(table_token.into_fragment()).with_namespace(namespace)
+		};
+
+		self.consume_keyword(Keyword::Set)?;
+		self.consume_keyword(Keyword::Value)?;
+		let value_token =
+			self.consume(crate::token::token::TokenKind::Literal(crate::token::token::Literal::Number))?;
+
+		let column = column_token.into_fragment();
+		let value = crate::ast::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(value_token));
+
+		Ok(AstAlter::Sequence(AstAlterSequence {
+			token,
+			sequence,
+			column,
+			value,
+		}))
 	}
 
 	fn parse_alter_table(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
-		// Parse namespace.table
-		let namespace_token = self.consume(crate::token::token::TokenKind::Identifier)?;
-		self.consume_operator(Operator::Dot)?;
-		let table_token = self.consume(crate::token::token::TokenKind::Identifier)?;
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let table_name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
-		// Create MaybeQualifiedTableIdentifier
 		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
-		let table = MaybeQualifiedTableIdentifier::new(table_token.fragment)
-			.with_namespace(namespace_token.fragment);
+		let table = MaybeQualifiedTableIdentifier::new(table_name).with_namespace(namespace);
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -188,15 +153,12 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_alter_view(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
-		// Parse namespace.view
-		let namespace_token = self.consume(crate::token::token::TokenKind::Identifier)?;
-		self.consume_operator(Operator::Dot)?;
-		let view_token = self.consume(crate::token::token::TokenKind::Identifier)?;
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let view_name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
-		// Create MaybeQualifiedViewIdentifier for view
 		use crate::ast::identifier::MaybeQualifiedViewIdentifier;
-		let view =
-			MaybeQualifiedViewIdentifier::new(view_token.fragment).with_namespace(namespace_token.fragment);
+		let view = MaybeQualifiedViewIdentifier::new(view_name).with_namespace(namespace);
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -318,16 +280,13 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_alter_flow(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
-		// Parse the flow identifier (namespace.name or just name)
-		let first_token = self.consume(TokenKind::Identifier)?;
-
-		let flow = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
-			// namespace.name format
-			let second_token = self.consume(TokenKind::Identifier)?;
-			MaybeQualifiedFlowIdentifier::new(second_token.fragment).with_namespace(first_token.fragment)
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let flow = if namespace.is_empty() {
+			MaybeQualifiedFlowIdentifier::new(name)
 		} else {
-			// just name format
-			MaybeQualifiedFlowIdentifier::new(first_token.fragment)
+			MaybeQualifiedFlowIdentifier::new(name).with_namespace(namespace)
 		};
 
 		// Parse the action
@@ -461,8 +420,8 @@ pub mod tests {
 				value,
 				..
 			}) => {
-				assert!(sequence.namespace.is_some());
-				assert_eq!(sequence.namespace.as_ref().unwrap().text(), "test");
+				assert!(!sequence.namespace.is_empty());
+				assert_eq!(sequence.namespace[0].text(), "test");
 				assert_eq!(sequence.name.text(), "users");
 				assert_eq!(column.text(), "id");
 				match value {
@@ -494,7 +453,7 @@ pub mod tests {
 				value,
 				..
 			}) => {
-				assert!(sequence.namespace.is_none());
+				assert!(sequence.namespace.is_empty());
 				assert_eq!(sequence.name.text(), "users");
 				assert_eq!(column.text(), "id");
 				match value {
@@ -528,8 +487,8 @@ pub mod tests {
 				operations,
 				..
 			}) => {
-				assert!(table.namespace.is_some());
-				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
+				assert!(!table.namespace.is_empty());
+				assert_eq!(table.namespace[0].text(), "test");
 				assert_eq!(table.name.text(), "users");
 				assert_eq!(operations.len(), 1);
 
@@ -570,8 +529,8 @@ pub mod tests {
 				operations,
 				..
 			}) => {
-				assert!(table.namespace.is_some());
-				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
+				assert!(!table.namespace.is_empty());
+				assert_eq!(table.namespace[0].text(), "test");
 				assert_eq!(table.name.text(), "users");
 				assert_eq!(operations.len(), 1);
 
@@ -612,8 +571,8 @@ pub mod tests {
 				operations,
 				..
 			}) => {
-				assert!(view.namespace.is_some());
-				assert_eq!(view.namespace.as_ref().unwrap().text(), "test");
+				assert!(!view.namespace.is_empty());
+				assert_eq!(view.namespace[0].text(), "test");
 				assert_eq!(view.name.text(), "user_view");
 				assert_eq!(operations.len(), 1);
 
@@ -654,8 +613,8 @@ pub mod tests {
 				operations,
 				..
 			}) => {
-				assert!(view.namespace.is_some());
-				assert_eq!(view.namespace.as_ref().unwrap().text(), "test");
+				assert!(!view.namespace.is_empty());
+				assert_eq!(view.namespace[0].text(), "test");
 				assert_eq!(view.name.text(), "user_view");
 				assert_eq!(operations.len(), 1);
 
@@ -690,7 +649,7 @@ pub mod tests {
 		match alter {
 			AstAlter::Flow(flow) => {
 				assert_eq!(flow.flow.name.text(), "old_flow");
-				assert!(flow.flow.namespace.is_none());
+				assert!(flow.flow.namespace.is_empty());
 
 				match &flow.action {
 					AstAlterFlowAction::Rename {
@@ -719,7 +678,7 @@ pub mod tests {
 
 		match alter {
 			AstAlter::Flow(flow) => {
-				assert_eq!(flow.flow.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(flow.flow.namespace[0].text(), "test");
 				assert_eq!(flow.flow.name.text(), "old_flow");
 
 				match &flow.action {
@@ -845,7 +804,7 @@ pub mod tests {
 
 		match alter {
 			AstAlter::Flow(flow) => {
-				assert_eq!(flow.flow.namespace.as_ref().unwrap().text(), "analytics");
+				assert_eq!(flow.flow.namespace[0].text(), "analytics");
 				assert_eq!(flow.flow.name.text(), "my_flow");
 
 				match &flow.action {

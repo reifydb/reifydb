@@ -2,7 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::catalog::namespace_already_exists, interface::catalog::namespace::NamespaceDef,
+	error::diagnostic::catalog::namespace_already_exists,
+	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
 	key::namespace::NamespaceKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -11,7 +12,7 @@ use reifydb_type::{fragment::Fragment, return_error};
 use crate::{
 	CatalogStore,
 	store::{
-		namespace::schema::namespace::{ID, NAME, SCHEMA},
+		namespace::schema::namespace::{ID, NAME, PARENT_ID, SCHEMA},
 		sequence::system::SystemSequence,
 	},
 };
@@ -20,6 +21,7 @@ use crate::{
 pub struct NamespaceToCreate {
 	pub namespace_fragment: Option<Fragment>,
 	pub name: String,
+	pub parent_id: NamespaceId,
 }
 
 impl CatalogStore {
@@ -39,6 +41,7 @@ impl CatalogStore {
 		let mut row = SCHEMA.allocate();
 		SCHEMA.set_u64(&mut row, ID, namespace_id);
 		SCHEMA.set_utf8(&mut row, NAME, &to_create.name);
+		SCHEMA.set_u64(&mut row, PARENT_ID, to_create.parent_id.0);
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
 
@@ -60,6 +63,7 @@ pub mod tests {
 		let to_create = NamespaceToCreate {
 			namespace_fragment: None,
 			name: "test_namespace".to_string(),
+			parent_id: NamespaceId(0),
 		};
 
 		// First creation should succeed

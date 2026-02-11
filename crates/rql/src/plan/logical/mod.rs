@@ -483,7 +483,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 
 #[derive(Debug)]
 pub struct CreateNamespaceNode<'bump> {
-	pub namespace: BumpFragment<'bump>,
+	pub segments: Vec<BumpFragment<'bump>>,
 	pub if_not_exists: bool,
 }
 

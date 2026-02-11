@@ -26,7 +26,7 @@ use crate::{
 		},
 		operator::{
 			Operator,
-			Operator::{Colon, Dot, Not, Or},
+			Operator::{Colon, Not, Or},
 		},
 		separator::{Separator, Separator::Comma},
 		token::{Literal, Token, TokenKind},
@@ -121,7 +121,7 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		let identifier = self.parse_identifier_with_hyphens()?;
+		let segments = self.parse_dot_separated_identifiers()?;
 
 		// Check for IF NOT EXISTS AFTER identifier (alternate syntax)
 		if !if_not_exists && (self.consume_if(TokenKind::Keyword(If))?).is_some() {
@@ -130,7 +130,9 @@ impl<'bump> Parser<'bump> {
 			if_not_exists = true;
 		}
 
-		let namespace = MaybeQualifiedNamespaceIdentifier::new(identifier.into_fragment());
+		let namespace = MaybeQualifiedNamespaceIdentifier::new(
+			segments.into_iter().map(|s| s.into_fragment()).collect(),
+		);
 		Ok(AstCreate::Namespace(AstCreateNamespace {
 			token,
 			namespace,
@@ -139,13 +141,12 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_series(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let schema = self.parse_identifier_with_hyphens()?;
-		self.consume_operator(Operator::Dot)?;
-		let name = self.parse_identifier_with_hyphens()?;
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
-		let sequence = MaybeQualifiedSequenceIdentifier::new(name.into_fragment())
-			.with_namespace(schema.into_fragment());
+		let sequence = MaybeQualifiedSequenceIdentifier::new(name).with_namespace(namespace);
 
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
@@ -235,15 +236,14 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_deferred_view(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let schema = self.parse_identifier_with_hyphens()?;
-		self.consume_operator(Operator::Dot)?;
-		let name = self.parse_identifier_with_hyphens()?;
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
 		use crate::ast::identifier::MaybeQualifiedDeferredViewIdentifier;
 
-		let view = MaybeQualifiedDeferredViewIdentifier::new(name.into_fragment())
-			.with_namespace(schema.into_fragment());
+		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
 		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -305,16 +305,14 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_transactional_view(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let schema = self.parse_identifier_with_hyphens()?;
-		self.consume_operator(Operator::Dot)?;
-		let name = self.parse_identifier_with_hyphens()?;
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
-		// Create MaybeQualifiedSourceIdentifier for transactional view
 		use crate::ast::identifier::MaybeQualifiedTransactionalViewIdentifier;
 
-		let view = MaybeQualifiedTransactionalViewIdentifier::new(name.into_fragment())
-			.with_namespace(schema.into_fragment());
+		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
 		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -376,12 +374,11 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_table(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let schema = self.parse_identifier_with_hyphens()?;
-		self.consume_operator(Operator::Dot)?;
-		let name = self.parse_identifier_with_hyphens()?;
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
-		// Parse optional WITH block
 		let primary_key = if !self.is_eof()
 			&& self.current().ok().map(|t| t.is_keyword(Keyword::With)).unwrap_or(false)
 		{
@@ -393,8 +390,7 @@ impl<'bump> Parser<'bump> {
 
 		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
 
-		let table =
-			MaybeQualifiedTableIdentifier::new(name.into_fragment()).with_namespace(schema.into_fragment());
+		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
 
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
@@ -405,9 +401,9 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_ringbuffer(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let schema = self.parse_identifier_with_hyphens()?;
-		self.consume_operator(Operator::Dot)?;
-		let name = self.parse_identifier_with_hyphens()?;
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
 		// Parse WITH block (required for ringbuffer - must have capacity)
@@ -425,8 +421,7 @@ impl<'bump> Parser<'bump> {
 
 		use crate::ast::identifier::MaybeQualifiedRingBufferIdentifier;
 
-		let ringbuffer = MaybeQualifiedRingBufferIdentifier::new(name.into_fragment())
-			.with_namespace(schema.into_fragment());
+		let ringbuffer = MaybeQualifiedRingBufferIdentifier::new(name).with_namespace(namespace);
 
 		Ok(AstCreate::RingBuffer(AstCreateRingBuffer {
 			token,
@@ -579,17 +574,13 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		// Parse dictionary name: [namespace.]name
-		let first = self.parse_identifier_with_hyphens()?;
-
-		let dictionary = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
-			// namespace.name format
-			let name = self.parse_identifier_with_hyphens()?;
-			MaybeQualifiedDictionaryIdentifier::new(name.into_fragment())
-				.with_namespace(first.into_fragment())
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let dictionary = if namespace.is_empty() {
+			MaybeQualifiedDictionaryIdentifier::new(name)
 		} else {
-			// just name format
-			MaybeQualifiedDictionaryIdentifier::new(first.into_fragment())
+			MaybeQualifiedDictionaryIdentifier::new(name).with_namespace(namespace)
 		};
 
 		// Parse FOR <value_type>
@@ -705,16 +696,13 @@ impl<'bump> Parser<'bump> {
 		// Parse optional DICTIONARY clause
 		let dictionary = if self.current()?.is_keyword(Keyword::Dictionary) {
 			self.consume_keyword(Keyword::Dictionary)?;
-			// Parse dictionary identifier (may be qualified: namespace.dict_name)
-			let dict_name = self.parse_identifier_with_hyphens()?;
-			let dict_ident = if self.consume_if(TokenKind::Operator(Dot))?.is_some() {
-				// Qualified: namespace.dict_name
-				let qualified_name = self.parse_identifier_with_hyphens()?;
-				MaybeQualifiedDictionaryIdentifier::new(qualified_name.into_fragment())
-					.with_namespace(dict_name.into_fragment())
+			let mut segments = self.parse_dot_separated_identifiers()?;
+			let name = segments.pop().unwrap().into_fragment();
+			let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+			let dict_ident = if namespace.is_empty() {
+				MaybeQualifiedDictionaryIdentifier::new(name)
 			} else {
-				// Unqualified: dict_name
-				MaybeQualifiedDictionaryIdentifier::new(dict_name.into_fragment())
+				MaybeQualifiedDictionaryIdentifier::new(name).with_namespace(namespace)
 			};
 			Some(dict_ident)
 		} else {
@@ -748,16 +736,13 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		// Parse the flow identifier (namespace.name or just name)
-		let first_token = self.consume(TokenKind::Identifier)?;
-
-		let flow = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
-			// namespace.name format
-			let second_token = self.consume(TokenKind::Identifier)?;
-			MaybeQualifiedFlowIdentifier::new(second_token.fragment).with_namespace(first_token.fragment)
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let flow = if namespace.is_empty() {
+			MaybeQualifiedFlowIdentifier::new(name)
 		} else {
-			// just name format
-			MaybeQualifiedFlowIdentifier::new(first_token.fragment)
+			MaybeQualifiedFlowIdentifier::new(name).with_namespace(namespace)
 		};
 
 		// Parse required AS clause
@@ -880,7 +865,7 @@ pub mod tests {
 				if_not_exists,
 				..
 			}) => {
-				assert_eq!(namespace.name.text(), "REIFYDB");
+				assert_eq!(namespace.segments[0].text(), "REIFYDB");
 				assert!(!if_not_exists);
 			}
 			_ => unreachable!(),
@@ -904,7 +889,7 @@ pub mod tests {
 				if_not_exists,
 				..
 			}) => {
-				assert_eq!(namespace.name.text(), "my-namespace");
+				assert_eq!(namespace.segments[0].text(), "my-namespace");
 				assert!(!if_not_exists);
 			}
 			_ => unreachable!(),
@@ -929,7 +914,7 @@ pub mod tests {
 				if_not_exists,
 				..
 			}) => {
-				assert_eq!(namespace.name.text(), "my_namespace");
+				assert_eq!(namespace.segments[0].text(), "my_namespace");
 				assert!(if_not_exists);
 			}
 			_ => unreachable!(),
@@ -956,7 +941,7 @@ pub mod tests {
 				if_not_exists,
 				..
 			}) => {
-				assert_eq!(namespace.name.text(), "my-test-namespace");
+				assert_eq!(namespace.segments[0].text(), "my-test-namespace");
 				assert!(if_not_exists);
 			}
 			_ => unreachable!(),
@@ -981,7 +966,7 @@ pub mod tests {
 				if_not_exists,
 				..
 			}) => {
-				assert_eq!(namespace.name.text(), "my-namespace");
+				assert_eq!(namespace.segments[0].text(), "my-namespace");
 				assert!(if_not_exists);
 			}
 			_ => unreachable!(),
@@ -1006,7 +991,7 @@ pub mod tests {
 				if_not_exists,
 				..
 			}) => {
-				assert_eq!(namespace.name.text(), "my_namespace");
+				assert_eq!(namespace.segments[0].text(), "my_namespace");
 				assert!(if_not_exists);
 			}
 			_ => unreachable!(),
@@ -1033,7 +1018,7 @@ pub mod tests {
 				if_not_exists,
 				..
 			}) => {
-				assert_eq!(namespace.name.text(), "my-test-namespace");
+				assert_eq!(namespace.segments[0].text(), "my-test-namespace");
 				assert!(if_not_exists);
 			}
 			_ => unreachable!(),
@@ -1058,7 +1043,7 @@ pub mod tests {
 				if_not_exists,
 				..
 			}) => {
-				assert_eq!(namespace.name.text(), "my-namespace");
+				assert_eq!(namespace.segments[0].text(), "my-namespace");
 				assert!(if_not_exists);
 			}
 			_ => unreachable!(),
@@ -1082,7 +1067,7 @@ pub mod tests {
 				table,
 				..
 			}) => {
-				assert_eq!(table.namespace.as_ref().unwrap().text(), "my-schema");
+				assert_eq!(table.namespace[0].text(), "my-schema");
 				assert_eq!(table.name.text(), "my-table");
 			}
 			_ => unreachable!(),
@@ -1109,7 +1094,7 @@ pub mod tests {
 				capacity,
 				..
 			}) => {
-				assert_eq!(ringbuffer.namespace.as_ref().unwrap().text(), "my-ns");
+				assert_eq!(ringbuffer.namespace[0].text(), "my-ns");
 				assert_eq!(ringbuffer.name.text(), "my-buffer");
 				assert_eq!(*capacity, 100);
 			}
@@ -1185,7 +1170,7 @@ pub mod tests {
 				namespace,
 				..
 			}) => {
-				assert_eq!(namespace.name.text(), "my-namespace");
+				assert_eq!(namespace.segments[0].text(), "my-namespace");
 			}
 			_ => unreachable!(),
 		}
@@ -1216,7 +1201,7 @@ pub mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(sequence.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(sequence.namespace[0].text(), "test");
 				assert_eq!(sequence.name.text(), "metrics");
 
 				assert_eq!(columns.len(), 1);
@@ -1259,7 +1244,7 @@ pub mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(table.namespace[0].text(), "test");
 				assert_eq!(table.name.text(), "users");
 				assert_eq!(columns.len(), 3);
 
@@ -1330,7 +1315,7 @@ pub mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(table.namespace[0].text(), "test");
 				assert_eq!(table.name.text(), "items");
 
 				assert_eq!(columns.len(), 1);
@@ -1380,7 +1365,7 @@ pub mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(table.namespace[0].text(), "test");
 				assert_eq!(table.name.text(), "users");
 				assert_eq!(columns.len(), 2);
 
@@ -1438,7 +1423,7 @@ pub mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(view.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(view.namespace[0].text(), "test");
 				assert_eq!(view.name.text(), "views");
 
 				assert_eq!(columns.len(), 1);
@@ -1487,7 +1472,7 @@ pub mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(view.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(view.namespace[0].text(), "test");
 				assert_eq!(view.name.text(), "myview");
 
 				assert_eq!(columns.len(), 2);
@@ -1550,7 +1535,7 @@ pub mod tests {
 				capacity,
 				..
 			}) => {
-				assert_eq!(ringbuffer.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(ringbuffer.namespace[0].text(), "test");
 				assert_eq!(ringbuffer.name.text(), "events");
 				assert_eq!(*capacity, 10);
 				assert_eq!(columns.len(), 2);
@@ -1609,7 +1594,7 @@ pub mod tests {
 				as_clause,
 				..
 			}) => {
-				assert_eq!(view.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(view.namespace[0].text(), "test");
 				assert_eq!(view.name.text(), "myview");
 				assert_eq!(columns.len(), 2);
 				assert!(as_clause.is_some());
@@ -1643,7 +1628,7 @@ pub mod tests {
 				assert!(!flow.or_replace);
 				assert!(!flow.if_not_exists);
 				assert_eq!(flow.flow.name.text(), "my_flow");
-				assert!(flow.flow.namespace.is_none());
+				assert!(flow.flow.namespace.is_empty());
 				assert!(flow.as_clause.len() > 0);
 			}
 			_ => unreachable!(),
@@ -1712,7 +1697,7 @@ pub mod tests {
 
 		match create {
 			AstCreate::Flow(flow) => {
-				assert_eq!(flow.flow.namespace.as_ref().unwrap().text(), "analytics");
+				assert_eq!(flow.flow.namespace[0].text(), "analytics");
 				assert_eq!(flow.flow.name.text(), "sales_flow");
 			}
 			_ => unreachable!(),
@@ -1770,7 +1755,7 @@ pub mod tests {
 			AstCreate::Flow(flow) => {
 				assert!(flow.or_replace);
 				assert!(flow.if_not_exists);
-				assert_eq!(flow.flow.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(flow.flow.namespace[0].text(), "test");
 				assert_eq!(flow.flow.name.text(), "my_flow");
 			}
 			_ => unreachable!(),
@@ -1793,7 +1778,7 @@ pub mod tests {
 
 		match create {
 			AstCreate::Dictionary(dict) => {
-				assert!(dict.dictionary.namespace.is_none());
+				assert!(dict.dictionary.namespace.is_empty());
 				assert_eq!(dict.dictionary.name.text(), "token_mints");
 				match &dict.value_type {
 					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
@@ -1824,7 +1809,7 @@ pub mod tests {
 
 		match create {
 			AstCreate::Dictionary(dict) => {
-				assert_eq!(dict.dictionary.namespace.as_ref().unwrap().text(), "analytics");
+				assert_eq!(dict.dictionary.namespace[0].text(), "analytics");
 				assert_eq!(dict.dictionary.name.text(), "token_mints");
 				match &dict.value_type {
 					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
@@ -1884,7 +1869,7 @@ pub mod tests {
 		match create {
 			AstCreate::Dictionary(dict) => {
 				assert!(dict.if_not_exists);
-				assert!(dict.dictionary.namespace.is_none());
+				assert!(dict.dictionary.namespace.is_empty());
 				assert_eq!(dict.dictionary.name.text(), "token_mints");
 				match &dict.value_type {
 					AstType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),

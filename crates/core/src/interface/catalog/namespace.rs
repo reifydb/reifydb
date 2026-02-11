@@ -3,10 +3,17 @@
 
 use crate::interface::catalog::id::NamespaceId;
 
+impl NamespaceId {
+	/// Root sentinel — all top-level namespaces have `parent_id: NamespaceId::ROOT`.
+	/// This is not a real namespace, just the tree root.
+	pub const ROOT: NamespaceId = NamespaceId(0);
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamespaceDef {
 	pub id: NamespaceId,
 	pub name: String,
+	pub parent_id: NamespaceId,
 }
 
 impl NamespaceDef {
@@ -14,6 +21,7 @@ impl NamespaceDef {
 		Self {
 			id: NamespaceId(1),
 			name: "system".to_string(),
+			parent_id: NamespaceId::ROOT,
 		}
 	}
 }

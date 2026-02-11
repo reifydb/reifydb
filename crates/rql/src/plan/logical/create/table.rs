@@ -24,7 +24,7 @@ impl<'bump> Compiler<'bump> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 
 		// Get the table's namespace for dictionary resolution
-		let table_namespace_name = ast.table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+		let table_namespace_name = ast.table.namespace.first().map(|n| n.text()).unwrap_or("default");
 
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.text().to_string();
@@ -51,7 +51,7 @@ impl<'bump> Compiler<'bump> {
 			let dictionary_id = if let Some(ref dict_ident) = col.dictionary {
 				// Get the dictionary's namespace (uses column's namespace or table's namespace)
 				let dict_namespace_name =
-					dict_ident.namespace.as_ref().map(|n| n.text()).unwrap_or(table_namespace_name);
+					dict_ident.namespace.first().map(|n| n.text()).unwrap_or(table_namespace_name);
 				let dict_name = dict_ident.name.text();
 
 				// Find the namespace

@@ -68,6 +68,7 @@ pub mod tests {
 		NamespaceDef {
 			id,
 			name: name.to_string(),
+			parent_id: NamespaceId::ROOT,
 		}
 	}
 

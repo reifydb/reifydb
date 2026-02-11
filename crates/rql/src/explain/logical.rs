@@ -131,7 +131,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			output.push_str(&format!(
 				"{}├── Namespace: {}\n",
 				child_prefix,
-				index.namespace.as_ref().map(|ns| ns.text()).unwrap_or("default")
+				index.namespace.first().map(|ns| ns.text()).unwrap_or("default")
 			));
 			output.push_str(&format!("{}├── Table: {}\n", child_prefix, index.table.text()));
 
@@ -164,7 +164,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 
 			// Show target table if specified
 			if let Some(table) = &delete.target {
-				let namespace = table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+				let namespace = table.namespace.first().map(|n| n.text()).unwrap_or("default");
 				output.push_str(&format!(
 					"{}├── target table: {}.{}\n",
 					child_prefix,
@@ -186,7 +186,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			output.push_str(&format!("{}{} DeleteRingBuffer\n", prefix, branch));
 
 			// Show target ring buffer
-			let namespace = delete.target.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+			let namespace = delete.target.namespace.first().map(|n| n.text()).unwrap_or("default");
 			output.push_str(&format!(
 				"{}├── target ring buffer: {}.{}\n",
 				child_prefix,
@@ -209,7 +209,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 
 			// Show target table if specified
 			if let Some(target) = &update.target {
-				let namespace = target.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+				let namespace = target.namespace.first().map(|n| n.text()).unwrap_or("default");
 				output.push_str(&format!(
 					"{}├── target table: {}.{}\n",
 					child_prefix,
@@ -231,7 +231,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			output.push_str(&format!("{}{} UpdateRingBuffer\n", prefix, branch));
 
 			// Show target ring buffer
-			let namespace = update_rb.target.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+			let namespace = update_rb.target.namespace.first().map(|n| n.text()).unwrap_or("default");
 			output.push_str(&format!(
 				"{}├── target ring buffer: {}.{}\n",
 				child_prefix,
@@ -545,7 +545,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			output.push_str(&format!("{}{} AlterTable\n", prefix, branch));
 
 			// Show namespace and table
-			let schema_str = table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+			let schema_str = table.namespace.first().map(|n| n.text()).unwrap_or("default");
 			output.push_str(&format!("{}├── Namespace: {}\n", child_prefix, schema_str));
 			output.push_str(&format!("{}├── Table: {}\n", child_prefix, table.name.text()));
 
@@ -614,7 +614,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			output.push_str(&format!("{}{} AlterView\n", prefix, branch));
 
 			// Show namespace and view
-			let schema_str = view.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+			let schema_str = view.namespace.first().map(|n| n.text()).unwrap_or("default");
 			output.push_str(&format!("{}├── Namespace: {}\n", child_prefix, schema_str));
 			output.push_str(&format!("{}├── View: {}\n", child_prefix, view.name.text()));
 
@@ -835,7 +835,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			render_logical_plan_inner(&scalarize.input, &child_prefix, true, output);
 		}
 		LogicalPlan::CreateFlow(create_flow) => {
-			let flow_name = if let Some(ns) = &create_flow.flow.namespace {
+			let flow_name = if let Some(ns) = create_flow.flow.namespace.first() {
 				format!("{}.{}", ns.text(), create_flow.flow.name.text())
 			} else {
 				create_flow.flow.name.text().to_string()
@@ -867,7 +867,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			}
 		}
 		LogicalPlan::AlterFlow(alter_flow) => {
-			let flow_name = if let Some(ns) = &alter_flow.flow.namespace {
+			let flow_name = if let Some(ns) = alter_flow.flow.namespace.first() {
 				format!("{}.{}", ns.text(), alter_flow.flow.name.text())
 			} else {
 				alter_flow.flow.name.text().to_string()

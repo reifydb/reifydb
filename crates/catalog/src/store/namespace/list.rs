@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::namespace::NamespaceDef,
+	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
 	key::{Key, namespace::NamespaceKey},
 };
 use reifydb_transaction::transaction::AsTransaction;
@@ -26,9 +26,13 @@ impl CatalogStore {
 
 					let name =
 						namespace::SCHEMA.get_utf8(&entry.values, namespace::NAME).to_string();
+					let parent_id = NamespaceId(
+						namespace::SCHEMA.get_u64(&entry.values, namespace::PARENT_ID),
+					);
 					let namespace_def = NamespaceDef {
 						id: namespace_id,
 						name,
+						parent_id,
 					};
 
 					result.push(namespace_def);

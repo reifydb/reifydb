@@ -18,7 +18,7 @@ impl<'bump> Compiler<'bump> {
 		alter: logical::alter::flow::AlterFlowNode<'bump>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		let flow = AlterFlowIdentifier {
-			namespace: alter.flow.namespace.map(|n| self.interner.intern_fragment(&n)),
+			namespace: alter.flow.namespace.first().map(|n| self.interner.intern_fragment(n)),
 			name: self.interner.intern_fragment(&alter.flow.name),
 		};
 

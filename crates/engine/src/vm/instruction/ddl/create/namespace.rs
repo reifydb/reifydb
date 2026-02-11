@@ -16,23 +16,46 @@ pub(crate) fn create_namespace(
 	txn: &mut AdminTransaction,
 	plan: CreateNamespaceNode,
 ) -> crate::Result<Columns> {
-	// Check if namespace already exists using the catalog
-	if let Some(_) = services.catalog.find_namespace_by_name(txn, plan.namespace.text())? {
+	use reifydb_core::interface::catalog::id::NamespaceId;
+
+	let full_name: String = plan.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join(".");
+
+	// Auto-create parent namespaces (mkdir -p semantics)
+	let mut parent_id = NamespaceId::ROOT;
+	for i in 0..plan.segments.len().saturating_sub(1) {
+		let prefix: String = plan.segments[..=i].iter().map(|s| s.text()).collect::<Vec<_>>().join(".");
+		if let Some(existing) = services.catalog.find_namespace_by_name(txn, &prefix)? {
+			parent_id = existing.id;
+		} else {
+			let result = services.catalog.create_namespace(
+				txn,
+				NamespaceToCreate {
+					namespace_fragment: Some(plan.segments[i].clone()),
+					name: prefix,
+					parent_id,
+				},
+			)?;
+			txn.track_namespace_def_created(result.clone())?;
+			parent_id = result.id;
+		}
+	}
+
+	// Create the final (leaf) namespace
+	if let Some(_) = services.catalog.find_namespace_by_name(txn, &full_name)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
-				("namespace", Value::Utf8(plan.namespace.text().to_string())),
+				("namespace", Value::Utf8(full_name)),
 				("created", Value::Boolean(false)),
 			]));
 		}
-		// The error will be returned by create_namespace if the
-		// namespace exists
 	}
 
 	let result = services.catalog.create_namespace(
 		txn,
 		NamespaceToCreate {
-			namespace_fragment: Some(plan.namespace.clone()),
-			name: plan.namespace.text().to_string(),
+			namespace_fragment: plan.segments.last().cloned(),
+			name: full_name,
+			parent_id,
 		},
 	)?;
 	txn.track_namespace_def_created(result.clone())?;

@@ -13,17 +13,16 @@ use crate::{
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_alter_sequence(&self, ast: AstAlterSequence<'bump>) -> crate::Result<LogicalPlan<'bump>> {
-		let namespace = ast
-			.sequence
-			.namespace
-			.unwrap_or_else(|| BumpFragment::internal(self.bump, resolver::DEFAULT_NAMESPACE));
+		let namespace = if ast.sequence.namespace.is_empty() {
+			vec![BumpFragment::internal(self.bump, resolver::DEFAULT_NAMESPACE)]
+		} else {
+			ast.sequence.namespace.clone()
+		};
 		let sequence_name = ast.sequence.name;
 
-		// Create a maybe qualified column identifier
-		// The column belongs to the same table as the sequence
 		let column = MaybeQualifiedColumnIdentifier {
 			primitive: MaybeQualifiedColumnPrimitive::Primitive {
-				namespace: Some(namespace),
+				namespace,
 				primitive: sequence_name,
 			},
 			name: ast.column,

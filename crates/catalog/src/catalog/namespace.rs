@@ -20,6 +20,7 @@ use crate::{CatalogStore, catalog::Catalog, store::namespace::create::NamespaceT
 pub struct NamespaceToCreate {
 	pub namespace_fragment: Option<Fragment>,
 	pub name: String,
+	pub parent_id: NamespaceId,
 }
 
 impl From<NamespaceToCreate> for StoreNamespaceToCreate {
@@ -27,6 +28,7 @@ impl From<NamespaceToCreate> for StoreNamespaceToCreate {
 		StoreNamespaceToCreate {
 			namespace_fragment: to_create.namespace_fragment,
 			name: to_create.name,
+			parent_id: to_create.parent_id,
 		}
 	}
 }

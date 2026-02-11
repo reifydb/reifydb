@@ -17,20 +17,27 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut T,
 		create: logical::CreateTableNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
-		// Get namespace name from the MaybeQualified type
-		let namespace_name = create.table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, namespace_name)? else {
-			let ns_fragment = match create.table.namespace {
-				Some(n) => self.interner.intern_fragment(&n),
-				None => Fragment::internal("default".to_string()),
+		// Get namespace name from the MaybeQualified type (join all segments for nested namespaces)
+		let namespace_name = if create.table.namespace.is_empty() {
+			"default".to_string()
+		} else {
+			create.table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+		};
+		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+			let ns_fragment = if let Some(n) = create.table.namespace.first() {
+				let interned = self.interner.intern_fragment(n);
+				interned.with_text(&namespace_name)
+			} else {
+				Fragment::internal("default".to_string())
 			};
-			return_error!(namespace_not_found(ns_fragment, namespace_name));
+			return_error!(namespace_not_found(ns_fragment, &namespace_name));
 		};
 
-		// Create a ResolvedNamespace
-		let namespace_id = match create.table.namespace {
-			Some(n) => self.interner.intern_fragment(&n),
-			None => Fragment::internal(namespace_def.name.clone()),
+		let namespace_id = if let Some(n) = create.table.namespace.first() {
+			let interned = self.interner.intern_fragment(n);
+			interned.with_text(&namespace_def.name)
+		} else {
+			Fragment::internal(namespace_def.name.clone())
 		};
 		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 

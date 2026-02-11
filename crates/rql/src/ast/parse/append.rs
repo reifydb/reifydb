@@ -126,7 +126,7 @@ pub mod tests {
 				..
 			}) = first_node
 			{
-				assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(source.namespace[0].text(), "test");
 				assert_eq!(source.name.text(), "orders");
 			} else {
 				panic!("Expected From node in subquery");
@@ -165,7 +165,7 @@ pub mod tests {
 				..
 			}) = first_node
 			{
-				assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(source.namespace[0].text(), "test");
 				assert_eq!(source.name.text(), "source2");
 			} else {
 				panic!("Expected From node in subquery");

@@ -9,15 +9,15 @@ use crate::{bump::BumpFragment, token::token::Token};
 
 /// Represents a source identifier that hasn't been resolved to a specific type yet
 /// Used in AST parsing before we know whether it's a table, view, or ring buffer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnresolvedPrimitiveIdentifier<'bump> {
-	pub namespace: Option<BumpFragment<'bump>>,
+	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
 	pub alias: Option<BumpFragment<'bump>>,
 }
 
 impl<'bump> UnresolvedPrimitiveIdentifier<'bump> {
-	pub fn new(namespace: Option<BumpFragment<'bump>>, name: BumpFragment<'bump>) -> Self {
+	pub fn new(namespace: Vec<BumpFragment<'bump>>, name: BumpFragment<'bump>) -> Self {
 		Self {
 			namespace,
 			name,
@@ -73,42 +73,39 @@ impl<'bump> UnqualifiedIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified namespace identifier - just a name
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Maybe-qualified namespace identifier - segments of a dot-separated path
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedNamespaceIdentifier<'bump> {
-	pub name: BumpFragment<'bump>,
+	pub segments: Vec<BumpFragment<'bump>>,
 }
 
 impl<'bump> MaybeQualifiedNamespaceIdentifier<'bump> {
-	pub fn new(name: BumpFragment<'bump>) -> Self {
+	pub fn new(segments: Vec<BumpFragment<'bump>>) -> Self {
 		Self {
-			name,
+			segments,
 		}
 	}
 }
 
 /// Maybe-qualified table identifier for tables - namespace is optional
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedTableIdentifier<'bump> {
-	/// Namespace containing this table (optional in user input)
-	pub namespace: Option<BumpFragment<'bump>>,
-	/// Table name
+	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
-	/// Alias for this table in query context
 	pub alias: Option<BumpFragment<'bump>>,
 }
 
 impl<'bump> MaybeQualifiedTableIdentifier<'bump> {
 	pub fn new(name: BumpFragment<'bump>) -> Self {
 		Self {
-			namespace: None,
+			namespace: Vec::new(),
 			name,
 			alias: None,
 		}
 	}
 
-	pub fn with_namespace(mut self, namespace: BumpFragment<'bump>) -> Self {
-		self.namespace = Some(namespace);
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
 		self
 	}
 
@@ -119,27 +116,24 @@ impl<'bump> MaybeQualifiedTableIdentifier<'bump> {
 }
 
 /// Maybe-qualified deferred view identifier - namespace is optional
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedDeferredViewIdentifier<'bump> {
-	/// Namespace containing this view (optional in user input)
-	pub namespace: Option<BumpFragment<'bump>>,
-	/// View name
+	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
-	/// Alias for this view in query context
 	pub alias: Option<BumpFragment<'bump>>,
 }
 
 impl<'bump> MaybeQualifiedDeferredViewIdentifier<'bump> {
 	pub fn new(name: BumpFragment<'bump>) -> Self {
 		Self {
-			namespace: None,
+			namespace: Vec::new(),
 			name,
 			alias: None,
 		}
 	}
 
-	pub fn with_namespace(mut self, namespace: BumpFragment<'bump>) -> Self {
-		self.namespace = Some(namespace);
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
 		self
 	}
 
@@ -150,27 +144,24 @@ impl<'bump> MaybeQualifiedDeferredViewIdentifier<'bump> {
 }
 
 /// Maybe-qualified transactional view identifier - namespace is optional
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedTransactionalViewIdentifier<'bump> {
-	/// Namespace containing this view (optional in user input)
-	pub namespace: Option<BumpFragment<'bump>>,
-	/// View name
+	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
-	/// Alias for this view in query context
 	pub alias: Option<BumpFragment<'bump>>,
 }
 
 impl<'bump> MaybeQualifiedTransactionalViewIdentifier<'bump> {
 	pub fn new(name: BumpFragment<'bump>) -> Self {
 		Self {
-			namespace: None,
+			namespace: Vec::new(),
 			name,
 			alias: None,
 		}
 	}
 
-	pub fn with_namespace(mut self, namespace: BumpFragment<'bump>) -> Self {
-		self.namespace = Some(namespace);
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
 		self
 	}
 
@@ -181,28 +172,24 @@ impl<'bump> MaybeQualifiedTransactionalViewIdentifier<'bump> {
 }
 
 /// Maybe-qualified view identifier (generic) - namespace is optional
-/// Used when we don't know the specific view type yet (e.g., ALTER VIEW)
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedViewIdentifier<'bump> {
-	/// Namespace containing this view (optional in user input)
-	pub namespace: Option<BumpFragment<'bump>>,
-	/// View name
+	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
-	/// Alias for this view in query context
 	pub alias: Option<BumpFragment<'bump>>,
 }
 
 impl<'bump> MaybeQualifiedViewIdentifier<'bump> {
 	pub fn new(name: BumpFragment<'bump>) -> Self {
 		Self {
-			namespace: None,
+			namespace: Vec::new(),
 			name,
 			alias: None,
 		}
 	}
 
-	pub fn with_namespace(mut self, namespace: BumpFragment<'bump>) -> Self {
-		self.namespace = Some(namespace);
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
 		self
 	}
 
@@ -213,27 +200,24 @@ impl<'bump> MaybeQualifiedViewIdentifier<'bump> {
 }
 
 /// Maybe-qualified flow identifier - namespace is optional
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedFlowIdentifier<'bump> {
-	/// Namespace containing this flow (optional in user input)
-	pub namespace: Option<BumpFragment<'bump>>,
-	/// Flow name
+	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
-	/// Alias for this flow in query context
 	pub alias: Option<BumpFragment<'bump>>,
 }
 
 impl<'bump> MaybeQualifiedFlowIdentifier<'bump> {
 	pub fn new(name: BumpFragment<'bump>) -> Self {
 		Self {
-			namespace: None,
+			namespace: Vec::new(),
 			name,
 			alias: None,
 		}
 	}
 
-	pub fn with_namespace(mut self, namespace: BumpFragment<'bump>) -> Self {
-		self.namespace = Some(namespace);
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
 		self
 	}
 
@@ -244,27 +228,24 @@ impl<'bump> MaybeQualifiedFlowIdentifier<'bump> {
 }
 
 /// Maybe-qualified ring buffer identifier - namespace is optional
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedRingBufferIdentifier<'bump> {
-	/// Namespace containing this ring buffer (optional in user input)
-	pub namespace: Option<BumpFragment<'bump>>,
-	/// Ring buffer name
+	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
-	/// Alias for this ring buffer in query context
 	pub alias: Option<BumpFragment<'bump>>,
 }
 
 impl<'bump> MaybeQualifiedRingBufferIdentifier<'bump> {
 	pub fn new(name: BumpFragment<'bump>) -> Self {
 		Self {
-			namespace: None,
+			namespace: Vec::new(),
 			name,
 			alias: None,
 		}
 	}
 
-	pub fn with_namespace(mut self, namespace: BumpFragment<'bump>) -> Self {
-		self.namespace = Some(namespace);
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
 		self
 	}
 
@@ -275,53 +256,51 @@ impl<'bump> MaybeQualifiedRingBufferIdentifier<'bump> {
 }
 
 /// Maybe-qualified dictionary identifier - namespace is optional
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedDictionaryIdentifier<'bump> {
-	/// Namespace containing this dictionary (optional in user input)
-	pub namespace: Option<BumpFragment<'bump>>,
-	/// Dictionary name
+	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
 }
 
 impl<'bump> MaybeQualifiedDictionaryIdentifier<'bump> {
 	pub fn new(name: BumpFragment<'bump>) -> Self {
 		Self {
-			namespace: None,
+			namespace: Vec::new(),
 			name,
 		}
 	}
 
-	pub fn with_namespace(mut self, namespace: BumpFragment<'bump>) -> Self {
-		self.namespace = Some(namespace);
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
 		self
 	}
 }
 
 /// Maybe-qualified sequence identifier - namespace is optional
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSequenceIdentifier<'bump> {
-	pub namespace: Option<BumpFragment<'bump>>,
+	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
 }
 
 impl<'bump> MaybeQualifiedSequenceIdentifier<'bump> {
 	pub fn new(name: BumpFragment<'bump>) -> Self {
 		Self {
-			namespace: None,
+			namespace: Vec::new(),
 			name,
 		}
 	}
 
-	pub fn with_namespace(mut self, namespace: BumpFragment<'bump>) -> Self {
-		self.namespace = Some(namespace);
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
 		self
 	}
 }
 
 /// Maybe-qualified index identifier - namespace is optional
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedIndexIdentifier<'bump> {
-	pub namespace: Option<BumpFragment<'bump>>,
+	pub namespace: Vec<BumpFragment<'bump>>,
 	pub table: BumpFragment<'bump>,
 	pub name: BumpFragment<'bump>,
 }
@@ -329,24 +308,24 @@ pub struct MaybeQualifiedIndexIdentifier<'bump> {
 impl<'bump> MaybeQualifiedIndexIdentifier<'bump> {
 	pub fn new(table: BumpFragment<'bump>, name: BumpFragment<'bump>) -> Self {
 		Self {
-			namespace: None,
+			namespace: Vec::new(),
 			table,
 			name,
 		}
 	}
 
-	pub fn with_schema(mut self, namespace: BumpFragment<'bump>) -> Self {
-		self.namespace = Some(namespace);
+	pub fn with_schema(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
 		self
 	}
 }
 
 /// How a maybe-qualified column is referenced
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MaybeQualifiedColumnPrimitive<'bump> {
 	/// Qualified by primitive name (table/view) - namespace still optional
 	Primitive {
-		namespace: Option<BumpFragment<'bump>>,
+		namespace: Vec<BumpFragment<'bump>>,
 		primitive: BumpFragment<'bump>,
 	},
 	/// Qualified by alias
@@ -356,7 +335,7 @@ pub enum MaybeQualifiedColumnPrimitive<'bump> {
 }
 
 /// Maybe-qualified column identifier - primitive qualification is optional
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedColumnIdentifier<'bump> {
 	pub primitive: MaybeQualifiedColumnPrimitive<'bump>,
 	pub name: BumpFragment<'bump>,
@@ -371,7 +350,7 @@ impl<'bump> MaybeQualifiedColumnIdentifier<'bump> {
 	}
 
 	pub fn with_primitive(
-		namespace: Option<BumpFragment<'bump>>,
+		namespace: Vec<BumpFragment<'bump>>,
 		primitive: BumpFragment<'bump>,
 		name: BumpFragment<'bump>,
 	) -> Self {

@@ -102,29 +102,26 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::Alter(alter) => match alter {
 			AstAlter::Table(t) => {
 				let namespace =
-					t.table.namespace
-						.as_ref()
-						.map(|s| format!("{}.", s.text()))
-						.unwrap_or_default();
+					t.table.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
 				format!("ALTER TABLE {}{}", namespace, t.table.name.text())
 			}
 			AstAlter::View(v) => {
 				let namespace =
-					v.view.namespace.as_ref().map(|s| format!("{}.", s.text())).unwrap_or_default();
+					v.view.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
 				format!("ALTER VIEW {}{}", namespace, v.view.name.text())
 			}
 			AstAlter::Sequence(s) => {
 				let namespace = s
 					.sequence
 					.namespace
-					.as_ref()
+					.first()
 					.map(|sch| format!("{}.", sch.text()))
 					.unwrap_or_default();
 				format!("ALTER SEQUENCE {}{}.{}", namespace, s.sequence.name.text(), s.column.text())
 			}
 			AstAlter::Flow(f) => {
 				let namespace =
-					f.flow.namespace.as_ref().map(|s| format!("{}.", s.text())).unwrap_or_default();
+					f.flow.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
 				format!("ALTER FLOW {}{}", namespace, f.flow.name.text())
 			}
 		},

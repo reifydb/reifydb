@@ -133,6 +133,30 @@ impl Fragment {
 			},
 		}
 	}
+
+	/// Return a new fragment with replaced text, preserving location info.
+	pub fn with_text(&self, text: impl Into<String>) -> Fragment {
+		let text = Arc::from(text.into());
+		match self {
+			Fragment::Statement {
+				line,
+				column,
+				..
+			} => Fragment::Statement {
+				text,
+				line: *line,
+				column: *column,
+			},
+			Fragment::Internal {
+				..
+			} => Fragment::Internal {
+				text,
+			},
+			Fragment::None => Fragment::Internal {
+				text,
+			},
+		}
+	}
 }
 
 impl Fragment {

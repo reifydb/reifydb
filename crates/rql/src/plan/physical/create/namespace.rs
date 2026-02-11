@@ -14,9 +14,8 @@ impl<'bump> Compiler<'bump> {
 		_rx: &mut T,
 		create: logical::CreateNamespaceNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
-		// FIXME validate catalog
 		Ok(PhysicalPlan::CreateNamespace(CreateNamespaceNode {
-			namespace: self.interner.intern_fragment(&create.namespace),
+			segments: create.segments.iter().map(|s| self.interner.intern_fragment(s)).collect(),
 			if_not_exists: create.if_not_exists,
 		}))
 	}

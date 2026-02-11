@@ -73,6 +73,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::r#type::Type;
 
@@ -124,6 +125,7 @@ pub mod tests {
 			NamespaceToCreate {
 				namespace_fragment: None,
 				name: "namespace2".to_string(),
+				parent_id: NamespaceId::ROOT,
 			},
 		)
 		.unwrap();
@@ -171,6 +173,7 @@ pub mod tests {
 			NamespaceToCreate {
 				namespace_fragment: None,
 				name: "namespace2".to_string(),
+				parent_id: NamespaceId::ROOT,
 			},
 		)
 		.unwrap();

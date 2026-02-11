@@ -25,12 +25,16 @@ impl<'bump> Compiler<'bump> {
 		alter: logical::AlterSequenceNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Get the namespace name from the sequence identifier
-		let namespace_name = alter.sequence.namespace.as_ref().map(|f| f.text()).unwrap_or(DEFAULT_NAMESPACE);
+		let namespace_name = if alter.sequence.namespace.is_empty() {
+			DEFAULT_NAMESPACE.to_string()
+		} else {
+			alter.sequence.namespace.iter().map(|f| f.text()).collect::<Vec<_>>().join(".")
+		};
 
 		// Query the catalog for the actual namespace
 		let namespace_def = self
 			.catalog
-			.find_namespace_by_name(rx, namespace_name)?
+			.find_namespace_by_name(rx, &namespace_name)?
 			.unwrap_or_else(|| panic!("Namespace '{}' not found", namespace_name));
 
 		// Query the catalog for the actual table

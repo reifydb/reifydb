@@ -106,17 +106,16 @@ impl<'bump> Parser<'bump> {
 			};
 
 			let source = if has_dot {
-				self.consume_operator(Operator::Dot)?;
-				let second_identifier = self.parse_identifier_with_hyphens()?;
+				let mut segments = vec![first_identifier];
+				while !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
+					self.consume_operator(Operator::Dot)?;
+					segments.push(self.parse_identifier_with_hyphens()?);
+				}
+				let name = segments.pop().unwrap().into_fragment();
+				let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
-				// namespace.table - create
-				// UnresolvedPrimitiveIdentifier with namespace
-				let mut source = UnresolvedPrimitiveIdentifier::new(
-					Some(*first_identifier.fragment()),
-					second_identifier.into_fragment(),
-				);
+				let mut source = UnresolvedPrimitiveIdentifier::new(namespace, name);
 
-				// Check for alias after namespace.table
 				if !self.is_eof() && self.current()?.is_identifier() {
 					let alias_token = self.consume(TokenKind::Identifier)?;
 					source = source.with_alias(alias_token.fragment);
@@ -124,12 +123,9 @@ impl<'bump> Parser<'bump> {
 
 				source
 			} else {
-				// Just table - create
-				// UnresolvedPrimitiveIdentifier without namespace
 				let mut source =
-					UnresolvedPrimitiveIdentifier::new(None, first_identifier.into_fragment());
+					UnresolvedPrimitiveIdentifier::new(vec![], first_identifier.into_fragment());
 
-				// Check for alias after table
 				if !self.is_eof() && self.current()?.is_identifier() {
 					let alias_token = self.consume(TokenKind::Identifier)?;
 					source = source.with_alias(alias_token.fragment);
@@ -222,7 +218,7 @@ pub mod tests {
 				index_name,
 				..
 			} => {
-				assert_eq!(source.namespace.as_ref().unwrap().text(), "reifydb");
+				assert_eq!(source.namespace[0].text(), "reifydb");
 				assert_eq!(source.name.text(), "users");
 				assert_eq!(index_name, &None);
 			}
@@ -247,7 +243,7 @@ pub mod tests {
 				index_name,
 				..
 			} => {
-				assert_eq!(source.namespace, None);
+				assert!(source.namespace.is_empty());
 				assert_eq!(source.name.text(), "users");
 				assert_eq!(index_name, &None);
 			}
@@ -365,7 +361,7 @@ pub mod tests {
 				index_name,
 				..
 			} => {
-				assert_eq!(source.namespace, None);
+				assert!(source.namespace.is_empty());
 				assert_eq!(source.name.text(), "users");
 				assert_eq!(index_name.as_ref().unwrap().text(), "user_id_pk");
 			}
@@ -391,7 +387,7 @@ pub mod tests {
 				index_name,
 				..
 			} => {
-				assert_eq!(source.namespace.as_ref().unwrap().text(), "company");
+				assert_eq!(source.namespace[0].text(), "company");
 				assert_eq!(source.name.text(), "employees");
 				assert_eq!(index_name.as_ref().unwrap().text(), "employee_email_pk");
 			}
@@ -416,7 +412,7 @@ pub mod tests {
 				index_name,
 				..
 			} => {
-				assert!(source.namespace.is_none());
+				assert!(source.namespace.is_empty());
 				assert_eq!(source.name.text(), "orders");
 				assert_eq!(index_name, &None);
 				assert_eq!(source.alias.as_ref().unwrap().text(), "o");
@@ -442,7 +438,7 @@ pub mod tests {
 				index_name,
 				..
 			} => {
-				assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(source.namespace[0].text(), "test");
 				assert_eq!(source.name.text(), "orders");
 				assert_eq!(index_name, &None);
 				assert_eq!(source.alias.as_ref().unwrap().text(), "o");
@@ -562,7 +558,7 @@ pub mod tests {
 			..
 		} = result
 		{
-			assert_eq!(source.namespace, None);
+			assert!(source.namespace.is_empty());
 			assert_eq!(source.name.text(), "my-table");
 		} else {
 			panic!("Expected AstFrom::Source");
@@ -583,7 +579,7 @@ pub mod tests {
 			..
 		} = result
 		{
-			assert_eq!(source.namespace.as_ref().map(|f| f.text()), Some("test"));
+			assert_eq!(source.namespace.first().map(|f| f.text()), Some("test"));
 			assert_eq!(source.name.text(), "even-numbers");
 		} else {
 			panic!("Expected AstFrom::Source");
@@ -624,7 +620,7 @@ pub mod tests {
 			..
 		} = result
 		{
-			assert_eq!(source.namespace.as_ref().map(|f| f.text()), Some("test"));
+			assert_eq!(source.namespace.first().map(|f| f.text()), Some("test"));
 			assert_eq!(source.name.text(), "even-numbers");
 			assert_eq!(source.alias.as_ref().map(|f| f.text()), Some("nums"));
 		} else {

@@ -24,8 +24,7 @@ impl<'bump> Compiler<'bump> {
 		let mut columns: Vec<RingBufferColumnToCreate> = vec![];
 
 		// Get the ring buffer's namespace for dictionary resolution
-		let ringbuffer_namespace_name =
-			ast.ringbuffer.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+		let ringbuffer_namespace_name = ast.ringbuffer.namespace.first().map(|n| n.text()).unwrap_or("default");
 
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.text().to_string();
@@ -53,7 +52,7 @@ impl<'bump> Compiler<'bump> {
 				// Get the dictionary's namespace (uses column's namespace or ring buffer's namespace)
 				let dict_namespace_name = dict_ident
 					.namespace
-					.as_ref()
+					.first()
 					.map(|n| n.text())
 					.unwrap_or(ringbuffer_namespace_name);
 				let dict_name = dict_ident.name.text();

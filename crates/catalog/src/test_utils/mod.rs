@@ -32,6 +32,7 @@ pub fn create_namespace(txn: &mut AdminTransaction, namespace: &str) -> Namespac
 		NamespaceToCreate {
 			namespace_fragment: None,
 			name: namespace.to_string(),
+			parent_id: reifydb_core::interface::catalog::id::NamespaceId::ROOT,
 		},
 	)
 	.unwrap()

@@ -22,7 +22,7 @@ impl<'bump> Compiler<'bump> {
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Materialize logical node to physical node
 		let table = AlterTableIdentifier {
-			namespace: alter.table.namespace.map(|n| self.interner.intern_fragment(&n)),
+			namespace: alter.table.namespace.first().map(|n| self.interner.intern_fragment(n)),
 			name: self.interner.intern_fragment(&alter.table.name),
 		};
 
@@ -36,11 +36,11 @@ impl<'bump> Compiler<'bump> {
 					let mut physical_columns = Vec::with_capacity(columns.len());
 					for col in columns {
 						use crate::ast::identifier::MaybeQualifiedColumnPrimitive;
-						let namespace = match col.column.primitive {
+						let namespace = match &col.column.primitive {
 							MaybeQualifiedColumnPrimitive::Primitive {
 								namespace,
 								..
-							} => namespace.map(|n| self.interner.intern_fragment(&n)),
+							} => namespace.first().map(|n| self.interner.intern_fragment(n)),
 							_ => None,
 						};
 						physical_columns.push(AlterTableIndexColumn {

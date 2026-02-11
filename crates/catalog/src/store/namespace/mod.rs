@@ -19,9 +19,11 @@ pub(crate) fn convert_namespace(multi: MultiVersionValues) -> NamespaceDef {
 	let row = multi.values;
 	let id = NamespaceId(namespace::SCHEMA.get_u64(&row, namespace::ID));
 	let name = namespace::SCHEMA.get_utf8(&row, namespace::NAME).to_string();
+	let parent_id = NamespaceId(namespace::SCHEMA.get_u64(&row, namespace::PARENT_ID));
 
 	NamespaceDef {
 		id,
 		name,
+		parent_id,
 	}
 }

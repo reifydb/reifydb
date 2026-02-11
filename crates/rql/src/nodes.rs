@@ -142,7 +142,7 @@ pub struct CreateTransactionalViewNode {
 
 #[derive(Debug, Clone)]
 pub struct CreateNamespaceNode {
-	pub namespace: Fragment,
+	pub segments: Vec<Fragment>,
 	pub if_not_exists: bool,
 }
 

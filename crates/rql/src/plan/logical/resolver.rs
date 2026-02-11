@@ -24,16 +24,16 @@ pub fn resolve_unresolved_source<T: AsTransaction>(
 	tx: &mut T,
 	unresolved: &UnresolvedPrimitiveIdentifier,
 ) -> Result<ResolvedPrimitive> {
-	let namespace_str = if let Some(ref ns) = unresolved.namespace {
-		ns.text()
+	let namespace_str = if !unresolved.namespace.is_empty() {
+		unresolved.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join(".")
 	} else {
-		DEFAULT_NAMESPACE
+		DEFAULT_NAMESPACE.to_string()
 	};
 	let name_str = unresolved.name.text();
 
-	// Get namespace
-	let ns_def = if let Some(ref ns_fragment) = unresolved.namespace {
-		catalog.get_namespace_by_name(tx, ns_fragment.to_owned())?
+	let ns_def = if !unresolved.namespace.is_empty() {
+		let ns_fragment = unresolved.namespace[0].to_owned().with_text(&namespace_str);
+		catalog.get_namespace_by_name(tx, ns_fragment)?
 	} else {
 		catalog.get_namespace_by_name(tx, DEFAULT_NAMESPACE)?
 	};

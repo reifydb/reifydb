@@ -11,4 +11,6 @@ pub struct NamespaceFFI {
 	pub id: u64,
 	/// Namespace name (UTF-8 encoded)
 	pub name: BufferFFI,
+	/// Parent namespace ID (0 = root)
+	pub parent_id: u64,
 }

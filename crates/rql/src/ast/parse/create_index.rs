@@ -29,14 +29,13 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_keyword(On)?;
 
-		let namespace_token = self.consume(TokenKind::Identifier)?;
-		self.consume_operator(Operator::Dot)?;
-		let table_token = self.consume(TokenKind::Identifier)?;
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let table_fragment = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
-		// Create MaybeQualifiedIndexIdentifier
 		use crate::ast::identifier::MaybeQualifiedIndexIdentifier;
-		let index = MaybeQualifiedIndexIdentifier::new(table_token.fragment, name_token.fragment)
-			.with_schema(namespace_token.fragment);
+		let index =
+			MaybeQualifiedIndexIdentifier::new(table_fragment, name_token.fragment).with_schema(namespace);
 
 		let columns = self.parse_index_columns()?;
 
@@ -146,7 +145,7 @@ pub mod tests {
 			}) => {
 				assert_eq!(*index_type, IndexType::Index);
 				assert_eq!(index.name.text(), "idx_email");
-				assert_eq!(index.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(index.namespace[0].text(), "test");
 				assert_eq!(index.table.text(), "users");
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].column.name.text(), "email");
@@ -181,7 +180,7 @@ pub mod tests {
 			}) => {
 				assert_eq!(*index_type, IndexType::Unique);
 				assert_eq!(index.name.text(), "idx_email");
-				assert_eq!(index.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(index.namespace[0].text(), "test");
 				assert_eq!(index.table.text(), "users");
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].column.name.text(), "email");

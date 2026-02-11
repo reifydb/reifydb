@@ -253,6 +253,7 @@ fn marshal_namespace(namespace: &reifydb_core::interface::catalog::namespace::Na
 			len: name_bytes.len(),
 			cap: name_bytes.len(),
 		},
+		parent_id: namespace.parent_id.0,
 	}
 }
 

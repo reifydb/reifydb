@@ -952,6 +952,7 @@ pub mod tests {
 		NamespaceDef {
 			id: NamespaceId(1),
 			name: "public".to_string(),
+			parent_id: NamespaceId::ROOT,
 		}
 	}
 

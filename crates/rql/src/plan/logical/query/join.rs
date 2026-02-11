@@ -142,7 +142,8 @@ impl<'bump> Compiler<'bump> {
 				source,
 				..
 			}) => {
-				let mut unresolved = UnresolvedPrimitiveIdentifier::new(source.namespace, source.name);
+				let mut unresolved =
+					UnresolvedPrimitiveIdentifier::new(source.namespace.clone(), source.name);
 				unresolved = unresolved.with_alias(*alias);
 
 				let resolved_source =
@@ -157,7 +158,7 @@ impl<'bump> Compiler<'bump> {
 			}
 			Ast::Identifier(identifier) => {
 				let mut unresolved =
-					UnresolvedPrimitiveIdentifier::new(None, identifier.token.fragment);
+					UnresolvedPrimitiveIdentifier::new(vec![], identifier.token.fragment);
 				unresolved = unresolved.with_alias(*alias);
 
 				let resolved_source =
@@ -185,7 +186,7 @@ impl<'bump> Compiler<'bump> {
 				};
 
 				let mut unresolved = UnresolvedPrimitiveIdentifier::new(
-					Some(namespace.token.fragment),
+					vec![namespace.token.fragment],
 					table.token.fragment,
 				);
 				unresolved = unresolved.with_alias(*alias);
@@ -216,7 +217,8 @@ impl<'bump> Compiler<'bump> {
 				source,
 				..
 			}) => {
-				let mut unresolved = UnresolvedPrimitiveIdentifier::new(source.namespace, source.name);
+				let mut unresolved =
+					UnresolvedPrimitiveIdentifier::new(source.namespace.clone(), source.name);
 				unresolved = unresolved.with_alias(*alias);
 
 				let resolved_source =
@@ -231,7 +233,7 @@ impl<'bump> Compiler<'bump> {
 			}
 			Ast::Identifier(identifier) => {
 				let mut unresolved =
-					UnresolvedPrimitiveIdentifier::new(None, identifier.token.fragment);
+					UnresolvedPrimitiveIdentifier::new(vec![], identifier.token.fragment);
 				unresolved = unresolved.with_alias(*alias);
 
 				let resolved_source =
@@ -259,7 +261,7 @@ impl<'bump> Compiler<'bump> {
 				};
 
 				let mut unresolved = UnresolvedPrimitiveIdentifier::new(
-					Some(namespace.token.fragment),
+					vec![namespace.token.fragment],
 					table.token.fragment,
 				);
 				unresolved = unresolved.with_alias(*alias);

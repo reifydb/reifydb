@@ -103,5 +103,6 @@ unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<NamespaceDef, FFI
 	Ok(NamespaceDef {
 		id: NamespaceId(ffi_ns.id),
 		name,
+		parent_id: NamespaceId(ffi_ns.parent_id),
 	})
 }
