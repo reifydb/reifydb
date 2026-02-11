@@ -8,7 +8,10 @@ use reifydb_type::{
 	fragment::{Fragment, LazyFragment},
 	return_error,
 	value::{
-		container::{number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer, utf8::Utf8Container},
+		container::{
+			number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer,
+			utf8::Utf8Container,
+		},
 		is::IsNumber,
 		number::{promote::Promote, safe::add::SafeAdd},
 		r#type::{Type, get::GetType},

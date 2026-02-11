@@ -277,6 +277,31 @@ impl Columns {
 
 		Columns::new(columns)
 	}
+
+	pub fn from_rows_with_row_numbers(
+		names: &[&str],
+		result_rows: &[Vec<Value>],
+		row_numbers: Vec<RowNumber>,
+	) -> Self {
+		let column_count = names.len();
+
+		let mut columns: Vec<Column> = names
+			.iter()
+			.map(|name| Column {
+				name: Fragment::internal(name.to_string()),
+				data: ColumnData::Undefined(UndefinedContainer::new(0)),
+			})
+			.collect();
+
+		for row in result_rows {
+			assert_eq!(row.len(), column_count, "row length does not match column count");
+			for (i, value) in row.iter().enumerate() {
+				columns[i].data_mut().push_value(value.clone());
+			}
+		}
+
+		Columns::with_row_numbers(columns, row_numbers)
+	}
 }
 
 impl Columns {

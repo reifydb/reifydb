@@ -53,6 +53,7 @@ impl QueryNode for ExtendNode {
 			// Start with all existing columns (EXTEND preserves
 			// everything)
 			let row_count = columns.row_count();
+			let row_numbers = columns.row_numbers.to_vec();
 			let mut new_columns = columns.into_iter().collect::<Vec<_>>();
 
 			// Add the new derived columns
@@ -141,7 +142,11 @@ impl QueryNode for ExtendNode {
 				});
 			}
 
-			return Ok(Some(Columns::new(new_columns)));
+			if row_numbers.is_empty() {
+				return Ok(Some(Columns::new(new_columns)));
+			} else {
+				return Ok(Some(Columns::with_row_numbers(new_columns, row_numbers)));
+			}
 		}
 		if self.headers.is_none() {
 			if let Some(input_headers) = self.input.headers() {

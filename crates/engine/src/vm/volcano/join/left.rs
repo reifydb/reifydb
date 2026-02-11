@@ -4,7 +4,10 @@
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{Value, row_number::RowNumber},
+};
 use tracing::instrument;
 
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
@@ -64,11 +67,13 @@ impl QueryNode for LeftJoinNode {
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
 		let right_width = right_columns.len();
+		let left_row_numbers = left_columns.row_numbers.to_vec();
 
 		// Resolve column names with conflict detection
 		let resolved = resolve_column_names(&left_columns, &right_columns, &self.alias, None);
 
 		let mut result_rows = Vec::new();
+		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
 		for i in 0..left_rows {
 			let left_row = left_columns.get_row(i);
@@ -108,6 +113,9 @@ impl QueryNode for LeftJoinNode {
 					combined.extend(right_row.clone());
 					result_rows.push(combined);
 					matched = true;
+					if !left_row_numbers.is_empty() {
+						result_row_numbers.push(left_row_numbers[i]);
+					}
 				}
 			}
 
@@ -116,12 +124,19 @@ impl QueryNode for LeftJoinNode {
 				let mut combined = left_row.clone();
 				combined.extend(vec![Value::Undefined; right_width]);
 				result_rows.push(combined);
+				if !left_row_numbers.is_empty() {
+					result_row_numbers.push(left_row_numbers[i]);
+				}
 			}
 		}
 
 		// Create columns with conflict-resolved names
 		let names_refs: Vec<&str> = resolved.qualified_names.iter().map(|s| s.as_str()).collect();
-		let columns = Columns::from_rows(&names_refs, &result_rows);
+		let columns = if result_row_numbers.is_empty() {
+			Columns::from_rows(&names_refs, &result_rows)
+		} else {
+			Columns::from_rows_with_row_numbers(&names_refs, &result_rows, result_row_numbers)
+		};
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(columns))
