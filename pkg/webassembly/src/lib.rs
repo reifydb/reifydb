@@ -134,7 +134,7 @@ impl WasmDB {
 			Box::new(StandardInterceptorFactory::default()),
 			Catalog::new(materialized_catalog, SchemaRegistry::new(single)),
 			runtime.clock().clone(),
-			Functions::empty(),
+			Functions::defaults().build(),
 			ioc,
 		);
 

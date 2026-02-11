@@ -58,7 +58,9 @@ export class OutputFormatter {
 
   private formatError(error: string, executionTime: number): void {
     this.terminal.writeln('');
-    this.terminal.writeln(`${C.red}Error: ${error}${C.reset}`);
+    for (const line of error.split('\n')) {
+      this.terminal.writeln(line);
+    }
     this.formatExecutionTime(executionTime);
   }
 
