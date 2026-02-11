@@ -17,10 +17,10 @@ use reifydb_type::{
 	},
 };
 
-use crate::evaluate::ColumnEvaluationContext;
+use crate::evaluate::EvalContext;
 
 pub(crate) fn add_columns(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	left: &Column,
 	right: &Column,
 	fragment: impl LazyFragment + Copy,
@@ -887,7 +887,7 @@ pub(crate) fn add_columns(
 }
 
 fn add_numeric<L, R>(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
@@ -952,7 +952,7 @@ where
 }
 
 fn add_numeric_clone<L, R>(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
@@ -1014,7 +1014,7 @@ fn can_promote_to_string(data: &ColumnData) -> bool {
 }
 
 fn concat_strings(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	l: &Utf8Container,
 	r: &Utf8Container,
 	target: Type,
@@ -1039,7 +1039,7 @@ fn concat_strings(
 }
 
 fn concat_string_with_other(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	string_data: &Utf8Container,
 	other_data: &ColumnData,
 	string_is_left: bool,

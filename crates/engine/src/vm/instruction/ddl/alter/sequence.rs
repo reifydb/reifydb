@@ -11,7 +11,7 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{params::Params, return_error, value::Value};
 
 use crate::{
-	evaluate::{ColumnEvaluationContext, column::evaluate},
+	evaluate::{EvalContext, column::evaluate},
 	vm::{services::Services, stack::SymbolTable},
 };
 
@@ -48,7 +48,7 @@ pub(crate) fn alter_table_sequence<'a>(
 	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
 	let value = evaluate(
-		&ColumnEvaluationContext {
+		&EvalContext {
 			target: Some(TargetColumn::Partial {
 				source_name: None,
 				column_name: None,
@@ -61,6 +61,8 @@ pub(crate) fn alter_table_sequence<'a>(
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
+			functions: &services.functions,
+			clock: &services.clock,
 		},
 		&plan.value,
 		&services.functions,

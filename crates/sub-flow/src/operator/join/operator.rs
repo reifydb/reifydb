@@ -16,10 +16,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns},
 };
 use reifydb_engine::{
-	evaluate::{
-		ColumnEvaluationContext,
-		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
-	},
+	evaluate::compiled::{CompileContext, CompiledExpr, EvalContext, compile_expression},
 	vm::{executor::Executor, stack::SymbolTable},
 };
 use reifydb_function::registry::Functions;
@@ -147,7 +144,7 @@ impl JoinOperator {
 			return Ok(Vec::new());
 		}
 
-		let ctx = ColumnEvaluationContext {
+		let exec_ctx = EvalContext {
 			target: None,
 			columns: columns.clone(),
 			row_count,
@@ -155,10 +152,9 @@ impl JoinOperator {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
+			functions: &self.functions,
+			clock: &self.clock,
 		};
-
-		// Create ExecContext for compiled expression execution
-		let exec_ctx = ExecContext::from_column_eval_ctx(&ctx, &self.functions, &self.clock);
 
 		// Evaluate all compiled expressions on the entire batch
 		let mut expr_columns = Vec::with_capacity(compiled_exprs.len());

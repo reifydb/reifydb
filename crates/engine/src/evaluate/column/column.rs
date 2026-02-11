@@ -22,9 +22,9 @@ use reifydb_type::value::{
 	uuid::{Uuid4, Uuid7},
 };
 
-use crate::evaluate::ColumnEvaluationContext;
+use crate::evaluate::EvalContext;
 
-pub(crate) fn column_lookup(ctx: &ColumnEvaluationContext, column: &ColumnExpression) -> crate::Result<Column> {
+pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> crate::Result<Column> {
 	let name = column.0.name.text();
 
 	// Check for rownum pseudo-column first
@@ -40,7 +40,7 @@ pub(crate) fn column_lookup(ctx: &ColumnEvaluationContext, column: &ColumnExpres
 	Ok(Column::new(name.to_string(), ColumnData::undefined(ctx.row_count)))
 }
 
-fn extract_column_data(col: &Column, ctx: &ColumnEvaluationContext) -> crate::Result<Column> {
+fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column> {
 	let take = ctx.take.unwrap_or(usize::MAX);
 
 	// Use the column's actual data type instead of checking the first value
@@ -674,7 +674,7 @@ pub mod tests {
 	use reifydb_rql::expression::ColumnExpression;
 	use reifydb_type::{fragment::Fragment, params::Params};
 
-	use crate::{evaluate::ColumnEvaluationContext, vm::stack::SymbolTable};
+	use crate::{evaluate::EvalContext, vm::stack::SymbolTable};
 
 	#[test]
 	fn test_column_not_found_returns_correct_row_count() {
@@ -682,7 +682,7 @@ pub mod tests {
 		let columns =
 			Columns::new(vec![Column::new("existing_col".to_string(), ColumnData::int4([1, 2, 3, 4, 5]))]);
 
-		let ctx = ColumnEvaluationContext {
+		let ctx = EvalContext {
 			target: None,
 			columns,
 			row_count: 5,
@@ -690,6 +690,8 @@ pub mod tests {
 			params: &Params::None,
 			symbol_table: &SymbolTable::new(),
 			is_aggregate_context: false,
+			functions: &reifydb_function::registry::Functions::empty(),
+			clock: &reifydb_runtime::clock::Clock::default(),
 		};
 
 		// Try to access a column that doesn't exist

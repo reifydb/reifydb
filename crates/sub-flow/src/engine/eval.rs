@@ -5,10 +5,7 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_engine::{
-	evaluate::{
-		ColumnEvaluationContext,
-		compiled::{CompileContext, ExecContext, compile_expression},
-	},
+	evaluate::compiled::{CompileContext, EvalContext, compile_expression},
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
@@ -50,7 +47,7 @@ pub fn evaluate_operator_config(
 
 	let empty_columns = Columns::empty();
 
-	let eval_ctx = ColumnEvaluationContext {
+	let exec_ctx = EvalContext {
 		target: None,
 		columns: empty_columns,
 		row_count: 1, // Need at least 1 row to evaluate constants
@@ -58,9 +55,9 @@ pub fn evaluate_operator_config(
 		params: &EMPTY_PARAMS,
 		symbol_table: &EMPTY_SYMBOL_TABLE,
 		is_aggregate_context: false,
+		functions,
+		clock,
 	};
-
-	let exec_ctx = ExecContext::from_column_eval_ctx(&eval_ctx, functions, clock);
 
 	for expr in expressions {
 		match expr {

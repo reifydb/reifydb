@@ -14,10 +14,10 @@ use reifydb_type::{
 	},
 };
 
-use crate::evaluate::ColumnEvaluationContext;
+use crate::evaluate::EvalContext;
 
 pub(crate) fn mul_columns(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	left: &Column,
 	right: &Column,
 	fragment: impl LazyFragment + Copy,
@@ -825,7 +825,7 @@ pub(crate) fn mul_columns(
 }
 
 fn mul_numeric<'a, L, R>(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
@@ -882,7 +882,7 @@ where
 }
 
 fn mul_numeric_clone<'a, L, R>(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,

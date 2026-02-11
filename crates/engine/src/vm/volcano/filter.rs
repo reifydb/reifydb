@@ -16,7 +16,7 @@ use reifydb_type::util::bitvec::BitVec;
 use tracing::instrument;
 
 use crate::{
-	evaluate::compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
+	evaluate::compiled::{CompileContext, CompiledExpr, EvalContext, compile_expression},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -98,7 +98,7 @@ impl QueryNode for FilterNode {
 					}
 
 					// Create execution context for all current rows
-					let exec_ctx = ExecContext {
+					let exec_ctx = EvalContext {
 						target: None,
 						columns: columns.clone(),
 						row_count,
@@ -176,7 +176,7 @@ impl FilterNode {
 		let mut mask = BitVec::repeat(row_count, true);
 
 		for compiled_expr in compiled {
-			let exec_ctx = ExecContext {
+			let exec_ctx = EvalContext {
 				target: None,
 				columns: columns.clone(),
 				row_count,

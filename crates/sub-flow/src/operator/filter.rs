@@ -12,10 +12,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::{
-	evaluate::{
-		ColumnEvaluationContext,
-		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
-	},
+	evaluate::compiled::{CompileContext, CompiledExpr, EvalContext, compile_expression},
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
@@ -76,7 +73,7 @@ impl FilterOperator {
 			return Ok(Vec::new());
 		}
 
-		let ctx = ColumnEvaluationContext {
+		let exec_ctx = EvalContext {
 			target: None,
 			columns: columns.clone(),
 			row_count,
@@ -84,12 +81,12 @@ impl FilterOperator {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
+			functions: &self.functions,
+			clock: &self.clock,
 		};
 
 		// Start with all rows passing
 		let mut mask = vec![true; row_count];
-
-		let exec_ctx = ExecContext::from_column_eval_ctx(&ctx, &self.functions, &self.clock);
 
 		for compiled_condition in &self.compiled_conditions {
 			let result_col = compiled_condition.execute(&exec_ctx)?;

@@ -11,7 +11,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	evaluate::{ColumnEvaluationContext, column::cast::cast_column_data},
+	evaluate::{EvalContext, column::cast::cast_column_data},
 	vm::volcano::query::QueryContext,
 };
 
@@ -45,7 +45,7 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 	let value_str = value.to_string();
 
 	let coerced_column = cast_column_data(
-		&ColumnEvaluationContext {
+		&EvalContext {
 			target: Some(TargetColumn::Resolved(column)),
 			columns: Columns::empty(),
 			row_count: 1,
@@ -53,6 +53,8 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 			params: &ctx.params,
 			symbol_table: &ctx.stack,
 			is_aggregate_context: false,
+			functions: &ctx.services.functions,
+			clock: &ctx.services.clock,
 		},
 		&temp_column_data,
 		target,

@@ -7,10 +7,12 @@ use reifydb_core::{
 	interface::catalog::column::ColumnDef,
 	value::column::{columns::Columns, data::ColumnData},
 };
+use reifydb_function::registry::Functions;
+use reifydb_runtime::clock::Clock;
 use reifydb_type::{fragment::Fragment, params::Params};
 
 use crate::{
-	evaluate::{ColumnEvaluationContext, column::cast::cast_column_data},
+	evaluate::{EvalContext, column::cast::cast_column_data},
 	vm::stack::SymbolTable,
 };
 
@@ -20,7 +22,7 @@ pub(super) fn coerce_columns(
 	columns: &[ColumnDef],
 	num_rows: usize,
 ) -> crate::Result<Vec<ColumnData>> {
-	let ctx = ColumnEvaluationContext {
+	let ctx = EvalContext {
 		target: None,
 		columns: Columns::empty(),
 		row_count: num_rows,
@@ -28,6 +30,8 @@ pub(super) fn coerce_columns(
 		params: &Params::None,
 		symbol_table: &SymbolTable::new(),
 		is_aggregate_context: false,
+		functions: &Functions::empty(),
+		clock: &Clock::default(),
 	};
 
 	let mut coerced_columns: Vec<ColumnData> = Vec::with_capacity(columns.len());

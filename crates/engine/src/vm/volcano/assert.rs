@@ -10,7 +10,7 @@ use reifydb_type::{error::diagnostic::assert::assertion_failed, return_error};
 use tracing::instrument;
 
 use crate::{
-	evaluate::{ColumnEvaluationContext, column::evaluate},
+	evaluate::{EvalContext, column::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -50,7 +50,7 @@ impl QueryNode for AssertNode {
 
 			// Evaluate each assert expression
 			for assert_expr in &self.expressions {
-				let eval_ctx = ColumnEvaluationContext {
+				let eval_ctx = EvalContext {
 					target: None,
 					columns: columns.clone(),
 					row_count,
@@ -58,6 +58,8 @@ impl QueryNode for AssertNode {
 					params: &stored_ctx.params,
 					symbol_table: &stored_ctx.stack,
 					is_aggregate_context: false,
+					functions: &stored_ctx.services.functions,
+					clock: &stored_ctx.services.clock,
 				};
 
 				let result = evaluate(
@@ -141,7 +143,7 @@ impl QueryNode for AssertWithoutInputNode {
 		let stored_ctx = self.context.as_ref().unwrap();
 
 		for assert_expr in &self.expressions {
-			let eval_ctx = ColumnEvaluationContext {
+			let eval_ctx = EvalContext {
 				target: None,
 				columns: Columns::empty(),
 				row_count: 1,
@@ -149,6 +151,8 @@ impl QueryNode for AssertWithoutInputNode {
 				params: &stored_ctx.params,
 				symbol_table: &stored_ctx.stack,
 				is_aggregate_context: false,
+				functions: &stored_ctx.services.functions,
+				clock: &stored_ctx.services.clock,
 			};
 
 			let result = evaluate(

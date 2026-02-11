@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, error::diagnostic::function::generator_not_found, fragment::Fragment, params::Params};
 
 use crate::{
-	evaluate::{ColumnEvaluationContext, column::evaluate},
+	evaluate::{EvalContext, column::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -58,7 +58,7 @@ impl QueryNode for GeneratorNode {
 		let generator = self.generator.as_ref().unwrap();
 
 		let stored_ctx = self.context.as_ref().unwrap();
-		let evaluation_ctx = ColumnEvaluationContext {
+		let evaluation_ctx = EvalContext {
 			target: None,
 			columns: Columns::empty(), // No input columns for generator functions
 			row_count: 1,              // Single evaluation context
@@ -70,6 +70,8 @@ impl QueryNode for GeneratorNode {
 				)
 			},
 			is_aggregate_context: false,
+			functions: &stored_ctx.services.functions,
+			clock: &stored_ctx.services.clock,
 		};
 
 		// Evaluate all parameter expressions into columns

@@ -12,7 +12,7 @@ use reifydb_runtime::clock::Clock;
 use reifydb_type::{error, error::diagnostic::function, fragment::Fragment, params::Params, value::Value};
 
 use crate::{
-	evaluate::ColumnEvaluationContext,
+	evaluate::EvalContext,
 	vm::{
 		scalar,
 		stack::{SymbolTable, Variable},
@@ -42,7 +42,7 @@ fn column_data_from_values(values: &[Value]) -> ColumnData {
 }
 
 pub(crate) fn call_eval(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	call: &CallExpression,
 	functions: &Functions,
 	clock: &Clock,
@@ -83,7 +83,7 @@ pub(crate) fn call_eval(
 
 /// Execute a user-defined function for each row, returning a column of results
 fn call_user_defined_function(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	call: &CallExpression,
 	func_def: CompiledFunctionDef,
 	arguments: &Columns,
@@ -357,7 +357,7 @@ fn execute_function_body_for_scalar(
 			Instruction::Query(plan) => match plan {
 				QueryPlan::Map(map_node) => {
 					if map_node.input.is_none() && !map_node.map.is_empty() {
-						let evaluation_context = ColumnEvaluationContext {
+						let evaluation_context = EvalContext {
 							target: None,
 							columns: Columns::empty(),
 							row_count: 1,
@@ -365,6 +365,8 @@ fn execute_function_body_for_scalar(
 							params,
 							symbol_table,
 							is_aggregate_context: false,
+							functions,
+							clock,
 						};
 						let result_column = super::evaluate(
 							&evaluation_context,
@@ -460,7 +462,7 @@ fn execute_function_body_for_scalar(
 }
 
 fn handle_aggregate_function(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	call: &CallExpression,
 	mut aggregate_fn: Box<dyn AggregateFunction>,
 	functions: &Functions,
@@ -501,12 +503,12 @@ fn handle_aggregate_function(
 }
 
 fn evaluate_arguments(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	expressions: &Vec<Expression>,
 	functions: &Functions,
 	clock: &Clock,
 ) -> crate::Result<Columns> {
-	let inner_ctx = ColumnEvaluationContext {
+	let inner_ctx = EvalContext {
 		target: None,
 		columns: ctx.columns.clone(),
 		row_count: ctx.row_count,
@@ -514,6 +516,8 @@ fn evaluate_arguments(
 		params: ctx.params,
 		symbol_table: ctx.symbol_table,
 		is_aggregate_context: ctx.is_aggregate_context,
+		functions: ctx.functions,
+		clock: ctx.clock,
 	};
 	let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
 

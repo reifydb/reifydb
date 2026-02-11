@@ -24,7 +24,7 @@ use super::{
 		query::{QueryContext, QueryNode},
 	},
 };
-use crate::evaluate::{ColumnEvaluationContext, column::evaluate};
+use crate::evaluate::{EvalContext, column::evaluate};
 
 const MAX_ITERATIONS: usize = 10_000;
 
@@ -559,7 +559,7 @@ impl Vm {
 						self.stack.push(stack_value);
 					} else {
 						// Built-in function: evaluate via column evaluator
-						let evaluation_context = ColumnEvaluationContext {
+						let evaluation_context = EvalContext {
 							target: None,
 							columns: Columns::empty(),
 							row_count: 1,
@@ -567,6 +567,8 @@ impl Vm {
 							params,
 							symbol_table: &self.symbol_table,
 							is_aggregate_context: false,
+							functions: &services.functions,
+							clock: &services.clock,
 						};
 
 						let mut arg_exprs = Vec::with_capacity(arity);

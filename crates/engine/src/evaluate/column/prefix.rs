@@ -19,15 +19,15 @@ use reifydb_type::{
 	value::{decimal::Decimal, int::Int, uint::Uint},
 };
 
-use crate::evaluate::column::ColumnEvaluationContext;
+use crate::evaluate::EvalContext;
 
 pub(crate) fn prefix_eval(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	prefix: &PrefixExpression,
 	functions: &Functions,
 	clock: &Clock,
 ) -> crate::Result<Column> {
-	let inner_ctx = ColumnEvaluationContext {
+	let inner_ctx = EvalContext {
 		target: None,
 		columns: ctx.columns.clone(),
 		row_count: ctx.row_count,
@@ -35,6 +35,8 @@ pub(crate) fn prefix_eval(
 		params: ctx.params,
 		symbol_table: ctx.symbol_table,
 		is_aggregate_context: ctx.is_aggregate_context,
+		functions: ctx.functions,
+		clock: ctx.clock,
 	};
 	let column = super::evaluate(&inner_ctx, &prefix.expression, functions, clock)?;
 

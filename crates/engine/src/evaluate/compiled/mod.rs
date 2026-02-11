@@ -4,7 +4,7 @@
 pub mod context;
 pub mod expr;
 
-pub use context::{CompileContext, ExecContext};
+pub use context::{CompileContext, EvalContext};
 pub use expr::CompiledExpr;
 use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::Expression;
@@ -62,10 +62,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 
 		Expression::Column(e) => {
 			let expr = e.clone();
-			CompiledExpr::new(move |ctx| {
-				let eval_ctx = ctx.to_column_eval_ctx();
-				column_lookup(&eval_ctx, &expr)
-			})
+			CompiledExpr::new(move |ctx| column_lookup(ctx, &expr))
 		}
 
 		Expression::Variable(e) => {
@@ -105,10 +102,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 
 		Expression::Parameter(e) => {
 			let expr = e.clone();
-			CompiledExpr::new(move |ctx| {
-				let eval_ctx = ctx.to_column_eval_ctx();
-				crate::evaluate::column::parameter::parameter_lookup(&eval_ctx, &expr)
-			})
+			CompiledExpr::new(move |ctx| crate::evaluate::column::parameter::parameter_lookup(ctx, &expr))
 		}
 
 		Expression::Alias(e) => {
@@ -128,8 +122,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
-				add_columns(&eval_ctx, &l, &r, || fragment.clone())
+				add_columns(ctx, &l, &r, || fragment.clone())
 			})
 		}
 
@@ -140,8 +133,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
-				sub_columns(&eval_ctx, &l, &r, || fragment.clone())
+				sub_columns(ctx, &l, &r, || fragment.clone())
 			})
 		}
 
@@ -152,8 +144,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
-				mul_columns(&eval_ctx, &l, &r, || fragment.clone())
+				mul_columns(ctx, &l, &r, || fragment.clone())
 			})
 		}
 
@@ -164,8 +155,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
-				div_columns(&eval_ctx, &l, &r, || fragment.clone())
+				div_columns(ctx, &l, &r, || fragment.clone())
 			})
 		}
 
@@ -176,8 +166,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
-				rem_columns(&eval_ctx, &l, &r, || fragment.clone())
+				rem_columns(ctx, &l, &r, || fragment.clone())
 			})
 		}
 
@@ -188,9 +177,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
 				compare_columns::<Equal>(
-					&eval_ctx,
+					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -206,9 +194,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
 				compare_columns::<NotEqual>(
-					&eval_ctx,
+					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -224,9 +211,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
 				compare_columns::<GreaterThan>(
-					&eval_ctx,
+					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -242,9 +228,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
 				compare_columns::<GreaterThanEqual>(
-					&eval_ctx,
+					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -260,9 +245,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
 				compare_columns::<LessThan>(
-					&eval_ctx,
+					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -278,9 +262,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
 				compare_columns::<LessThanEqual>(
-					&eval_ctx,
+					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -325,8 +308,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 		Expression::Prefix(e) => {
 			let expr = e.clone();
 			CompiledExpr::new(move |ctx| {
-				let eval_ctx = ctx.to_column_eval_ctx();
-				crate::evaluate::column::prefix::prefix_eval(&eval_ctx, &expr, ctx.functions, ctx.clock)
+				crate::evaluate::column::prefix::prefix_eval(ctx, &expr, ctx.functions, ctx.clock)
 			})
 		}
 
@@ -345,8 +327,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			let col_name = e.column.name.text().to_string();
 			let expr = e.clone();
 			CompiledExpr::new_access(col_name, move |ctx| {
-				let eval_ctx = ctx.to_column_eval_ctx();
-				crate::evaluate::column::access::access_lookup(&eval_ctx, &expr)
+				crate::evaluate::column::access::access_lookup(ctx, &expr)
 			})
 		}
 
@@ -368,17 +349,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let value_col = value.execute(ctx)?;
 				let lower_col = lower.execute(ctx)?;
 				let upper_col = upper.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
 
 				let ge_result = compare_columns::<GreaterThanEqual>(
-					&eval_ctx,
+					ctx,
 					&value_col,
 					&lower_col,
 					fragment.clone(),
 					greater_than_equal_cannot_be_applied_to_incompatible_types,
 				)?;
 				let le_result = compare_columns::<LessThanEqual>(
-					&eval_ctx,
+					ctx,
 					&value_col,
 					&upper_col,
 					fragment.clone(),
@@ -457,11 +437,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				}
 
 				let value_col = value.execute(ctx)?;
-				let eval_ctx = ctx.to_column_eval_ctx();
 
 				let first_col = list[0].execute(ctx)?;
 				let mut result = compare_columns::<Equal>(
-					&eval_ctx,
+					ctx,
 					&value_col,
 					&first_col,
 					fragment.clone(),
@@ -471,7 +450,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				for list_expr in list.iter().skip(1) {
 					let list_col = list_expr.execute(ctx)?;
 					let eq_result = compare_columns::<Equal>(
-						&eval_ctx,
+						ctx,
 						&value_col,
 						&list_col,
 						fragment.clone(),
@@ -511,9 +490,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let inner_fragment = e.expression.full_fragment_owned();
 				CompiledExpr::new(move |ctx| {
 					let column = inner.execute(ctx)?;
-					let eval_ctx = ctx.to_column_eval_ctx();
 					let frag = inner_fragment.clone();
-					let casted = cast_column_data(&eval_ctx, &column.data(), target_type, &|| {
+					let casted = cast_column_data(ctx, &column.data(), target_type, &|| {
 						inner_fragment.clone()
 					})
 					.map_err(|e| error!(cast::invalid_number(frag, target_type, e.diagnostic())))?;
@@ -560,10 +538,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 
 		Expression::Call(e) => {
 			let expr = e.clone();
-			CompiledExpr::new(move |ctx| {
-				let eval_ctx = ctx.to_column_eval_ctx();
-				call_eval(&eval_ctx, &expr, ctx.functions, ctx.clock)
-			})
+			CompiledExpr::new(move |ctx| call_eval(ctx, &expr, ctx.functions, ctx.clock))
 		}
 	})
 }
@@ -841,7 +816,7 @@ fn is_truthy(value: &Value) -> bool {
 }
 
 fn execute_if_multi(
-	ctx: &ExecContext,
+	ctx: &EvalContext,
 	condition: &CompiledExpr,
 	then_expr: &[CompiledExpr],
 	else_ifs: &[(CompiledExpr, Vec<CompiledExpr>)],
@@ -926,7 +901,7 @@ fn execute_if_multi(
 	}
 }
 
-fn execute_multi_exprs(ctx: &ExecContext, exprs: &[CompiledExpr]) -> crate::Result<Vec<Column>> {
+fn execute_multi_exprs(ctx: &EvalContext, exprs: &[CompiledExpr]) -> crate::Result<Vec<Column>> {
 	let mut result = Vec::new();
 	for expr in exprs {
 		result.extend(expr.execute_multi(ctx)?);
@@ -934,7 +909,7 @@ fn execute_multi_exprs(ctx: &ExecContext, exprs: &[CompiledExpr]) -> crate::Resu
 	Ok(result)
 }
 
-fn execute_map_multi(ctx: &ExecContext, expressions: &[CompiledExpr]) -> crate::Result<Vec<Column>> {
+fn execute_map_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> crate::Result<Vec<Column>> {
 	let mut result = Vec::with_capacity(expressions.len());
 
 	for expr in expressions {
@@ -949,7 +924,7 @@ fn execute_map_multi(ctx: &ExecContext, expressions: &[CompiledExpr]) -> crate::
 	Ok(result)
 }
 
-fn execute_extend_multi(ctx: &ExecContext, expressions: &[CompiledExpr]) -> crate::Result<Vec<Column>> {
+fn execute_extend_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> crate::Result<Vec<Column>> {
 	let mut result = Vec::with_capacity(expressions.len());
 
 	for expr in expressions {

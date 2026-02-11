@@ -12,10 +12,10 @@ pub mod uuid;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{err, error::diagnostic::cast, fragment::LazyFragment, value::r#type::Type};
 
-use crate::evaluate::ColumnEvaluationContext;
+use crate::evaluate::EvalContext;
 
 pub fn cast_column_data(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	data: &ColumnData,
 	target: Type,
 	lazy_fragment: impl LazyFragment + Clone,
@@ -57,11 +57,11 @@ pub mod tests {
 	use reifydb_runtime::clock::Clock;
 	use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
-	use crate::evaluate::{ColumnEvaluationContext, column::evaluate};
+	use crate::evaluate::{EvalContext, column::evaluate};
 
 	#[test]
 	fn test_cast_integer() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
@@ -84,7 +84,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_negative_integer() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
@@ -111,7 +111,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_negative_min() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
@@ -138,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_float_8() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
@@ -161,7 +161,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_float_4() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
@@ -184,7 +184,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_negative_float_4() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
@@ -207,7 +207,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_negative_float_8() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
@@ -230,7 +230,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_string_to_bool() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
@@ -253,7 +253,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_string_neg_one_to_bool_should_fail() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
@@ -284,7 +284,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_boolean_to_date_should_fail() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
@@ -312,7 +312,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cast_text_to_decimal() {
-		let mut ctx = ColumnEvaluationContext::testing();
+		let mut ctx = EvalContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {

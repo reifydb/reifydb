@@ -21,9 +21,11 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
-	evaluate::{ColumnEvaluationContext, column::cast::cast_column_data},
+	evaluate::{EvalContext, column::cast::cast_column_data},
 	vm::stack::SymbolTable,
 };
+use reifydb_function::registry::Functions;
+use reifydb_runtime::clock::Clock;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -58,7 +60,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 		// Create context with Undefined saturation policy for this column
 		// This ensures overflow during cast produces undefined instead of errors
 		// FIXME how to handle failing views ?!
-		let ctx = ColumnEvaluationContext {
+		let ctx = EvalContext {
 			target: Some(TargetColumn::Partial {
 				source_name: None,
 				column_name: Some(target_col.name.clone()),
@@ -71,6 +73,8 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
+			functions: &Functions::empty(),
+			clock: &Clock::default(),
 		};
 
 		if let Some(source_col) = columns.column(&target_col.name) {
@@ -121,7 +125,7 @@ pub(crate) fn coerce_subscription_columns(
 		let target_type = target_col.ty;
 
 		// Create context with Undefined saturation policy for this column
-		let ctx = ColumnEvaluationContext {
+		let ctx = EvalContext {
 			target: Some(TargetColumn::Partial {
 				source_name: None,
 				column_name: Some(target_col.name.clone()),
@@ -134,6 +138,8 @@ pub(crate) fn coerce_subscription_columns(
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
+			functions: &Functions::empty(),
+			clock: &Clock::default(),
 		};
 
 		if let Some(source_col) = columns.column(&target_col.name) {

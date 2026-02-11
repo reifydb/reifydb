@@ -7,9 +7,9 @@ use reifydb_core::{error::diagnostic::query::column_not_found, value::column::Co
 use reifydb_rql::expression::AccessPrimitiveExpression;
 use reifydb_type::{error, fragment::Fragment};
 
-use crate::evaluate::ColumnEvaluationContext;
+use crate::evaluate::EvalContext;
 
-pub(crate) fn access_lookup(ctx: &ColumnEvaluationContext, expr: &AccessPrimitiveExpression) -> crate::Result<Column> {
+pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessPrimitiveExpression) -> crate::Result<Column> {
 	use reifydb_core::interface::identifier::ColumnPrimitive;
 
 	// Extract primitive name based on the ColumnPrimitive type

@@ -12,7 +12,7 @@ use tracing::instrument;
 
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
 use crate::{
-	evaluate::compiled::{CompileContext, ExecContext, compile_expression},
+	evaluate::compiled::{CompileContext, EvalContext, compile_expression},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -95,7 +95,7 @@ impl QueryNode for InnerJoinNode {
 					&self.alias,
 				);
 
-				let exec_ctx = ExecContext {
+				let exec_ctx = EvalContext {
 					target: None,
 					columns: Columns::new(eval_columns),
 					row_count: 1,

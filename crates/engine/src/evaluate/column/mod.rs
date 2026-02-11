@@ -6,7 +6,7 @@ use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::clock::Clock;
 
-use crate::evaluate::ColumnEvaluationContext;
+use crate::evaluate::EvalContext;
 
 pub mod access;
 pub mod alias;
@@ -25,21 +25,15 @@ pub mod prefix;
 pub mod tuple;
 pub mod variable;
 
-pub fn evaluate(
-	ctx: &ColumnEvaluationContext,
-	expr: &Expression,
-	functions: &Functions,
-	clock: &Clock,
-) -> crate::Result<Column> {
-	use crate::evaluate::compiled::{CompileContext, ExecContext, compile_expression};
+pub fn evaluate(ctx: &EvalContext, expr: &Expression, _functions: &Functions, _clock: &Clock) -> crate::Result<Column> {
+	use crate::evaluate::compiled::{CompileContext, compile_expression};
 
 	let compile_ctx = CompileContext {
-		functions,
+		functions: ctx.functions,
 		symbol_table: ctx.symbol_table,
 	};
 	let compiled = compile_expression(&compile_ctx, expr)?;
-	let exec_ctx = ExecContext::from_column_eval_ctx(ctx, functions, clock);
-	let column = compiled.execute(&exec_ctx)?;
+	let column = compiled.execute(ctx)?;
 
 	// Ensures that result column data type matches the expected target column type
 	if let Some(ty) = ctx.target.as_ref().map(|c| c.column_type()) {

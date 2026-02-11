@@ -15,7 +15,7 @@ use tracing::instrument;
 use crate::{
 	evaluate::{
 		column::cast::cast_column_data,
-		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
+		compiled::{CompileContext, CompiledExpr, EvalContext, compile_expression},
 	},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -73,7 +73,7 @@ impl QueryNode for PatchNode {
 			let expressions = &self.expressions;
 			let mut patch_columns = Vec::with_capacity(expressions.len());
 			for (expr, compiled_expr) in expressions.iter().zip(compiled.iter()) {
-				let mut exec_ctx = ExecContext {
+				let mut exec_ctx = EvalContext {
 					target: None,
 					columns: columns.clone(),
 					row_count,
@@ -105,9 +105,8 @@ impl QueryNode for PatchNode {
 
 				if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
 					if column.data.get_type() != target_type {
-						let eval_ctx = exec_ctx.to_column_eval_ctx();
 						let data = cast_column_data(
-							&eval_ctx,
+							&exec_ctx,
 							&column.data,
 							target_type,
 							&expr.lazy_fragment(),

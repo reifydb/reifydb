@@ -16,9 +16,9 @@ use reifydb_type::{
 	},
 };
 
-use crate::evaluate::ColumnEvaluationContext;
+use crate::evaluate::EvalContext;
 
-impl ColumnEvaluationContext<'_> {
+impl EvalContext<'_> {
 	pub fn add<'a, L, R>(
 		&self,
 		l: &L,
@@ -68,7 +68,7 @@ impl ColumnEvaluationContext<'_> {
 	}
 }
 
-impl ColumnEvaluationContext<'_> {
+impl EvalContext<'_> {
 	pub fn sub<'a, L, R>(
 		&self,
 		l: &L,
@@ -118,7 +118,7 @@ impl ColumnEvaluationContext<'_> {
 	}
 }
 
-impl ColumnEvaluationContext<'_> {
+impl EvalContext<'_> {
 	pub fn mul<'a, L, R>(
 		&self,
 		l: &L,
@@ -168,7 +168,7 @@ impl ColumnEvaluationContext<'_> {
 	}
 }
 
-impl ColumnEvaluationContext<'_> {
+impl EvalContext<'_> {
 	pub fn div<'a, L, R>(
 		&self,
 		l: &L,
@@ -218,7 +218,7 @@ impl ColumnEvaluationContext<'_> {
 	}
 }
 
-impl ColumnEvaluationContext<'_> {
+impl EvalContext<'_> {
 	pub fn remainder<'a, L, R>(
 		&self,
 		l: &L,
@@ -272,39 +272,39 @@ impl ColumnEvaluationContext<'_> {
 pub mod tests {
 	use reifydb_type::fragment::Fragment;
 
-	use crate::evaluate::ColumnEvaluationContext;
+	use crate::evaluate::EvalContext;
 
 	#[test]
 	fn test_add() {
-		let test_instance = ColumnEvaluationContext::testing();
+		let test_instance = EvalContext::testing();
 		let result = test_instance.add(&1i8, &255i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(256i128)));
 	}
 
 	#[test]
 	fn test_sub() {
-		let test_instance = ColumnEvaluationContext::testing();
+		let test_instance = EvalContext::testing();
 		let result = test_instance.sub(&1i8, &255i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(-254i128)));
 	}
 
 	#[test]
 	fn test_mul() {
-		let test_instance = ColumnEvaluationContext::testing();
+		let test_instance = EvalContext::testing();
 		let result = test_instance.mul(&23i8, &255i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(5865i128)));
 	}
 
 	#[test]
 	fn test_div() {
-		let test_instance = ColumnEvaluationContext::testing();
+		let test_instance = EvalContext::testing();
 		let result = test_instance.div(&120i8, &20i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(6i128)));
 	}
 
 	#[test]
 	fn test_remainder() {
-		let test_instance = ColumnEvaluationContext::testing();
+		let test_instance = EvalContext::testing();
 		let result = test_instance.remainder(&120i8, &21i16, || Fragment::testing_empty());
 		assert_eq!(result, Ok(Some(15i128)));
 	}

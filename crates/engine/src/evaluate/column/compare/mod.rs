@@ -22,7 +22,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::evaluate::column::ColumnEvaluationContext;
+use crate::evaluate::column::EvalContext;
 
 pub mod between;
 pub mod equal;
@@ -100,7 +100,7 @@ impl CompareOp for LessThanEqual {
 
 #[inline]
 fn compare_number<Op: CompareOp, L, R>(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	fragment: Fragment,
@@ -224,7 +224,7 @@ fn compare_utf8<Op: CompareOp>(l: &Utf8Container, r: &Utf8Container, fragment: F
 
 #[inline]
 fn compare_bool<Op: CompareOp>(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	l: &BoolContainer,
 	r: &BoolContainer,
 	fragment: Fragment,
@@ -269,7 +269,7 @@ fn compare_bool<Op: CompareOp>(
 }
 
 pub(crate) fn compare_columns<Op: CompareOp>(
-	ctx: &ColumnEvaluationContext,
+	ctx: &EvalContext,
 	left: &Column,
 	right: &Column,
 	fragment: Fragment,

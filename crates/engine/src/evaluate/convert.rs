@@ -9,7 +9,7 @@ use reifydb_type::{
 	value::{number::safe::convert::SafeConvert, r#type::get::GetType},
 };
 
-use crate::evaluate::ColumnEvaluationContext;
+use crate::evaluate::EvalContext;
 
 pub trait Convert {
 	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_type::Result<Option<To>>
@@ -18,7 +18,7 @@ pub trait Convert {
 		To: GetType;
 }
 
-impl Convert for ColumnEvaluationContext<'_> {
+impl Convert for EvalContext<'_> {
 	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_type::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
@@ -28,7 +28,7 @@ impl Convert for ColumnEvaluationContext<'_> {
 	}
 }
 
-impl Convert for &ColumnEvaluationContext<'_> {
+impl Convert for &EvalContext<'_> {
 	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_type::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,

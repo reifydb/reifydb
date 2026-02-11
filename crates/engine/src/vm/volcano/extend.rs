@@ -16,7 +16,7 @@ use tracing::instrument;
 use crate::{
 	evaluate::{
 		column::cast::cast_column_data,
-		compiled::{CompileContext, CompiledExpr, ExecContext, compile_expression},
+		compiled::{CompileContext, CompiledExpr, EvalContext, compile_expression},
 	},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -71,7 +71,7 @@ impl QueryNode for ExtendNode {
 			// Add the new derived columns
 			let expressions = &self.expressions;
 			for (expr, compiled_expr) in expressions.iter().zip(compiled.iter()) {
-				let mut exec_ctx = ExecContext {
+				let mut exec_ctx = EvalContext {
 					target: None,
 					columns: Columns::new(new_columns.clone()),
 					row_count,
@@ -107,9 +107,8 @@ impl QueryNode for ExtendNode {
 
 				if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
 					if column.data.get_type() != target_type {
-						let eval_ctx = exec_ctx.to_column_eval_ctx();
 						let data = cast_column_data(
-							&eval_ctx,
+							&exec_ctx,
 							&column.data,
 							target_type,
 							&expr.lazy_fragment(),
@@ -252,7 +251,7 @@ impl QueryNode for ExtendWithoutInputNode {
 		let mut new_columns = Vec::with_capacity(self.expressions.len());
 
 		for compiled_expr in compiled {
-			let exec_ctx = ExecContext {
+			let exec_ctx = EvalContext {
 				target: None,
 				columns: columns.clone(),
 				row_count: 1,

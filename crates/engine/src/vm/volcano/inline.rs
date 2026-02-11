@@ -19,7 +19,7 @@ use reifydb_type::{
 
 use crate::{
 	evaluate::{
-		ColumnEvaluationContext,
+		EvalContext,
 		column::{cast::cast_column_data, evaluate},
 	},
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -168,7 +168,7 @@ impl<'a> InlineDataNode {
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(&column_name) {
-					let ctx = ColumnEvaluationContext {
+					let ctx = EvalContext {
 						target: None,
 						columns: Columns::empty(),
 						row_count: 1,
@@ -176,6 +176,8 @@ impl<'a> InlineDataNode {
 						params: &ctx.params,
 						symbol_table: &ctx.stack,
 						is_aggregate_context: false,
+						functions: &self.context.as_ref().unwrap().services.functions,
+						clock: &self.context.as_ref().unwrap().services.clock,
 					};
 
 					let evaluated = evaluate(
@@ -234,7 +236,7 @@ impl<'a> InlineDataNode {
 					} else {
 						// Cast to the wide type
 						let temp_data = ColumnData::from(value.clone());
-						let ctx = ColumnEvaluationContext {
+						let ctx = EvalContext {
 							target: None,
 							columns: Columns::empty(),
 							row_count: 1,
@@ -242,6 +244,8 @@ impl<'a> InlineDataNode {
 							params: &ctx.params,
 							symbol_table: &ctx.stack,
 							is_aggregate_context: false,
+							functions: &self.context.as_ref().unwrap().services.functions,
+							clock: &self.context.as_ref().unwrap().services.clock,
 						};
 
 						match cast_column_data(&ctx, &temp_data, wide_type, || Fragment::none())
@@ -269,7 +273,7 @@ impl<'a> InlineDataNode {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
 				if optimal_type != Type::Int16 {
 					// Demote to the optimal type
-					let ctx = ColumnEvaluationContext {
+					let ctx = EvalContext {
 						target: None,
 						columns: Columns::empty(),
 						row_count: column_data.len(),
@@ -277,6 +281,8 @@ impl<'a> InlineDataNode {
 						params: &ctx.params,
 						symbol_table: &ctx.stack,
 						is_aggregate_context: false,
+						functions: &self.context.as_ref().unwrap().services.functions,
+						clock: &self.context.as_ref().unwrap().services.clock,
 					};
 
 					if let Ok(demoted) =
@@ -328,7 +334,7 @@ impl<'a> InlineDataNode {
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(column_name.text()) {
-					let ctx = ColumnEvaluationContext {
+					let ctx = EvalContext {
 						target: Some(TargetColumn::Partial {
 							source_name: Some(source.identifier().text().to_string()),
 							column_name: Some(table_column.name.clone()),
@@ -345,6 +351,8 @@ impl<'a> InlineDataNode {
 						params: &ctx.params,
 						symbol_table: &ctx.stack,
 						is_aggregate_context: false,
+						functions: &self.context.as_ref().unwrap().services.functions,
+						clock: &self.context.as_ref().unwrap().services.clock,
 					};
 
 					let evaluated = evaluate(

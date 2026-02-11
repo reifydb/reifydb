@@ -8,9 +8,9 @@ use reifydb_core::{
 use reifydb_rql::expression::ParameterExpression;
 use reifydb_type::{error, fragment::Fragment, value::Value};
 
-use crate::evaluate::ColumnEvaluationContext;
+use crate::evaluate::EvalContext;
 
-pub(crate) fn parameter_lookup(ctx: &ColumnEvaluationContext, expr: &ParameterExpression) -> crate::Result<Column> {
+pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) -> crate::Result<Column> {
 	let value = match expr {
 		ParameterExpression::Positional {
 			fragment,
