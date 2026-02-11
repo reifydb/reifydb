@@ -30,8 +30,10 @@ use super::{context::ExecContext, expr::CompiledExpr};
 use crate::{
 	evaluate::column::{
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
+		call::call_eval,
 		cast::cast_column_data,
 		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns},
+		constant::{constant_value, constant_value_of},
 	},
 	vm::stack::Variable,
 };
@@ -43,15 +45,14 @@ impl CompiledExpr {
 				let row_count = ctx.take.unwrap_or(ctx.row_count);
 				Ok(Column {
 					name: expr.full_fragment_owned(),
-					data: crate::evaluate::column::constant::constant_value(expr, row_count)?,
+					data: constant_value(expr, row_count)?,
 				})
 			}
 
 			// Leaf nodes
 			CompiledExpr::Column(expr) => {
 				let eval_ctx = ctx.to_column_eval_ctx();
-				let evaluator = &ctx.evaluator;
-				evaluator.column(&eval_ctx, expr)
+				crate::evaluate::column::column::column_lookup(&eval_ctx, expr)
 			}
 
 			CompiledExpr::Variable(expr) => {
@@ -88,8 +89,7 @@ impl CompiledExpr {
 
 			CompiledExpr::Parameter(expr) => {
 				let eval_ctx = ctx.to_column_eval_ctx();
-				let evaluator = &ctx.evaluator;
-				evaluator.parameter(&eval_ctx, expr)
+				crate::evaluate::column::parameter::parameter_lookup(&eval_ctx, expr)
 			}
 
 			// Unary
@@ -284,8 +284,7 @@ impl CompiledExpr {
 			// Prefix
 			CompiledExpr::Prefix(expr) => {
 				let eval_ctx = ctx.to_column_eval_ctx();
-				let evaluator = &ctx.evaluator;
-				evaluator.prefix(&eval_ctx, expr)
+				crate::evaluate::column::prefix::prefix_eval(&eval_ctx, expr, ctx.functions, ctx.clock)
 			}
 
 			// Type
@@ -302,8 +301,7 @@ impl CompiledExpr {
 			// AccessSource
 			CompiledExpr::AccessSource(expr) => {
 				let eval_ctx = ctx.to_column_eval_ctx();
-				let evaluator = &ctx.evaluator;
-				evaluator.access(&eval_ctx, expr)
+				crate::evaluate::column::access::access_lookup(&eval_ctx, expr)
 			}
 
 			// Tuple (single-element)
@@ -441,7 +439,6 @@ impl CompiledExpr {
 			} => {
 				// Optimization: constant values can be directly created with the target type
 				if let CompiledExpr::Constant(const_expr) = inner.as_ref() {
-					use crate::evaluate::column::constant::{constant_value, constant_value_of};
 					let row_count = ctx.take.unwrap_or(ctx.row_count);
 					let data = constant_value(const_expr, row_count)?;
 					let casted = if data.get_type() == *target_type {
@@ -506,11 +503,10 @@ impl CompiledExpr {
 				Ok(columns.into_iter().next().unwrap())
 			}
 
-			// Call (delegate to evaluator)
+			// Call
 			CompiledExpr::Call(expr) => {
 				let eval_ctx = ctx.to_column_eval_ctx();
-				let evaluator = &ctx.evaluator;
-				evaluator.call(&eval_ctx, expr)
+				call_eval(&eval_ctx, expr, ctx.functions, ctx.clock)
 			}
 		}
 	}

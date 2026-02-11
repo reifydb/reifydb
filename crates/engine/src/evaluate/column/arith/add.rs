@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
-use reifydb_rql::expression::AddExpression;
 use reifydb_type::{
 	error::diagnostic::operator::add_cannot_be_applied_to_incompatible_types,
 	fragment::{Fragment, LazyFragment},
@@ -18,16 +17,7 @@ use reifydb_type::{
 	},
 };
 
-use super::super::StandardColumnEvaluator;
 use crate::evaluate::ColumnEvaluationContext;
-
-impl StandardColumnEvaluator {
-	pub(crate) fn add(&self, ctx: &ColumnEvaluationContext, add: &AddExpression) -> crate::Result<Column> {
-		let left = self.evaluate(ctx, &add.left)?;
-		let right = self.evaluate(ctx, &add.right)?;
-		add_columns(ctx, &left, &right, || add.full_fragment_owned())
-	}
-}
 
 pub(crate) fn add_columns(
 	ctx: &ColumnEvaluationContext,

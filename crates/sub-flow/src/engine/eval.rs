@@ -66,9 +66,9 @@ pub fn evaluate_operator_config(
 		match expr {
 			Expression::Alias(alias_expr) => {
 				let key = alias_expr.alias.name().to_string();
-				// Compile and evaluate the expression
-				let compiled = compile_expression(&compile_ctx, &alias_expr.expression)?;
-				let column = compiled.execute(&exec_ctx)?;
+
+				let expr = compile_expression(&compile_ctx, &alias_expr.expression)?;
+				let column = expr.execute(&exec_ctx)?;
 
 				let value = if column.data().len() > 0 {
 					column.data().get_value(0)

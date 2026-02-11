@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
-use reifydb_rql::expression::RemExpression;
 use reifydb_type::{
 	error::diagnostic::operator::rem_cannot_be_applied_to_incompatible_types,
 	fragment::LazyFragment,
@@ -15,16 +14,7 @@ use reifydb_type::{
 	},
 };
 
-use super::super::StandardColumnEvaluator;
 use crate::evaluate::ColumnEvaluationContext;
-
-impl StandardColumnEvaluator {
-	pub(crate) fn rem(&self, ctx: &ColumnEvaluationContext, rem: &RemExpression) -> crate::Result<Column> {
-		let left = self.evaluate(ctx, &rem.left)?;
-		let right = self.evaluate(ctx, &rem.right)?;
-		rem_columns(ctx, &left, &right, || rem.full_fragment_owned())
-	}
-}
 
 pub(crate) fn rem_columns(
 	ctx: &ColumnEvaluationContext,

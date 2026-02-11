@@ -7,7 +7,7 @@ pub mod text;
 pub mod uuid;
 
 use number::NumberParser;
-use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_core::value::column::data::ColumnData;
 use reifydb_rql::expression::ConstantExpression;
 use reifydb_type::{
 	error::diagnostic::cast,
@@ -21,44 +21,6 @@ use reifydb_type::{
 };
 use temporal::TemporalParser;
 use text::TextParser;
-
-use crate::evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator};
-
-impl StandardColumnEvaluator {
-	pub(crate) fn constant<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext,
-		expr: &ConstantExpression,
-	) -> crate::Result<Column> {
-		let row_count = ctx.take.unwrap_or(ctx.row_count);
-		Ok(Column {
-			name: expr.full_fragment_owned(),
-			data: constant_value(&expr, row_count)?,
-		})
-	}
-
-	pub(crate) fn constant_of<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext,
-		expr: &ConstantExpression,
-		target: Type,
-	) -> crate::Result<Column> {
-		let row_count = ctx.take.unwrap_or(ctx.row_count);
-		let data = constant_value(&expr, row_count)?;
-		let casted = {
-			let source = data.get_type();
-			if source == target {
-				data
-			} else {
-				constant_value_of(&expr, target, row_count)?
-			}
-		};
-		Ok(Column {
-			name: expr.full_fragment_owned(),
-			data: casted,
-		})
-	}
-}
 
 pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> crate::Result<ColumnData> {
 	Ok(match expr {

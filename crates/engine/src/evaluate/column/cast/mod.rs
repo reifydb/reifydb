@@ -9,47 +9,10 @@ pub mod temporal;
 pub mod text;
 pub mod uuid;
 
-use std::ops::Deref;
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::{err, error::diagnostic::cast, fragment::LazyFragment, value::r#type::Type};
 
-use reifydb_core::value::column::{Column, data::ColumnData};
-use reifydb_rql::expression::{CastExpression, Expression};
-use reifydb_type::{err, error, error::diagnostic::cast, fragment::LazyFragment, value::r#type::Type};
-
-use crate::evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator};
-
-impl StandardColumnEvaluator {
-	pub(crate) fn cast(&self, ctx: &ColumnEvaluationContext, cast: &CastExpression) -> crate::Result<Column> {
-		// Use the inner expression's fragment for diagnostics, not the full cast expression
-		let inner_fragment = cast.expression.lazy_fragment();
-
-		// FIXME optimization does not apply for prefix expressions,
-		// like cast(-2 as int1) at the moment
-		match cast.expression.deref() {
-			// Optimization: it is a constant value and we now the
-			// target ty, therefore it is possible to create the
-			// data directly which means there is no reason to
-			// further adjust the column
-			Expression::Constant(expr) => self.constant_of(ctx, expr, cast.to.ty),
-			expr => {
-				let column = self.evaluate(ctx, expr)?;
-				let lazy_frag = cast.expression.lazy_fragment();
-				let casted =
-					cast_column_data(ctx, &column.data(), cast.to.ty, &lazy_frag).map_err(|e| {
-						error!(cast::invalid_number(
-							inner_fragment(),
-							cast.to.ty,
-							e.diagnostic()
-						))
-					})?;
-
-				Ok(Column {
-					name: column.name_owned(),
-					data: casted,
-				})
-			}
-		}
-	}
-}
+use crate::evaluate::ColumnEvaluationContext;
 
 pub fn cast_column_data(
 	ctx: &ColumnEvaluationContext,

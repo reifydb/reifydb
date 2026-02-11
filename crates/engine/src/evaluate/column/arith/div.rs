@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
-use reifydb_rql::expression::DivExpression;
 use reifydb_type::{
 	error::diagnostic::operator::div_cannot_be_applied_to_incompatible_types,
 	fragment::LazyFragment,
@@ -15,16 +14,7 @@ use reifydb_type::{
 	},
 };
 
-use super::super::StandardColumnEvaluator;
 use crate::evaluate::ColumnEvaluationContext;
-
-impl StandardColumnEvaluator {
-	pub(crate) fn div(&self, ctx: &ColumnEvaluationContext, div: &DivExpression) -> crate::Result<Column> {
-		let left = self.evaluate(ctx, &div.left)?;
-		let right = self.evaluate(ctx, &div.right)?;
-		div_columns(ctx, &left, &right, || div.full_fragment_owned())
-	}
-}
 
 pub(crate) fn div_columns(
 	ctx: &ColumnEvaluationContext,

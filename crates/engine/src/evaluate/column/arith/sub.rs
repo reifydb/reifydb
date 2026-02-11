@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
-use reifydb_rql::expression::SubExpression;
 use reifydb_type::{
 	error::diagnostic::operator::sub_cannot_be_applied_to_incompatible_types,
 	fragment::LazyFragment,
@@ -15,16 +14,7 @@ use reifydb_type::{
 	},
 };
 
-use super::super::StandardColumnEvaluator;
 use crate::evaluate::ColumnEvaluationContext;
-
-impl StandardColumnEvaluator {
-	pub(crate) fn sub(&self, ctx: &ColumnEvaluationContext, sub: &SubExpression) -> crate::Result<Column> {
-		let left = self.evaluate(ctx, &sub.left)?;
-		let right = self.evaluate(ctx, &sub.right)?;
-		sub_columns(ctx, &left, &right, || sub.full_fragment_owned())
-	}
-}
 
 pub(crate) fn sub_columns(
 	ctx: &ColumnEvaluationContext,

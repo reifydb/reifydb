@@ -6,10 +6,7 @@ use reifydb_function::registry::Functions;
 use reifydb_runtime::clock::Clock;
 use reifydb_type::params::Params;
 
-use crate::{
-	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
-	vm::stack::SymbolTable,
-};
+use crate::{evaluate::ColumnEvaluationContext, vm::stack::SymbolTable};
 
 /// Runtime context passed to `CompiledExpr::execute()`.
 ///
@@ -26,8 +23,6 @@ pub struct ExecContext<'a> {
 	// Resources for evaluator delegation
 	pub functions: &'a Functions,
 	pub clock: &'a Clock,
-	/// Cached evaluator for delegation to StandardColumnEvaluator methods.
-	pub(crate) evaluator: StandardColumnEvaluator,
 }
 
 impl<'a> ExecContext<'a> {
@@ -45,7 +40,6 @@ impl<'a> ExecContext<'a> {
 			params: ctx.params,
 			symbol_table: ctx.symbol_table,
 			is_aggregate_context: ctx.is_aggregate_context,
-			evaluator: StandardColumnEvaluator::new(functions.clone(), clock.clone()),
 			functions,
 			clock,
 		}
