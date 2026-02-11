@@ -163,14 +163,12 @@ impl JoinOperator {
 		// Evaluate all compiled expressions on the entire batch
 		let mut expr_columns = Vec::with_capacity(compiled_exprs.len());
 		for compiled_expr in compiled_exprs.iter() {
-			let col = match compiled_expr {
-				CompiledExpr::AccessSource(access_source) => {
-					let col_name = access_source.column.name.as_ref();
-					columns.column(col_name)
-						.cloned()
-						.unwrap_or_else(|| Column::undefined(col_name, row_count))
-				}
-				_ => compiled_expr.execute(&exec_ctx)?,
+			let col = if let Some(col_name) = compiled_expr.access_column_name() {
+				columns.column(col_name)
+					.cloned()
+					.unwrap_or_else(|| Column::undefined(col_name, row_count))
+			} else {
+				compiled_expr.execute(&exec_ctx)?
 			};
 			expr_columns.push(col);
 		}
