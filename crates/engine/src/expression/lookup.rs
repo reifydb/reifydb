@@ -24,6 +24,31 @@ use reifydb_type::value::{
 
 use crate::expression::context::EvalContext;
 
+macro_rules! extract_typed_column {
+	($col:expr, $take:expr, $variant:ident($x:ident) => $transform:expr, $default:expr, $constructor:ident) => {{
+		let mut data = Vec::new();
+		let mut bitvec = Vec::new();
+		let mut count = 0;
+		for v in $col.data().iter() {
+			if count >= $take {
+				break;
+			}
+			match v {
+				Value::$variant($x) => {
+					data.push($transform);
+					bitvec.push(true);
+				}
+				_ => {
+					data.push($default);
+					bitvec.push(false);
+				}
+			}
+			count += 1;
+		}
+		Ok($col.with_new_data(ColumnData::$constructor(data, bitvec)))
+	}};
+}
+
 pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> crate::Result<Column> {
 	let name = column.0.name.text();
 
@@ -48,615 +73,50 @@ fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column>
 	let col_type = col.data().get_type();
 
 	match col_type {
-		Type::Boolean => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Boolean(b) => {
-						data.push(b);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(false);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::bool_with_bitvec(data, bitvec)))
-		}
-		Type::Float4 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Float4(v) => {
-						data.push(v.value());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0.0f32);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::float4_with_bitvec(data, bitvec)))
-		}
-
-		Type::Float8 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Float8(v) => {
-						data.push(v.value());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0.0f64);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::float8_with_bitvec(data, bitvec)))
-		}
-
-		Type::Int1 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Int1(n) => {
-						data.push(n);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::int1_with_bitvec(data, bitvec)))
-		}
-
-		Type::Int2 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Int2(n) => {
-						data.push(n);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::int2_with_bitvec(data, bitvec)))
-		}
-
-		Type::Int4 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Int4(n) => {
-						data.push(n);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::int4_with_bitvec(data, bitvec)))
-		}
-
-		Type::Int8 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Int8(n) => {
-						data.push(n);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::int8_with_bitvec(data, bitvec)))
-		}
-
-		Type::Int16 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Int16(n) => {
-						data.push(n);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::int16_with_bitvec(data, bitvec)))
-		}
-
-		Type::Utf8 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Utf8(s) => {
-						data.push(s.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push("".to_string());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::utf8_with_bitvec(data, bitvec)))
-		}
-
-		Type::Uint1 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Uint1(n) => {
-						data.push(n);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::uint1_with_bitvec(data, bitvec)))
-		}
-
-		Type::Uint2 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Uint2(n) => {
-						data.push(n);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::uint2_with_bitvec(data, bitvec)))
-		}
-
-		Type::Uint4 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Uint4(n) => {
-						data.push(n);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::uint4_with_bitvec(data, bitvec)))
-		}
-
-		Type::Uint8 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Uint8(n) => {
-						data.push(n);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::uint8_with_bitvec(data, bitvec)))
-		}
-
-		Type::Uint16 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Uint16(n) => {
-						data.push(n);
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::uint16_with_bitvec(data, bitvec)))
-		}
-
-		Type::Date => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Date(d) => {
-						data.push(d.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(Date::default());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::date_with_bitvec(data, bitvec)))
-		}
-
+		Type::Boolean => extract_typed_column!(col, take, Boolean(b) => b, false, bool_with_bitvec),
+		Type::Float4 => extract_typed_column!(col, take, Float4(v) => v.value(), 0.0f32, float4_with_bitvec),
+		Type::Float8 => extract_typed_column!(col, take, Float8(v) => v.value(), 0.0f64, float8_with_bitvec),
+		Type::Int1 => extract_typed_column!(col, take, Int1(n) => n, 0, int1_with_bitvec),
+		Type::Int2 => extract_typed_column!(col, take, Int2(n) => n, 0, int2_with_bitvec),
+		Type::Int4 => extract_typed_column!(col, take, Int4(n) => n, 0, int4_with_bitvec),
+		Type::Int8 => extract_typed_column!(col, take, Int8(n) => n, 0, int8_with_bitvec),
+		Type::Int16 => extract_typed_column!(col, take, Int16(n) => n, 0, int16_with_bitvec),
+		Type::Utf8 => extract_typed_column!(col, take, Utf8(s) => s.clone(), "".to_string(), utf8_with_bitvec),
+		Type::Uint1 => extract_typed_column!(col, take, Uint1(n) => n, 0, uint1_with_bitvec),
+		Type::Uint2 => extract_typed_column!(col, take, Uint2(n) => n, 0, uint2_with_bitvec),
+		Type::Uint4 => extract_typed_column!(col, take, Uint4(n) => n, 0, uint4_with_bitvec),
+		Type::Uint8 => extract_typed_column!(col, take, Uint8(n) => n, 0, uint8_with_bitvec),
+		Type::Uint16 => extract_typed_column!(col, take, Uint16(n) => n, 0, uint16_with_bitvec),
+		Type::Date => extract_typed_column!(col, take, Date(d) => d.clone(), Date::default(), date_with_bitvec),
 		Type::DateTime => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::DateTime(dt) => {
-						data.push(dt.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(DateTime::default());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::datetime_with_bitvec(data, bitvec)))
+			extract_typed_column!(col, take, DateTime(dt) => dt.clone(), DateTime::default(), datetime_with_bitvec)
 		}
-
-		Type::Time => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Time(t) => {
-						data.push(t.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(Time::default());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::time_with_bitvec(data, bitvec)))
-		}
-
+		Type::Time => extract_typed_column!(col, take, Time(t) => t.clone(), Time::default(), time_with_bitvec),
 		Type::Duration => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Duration(i) => {
-						data.push(i.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(Duration::default());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::duration_with_bitvec(data, bitvec)))
+			extract_typed_column!(col, take, Duration(i) => i.clone(), Duration::default(), duration_with_bitvec)
 		}
 		Type::IdentityId => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::IdentityId(i) => {
-						data.push(i.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(IdentityId::default());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::identity_id_with_bitvec(data, bitvec)))
+			extract_typed_column!(col, take, IdentityId(i) => i.clone(), IdentityId::default(), identity_id_with_bitvec)
 		}
 		Type::Uuid4 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Uuid4(i) => {
-						data.push(i.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(Uuid4::default());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::uuid4_with_bitvec(data, bitvec)))
+			extract_typed_column!(col, take, Uuid4(i) => i.clone(), Uuid4::default(), uuid4_with_bitvec)
 		}
 		Type::Uuid7 => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Uuid7(i) => {
-						data.push(i.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(Uuid7::default());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::uuid7_with_bitvec(data, bitvec)))
+			extract_typed_column!(col, take, Uuid7(i) => i.clone(), Uuid7::default(), uuid7_with_bitvec)
 		}
 		Type::DictionaryId => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::DictionaryId(i) => {
-						data.push(i.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(DictionaryEntryId::default());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::dictionary_id_with_bitvec(data, bitvec)))
+			extract_typed_column!(col, take, DictionaryId(i) => i.clone(), DictionaryEntryId::default(), dictionary_id_with_bitvec)
 		}
 		Type::Blob => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Blob(b) => {
-						data.push(b.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(Blob::new(vec![]));
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::blob_with_bitvec(data, bitvec)))
+			extract_typed_column!(col, take, Blob(b) => b.clone(), Blob::new(vec![]), blob_with_bitvec)
 		}
-		Type::Int => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Int(b) => {
-						data.push(b.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(Int::zero());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::int_with_bitvec(data, bitvec)))
-		}
-		Type::Uint => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Uint(b) => {
-						data.push(b.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(Uint::zero());
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::uint_with_bitvec(data, bitvec)))
-		}
+		Type::Int => extract_typed_column!(col, take, Int(b) => b.clone(), Int::zero(), int_with_bitvec),
+		Type::Uint => extract_typed_column!(col, take, Uint(b) => b.clone(), Uint::zero(), uint_with_bitvec),
 		Type::Any => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Any(boxed) => {
-						data.push(Box::new(*boxed.clone()));
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(Box::new(Value::Undefined));
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::any_with_bitvec(data, bitvec)))
+			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::Undefined), any_with_bitvec)
 		}
 		Type::Decimal => {
-			let mut data = Vec::new();
-			let mut bitvec = Vec::new();
-			let mut count = 0;
-			for v in col.data().iter() {
-				if count >= take {
-					break;
-				}
-				match v {
-					Value::Decimal(b) => {
-						data.push(b.clone());
-						bitvec.push(true);
-					}
-					_ => {
-						data.push(Decimal::from_i64(0));
-						bitvec.push(false);
-					}
-				}
-				count += 1;
-			}
-			Ok(col.with_new_data(ColumnData::decimal_with_bitvec(data, bitvec)))
+			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::from_i64(0), decimal_with_bitvec)
 		}
 		Type::Undefined => {
 			let count = min(ctx.row_count, take);

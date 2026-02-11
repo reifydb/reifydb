@@ -24,6 +24,123 @@ use reifydb_type::{
 
 use crate::expression::context::EvalContext;
 
+/// Generates a complete match expression dispatching all numeric type pairs for comparison.
+/// Uses push-down accumulation to build the cross-product of type arms.
+macro_rules! dispatch_compare {
+	// Entry point
+	(
+		$left:expr, $right:expr;
+		$ctx:expr, $fragment:expr;
+		$($extra:tt)*
+	) => {
+		dispatch_compare!(@rows
+			($left, $right) ($ctx, $fragment)
+			[(Float4, f32) (Float8, f64) (Int1, i8) (Int2, i16) (Int4, i32) (Int8, i64) (Int16, i128) (Uint1, u8) (Uint2, u16) (Uint4, u32) (Uint8, u64) (Uint16, u128)]
+			{$($extra)*}
+			{}
+		)
+	};
+
+	// Recursive: process one fixed-left type pair, generating all 15 right-side arms
+	(@rows
+		($left:expr, $right:expr) ($ctx:expr, $fragment:expr)
+		[($L:ident, $Lt:ty) $($rest:tt)*]
+		{$($extra:tt)*}
+		{$($acc:tt)*}
+	) => {
+		dispatch_compare!(@rows
+			($left, $right) ($ctx, $fragment)
+			[$($rest)*]
+			{$($extra)*}
+			{
+				$($acc)*
+				(ColumnData::$L(l), ColumnData::Float4(r)) => { return Ok(compare_number::<Op, $Lt, f32>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Float8(r)) => { return Ok(compare_number::<Op, $Lt, f64>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Int1(r)) => { return Ok(compare_number::<Op, $Lt, i8>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Int2(r)) => { return Ok(compare_number::<Op, $Lt, i16>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Int4(r)) => { return Ok(compare_number::<Op, $Lt, i32>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Int8(r)) => { return Ok(compare_number::<Op, $Lt, i64>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Int16(r)) => { return Ok(compare_number::<Op, $Lt, i128>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Uint1(r)) => { return Ok(compare_number::<Op, $Lt, u8>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Uint2(r)) => { return Ok(compare_number::<Op, $Lt, u16>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Uint4(r)) => { return Ok(compare_number::<Op, $Lt, u32>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Uint8(r)) => { return Ok(compare_number::<Op, $Lt, u64>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Uint16(r)) => { return Ok(compare_number::<Op, $Lt, u128>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Int { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Int>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Uint { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Uint>($ctx, l, r, $fragment)); },
+				(ColumnData::$L(l), ColumnData::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, $Lt, Decimal>($ctx, l, r, $fragment)); },
+			}
+		)
+	};
+
+	// Base case: all fixed-left types processed, emit the match with arb-left arms
+	(@rows
+		($left:expr, $right:expr) ($ctx:expr, $fragment:expr)
+		[]
+		{$($extra:tt)*}
+		{$($acc:tt)*}
+	) => {
+		match ($left, $right) {
+			// Fixed × all (12 × 15 = 180 arms)
+			$($acc)*
+
+			// Int × all (15 arms)
+			(ColumnData::Int { container: l, .. }, ColumnData::Float4(r)) => { return Ok(compare_number::<Op, Int, f32>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Float8(r)) => { return Ok(compare_number::<Op, Int, f64>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Int1(r)) => { return Ok(compare_number::<Op, Int, i8>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Int2(r)) => { return Ok(compare_number::<Op, Int, i16>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Int4(r)) => { return Ok(compare_number::<Op, Int, i32>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Int8(r)) => { return Ok(compare_number::<Op, Int, i64>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Int16(r)) => { return Ok(compare_number::<Op, Int, i128>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Uint1(r)) => { return Ok(compare_number::<Op, Int, u8>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Uint2(r)) => { return Ok(compare_number::<Op, Int, u16>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Uint4(r)) => { return Ok(compare_number::<Op, Int, u32>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Uint8(r)) => { return Ok(compare_number::<Op, Int, u64>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Uint16(r)) => { return Ok(compare_number::<Op, Int, u128>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Int { container: r, .. }) => { return Ok(compare_number::<Op, Int, Int>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Int, Uint>($ctx, l, r, $fragment)); },
+			(ColumnData::Int { container: l, .. }, ColumnData::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Int, Decimal>($ctx, l, r, $fragment)); },
+
+			// Uint × all (15 arms)
+			(ColumnData::Uint { container: l, .. }, ColumnData::Float4(r)) => { return Ok(compare_number::<Op, Uint, f32>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Float8(r)) => { return Ok(compare_number::<Op, Uint, f64>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Int1(r)) => { return Ok(compare_number::<Op, Uint, i8>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Int2(r)) => { return Ok(compare_number::<Op, Uint, i16>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Int4(r)) => { return Ok(compare_number::<Op, Uint, i32>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Int8(r)) => { return Ok(compare_number::<Op, Uint, i64>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Int16(r)) => { return Ok(compare_number::<Op, Uint, i128>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Uint1(r)) => { return Ok(compare_number::<Op, Uint, u8>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Uint2(r)) => { return Ok(compare_number::<Op, Uint, u16>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Uint4(r)) => { return Ok(compare_number::<Op, Uint, u32>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Uint8(r)) => { return Ok(compare_number::<Op, Uint, u64>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Uint16(r)) => { return Ok(compare_number::<Op, Uint, u128>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Int { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Int>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Uint>($ctx, l, r, $fragment)); },
+			(ColumnData::Uint { container: l, .. }, ColumnData::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Decimal>($ctx, l, r, $fragment)); },
+
+			// Decimal × all (15 arms)
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Float4(r)) => { return Ok(compare_number::<Op, Decimal, f32>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Float8(r)) => { return Ok(compare_number::<Op, Decimal, f64>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Int1(r)) => { return Ok(compare_number::<Op, Decimal, i8>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Int2(r)) => { return Ok(compare_number::<Op, Decimal, i16>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Int4(r)) => { return Ok(compare_number::<Op, Decimal, i32>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Int8(r)) => { return Ok(compare_number::<Op, Decimal, i64>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Int16(r)) => { return Ok(compare_number::<Op, Decimal, i128>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint1(r)) => { return Ok(compare_number::<Op, Decimal, u8>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint2(r)) => { return Ok(compare_number::<Op, Decimal, u16>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint4(r)) => { return Ok(compare_number::<Op, Decimal, u32>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint8(r)) => { return Ok(compare_number::<Op, Decimal, u64>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint16(r)) => { return Ok(compare_number::<Op, Decimal, u128>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Int { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Int>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Uint>($ctx, l, r, $fragment)); },
+			(ColumnData::Decimal { container: l, .. }, ColumnData::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Decimal>($ctx, l, r, $fragment)); },
+
+			// Additional arms
+			$($extra)*
+		}
+	};
+}
+
 // Trait for comparison operations - monomorphized for fast execution
 pub(crate) trait CompareOp {
 	fn compare_ordering(ordering: Option<Ordering>) -> bool;
@@ -266,1229 +383,30 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 	fragment: Fragment,
 	error_fn: impl FnOnce(Fragment, Type, Type) -> Diagnostic,
 ) -> crate::Result<Column> {
-	match (&left.data(), &right.data()) {
+	dispatch_compare!(
+		&left.data(), &right.data();
+		ctx, fragment;
+
 		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
 			if let Some(col) = compare_bool::<Op>(ctx, l, r, fragment.clone()) {
 				return Ok(col);
 			}
+			return_error!(error_fn(fragment, left.get_type(), right.get_type()))
 		}
-		// Float4 with Int, Uint, Decimal
-		(
-			ColumnData::Float4(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, f32, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Float4(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, f32, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Float4(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, f32, Decimal>(ctx, l, r, fragment));
-		}
-		// Float4
-		(ColumnData::Float4(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, f32, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, f32, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, f32, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, f32, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, f32, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, f32, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, f32, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, f32, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, f32, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, f32, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, f32, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float4(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, f32, u128>(ctx, l, r, fragment));
-		}
-		// Float8
-		(ColumnData::Float8(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, f64, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, f64, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, f64, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, f64, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, f64, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, f64, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, f64, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, f64, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, f64, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, f64, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, f64, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Float8(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, f64, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Float8(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, f64, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Float8(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, f64, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Float8(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, f64, Decimal>(ctx, l, r, fragment));
-		}
-		// Int1
-		(ColumnData::Int1(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, i8, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, i8, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, i8, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, i8, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, i8, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, i8, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, i8, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, i8, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, i8, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, i8, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, i8, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int1(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, i8, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int1(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i8, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int1(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i8, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int1(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i8, Decimal>(ctx, l, r, fragment));
-		}
-		// Int2
-		(ColumnData::Int2(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, i16, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, i16, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, i16, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, i16, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, i16, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, i16, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, i16, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, i16, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, i16, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, i16, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, i16, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int2(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, i16, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int2(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i16, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int2(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i16, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int2(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i16, Decimal>(ctx, l, r, fragment));
-		}
-		// Int4
-		(ColumnData::Int4(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, i32, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, i32, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, i32, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, i32, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, i32, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, i32, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, i32, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, i32, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, i32, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, i32, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, i32, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int4(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, i32, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int4(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i32, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int4(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i32, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int4(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i32, Decimal>(ctx, l, r, fragment));
-		}
-		// Int8
-		(ColumnData::Int8(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, i64, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, i64, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, i64, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, i64, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, i64, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, i64, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, i64, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, i64, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, i64, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, i64, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, i64, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int8(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, i64, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int8(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i64, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int8(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i64, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int8(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i64, Decimal>(ctx, l, r, fragment));
-		}
-		// Int16
-		(ColumnData::Int16(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, i128, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, i128, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, i128, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, i128, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, i128, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, i128, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, i128, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, i128, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, i128, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, i128, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, i128, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Int16(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, i128, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int16(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i128, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int16(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i128, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int16(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, i128, Decimal>(ctx, l, r, fragment));
-		}
-		// Uint1
-		(ColumnData::Uint1(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, u8, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, u8, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, u8, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, u8, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, u8, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, u8, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, u8, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, u8, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, u8, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, u8, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, u8, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint1(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, u8, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint1(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u8, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint1(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u8, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint1(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u8, Decimal>(ctx, l, r, fragment));
-		}
-		// Uint2
-		(ColumnData::Uint2(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, u16, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, u16, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, u16, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, u16, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, u16, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, u16, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, u16, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, u16, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, u16, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, u16, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, u16, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint2(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, u16, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint2(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u16, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint2(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u16, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint2(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u16, Decimal>(ctx, l, r, fragment));
-		}
-		// Uint4
-		(ColumnData::Uint4(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, u32, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, u32, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, u32, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, u32, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, u32, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, u32, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, u32, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, u32, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, u32, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, u32, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, u32, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint4(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, u32, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint4(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u32, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint4(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u32, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint4(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u32, Decimal>(ctx, l, r, fragment));
-		}
-		// Uint8
-		(ColumnData::Uint8(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, u64, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, u64, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, u64, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, u64, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, u64, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, u64, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, u64, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, u64, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, u64, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, u64, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, u64, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint8(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, u64, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint8(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u64, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint8(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u64, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint8(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u64, Decimal>(ctx, l, r, fragment));
-		}
-		// Uint16
-		(ColumnData::Uint16(l), ColumnData::Float4(r)) => {
-			return Ok(compare_number::<Op, u128, f32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Float8(r)) => {
-			return Ok(compare_number::<Op, u128, f64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Int1(r)) => {
-			return Ok(compare_number::<Op, u128, i8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Int2(r)) => {
-			return Ok(compare_number::<Op, u128, i16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Int4(r)) => {
-			return Ok(compare_number::<Op, u128, i32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Int8(r)) => {
-			return Ok(compare_number::<Op, u128, i64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Int16(r)) => {
-			return Ok(compare_number::<Op, u128, i128>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Uint1(r)) => {
-			return Ok(compare_number::<Op, u128, u8>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Uint2(r)) => {
-			return Ok(compare_number::<Op, u128, u16>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Uint4(r)) => {
-			return Ok(compare_number::<Op, u128, u32>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Uint8(r)) => {
-			return Ok(compare_number::<Op, u128, u64>(ctx, l, r, fragment));
-		}
-		(ColumnData::Uint16(l), ColumnData::Uint16(r)) => {
-			return Ok(compare_number::<Op, u128, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint16(l),
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u128, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint16(l),
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u128, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint16(l),
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, u128, Decimal>(ctx, l, r, fragment));
-		}
-		// Int
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Float4(r),
-		) => {
-			return Ok(compare_number::<Op, Int, f32>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Float8(r),
-		) => {
-			return Ok(compare_number::<Op, Int, f64>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Int1(r),
-		) => {
-			return Ok(compare_number::<Op, Int, i8>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Int2(r),
-		) => {
-			return Ok(compare_number::<Op, Int, i16>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Int4(r),
-		) => {
-			return Ok(compare_number::<Op, Int, i32>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Int8(r),
-		) => {
-			return Ok(compare_number::<Op, Int, i64>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Int16(r),
-		) => {
-			return Ok(compare_number::<Op, Int, i128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Uint1(r),
-		) => {
-			return Ok(compare_number::<Op, Int, u8>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Uint2(r),
-		) => {
-			return Ok(compare_number::<Op, Int, u16>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Uint4(r),
-		) => {
-			return Ok(compare_number::<Op, Int, u32>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Uint8(r),
-		) => {
-			return Ok(compare_number::<Op, Int, u64>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Uint16(r),
-		) => {
-			return Ok(compare_number::<Op, Int, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, Int, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, Int, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Int {
-				container: l,
-				..
-			},
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, Int, Decimal>(ctx, l, r, fragment));
-		}
-		// Uint
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Float4(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, f32>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Float8(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, f64>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Int1(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, i8>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Int2(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, i16>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Int4(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, i32>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Int8(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, i64>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Int16(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, i128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Uint1(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, u8>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Uint2(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, u16>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Uint4(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, u32>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Uint8(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, u64>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Uint16(r),
-		) => {
-			return Ok(compare_number::<Op, Uint, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, Uint, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, Uint, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Uint {
-				container: l,
-				..
-			},
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, Uint, Decimal>(ctx, l, r, fragment));
-		}
-		// Decimal
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Float4(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, f32>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Float8(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, f64>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Int1(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, i8>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Int2(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, i16>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Int4(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, i32>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Int8(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, i64>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Int16(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, i128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Uint1(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, u8>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Uint2(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, u16>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Uint4(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, u32>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Uint8(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, u64>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Uint16(r),
-		) => {
-			return Ok(compare_number::<Op, Decimal, u128>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Int {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, Decimal, Int>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Uint {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, Decimal, Uint>(ctx, l, r, fragment));
-		}
-		(
-			ColumnData::Decimal {
-				container: l,
-				..
-			},
-			ColumnData::Decimal {
-				container: r,
-				..
-			},
-		) => {
-			return Ok(compare_number::<Op, Decimal, Decimal>(ctx, l, r, fragment));
-		}
+
 		// Temporal types
 		(ColumnData::Date(l), ColumnData::Date(r)) => {
 			return Ok(compare_temporal::<Op, _>(l, r, fragment));
-		}
+		},
 		(ColumnData::DateTime(l), ColumnData::DateTime(r)) => {
 			return Ok(compare_temporal::<Op, _>(l, r, fragment));
-		}
+		},
 		(ColumnData::Time(l), ColumnData::Time(r)) => {
 			return Ok(compare_temporal::<Op, _>(l, r, fragment));
-		}
+		},
 		(ColumnData::Duration(l), ColumnData::Duration(r)) => {
 			return Ok(compare_temporal::<Op, _>(l, r, fragment));
-		}
+		},
 		// Utf8
 		(
 			ColumnData::Utf8 {
@@ -1501,15 +419,16 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 			},
 		) => {
 			return Ok(compare_utf8::<Op>(l, r, fragment));
-		}
+		},
 		// Undefined
 		(ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
 			return Ok(Column {
 				name: Fragment::internal(fragment.text()),
 				data: ColumnData::Undefined(UndefinedContainer::new(container.len())),
 			});
-		}
-		_ => {}
-	}
-	return_error!(error_fn(fragment, left.get_type(), right.get_type()))
+		},
+		_ => {
+			return_error!(error_fn(fragment, left.get_type(), right.get_type()))
+		},
+	)
 }
