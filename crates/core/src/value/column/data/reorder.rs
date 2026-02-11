@@ -1,55 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::value::column::ColumnData;
+use crate::value::column::{ColumnData, data::with_container};
 
 impl ColumnData {
 	pub fn reorder(&mut self, indices: &[usize]) {
-		match self {
-			ColumnData::Bool(container) => container.reorder(indices),
-			ColumnData::Float4(container) => container.reorder(indices),
-			ColumnData::Float8(container) => container.reorder(indices),
-			ColumnData::Int1(container) => container.reorder(indices),
-			ColumnData::Int2(container) => container.reorder(indices),
-			ColumnData::Int4(container) => container.reorder(indices),
-			ColumnData::Int8(container) => container.reorder(indices),
-			ColumnData::Int16(container) => container.reorder(indices),
-			ColumnData::Utf8 {
-				container,
-				..
-			} => container.reorder(indices),
-			ColumnData::Uint1(container) => container.reorder(indices),
-			ColumnData::Uint2(container) => container.reorder(indices),
-			ColumnData::Uint4(container) => container.reorder(indices),
-			ColumnData::Uint8(container) => container.reorder(indices),
-			ColumnData::Uint16(container) => container.reorder(indices),
-			ColumnData::Date(container) => container.reorder(indices),
-			ColumnData::DateTime(container) => container.reorder(indices),
-			ColumnData::Time(container) => container.reorder(indices),
-			ColumnData::Duration(container) => container.reorder(indices),
-			ColumnData::Undefined(container) => container.reorder(indices),
-			ColumnData::IdentityId(container) => container.reorder(indices),
-			ColumnData::DictionaryId(container) => container.reorder(indices),
-			ColumnData::Uuid4(container) => container.reorder(indices),
-			ColumnData::Uuid7(container) => container.reorder(indices),
-			ColumnData::Blob {
-				container,
-				..
-			} => container.reorder(indices),
-			ColumnData::Int {
-				container,
-				..
-			} => container.reorder(indices),
-			ColumnData::Uint {
-				container,
-				..
-			} => container.reorder(indices),
-			ColumnData::Decimal {
-				container,
-				..
-			} => container.reorder(indices),
-			ColumnData::Any(container) => container.reorder(indices),
-		}
+		with_container!(self, |c| c.reorder(indices))
 	}
 }
 

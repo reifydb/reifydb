@@ -9,13 +9,109 @@ use reifydb_type::{
 	},
 };
 
-use crate::{error::diagnostic::internal::internal, value::column::ColumnData};
+use crate::{
+	error::diagnostic::internal::internal,
+	value::column::{ColumnData, data::with_container},
+};
+
+macro_rules! impl_extend_promote_undefined {
+	($self:expr, $l_len:expr, $typed_r:expr) => {
+		match $typed_r {
+			ColumnData::Bool(r) => {
+				let mut c = BoolContainer::with_capacity($l_len + r.len());
+				c.extend_from_undefined($l_len);
+				c.extend(&r)?;
+				*$self = ColumnData::Bool(c);
+			}
+			ColumnData::Float4(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Float4); }
+			ColumnData::Float8(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Float8); }
+			ColumnData::Int1(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Int1); }
+			ColumnData::Int2(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Int2); }
+			ColumnData::Int4(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Int4); }
+			ColumnData::Int8(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Int8); }
+			ColumnData::Int16(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Int16); }
+			ColumnData::Uint1(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Uint1); }
+			ColumnData::Uint2(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Uint2); }
+			ColumnData::Uint4(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Uint4); }
+			ColumnData::Uint8(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Uint8); }
+			ColumnData::Uint16(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Uint16); }
+			ColumnData::Utf8 { container: r, max_bytes } => {
+				let mut c = Utf8Container::with_capacity($l_len + r.len());
+				c.extend_from_undefined($l_len);
+				c.extend(&r)?;
+				*$self = ColumnData::Utf8 { container: c, max_bytes };
+			}
+			ColumnData::Date(r) => { impl_extend_promote_undefined!(@temporal $self, $l_len, r, Date); }
+			ColumnData::DateTime(r) => { impl_extend_promote_undefined!(@temporal $self, $l_len, r, DateTime); }
+			ColumnData::Time(r) => { impl_extend_promote_undefined!(@temporal $self, $l_len, r, Time); }
+			ColumnData::Duration(r) => { impl_extend_promote_undefined!(@temporal $self, $l_len, r, Duration); }
+			ColumnData::Uuid4(r) => { impl_extend_promote_undefined!(@uuid $self, $l_len, r, Uuid4); }
+			ColumnData::Uuid7(r) => { impl_extend_promote_undefined!(@uuid $self, $l_len, r, Uuid7); }
+			ColumnData::Blob { container: r, max_bytes } => {
+				let mut c = BlobContainer::with_capacity($l_len + r.len());
+				c.extend_from_undefined($l_len);
+				c.extend(&r)?;
+				*$self = ColumnData::Blob { container: c, max_bytes };
+			}
+			ColumnData::Int { container: r, max_bytes } => {
+				let mut c = NumberContainer::with_capacity($l_len + r.len());
+				c.extend_from_undefined($l_len);
+				c.extend(&r)?;
+				*$self = ColumnData::Int { container: c, max_bytes };
+			}
+			ColumnData::Uint { container: r, max_bytes } => {
+				let mut c = NumberContainer::with_capacity($l_len + r.len());
+				c.extend_from_undefined($l_len);
+				c.extend(&r)?;
+				*$self = ColumnData::Uint { container: c, max_bytes };
+			}
+			ColumnData::Decimal { container: r, precision, scale } => {
+				let mut c = NumberContainer::with_capacity($l_len + r.len());
+				c.extend_from_undefined($l_len);
+				c.extend(&r)?;
+				*$self = ColumnData::Decimal { container: c, precision, scale };
+			}
+			ColumnData::IdentityId(_) => {
+				return_error!(internal(
+					"Cannot extend IdentityId column from Undefined".to_string()
+				));
+			}
+			ColumnData::DictionaryId(r) => {
+				let mut c = DictionaryContainer::with_capacity($l_len + r.len());
+				c.extend_from_undefined($l_len);
+				c.extend(&r)?;
+				*$self = ColumnData::DictionaryId(c);
+			}
+			ColumnData::Undefined(_) => {}
+			ColumnData::Any(_) => {
+				unreachable!("Any type not supported in extend operations");
+			}
+		}
+	};
+	(@number $self:expr, $l_len:expr, $r:ident, $variant:ident) => {
+		let mut c = NumberContainer::with_capacity($l_len + $r.len());
+		c.extend_from_undefined($l_len);
+		c.extend(&$r)?;
+		*$self = ColumnData::$variant(c);
+	};
+	(@temporal $self:expr, $l_len:expr, $r:ident, $variant:ident) => {
+		let mut c = TemporalContainer::with_capacity($l_len + $r.len());
+		c.extend_from_undefined($l_len);
+		c.extend(&$r)?;
+		*$self = ColumnData::$variant(c);
+	};
+	(@uuid $self:expr, $l_len:expr, $r:ident, $variant:ident) => {
+		let mut c = UuidContainer::with_capacity($l_len + $r.len());
+		c.extend_from_undefined($l_len);
+		c.extend(&$r)?;
+		*$self = ColumnData::$variant(c);
+	};
+}
 
 impl ColumnData {
 	pub fn extend(&mut self, other: ColumnData) -> reifydb_type::Result<()> {
 		match (&mut *self, other) {
-			// Same type extensions - delegate to container extend
-			// method
+			// Same type extensions
 			(ColumnData::Bool(l), ColumnData::Bool(r)) => l.extend(&r)?,
 			(ColumnData::Float4(l), ColumnData::Float4(r)) => l.extend(&r)?,
 			(ColumnData::Float8(l), ColumnData::Float8(r)) => l.extend(&r)?,
@@ -92,258 +188,13 @@ impl ColumnData {
 			// Promote Undefined to typed
 			(ColumnData::Undefined(l_container), typed_r) => {
 				let l_len = l_container.len();
-				match typed_r {
-					ColumnData::Bool(r) => {
-						let mut new_container = BoolContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Bool(new_container);
-					}
-					ColumnData::Float4(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Float4(new_container);
-					}
-					ColumnData::Float8(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Float8(new_container);
-					}
-					ColumnData::Int1(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Int1(new_container);
-					}
-					ColumnData::Int2(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Int2(new_container);
-					}
-					ColumnData::Int4(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Int4(new_container);
-					}
-					ColumnData::Int8(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Int8(new_container);
-					}
-					ColumnData::Int16(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Int16(new_container);
-					}
-					ColumnData::Uint1(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Uint1(new_container);
-					}
-					ColumnData::Uint2(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Uint2(new_container);
-					}
-					ColumnData::Uint4(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Uint4(new_container);
-					}
-					ColumnData::Uint8(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Uint8(new_container);
-					}
-					ColumnData::Uint16(r) => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Uint16(new_container);
-					}
-					ColumnData::Utf8 {
-						container: r,
-						max_bytes,
-					} => {
-						let mut new_container = Utf8Container::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Utf8 {
-							container: new_container,
-							max_bytes,
-						};
-					}
-					ColumnData::Date(r) => {
-						let mut new_container =
-							TemporalContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Date(new_container);
-					}
-					ColumnData::DateTime(r) => {
-						let mut new_container =
-							TemporalContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::DateTime(new_container);
-					}
-					ColumnData::Time(r) => {
-						let mut new_container =
-							TemporalContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Time(new_container);
-					}
-					ColumnData::Duration(r) => {
-						let mut new_container =
-							TemporalContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Duration(new_container);
-					}
-					ColumnData::Uuid4(r) => {
-						let mut new_container = UuidContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Uuid4(new_container);
-					}
-					ColumnData::Uuid7(r) => {
-						let mut new_container = UuidContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Uuid7(new_container);
-					}
-					ColumnData::Blob {
-						container: r,
-						max_bytes,
-					} => {
-						let mut new_container = BlobContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Blob {
-							container: new_container,
-							max_bytes,
-						};
-					}
-					ColumnData::Int {
-						container: r,
-						max_bytes,
-					} => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Int {
-							container: new_container,
-							max_bytes,
-						};
-					}
-					ColumnData::Uint {
-						container: r,
-						max_bytes,
-					} => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Uint {
-							container: new_container,
-							max_bytes,
-						};
-					}
-					ColumnData::Decimal {
-						container: r,
-						precision,
-						scale,
-					} => {
-						let mut new_container = NumberContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::Decimal {
-							container: new_container,
-							precision,
-							scale,
-						};
-					}
-					ColumnData::IdentityId(_) => {
-						return_error!(internal(
-							"Cannot extend IdentityId column from Undefined".to_string()
-						));
-					}
-					ColumnData::DictionaryId(r) => {
-						let mut new_container =
-							DictionaryContainer::with_capacity(l_len + r.len());
-						new_container.extend_from_undefined(l_len);
-						new_container.extend(&r)?;
-						*self = ColumnData::DictionaryId(new_container);
-					}
-					ColumnData::Undefined(_) => {}
-					ColumnData::Any(_) => {
-						unreachable!("Any type not supported in extend operations");
-					}
-				}
+				impl_extend_promote_undefined!(self, l_len, typed_r);
 			}
 
 			// Extend typed with Undefined
 			(typed_l, ColumnData::Undefined(r_container)) => {
 				let r_len = r_container.len();
-				match typed_l {
-					ColumnData::Bool(l) => l.extend_from_undefined(r_len),
-					ColumnData::Float4(l) => l.extend_from_undefined(r_len),
-					ColumnData::Float8(l) => l.extend_from_undefined(r_len),
-					ColumnData::Int1(l) => l.extend_from_undefined(r_len),
-					ColumnData::Int2(l) => l.extend_from_undefined(r_len),
-					ColumnData::Int4(l) => l.extend_from_undefined(r_len),
-					ColumnData::Int8(l) => l.extend_from_undefined(r_len),
-					ColumnData::Int16(l) => l.extend_from_undefined(r_len),
-					ColumnData::Uint1(l) => l.extend_from_undefined(r_len),
-					ColumnData::Uint2(l) => l.extend_from_undefined(r_len),
-					ColumnData::Uint4(l) => l.extend_from_undefined(r_len),
-					ColumnData::Uint8(l) => l.extend_from_undefined(r_len),
-					ColumnData::Uint16(l) => l.extend_from_undefined(r_len),
-					ColumnData::Utf8 {
-						container: l,
-						..
-					} => l.extend_from_undefined(r_len),
-					ColumnData::Date(l) => l.extend_from_undefined(r_len),
-					ColumnData::DateTime(l) => l.extend_from_undefined(r_len),
-					ColumnData::Time(l) => l.extend_from_undefined(r_len),
-					ColumnData::Duration(l) => l.extend_from_undefined(r_len),
-					ColumnData::IdentityId(l) => l.extend_from_undefined(r_len),
-					ColumnData::DictionaryId(l) => l.extend_from_undefined(r_len),
-					ColumnData::Uuid4(l) => l.extend_from_undefined(r_len),
-					ColumnData::Uuid7(l) => l.extend_from_undefined(r_len),
-					ColumnData::Blob {
-						container: l,
-						..
-					} => l.extend_from_undefined(r_len),
-					ColumnData::Int {
-						container: l,
-						..
-					} => l.extend_from_undefined(r_len),
-					ColumnData::Uint {
-						container: l,
-						..
-					} => l.extend_from_undefined(r_len),
-					ColumnData::Decimal {
-						container: l,
-						..
-					} => l.extend_from_undefined(r_len),
-					ColumnData::Undefined(_) => {
-						unreachable!()
-					}
-					&mut ColumnData::Any(_) => {
-						unreachable!("Any type not supported in extend operations");
-					}
-				}
+				with_container!(typed_l, |c| c.extend_from_undefined(r_len));
 			}
 
 			// Type mismatch

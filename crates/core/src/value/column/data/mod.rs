@@ -84,6 +84,59 @@ pub enum ColumnData {
 	Undefined(UndefinedContainer),
 }
 
+/// Extracts the container from every ColumnData variant and evaluates an expression.
+macro_rules! with_container {
+	($self:expr, |$c:ident| $body:expr) => {
+		match $self {
+			ColumnData::Bool($c) => $body,
+			ColumnData::Float4($c) => $body,
+			ColumnData::Float8($c) => $body,
+			ColumnData::Int1($c) => $body,
+			ColumnData::Int2($c) => $body,
+			ColumnData::Int4($c) => $body,
+			ColumnData::Int8($c) => $body,
+			ColumnData::Int16($c) => $body,
+			ColumnData::Uint1($c) => $body,
+			ColumnData::Uint2($c) => $body,
+			ColumnData::Uint4($c) => $body,
+			ColumnData::Uint8($c) => $body,
+			ColumnData::Uint16($c) => $body,
+			ColumnData::Utf8 {
+				container: $c,
+				..
+			} => $body,
+			ColumnData::Date($c) => $body,
+			ColumnData::DateTime($c) => $body,
+			ColumnData::Time($c) => $body,
+			ColumnData::Duration($c) => $body,
+			ColumnData::IdentityId($c) => $body,
+			ColumnData::Uuid4($c) => $body,
+			ColumnData::Uuid7($c) => $body,
+			ColumnData::Blob {
+				container: $c,
+				..
+			} => $body,
+			ColumnData::Int {
+				container: $c,
+				..
+			} => $body,
+			ColumnData::Uint {
+				container: $c,
+				..
+			} => $body,
+			ColumnData::Decimal {
+				container: $c,
+				..
+			} => $body,
+			ColumnData::Any($c) => $body,
+			ColumnData::DictionaryId($c) => $body,
+			ColumnData::Undefined($c) => $body,
+		}
+	};
+}
+
+pub(crate) use with_container;
+
 impl ColumnData {
 	pub fn get_type(&self) -> Type {
 		match self {
@@ -130,48 +183,48 @@ impl ColumnData {
 
 	pub fn is_defined(&self, idx: usize) -> bool {
 		match self {
-			ColumnData::Bool(container) => container.is_defined(idx),
-			ColumnData::Float4(container) => container.is_defined(idx),
-			ColumnData::Float8(container) => container.is_defined(idx),
-			ColumnData::Int1(container) => container.is_defined(idx),
-			ColumnData::Int2(container) => container.is_defined(idx),
-			ColumnData::Int4(container) => container.is_defined(idx),
-			ColumnData::Int8(container) => container.is_defined(idx),
-			ColumnData::Int16(container) => container.is_defined(idx),
-			ColumnData::Uint1(container) => container.is_defined(idx),
-			ColumnData::Uint2(container) => container.is_defined(idx),
-			ColumnData::Uint4(container) => container.is_defined(idx),
-			ColumnData::Uint8(container) => container.is_defined(idx),
-			ColumnData::Uint16(container) => container.is_defined(idx),
+			ColumnData::Bool(c) => c.is_defined(idx),
+			ColumnData::Float4(c) => c.is_defined(idx),
+			ColumnData::Float8(c) => c.is_defined(idx),
+			ColumnData::Int1(c) => c.is_defined(idx),
+			ColumnData::Int2(c) => c.is_defined(idx),
+			ColumnData::Int4(c) => c.is_defined(idx),
+			ColumnData::Int8(c) => c.is_defined(idx),
+			ColumnData::Int16(c) => c.is_defined(idx),
+			ColumnData::Uint1(c) => c.is_defined(idx),
+			ColumnData::Uint2(c) => c.is_defined(idx),
+			ColumnData::Uint4(c) => c.is_defined(idx),
+			ColumnData::Uint8(c) => c.is_defined(idx),
+			ColumnData::Uint16(c) => c.is_defined(idx),
 			ColumnData::Utf8 {
-				container,
+				container: c,
 				..
-			} => container.is_defined(idx),
-			ColumnData::Date(container) => container.is_defined(idx),
-			ColumnData::DateTime(container) => container.is_defined(idx),
-			ColumnData::Time(container) => container.is_defined(idx),
-			ColumnData::Duration(container) => container.is_defined(idx),
+			} => c.is_defined(idx),
+			ColumnData::Date(c) => c.is_defined(idx),
+			ColumnData::DateTime(c) => c.is_defined(idx),
+			ColumnData::Time(c) => c.is_defined(idx),
+			ColumnData::Duration(c) => c.is_defined(idx),
 			ColumnData::IdentityId(container) => container.get(idx).is_some(),
-			ColumnData::Uuid4(container) => container.is_defined(idx),
-			ColumnData::Uuid7(container) => container.is_defined(idx),
+			ColumnData::Uuid4(c) => c.is_defined(idx),
+			ColumnData::Uuid7(c) => c.is_defined(idx),
 			ColumnData::Blob {
-				container,
+				container: c,
 				..
-			} => container.is_defined(idx),
+			} => c.is_defined(idx),
 			ColumnData::Int {
-				container,
+				container: c,
 				..
-			} => container.is_defined(idx),
+			} => c.is_defined(idx),
 			ColumnData::Uint {
-				container,
+				container: c,
 				..
-			} => container.is_defined(idx),
+			} => c.is_defined(idx),
 			ColumnData::Decimal {
-				container,
+				container: c,
 				..
-			} => container.is_defined(idx),
-			ColumnData::DictionaryId(container) => container.is_defined(idx),
-			ColumnData::Any(container) => container.is_defined(idx),
+			} => c.is_defined(idx),
+			ColumnData::DictionaryId(c) => c.is_defined(idx),
+			ColumnData::Any(c) => c.is_defined(idx),
 			ColumnData::Undefined(_) => false,
 		}
 	}
@@ -216,48 +269,48 @@ impl ColumnData {
 impl ColumnData {
 	pub fn bitvec(&self) -> &BitVec {
 		match self {
-			ColumnData::Bool(container) => container.bitvec(),
-			ColumnData::Float4(container) => container.bitvec(),
-			ColumnData::Float8(container) => container.bitvec(),
-			ColumnData::Int1(container) => container.bitvec(),
-			ColumnData::Int2(container) => container.bitvec(),
-			ColumnData::Int4(container) => container.bitvec(),
-			ColumnData::Int8(container) => container.bitvec(),
-			ColumnData::Int16(container) => container.bitvec(),
-			ColumnData::Uint1(container) => container.bitvec(),
-			ColumnData::Uint2(container) => container.bitvec(),
-			ColumnData::Uint4(container) => container.bitvec(),
-			ColumnData::Uint8(container) => container.bitvec(),
-			ColumnData::Uint16(container) => container.bitvec(),
+			ColumnData::Bool(c) => c.bitvec(),
+			ColumnData::Float4(c) => c.bitvec(),
+			ColumnData::Float8(c) => c.bitvec(),
+			ColumnData::Int1(c) => c.bitvec(),
+			ColumnData::Int2(c) => c.bitvec(),
+			ColumnData::Int4(c) => c.bitvec(),
+			ColumnData::Int8(c) => c.bitvec(),
+			ColumnData::Int16(c) => c.bitvec(),
+			ColumnData::Uint1(c) => c.bitvec(),
+			ColumnData::Uint2(c) => c.bitvec(),
+			ColumnData::Uint4(c) => c.bitvec(),
+			ColumnData::Uint8(c) => c.bitvec(),
+			ColumnData::Uint16(c) => c.bitvec(),
 			ColumnData::Utf8 {
-				container,
+				container: c,
 				..
-			} => container.bitvec(),
-			ColumnData::Date(container) => container.bitvec(),
-			ColumnData::DateTime(container) => container.bitvec(),
-			ColumnData::Time(container) => container.bitvec(),
-			ColumnData::Duration(container) => container.bitvec(),
-			ColumnData::IdentityId(container) => container.bitvec(),
-			ColumnData::Uuid4(container) => container.bitvec(),
-			ColumnData::Uuid7(container) => container.bitvec(),
+			} => c.bitvec(),
+			ColumnData::Date(c) => c.bitvec(),
+			ColumnData::DateTime(c) => c.bitvec(),
+			ColumnData::Time(c) => c.bitvec(),
+			ColumnData::Duration(c) => c.bitvec(),
+			ColumnData::IdentityId(c) => c.bitvec(),
+			ColumnData::Uuid4(c) => c.bitvec(),
+			ColumnData::Uuid7(c) => c.bitvec(),
 			ColumnData::Blob {
-				container,
+				container: c,
 				..
-			} => container.bitvec(),
+			} => c.bitvec(),
 			ColumnData::Int {
-				container,
+				container: c,
 				..
-			} => container.bitvec(),
+			} => c.bitvec(),
 			ColumnData::Uint {
-				container,
+				container: c,
 				..
-			} => container.bitvec(),
+			} => c.bitvec(),
 			ColumnData::Decimal {
-				container,
+				container: c,
 				..
-			} => container.bitvec(),
-			ColumnData::DictionaryId(container) => container.bitvec(),
-			ColumnData::Any(container) => container.bitvec(),
+			} => c.bitvec(),
+			ColumnData::DictionaryId(c) => c.bitvec(),
+			ColumnData::Any(c) => c.bitvec(),
 			ColumnData::Undefined(_) => unreachable!(),
 		}
 	}
@@ -308,146 +361,14 @@ impl ColumnData {
 
 impl ColumnData {
 	pub fn len(&self) -> usize {
-		match self {
-			ColumnData::Bool(container) => container.len(),
-			ColumnData::Float4(container) => container.len(),
-			ColumnData::Float8(container) => container.len(),
-			ColumnData::Int1(container) => container.len(),
-			ColumnData::Int2(container) => container.len(),
-			ColumnData::Int4(container) => container.len(),
-			ColumnData::Int8(container) => container.len(),
-			ColumnData::Int16(container) => container.len(),
-			ColumnData::Uint1(container) => container.len(),
-			ColumnData::Uint2(container) => container.len(),
-			ColumnData::Uint4(container) => container.len(),
-			ColumnData::Uint8(container) => container.len(),
-			ColumnData::Uint16(container) => container.len(),
-			ColumnData::Utf8 {
-				container,
-				..
-			} => container.len(),
-			ColumnData::Date(container) => container.len(),
-			ColumnData::DateTime(container) => container.len(),
-			ColumnData::Time(container) => container.len(),
-			ColumnData::Duration(container) => container.len(),
-			ColumnData::IdentityId(container) => container.len(),
-			ColumnData::Uuid4(container) => container.len(),
-			ColumnData::Uuid7(container) => container.len(),
-			ColumnData::Blob {
-				container,
-				..
-			} => container.len(),
-			ColumnData::Int {
-				container,
-				..
-			} => container.len(),
-			ColumnData::Uint {
-				container,
-				..
-			} => container.len(),
-			ColumnData::Decimal {
-				container,
-				..
-			} => container.len(),
-			ColumnData::DictionaryId(container) => container.len(),
-			ColumnData::Any(container) => container.len(),
-			ColumnData::Undefined(container) => container.len(),
-		}
+		with_container!(self, |c| c.len())
 	}
 
 	pub fn capacity(&self) -> usize {
-		match self {
-			ColumnData::Bool(container) => container.capacity(),
-			ColumnData::Float4(container) => container.capacity(),
-			ColumnData::Float8(container) => container.capacity(),
-			ColumnData::Int1(container) => container.capacity(),
-			ColumnData::Int2(container) => container.capacity(),
-			ColumnData::Int4(container) => container.capacity(),
-			ColumnData::Int8(container) => container.capacity(),
-			ColumnData::Int16(container) => container.capacity(),
-			ColumnData::Uint1(container) => container.capacity(),
-			ColumnData::Uint2(container) => container.capacity(),
-			ColumnData::Uint4(container) => container.capacity(),
-			ColumnData::Uint8(container) => container.capacity(),
-			ColumnData::Uint16(container) => container.capacity(),
-			ColumnData::Utf8 {
-				container,
-				..
-			} => container.capacity(),
-			ColumnData::Date(container) => container.capacity(),
-			ColumnData::DateTime(container) => container.capacity(),
-			ColumnData::Time(container) => container.capacity(),
-			ColumnData::Duration(container) => container.capacity(),
-			ColumnData::IdentityId(container) => container.capacity(),
-			ColumnData::Uuid4(container) => container.capacity(),
-			ColumnData::Uuid7(container) => container.capacity(),
-			ColumnData::Blob {
-				container,
-				..
-			} => container.capacity(),
-			ColumnData::Int {
-				container,
-				..
-			} => container.capacity(),
-			ColumnData::Uint {
-				container,
-				..
-			} => container.capacity(),
-			ColumnData::Decimal {
-				container,
-				..
-			} => container.capacity(),
-			ColumnData::DictionaryId(container) => container.capacity(),
-			ColumnData::Any(container) => container.capacity(),
-			ColumnData::Undefined(container) => container.capacity(),
-		}
+		with_container!(self, |c| c.capacity())
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
-		match self {
-			ColumnData::Bool(container) => container.as_string(index),
-			ColumnData::Float4(container) => container.as_string(index),
-			ColumnData::Float8(container) => container.as_string(index),
-			ColumnData::Int1(container) => container.as_string(index),
-			ColumnData::Int2(container) => container.as_string(index),
-			ColumnData::Int4(container) => container.as_string(index),
-			ColumnData::Int8(container) => container.as_string(index),
-			ColumnData::Int16(container) => container.as_string(index),
-			ColumnData::Uint1(container) => container.as_string(index),
-			ColumnData::Uint2(container) => container.as_string(index),
-			ColumnData::Uint4(container) => container.as_string(index),
-			ColumnData::Uint8(container) => container.as_string(index),
-			ColumnData::Uint16(container) => container.as_string(index),
-			ColumnData::Utf8 {
-				container,
-				..
-			} => container.as_string(index),
-			ColumnData::Date(container) => container.as_string(index),
-			ColumnData::DateTime(container) => container.as_string(index),
-			ColumnData::Time(container) => container.as_string(index),
-			ColumnData::Duration(container) => container.as_string(index),
-			ColumnData::IdentityId(container) => container.as_string(index),
-			ColumnData::Uuid4(container) => container.as_string(index),
-			ColumnData::Uuid7(container) => container.as_string(index),
-			ColumnData::Blob {
-				container,
-				..
-			} => container.as_string(index),
-			ColumnData::Int {
-				container,
-				..
-			} => container.as_string(index),
-			ColumnData::Uint {
-				container,
-				..
-			} => container.as_string(index),
-			ColumnData::Decimal {
-				container,
-				..
-			} => container.as_string(index),
-			ColumnData::DictionaryId(container) => container.as_string(index),
-			ColumnData::Any(container) => container.as_string(index),
-			ColumnData::Undefined(container) => container.as_string(index),
-		}
+		with_container!(self, |c| c.as_string(index))
 	}
 }

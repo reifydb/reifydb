@@ -3,7 +3,7 @@
 
 use reifydb_type::util::bitvec::BitVec;
 
-use crate::value::column::{Column, ColumnData};
+use crate::value::column::{Column, ColumnData, data::with_container};
 
 impl Column {
 	pub fn filter(&mut self, mask: &BitVec) -> reifydb_type::Result<()> {
@@ -13,51 +13,7 @@ impl Column {
 
 impl ColumnData {
 	pub fn filter(&mut self, mask: &BitVec) -> reifydb_type::Result<()> {
-		match self {
-			ColumnData::Bool(container) => container.filter(mask),
-			ColumnData::Float4(container) => container.filter(mask),
-			ColumnData::Float8(container) => container.filter(mask),
-			ColumnData::Int1(container) => container.filter(mask),
-			ColumnData::Int2(container) => container.filter(mask),
-			ColumnData::Int4(container) => container.filter(mask),
-			ColumnData::Int8(container) => container.filter(mask),
-			ColumnData::Int16(container) => container.filter(mask),
-			ColumnData::Uint1(container) => container.filter(mask),
-			ColumnData::Uint2(container) => container.filter(mask),
-			ColumnData::Uint4(container) => container.filter(mask),
-			ColumnData::Uint8(container) => container.filter(mask),
-			ColumnData::Uint16(container) => container.filter(mask),
-			ColumnData::Utf8 {
-				container,
-				..
-			} => container.filter(mask),
-			ColumnData::Date(container) => container.filter(mask),
-			ColumnData::DateTime(container) => container.filter(mask),
-			ColumnData::Time(container) => container.filter(mask),
-			ColumnData::Duration(container) => container.filter(mask),
-			ColumnData::Undefined(container) => container.filter(mask),
-			ColumnData::IdentityId(container) => container.filter(mask),
-			ColumnData::DictionaryId(container) => container.filter(mask),
-			ColumnData::Uuid4(container) => container.filter(mask),
-			ColumnData::Uuid7(container) => container.filter(mask),
-			ColumnData::Blob {
-				container,
-				..
-			} => container.filter(mask),
-			ColumnData::Int {
-				container,
-				..
-			} => container.filter(mask),
-			ColumnData::Uint {
-				container,
-				..
-			} => container.filter(mask),
-			ColumnData::Decimal {
-				container,
-				..
-			} => container.filter(mask),
-			ColumnData::Any(container) => container.filter(mask),
-		}
+		with_container!(self, |c| c.filter(mask));
 		Ok(())
 	}
 }

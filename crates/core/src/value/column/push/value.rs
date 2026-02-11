@@ -5,445 +5,145 @@ use reifydb_type::value::Value;
 
 use crate::value::column::data::ColumnData;
 
+macro_rules! push_or_promote {
+	// Tuple variant, uses self.push(value)
+	($self:expr, $val:expr, $col_variant:ident, $factory_expr:expr) => {
+		match $self {
+			ColumnData::$col_variant(_) => $self.push($val),
+			ColumnData::Undefined(container) => {
+				let len = container.len();
+				let mut new_col = $factory_expr;
+				if let ColumnData::$col_variant(nc) = &mut new_col {
+					for _ in 0..len {
+						nc.push_undefined();
+					}
+					nc.push($val);
+				}
+				*$self = new_col;
+			}
+			_ => unimplemented!(),
+		}
+	};
+	// Struct variant, uses self.push(value)
+	(struct $self:expr, $val:expr, $col_variant:ident, $factory_expr:expr) => {
+		match $self {
+			ColumnData::$col_variant {
+				..
+			} => $self.push($val),
+			ColumnData::Undefined(container) => {
+				let len = container.len();
+				let mut new_col = $factory_expr;
+				if let ColumnData::$col_variant {
+					container: nc,
+					..
+				} = &mut new_col
+				{
+					for _ in 0..len {
+						nc.push_undefined();
+					}
+					nc.push($val);
+				}
+				*$self = new_col;
+			}
+			_ => unimplemented!(),
+		}
+	};
+	// Tuple variant, direct container push (no Push trait impl needed)
+	(direct $self:expr, $val:expr, $col_variant:ident, $factory_expr:expr) => {
+		match $self {
+			ColumnData::$col_variant(container) => container.push($val),
+			ColumnData::Undefined(container) => {
+				let len = container.len();
+				let mut new_col = $factory_expr;
+				if let ColumnData::$col_variant(nc) = &mut new_col {
+					for _ in 0..len {
+						nc.push_undefined();
+					}
+					nc.push($val);
+				}
+				*$self = new_col;
+			}
+			_ => unimplemented!(),
+		}
+	};
+	// Struct variant, direct container push
+	(struct_direct $self:expr, $val:expr, $col_variant:ident, $factory_expr:expr) => {
+		match $self {
+			ColumnData::$col_variant {
+				container,
+				..
+			} => container.push($val),
+			ColumnData::Undefined(container) => {
+				let len = container.len();
+				let mut new_col = $factory_expr;
+				if let ColumnData::$col_variant {
+					container: nc,
+					..
+				} = &mut new_col
+				{
+					for _ in 0..len {
+						nc.push_undefined();
+					}
+					nc.push($val);
+				}
+				*$self = new_col;
+			}
+			_ => unimplemented!(),
+		}
+	};
+}
+
 impl ColumnData {
 	pub fn push_value(&mut self, value: Value) {
 		match value {
-			Value::Boolean(v) => match self {
-				ColumnData::Bool(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::bool(vec![]);
-					if let ColumnData::Bool(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Float4(v) => match self {
-				ColumnData::Float4(_) => self.push(v.value()),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::float4(vec![]);
-					if let ColumnData::Float4(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v.value());
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Float8(v) => match self {
-				ColumnData::Float8(_) => self.push(v.value()),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::float8(vec![]);
-					if let ColumnData::Float8(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v.value());
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Int1(v) => match self {
-				ColumnData::Int1(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::int1(vec![]);
-					if let ColumnData::Int1(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Int2(v) => match self {
-				ColumnData::Int2(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::int2(vec![]);
-					if let ColumnData::Int2(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Int4(v) => match self {
-				ColumnData::Int4(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::int4(vec![]);
-					if let ColumnData::Int4(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Int8(v) => match self {
-				ColumnData::Int8(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::int8(vec![]);
-					if let ColumnData::Int8(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Int16(v) => match self {
-				ColumnData::Int16(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::int16(vec![]);
-					if let ColumnData::Int16(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Utf8(v) => match self {
-				ColumnData::Utf8 {
-					..
-				} => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::utf8(Vec::<String>::new());
-					if let ColumnData::Utf8 {
-						container: new_container,
-						..
-					} = &mut new_container
-					{
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Uint1(v) => match self {
-				ColumnData::Uint1(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::uint1(vec![]);
-					if let ColumnData::Uint1(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Uint2(v) => match self {
-				ColumnData::Uint2(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::uint2(vec![]);
-					if let ColumnData::Uint2(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Uint4(v) => match self {
-				ColumnData::Uint4(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::uint4(vec![]);
-					if let ColumnData::Uint4(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Uint8(v) => match self {
-				ColumnData::Uint8(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::uint8(vec![]);
-					if let ColumnData::Uint8(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Uint16(v) => match self {
-				ColumnData::Uint16(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::uint16(vec![]);
-					if let ColumnData::Uint16(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Date(v) => match self {
-				ColumnData::Date(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::date(vec![]);
-					if let ColumnData::Date(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::DateTime(v) => match self {
-				ColumnData::DateTime(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::datetime(vec![]);
-					if let ColumnData::DateTime(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Time(v) => match self {
-				ColumnData::Time(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::time(vec![]);
-					if let ColumnData::Time(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Duration(v) => match self {
-				ColumnData::Duration(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::duration(vec![]);
-					if let ColumnData::Duration(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Uuid4(v) => match self {
-				ColumnData::Uuid4(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::uuid4(vec![]);
-					if let ColumnData::Uuid4(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Uuid7(v) => match self {
-				ColumnData::Uuid7(_) => self.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::uuid7(vec![]);
-					if let ColumnData::Uuid7(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
+			Value::Boolean(v) => push_or_promote!(self, v, Bool, ColumnData::bool(vec![])),
+			Value::Float4(v) => push_or_promote!(self, v.value(), Float4, ColumnData::float4(vec![])),
+			Value::Float8(v) => push_or_promote!(self, v.value(), Float8, ColumnData::float8(vec![])),
+			Value::Int1(v) => push_or_promote!(self, v, Int1, ColumnData::int1(vec![])),
+			Value::Int2(v) => push_or_promote!(self, v, Int2, ColumnData::int2(vec![])),
+			Value::Int4(v) => push_or_promote!(self, v, Int4, ColumnData::int4(vec![])),
+			Value::Int8(v) => push_or_promote!(self, v, Int8, ColumnData::int8(vec![])),
+			Value::Int16(v) => push_or_promote!(self, v, Int16, ColumnData::int16(vec![])),
+			Value::Uint1(v) => push_or_promote!(self, v, Uint1, ColumnData::uint1(vec![])),
+			Value::Uint2(v) => push_or_promote!(self, v, Uint2, ColumnData::uint2(vec![])),
+			Value::Uint4(v) => push_or_promote!(self, v, Uint4, ColumnData::uint4(vec![])),
+			Value::Uint8(v) => push_or_promote!(self, v, Uint8, ColumnData::uint8(vec![])),
+			Value::Uint16(v) => push_or_promote!(self, v, Uint16, ColumnData::uint16(vec![])),
+			Value::Utf8(v) => {
+				push_or_promote!(struct self, v, Utf8, ColumnData::utf8(Vec::<String>::new()))
+			}
+			Value::Date(v) => push_or_promote!(self, v, Date, ColumnData::date(vec![])),
+			Value::DateTime(v) => push_or_promote!(self, v, DateTime, ColumnData::datetime(vec![])),
+			Value::Time(v) => push_or_promote!(self, v, Time, ColumnData::time(vec![])),
+			Value::Duration(v) => push_or_promote!(self, v, Duration, ColumnData::duration(vec![])),
+			Value::Uuid4(v) => push_or_promote!(self, v, Uuid4, ColumnData::uuid4(vec![])),
+			Value::Uuid7(v) => push_or_promote!(self, v, Uuid7, ColumnData::uuid7(vec![])),
+			Value::IdentityId(v) => {
+				push_or_promote!(direct self, v, IdentityId, ColumnData::identity_id(vec![]))
+			}
+			Value::DictionaryId(v) => {
+				push_or_promote!(direct self, v, DictionaryId, ColumnData::dictionary_id(vec![]))
+			}
+			Value::Blob(v) => push_or_promote!(struct_direct self, v, Blob, ColumnData::blob(vec![])),
+			Value::Int(v) => push_or_promote!(struct_direct self, v, Int, ColumnData::int(vec![])),
+			Value::Uint(v) => push_or_promote!(struct_direct self, v, Uint, ColumnData::uint(vec![])),
+			Value::Decimal(v) => {
+				push_or_promote!(struct_direct self, v, Decimal, ColumnData::decimal(vec![]))
+			}
 			Value::Undefined => self.push_undefined(),
-			Value::IdentityId(id) => match self {
-				ColumnData::IdentityId(container) => container.push(id),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::identity_id(vec![]);
-					if let ColumnData::IdentityId(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(id);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-			Value::Blob(v) => match self {
-				ColumnData::Blob {
-					container,
-					..
-				} => container.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::blob(vec![]);
-					if let ColumnData::Blob {
-						container: new_container,
-						..
-					} = &mut new_container
-					{
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Int(v) => match self {
-				ColumnData::Int {
-					container,
-					..
-				} => container.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::int(vec![]);
-					if let ColumnData::Int {
-						container: new_container,
-						..
-					} = &mut new_container
-					{
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-			Value::Uint(v) => match self {
-				ColumnData::Uint {
-					container,
-					..
-				} => container.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::uint(vec![]);
-					if let ColumnData::Uint {
-						container: new_container,
-						..
-					} = &mut new_container
-					{
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::Decimal(v) => match self {
-				ColumnData::Decimal {
-					container,
-					..
-				} => container.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::decimal(vec![]);
-					if let ColumnData::Decimal {
-						container: new_container,
-						..
-					} = &mut new_container
-					{
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
-			Value::DictionaryId(v) => match self {
-				ColumnData::DictionaryId(container) => container.push(v),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::dictionary_id(vec![]);
-					if let ColumnData::DictionaryId(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(v);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
-
 			Value::Type(t) => self.push_value(Value::Any(Box::new(Value::Type(t)))),
-
 			Value::Any(v) => match self {
 				ColumnData::Any(container) => container.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::any(vec![]);
-					if let ColumnData::Any(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
+					let len = container.len();
+					let mut new_col = ColumnData::any(vec![]);
+					if let ColumnData::Any(nc) = &mut new_col {
+						for _ in 0..len {
+							nc.push_undefined();
 						}
-						new_container.push(v);
+						nc.push(v);
 					}
-					*self = new_container;
+					*self = new_col;
 				}
 				_ => unreachable!("Cannot push Any value to non-Any column"),
 			},

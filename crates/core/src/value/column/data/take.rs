@@ -3,69 +3,75 @@
 
 use crate::value::column::ColumnData;
 
-impl ColumnData {
-	pub fn take(&self, num: usize) -> ColumnData {
-		match self {
-			ColumnData::Bool(container) => ColumnData::Bool(container.take(num)),
-			ColumnData::Float4(container) => ColumnData::Float4(container.take(num)),
-			ColumnData::Float8(container) => ColumnData::Float8(container.take(num)),
-			ColumnData::Int1(container) => ColumnData::Int1(container.take(num)),
-			ColumnData::Int2(container) => ColumnData::Int2(container.take(num)),
-			ColumnData::Int4(container) => ColumnData::Int4(container.take(num)),
-			ColumnData::Int8(container) => ColumnData::Int8(container.take(num)),
-			ColumnData::Int16(container) => ColumnData::Int16(container.take(num)),
+macro_rules! map_container {
+	($self:expr, |$c:ident| $body:expr) => {
+		match $self {
+			ColumnData::Bool($c) => ColumnData::Bool($body),
+			ColumnData::Float4($c) => ColumnData::Float4($body),
+			ColumnData::Float8($c) => ColumnData::Float8($body),
+			ColumnData::Int1($c) => ColumnData::Int1($body),
+			ColumnData::Int2($c) => ColumnData::Int2($body),
+			ColumnData::Int4($c) => ColumnData::Int4($body),
+			ColumnData::Int8($c) => ColumnData::Int8($body),
+			ColumnData::Int16($c) => ColumnData::Int16($body),
+			ColumnData::Uint1($c) => ColumnData::Uint1($body),
+			ColumnData::Uint2($c) => ColumnData::Uint2($body),
+			ColumnData::Uint4($c) => ColumnData::Uint4($body),
+			ColumnData::Uint8($c) => ColumnData::Uint8($body),
+			ColumnData::Uint16($c) => ColumnData::Uint16($body),
 			ColumnData::Utf8 {
-				container,
+				container: $c,
 				max_bytes,
 			} => ColumnData::Utf8 {
-				container: container.take(num),
+				container: $body,
 				max_bytes: *max_bytes,
 			},
-			ColumnData::Uint1(container) => ColumnData::Uint1(container.take(num)),
-			ColumnData::Uint2(container) => ColumnData::Uint2(container.take(num)),
-			ColumnData::Uint4(container) => ColumnData::Uint4(container.take(num)),
-			ColumnData::Uint8(container) => ColumnData::Uint8(container.take(num)),
-			ColumnData::Uint16(container) => ColumnData::Uint16(container.take(num)),
-			ColumnData::Date(container) => ColumnData::Date(container.take(num)),
-			ColumnData::DateTime(container) => ColumnData::DateTime(container.take(num)),
-			ColumnData::Time(container) => ColumnData::Time(container.take(num)),
-			ColumnData::Duration(container) => ColumnData::Duration(container.take(num)),
-			ColumnData::Undefined(container) => ColumnData::Undefined(container.take(num)),
-			ColumnData::IdentityId(container) => ColumnData::IdentityId(container.take(num)),
-			ColumnData::DictionaryId(container) => ColumnData::DictionaryId(container.take(num)),
-			ColumnData::Uuid4(container) => ColumnData::Uuid4(container.take(num)),
-			ColumnData::Uuid7(container) => ColumnData::Uuid7(container.take(num)),
+			ColumnData::Date($c) => ColumnData::Date($body),
+			ColumnData::DateTime($c) => ColumnData::DateTime($body),
+			ColumnData::Time($c) => ColumnData::Time($body),
+			ColumnData::Duration($c) => ColumnData::Duration($body),
+			ColumnData::Undefined($c) => ColumnData::Undefined($body),
+			ColumnData::IdentityId($c) => ColumnData::IdentityId($body),
+			ColumnData::DictionaryId($c) => ColumnData::DictionaryId($body),
+			ColumnData::Uuid4($c) => ColumnData::Uuid4($body),
+			ColumnData::Uuid7($c) => ColumnData::Uuid7($body),
 			ColumnData::Blob {
-				container,
+				container: $c,
 				max_bytes,
 			} => ColumnData::Blob {
-				container: container.take(num),
+				container: $body,
 				max_bytes: *max_bytes,
 			},
 			ColumnData::Int {
-				container,
+				container: $c,
 				max_bytes,
 			} => ColumnData::Int {
-				container: container.take(num),
+				container: $body,
 				max_bytes: *max_bytes,
 			},
 			ColumnData::Uint {
-				container,
+				container: $c,
 				max_bytes,
 			} => ColumnData::Uint {
-				container: container.take(num),
+				container: $body,
 				max_bytes: *max_bytes,
 			},
 			ColumnData::Decimal {
-				container,
+				container: $c,
 				precision,
 				scale,
 			} => ColumnData::Decimal {
-				container: container.take(num),
+				container: $body,
 				precision: *precision,
 				scale: *scale,
 			},
-			ColumnData::Any(container) => ColumnData::Any(container.take(num)),
+			ColumnData::Any($c) => ColumnData::Any($body),
 		}
+	};
+}
+
+impl ColumnData {
+	pub fn take(&self, num: usize) -> ColumnData {
+		map_container!(self, |c| c.take(num))
 	}
 }

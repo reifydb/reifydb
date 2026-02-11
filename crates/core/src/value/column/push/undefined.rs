@@ -1,55 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::value::column::data::ColumnData;
+use crate::value::column::data::{ColumnData, with_container};
 
 impl ColumnData {
 	pub fn push_undefined(&mut self) {
-		match self {
-			ColumnData::Bool(container) => container.push_undefined(),
-			ColumnData::Float4(container) => container.push_undefined(),
-			ColumnData::Float8(container) => container.push_undefined(),
-			ColumnData::Int1(container) => container.push_undefined(),
-			ColumnData::Int2(container) => container.push_undefined(),
-			ColumnData::Int4(container) => container.push_undefined(),
-			ColumnData::Int8(container) => container.push_undefined(),
-			ColumnData::Int16(container) => container.push_undefined(),
-			ColumnData::Utf8 {
-				container,
-				..
-			} => container.push_undefined(),
-			ColumnData::Uint1(container) => container.push_undefined(),
-			ColumnData::Uint2(container) => container.push_undefined(),
-			ColumnData::Uint4(container) => container.push_undefined(),
-			ColumnData::Uint8(container) => container.push_undefined(),
-			ColumnData::Uint16(container) => container.push_undefined(),
-			ColumnData::Date(container) => container.push_undefined(),
-			ColumnData::DateTime(container) => container.push_undefined(),
-			ColumnData::Time(container) => container.push_undefined(),
-			ColumnData::Duration(container) => container.push_undefined(),
-			ColumnData::Undefined(container) => container.push_undefined(),
-			ColumnData::IdentityId(container) => container.push_undefined(),
-			ColumnData::DictionaryId(container) => container.push_undefined(),
-			ColumnData::Uuid4(container) => container.push_undefined(),
-			ColumnData::Uuid7(container) => container.push_undefined(),
-			ColumnData::Blob {
-				container,
-				..
-			} => container.push_undefined(),
-			ColumnData::Int {
-				container,
-				..
-			} => container.push_undefined(),
-			ColumnData::Uint {
-				container,
-				..
-			} => container.push_undefined(),
-			ColumnData::Decimal {
-				container,
-				..
-			} => container.push_undefined(),
-			&mut ColumnData::Any(ref mut container) => container.push_undefined(),
-		}
+		with_container!(self, |c| c.push_undefined())
 	}
 }
 
