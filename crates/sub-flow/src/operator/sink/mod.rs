@@ -75,6 +75,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 			is_aggregate_context: false,
 			functions: &Functions::empty(),
 			clock: &Clock::default(),
+			arena: None,
 		};
 
 		if let Some(source_col) = columns.column(&target_col.name) {
@@ -140,6 +141,7 @@ pub(crate) fn coerce_subscription_columns(
 			is_aggregate_context: false,
 			functions: &Functions::empty(),
 			clock: &Clock::default(),
+			arena: None,
 		};
 
 		if let Some(source_col) = columns.column(&target_col.name) {

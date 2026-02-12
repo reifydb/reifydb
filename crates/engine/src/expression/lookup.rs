@@ -154,6 +154,7 @@ pub mod tests {
 			is_aggregate_context: false,
 			functions: &Functions::empty(),
 			clock: &Clock::default(),
+			arena: None,
 		};
 
 		// Try to access a column that doesn't exist

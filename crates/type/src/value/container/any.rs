@@ -1,22 +1,92 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::ops::Deref;
+use std::{
+	fmt::{self, Debug},
+	ops::Deref,
+};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
+	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::{bitvec::BitVec, cowvec::CowVec},
 	value::Value,
 };
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AnyContainer {
-	data: CowVec<Box<Value>>,
-	bitvec: BitVec,
+pub struct AnyContainer<S: Storage = Cow> {
+	data: S::Vec<Box<Value>>,
+	bitvec: S::BitVec,
 }
 
-impl AnyContainer {
+impl<S: Storage> Clone for AnyContainer<S> {
+	fn clone(&self) -> Self {
+		Self {
+			data: self.data.clone(),
+			bitvec: self.bitvec.clone(),
+		}
+	}
+}
+
+impl<S: Storage> Debug for AnyContainer<S>
+where
+	S::Vec<Box<Value>>: Debug,
+	S::BitVec: Debug,
+{
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("AnyContainer").field("data", &self.data).field("bitvec", &self.bitvec).finish()
+	}
+}
+
+impl<S: Storage> PartialEq for AnyContainer<S>
+where
+	S::Vec<Box<Value>>: PartialEq,
+	S::BitVec: PartialEq,
+{
+	fn eq(&self, other: &Self) -> bool {
+		self.data == other.data && self.bitvec == other.bitvec
+	}
+}
+
+impl Serialize for AnyContainer<Cow> {
+	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
+		#[derive(Serialize)]
+		struct Helper<'a> {
+			data: &'a CowVec<Box<Value>>,
+			bitvec: &'a BitVec,
+		}
+		Helper {
+			data: &self.data,
+			bitvec: &self.bitvec,
+		}
+		.serialize(serializer)
+	}
+}
+
+impl<'de> Deserialize<'de> for AnyContainer<Cow> {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		#[derive(Deserialize)]
+		struct Helper {
+			data: CowVec<Box<Value>>,
+			bitvec: BitVec,
+		}
+		let h = Helper::deserialize(deserializer)?;
+		Ok(AnyContainer {
+			data: h.data,
+			bitvec: h.bitvec,
+		})
+	}
+}
+
+impl<S: Storage> Deref for AnyContainer<S> {
+	type Target = [Box<Value>];
+
+	fn deref(&self) -> &Self::Target {
+		self.data.as_slice()
+	}
+}
+
+impl AnyContainer<Cow> {
 	pub fn new(data: Vec<Box<Value>>, bitvec: BitVec) -> Self {
 		debug_assert_eq!(data.len(), bitvec.len());
 		Self {
@@ -39,65 +109,73 @@ impl AnyContainer {
 			bitvec: BitVec::repeat(len, true),
 		}
 	}
+}
+
+impl<S: Storage> AnyContainer<S> {
+	pub fn from_parts(data: S::Vec<Box<Value>>, bitvec: S::BitVec) -> Self {
+		Self {
+			data,
+			bitvec,
+		}
+	}
 
 	pub fn len(&self) -> usize {
-		debug_assert_eq!(self.data.len(), self.bitvec.len());
-		self.data.len()
+		debug_assert_eq!(DataVec::len(&self.data), DataBitVec::len(&self.bitvec));
+		DataVec::len(&self.data)
 	}
 
 	pub fn capacity(&self) -> usize {
-		debug_assert!(self.data.capacity() >= self.bitvec.capacity());
-		self.data.capacity().min(self.bitvec.capacity())
+		DataVec::capacity(&self.data).min(DataBitVec::capacity(&self.bitvec))
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.data.is_empty()
+		DataVec::is_empty(&self.data)
 	}
 
 	pub fn clear(&mut self) {
-		self.data.clear();
-		self.bitvec.clear();
+		DataVec::clear(&mut self.data);
+		DataBitVec::clear(&mut self.bitvec);
 	}
 
 	pub fn push(&mut self, value: Box<Value>) {
-		self.data.push(value);
-		self.bitvec.push(true);
+		DataVec::push(&mut self.data, value);
+		DataBitVec::push(&mut self.bitvec, true);
 	}
 
 	pub fn push_undefined(&mut self) {
-		self.data.push(Box::new(Value::Undefined));
-		self.bitvec.push(false);
+		DataVec::push(&mut self.data, Box::new(Value::Undefined));
+		DataBitVec::push(&mut self.bitvec, false);
 	}
 
 	pub fn get(&self, index: usize) -> Option<&Box<Value>> {
 		if index < self.len() && self.is_defined(index) {
-			self.data.get(index)
+			DataVec::get(&self.data, index)
 		} else {
 			None
 		}
 	}
 
-	pub fn bitvec(&self) -> &BitVec {
+	pub fn bitvec(&self) -> &S::BitVec {
 		&self.bitvec
 	}
 
-	pub fn bitvec_mut(&mut self) -> &mut BitVec {
+	pub fn bitvec_mut(&mut self) -> &mut S::BitVec {
 		&mut self.bitvec
 	}
 
 	pub fn is_defined(&self, idx: usize) -> bool {
-		idx < self.len() && self.bitvec.get(idx)
+		idx < self.len() && DataBitVec::get(&self.bitvec, idx)
 	}
 
 	pub fn is_fully_defined(&self) -> bool {
-		self.bitvec.count_ones() == self.len()
+		DataBitVec::count_ones(&self.bitvec) == self.len()
 	}
 
-	pub fn data(&self) -> &CowVec<Box<Value>> {
+	pub fn data(&self) -> &S::Vec<Box<Value>> {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut CowVec<Box<Value>> {
+	pub fn data_mut(&mut self) -> &mut S::Vec<Box<Value>> {
 		&mut self.data
 	}
 
@@ -118,65 +196,59 @@ impl AnyContainer {
 	}
 
 	pub fn undefined_count(&self) -> usize {
-		self.bitvec().count_zeros()
+		DataBitVec::count_zeros(&self.bitvec)
 	}
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
-			data: self.data.take(num),
-			bitvec: self.bitvec.take(num),
+			data: DataVec::take(&self.data, num),
+			bitvec: DataBitVec::take(&self.bitvec, num),
 		}
 	}
 
-	pub fn filter(&mut self, mask: &BitVec) {
-		let mut new_data = Vec::with_capacity(mask.count_ones());
-		let mut new_bitvec = BitVec::with_capacity(mask.count_ones());
+	pub fn filter(&mut self, mask: &S::BitVec) {
+		let mut new_data = DataVec::spawn(&self.data, DataBitVec::count_ones(mask));
+		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, DataBitVec::count_ones(mask));
 
-		for (i, keep) in mask.iter().enumerate() {
+		for (i, keep) in DataBitVec::iter(mask).enumerate() {
 			if keep && i < self.len() {
-				new_data.push(self.data[i].clone());
-				new_bitvec.push(self.bitvec.get(i));
+				DataVec::push(&mut new_data, self.data[i].clone());
+				DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, i));
 			}
 		}
 
-		self.data = CowVec::new(new_data);
+		self.data = new_data;
 		self.bitvec = new_bitvec;
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
-		let mut new_data = Vec::with_capacity(indices.len());
-		let mut new_bitvec = BitVec::with_capacity(indices.len());
+		let mut new_data = DataVec::spawn(&self.data, indices.len());
+		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, indices.len());
 
 		for &idx in indices {
 			if idx < self.len() {
-				new_data.push(self.data[idx].clone());
-				new_bitvec.push(self.bitvec.get(idx));
+				DataVec::push(&mut new_data, self.data[idx].clone());
+				DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, idx));
 			} else {
-				new_data.push(Box::new(Value::Undefined));
-				new_bitvec.push(false);
+				DataVec::push(&mut new_data, Box::new(Value::Undefined));
+				DataBitVec::push(&mut new_bitvec, false);
 			}
 		}
 
-		self.data = CowVec::new(new_data);
+		self.data = new_data;
 		self.bitvec = new_bitvec;
 	}
 
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
-		self.data.extend(other.data.iter().cloned());
-		self.bitvec.extend(&other.bitvec);
+		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
+		DataBitVec::extend_from(&mut self.bitvec, &other.bitvec);
 		Ok(())
 	}
 
 	pub fn extend_from_undefined(&mut self, len: usize) {
-		self.data.extend(std::iter::repeat(Box::new(Value::Undefined)).take(len));
-		self.bitvec.extend(&BitVec::repeat(len, false));
-	}
-}
-
-impl Deref for AnyContainer {
-	type Target = [Box<Value>];
-
-	fn deref(&self) -> &Self::Target {
-		&self.data
+		for _ in 0..len {
+			DataVec::push(&mut self.data, Box::new(Value::Undefined));
+			DataBitVec::push(&mut self.bitvec, false);
+		}
 	}
 }

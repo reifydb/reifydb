@@ -78,6 +78,7 @@ impl QueryNode for MapNode {
 					is_aggregate_context: false,
 					functions: &stored_ctx.services.functions,
 					clock: &stored_ctx.services.clock,
+					arena: None,
 				};
 
 				// Check if this is an alias expression and we have source information
@@ -196,6 +197,7 @@ impl QueryNode for MapWithoutInputNode {
 				is_aggregate_context: false,
 				functions: &stored_ctx.services.functions,
 				clock: &stored_ctx.services.clock,
+				arena: None,
 			};
 
 			let column = compiled_expr.execute(&exec_ctx)?;

@@ -5,6 +5,8 @@ use std::{fmt, ops::Deref, sync::Arc};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::storage::DataBitVec;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct BitVec {
 	inner: Arc<BitVecInner>,
@@ -470,6 +472,52 @@ impl<'de> Deserialize<'de> for BitVec {
 		Ok(BitVec {
 			inner: Arc::new(inner),
 		})
+	}
+}
+
+impl DataBitVec for BitVec {
+	fn spawn(&self, capacity: usize) -> Self {
+		BitVec::with_capacity(capacity)
+	}
+
+	fn push(&mut self, bit: bool) {
+		BitVec::push(self, bit)
+	}
+
+	fn get(&self, idx: usize) -> bool {
+		BitVec::get(self, idx)
+	}
+
+	fn set(&mut self, idx: usize, value: bool) {
+		BitVec::set(self, idx, value)
+	}
+
+	fn len(&self) -> usize {
+		BitVec::len(self)
+	}
+
+	fn clear(&mut self) {
+		BitVec::clear(self)
+	}
+
+	fn extend_from(&mut self, other: &Self) {
+		BitVec::extend(self, other)
+	}
+
+	fn count_ones(&self) -> usize {
+		BitVec::count_ones(self)
+	}
+
+	fn iter(&self) -> impl Iterator<Item = bool> + '_ {
+		BitVec::iter(self)
+	}
+
+	fn capacity(&self) -> usize {
+		BitVec::capacity(self)
+	}
+
+	fn take(&self, n: usize) -> Self {
+		BitVec::take(self, n)
 	}
 }
 

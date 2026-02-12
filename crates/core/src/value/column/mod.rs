@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::fmt;
+
 use reifydb_type::{
 	fragment::Fragment,
+	storage::{Cow, Storage},
 	util::bitvec::BitVec,
 	value::{
 		dictionary::DictionaryEntryId,
@@ -25,14 +28,34 @@ pub mod row;
 pub mod transform;
 pub mod view;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Column {
+pub struct Column<S: Storage = Cow> {
 	pub name: Fragment,
-	pub data: ColumnData,
+	pub data: ColumnData<S>,
 }
 
-impl Column {
-	pub fn new(name: impl Into<Fragment>, data: ColumnData) -> Self {
+impl<S: Storage> Clone for Column<S> {
+	fn clone(&self) -> Self {
+		Self {
+			name: self.name.clone(),
+			data: self.data.clone(),
+		}
+	}
+}
+
+impl<S: Storage> PartialEq for Column<S> {
+	fn eq(&self, other: &Self) -> bool {
+		self.name == other.name && self.data == other.data
+	}
+}
+
+impl fmt::Debug for Column<Cow> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Column").field("name", &self.name).field("data", &self.data).finish()
+	}
+}
+
+impl<S: Storage> Column<S> {
+	pub fn new(name: impl Into<Fragment>, data: ColumnData<S>) -> Self {
 		Self {
 			name: name.into(),
 			data,
@@ -43,7 +66,7 @@ impl Column {
 		self.data.get_type()
 	}
 
-	pub fn with_new_data(&self, data: ColumnData) -> Column {
+	pub fn with_new_data(&self, data: ColumnData<S>) -> Column<S> {
 		Column {
 			name: self.name.clone(),
 			data,
@@ -58,22 +81,24 @@ impl Column {
 		self.name.clone()
 	}
 
-	pub fn data(&self) -> &ColumnData {
+	pub fn data(&self) -> &ColumnData<S> {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut ColumnData {
+	pub fn data_mut(&mut self) -> &mut ColumnData<S> {
 		&mut self.data
 	}
 
 	/// Convert to a 'static lifetime version
-	pub fn to_static(&self) -> Column {
+	pub fn to_static(&self) -> Column<S> {
 		Column {
 			name: self.name.clone(),
 			data: self.data.clone(),
 		}
 	}
+}
 
+impl Column {
 	pub fn int1(name: impl Into<Fragment>, data: impl IntoIterator<Item = i8>) -> Self {
 		Column {
 			name: name.into(),

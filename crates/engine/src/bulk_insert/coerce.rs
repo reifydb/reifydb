@@ -32,6 +32,7 @@ pub(super) fn coerce_columns(
 		is_aggregate_context: false,
 		functions: &Functions::empty(),
 		clock: &Clock::default(),
+		arena: None,
 	};
 
 	let mut coerced_columns: Vec<ColumnData> = Vec::with_capacity(columns.len());

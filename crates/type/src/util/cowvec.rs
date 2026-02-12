@@ -5,6 +5,8 @@ use std::{borrow::Borrow, ops::Deref, sync::Arc};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::storage::DataVec;
+
 #[derive(Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct CowVec<T>
 where
@@ -258,6 +260,48 @@ where
 		Ok(CowVec {
 			inner: Arc::new(vec),
 		})
+	}
+}
+
+impl<T: Clone + PartialEq> DataVec<T> for CowVec<T> {
+	fn spawn(&self, capacity: usize) -> Self {
+		CowVec::with_capacity(capacity)
+	}
+
+	fn push(&mut self, value: T) {
+		CowVec::push(self, value)
+	}
+
+	fn clear(&mut self) {
+		CowVec::clear(self)
+	}
+
+	fn len(&self) -> usize {
+		CowVec::len(self)
+	}
+
+	fn as_slice(&self) -> &[T] {
+		CowVec::as_slice(self)
+	}
+
+	fn get(&self, idx: usize) -> Option<&T> {
+		CowVec::get(self, idx)
+	}
+
+	fn extend_from_slice(&mut self, other: &[T]) {
+		CowVec::extend_from_slice(self, other)
+	}
+
+	fn extend_iter(&mut self, iter: impl Iterator<Item = T>) {
+		CowVec::extend(self, iter)
+	}
+
+	fn capacity(&self) -> usize {
+		CowVec::capacity(self)
+	}
+
+	fn take(&self, n: usize) -> Self {
+		CowVec::take(self, n)
 	}
 }
 

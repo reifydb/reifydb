@@ -37,7 +37,6 @@ use crate::{
 		constant::{constant_value, constant_value_of},
 		context::EvalContext,
 		lookup::column_lookup,
-		pool::recycle,
 	},
 	vm::stack::Variable,
 };
@@ -183,10 +182,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = add_columns(ctx, &l, &r, || fragment.clone());
-				recycle(l.data);
-				recycle(r.data);
-				result
+				add_columns(ctx, &l, &r, || fragment.clone())
 			})
 		}
 
@@ -197,10 +193,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = sub_columns(ctx, &l, &r, || fragment.clone());
-				recycle(l.data);
-				recycle(r.data);
-				result
+				sub_columns(ctx, &l, &r, || fragment.clone())
 			})
 		}
 
@@ -211,10 +204,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = mul_columns(ctx, &l, &r, || fragment.clone());
-				recycle(l.data);
-				recycle(r.data);
-				result
+				mul_columns(ctx, &l, &r, || fragment.clone())
 			})
 		}
 
@@ -225,10 +215,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = div_columns(ctx, &l, &r, || fragment.clone());
-				recycle(l.data);
-				recycle(r.data);
-				result
+				div_columns(ctx, &l, &r, || fragment.clone())
 			})
 		}
 
@@ -239,10 +226,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = rem_columns(ctx, &l, &r, || fragment.clone());
-				recycle(l.data);
-				recycle(r.data);
-				result
+				rem_columns(ctx, &l, &r, || fragment.clone())
 			})
 		}
 
@@ -260,8 +244,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					fragment.clone(),
 					equal_cannot_be_applied_to_incompatible_types,
 				);
-				recycle(l.data);
-				recycle(r.data);
 				result
 			})
 		}
@@ -280,8 +262,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					fragment.clone(),
 					not_equal_cannot_be_applied_to_incompatible_types,
 				);
-				recycle(l.data);
-				recycle(r.data);
 				result
 			})
 		}
@@ -300,8 +280,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					fragment.clone(),
 					greater_than_cannot_be_applied_to_incompatible_types,
 				);
-				recycle(l.data);
-				recycle(r.data);
 				result
 			})
 		}
@@ -320,8 +298,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					fragment.clone(),
 					greater_than_equal_cannot_be_applied_to_incompatible_types,
 				);
-				recycle(l.data);
-				recycle(r.data);
 				result
 			})
 		}
@@ -340,8 +316,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					fragment.clone(),
 					less_than_cannot_be_applied_to_incompatible_types,
 				);
-				recycle(l.data);
-				recycle(r.data);
 				result
 			})
 		}
@@ -360,8 +334,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					fragment.clone(),
 					less_than_equal_cannot_be_applied_to_incompatible_types,
 				);
-				recycle(l.data);
-				recycle(r.data);
 				result
 			})
 		}
@@ -374,8 +346,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = execute_and(&l, &r, &fragment);
-				recycle(l.data);
-				recycle(r.data);
 				result
 			})
 		}
@@ -388,8 +358,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = execute_or(&l, &r, &fragment);
-				recycle(l.data);
-				recycle(r.data);
 				result
 			})
 		}
@@ -402,8 +370,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = execute_xor(&l, &r, &fragment);
-				recycle(l.data);
-				recycle(r.data);
 				result
 			})
 		}

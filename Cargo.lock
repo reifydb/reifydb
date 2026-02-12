@@ -1753,6 +1753,7 @@ dependencies = [
 name = "reifydb-engine"
 version = "0.2.0"
 dependencies = [
+ "bumpalo",
  "futures-util",
  "indexmap",
  "once_cell",

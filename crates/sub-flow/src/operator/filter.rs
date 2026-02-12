@@ -86,6 +86,7 @@ impl FilterOperator {
 			is_aggregate_context: false,
 			functions: &self.functions,
 			clock: &self.clock,
+			arena: None,
 		};
 
 		// Start with all rows passing

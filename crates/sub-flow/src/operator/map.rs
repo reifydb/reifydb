@@ -82,6 +82,7 @@ impl MapOperator {
 			is_aggregate_context: false,
 			functions: &self.functions,
 			clock: &self.clock,
+			arena: None,
 		};
 
 		let mut result_columns = Vec::with_capacity(self.expressions.len());

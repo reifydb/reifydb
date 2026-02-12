@@ -37,6 +37,7 @@ pub(crate) fn prefix_eval(
 		is_aggregate_context: ctx.is_aggregate_context,
 		functions: ctx.functions,
 		clock: ctx.clock,
+		arena: None,
 	};
 	let column = super::eval::evaluate(&inner_ctx, &prefix.expression, functions, clock)?;
 

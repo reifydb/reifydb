@@ -237,6 +237,7 @@ impl DistinctOperator {
 				is_aggregate_context: false,
 				functions: &self.functions,
 				clock: &self.clock,
+				arena: None,
 			};
 			let mut expr_columns = Vec::new();
 			for compiled_expr in &self.compiled_expressions {

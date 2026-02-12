@@ -13,6 +13,5 @@ pub mod convert;
 pub mod eval;
 pub mod lookup;
 pub mod parameter;
-pub mod pool;
 pub mod prefix;
 pub mod scalar;

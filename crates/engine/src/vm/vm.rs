@@ -24,7 +24,10 @@ use super::{
 		query::{QueryContext, QueryNode},
 	},
 };
-use crate::expression::{context::EvalContext, eval::evaluate};
+use crate::{
+	arena::QueryArena,
+	expression::{context::EvalContext, eval::evaluate},
+};
 
 const MAX_ITERATIONS: usize = 10_000;
 
@@ -569,6 +572,7 @@ impl Vm {
 							is_aggregate_context: false,
 							functions: &services.functions,
 							clock: &services.clock,
+							arena: None,
 						};
 
 						let mut arg_exprs = Vec::with_capacity(arity);
@@ -1073,12 +1077,14 @@ fn run_query_plan(
 
 	let mut all_columns: Option<Columns> = None;
 	let mut mutable_context = (*context).clone();
+	let mut arena = QueryArena::new();
 
 	while let Some(batch) = query_node.next(txn, &mut mutable_context)? {
 		match &mut all_columns {
 			None => all_columns = Some(batch),
 			Some(existing) => existing.append_columns(batch)?,
 		}
+		arena.reset();
 	}
 
 	if all_columns.is_none() {

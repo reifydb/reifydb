@@ -72,6 +72,7 @@ impl QueryNode for GeneratorNode {
 			is_aggregate_context: false,
 			functions: &stored_ctx.services.functions,
 			clock: &stored_ctx.services.clock,
+			arena: None,
 		};
 
 		// Evaluate all parameter expressions into columns

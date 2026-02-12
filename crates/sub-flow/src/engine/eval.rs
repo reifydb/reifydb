@@ -60,6 +60,7 @@ pub fn evaluate_operator_config(
 		is_aggregate_context: false,
 		functions,
 		clock,
+		arena: None,
 	};
 
 	for expr in expressions {

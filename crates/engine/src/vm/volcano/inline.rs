@@ -175,6 +175,7 @@ impl<'a> InlineDataNode {
 						is_aggregate_context: false,
 						functions: &self.context.as_ref().unwrap().services.functions,
 						clock: &self.context.as_ref().unwrap().services.clock,
+						arena: None,
 					};
 
 					let evaluated = evaluate(
@@ -243,6 +244,7 @@ impl<'a> InlineDataNode {
 							is_aggregate_context: false,
 							functions: &self.context.as_ref().unwrap().services.functions,
 							clock: &self.context.as_ref().unwrap().services.clock,
+							arena: None,
 						};
 
 						match cast_column_data(&ctx, &temp_data, wide_type, || Fragment::none())
@@ -280,6 +282,7 @@ impl<'a> InlineDataNode {
 						is_aggregate_context: false,
 						functions: &self.context.as_ref().unwrap().services.functions,
 						clock: &self.context.as_ref().unwrap().services.clock,
+						arena: None,
 					};
 
 					if let Ok(demoted) =
@@ -350,6 +353,7 @@ impl<'a> InlineDataNode {
 						is_aggregate_context: false,
 						functions: &self.context.as_ref().unwrap().services.functions,
 						clock: &self.context.as_ref().unwrap().services.clock,
+						arena: None,
 					};
 
 					let evaluated = evaluate(

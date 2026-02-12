@@ -84,6 +84,7 @@ impl QueryNode for PatchNode {
 					is_aggregate_context: false,
 					functions: &stored_ctx.services.functions,
 					clock: &stored_ctx.services.clock,
+					arena: None,
 				};
 
 				if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {

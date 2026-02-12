@@ -157,6 +157,7 @@ impl JoinOperator {
 			is_aggregate_context: false,
 			functions: &self.functions,
 			clock: &self.clock,
+			arena: None,
 		};
 
 		// Evaluate all compiled expressions on the entire batch

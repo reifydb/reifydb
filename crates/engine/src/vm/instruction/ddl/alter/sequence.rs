@@ -64,6 +64,7 @@ pub(crate) fn alter_table_sequence<'a>(
 			is_aggregate_context: false,
 			functions: &services.functions,
 			clock: &services.clock,
+			arena: None,
 		},
 		&plan.value,
 		&services.functions,

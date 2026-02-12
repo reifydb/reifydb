@@ -54,7 +54,6 @@ pub mod inline;
 pub mod join;
 pub mod map;
 pub mod patch;
-pub mod pool;
 pub mod query;
 pub mod row_lookup;
 pub mod scalarize;

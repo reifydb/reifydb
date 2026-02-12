@@ -12,7 +12,7 @@ use reifydb_function::registry::Functions;
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{params::Params, value::r#type::Type};
 
-use crate::vm::stack::SymbolTable;
+use crate::{arena::QueryArena, vm::stack::SymbolTable};
 
 pub struct EvalContext<'a> {
 	pub target: Option<TargetColumn>,
@@ -26,6 +26,7 @@ pub struct EvalContext<'a> {
 	pub is_aggregate_context: bool,
 	pub functions: &'a Functions,
 	pub clock: &'a Clock,
+	pub arena: Option<&'a QueryArena>,
 }
 
 impl<'a> EvalContext<'a> {
@@ -45,6 +46,7 @@ impl<'a> EvalContext<'a> {
 			is_aggregate_context: false,
 			functions: &EMPTY_FUNCTIONS,
 			clock: &DEFAULT_CLOCK,
+			arena: None,
 		}
 	}
 
@@ -61,7 +63,7 @@ impl<'a> EvalContext<'a> {
 
 	#[inline]
 	pub fn pooled(&self, target: Type, capacity: usize) -> ColumnData {
-		crate::expression::pool::take(target, capacity)
+		ColumnData::with_capacity(target, capacity)
 	}
 }
 

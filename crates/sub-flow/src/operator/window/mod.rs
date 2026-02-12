@@ -238,6 +238,7 @@ impl WindowOperator {
 			is_aggregate_context: false,
 			functions: &self.functions,
 			clock: &self.clock,
+			arena: None,
 		};
 
 		let mut group_columns: Vec<Column> = Vec::new();
@@ -419,6 +420,7 @@ impl WindowOperator {
 			is_aggregate_context: true, // Use aggregate functions for window aggregations
 			functions: &self.functions,
 			clock: &self.clock,
+			arena: None,
 		};
 
 		let (group_values, group_names) = self.extract_group_values(events)?;

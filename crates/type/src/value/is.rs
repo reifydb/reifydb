@@ -14,9 +14,9 @@ use crate::value::{
 	uuid::{Uuid4, Uuid7},
 };
 
-pub trait IsNumber: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default {}
-pub trait IsTemporal: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default {}
-pub trait IsUuid: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default {}
+pub trait IsNumber: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + 'static {}
+pub trait IsTemporal: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + 'static {}
+pub trait IsUuid: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + 'static {}
 
 pub trait IsFloat: IsNumber {}
 

@@ -368,6 +368,7 @@ fn execute_function_body_for_scalar(
 							is_aggregate_context: false,
 							functions,
 							clock,
+							arena: None,
 						};
 						let result_column = evaluate(
 							&evaluation_context,
@@ -519,6 +520,7 @@ fn evaluate_arguments(
 		is_aggregate_context: ctx.is_aggregate_context,
 		functions: ctx.functions,
 		clock: ctx.clock,
+		arena: None,
 	};
 	let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
 

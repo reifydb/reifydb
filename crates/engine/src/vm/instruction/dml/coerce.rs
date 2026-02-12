@@ -55,6 +55,7 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 			is_aggregate_context: false,
 			functions: &ctx.services.functions,
 			clock: &ctx.services.clock,
+			arena: None,
 		},
 		&temp_column_data,
 		target,

@@ -110,6 +110,7 @@ impl QueryNode for LeftJoinNode {
 					is_aggregate_context: false,
 					functions: &ctx.services.functions,
 					clock: &ctx.services.clock,
+					arena: None,
 				};
 
 				let all_true = self.context.compiled.iter().fold(true, |acc, compiled_expr| {
