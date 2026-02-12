@@ -11,6 +11,7 @@ use reifydb_rql::{
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{error, error::diagnostic::function, fragment::Fragment, params::Params, value::Value};
 
+use super::eval::evaluate;
 use crate::{
 	expression::context::EvalContext,
 	vm::{
@@ -368,7 +369,7 @@ fn execute_function_body_for_scalar(
 							functions,
 							clock,
 						};
-						let result_column = super::eval::evaluate(
+						let result_column = evaluate(
 							&evaluation_context,
 							&map_node.map[0],
 							functions,
@@ -528,7 +529,7 @@ fn evaluate_arguments(
 					(0..ctx.row_count).map(|_| Box::new(Value::Type(type_expr.ty))).collect();
 				result.push(Column::new(type_expr.fragment.text(), ColumnData::any(values)));
 			}
-			_ => result.push(super::eval::evaluate(&inner_ctx, expression, functions, clock)?),
+			_ => result.push(evaluate(&inner_ctx, expression, functions, clock)?),
 		}
 	}
 

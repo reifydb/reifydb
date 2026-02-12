@@ -10,13 +10,14 @@ use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::CompilationResult;
 use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction};
+use reifydb_transaction::transaction::{
+	Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
+};
 use reifydb_type::{params::Params, value::frame::frame::Frame};
 use tracing::instrument;
 
 use crate::vm::{
 	Admin, Command, Query,
-	interpret::TransactionAccess,
 	services::Services,
 	stack::{SymbolTable, Variable},
 	vm::Vm,
@@ -93,7 +94,7 @@ impl Executor {
 			CompilationResult::Ready(compiled) => {
 				for compiled in compiled.iter() {
 					result.clear();
-					let mut tx = TransactionAccess::Admin(txn);
+					let mut tx = Transaction::Admin(txn);
 					let mut vm = Vm::new(symbol_table);
 					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbol_table = vm.symbol_table;
@@ -106,7 +107,7 @@ impl Executor {
 			CompilationResult::Incremental(mut state) => {
 				while let Some(compiled) = self.compiler.compile_next(txn, &mut state)? {
 					result.clear();
-					let mut tx = TransactionAccess::Admin(txn);
+					let mut tx = Transaction::Admin(txn);
 					let mut vm = Vm::new(symbol_table);
 					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbol_table = vm.symbol_table;
@@ -139,7 +140,7 @@ impl Executor {
 
 		for compiled in compiled.iter() {
 			result.clear();
-			let mut tx = TransactionAccess::Command(txn);
+			let mut tx = Transaction::Command(txn);
 			let mut vm = Vm::new(symbol_table);
 			vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 			symbol_table = vm.symbol_table;
@@ -170,7 +171,7 @@ impl Executor {
 
 		for compiled in compiled.iter() {
 			result.clear();
-			let mut tx = TransactionAccess::Query(txn);
+			let mut tx = Transaction::Query(txn);
 			let mut vm = Vm::new(symbol_table);
 			vm.run(&self.0, &mut tx, &compiled.instructions, &qry.params, &mut result)?;
 			symbol_table = vm.symbol_table;

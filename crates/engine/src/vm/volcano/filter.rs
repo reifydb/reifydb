@@ -116,10 +116,11 @@ impl QueryNode for FilterNode {
 					// Execute the compiled filter expression
 					let result = compiled_expr.execute(&exec_ctx)?;
 
-					// Create filter mask from result
+					// Create filter mask from result (using pooled bytes)
 					let filter_mask = match result.data() {
 						ColumnData::Bool(container) => {
-							let mut mask = BitVec::repeat(row_count, false);
+							let bytes = super::pool::take_bytes(row_count);
+							let mut mask = BitVec::from_raw(bytes, row_count);
 							for i in 0..row_count {
 								if i < container.data().len()
 									&& i < container.bitvec().len()
@@ -131,11 +132,18 @@ impl QueryNode for FilterNode {
 							}
 							mask
 						}
-						ColumnData::Undefined(_) => BitVec::repeat(row_count, false),
+						ColumnData::Undefined(_) => {
+							let bytes = super::pool::take_bytes(row_count);
+							BitVec::from_raw(bytes, row_count)
+						}
 						_ => panic!("filter expression must column to a boolean column"),
 					};
 
 					columns.filter(&filter_mask)?;
+					// Recycle the mask's backing bytes
+					if let Ok((bytes, _len)) = filter_mask.try_into_raw() {
+						super::pool::recycle_bytes(bytes);
+					}
 					row_count = columns.row_count();
 				}
 

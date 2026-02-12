@@ -44,6 +44,7 @@ pub(crate) fn alter_table_sequence<'a>(
 	// For catalog operations, use empty params since no
 	// ExecutionContext is available
 	use std::sync::LazyLock;
+
 	static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 

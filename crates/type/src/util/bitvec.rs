@@ -157,6 +157,13 @@ impl BitVec {
 		inner.len = total_len;
 	}
 
+	/// Clear all bits, retaining the allocated capacity when solely owned.
+	pub fn clear(&mut self) {
+		let inner = self.make_mut();
+		inner.bits.clear();
+		inner.len = 0;
+	}
+
 	pub fn push(&mut self, bit: bool) {
 		let inner = self.make_mut();
 		let byte_index = inner.len / 8;
@@ -374,6 +381,27 @@ impl BitVec {
 			inner: Arc::new(BitVecInner {
 				bits: Vec::with_capacity(byte_capacity),
 				len: 0,
+			}),
+		}
+	}
+
+	/// Try to extract the underlying bytes `Vec` without cloning.
+	/// Returns `Ok((Vec<u8>, len))` if this is the sole owner, `Err(self)` otherwise.
+	pub fn try_into_raw(self) -> Result<(Vec<u8>, usize), Self> {
+		match Arc::try_unwrap(self.inner) {
+			Ok(inner) => Ok((inner.bits, inner.len)),
+			Err(arc) => Err(BitVec {
+				inner: arc,
+			}),
+		}
+	}
+
+	/// Reconstruct a `BitVec` from raw parts previously obtained via `try_into_raw`.
+	pub fn from_raw(bits: Vec<u8>, len: usize) -> Self {
+		BitVec {
+			inner: Arc::new(BitVecInner {
+				bits,
+				len,
 			}),
 		}
 	}

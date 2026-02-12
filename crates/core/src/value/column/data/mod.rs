@@ -368,6 +368,14 @@ impl ColumnData {
 		with_container!(self, |c| c.capacity())
 	}
 
+	/// Clear all data, retaining the allocated capacity for reuse.
+	pub fn clear(&mut self) {
+		match self {
+			ColumnData::Undefined(c) => c.clear(),
+			_ => with_container!(self, |c| c.clear()),
+		}
+	}
+
 	pub fn as_string(&self, index: usize) -> String {
 		with_container!(self, |c| c.as_string(index))
 	}

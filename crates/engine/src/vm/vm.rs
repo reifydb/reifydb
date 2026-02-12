@@ -9,13 +9,13 @@ use reifydb_rql::{
 	instruction::{Instruction, ScopeType},
 	query::QueryPlan,
 };
+use reifydb_transaction::transaction::{AsTransaction, Transaction};
 use reifydb_type::{
 	params::Params,
 	value::{Value, frame::frame::Frame},
 };
 
 use super::{
-	interpret::TransactionAccess,
 	scalar,
 	services::Services,
 	stack::{ControlFlow, Stack, SymbolTable, Variable},
@@ -89,7 +89,7 @@ impl Vm {
 	pub(crate) fn run(
 		&mut self,
 		services: &Arc<Services>,
-		tx: &mut TransactionAccess<'_>,
+		tx: &mut Transaction<'_>,
 		instructions: &[Instruction],
 		params: &Params,
 		result: &mut Vec<Frame>,
@@ -610,7 +610,7 @@ impl Vm {
 				// === DDL ===
 				Instruction::CreateNamespace(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -627,7 +627,7 @@ impl Vm {
 				}
 				Instruction::CreateTable(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -644,7 +644,7 @@ impl Vm {
 				}
 				Instruction::CreateRingBuffer(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -661,7 +661,7 @@ impl Vm {
 				}
 				Instruction::CreateFlow(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -678,7 +678,7 @@ impl Vm {
 				}
 				Instruction::CreateDeferredView(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -695,7 +695,7 @@ impl Vm {
 				}
 				Instruction::CreateTransactionalView(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -708,7 +708,7 @@ impl Vm {
 				}
 				Instruction::CreateDictionary(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -725,7 +725,7 @@ impl Vm {
 				}
 				Instruction::CreateSubscription(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -743,7 +743,7 @@ impl Vm {
 				}
 				Instruction::AlterSequence(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -760,7 +760,7 @@ impl Vm {
 				}
 				Instruction::AlterTable(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -777,7 +777,7 @@ impl Vm {
 				}
 				Instruction::AlterView(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -794,7 +794,7 @@ impl Vm {
 				}
 				Instruction::AlterFlow(node) => {
 					let txn = match tx {
-						TransactionAccess::Admin(txn) => txn,
+						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
 							reifydb_core::error::diagnostic::internal::internal_with_context(
 								"DDL operations require an admin transaction",
@@ -813,7 +813,7 @@ impl Vm {
 				// === DML ===
 				Instruction::Delete(node) => {
 					match tx {
-						TransactionAccess::Query(_) => {
+						Transaction::Query(_) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_core::error::diagnostic::internal::internal_with_context(
 									"Mutation operations cannot be executed in a query transaction",
@@ -834,7 +834,7 @@ impl Vm {
 				}
 				Instruction::DeleteRingBuffer(node) => {
 					match tx {
-						TransactionAccess::Query(_) => {
+						Transaction::Query(_) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_core::error::diagnostic::internal::internal_with_context(
 									"Mutation operations cannot be executed in a query transaction",
@@ -855,7 +855,7 @@ impl Vm {
 				}
 				Instruction::InsertTable(node) => {
 					match tx {
-						TransactionAccess::Query(_) => {
+						Transaction::Query(_) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_core::error::diagnostic::internal::internal_with_context(
 									"Mutation operations cannot be executed in a query transaction",
@@ -876,7 +876,7 @@ impl Vm {
 				}
 				Instruction::InsertRingBuffer(node) => {
 					match tx {
-						TransactionAccess::Query(_) => {
+						Transaction::Query(_) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_core::error::diagnostic::internal::internal_with_context(
 									"Mutation operations cannot be executed in a query transaction",
@@ -897,7 +897,7 @@ impl Vm {
 				}
 				Instruction::InsertDictionary(node) => {
 					match tx {
-						TransactionAccess::Query(_) => {
+						Transaction::Query(_) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_core::error::diagnostic::internal::internal_with_context(
 									"Mutation operations cannot be executed in a query transaction",
@@ -918,7 +918,7 @@ impl Vm {
 				}
 				Instruction::Update(node) => {
 					match tx {
-						TransactionAccess::Query(_) => {
+						Transaction::Query(_) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_core::error::diagnostic::internal::internal_with_context(
 									"Mutation operations cannot be executed in a query transaction",
@@ -939,7 +939,7 @@ impl Vm {
 				}
 				Instruction::UpdateRingBuffer(node) => {
 					match tx {
-						TransactionAccess::Query(_) => {
+						Transaction::Query(_) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_core::error::diagnostic::internal::internal_with_context(
 									"Mutation operations cannot be executed in a query transaction",
@@ -1055,7 +1055,7 @@ fn value_to_expression(value: &Value) -> Expression {
 /// Run a query plan and return the result columns.
 fn run_query_plan(
 	services: &Arc<Services>,
-	txn: &mut reifydb_transaction::transaction::Transaction<'_>,
+	txn: &mut Transaction<'_>,
 	plan: QueryPlan,
 	params: Params,
 	symbol_table: &mut SymbolTable,

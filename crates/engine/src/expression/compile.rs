@@ -37,6 +37,7 @@ use crate::{
 		constant::{constant_value, constant_value_of},
 		context::EvalContext,
 		lookup::column_lookup,
+		pool::recycle,
 	},
 	vm::stack::Variable,
 };
@@ -182,7 +183,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				add_columns(ctx, &l, &r, || fragment.clone())
+				let result = add_columns(ctx, &l, &r, || fragment.clone());
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -193,7 +197,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				sub_columns(ctx, &l, &r, || fragment.clone())
+				let result = sub_columns(ctx, &l, &r, || fragment.clone());
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -204,7 +211,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				mul_columns(ctx, &l, &r, || fragment.clone())
+				let result = mul_columns(ctx, &l, &r, || fragment.clone());
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -215,7 +225,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				div_columns(ctx, &l, &r, || fragment.clone())
+				let result = div_columns(ctx, &l, &r, || fragment.clone());
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -226,7 +239,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				rem_columns(ctx, &l, &r, || fragment.clone())
+				let result = rem_columns(ctx, &l, &r, || fragment.clone());
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -237,13 +253,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				compare_columns::<Equal>(
+				let result = compare_columns::<Equal>(
 					ctx,
 					&l,
 					&r,
 					fragment.clone(),
 					equal_cannot_be_applied_to_incompatible_types,
-				)
+				);
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -254,13 +273,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				compare_columns::<NotEqual>(
+				let result = compare_columns::<NotEqual>(
 					ctx,
 					&l,
 					&r,
 					fragment.clone(),
 					not_equal_cannot_be_applied_to_incompatible_types,
-				)
+				);
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -271,13 +293,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				compare_columns::<GreaterThan>(
+				let result = compare_columns::<GreaterThan>(
 					ctx,
 					&l,
 					&r,
 					fragment.clone(),
 					greater_than_cannot_be_applied_to_incompatible_types,
-				)
+				);
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -288,13 +313,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				compare_columns::<GreaterThanEqual>(
+				let result = compare_columns::<GreaterThanEqual>(
 					ctx,
 					&l,
 					&r,
 					fragment.clone(),
 					greater_than_equal_cannot_be_applied_to_incompatible_types,
-				)
+				);
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -305,13 +333,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				compare_columns::<LessThan>(
+				let result = compare_columns::<LessThan>(
 					ctx,
 					&l,
 					&r,
 					fragment.clone(),
 					less_than_cannot_be_applied_to_incompatible_types,
-				)
+				);
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -322,13 +353,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				compare_columns::<LessThanEqual>(
+				let result = compare_columns::<LessThanEqual>(
 					ctx,
 					&l,
 					&r,
 					fragment.clone(),
 					less_than_equal_cannot_be_applied_to_incompatible_types,
-				)
+				);
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -339,7 +373,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				execute_and(&l, &r, &fragment)
+				let result = execute_and(&l, &r, &fragment);
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -350,7 +387,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				execute_or(&l, &r, &fragment)
+				let result = execute_or(&l, &r, &fragment);
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 
@@ -361,7 +401,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				execute_xor(&l, &r, &fragment)
+				let result = execute_xor(&l, &r, &fragment);
+				recycle(l.data);
+				recycle(r.data);
+				result
 			})
 		}
 

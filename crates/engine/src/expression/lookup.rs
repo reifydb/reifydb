@@ -131,7 +131,9 @@ pub mod tests {
 		interface::identifier::{ColumnIdentifier, ColumnPrimitive},
 		value::column::{Column, columns::Columns, data::ColumnData},
 	};
+	use reifydb_function::registry::Functions;
 	use reifydb_rql::expression::ColumnExpression;
+	use reifydb_runtime::clock::Clock;
 	use reifydb_type::{fragment::Fragment, params::Params};
 
 	use crate::{expression::context::EvalContext, vm::stack::SymbolTable};
@@ -150,8 +152,8 @@ pub mod tests {
 			params: &Params::None,
 			symbol_table: &SymbolTable::new(),
 			is_aggregate_context: false,
-			functions: &reifydb_function::registry::Functions::empty(),
-			clock: &reifydb_runtime::clock::Clock::default(),
+			functions: &Functions::empty(),
+			clock: &Clock::default(),
 		};
 
 		// Try to access a column that doesn't exist

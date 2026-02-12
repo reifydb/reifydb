@@ -61,7 +61,7 @@ impl<'a> EvalContext<'a> {
 
 	#[inline]
 	pub fn pooled(&self, target: Type, capacity: usize) -> ColumnData {
-		ColumnData::with_capacity(target, capacity)
+		crate::expression::pool::take(target, capacity)
 	}
 }
 

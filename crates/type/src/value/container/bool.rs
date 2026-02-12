@@ -29,6 +29,27 @@ impl BoolContainer {
 		}
 	}
 
+	/// Reconstruct from raw bitvec bytes previously obtained via `try_into_raw_parts`.
+	pub fn from_raw_parts(data_bits: Vec<u8>, data_len: usize, bitvec_bits: Vec<u8>, bitvec_len: usize) -> Self {
+		Self {
+			data: BitVec::from_raw(data_bits, data_len),
+			bitvec: BitVec::from_raw(bitvec_bits, bitvec_len),
+		}
+	}
+
+	/// Try to decompose into raw bitvec bytes for recycling.
+	/// Returns `None` if the inner storage is shared.
+	pub fn try_into_raw_parts(self) -> Option<(Vec<u8>, usize, Vec<u8>, usize)> {
+		let (data_bits, data_len) = match self.data.try_into_raw() {
+			Ok(v) => v,
+			Err(_) => return None,
+		};
+		match self.bitvec.try_into_raw() {
+			Ok((bv_bits, bv_len)) => Some((data_bits, data_len, bv_bits, bv_len)),
+			Err(_) => None,
+		}
+	}
+
 	pub fn from_vec(data: Vec<bool>) -> Self {
 		let len = data.len();
 		Self {
@@ -49,6 +70,11 @@ impl BoolContainer {
 
 	pub fn is_empty(&self) -> bool {
 		self.data.len() == 0
+	}
+
+	pub fn clear(&mut self) {
+		self.data.clear();
+		self.bitvec.clear();
 	}
 
 	pub fn push(&mut self, value: bool) {

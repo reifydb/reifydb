@@ -108,6 +108,17 @@ impl<T: Clone + PartialEq> CowVec<T> {
 		}
 	}
 
+	/// Try to extract the inner Vec without cloning.
+	/// Returns `Ok(Vec<T>)` if this is the sole owner, `Err(self)` otherwise.
+	pub fn try_into_vec(self) -> Result<Vec<T>, Self> {
+		match Arc::try_unwrap(self.inner) {
+			Ok(vec) => Ok(vec),
+			Err(arc) => Err(CowVec {
+				inner: arc,
+			}),
+		}
+	}
+
 	pub fn as_slice(&self) -> &[T] {
 		&self.inner
 	}
@@ -134,6 +145,11 @@ impl<T: Clone + PartialEq> CowVec<T> {
 
 	pub fn push(&mut self, value: T) {
 		self.make_mut().push(value);
+	}
+
+	/// Clear all elements, retaining the allocated capacity when solely owned.
+	pub fn clear(&mut self) {
+		self.make_mut().clear();
 	}
 
 	pub fn extend(&mut self, iter: impl IntoIterator<Item = T>) {

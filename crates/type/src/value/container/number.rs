@@ -63,6 +63,27 @@ where
 		}
 	}
 
+	/// Reconstruct from raw parts previously obtained via `try_into_raw_parts`.
+	pub fn from_raw_parts(data: Vec<T>, bitvec_bits: Vec<u8>, bitvec_len: usize) -> Self {
+		Self {
+			data: CowVec::new(data),
+			bitvec: BitVec::from_raw(bitvec_bits, bitvec_len),
+		}
+	}
+
+	/// Try to decompose into raw Vec + bitvec bytes for recycling.
+	/// Returns `None` if the inner storage is shared.
+	pub fn try_into_raw_parts(self) -> Option<(Vec<T>, Vec<u8>, usize)> {
+		let data = match self.data.try_into_vec() {
+			Ok(v) => v,
+			Err(_) => return None,
+		};
+		match self.bitvec.try_into_raw() {
+			Ok((bits, len)) => Some((data, bits, len)),
+			Err(_) => None,
+		}
+	}
+
 	pub fn from_vec(data: Vec<T>) -> Self {
 		let len = data.len();
 		Self {
@@ -83,6 +104,11 @@ where
 
 	pub fn is_empty(&self) -> bool {
 		self.data.is_empty()
+	}
+
+	pub fn clear(&mut self) {
+		self.data.clear();
+		self.bitvec.clear();
 	}
 
 	pub fn push(&mut self, value: T) {

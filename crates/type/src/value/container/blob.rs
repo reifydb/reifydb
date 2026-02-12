@@ -62,6 +62,11 @@ impl BlobContainer {
 		self.data.is_empty()
 	}
 
+	pub fn clear(&mut self) {
+		self.data.clear();
+		self.bitvec.clear();
+	}
+
 	pub fn push(&mut self, value: Blob) {
 		self.data.push(value);
 		self.bitvec.push(true);
