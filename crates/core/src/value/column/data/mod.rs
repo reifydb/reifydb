@@ -613,7 +613,7 @@ impl<S: Storage> ColumnData<S> {
 			} => Type::Decimal,
 			ColumnData::DictionaryId(_) => Type::DictionaryId,
 			ColumnData::Any(_) => Type::Any,
-			ColumnData::Undefined(_) => Type::Undefined,
+			ColumnData::Undefined(_) => Type::Option(Box::new(Type::Boolean)),
 		}
 	}
 
@@ -807,7 +807,7 @@ impl ColumnData {
 			Type::Uint => Self::uint_with_capacity(capacity),
 			Type::Decimal => Self::decimal_with_capacity(capacity),
 			Type::DictionaryId => Self::dictionary_id_with_capacity(capacity),
-			Type::Undefined => ColumnData::undefined(0),
+			Type::Option(_) => ColumnData::undefined(0),
 			Type::Any => Self::any_with_capacity(capacity),
 		}
 	}

@@ -19,7 +19,7 @@ pub fn from_any(
 	};
 
 	if any_container.is_empty() {
-		return Ok(ColumnData::with_capacity(target, 0));
+		return Ok(ColumnData::with_capacity(target.clone(), 0));
 	}
 
 	// First pass: validate all values can be cast to target type
@@ -37,7 +37,7 @@ pub fn from_any(
 
 		// Try to cast this single value to validate it can be done
 		let single_column = ColumnData::from(value.clone());
-		match cast_column_data(ctx, &single_column, target, lazy_fragment.clone()) {
+		match cast_column_data(ctx, &single_column, target.clone(), lazy_fragment.clone()) {
 			Ok(result) => temp_results.push(Some(result)),
 			Err(e) => {
 				// If any value fails to cast, the entire operation fails

@@ -21,23 +21,25 @@ pub fn cast_column_data(
 	lazy_fragment: impl LazyFragment + Clone,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Undefined(container) = data {
-		let mut result = ColumnData::with_capacity(target, container.len());
+		let mut result = ColumnData::with_capacity(target.clone(), container.len());
 		for _ in 0..container.len() {
 			result.push_undefined();
 		}
 		return Ok(result);
 	}
 	let source_type = data.get_type();
-	match (source_type, target) {
-		_ if target == source_type => Ok(data.clone()),
+	if target == source_type {
+		return Ok(data.clone());
+	}
+	match (&source_type, &target) {
 		(Type::Any, _) => any::from_any(ctx, data, target, lazy_fragment),
-		(_, target) if target.is_number() => number::to_number(ctx, data, target, lazy_fragment),
-		(_, target) if target.is_blob() => blob::to_blob(data, lazy_fragment),
-		(_, target) if target.is_bool() => boolean::to_boolean(data, lazy_fragment),
-		(_, target) if target.is_utf8() => text::to_text(data, lazy_fragment),
-		(_, target) if target.is_temporal() => temporal::to_temporal(data, target, lazy_fragment),
-		(_, target) if target.is_uuid() => uuid::to_uuid(data, target, lazy_fragment),
-		(source, target) if source.is_uuid() || target.is_uuid() => uuid::to_uuid(data, target, lazy_fragment),
+		(_, t) if t.is_number() => number::to_number(ctx, data, target, lazy_fragment),
+		(_, t) if t.is_blob() => blob::to_blob(data, lazy_fragment),
+		(_, t) if t.is_bool() => boolean::to_boolean(data, lazy_fragment),
+		(_, t) if t.is_utf8() => text::to_text(data, lazy_fragment),
+		(_, t) if t.is_temporal() => temporal::to_temporal(data, target, lazy_fragment),
+		(_, t) if t.is_uuid() => uuid::to_uuid(data, target, lazy_fragment),
+		(source, t) if source.is_uuid() || t.is_uuid() => uuid::to_uuid(data, target, lazy_fragment),
 		_ => {
 			err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 		}

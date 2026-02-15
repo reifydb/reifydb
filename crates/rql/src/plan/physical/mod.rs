@@ -1326,7 +1326,7 @@ impl<'bump> Compiler<'bump> {
 							match last_plan {
 								Some(plan) => LetValue::Statement(self.bump_box(plan)),
 								None => LetValue::Expression(Constant(Undefined {
-									fragment: Fragment::internal("undefined"),
+									fragment: Fragment::internal("none"),
 								})),
 							}
 						}
@@ -1356,7 +1356,7 @@ impl<'bump> Compiler<'bump> {
 									AssignValue::Statement(self.bump_box(plan))
 								}
 								None => AssignValue::Expression(Constant(Undefined {
-									fragment: Fragment::internal("undefined"),
+									fragment: Fragment::internal("none"),
 								})),
 							}
 						}

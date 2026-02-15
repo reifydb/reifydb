@@ -30,7 +30,7 @@ impl TargetColumn {
 			Self::Partial {
 				column_type,
 				..
-			} => *column_type,
+			} => column_type.clone(),
 		}
 	}
 
@@ -61,7 +61,7 @@ impl TargetColumn {
 						namespace: None,
 						table: source_name.as_deref(),
 						column: column_name.as_deref(),
-						column_type: Some(*column_type),
+						column_type: Some(column_type.clone()),
 					})
 				} else {
 					None

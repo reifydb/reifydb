@@ -462,7 +462,7 @@ fn convert_vtable_user_columns_to_column_defs(columns: &[UserVTableColumnDef]) -
 		.map(|(idx, col)| {
 			// Note: For virtual tables, we use unconstrained for all types.
 			// The nullable field is still available for documentation purposes.
-			let constraint = TypeConstraint::unconstrained(col.data_type);
+			let constraint = TypeConstraint::unconstrained(col.data_type.clone());
 			ColumnDef {
 				id: ColumnId(idx as u64),
 				name: col.name.clone(),

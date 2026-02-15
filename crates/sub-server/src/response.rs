@@ -37,7 +37,7 @@ pub fn convert_frames(frames: Vec<Frame>) -> Vec<ResponseFrame> {
 				.data
 				.iter()
 				.map(|value| match value {
-					Value::Undefined => "⟪undefined⟫".to_string(),
+					Value::None => "⟪undefined⟫".to_string(),
 					Value::Blob(b) => b.to_hex(),
 					_ => value.to_string(),
 				})

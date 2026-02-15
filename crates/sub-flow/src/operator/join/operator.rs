@@ -183,7 +183,7 @@ impl JoinOperator {
 				let value = col.data().get_value(row_idx);
 
 				// Check if the value is undefined - undefined values should never match in joins
-				if matches!(value, Value::Undefined) {
+				if matches!(value, Value::None) {
 					has_undefined = true;
 					break;
 				}

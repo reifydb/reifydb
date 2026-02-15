@@ -122,10 +122,10 @@ impl ConstantExpression {
 		match self {
 			Self::Undefined {
 				..
-			} => Value::Undefined,
+			} => Value::None,
 			Self::Bool {
 				fragment,
-			} => parse_bool(fragment.clone()).map(Value::Boolean).unwrap_or(Value::Undefined),
+			} => parse_bool(fragment.clone()).map(Value::Boolean).unwrap_or(Value::None),
 			Self::Number {
 				fragment,
 			} => Self::parse_number(fragment),
@@ -141,7 +141,7 @@ impl ConstantExpression {
 	fn parse_number(fragment: &Fragment) -> Value {
 		let text = fragment.text();
 		if text.contains('.') || text.contains('e') || text.contains('E') {
-			return parse_float::<f64>(fragment.clone()).map(Value::float8).unwrap_or(Value::Undefined);
+			return parse_float::<f64>(fragment.clone()).map(Value::float8).unwrap_or(Value::None);
 		}
 		parse_primitive_int::<i8>(fragment.clone())
 			.map(Value::Int1)
@@ -150,7 +150,7 @@ impl ConstantExpression {
 			.or_else(|_| parse_primitive_int::<i64>(fragment.clone()).map(Value::Int8))
 			.or_else(|_| parse_primitive_int::<i128>(fragment.clone()).map(Value::Int16))
 			.or_else(|_| parse_primitive_uint::<u128>(fragment.clone()).map(Value::Uint16))
-			.unwrap_or(Value::Undefined)
+			.unwrap_or(Value::None)
 	}
 }
 

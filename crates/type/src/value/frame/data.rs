@@ -84,7 +84,7 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(_) => Type::Decimal,
 			FrameColumnData::Any(_) => Type::Any,
 			FrameColumnData::DictionaryId(_) => Type::DictionaryId,
-			FrameColumnData::Undefined(_) => Type::Undefined,
+			FrameColumnData::Undefined(_) => Type::Option(Box::new(Type::Boolean)),
 		}
 	}
 

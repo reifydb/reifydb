@@ -194,7 +194,7 @@ where
 		if index < self.len() && self.is_defined(index) {
 			self.data[index].to_string()
 		} else {
-			"Undefined".to_string()
+			"none".to_string()
 		}
 	}
 
@@ -212,10 +212,10 @@ where
 				let uuid_val = unsafe { transmute_copy::<T, Uuid7>(&value) };
 				Value::Uuid7(uuid_val)
 			} else {
-				Value::Undefined
+				Value::None
 			}
 		} else {
-			Value::Undefined
+			Value::None
 		}
 	}
 

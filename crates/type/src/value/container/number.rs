@@ -15,7 +15,7 @@ use crate::{
 	util::{bitvec::BitVec, cowvec::CowVec},
 	value::{
 		Value,
-		Value::{Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16, Undefined},
+		Value::{Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16},
 		decimal::Decimal,
 		int::Int,
 		is::IsNumber,
@@ -224,7 +224,7 @@ where
 		if index < self.len() && self.is_defined(index) {
 			self.data[index].to_string()
 		} else {
-			"Undefined".to_string()
+			"none".to_string()
 		}
 	}
 
@@ -237,10 +237,10 @@ where
 
 			if TypeId::of::<T>() == TypeId::of::<f32>() {
 				let f_val = unsafe { transmute_copy::<T, f32>(&value) };
-				OrderedF32::try_from(f_val).map(Value::Float4).unwrap_or(Undefined)
+				OrderedF32::try_from(f_val).map(Value::Float4).unwrap_or(Value::None)
 			} else if TypeId::of::<T>() == TypeId::of::<f64>() {
 				let f_val = unsafe { transmute_copy::<T, f64>(&value) };
-				OrderedF64::try_from(f_val).map(Value::Float8).unwrap_or(Undefined)
+				OrderedF64::try_from(f_val).map(Value::Float8).unwrap_or(Value::None)
 			} else if TypeId::of::<T>() == TypeId::of::<i8>() {
 				let i_val = unsafe { transmute_copy::<T, i8>(&value) };
 				Int1(i_val)
@@ -284,10 +284,10 @@ where
 				forget(value);
 				Value::Uint(u_val)
 			} else {
-				Undefined
+				Value::None
 			}
 		} else {
-			Undefined
+			Value::None
 		}
 	}
 

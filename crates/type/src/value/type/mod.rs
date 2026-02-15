@@ -14,7 +14,7 @@ pub mod promote;
 use crate::value::Value;
 
 /// All possible RQL data types
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Type {
 	/// A boolean: true or false.
 	Boolean,
@@ -66,8 +66,8 @@ pub enum Type {
 	Uint,
 	/// An arbitrary-precision decimal with precision and scale
 	Decimal,
-	/// Value is not defined (think null in common programming languages)
-	Undefined,
+	/// An optional type that can hold None or a value of the inner type
+	Option(Box<Type>),
 	/// A container that can hold any value type
 	Any,
 	/// A dictionary entry identifier
@@ -76,27 +76,45 @@ pub enum Type {
 
 impl Type {
 	pub fn is_number(&self) -> bool {
-		matches!(
-			self,
-			Type::Float4
-				| Type::Float8 | Type::Int1 | Type::Int2
-				| Type::Int4 | Type::Int8 | Type::Int16
-				| Type::Uint1 | Type::Uint2 | Type::Uint4
-				| Type::Uint8 | Type::Uint16 | Type::Int
-				| Type::Uint | Type::Decimal
-		)
+		match self {
+			Type::Option(inner) => inner.is_number(),
+			_ => matches!(
+				self,
+				Type::Float4
+					| Type::Float8 | Type::Int1 | Type::Int2
+					| Type::Int4 | Type::Int8 | Type::Int16
+					| Type::Uint1 | Type::Uint2 | Type::Uint4
+					| Type::Uint8 | Type::Uint16 | Type::Int
+					| Type::Uint | Type::Decimal
+			),
+		}
 	}
 
 	pub fn is_bool(&self) -> bool {
-		matches!(self, Type::Boolean)
+		match self {
+			Type::Option(inner) => inner.is_bool(),
+			_ => matches!(self, Type::Boolean),
+		}
 	}
 
 	pub fn is_signed_integer(&self) -> bool {
-		matches!(self, Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16 | Type::Int)
+		match self {
+			Type::Option(inner) => inner.is_signed_integer(),
+			_ => matches!(
+				self,
+				Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16 | Type::Int
+			),
+		}
 	}
 
 	pub fn is_unsigned_integer(&self) -> bool {
-		matches!(self, Type::Uint1 | Type::Uint2 | Type::Uint4 | Type::Uint8 | Type::Uint16 | Type::Uint)
+		match self {
+			Type::Option(inner) => inner.is_unsigned_integer(),
+			_ => matches!(
+				self,
+				Type::Uint1 | Type::Uint2 | Type::Uint4 | Type::Uint8 | Type::Uint16 | Type::Uint
+			),
+		}
 	}
 
 	pub fn is_integer(&self) -> bool {
@@ -104,30 +122,57 @@ impl Type {
 	}
 
 	pub fn is_floating_point(&self) -> bool {
-		matches!(self, Type::Float4 | Type::Float8)
+		match self {
+			Type::Option(inner) => inner.is_floating_point(),
+			_ => matches!(self, Type::Float4 | Type::Float8),
+		}
 	}
 
 	pub fn is_utf8(&self) -> bool {
-		matches!(self, Type::Utf8)
+		match self {
+			Type::Option(inner) => inner.is_utf8(),
+			_ => matches!(self, Type::Utf8),
+		}
 	}
 
 	pub fn is_temporal(&self) -> bool {
-		matches!(self, Type::Date | Type::DateTime | Type::Time | Type::Duration)
+		match self {
+			Type::Option(inner) => inner.is_temporal(),
+			_ => matches!(self, Type::Date | Type::DateTime | Type::Time | Type::Duration),
+		}
 	}
 
 	pub fn is_uuid(&self) -> bool {
-		matches!(self, Type::Uuid4 | Type::Uuid7)
+		match self {
+			Type::Option(inner) => inner.is_uuid(),
+			_ => matches!(self, Type::Uuid4 | Type::Uuid7),
+		}
 	}
 
 	pub fn is_blob(&self) -> bool {
-		matches!(self, Type::Blob)
+		match self {
+			Type::Option(inner) => inner.is_blob(),
+			_ => matches!(self, Type::Blob),
+		}
+	}
+
+	pub fn is_option(&self) -> bool {
+		matches!(self, Type::Option(_))
+	}
+
+	/// Returns the inner type if this is an Option type, otherwise returns self
+	pub fn inner_type(&self) -> &Type {
+		match self {
+			Type::Option(inner) => inner,
+			other => other,
+		}
 	}
 }
 
 impl Type {
 	pub fn to_u8(&self) -> u8 {
 		match self {
-			Type::Undefined => 0,
+			Type::Option(_) => 0,
 			Type::Float4 => 1,
 			Type::Float8 => 2,
 			Type::Int1 => 3,
@@ -162,9 +207,11 @@ impl Type {
 }
 
 impl Type {
+	/// Decode a type from a u8 code. For Option types (code 0), the inner type
+	/// code must be provided separately via `from_u8_option`.
 	pub fn from_u8(value: u8) -> Self {
 		match value {
-			0 => Type::Undefined,
+			0 => Type::Option(Box::new(Type::Boolean)), // placeholder; caller should use from_u8_option
 			1 => Type::Float4,
 			2 => Type::Float8,
 			3 => Type::Int1,
@@ -195,10 +242,15 @@ impl Type {
 			_ => unreachable!(),
 		}
 	}
+
+	/// Decode an Option type from a u8 code for the inner type.
+	pub fn from_u8_option(inner_code: u8) -> Self {
+		Type::Option(Box::new(Type::from_u8(inner_code)))
+	}
 }
 
 impl Type {
-	pub const fn size(&self) -> usize {
+	pub fn size(&self) -> usize {
 		match self {
 			Type::Boolean => 1,
 			Type::Float4 => 4,
@@ -231,13 +283,13 @@ impl Type {
 				..
 			} => 16, // i128 inline or dynamic
 			// storage with offset + length
-			Type::Undefined => 0,
+			Type::Option(_) => 0,     // size determined by inner type + bitvec at container level
 			Type::Any => 8,           // pointer size on 64-bit systems
 			Type::DictionaryId => 16, // max possible; actual size determined by constraint's id_type
 		}
 	}
 
-	pub const fn alignment(&self) -> usize {
+	pub fn alignment(&self) -> usize {
 		match self {
 			Type::Boolean => 1,
 			Type::Float4 => 4,
@@ -269,7 +321,7 @@ impl Type {
 				..
 			} => 16, // i128 alignment for
 			// inline storage
-			Type::Undefined => 0,
+			Type::Option(inner) => inner.alignment(),
 			Type::Any => 8, // pointer alignment
 			Type::DictionaryId => 16,
 		}
@@ -304,7 +356,7 @@ impl Display for Type {
 			Type::Int => f.write_str("Int"),
 			Type::Uint => f.write_str("Uint"),
 			Type::Decimal => f.write_str("Decimal"),
-			Type::Undefined => f.write_str("Undefined"),
+			Type::Option(inner) => write!(f, "Option<{inner}>"),
 			Type::Any => f.write_str("Any"),
 			Type::DictionaryId => f.write_str("DictionaryId"),
 		}
@@ -314,7 +366,8 @@ impl Display for Type {
 impl From<&Value> for Type {
 	fn from(value: &Value) -> Self {
 		match value {
-			Value::Undefined => Type::Undefined,
+			Value::None => Type::Option(Box::new(Type::Boolean)), /* None has no inherent type; context
+			                                                        * provides it */
 			Value::Boolean(_) => Type::Boolean,
 			Value::Float4(_) => Type::Float4,
 			Value::Float8(_) => Type::Float8,
@@ -342,7 +395,7 @@ impl From<&Value> for Type {
 			Value::Decimal(_) => Type::Decimal,
 			Value::Any(_) => Type::Any,
 			Value::DictionaryId(_) => Type::DictionaryId,
-			Value::Type(t) => *t,
+			Value::Type(t) => t.clone(),
 		}
 	}
 }
@@ -351,7 +404,14 @@ impl FromStr for Type {
 	type Err = ();
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		match s.to_uppercase().as_str() {
+		let upper = s.to_uppercase();
+		// Handle Option<T> syntax
+		if upper.starts_with("OPTION<") && upper.ends_with('>') {
+			let inner_str = &s[7..s.len() - 1]; // extract between "OPTION<" and ">"
+			let inner = Type::from_str(inner_str)?;
+			return Ok(Type::Option(Box::new(inner)));
+		}
+		match upper.as_str() {
 			"BOOL" | "BOOLEAN" => Ok(Type::Boolean),
 			"FLOAT4" => Ok(Type::Float4),
 			"FLOAT8" => Ok(Type::Float8),
@@ -377,7 +437,6 @@ impl FromStr for Type {
 			"INT" => Ok(Type::Int),
 			"UINT" => Ok(Type::Uint),
 			"DECIMAL" => Ok(Type::Decimal),
-			"UNDEFINED" => Ok(Type::Undefined),
 			"ANY" => Ok(Type::Any),
 			"DICTIONARYID" | "DICTIONARY_ID" => Ok(Type::DictionaryId),
 			_ => Err(()),

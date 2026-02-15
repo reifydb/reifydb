@@ -27,72 +27,72 @@ impl Schema {
 
 		match (field.constraint.get_type(), val) {
 			(Type::Boolean, Value::Boolean(v)) => self.set_bool(row, index, *v),
-			(Type::Boolean, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Boolean, Value::None) => self.set_undefined(row, index),
 
 			(Type::Float4, Value::Float4(v)) => self.set_f32(row, index, v.value()),
-			(Type::Float4, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Float4, Value::None) => self.set_undefined(row, index),
 
 			(Type::Float8, Value::Float8(v)) => self.set_f64(row, index, v.value()),
-			(Type::Float8, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Float8, Value::None) => self.set_undefined(row, index),
 
 			(Type::Int1, Value::Int1(v)) => self.set_i8(row, index, *v),
-			(Type::Int1, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Int1, Value::None) => self.set_undefined(row, index),
 
 			(Type::Int2, Value::Int2(v)) => self.set_i16(row, index, *v),
-			(Type::Int2, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Int2, Value::None) => self.set_undefined(row, index),
 
 			(Type::Int4, Value::Int4(v)) => self.set_i32(row, index, *v),
-			(Type::Int4, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Int4, Value::None) => self.set_undefined(row, index),
 
 			(Type::Int8, Value::Int8(v)) => self.set_i64(row, index, *v),
-			(Type::Int8, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Int8, Value::None) => self.set_undefined(row, index),
 
 			(Type::Int16, Value::Int16(v)) => self.set_i128(row, index, *v),
-			(Type::Int16, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Int16, Value::None) => self.set_undefined(row, index),
 
 			(Type::Utf8, Value::Utf8(v)) => self.set_utf8(row, index, v),
-			(Type::Utf8, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Utf8, Value::None) => self.set_undefined(row, index),
 
 			(Type::Uint1, Value::Uint1(v)) => self.set_u8(row, index, *v),
-			(Type::Uint1, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Uint1, Value::None) => self.set_undefined(row, index),
 
 			(Type::Uint2, Value::Uint2(v)) => self.set_u16(row, index, *v),
-			(Type::Uint2, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Uint2, Value::None) => self.set_undefined(row, index),
 
 			(Type::Uint4, Value::Uint4(v)) => self.set_u32(row, index, *v),
-			(Type::Uint4, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Uint4, Value::None) => self.set_undefined(row, index),
 
 			(Type::Uint8, Value::Uint8(v)) => self.set_u64(row, index, *v),
-			(Type::Uint8, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Uint8, Value::None) => self.set_undefined(row, index),
 
 			(Type::Uint16, Value::Uint16(v)) => self.set_u128(row, index, *v),
-			(Type::Uint16, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Uint16, Value::None) => self.set_undefined(row, index),
 
 			(Type::Date, Value::Date(v)) => self.set_date(row, index, v.clone()),
-			(Type::Date, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Date, Value::None) => self.set_undefined(row, index),
 
 			(Type::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, v.clone()),
-			(Type::DateTime, Value::Undefined) => self.set_undefined(row, index),
+			(Type::DateTime, Value::None) => self.set_undefined(row, index),
 
 			(Type::Time, Value::Time(v)) => self.set_time(row, index, v.clone()),
-			(Type::Time, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Time, Value::None) => self.set_undefined(row, index),
 
 			(Type::Duration, Value::Duration(v)) => self.set_duration(row, index, v.clone()),
-			(Type::Duration, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Duration, Value::None) => self.set_undefined(row, index),
 
 			(Type::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, v.clone()),
-			(Type::Uuid4, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Uuid4, Value::None) => self.set_undefined(row, index),
 
 			(Type::Uuid7, Value::Uuid7(v)) => self.set_uuid7(row, index, v.clone()),
-			(Type::Uuid7, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Uuid7, Value::None) => self.set_undefined(row, index),
 
 			(Type::Blob, Value::Blob(v)) => self.set_blob(row, index, v),
-			(Type::Blob, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Blob, Value::None) => self.set_undefined(row, index),
 
 			(Type::Int, Value::Int(v)) => self.set_int(row, index, v),
 			(Type::Uint, Value::Uint(v)) => self.set_uint(row, index, v),
-			(Type::Int, Value::Undefined) => self.set_undefined(row, index),
-			(Type::Uint, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Int, Value::None) => self.set_undefined(row, index),
+			(Type::Uint, Value::None) => self.set_undefined(row, index),
 
 			(
 				Type::Decimal {
@@ -104,15 +104,15 @@ impl Schema {
 				Type::Decimal {
 					..
 				},
-				Value::Undefined,
+				Value::None,
 			) => self.set_undefined(row, index),
 			(Type::DictionaryId, Value::DictionaryId(id)) => self.set_dictionary_id(row, index, id),
 
-			(Type::DictionaryId, Value::Undefined) => self.set_undefined(row, index),
+			(Type::DictionaryId, Value::None) => self.set_undefined(row, index),
 
-			(Type::Undefined, Value::Undefined) => {}
+			(Type::Option(_), Value::None) => {}
 			(Type::Any, Value::Any(_)) => unreachable!("Any type cannot be stored in database"),
-			(Type::Any, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Any, Value::None) => self.set_undefined(row, index),
 			(ty, val) => unreachable!("{ty:?}, {val:?}"),
 		}
 	}
@@ -120,16 +120,16 @@ impl Schema {
 	pub fn get_value(&self, row: &EncodedValues, index: usize) -> Value {
 		let field = &self.fields()[index];
 		if !row.is_defined(index) {
-			return Value::Undefined;
+			return Value::None;
 		}
 		match field.constraint.get_type() {
 			Type::Boolean => Value::Boolean(self.get_bool(row, index)),
-			Type::Float4 => OrderedF32::try_from(self.get_f32(row, index))
-				.map(Value::Float4)
-				.unwrap_or(Value::Undefined),
-			Type::Float8 => OrderedF64::try_from(self.get_f64(row, index))
-				.map(Value::Float8)
-				.unwrap_or(Value::Undefined),
+			Type::Float4 => {
+				OrderedF32::try_from(self.get_f32(row, index)).map(Value::Float4).unwrap_or(Value::None)
+			}
+			Type::Float8 => {
+				OrderedF64::try_from(self.get_f64(row, index)).map(Value::Float8).unwrap_or(Value::None)
+			}
 			Type::Int1 => Value::Int1(self.get_i8(row, index)),
 			Type::Int2 => Value::Int2(self.get_i16(row, index)),
 			Type::Int4 => Value::Int4(self.get_i32(row, index)),
@@ -157,7 +157,7 @@ impl Schema {
 				..
 			} => Value::Decimal(self.get_decimal(row, index)),
 			Type::DictionaryId => Value::DictionaryId(self.get_dictionary_id(row, index)),
-			Type::Undefined => Value::Undefined,
+			Type::Option(_) => Value::None,
 			Type::Any => unreachable!("Any type cannot be stored in database"),
 		}
 	}
@@ -287,8 +287,8 @@ pub mod tests {
 		assert!(row.is_defined(2));
 
 		// Set some as undefined
-		schema.set_value(&mut row, 0, &Value::Undefined);
-		schema.set_value(&mut row, 2, &Value::Undefined);
+		schema.set_value(&mut row, 0, &Value::None);
+		schema.set_value(&mut row, 2, &Value::None);
 
 		assert!(!row.is_defined(0));
 		assert!(row.is_defined(1));
@@ -352,9 +352,9 @@ pub mod tests {
 		// Only set some values
 		let values = vec![
 			Value::Utf8("first".to_string()),
-			Value::Undefined,
+			Value::None,
 			Value::Utf8("third".to_string()),
-			Value::Undefined,
+			Value::None,
 		];
 
 		schema.set_values(&mut row, &values);
@@ -434,9 +434,9 @@ pub mod tests {
 
 		let values = vec![
 			Value::Date(Date::new(2000, 1, 1).unwrap()),
-			Value::Undefined,
+			Value::None,
 			Value::Time(Time::default()),
-			Value::Undefined,
+			Value::None,
 		];
 
 		schema.set_values(&mut row, &values);
@@ -449,9 +449,9 @@ pub mod tests {
 		let retrieved_values: Vec<Value> = (0..4).map(|i| schema.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values[0], values[0]);
-		assert_eq!(retrieved_values[1], Value::Undefined);
+		assert_eq!(retrieved_values[1], Value::None);
 		assert_eq!(retrieved_values[2], values[2]);
-		assert_eq!(retrieved_values[3], Value::Undefined);
+		assert_eq!(retrieved_values[3], Value::None);
 	}
 
 	#[test]
@@ -539,7 +539,7 @@ pub mod tests {
 
 		let values = vec![
 			Value::Blob(Blob::new(vec![0x00, 0x01, 0x02])),
-			Value::Undefined,
+			Value::None,
 			Value::Blob(Blob::new(vec![0xFF, 0xFE])),
 		];
 
@@ -552,7 +552,7 @@ pub mod tests {
 		let retrieved_values: Vec<Value> = (0..3).map(|i| schema.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values[0], values[0]);
-		assert_eq!(retrieved_values[1], Value::Undefined);
+		assert_eq!(retrieved_values[1], Value::None);
 		assert_eq!(retrieved_values[2], values[2]);
 	}
 
@@ -577,7 +577,7 @@ pub mod tests {
 		let schema = Schema::testing(&[Type::Uuid4, Type::Uuid7]);
 		let mut row = schema.allocate();
 
-		let values = vec![Value::Undefined, Value::Uuid7(Uuid7::generate())];
+		let values = vec![Value::None, Value::Uuid7(Uuid7::generate())];
 
 		schema.set_values(&mut row, &values);
 
@@ -586,7 +586,7 @@ pub mod tests {
 
 		let retrieved_values: Vec<Value> = (0..2).map(|i| schema.get_value(&row, i)).collect();
 
-		assert_eq!(retrieved_values[0], Value::Undefined);
+		assert_eq!(retrieved_values[0], Value::None);
 		assert_eq!(retrieved_values[1], values[1]);
 	}
 
@@ -734,13 +734,13 @@ pub mod tests {
 		]);
 
 		let mut row = schema.allocate();
-		schema.set_value(&mut row, 0, &Value::Undefined);
+		schema.set_value(&mut row, 0, &Value::None);
 		schema.set_value(&mut row, 1, &Value::Int4(42));
 
 		assert!(!row.is_defined(0));
 		assert!(row.is_defined(1));
 
-		assert_eq!(schema.get_value(&row, 0), Value::Undefined);
+		assert_eq!(schema.get_value(&row, 0), Value::None);
 		assert_eq!(schema.get_value(&row, 1), Value::Int4(42));
 	}
 

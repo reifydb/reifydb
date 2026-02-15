@@ -113,12 +113,12 @@ fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column>
 		Type::Int => extract_typed_column!(col, take, Int(b) => b.clone(), Int::zero(), int_with_bitvec),
 		Type::Uint => extract_typed_column!(col, take, Uint(b) => b.clone(), Uint::zero(), uint_with_bitvec),
 		Type::Any => {
-			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::Undefined), any_with_bitvec)
+			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::None), any_with_bitvec)
 		}
 		Type::Decimal => {
 			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::from_i64(0), decimal_with_bitvec)
 		}
-		Type::Undefined => {
+		Type::Option(_) => {
 			let count = min(ctx.row_count, take);
 			Ok(col.with_new_data(ColumnData::undefined(count)))
 		}

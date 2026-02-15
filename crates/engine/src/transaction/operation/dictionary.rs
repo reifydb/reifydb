@@ -62,7 +62,7 @@ impl DictionaryOperations for CommandTransaction {
 		if let Some(existing) = self.get(&entry_key)? {
 			// Value exists, return existing ID
 			let id = u128::from_be_bytes(existing.values[..16].try_into().unwrap());
-			return DictionaryEntryId::from_u128(id, dictionary.id_type);
+			return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
 		}
 
 		// 3. Value doesn't exist - get next ID from sequence
@@ -73,7 +73,7 @@ impl DictionaryOperations for CommandTransaction {
 		};
 
 		// 4. Validate the new ID fits in the dictionary's id_type (early check)
-		let entry_id = DictionaryEntryId::from_u128(next_id, dictionary.id_type)?;
+		let entry_id = DictionaryEntryId::from_u128(next_id, dictionary.id_type.clone())?;
 
 		// 5. Store the entry (hash -> id + value_bytes)
 		let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
@@ -123,7 +123,7 @@ impl DictionaryOperations for CommandTransaction {
 		match self.get(&entry_key)? {
 			Some(v) => {
 				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
-				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type)?;
+				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
 				Ok(Some(entry_id))
 			}
 			None => Ok(None),
@@ -147,7 +147,7 @@ impl DictionaryOperations for AdminTransaction {
 		if let Some(existing) = self.get(&entry_key)? {
 			// Value exists, return existing ID
 			let id = u128::from_be_bytes(existing.values[..16].try_into().unwrap());
-			return DictionaryEntryId::from_u128(id, dictionary.id_type);
+			return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
 		}
 
 		// 3. Value doesn't exist - get next ID from sequence
@@ -158,7 +158,7 @@ impl DictionaryOperations for AdminTransaction {
 		};
 
 		// 4. Validate the new ID fits in the dictionary's id_type (early check)
-		let entry_id = DictionaryEntryId::from_u128(next_id, dictionary.id_type)?;
+		let entry_id = DictionaryEntryId::from_u128(next_id, dictionary.id_type.clone())?;
 
 		// 5. Store the entry (hash -> id + value_bytes)
 		let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
@@ -205,7 +205,7 @@ impl DictionaryOperations for AdminTransaction {
 		match self.get(&entry_key)? {
 			Some(v) => {
 				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
-				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type)?;
+				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
 				Ok(Some(entry_id))
 			}
 			None => Ok(None),
@@ -262,7 +262,7 @@ impl DictionaryOperations for Transaction<'_> {
 		match self.get(&entry_key)? {
 			Some(v) => {
 				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
-				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type)?;
+				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
 				Ok(Some(entry_id))
 			}
 			None => Ok(None),

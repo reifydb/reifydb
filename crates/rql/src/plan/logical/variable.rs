@@ -77,7 +77,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			let undefined_literal = Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
 				kind: TokenKind::Literal(Literal::Undefined),
-				fragment: BumpFragment::internal(self.bump, "undefined"),
+				fragment: BumpFragment::internal(self.bump, "none"),
 			})));
 			Some(BumpBox::new_in(self.compile_scalar_as_map(undefined_literal)?, self.bump))
 		};
@@ -105,7 +105,7 @@ impl<'bump> Compiler<'bump> {
 		// Empty block → undefined wrapped in MAP
 		let undefined_literal = Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
 			kind: TokenKind::Literal(Literal::Undefined),
-			fragment: BumpFragment::internal(self.bump, "undefined"),
+			fragment: BumpFragment::internal(self.bump, "none"),
 		})));
 		self.compile_scalar_as_map(undefined_literal)
 	}

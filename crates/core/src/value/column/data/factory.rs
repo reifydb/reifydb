@@ -531,7 +531,7 @@ impl ColumnData {
 					bitvec.push(true);
 				}
 				None => {
-					values.push(Box::new(reifydb_type::value::Value::Undefined));
+					values.push(Box::new(reifydb_type::value::Value::None));
 					bitvec.push(false);
 				}
 			}
@@ -635,14 +635,14 @@ impl ColumnData {
 				..
 			} => Self::decimal_with_bitvec(vec![Decimal::from(0); len], BitVec::repeat(len, false)),
 			Type::Any => Self::any_with_bitvec(
-				vec![Box::new(reifydb_type::value::Value::Undefined); len],
+				vec![Box::new(reifydb_type::value::Value::None); len],
 				BitVec::repeat(len, false),
 			),
 			Type::DictionaryId => Self::dictionary_id_with_bitvec(
 				vec![DictionaryEntryId::default(); len],
 				BitVec::repeat(len, false),
 			),
-			Type::Undefined => Self::undefined(len),
+			Type::Option(_) => Self::undefined(len),
 		}
 	}
 }

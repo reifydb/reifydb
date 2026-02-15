@@ -135,7 +135,7 @@ impl LazyBatch {
 		// Materialize each column
 		let mut result_columns = Vec::with_capacity(self.column_metas.len());
 		for (col_idx, meta) in self.column_metas.iter().enumerate() {
-			let mut data = ColumnData::with_capacity(meta.storage_type, valid_count);
+			let mut data = ColumnData::with_capacity(meta.storage_type.clone(), valid_count);
 
 			for (row_idx, row) in self.rows.iter().enumerate() {
 				if self.is_row_valid(row_idx) {

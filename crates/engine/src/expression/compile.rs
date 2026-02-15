@@ -86,11 +86,8 @@ impl CompiledExpr {
 			CompiledExprInner::Multi(f) => {
 				let columns = f(ctx)?;
 				Ok(columns.into_iter().next().unwrap_or_else(|| Column {
-					name: Fragment::internal("undefined"),
-					data: ColumnData::with_capacity(
-						reifydb_type::value::r#type::Type::Undefined,
-						0,
-					),
+					name: Fragment::internal("none"),
+					data: ColumnData::with_capacity(Type::Option(Box::new(Type::Boolean)), 0),
 				}))
 			}
 		}
@@ -382,12 +379,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 		}
 
 		Expression::Type(e) => {
-			let ty = e.ty;
+			let ty = e.ty.clone();
 			let fragment = e.fragment.clone();
 			CompiledExpr::new(move |ctx| {
 				let row_count = ctx.take.unwrap_or(ctx.row_count);
 				let values: Vec<Box<Value>> =
-					(0..row_count).map(|_| Box::new(Value::Type(ty))).collect();
+					(0..row_count).map(|_| Box::new(Value::Type(ty.clone()))).collect();
 				Ok(Column::new(fragment.text(), ColumnData::any(values)))
 			})
 		}
@@ -539,14 +536,14 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 		Expression::Cast(e) => {
 			if let Expression::Constant(const_expr) = e.expression.as_ref() {
 				let const_expr = const_expr.clone();
-				let target_type = e.to.ty;
+				let target_type = e.to.ty.clone();
 				CompiledExpr::new(move |ctx| {
 					let row_count = ctx.take.unwrap_or(ctx.row_count);
 					let data = constant_value(&const_expr, row_count)?;
 					let casted = if data.get_type() == target_type {
 						data
 					} else {
-						constant_value_of(&const_expr, target_type, row_count)?
+						constant_value_of(&const_expr, target_type.clone(), row_count)?
 					};
 					Ok(Column {
 						name: const_expr.full_fragment_owned(),
@@ -555,15 +552,22 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				})
 			} else {
 				let inner = compile_expression(_ctx, &e.expression)?;
-				let target_type = e.to.ty;
+				let target_type = e.to.ty.clone();
 				let inner_fragment = e.expression.full_fragment_owned();
 				CompiledExpr::new(move |ctx| {
 					let column = inner.execute(ctx)?;
 					let frag = inner_fragment.clone();
-					let casted = cast_column_data(ctx, &column.data(), target_type, &|| {
-						inner_fragment.clone()
-					})
-					.map_err(|e| error!(cast::invalid_number(frag, target_type, e.diagnostic())))?;
+					let casted =
+						cast_column_data(ctx, &column.data(), target_type.clone(), &|| {
+							inner_fragment.clone()
+						})
+						.map_err(|e| {
+							error!(cast::invalid_number(
+								frag,
+								target_type.clone(),
+								e.diagnostic()
+							))
+						})?;
 					Ok(Column {
 						name: column.name_owned(),
 						data: casted,
@@ -874,7 +878,7 @@ fn is_truthy(value: &Value) -> bool {
 	match value {
 		Value::Boolean(true) => true,
 		Value::Boolean(false) => false,
-		Value::Undefined => false,
+		Value::None => false,
 		Value::Int1(0) | Value::Int2(0) | Value::Int4(0) | Value::Int8(0) | Value::Int16(0) => false,
 		Value::Uint1(0) | Value::Uint2(0) | Value::Uint4(0) | Value::Uint8(0) | Value::Uint16(0) => false,
 		Value::Int1(_) | Value::Int2(_) | Value::Int4(_) | Value::Int8(_) | Value::Int16(_) => true,
@@ -922,12 +926,13 @@ fn execute_if_multi(
 			} else if let Some(else_exprs) = else_branch {
 				execute_multi_exprs(ctx, else_exprs)?
 			} else {
-				let mut data = ColumnData::with_capacity(Type::Undefined, ctx.row_count);
+				let mut data =
+					ColumnData::with_capacity(Type::Option(Box::new(Type::Boolean)), ctx.row_count);
 				for _ in 0..ctx.row_count {
 					data.push_undefined();
 				}
 				vec![Column {
-					name: Fragment::internal("undefined"),
+					name: Fragment::internal("none"),
 					data,
 				}]
 			}
@@ -962,8 +967,8 @@ fn execute_if_multi(
 
 	if result.is_empty() {
 		Ok(vec![Column {
-			name: Fragment::internal("undefined"),
-			data: ColumnData::with_capacity(Type::Undefined, 0),
+			name: Fragment::internal("none"),
+			data: ColumnData::with_capacity(Type::Option(Box::new(Type::Boolean)), 0),
 		}])
 	} else {
 		Ok(result)

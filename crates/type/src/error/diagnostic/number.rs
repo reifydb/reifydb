@@ -114,7 +114,7 @@ pub fn number_out_of_range(
 	target: Type,
 	descriptor: Option<&NumberOfRangeColumnDescriptor>,
 ) -> Diagnostic {
-	let range = value_range(target);
+	let range = value_range(target.clone());
 
 	let label = if let Some(desc) = descriptor {
 		Some(format!(

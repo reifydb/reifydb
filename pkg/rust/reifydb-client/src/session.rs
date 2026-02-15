@@ -163,7 +163,7 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 	let len = data.len();
 
 	match target {
-		Type::Undefined => FrameColumnData::Undefined(UndefinedContainer::new(len)),
+		Type::Option(_) => FrameColumnData::Undefined(UndefinedContainer::new(len)),
 		Type::Boolean => {
 			let (values, defined): (Vec<_>, Vec<_>) = data
 				.into_iter()

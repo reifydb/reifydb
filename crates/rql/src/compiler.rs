@@ -344,7 +344,7 @@ impl InstructionCompiler {
 		match expr {
 			Expression::Constant(c) => {
 				let value = c.to_value();
-				if matches!(value, Value::Undefined) {
+				if matches!(value, Value::None) {
 					self.emit(Instruction::PushUndefined);
 				} else {
 					self.emit(Instruction::PushConst(value));
@@ -448,7 +448,7 @@ impl InstructionCompiler {
 			}
 			Expression::Cast(c) => {
 				self.compile_expression(&c.expression);
-				self.emit(Instruction::Cast(c.to.ty));
+				self.emit(Instruction::Cast(c.to.ty.clone()));
 			}
 			Expression::Between(b) => {
 				self.compile_expression(&b.value);
@@ -557,7 +557,7 @@ impl InstructionCompiler {
 				}
 			}
 			Expression::Type(type_expr) => {
-				self.emit(Instruction::PushConst(Value::Type(type_expr.ty)));
+				self.emit(Instruction::PushConst(Value::Type(type_expr.ty.clone())));
 			}
 			Expression::Column(_)
 			| Expression::AccessSource(_)

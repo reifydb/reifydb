@@ -167,7 +167,7 @@ impl QueryNode for TableScanNode {
 				.enumerate()
 				.map(|(idx, col)| Column {
 					name: Fragment::internal(&col.name),
-					data: ColumnData::with_capacity(self.storage_types[idx], 0),
+					data: ColumnData::with_capacity(self.storage_types[idx].clone(), 0),
 				})
 				.collect()
 		};
@@ -246,7 +246,7 @@ impl QueryNode for TableScanNode {
 				let output_type = col.constraint.get_type();
 				LazyColumnMeta {
 					name: Fragment::internal(&col.name),
-					storage_type: self.storage_types[idx],
+					storage_type: self.storage_types[idx].clone(),
 					output_type,
 					dictionary: self.dictionaries[idx].clone(),
 				}

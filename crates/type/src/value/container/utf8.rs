@@ -204,7 +204,7 @@ impl<S: Storage> Utf8Container<S> {
 		if index < self.len() && self.is_defined(index) {
 			self.data[index].clone()
 		} else {
-			"Undefined".to_string()
+			"none".to_string()
 		}
 	}
 
@@ -212,7 +212,7 @@ impl<S: Storage> Utf8Container<S> {
 		if index < self.len() && self.is_defined(index) {
 			Value::Utf8(self.data[index].clone())
 		} else {
-			Value::Undefined
+			Value::None
 		}
 	}
 

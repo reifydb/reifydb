@@ -156,7 +156,7 @@ impl AggregateFunction for Avg {
 				sum / count as f64
 			} else {
 				keys.push(key);
-				data.push_value(Value::undefined());
+				data.push_value(Value::none());
 				return Ok((keys, data));
 			};
 

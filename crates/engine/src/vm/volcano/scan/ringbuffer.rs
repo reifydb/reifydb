@@ -185,7 +185,7 @@ impl QueryNode for RingBufferScan {
 				.enumerate()
 				.map(|(idx, col)| Column {
 					name: Fragment::internal(&col.name),
-					data: ColumnData::with_capacity(self.storage_types[idx], 0),
+					data: ColumnData::with_capacity(self.storage_types[idx].clone(), 0),
 				})
 				.collect();
 

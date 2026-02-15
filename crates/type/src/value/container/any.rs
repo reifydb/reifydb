@@ -143,7 +143,7 @@ impl<S: Storage> AnyContainer<S> {
 	}
 
 	pub fn push_undefined(&mut self) {
-		DataVec::push(&mut self.data, Box::new(Value::Undefined));
+		DataVec::push(&mut self.data, Box::new(Value::None));
 		DataBitVec::push(&mut self.bitvec, false);
 	}
 
@@ -183,7 +183,7 @@ impl<S: Storage> AnyContainer<S> {
 		if index < self.len() && self.is_defined(index) {
 			format!("{}", self.data[index])
 		} else {
-			"undefined".to_string()
+			"none".to_string()
 		}
 	}
 
@@ -191,7 +191,7 @@ impl<S: Storage> AnyContainer<S> {
 		if index < self.len() && self.is_defined(index) {
 			Value::Any(self.data[index].clone())
 		} else {
-			Value::Undefined
+			Value::None
 		}
 	}
 
@@ -230,7 +230,7 @@ impl<S: Storage> AnyContainer<S> {
 				DataVec::push(&mut new_data, self.data[idx].clone());
 				DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, idx));
 			} else {
-				DataVec::push(&mut new_data, Box::new(Value::Undefined));
+				DataVec::push(&mut new_data, Box::new(Value::None));
 				DataBitVec::push(&mut new_bitvec, false);
 			}
 		}
@@ -247,7 +247,7 @@ impl<S: Storage> AnyContainer<S> {
 
 	pub fn extend_from_undefined(&mut self, len: usize) {
 		for _ in 0..len {
-			DataVec::push(&mut self.data, Box::new(Value::Undefined));
+			DataVec::push(&mut self.data, Box::new(Value::None));
 			DataBitVec::push(&mut self.bitvec, false);
 		}
 	}

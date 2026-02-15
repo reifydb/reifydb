@@ -54,7 +54,7 @@ impl<T: AsTransaction> VTable<T> for Tables {
 			namespaces.push(table.namespace.0);
 			names.push(table.name.as_str());
 			primary_keys.push_value(
-				table.primary_key.map(|pk| pk.id.0).map(Value::Uint8).unwrap_or(Value::Undefined),
+				table.primary_key.map(|pk| pk.id.0).map(Value::Uint8).unwrap_or(Value::None),
 			);
 		}
 

@@ -93,7 +93,7 @@ impl UserVTableBuilder {
 				.map(|(idx, c)| ColumnDef {
 					id: ColumnId(idx as u64),
 					name: c.name.clone(),
-					constraint: TypeConstraint::unconstrained(c.data_type),
+					constraint: TypeConstraint::unconstrained(c.data_type.clone()),
 					policies: Vec::new(),
 					index: ColumnIndex(idx as u8),
 					auto_increment: false,

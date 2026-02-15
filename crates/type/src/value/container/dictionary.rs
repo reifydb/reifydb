@@ -235,7 +235,7 @@ impl<S: Storage> DictionaryContainer<S> {
 	}
 
 	pub fn get_value(&self, index: usize) -> Value {
-		self.get(index).map(Value::DictionaryId).unwrap_or(Value::Undefined)
+		self.get(index).map(Value::DictionaryId).unwrap_or(Value::None)
 	}
 
 	pub fn filter(&mut self, mask: &S::BitVec) {
@@ -295,7 +295,7 @@ impl<S: Storage> DictionaryContainer<S> {
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
-		self.get(index).map(|id| id.to_string()).unwrap_or_else(|| "NULL".to_string())
+		self.get(index).map(|id| id.to_string()).unwrap_or_else(|| "none".to_string())
 	}
 
 	pub fn capacity(&self) -> usize {

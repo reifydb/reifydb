@@ -194,7 +194,7 @@ where
 		if index < self.len() && self.is_defined(index) {
 			self.data[index].to_string()
 		} else {
-			"Undefined".to_string()
+			"none".to_string()
 		}
 	}
 
@@ -218,10 +218,10 @@ where
 				let duration_val = unsafe { transmute_copy::<T, Duration>(value) };
 				Value::Duration(duration_val)
 			} else {
-				Value::Undefined
+				Value::None
 			}
 		} else {
-			Value::Undefined
+			Value::None
 		}
 	}
 

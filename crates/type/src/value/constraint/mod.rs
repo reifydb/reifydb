@@ -19,14 +19,14 @@ pub mod precision;
 pub mod scale;
 
 /// Represents a type with optional constraints
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeConstraint {
 	base_type: Type,
 	constraint: Option<Constraint>,
 }
 
 /// Constraint types for different data types
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Constraint {
 	/// Maximum number of bytes for UTF8, BLOB, INT, UINT
 	MaxBytes(MaxBytes),
@@ -51,7 +51,7 @@ pub struct FFITypeConstraint {
 }
 
 impl TypeConstraint {
-	/// Create an unconstrained type (const for use in static contexts)
+	/// Create an unconstrained type
 	pub const fn unconstrained(ty: Type) -> Self {
 		Self {
 			base_type: ty,
@@ -77,15 +77,15 @@ impl TypeConstraint {
 
 	/// Get the base type
 	pub fn get_type(&self) -> Type {
-		self.base_type
+		self.base_type.clone()
 	}
 
 	/// Get the storage type. For DictionaryId with a Dictionary constraint,
 	/// returns the id_type (e.g. Uint4). For all other types, returns the base_type.
 	pub fn storage_type(&self) -> Type {
 		match (&self.base_type, &self.constraint) {
-			(Type::DictionaryId, Some(Constraint::Dictionary(_, id_type))) => *id_type,
-			_ => self.base_type,
+			(Type::DictionaryId, Some(Constraint::Dictionary(_, id_type))) => id_type.clone(),
+			_ => self.base_type.clone(),
 		}
 	}
 
@@ -152,7 +152,7 @@ impl TypeConstraint {
 	pub fn validate(&self, value: &Value) -> Result<(), Error> {
 		// First check type compatibility
 		let value_type = value.get_type();
-		if value_type != self.base_type && value_type != Type::Undefined {
+		if value_type != self.base_type && !matches!(value, Value::None) {
 			// For now, return a simple error - we'll create proper
 			// diagnostics later
 			// return Err(crate::error!(crate::error::diagnostic::internal::internal(format!(
@@ -163,7 +163,7 @@ impl TypeConstraint {
 		}
 
 		// If undefined, no further validation needed
-		if matches!(value, Value::Undefined) {
+		if matches!(value, Value::None) {
 			return Ok(());
 		}
 
@@ -366,7 +366,7 @@ pub mod tests {
 	#[test]
 	fn test_validate_undefined() {
 		let tc = TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(5)));
-		let value = Value::Undefined;
+		let value = Value::None;
 		assert!(tc.validate(&value).is_ok());
 	}
 

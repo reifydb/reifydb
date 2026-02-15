@@ -55,8 +55,11 @@ impl SubscriptionDef {
 impl From<&SubscriptionDef> for Schema {
 	fn from(value: &SubscriptionDef) -> Self {
 		// Use only user-defined columns for schema (implicit columns like _op removed)
-		let fields =
-			value.columns.iter().map(|col| SchemaField::unconstrained(col.name.clone(), col.ty)).collect();
+		let fields = value
+			.columns
+			.iter()
+			.map(|col| SchemaField::unconstrained(col.name.clone(), col.ty.clone()))
+			.collect();
 		Schema::new(fields)
 	}
 }

@@ -73,7 +73,7 @@ impl CatalogStore {
 			subscription_column::SCHEMA.set_u8(
 				&mut row,
 				subscription_column::TYPE,
-				column_to_create.ty as u8,
+				column_to_create.ty.to_u8(),
 			);
 
 			txn.set(&SubscriptionColumnKey::encoded(subscription, column_id), row)?;

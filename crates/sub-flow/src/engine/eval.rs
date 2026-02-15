@@ -74,7 +74,7 @@ pub fn evaluate_operator_config(
 				let value = if column.data().len() > 0 {
 					column.data().get_value(0)
 				} else {
-					Value::Undefined
+					Value::None
 				};
 				result.insert(key, value);
 			}
@@ -122,7 +122,7 @@ pub mod tests {
 
 	fn create_constant_undefined() -> Expression {
 		Expression::Constant(ConstantExpression::Undefined {
-			fragment: Fragment::internal("undefined".to_string()),
+			fragment: Fragment::internal("none".to_string()),
 		})
 	}
 
@@ -182,7 +182,7 @@ pub mod tests {
 		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 1);
-		assert_eq!(result.get("optional"), Some(&Value::Undefined));
+		assert_eq!(result.get("optional"), Some(&Value::None));
 	}
 
 	#[test]
@@ -254,7 +254,7 @@ pub mod tests {
 		assert_eq!(result.get("num_val"), Some(&Value::Int1(-42)));
 		assert_eq!(result.get("bool_true"), Some(&Value::Boolean(true)));
 		assert_eq!(result.get("bool_false"), Some(&Value::Boolean(false)));
-		assert_eq!(result.get("undef_val"), Some(&Value::Undefined));
+		assert_eq!(result.get("undef_val"), Some(&Value::None));
 	}
 
 	#[test]

@@ -174,7 +174,7 @@ impl<S: Storage> RowNumberContainer<S> {
 		if index < self.len() && self.is_defined(index) {
 			self.data[index].to_string()
 		} else {
-			"Undefined".to_string()
+			"none".to_string()
 		}
 	}
 
@@ -182,7 +182,7 @@ impl<S: Storage> RowNumberContainer<S> {
 		if index < self.len() && self.is_defined(index) {
 			Value::Uint8(self.data[index].value())
 		} else {
-			Value::Undefined
+			Value::None
 		}
 	}
 

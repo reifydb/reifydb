@@ -52,7 +52,7 @@ pub fn frames_to_js(frames: &[Frame]) -> Result<JsValue, JsValue> {
 /// Convert ReifyDB Value to JavaScript value
 fn value_to_js(value: &Value) -> Result<JsValue, JsValue> {
 	match value {
-		Value::Undefined => Ok(JsValue::NULL),
+		Value::None => Ok(JsValue::NULL),
 		Value::Boolean(b) => Ok(JsValue::from(*b)),
 		Value::Int1(n) => Ok(JsValue::from(*n)),
 		Value::Int2(n) => Ok(JsValue::from(*n)),

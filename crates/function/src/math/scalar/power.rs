@@ -910,7 +910,7 @@ impl ScalarFunction for Power {
 
 				let promoted_type = promote_numeric_types(base_type, exp_type);
 
-				let promoted_base = convert_column_to_type(base_data, promoted_type, row_count);
+				let promoted_base = convert_column_to_type(base_data, promoted_type.clone(), row_count);
 				let promoted_exp = convert_column_to_type(exp_data, promoted_type, row_count);
 
 				let base_col = Column::new(Fragment::internal("base"), promoted_base);

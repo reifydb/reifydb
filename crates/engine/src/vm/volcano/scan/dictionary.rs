@@ -88,7 +88,7 @@ impl QueryNode for DictionaryScanNode {
 			// Decode the key to get the entry ID
 			if let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) {
 				// Create DictionaryEntryId with proper type
-				let entry_id = DictionaryEntryId::from_u128(key.id as u128, dict_def.id_type)?;
+				let entry_id = DictionaryEntryId::from_u128(key.id as u128, dict_def.id_type.clone())?;
 
 				// Decode the value from the entry
 				let value: Value = postcard::from_bytes(&entry.values).map_err(|e| {
@@ -114,8 +114,8 @@ impl QueryNode for DictionaryScanNode {
 		self.last_key = new_last_key;
 
 		// Build columns based on dictionary types
-		let id_column = build_id_column(&ids, dict_def.id_type)?;
-		let value_column = build_value_column(&values, dict_def.value_type)?;
+		let id_column = build_id_column(&ids, dict_def.id_type.clone())?;
+		let value_column = build_value_column(&values, dict_def.value_type.clone())?;
 
 		let columns = Columns::new(vec![id_column, value_column]);
 

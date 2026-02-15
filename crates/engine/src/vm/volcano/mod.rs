@@ -22,16 +22,16 @@ pub(crate) fn decode_dictionary_columns(
 			}
 			let col = &columns[col_idx];
 			let row_count = col.data().len();
-			let mut new_data = ColumnData::with_capacity(dictionary.value_type, row_count);
+			let mut new_data = ColumnData::with_capacity(dictionary.value_type.clone(), row_count);
 			for row_idx in 0..row_count {
 				let id_value = col.data().get_value(row_idx);
 				if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
 					match rx.get_from_dictionary(dictionary, entry_id)? {
 						Some(decoded) => new_data.push_value(decoded),
-						None => new_data.push_value(Value::Undefined),
+						None => new_data.push_value(Value::None),
 					}
 				} else {
-					new_data.push_value(Value::Undefined);
+					new_data.push_value(Value::None);
 				}
 			}
 			columns.columns.make_mut()[col_idx] = Column {

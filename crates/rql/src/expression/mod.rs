@@ -162,7 +162,7 @@ impl Display for ConstantExpression {
 		match self {
 			ConstantExpression::Undefined {
 				..
-			} => write!(f, "undefined"),
+			} => write!(f, "none"),
 			ConstantExpression::Bool {
 				fragment,
 			} => write!(f, "{}", fragment.text()),

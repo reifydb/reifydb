@@ -133,7 +133,7 @@ pub(crate) fn constant_value_of(
 				} => Type::DateTime,
 				ConstantExpression::Undefined {
 					..
-				} => Type::Undefined,
+				} => Type::Option(Box::new(Type::Boolean)),
 			};
 			return_error!(cast::unsupported_cast(expr.full_fragment_owned(), source_type, target));
 		}

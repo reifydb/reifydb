@@ -409,18 +409,12 @@ fn generate_optional_map_closure(
 	tokens.push(parens([ident("row"), punct(','), ident("v")]));
 	tokens.push(punct('|'));
 
-	// if matches!(v, ::crate_path::Value::Undefined)
+	// if matches!(v, ::crate_path::Value::None)
 	let mut body = vec![
 		ident("if"),
 		ident("matches"),
 		punct('!'),
-		parens([ident("v"), punct(',')].into_iter().chain(path(&[
-			"",
-			crate_path,
-			"value",
-			"Value",
-			"Undefined",
-		]))),
+		parens([ident("v"), punct(',')].into_iter().chain(path(&["", crate_path, "value", "Value", "None"]))),
 	];
 
 	// { Ok(None) }

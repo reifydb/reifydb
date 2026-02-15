@@ -202,7 +202,7 @@ impl<S: Storage> BoolContainer<S> {
 		if index < self.len() && self.is_defined(index) {
 			DataBitVec::get(&self.data, index).to_string()
 		} else {
-			"Undefined".to_string()
+			"none".to_string()
 		}
 	}
 
@@ -210,7 +210,7 @@ impl<S: Storage> BoolContainer<S> {
 		if index < self.len() && self.is_defined(index) {
 			Value::Boolean(DataBitVec::get(&self.data, index))
 		} else {
-			Value::Undefined
+			Value::None
 		}
 	}
 

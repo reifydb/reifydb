@@ -30,7 +30,7 @@ impl Schema {
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.constraint.get_type(), Type::DictionaryId);
 		let id_type = match field.constraint.constraint() {
-			Some(Constraint::Dictionary(_, id_type)) => *id_type,
+			Some(Constraint::Dictionary(_, id_type)) => id_type.clone(),
 			_ => Type::Uint4, // fallback
 		};
 		unsafe {

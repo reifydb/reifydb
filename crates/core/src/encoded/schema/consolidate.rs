@@ -20,9 +20,9 @@ use super::Schema;
 /// Future: implement proper widening hierarchy (e.g., Int4 -> Int8 -> Int16)
 pub fn widen_type(a: Type, b: Type) -> Type {
 	match (a, b) {
-		(Type::Undefined, t) | (t, Type::Undefined) => t,
-		(a, b) if a == b => a,
-		_ => unimplemented!("type widening not yet supported: {:?} vs {:?}", a, b),
+		(Type::Option(_), t) | (t, Type::Option(_)) => t,
+		(ref a, ref b) if a == b => a.clone(),
+		(a, b) => unimplemented!("type widening not yet supported: {:?} vs {:?}", a, b),
 	}
 }
 
@@ -48,8 +48,8 @@ mod tests {
 
 	#[test]
 	fn test_widen_type_undefined() {
-		assert_eq!(widen_type(Type::Undefined, Type::Int4), Type::Int4);
-		assert_eq!(widen_type(Type::Int4, Type::Undefined), Type::Int4);
+		assert_eq!(widen_type(Type::Option(Box::new(Type::Boolean)), Type::Int4), Type::Int4);
+		assert_eq!(widen_type(Type::Int4, Type::Option(Box::new(Type::Boolean))), Type::Int4);
 	}
 
 	#[test]

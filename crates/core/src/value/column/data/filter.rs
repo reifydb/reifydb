@@ -87,8 +87,8 @@ pub mod tests {
 		col.filter(&mask).unwrap();
 
 		assert_eq!(col.len(), 2);
-		assert_eq!(col.get_value(0), Value::Undefined);
-		assert_eq!(col.get_value(1), Value::Undefined);
+		assert_eq!(col.get_value(0), Value::None);
+		assert_eq!(col.get_value(1), Value::None);
 	}
 
 	#[test]

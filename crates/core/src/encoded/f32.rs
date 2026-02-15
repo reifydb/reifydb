@@ -255,11 +255,11 @@ pub mod tests {
 	pub fn create_unaligned_layout(target_type: Type) -> Schema {
 		// Use Int1 (1 byte) to create odd alignment
 		Schema::testing(&[
-			Type::Int1,  // 1 byte offset
-			target_type, // Now at odd offset
-			Type::Int1,  // Another odd-sized field
-			target_type, /* Another instance at different odd
-			              * offset */
+			Type::Int1,          // 1 byte offset
+			target_type.clone(), // Now at odd offset
+			Type::Int1,          // Another odd-sized field
+			target_type,         /* Another instance at different odd
+			                      * offset */
 		])
 	}
 }

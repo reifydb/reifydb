@@ -60,7 +60,7 @@ impl Columns {
 	/// Used to store scalar values inside `Variable::Scalar(Columns)`.
 	pub fn scalar(value: Value) -> Self {
 		let data = match value {
-			Value::Undefined => ColumnData::undefined(1),
+			Value::None => ColumnData::undefined(1),
 			Value::Boolean(v) => ColumnData::bool([v]),
 			Value::Float4(v) => ColumnData::float4([v.into()]),
 			Value::Float8(v) => ColumnData::float8([v.into()]),
@@ -140,7 +140,7 @@ impl Columns {
 
 		for (idx, (name, value)) in rows.into_iter().enumerate() {
 			let data = match value {
-				Value::Undefined => ColumnData::undefined(1),
+				Value::None => ColumnData::undefined(1),
 				Value::Boolean(v) => ColumnData::bool([v]),
 				Value::Float4(v) => ColumnData::float4([v.into()]),
 				Value::Float8(v) => ColumnData::float8([v.into()]),
@@ -468,16 +468,16 @@ impl Columns {
 			let value = row.schema.get_value(&row.encoded, idx);
 
 			// Use the field type for the column data, handling undefined values
-			let column_type = if value.get_type() == Type::Undefined {
+			let column_type = if matches!(value, Value::None) {
 				field.constraint.get_type()
 			} else {
 				value.get_type()
 			};
 
-			let mut data = if column_type == Type::Undefined {
+			let mut data = if column_type.is_option() {
 				ColumnData::undefined(0)
 			} else {
-				ColumnData::with_capacity(column_type, 1)
+				ColumnData::with_capacity(column_type.clone(), 1)
 			};
 			data.push_value(value);
 
@@ -580,7 +580,7 @@ pub mod tests {
 			("str_col", Value::Utf8("hello".to_string())),
 			("date_col", Value::Date(date.clone())),
 			("time_col", Value::Time(time.clone())),
-			("undefined_col", Value::Undefined),
+			("undefined_col", Value::None),
 		]);
 
 		assert_eq!(columns.len(), 6);
@@ -592,7 +592,7 @@ pub mod tests {
 		assert_eq!(columns.column("str_col").unwrap().data().get_value(0), Value::Utf8("hello".to_string()));
 		assert_eq!(columns.column("date_col").unwrap().data().get_value(0), Value::Date(date));
 		assert_eq!(columns.column("time_col").unwrap().data().get_value(0), Value::Time(time));
-		assert_eq!(columns.column("undefined_col").unwrap().data().get_value(0), Value::Undefined);
+		assert_eq!(columns.column("undefined_col").unwrap().data().get_value(0), Value::None);
 	}
 
 	#[test]

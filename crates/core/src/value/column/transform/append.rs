@@ -164,7 +164,7 @@ impl Columns {
 						vec![Duration::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Undefined => column.data().clone(),
+					Type::Option(_) => column.data().clone(),
 					Type::IdentityId => ColumnData::identity_id_with_bitvec(
 						vec![Default::default(); size],
 						BitVec::repeat(size, false),
@@ -210,7 +210,7 @@ impl Columns {
 						col_data
 					}
 					Type::Any => ColumnData::any_with_bitvec(
-						vec![Box::new(Value::Undefined); size],
+						vec![Box::new(Value::None); size],
 						BitVec::repeat(size, false),
 					),
 				};
@@ -507,7 +507,7 @@ impl Columns {
 						_ => container.push_undefined(),
 					}
 				}
-				(ColumnData::Undefined(container), Type::Undefined) => {
+				(ColumnData::Undefined(container), Type::Option(_)) => {
 					container.push_undefined();
 				}
 				(l, r) => unreachable!("{:#?} {:#?}", l, r),
@@ -1322,7 +1322,7 @@ pub mod tests {
 
 			let schema = Schema::testing(&[Type::Int2, Type::Boolean]);
 			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Undefined, Value::Boolean(false)]);
+			schema.set_values(&mut row, &[Value::None, Value::Boolean(false)]);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1677,7 +1677,7 @@ pub mod tests {
 			]);
 
 			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Undefined, Value::Boolean(true)]);
+			schema.set_values(&mut row, &[Value::None, Value::Boolean(true)]);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 

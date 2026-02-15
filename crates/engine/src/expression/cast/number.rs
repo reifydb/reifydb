@@ -43,7 +43,7 @@ pub fn to_number(
 	}
 
 	if data.is_utf8() {
-		return match target {
+		return match &target {
 			Type::Float4 | Type::Float8 => text_to_float(data, target, lazy_fragment),
 			Type::Decimal {
 				..
@@ -75,7 +75,7 @@ fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFr
 
 	match data {
 		ColumnData::Bool(container) => {
-			let converter = match target {
+			let converter = match &target {
 				Type::Int1 => boolean_to_number!(i8, 1i8, 0i8),
 				Type::Int2 => {
 					boolean_to_number!(i16, 1i16, 0i16)
@@ -162,7 +162,7 @@ fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFr
 
 fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Float4(container) => match target {
+		ColumnData::Float4(container) => match &target {
 			Type::Int1 => f32_to_i8_vec(container),
 			Type::Int2 => f32_to_i16_vec(container),
 			Type::Int4 => f32_to_i32_vec(container),
@@ -183,7 +183,7 @@ fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFra
 				return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 			}
 		},
-		ColumnData::Float8(container) => match target {
+		ColumnData::Float8(container) => match &target {
 			Type::Int1 => f64_to_i8_vec(container),
 			Type::Int2 => f64_to_i16_vec(container),
 			Type::Int4 => f64_to_i32_vec(container),
@@ -242,13 +242,13 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 			..
 		} => {
 			let base_fragment = lazy_fragment.fragment();
-			let mut out = ColumnData::with_capacity(target, container.len());
+			let mut out = ColumnData::with_capacity(target.clone(), container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = &container[idx];
 					let temp_fragment = Fragment::internal(val);
 
-					match target {
+					match target.clone() {
 						Type::Int1 => {
 							parse_and_push!(
 								parse_int,
@@ -376,12 +376,13 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 						Type::Decimal {
 							..
 						} => {
+							let target_clone = target.clone();
 							let result = parse_decimal(temp_fragment.clone()).map_err(
 								|mut e| {
 									e.0.with_fragment(base_fragment.clone());
 									error!(cast::invalid_number(
 										base_fragment.clone(),
-										target,
+										target_clone,
 										e.diagnostic(),
 									))
 								},
@@ -422,7 +423,7 @@ fn text_to_float<'a>(
 	{
 		// Create base fragment once for efficiency
 		let base_fragment = lazy_fragment.fragment();
-		let mut out = ColumnData::with_capacity(target, container.len());
+		let mut out = ColumnData::with_capacity(target.clone(), container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = &container[idx];
@@ -430,7 +431,7 @@ fn text_to_float<'a>(
 				// parsing
 				let temp_fragment = Fragment::internal(val);
 
-				match target {
+				match target.clone() {
 					Type::Float4 => {
 						out.push::<f32>(parse_float::<f32>(temp_fragment.clone()).map_err(
 							|mut e| {
@@ -493,7 +494,7 @@ fn text_to_decimal<'a>(
 	} = column_data
 	{
 		let base_fragment = lazy_fragment.fragment();
-		let mut out = ColumnData::with_capacity(target, container.len());
+		let mut out = ColumnData::with_capacity(target.clone(), container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = &container[idx];
@@ -501,7 +502,11 @@ fn text_to_decimal<'a>(
 
 				let result = parse_decimal(temp_fragment.clone()).map_err(|mut e| {
 					e.0.with_fragment(base_fragment.clone());
-					error!(cast::invalid_number(base_fragment.clone(), target, e.diagnostic(),))
+					error!(cast::invalid_number(
+						base_fragment.clone(),
+						target.clone(),
+						e.diagnostic(),
+					))
 				})?;
 				out.push::<Decimal>(result);
 			} else {

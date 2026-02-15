@@ -48,11 +48,11 @@ impl UndefinedContainer {
 	}
 
 	pub fn as_string(&self, _index: usize) -> String {
-		"Undefined".to_string()
+		"none".to_string()
 	}
 
 	pub fn get_value(&self, _index: usize) -> Value {
-		Value::Undefined
+		Value::None
 	}
 
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
