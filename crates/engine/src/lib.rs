@@ -16,6 +16,7 @@ pub(crate) mod interceptor;
 #[allow(unused)]
 pub mod test_utils;
 pub mod transaction;
+pub mod transform;
 pub mod vm;
 
 pub struct EngineVersion;

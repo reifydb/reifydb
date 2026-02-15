@@ -183,6 +183,7 @@ pub fn create_test_engine() -> StandardEngine {
 		Catalog::new(materialized_catalog, schema_registry),
 		runtime.clock().clone(),
 		Functions::builder().build(),
+		crate::transform::registry::Transforms::empty(),
 		ioc,
 	);
 

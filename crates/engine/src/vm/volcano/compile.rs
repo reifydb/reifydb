@@ -364,10 +364,18 @@ pub(crate) fn compile<'a>(
 		}
 
 		RqlQueryPlan::Distinct(_) => unreachable!(),
-		RqlQueryPlan::Apply(_) => {
-			unimplemented!(
-				"Apply operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
-			)
+		RqlQueryPlan::Apply(apply_node) => {
+			let operator_name = apply_node.operator.text().to_string();
+			let transform = context
+				.services
+				.transforms
+				.get_transform(&operator_name)
+				.unwrap_or_else(|| panic!("Unknown transform: {}", operator_name));
+
+			let input = apply_node.input.expect("Apply requires input");
+			let input_node = compile(*input, rx, context);
+
+			Box::new(super::apply_transform::ApplyTransformNode::new(input_node, transform))
 		}
 		RqlQueryPlan::Window(_) => {
 			unimplemented!(

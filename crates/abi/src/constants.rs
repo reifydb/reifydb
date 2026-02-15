@@ -47,3 +47,14 @@ pub const FFI_ERROR_INVALID_UTF8: i32 = -4;
 
 /// FFI error code: Failed to marshal Rust type to FFI struct
 pub const FFI_ERROR_MARSHAL: i32 = -5;
+
+/// Magic number to identify valid FFI transform libraries
+///
+/// Libraries must export a `ffi_transform_magic` symbol that returns this value
+/// to be recognized as valid FFI transforms.
+pub const TRANSFORM_MAGIC: u32 = 230424;
+
+/// Function signature for the transform magic number export
+///
+/// FFI transform libraries must export this function to be recognized as valid transforms.
+pub type FFITransformMagicFn = extern "C" fn() -> u32;
