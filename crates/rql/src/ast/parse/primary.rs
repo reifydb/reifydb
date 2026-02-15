@@ -83,6 +83,7 @@ impl<'bump> Parser<'bump> {
 					Keyword::Let => Ok(Ast::Let(self.parse_let()?)),
 					Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
+					Keyword::Dispatch => Ok(Ast::Dispatch(self.parse_dispatch()?)),
 					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
 					Keyword::Def => Ok(Ast::DefFunction(self.parse_def_function()?)),
 					Keyword::Return => Ok(Ast::Return(self.parse_return()?)),

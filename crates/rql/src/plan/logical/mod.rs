@@ -134,6 +134,7 @@ impl<'bump> Compiler<'bump> {
 		match node {
 			Ast::Create(node) => self.compile_create(node, tx),
 			Ast::Alter(node) => self.compile_alter(node, tx),
+			Ast::Dispatch(_) => unimplemented!("DISPATCH execution not yet supported"),
 			Ast::Delete(node) => self.compile_delete(node, tx),
 			Ast::Insert(node) => self.compile_insert(node, tx),
 			Ast::Update(node) => self.compile_update(node, tx),

@@ -15,6 +15,7 @@ pub mod create_index;
 pub mod def_function;
 pub mod delete;
 pub mod describe;
+pub mod dispatch;
 pub mod distinct;
 pub mod drop;
 pub mod extend;
@@ -150,7 +151,7 @@ impl<'bump> Parser<'bump> {
 
 			// Check if this is a DDL statement (CREATE, ALTER, DROP)
 			// These should stand alone and not have arbitrary expressions after them
-			let is_ddl = matches!(node, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_));
+			let is_ddl = matches!(node, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Dispatch(_));
 
 			nodes.push(node);
 
@@ -226,7 +227,7 @@ impl<'bump> Parser<'bump> {
 
 		// DDL statements (CREATE, ALTER, DROP) cannot be used in infix expressions
 		// They must stand alone
-		if matches!(left, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_)) {
+		if matches!(left, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Dispatch(_)) {
 			return Ok(left);
 		}
 

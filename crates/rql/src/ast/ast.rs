@@ -10,11 +10,11 @@ use reifydb_core::{
 
 use crate::{
 	ast::identifier::{
-		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
+		DispatchTargetIdentifier, MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier, MaybeQualifiedFunctionIdentifier,
-		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
-		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
-		UnresolvedPrimitiveIdentifier,
+		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedReducerIdentifier,
+		MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
+		MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier, UnresolvedPrimitiveIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
 	token::token::{Literal, Token, TokenKind},
@@ -80,6 +80,7 @@ pub enum Ast<'bump> {
 	Alter(AstAlter<'bump>),
 	Drop(AstDrop<'bump>),
 	Describe(AstDescribe<'bump>),
+	Dispatch(AstDispatch<'bump>),
 	Distinct(AstDistinct<'bump>),
 	Filter(AstFilter<'bump>),
 	For(AstFor<'bump>),
@@ -142,6 +143,7 @@ impl<'bump> Ast<'bump> {
 			Ast::Create(node) => node.token(),
 			Ast::Alter(node) => node.token(),
 			Ast::Drop(node) => node.token(),
+			Ast::Dispatch(node) => &node.token,
 			Ast::Describe(node) => match node {
 				AstDescribe::Query {
 					token,
@@ -218,7 +220,7 @@ impl<'bump> Ast<'bump> {
 impl<'bump> Ast<'bump> {
 	/// Returns true if this AST node is a DDL statement (CREATE, ALTER, DROP).
 	pub fn is_ddl(&self) -> bool {
-		matches!(self, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_))
+		matches!(self, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Dispatch(_))
 	}
 
 	pub fn is_assert(&self) -> bool {
@@ -649,6 +651,18 @@ impl<'bump> Ast<'bump> {
 		}
 	}
 
+	pub fn is_dispatch(&self) -> bool {
+		matches!(self, Ast::Dispatch(_))
+	}
+
+	pub fn as_dispatch(&self) -> &AstDispatch<'bump> {
+		if let Ast::Dispatch(result) = self {
+			result
+		} else {
+			panic!("not dispatch")
+		}
+	}
+
 	pub fn is_tuple(&self) -> bool {
 		matches!(self, Ast::Tuple(_))
 	}
@@ -757,6 +771,7 @@ pub enum AstCreate<'bump> {
 	TransactionalView(AstCreateTransactionalView<'bump>),
 	Flow(AstCreateFlow<'bump>),
 	Namespace(AstCreateNamespace<'bump>),
+	Reducer(AstCreateReducer<'bump>),
 	Series(AstCreateSeries<'bump>),
 	Subscription(AstCreateSubscription<'bump>),
 	Table(AstCreateTable<'bump>),
@@ -771,6 +786,7 @@ pub enum AstAlter<'bump> {
 	Table(AstAlterTable<'bump>),
 	View(AstAlterView<'bump>),
 	Flow(AstAlterFlow<'bump>),
+	Reducer(AstAlterReducer<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -850,6 +866,45 @@ pub enum AstAlterFlowAction<'bump> {
 	},
 	Pause,
 	Resume,
+}
+
+#[derive(Debug)]
+pub struct AstCreateReducer<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedReducerIdentifier<'bump>,
+	pub columns: Vec<AstColumnToCreate<'bump>>,
+	pub key: Vec<BumpFragment<'bump>>,
+	pub init: Option<AstInline<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstAlterReducer<'bump> {
+	pub token: Token<'bump>,
+	pub reducer: MaybeQualifiedReducerIdentifier<'bump>,
+	pub action: AstAlterReducerAction<'bump>,
+}
+
+#[derive(Debug)]
+pub enum AstAlterReducerAction<'bump> {
+	AddAction {
+		action_name: BumpFragment<'bump>,
+		columns: Vec<AstColumnToCreate<'bump>>,
+		on_dispatch: AstStatement<'bump>,
+	},
+	AlterAction {
+		action_name: BumpFragment<'bump>,
+		on_dispatch: AstStatement<'bump>,
+	},
+	DropAction {
+		action_name: BumpFragment<'bump>,
+	},
+}
+
+#[derive(Debug)]
+pub struct AstDispatch<'bump> {
+	pub token: Token<'bump>,
+	pub target: DispatchTargetIdentifier<'bump>,
+	pub payload: AstInline<'bump>,
 }
 
 #[derive(Debug)]
@@ -1023,6 +1078,10 @@ impl<'bump> AstCreate<'bump> {
 				token,
 				..
 			}) => token,
+			AstCreate::Reducer(AstCreateReducer {
+				token,
+				..
+			}) => token,
 		}
 	}
 }
@@ -1043,6 +1102,10 @@ impl<'bump> AstAlter<'bump> {
 				..
 			}) => token,
 			AstAlter::Flow(AstAlterFlow {
+				token,
+				..
+			}) => token,
+			AstAlter::Reducer(AstAlterReducer {
 				token,
 				..
 			}) => token,

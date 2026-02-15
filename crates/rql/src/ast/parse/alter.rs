@@ -6,10 +6,11 @@ use reifydb_core::sort::SortDirection;
 use crate::{
 	ast::{
 		ast::{
-			AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstAlterTable,
-			AstAlterTableOperation, AstAlterView, AstAlterViewOperation, AstIndexColumn, AstStatement,
+			AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterReducer, AstAlterReducerAction,
+			AstAlterSequence, AstAlterTable, AstAlterTableOperation, AstAlterView, AstAlterViewOperation,
+			AstIndexColumn, AstStatement,
 		},
-		identifier::MaybeQualifiedFlowIdentifier,
+		identifier::{MaybeQualifiedFlowIdentifier, MaybeQualifiedReducerIdentifier},
 		parse::Parser,
 	},
 	token::{
@@ -44,7 +45,14 @@ impl<'bump> Parser<'bump> {
 			return self.parse_alter_flow(token);
 		}
 
-		unimplemented!("Only ALTER SEQUENCE, ALTER TABLE, ALTER VIEW, and ALTER FLOW are supported");
+		if self.current()?.is_keyword(Keyword::Reducer) {
+			self.consume_keyword(Keyword::Reducer)?;
+			return self.parse_alter_reducer(token);
+		}
+
+		unimplemented!(
+			"Only ALTER SEQUENCE, ALTER TABLE, ALTER VIEW, ALTER FLOW, and ALTER REDUCER are supported"
+		);
 	}
 
 	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
@@ -385,6 +393,141 @@ impl<'bump> Parser<'bump> {
 			action,
 		}))
 	}
+
+	fn parse_alter_reducer(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let reducer = if namespace.is_empty() {
+			MaybeQualifiedReducerIdentifier::new(name)
+		} else {
+			MaybeQualifiedReducerIdentifier::new(name).with_namespace(namespace)
+		};
+
+		// Dispatch on sub-command: ADD ACTION / ALTER ACTION / DROP ACTION
+		let action = if self.current()?.is_keyword(Keyword::Add) {
+			self.consume_keyword(Keyword::Add)?;
+			self.consume_keyword(Keyword::Action)?;
+			let action_name = self.parse_identifier_with_hyphens()?.into_fragment();
+
+			// Parse action columns with parens
+			let columns = self.parse_action_columns()?;
+
+			// Parse ON DISPATCH body
+			self.consume_keyword(Keyword::On)?;
+			self.consume_keyword(Keyword::Dispatch)?;
+			let on_dispatch = self.parse_on_dispatch_body()?;
+
+			AstAlterReducerAction::AddAction {
+				action_name,
+				columns,
+				on_dispatch,
+			}
+		} else if self.current()?.is_keyword(Keyword::Alter) {
+			self.consume_keyword(Keyword::Alter)?;
+			self.consume_keyword(Keyword::Action)?;
+			let action_name = self.parse_identifier_with_hyphens()?.into_fragment();
+
+			// Parse ON DISPATCH body
+			self.consume_keyword(Keyword::On)?;
+			self.consume_keyword(Keyword::Dispatch)?;
+			let on_dispatch = self.parse_on_dispatch_body()?;
+
+			AstAlterReducerAction::AlterAction {
+				action_name,
+				on_dispatch,
+			}
+		} else if self.current()?.is_keyword(Keyword::Drop) {
+			self.consume_keyword(Keyword::Drop)?;
+			self.consume_keyword(Keyword::Action)?;
+			let action_name = self.parse_identifier_with_hyphens()?.into_fragment();
+
+			AstAlterReducerAction::DropAction {
+				action_name,
+			}
+		} else {
+			return Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+					"ADD, ALTER, or DROP",
+					self.current()?.fragment.to_owned(),
+				),
+			));
+		};
+
+		Ok(AstAlter::Reducer(AstAlterReducer {
+			token,
+			reducer,
+			action,
+		}))
+	}
+
+	/// Parse the pipeline body after ON DISPATCH.
+	/// Supports both curly-brace and direct (semicolon/EOF-terminated) syntax.
+	fn parse_on_dispatch_body(&mut self) -> crate::Result<AstStatement<'bump>> {
+		if self.current()?.kind == TokenKind::Operator(Operator::OpenCurly) {
+			// Curly brace syntax
+			self.consume_operator(Operator::OpenCurly)?;
+
+			let mut query_nodes = Vec::new();
+			let mut has_pipes = false;
+
+			loop {
+				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+				query_nodes.push(node);
+
+				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+					self.advance()?;
+					has_pipes = true;
+				} else {
+					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+				}
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+
+			Ok(AstStatement {
+				nodes: query_nodes,
+				has_pipes,
+				is_output: false,
+			})
+		} else {
+			// Direct syntax - parse until semicolon or EOF
+			let mut query_nodes = Vec::new();
+			let mut has_pipes = false;
+
+			loop {
+				if self.is_eof() {
+					break;
+				}
+
+				if self.current()?.kind == TokenKind::Separator(Separator::Semicolon) {
+					break;
+				}
+
+				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+				query_nodes.push(node);
+
+				if !self.is_eof() {
+					if self.current()?.is_operator(Operator::Pipe) {
+						self.advance()?;
+						has_pipes = true;
+					} else {
+						self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+					}
+				}
+			}
+
+			Ok(AstStatement {
+				nodes: query_nodes,
+				has_pipes,
+				is_output: false,
+			})
+		}
+	}
 }
 
 #[cfg(test)]
@@ -392,8 +535,8 @@ pub mod tests {
 	use crate::{
 		ast::{
 			ast::{
-				AstAlter, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
-				AstAlterView, AstAlterViewOperation,
+				AstAlter, AstAlterFlowAction, AstAlterReducerAction, AstAlterSequence, AstAlterTable,
+				AstAlterTableOperation, AstAlterView, AstAlterViewOperation,
 			},
 			parse::Parser,
 		},
@@ -815,6 +958,175 @@ pub mod tests {
 				}
 			}
 			_ => panic!("Expected AstAlter::Flow"),
+		}
+	}
+
+	#[test]
+	fn test_alter_reducer_add_action_simple() {
+		let bump = Bump::new();
+		let tokens = tokenize(
+			&bump,
+			r#"ALTER REDUCER app.wallet ADD ACTION deposit ( amount: decimal(18,2) ) ON DISPATCH PATCH { balance: balance + amount }"#,
+		)
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Reducer(reducer) => {
+				assert_eq!(reducer.reducer.namespace[0].text(), "app");
+				assert_eq!(reducer.reducer.name.text(), "wallet");
+
+				match &reducer.action {
+					AstAlterReducerAction::AddAction {
+						action_name,
+						columns,
+						on_dispatch,
+					} => {
+						assert_eq!(action_name.text(), "deposit");
+						assert_eq!(columns.len(), 1);
+						assert_eq!(columns[0].name.text(), "amount");
+						assert!(!on_dispatch.nodes.is_empty());
+					}
+					_ => panic!("Expected AddAction"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Reducer"),
+		}
+	}
+
+	#[test]
+	fn test_alter_reducer_add_action_with_pipes() {
+		let bump = Bump::new();
+		let tokens = tokenize(
+			&bump,
+			r#"ALTER REDUCER app.wallet ADD ACTION deposit ( amount: decimal(18,2) ) ON DISPATCH { FROM $env | PATCH { balance: balance + amount } }"#,
+		)
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Reducer(reducer) => match &reducer.action {
+				AstAlterReducerAction::AddAction {
+					on_dispatch,
+					..
+				} => {
+					assert!(on_dispatch.has_pipes);
+					assert!(on_dispatch.nodes.len() >= 2);
+				}
+				_ => panic!("Expected AddAction"),
+			},
+			_ => panic!("Expected AstAlter::Reducer"),
+		}
+	}
+
+	#[test]
+	fn test_alter_reducer_add_action_empty_params() {
+		let bump = Bump::new();
+		let tokens = tokenize(
+			&bump,
+			r#"ALTER REDUCER app.counter ADD ACTION increment () ON DISPATCH PATCH { count: count + 1 }"#,
+		)
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Reducer(reducer) => match &reducer.action {
+				AstAlterReducerAction::AddAction {
+					action_name,
+					columns,
+					..
+				} => {
+					assert_eq!(action_name.text(), "increment");
+					assert!(columns.is_empty());
+				}
+				_ => panic!("Expected AddAction"),
+			},
+			_ => panic!("Expected AstAlter::Reducer"),
+		}
+	}
+
+	#[test]
+	fn test_alter_reducer_alter_action() {
+		let bump = Bump::new();
+		let tokens = tokenize(
+			&bump,
+			r#"ALTER REDUCER app.wallet ALTER ACTION deposit ON DISPATCH PATCH { balance: balance + amount * 2 }"#,
+		)
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Reducer(reducer) => match &reducer.action {
+				AstAlterReducerAction::AlterAction {
+					action_name,
+					on_dispatch,
+				} => {
+					assert_eq!(action_name.text(), "deposit");
+					assert!(!on_dispatch.nodes.is_empty());
+				}
+				_ => panic!("Expected AlterAction"),
+			},
+			_ => panic!("Expected AstAlter::Reducer"),
+		}
+	}
+
+	#[test]
+	fn test_alter_reducer_drop_action() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"ALTER REDUCER app.wallet DROP ACTION deposit"#)
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Reducer(reducer) => {
+				assert_eq!(reducer.reducer.namespace[0].text(), "app");
+				assert_eq!(reducer.reducer.name.text(), "wallet");
+
+				match &reducer.action {
+					AstAlterReducerAction::DropAction {
+						action_name,
+					} => {
+						assert_eq!(action_name.text(), "deposit");
+					}
+					_ => panic!("Expected DropAction"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Reducer"),
 		}
 	}
 }
