@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::storage::DataBitVec;
+
 use crate::value::column::ColumnData;
 
 macro_rules! map_container {
@@ -66,12 +68,28 @@ macro_rules! map_container {
 				scale: *scale,
 			},
 			ColumnData::Any($c) => ColumnData::Any($body),
+			ColumnData::Option {
+				..
+			} => {
+				unreachable!(
+					"map_container! must not be called on Option variant directly; handle it explicitly"
+				)
+			}
 		}
 	};
 }
 
 impl ColumnData {
 	pub fn take(&self, num: usize) -> ColumnData {
-		map_container!(self, |c| c.take(num))
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => ColumnData::Option {
+				inner: Box::new(inner.take(num)),
+				bitvec: DataBitVec::take(bitvec, num),
+			},
+			_ => map_container!(self, |c| c.take(num)),
+		}
 	}
 }

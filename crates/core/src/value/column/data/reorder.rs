@@ -1,11 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::storage::DataBitVec;
+
 use crate::value::column::{ColumnData, data::with_container};
 
 impl ColumnData {
 	pub fn reorder(&mut self, indices: &[usize]) {
-		with_container!(self, |c| c.reorder(indices))
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				inner.reorder(indices);
+				let mut new_bitvec = DataBitVec::spawn(bitvec, indices.len());
+				for &idx in indices {
+					if idx < DataBitVec::len(bitvec) {
+						DataBitVec::push(&mut new_bitvec, DataBitVec::get(bitvec, idx));
+					} else {
+						DataBitVec::push(&mut new_bitvec, false);
+					}
+				}
+				*bitvec = new_bitvec;
+			}
+			_ => with_container!(self, |c| c.reorder(indices)),
+		}
 	}
 }
 

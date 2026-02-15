@@ -47,5 +47,10 @@ pub(super) fn column_data_to_type_code(data: &ColumnData) -> ColumnTypeCode {
 		ColumnData::Any(_) => ColumnTypeCode::Any,
 		ColumnData::DictionaryId(_) => ColumnTypeCode::DictionaryId,
 		ColumnData::Undefined(_) => ColumnTypeCode::Undefined,
+		ColumnData::Option {
+			..
+		} => {
+			unreachable!("Option columns cannot be marshalled to FFI yet")
+		}
 	}
 }

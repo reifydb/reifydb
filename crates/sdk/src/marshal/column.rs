@@ -567,6 +567,12 @@ impl Arena {
 
 			// Undefined has no data
 			ColumnData::Undefined(_) => (BufferFFI::empty(), BufferFFI::empty()),
+
+			ColumnData::Option {
+				..
+			} => {
+				unreachable!("Option columns cannot be marshalled to FFI yet")
+			}
 		}
 	}
 

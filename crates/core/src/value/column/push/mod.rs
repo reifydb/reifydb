@@ -3,9 +3,12 @@
 
 use std::fmt::Debug;
 
-use reifydb_type::value::{
-	blob::Blob, date::Date, datetime::DateTime, dictionary::DictionaryEntryId, duration::Duration,
-	number::safe::convert::SafeConvert, time::Time,
+use reifydb_type::{
+	storage::DataBitVec,
+	value::{
+		blob::Blob, date::Date, datetime::DateTime, dictionary::DictionaryEntryId, duration::Duration,
+		number::safe::convert::SafeConvert, time::Time,
+	},
 };
 
 use crate::value::column::ColumnData;
@@ -38,6 +41,13 @@ macro_rules! impl_push {
 				match self {
 					ColumnData::$variant(container) => {
 						container.push(value);
+					}
+					ColumnData::Option {
+						inner,
+						bitvec,
+					} => {
+						inner.push(value);
+						DataBitVec::push(bitvec, true);
 					}
 					ColumnData::Undefined(container) => {
 						let mut new_container =
@@ -72,6 +82,10 @@ macro_rules! impl_numeric_push {
 					ColumnData::$native_variant(container) => {
 						container.push(value);
 					}
+					ColumnData::Option { inner, bitvec } => {
+						inner.push(value);
+						DataBitVec::push(bitvec, true);
+					}
 					ColumnData::Undefined(container) => {
 						let mut new_container = ColumnData::$factory(vec![$default; container.len()]);
 						if let ColumnData::$native_variant(new_container) = &mut new_container {
@@ -97,6 +111,13 @@ impl Push<bool> for ColumnData {
 		match self {
 			ColumnData::Bool(container) => {
 				container.push(value);
+			}
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				inner.push(value);
+				DataBitVec::push(bitvec, true);
 			}
 			ColumnData::Undefined(container) => {
 				let mut new_container = ColumnData::bool(vec![false; container.len()]);
@@ -328,6 +349,13 @@ impl Push<Blob> for ColumnData {
 			} => {
 				container.push(value);
 			}
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				inner.push(value);
+				DataBitVec::push(bitvec, true);
+			}
 			ColumnData::Undefined(container) => {
 				let mut new_container = ColumnData::blob(vec![Blob::default(); container.len()]);
 				if let ColumnData::Blob {
@@ -353,6 +381,13 @@ impl Push<String> for ColumnData {
 			} => {
 				container.push(value);
 			}
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				inner.push(value);
+				DataBitVec::push(bitvec, true);
+			}
 			ColumnData::Undefined(container) => {
 				let mut new_container = ColumnData::utf8(vec![String::default(); container.len()]);
 				if let ColumnData::Utf8 {
@@ -376,6 +411,13 @@ impl Push<DictionaryEntryId> for ColumnData {
 		match self {
 			ColumnData::DictionaryId(container) => {
 				container.push(value);
+			}
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				inner.push(value);
+				DataBitVec::push(bitvec, true);
 			}
 			ColumnData::Undefined(container) => {
 				let mut new_container =

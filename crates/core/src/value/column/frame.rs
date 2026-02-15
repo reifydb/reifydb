@@ -51,6 +51,11 @@ impl From<ColumnData> for FrameColumnData {
 			ColumnData::Any(container) => FrameColumnData::Any(container),
 			ColumnData::DictionaryId(container) => FrameColumnData::DictionaryId(container),
 			ColumnData::Undefined(container) => FrameColumnData::Undefined(container),
+			ColumnData::Option {
+				..
+			} => {
+				unreachable!("Option columns cannot be directly converted to FrameColumnData yet")
+			}
 		}
 	}
 }

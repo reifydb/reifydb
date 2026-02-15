@@ -223,6 +223,13 @@ pub fn column_data_to_cow<S: Storage>(src: &ColumnData<S>) -> ColumnData<Cow> {
 		ColumnData::Any(c) => ColumnData::Any(any_to_cow(c)),
 		ColumnData::DictionaryId(c) => ColumnData::DictionaryId(dictionary_to_cow(c)),
 		ColumnData::Undefined(c) => ColumnData::Undefined(c.clone()),
+		ColumnData::Option {
+			inner,
+			bitvec,
+		} => ColumnData::Option {
+			inner: Box::new(column_data_to_cow(inner)),
+			bitvec: bitvec_to_cow::<S>(bitvec),
+		},
 	}
 }
 
@@ -291,6 +298,13 @@ pub fn column_data_to_bump<'bump, S: Storage>(
 		ColumnData::Any(c) => ColumnData::Any(any_to_bump(c, bump)),
 		ColumnData::DictionaryId(c) => ColumnData::DictionaryId(dictionary_to_bump(c, bump)),
 		ColumnData::Undefined(c) => ColumnData::Undefined(c.clone()),
+		ColumnData::Option {
+			inner,
+			bitvec,
+		} => ColumnData::Option {
+			inner: Box::new(column_data_to_bump(inner, bump)),
+			bitvec: bitvec_to_bump::<S>(bitvec, bump),
+		},
 	}
 }
 

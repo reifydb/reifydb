@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::util::bitvec::BitVec;
+use reifydb_type::{storage::DataBitVec, util::bitvec::BitVec};
 
 use crate::value::column::{Column, ColumnData, data::with_container};
 
@@ -13,7 +13,22 @@ impl Column {
 
 impl ColumnData {
 	pub fn filter(&mut self, mask: &BitVec) -> reifydb_type::Result<()> {
-		with_container!(self, |c| c.filter(mask));
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				inner.filter(mask)?;
+				let mut new_bitvec = DataBitVec::spawn(bitvec, DataBitVec::count_ones(mask));
+				for (i, keep) in DataBitVec::iter(mask).enumerate() {
+					if keep && i < DataBitVec::len(bitvec) {
+						DataBitVec::push(&mut new_bitvec, DataBitVec::get(bitvec, i));
+					}
+				}
+				*bitvec = new_bitvec;
+			}
+			_ => with_container!(self, |c| c.filter(mask)),
+		}
 		Ok(())
 	}
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::decimal::Decimal;
+use reifydb_type::{storage::DataBitVec, value::decimal::Decimal};
 
 use crate::value::column::{ColumnData, push::Push};
 
@@ -13,6 +13,13 @@ impl Push<Decimal> for ColumnData {
 				..
 			} => {
 				container.push(value);
+			}
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				inner.push(value);
+				DataBitVec::push(bitvec, true);
 			}
 			ColumnData::Undefined(container) => {
 				let mut new_container = ColumnData::decimal_with_capacity(container.len());

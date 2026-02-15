@@ -328,8 +328,8 @@ impl Display for Value {
 impl Value {
 	pub fn get_type(&self) -> Type {
 		match self {
-			Value::None => Type::Option(Box::new(Type::Boolean)), /* None has no inherent type; context
-			                                                        * provides it */
+			Value::None => Type::Option(Box::new(Type::Boolean)), // None has no inherent type; context
+			// provides it
 			Value::Boolean(_) => Type::Boolean,
 			Value::Float4(_) => Type::Float4,
 			Value::Float8(_) => Type::Float8,

@@ -36,6 +36,7 @@ macro_rules! impl_number_factory {
 		pub fn $name_opt(data: impl IntoIterator<Item = Option<$t>>) -> Self {
 			let mut values = Vec::new();
 			let mut bitvec = Vec::new();
+			let mut has_none = false;
 			for opt in data {
 				match opt {
 					Some(value) => {
@@ -45,10 +46,19 @@ macro_rules! impl_number_factory {
 					None => {
 						values.push($default);
 						bitvec.push(false);
+						has_none = true;
 					}
 				}
 			}
-			ColumnData::$variant(NumberContainer::new(values, BitVec::from(bitvec)))
+			let inner = ColumnData::$variant(NumberContainer::from_vec(values));
+			if has_none {
+				ColumnData::Option {
+					inner: Box::new(inner),
+					bitvec: BitVec::from(bitvec),
+				}
+			} else {
+				inner
+			}
 		}
 
 		pub fn $name_cap(capacity: usize) -> Self {
@@ -59,7 +69,15 @@ macro_rules! impl_number_factory {
 			let data = data.into_iter().collect::<Vec<_>>();
 			let bitvec = bitvec.into();
 			assert_eq!(bitvec.len(), data.len());
-			ColumnData::$variant(NumberContainer::new(data, bitvec))
+			let inner = ColumnData::$variant(NumberContainer::from_vec(data));
+			if bitvec.all_ones() {
+				inner
+			} else {
+				ColumnData::Option {
+					inner: Box::new(inner),
+					bitvec,
+				}
+			}
 		}
 	};
 }
@@ -74,6 +92,7 @@ macro_rules! impl_temporal_factory {
 		pub fn $name_opt(data: impl IntoIterator<Item = Option<$t>>) -> Self {
 			let mut values = Vec::new();
 			let mut bitvec = Vec::new();
+			let mut has_none = false;
 			for opt in data {
 				match opt {
 					Some(value) => {
@@ -83,10 +102,19 @@ macro_rules! impl_temporal_factory {
 					None => {
 						values.push(<$t>::default());
 						bitvec.push(false);
+						has_none = true;
 					}
 				}
 			}
-			ColumnData::$variant(TemporalContainer::new(values, BitVec::from(bitvec)))
+			let inner = ColumnData::$variant(TemporalContainer::from_vec(values));
+			if has_none {
+				ColumnData::Option {
+					inner: Box::new(inner),
+					bitvec: BitVec::from(bitvec),
+				}
+			} else {
+				inner
+			}
 		}
 
 		pub fn $name_cap(capacity: usize) -> Self {
@@ -97,7 +125,15 @@ macro_rules! impl_temporal_factory {
 			let data = data.into_iter().collect::<Vec<_>>();
 			let bitvec = bitvec.into();
 			assert_eq!(bitvec.len(), data.len());
-			ColumnData::$variant(TemporalContainer::new(data, bitvec))
+			let inner = ColumnData::$variant(TemporalContainer::from_vec(data));
+			if bitvec.all_ones() {
+				inner
+			} else {
+				ColumnData::Option {
+					inner: Box::new(inner),
+					bitvec,
+				}
+			}
 		}
 	};
 }
@@ -112,6 +148,7 @@ macro_rules! impl_uuid_factory {
 		pub fn $name_opt(data: impl IntoIterator<Item = Option<$t>>) -> Self {
 			let mut values = Vec::new();
 			let mut bitvec = Vec::new();
+			let mut has_none = false;
 			for opt in data {
 				match opt {
 					Some(value) => {
@@ -121,10 +158,19 @@ macro_rules! impl_uuid_factory {
 					None => {
 						values.push(<$t>::default());
 						bitvec.push(false);
+						has_none = true;
 					}
 				}
 			}
-			ColumnData::$variant(UuidContainer::new(values, BitVec::from(bitvec)))
+			let inner = ColumnData::$variant(UuidContainer::from_vec(values));
+			if has_none {
+				ColumnData::Option {
+					inner: Box::new(inner),
+					bitvec: BitVec::from(bitvec),
+				}
+			} else {
+				inner
+			}
 		}
 
 		pub fn $name_cap(capacity: usize) -> Self {
@@ -135,7 +181,15 @@ macro_rules! impl_uuid_factory {
 			let data = data.into_iter().collect::<Vec<_>>();
 			let bitvec = bitvec.into();
 			assert_eq!(bitvec.len(), data.len());
-			ColumnData::$variant(UuidContainer::new(data, bitvec))
+			let inner = ColumnData::$variant(UuidContainer::from_vec(data));
+			if bitvec.all_ones() {
+				inner
+			} else {
+				ColumnData::Option {
+					inner: Box::new(inner),
+					bitvec,
+				}
+			}
 		}
 	};
 }
@@ -149,6 +203,7 @@ impl ColumnData {
 	pub fn bool_optional(data: impl IntoIterator<Item = Option<bool>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
+		let mut has_none = false;
 
 		for opt in data {
 			match opt {
@@ -159,11 +214,20 @@ impl ColumnData {
 				None => {
 					values.push(false);
 					bitvec.push(false);
+					has_none = true;
 				}
 			}
 		}
 
-		ColumnData::Bool(BoolContainer::new(values, BitVec::from(bitvec)))
+		let inner = ColumnData::Bool(BoolContainer::from_vec(values));
+		if has_none {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec: BitVec::from(bitvec),
+			}
+		} else {
+			inner
+		}
 	}
 
 	pub fn bool_with_capacity(capacity: usize) -> Self {
@@ -174,7 +238,15 @@ impl ColumnData {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::Bool(BoolContainer::new(data, bitvec))
+		let inner = ColumnData::Bool(BoolContainer::from_vec(data));
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
+		}
 	}
 
 	impl_number_factory!(float4, float4_optional, float4_with_capacity, float4_with_bitvec, Float4, f32, 0.0);
@@ -203,6 +275,7 @@ impl ColumnData {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
+		let mut has_none = false;
 
 		for opt in data {
 			match opt {
@@ -213,13 +286,22 @@ impl ColumnData {
 				None => {
 					values.push(String::new());
 					bitvec.push(false);
+					has_none = true;
 				}
 			}
 		}
 
-		ColumnData::Utf8 {
-			container: Utf8Container::new(values, BitVec::from(bitvec)),
+		let inner = ColumnData::Utf8 {
+			container: Utf8Container::from_vec(values),
 			max_bytes: MaxBytes::MAX,
+		};
+		if has_none {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec: BitVec::from(bitvec),
+			}
+		} else {
+			inner
 		}
 	}
 
@@ -236,9 +318,17 @@ impl ColumnData {
 		let data = data.into_iter().map(Into::into).collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::Utf8 {
-			container: Utf8Container::new(data, bitvec),
+		let inner = ColumnData::Utf8 {
+			container: Utf8Container::from_vec(data),
 			max_bytes: MaxBytes::MAX,
+		};
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
 		}
 	}
 
@@ -277,6 +367,7 @@ impl ColumnData {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
+		let mut has_none = false;
 
 		for opt in data {
 			match opt {
@@ -287,13 +378,22 @@ impl ColumnData {
 				None => {
 					values.push(Blob::default());
 					bitvec.push(false);
+					has_none = true;
 				}
 			}
 		}
 
-		ColumnData::Blob {
-			container: BlobContainer::new(values, BitVec::from(bitvec)),
+		let inner = ColumnData::Blob {
+			container: BlobContainer::from_vec(values),
 			max_bytes: MaxBytes::MAX,
+		};
+		if has_none {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec: BitVec::from(bitvec),
+			}
+		} else {
+			inner
 		}
 	}
 
@@ -310,9 +410,17 @@ impl ColumnData {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::Blob {
-			container: BlobContainer::new(data, bitvec),
+		let inner = ColumnData::Blob {
+			container: BlobContainer::from_vec(data),
 			max_bytes: MaxBytes::MAX,
+		};
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
 		}
 	}
 
@@ -324,6 +432,7 @@ impl ColumnData {
 	pub fn identity_id_optional(identity_ids: impl IntoIterator<Item = Option<IdentityId>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
+		let mut has_none = false;
 
 		for opt in identity_ids {
 			match opt {
@@ -334,11 +443,20 @@ impl ColumnData {
 				None => {
 					values.push(IdentityId::default());
 					bitvec.push(false);
+					has_none = true;
 				}
 			}
 		}
 
-		ColumnData::IdentityId(IdentityIdContainer::new(values, BitVec::from(bitvec)))
+		let inner = ColumnData::IdentityId(IdentityIdContainer::from_vec(values));
+		if has_none {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec: BitVec::from(bitvec),
+			}
+		} else {
+			inner
+		}
 	}
 
 	pub fn identity_id_with_capacity(capacity: usize) -> Self {
@@ -352,7 +470,15 @@ impl ColumnData {
 		let data = identity_ids.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::IdentityId(IdentityIdContainer::new(data, bitvec))
+		let inner = ColumnData::IdentityId(IdentityIdContainer::from_vec(data));
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
+		}
 	}
 
 	pub fn int(data: impl IntoIterator<Item = Int>) -> Self {
@@ -368,6 +494,7 @@ impl ColumnData {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
+		let mut has_none = false;
 
 		for opt in data {
 			match opt {
@@ -378,13 +505,22 @@ impl ColumnData {
 				None => {
 					values.push(Int::default());
 					bitvec.push(false);
+					has_none = true;
 				}
 			}
 		}
 
-		ColumnData::Int {
-			container: NumberContainer::new(values, BitVec::from(bitvec)),
+		let inner = ColumnData::Int {
+			container: NumberContainer::from_vec(values),
 			max_bytes: MaxBytes::MAX,
+		};
+		if has_none {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec: BitVec::from(bitvec),
+			}
+		} else {
+			inner
 		}
 	}
 
@@ -401,6 +537,7 @@ impl ColumnData {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
+		let mut has_none = false;
 
 		for opt in data {
 			match opt {
@@ -411,13 +548,22 @@ impl ColumnData {
 				None => {
 					values.push(Uint::default());
 					bitvec.push(false);
+					has_none = true;
 				}
 			}
 		}
 
-		ColumnData::Uint {
-			container: NumberContainer::new(values, BitVec::from(bitvec)),
+		let inner = ColumnData::Uint {
+			container: NumberContainer::from_vec(values),
 			max_bytes: MaxBytes::MAX,
+		};
+		if has_none {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec: BitVec::from(bitvec),
+			}
+		} else {
+			inner
 		}
 	}
 
@@ -442,9 +588,17 @@ impl ColumnData {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::Int {
-			container: NumberContainer::new(data, bitvec),
+		let inner = ColumnData::Int {
+			container: NumberContainer::from_vec(data),
 			max_bytes: MaxBytes::MAX,
+		};
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
 		}
 	}
 
@@ -453,9 +607,17 @@ impl ColumnData {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::Uint {
-			container: NumberContainer::new(data, bitvec),
+		let inner = ColumnData::Uint {
+			container: NumberContainer::from_vec(data),
 			max_bytes: MaxBytes::MAX,
+		};
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
 		}
 	}
 
@@ -473,6 +635,7 @@ impl ColumnData {
 		use reifydb_type::value::constraint::{precision::Precision, scale::Scale};
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
+		let mut has_none = false;
 
 		for opt in data {
 			match opt {
@@ -483,14 +646,23 @@ impl ColumnData {
 				None => {
 					values.push(Decimal::default());
 					bitvec.push(false);
+					has_none = true;
 				}
 			}
 		}
 
-		ColumnData::Decimal {
-			container: NumberContainer::new(values, BitVec::from(bitvec)),
+		let inner = ColumnData::Decimal {
+			container: NumberContainer::from_vec(values),
 			precision: Precision::MAX,
 			scale: Scale::new(0),
+		};
+		if has_none {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec: BitVec::from(bitvec),
+			}
+		} else {
+			inner
 		}
 	}
 
@@ -508,10 +680,18 @@ impl ColumnData {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::Decimal {
-			container: NumberContainer::new(data, bitvec),
+		let inner = ColumnData::Decimal {
+			container: NumberContainer::from_vec(data),
 			precision: Precision::MAX,
 			scale: Scale::new(0),
+		};
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
 		}
 	}
 
@@ -523,6 +703,7 @@ impl ColumnData {
 	pub fn any_optional(data: impl IntoIterator<Item = Option<Box<reifydb_type::value::Value>>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
+		let mut has_none = false;
 
 		for opt in data {
 			match opt {
@@ -533,11 +714,20 @@ impl ColumnData {
 				None => {
 					values.push(Box::new(reifydb_type::value::Value::None));
 					bitvec.push(false);
+					has_none = true;
 				}
 			}
 		}
 
-		ColumnData::Any(AnyContainer::new(values, BitVec::from(bitvec)))
+		let inner = ColumnData::Any(AnyContainer::from_vec(values));
+		if has_none {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec: BitVec::from(bitvec),
+			}
+		} else {
+			inner
+		}
 	}
 
 	pub fn any_with_capacity(capacity: usize) -> Self {
@@ -551,7 +741,15 @@ impl ColumnData {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::Any(AnyContainer::new(data, bitvec))
+		let inner = ColumnData::Any(AnyContainer::from_vec(data));
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
+		}
 	}
 
 	pub fn dictionary_id(data: impl IntoIterator<Item = DictionaryEntryId>) -> Self {
@@ -562,6 +760,7 @@ impl ColumnData {
 	pub fn dictionary_id_optional(data: impl IntoIterator<Item = Option<DictionaryEntryId>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
+		let mut has_none = false;
 
 		for opt in data {
 			match opt {
@@ -572,11 +771,20 @@ impl ColumnData {
 				None => {
 					values.push(DictionaryEntryId::default());
 					bitvec.push(false);
+					has_none = true;
 				}
 			}
 		}
 
-		ColumnData::DictionaryId(DictionaryContainer::new(values, BitVec::from(bitvec)))
+		let inner = ColumnData::DictionaryId(DictionaryContainer::from_vec(values));
+		if has_none {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec: BitVec::from(bitvec),
+			}
+		} else {
+			inner
+		}
 	}
 
 	pub fn dictionary_id_with_capacity(capacity: usize) -> Self {
@@ -590,7 +798,15 @@ impl ColumnData {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::DictionaryId(DictionaryContainer::new(data, bitvec))
+		let inner = ColumnData::DictionaryId(DictionaryContainer::from_vec(data));
+		if bitvec.all_ones() {
+			inner
+		} else {
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
+		}
 	}
 
 	pub fn undefined(len: usize) -> Self {

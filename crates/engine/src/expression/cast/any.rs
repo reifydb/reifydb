@@ -264,6 +264,12 @@ pub fn from_any(
 						// This shouldn't happen as we're casting FROM Any
 						unreachable!("Casting from Any should not produce Any")
 					}
+					ColumnData::Option {
+						..
+					} => {
+						let value = casted_column.get_value(0);
+						result.push_value(value);
+					}
 				}
 			}
 		}

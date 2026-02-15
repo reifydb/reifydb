@@ -3,9 +3,10 @@
 
 use reifydb_type::{
 	return_error,
+	storage::DataBitVec,
 	value::container::{
 		blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer, number::NumberContainer,
-		temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
+		temporal::TemporalContainer, undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
 	},
 };
 
@@ -86,6 +87,9 @@ macro_rules! impl_extend_promote_undefined {
 			ColumnData::Any(_) => {
 				unreachable!("Any type not supported in extend operations");
 			}
+			ColumnData::Option { .. } => {
+				unreachable!("Undefined + Option handled before macro invocation")
+			}
 		}
 	};
 	(@number $self:expr, $l_len:expr, $r:ident, $variant:ident) => {
@@ -110,6 +114,32 @@ macro_rules! impl_extend_promote_undefined {
 
 impl ColumnData {
 	pub fn extend(&mut self, other: ColumnData) -> reifydb_type::Result<()> {
+		// Handle Undefined + Option before the main match to avoid macro recursion
+		if let ColumnData::Undefined(_) = &*self {
+			if let ColumnData::Option {
+				inner: r_inner,
+				bitvec: r_bitvec,
+			} = other
+			{
+				let l_len = self.len();
+				// Promote Undefined by extending with the inner data
+				self.extend(*r_inner)?;
+				// Wrap the promoted result in Option with the appropriate bitvec
+				let mut new_bitvec = DataBitVec::spawn(&r_bitvec, l_len + DataBitVec::len(&r_bitvec));
+				for _ in 0..l_len {
+					DataBitVec::push(&mut new_bitvec, false);
+				}
+				DataBitVec::extend_from(&mut new_bitvec, &r_bitvec);
+				let promoted =
+					std::mem::replace(self, ColumnData::Undefined(UndefinedContainer::new(0)));
+				*self = ColumnData::Option {
+					inner: Box::new(promoted),
+					bitvec: new_bitvec,
+				};
+				return Ok(());
+			}
+		}
+
 		match (&mut *self, other) {
 			// Same type extensions
 			(ColumnData::Bool(l), ColumnData::Bool(r)) => l.extend(&r)?,
@@ -185,6 +215,21 @@ impl ColumnData {
 			(ColumnData::DictionaryId(l), ColumnData::DictionaryId(r)) => l.extend(&r)?,
 			(ColumnData::Undefined(l), ColumnData::Undefined(r)) => l.extend(&r)?,
 
+			// Option + Option: extend inner + bitvec
+			(
+				ColumnData::Option {
+					inner: l_inner,
+					bitvec: l_bitvec,
+				},
+				ColumnData::Option {
+					inner: r_inner,
+					bitvec: r_bitvec,
+				},
+			) => {
+				l_inner.extend(*r_inner)?;
+				DataBitVec::extend_from(l_bitvec, &r_bitvec);
+			}
+
 			// Promote Undefined to typed
 			(ColumnData::Undefined(l_container), typed_r) => {
 				let l_len = l_container.len();
@@ -192,6 +237,19 @@ impl ColumnData {
 			}
 
 			// Extend typed with Undefined
+			(
+				ColumnData::Option {
+					inner,
+					bitvec,
+				},
+				ColumnData::Undefined(r_container),
+			) => {
+				let r_len = r_container.len();
+				inner.extend(ColumnData::Undefined(r_container))?;
+				for _ in 0..r_len {
+					DataBitVec::push(bitvec, false);
+				}
+			}
 			(typed_l, ColumnData::Undefined(r_container)) => {
 				let r_len = r_container.len();
 				with_container!(typed_l, |c| c.extend_from_undefined(r_len));

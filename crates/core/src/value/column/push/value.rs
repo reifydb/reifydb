@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::Value;
+use reifydb_type::{storage::DataBitVec, value::Value};
 
 use crate::value::column::data::ColumnData;
 
@@ -95,6 +95,21 @@ macro_rules! push_or_promote {
 
 impl ColumnData {
 	pub fn push_value(&mut self, value: Value) {
+		// Handle Option wrapper: delegate to inner and update bitvec
+		if let ColumnData::Option {
+			inner,
+			bitvec,
+		} = self
+		{
+			if matches!(value, Value::None) {
+				inner.push_undefined();
+				DataBitVec::push(bitvec, false);
+			} else {
+				inner.push_value(value);
+				DataBitVec::push(bitvec, true);
+			}
+			return;
+		}
 		match value {
 			Value::Boolean(v) => push_or_promote!(self, v, Bool, ColumnData::bool(vec![])),
 			Value::Float4(v) => push_or_promote!(self, v.value(), Float4, ColumnData::float4(vec![])),

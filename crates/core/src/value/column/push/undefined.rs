@@ -1,11 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::storage::DataBitVec;
+
 use crate::value::column::data::{ColumnData, with_container};
 
 impl ColumnData {
 	pub fn push_undefined(&mut self) {
-		with_container!(self, |c| c.push_undefined())
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				inner.push_undefined();
+				DataBitVec::push(bitvec, false);
+			}
+			_ => with_container!(self, |c| c.push_undefined()),
+		}
 	}
 }
 

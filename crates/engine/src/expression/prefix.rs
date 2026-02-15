@@ -453,5 +453,10 @@ pub(crate) fn prefix_eval(
 			}
 			_ => err!(frame_error("Cannot apply arithmetic prefix operator to Any type".to_string())),
 		},
+		ColumnData::Option {
+			..
+		} => {
+			unreachable!("Option columns should not reach prefix evaluation directly")
+		}
 	}
 }
