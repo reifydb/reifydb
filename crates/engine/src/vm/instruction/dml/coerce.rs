@@ -37,7 +37,7 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 		return Ok(value);
 	}
 
-	if matches!(value, Value::Undefined) {
+	if matches!(value, Value::None) {
 		return Ok(value);
 	}
 

@@ -607,6 +607,14 @@ impl<'bump> Parser<'bump> {
 	fn parse_type(&mut self) -> crate::Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
+		// Check for Option(T) syntax
+		if ty_token.fragment.text().eq_ignore_ascii_case("option") {
+			self.consume_operator(Operator::OpenParen)?;
+			let inner = self.parse_type()?;
+			self.consume_operator(Operator::CloseParen)?;
+			return Ok(AstType::Optional(Box::new(inner)));
+		}
+
 		// Check for type with parameters like DECIMAL(10,2)
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
 			self.consume_operator(Operator::OpenParen)?;
@@ -664,7 +672,13 @@ impl<'bump> Parser<'bump> {
 		let name = name_identifier.into_fragment();
 
 		// Parse type with optional parameters
-		let ty = if self.current()?.is_operator(Operator::OpenParen) {
+		let ty = if ty_token.fragment.text().eq_ignore_ascii_case("option") {
+			// Option(T) syntax
+			self.consume_operator(Operator::OpenParen)?;
+			let inner = self.parse_type()?;
+			self.consume_operator(Operator::CloseParen)?;
+			AstType::Optional(Box::new(inner))
+		} else if self.current()?.is_operator(Operator::OpenParen) {
 			// Type with parameters like UTF8(50) or DECIMAL(10,2)
 			self.consume_operator(Operator::OpenParen)?;
 			let mut params = Vec::new();

@@ -15,7 +15,7 @@ use proc_macro::TokenStream;
 /// # Attributes
 ///
 /// - `#[frame(column = "name")]` - Use a different column name than the field name
-/// - `#[frame(optional)]` - Field is optional; missing columns or Undefined values become None
+/// - `#[frame(optional)]` - Field is optional; missing columns or None values become None
 /// - `#[frame(coerce)]` - Use widening type coercion for this field
 /// - `#[frame(skip)]` - Skip this field (must implement Default)
 #[proc_macro_derive(FromFrame, attributes(frame))]

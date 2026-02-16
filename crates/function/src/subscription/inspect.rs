@@ -57,7 +57,7 @@ impl GeneratorFunction for InspectSubscription {
 		let all_columns = subscription_def.all_columns();
 		let mut column_data_builders: Vec<_> = all_columns
 			.iter()
-			.map(|col| (col.name.clone(), ColumnData::with_capacity(col.ty, 0)))
+			.map(|col| (col.name.clone(), ColumnData::with_capacity(col.ty.clone(), 0)))
 			.collect();
 
 		let mut row_numbers = Vec::new();

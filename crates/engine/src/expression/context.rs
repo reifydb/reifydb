@@ -6,11 +6,11 @@ use reifydb_core::{
 		catalog::policy::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
 		evaluate::TargetColumn,
 	},
-	value::column::{columns::Columns, data::ColumnData},
+	value::column::columns::Columns,
 };
 use reifydb_function::registry::Functions;
 use reifydb_runtime::clock::Clock;
-use reifydb_type::{params::Params, value::r#type::Type};
+use reifydb_type::params::Params;
 
 use crate::{arena::QueryArena, vm::stack::SymbolTable};
 
@@ -59,11 +59,6 @@ impl<'a> EvalContext<'a> {
 				})
 			})
 			.unwrap_or(DEFAULT_COLUMN_SATURATION_POLICY.clone())
-	}
-
-	#[inline]
-	pub fn pooled(&self, target: Type, capacity: usize) -> ColumnData {
-		ColumnData::with_capacity(target, capacity)
 	}
 }
 

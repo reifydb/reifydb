@@ -24,7 +24,7 @@ impl ColumnPolicyKind {
 		match self {
 			ColumnPolicyKind::Saturation(policy) => match policy {
 				ColumnSaturationPolicy::Error => (0x01, 0x01),
-				ColumnSaturationPolicy::Undefined => (0x01, 0x02),
+				ColumnSaturationPolicy::None => (0x01, 0x02),
 			},
 		}
 	}
@@ -32,7 +32,7 @@ impl ColumnPolicyKind {
 	pub fn from_u8(policy: u8, value: u8) -> ColumnPolicyKind {
 		match (policy, value) {
 			(0x01, 0x01) => ColumnPolicyKind::Saturation(ColumnSaturationPolicy::Error),
-			(0x01, 0x02) => ColumnPolicyKind::Saturation(ColumnSaturationPolicy::Undefined),
+			(0x01, 0x02) => ColumnPolicyKind::Saturation(ColumnSaturationPolicy::None),
 			_ => unimplemented!(),
 		}
 	}
@@ -48,7 +48,7 @@ pub enum ColumnSaturationPolicy {
 	// Saturate,
 	// Wrap,
 	// Zero,
-	Undefined,
+	None,
 }
 
 impl Display for ColumnPolicyKind {

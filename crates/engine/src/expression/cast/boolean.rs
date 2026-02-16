@@ -65,7 +65,7 @@ where
 				}
 			}
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -138,7 +138,7 @@ fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> cra
 				}
 			}
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)

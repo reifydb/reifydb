@@ -43,7 +43,7 @@ pub fn to_number(
 	}
 
 	if data.is_utf8() {
-		return match target {
+		return match &target {
 			Type::Float4 | Type::Float8 => text_to_float(data, target, lazy_fragment),
 			Type::Decimal {
 				..
@@ -75,7 +75,7 @@ fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFr
 
 	match data {
 		ColumnData::Bool(container) => {
-			let converter = match target {
+			let converter = match &target {
 				Type::Int1 => boolean_to_number!(i8, 1i8, 0i8),
 				Type::Int2 => {
 					boolean_to_number!(i16, 1i16, 0i16)
@@ -148,7 +148,7 @@ fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFr
 					let val = container.data().get(idx);
 					converter(&mut out, val);
 				} else {
-					out.push_undefined();
+					out.push_none();
 				}
 			}
 			Ok(out)
@@ -162,7 +162,7 @@ fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFr
 
 fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Float4(container) => match target {
+		ColumnData::Float4(container) => match &target {
 			Type::Int1 => f32_to_i8_vec(container),
 			Type::Int2 => f32_to_i16_vec(container),
 			Type::Int4 => f32_to_i32_vec(container),
@@ -183,7 +183,7 @@ fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFra
 				return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 			}
 		},
-		ColumnData::Float8(container) => match target {
+		ColumnData::Float8(container) => match &target {
 			Type::Int1 => f64_to_i8_vec(container),
 			Type::Int2 => f64_to_i16_vec(container),
 			Type::Int4 => f64_to_i32_vec(container),
@@ -242,13 +242,13 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 			..
 		} => {
 			let base_fragment = lazy_fragment.fragment();
-			let mut out = ColumnData::with_capacity(target, container.len());
+			let mut out = ColumnData::with_capacity(target.clone(), container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = &container[idx];
 					let temp_fragment = Fragment::internal(val);
 
-					match target {
+					match target.clone() {
 						Type::Int1 => {
 							parse_and_push!(
 								parse_int,
@@ -376,12 +376,13 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 						Type::Decimal {
 							..
 						} => {
+							let target_clone = target.clone();
 							let result = parse_decimal(temp_fragment.clone()).map_err(
 								|mut e| {
 									e.0.with_fragment(base_fragment.clone());
 									error!(cast::invalid_number(
 										base_fragment.clone(),
-										target,
+										target_clone,
 										e.diagnostic(),
 									))
 								},
@@ -398,7 +399,7 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 						}
 					}
 				} else {
-					out.push_undefined();
+					out.push_none();
 				}
 			}
 			Ok(out)
@@ -422,7 +423,7 @@ fn text_to_float<'a>(
 	{
 		// Create base fragment once for efficiency
 		let base_fragment = lazy_fragment.fragment();
-		let mut out = ColumnData::with_capacity(target, container.len());
+		let mut out = ColumnData::with_capacity(target.clone(), container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = &container[idx];
@@ -430,7 +431,7 @@ fn text_to_float<'a>(
 				// parsing
 				let temp_fragment = Fragment::internal(val);
 
-				match target {
+				match target.clone() {
 					Type::Float4 => {
 						out.push::<f32>(parse_float::<f32>(temp_fragment.clone()).map_err(
 							|mut e| {
@@ -472,7 +473,7 @@ fn text_to_float<'a>(
 					}
 				}
 			} else {
-				out.push_undefined();
+				out.push_none();
 			}
 		}
 		Ok(out)
@@ -493,7 +494,7 @@ fn text_to_decimal<'a>(
 	} = column_data
 	{
 		let base_fragment = lazy_fragment.fragment();
-		let mut out = ColumnData::with_capacity(target, container.len());
+		let mut out = ColumnData::with_capacity(target.clone(), container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = &container[idx];
@@ -501,11 +502,15 @@ fn text_to_decimal<'a>(
 
 				let result = parse_decimal(temp_fragment.clone()).map_err(|mut e| {
 					e.0.with_fragment(base_fragment.clone());
-					error!(cast::invalid_number(base_fragment.clone(), target, e.diagnostic(),))
+					error!(cast::invalid_number(
+						base_fragment.clone(),
+						target.clone(),
+						e.diagnostic(),
+					))
 				})?;
 				out.push::<Decimal>(result);
 			} else {
-				out.push_undefined();
+				out.push_none();
 			}
 		}
 		Ok(out)
@@ -529,10 +534,10 @@ macro_rules! float_to_int_vec {
 					if truncated >= $min_val && truncated <= $max_val {
 						out.push::<$int_ty>(truncated as $int_ty);
 					} else {
-						out.push_undefined();
+						out.push_none();
 					}
 				} else {
-					out.push_undefined();
+					out.push_none();
 				}
 			}
 			Ok(out)
@@ -572,7 +577,7 @@ fn f32_to_int_vec(container: &NumberContainer<f32>) -> crate::Result<ColumnData>
 			let int = Int::from_i64(truncated as i64);
 			out.push::<Int>(int);
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -587,7 +592,7 @@ fn f64_to_int_vec(container: &NumberContainer<f64>) -> crate::Result<ColumnData>
 			let int = Int::from_i64(truncated as i64);
 			out.push::<Int>(int);
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -604,10 +609,10 @@ fn f32_to_uint_vec(container: &NumberContainer<f32>) -> crate::Result<ColumnData
 				let uint = Uint::from_u64(truncated as u64);
 				out.push::<Uint>(uint);
 			} else {
-				out.push_undefined();
+				out.push_none();
 			}
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -623,10 +628,10 @@ fn f64_to_uint_vec(container: &NumberContainer<f64>) -> crate::Result<ColumnData
 				let uint = Uint::from_u64(truncated as u64);
 				out.push::<Uint>(uint);
 			} else {
-				out.push_undefined();
+				out.push_none();
 			}
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -642,7 +647,7 @@ fn f32_to_decimal_vec(container: &NumberContainer<f32>, target: Type) -> crate::
 			let decimal = Decimal::from_i64(val.trunc() as i64);
 			out.push::<Decimal>(decimal);
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -657,7 +662,7 @@ fn f64_to_decimal_vec(container: &NumberContainer<f64>, target: Type) -> crate::
 			let decimal = Decimal::from_i64(val.trunc() as i64);
 			out.push::<Decimal>(decimal);
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -1214,10 +1219,10 @@ where
 			let fragment = lazy_fragment.fragment();
 			match ctx.convert::<From, To>(val, fragment)? {
 				Some(v) => push(&mut out, v),
-				None => out.push_undefined(),
+				None => out.push_none(),
 			}
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -1241,10 +1246,10 @@ where
 			let fragment = lazy_fragment.fragment();
 			match ctx.convert::<From, To>(val, fragment)? {
 				Some(v) => push(&mut out, v),
-				None => out.push_undefined(),
+				None => out.push_none(),
 			}
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -1255,7 +1260,6 @@ pub mod tests {
 	mod convert {
 		use reifydb_type::{
 			fragment::Fragment,
-			util::bitvec::BitVec,
 			value::{
 				container::number::NumberContainer,
 				number::safe::convert::SafeConvert,
@@ -1268,10 +1272,9 @@ pub mod tests {
 		#[test]
 		fn test_promote_ok() {
 			let data = [1i8, 2i8];
-			let bitvec = BitVec::from_slice(&[true, true]);
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
@@ -1289,10 +1292,9 @@ pub mod tests {
 		fn test_promote_none_maps_to_undefined() {
 			// 42 mapped to None
 			let data = [42i8];
-			let bitvec = BitVec::from_slice(&[true]);
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
@@ -1306,12 +1308,14 @@ pub mod tests {
 		}
 
 		#[test]
-		fn test_promote_invalid_bitmaps_are_undefined() {
+		fn test_promote_valid_input_is_defined() {
+			// With the Option-based nullability model, containers without an
+			// Option wrapper are fully defined.  Value 1 converts successfully,
+			// so the result must be defined.
 			let data = [1i8];
-			let bitvec = BitVec::from_slice(&[false]);
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
@@ -1321,16 +1325,19 @@ pub mod tests {
 			)
 			.unwrap();
 
-			assert!(!result.is_defined(0));
+			assert!(result.is_defined(0));
+			let slice = result.as_slice::<i16>();
+			assert_eq!(slice, &[1i16]);
 		}
 
 		#[test]
-		fn test_promote_mixed_bitvec_and_failure() {
+		fn test_promote_conversion_failure_is_undefined() {
+			// Only value 42 triggers a conversion failure (ctx returns None).
+			// Value 3 is fully defined in the input and converts successfully.
 			let data = [1i8, 42i8, 3i8, 4i8];
-			let bitvec = BitVec::from_slice(&[true, true, false, true]);
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
@@ -1341,10 +1348,10 @@ pub mod tests {
 			.unwrap();
 
 			let slice = result.as_slice::<i16>();
-			assert_eq!(slice, &[1i16, 0, 0, 4i16]);
+			assert_eq!(slice, &[1i16, 0, 3i16, 4i16]);
 			assert!(result.is_defined(0));
 			assert!(!result.is_defined(1));
-			assert!(!result.is_defined(2));
+			assert!(result.is_defined(2));
 			assert!(result.is_defined(3));
 		}
 
@@ -1387,10 +1394,9 @@ pub mod tests {
 		#[test]
 		fn test_demote_ok() {
 			let data = [1i16, 2i16];
-			let bitvec = BitVec::from_slice(&[true, true]);
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
@@ -1409,10 +1415,9 @@ pub mod tests {
 		#[test]
 		fn test_demote_none_maps_to_undefined() {
 			let data = [42i16];
-			let bitvec = BitVec::from_slice(&[true]);
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
@@ -1426,12 +1431,14 @@ pub mod tests {
 		}
 
 		#[test]
-		fn test_demote_invalid_bitmaps_are_undefined() {
+		fn test_demote_valid_input_is_defined() {
+			// With the Option-based nullability model, containers without an
+			// Option wrapper are fully defined.  Value 1 converts successfully,
+			// so the result must be defined.
 			let data = [1i16];
-			let bitvec = BitVec::repeat(1, false);
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
@@ -1441,16 +1448,19 @@ pub mod tests {
 			)
 			.unwrap();
 
-			assert!(!result.is_defined(0));
+			assert!(result.is_defined(0));
+			let slice: &[i8] = result.as_slice();
+			assert_eq!(slice, &[1i8]);
 		}
 
 		#[test]
-		fn test_demote_mixed_bitvec_and_failure() {
+		fn test_demote_conversion_failure_is_undefined() {
+			// Only value 42 triggers a conversion failure (ctx returns None).
+			// Value 3 is fully defined in the input and converts successfully.
 			let data = [1i16, 42i16, 3i16, 4i16];
-			let bitvec = BitVec::from_slice(&[true, true, false, true]);
 			let ctx = TestCtx::new();
 
-			let container = NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec());
 			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
@@ -1461,10 +1471,10 @@ pub mod tests {
 			.unwrap();
 
 			let slice: &[i8] = result.as_slice();
-			assert_eq!(slice, &[1i8, 0, 0, 4i8]);
+			assert_eq!(slice, &[1i8, 0, 3i8, 4i8]);
 			assert!(result.is_defined(0));
 			assert!(!result.is_defined(1));
-			assert!(!result.is_defined(2));
+			assert!(result.is_defined(2));
 			assert!(result.is_defined(3));
 		}
 	}

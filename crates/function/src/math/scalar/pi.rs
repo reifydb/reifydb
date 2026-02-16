@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::data::ColumnData;
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct Pi;
 
@@ -15,6 +15,9 @@ impl Pi {
 
 impl ScalarFunction for Pi {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
 		if !ctx.columns.is_empty() {
 			return Err(ScalarFunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),

@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
-	ast::ast::{AstCreateTable, AstType},
+	ast::ast::AstCreateTable,
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateTableNode, LogicalPlan, convert_policy},
 };
@@ -38,13 +38,7 @@ impl<'bump> Compiler<'bump> {
 			};
 
 			let name = col.name.to_owned();
-			let ty_fragment = match &col.ty {
-				AstType::Unconstrained(f) => f.to_owned(),
-				AstType::Constrained {
-					name,
-					..
-				} => name.to_owned(),
-			};
+			let ty_fragment = col.ty.name_fragment().to_owned();
 			let fragment = Fragment::merge_all([name.clone(), ty_fragment]);
 
 			// Resolve dictionary if specified

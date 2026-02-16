@@ -55,7 +55,7 @@ impl Convert for &EvalContext<'_> {
 					));
 				})
 				.map(Some),
-			ColumnSaturationPolicy::Undefined => match from.checked_convert() {
+			ColumnSaturationPolicy::None => match from.checked_convert() {
 				None => Ok(None),
 				Some(value) => Ok(Some(value)),
 			},

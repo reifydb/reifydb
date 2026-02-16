@@ -405,17 +405,10 @@ impl Column {
 		}
 	}
 
-	pub fn undefined(name: impl Into<Fragment>, row_count: usize) -> Self {
-		Column {
-			name: name.into(),
-			data: ColumnData::undefined(row_count),
-		}
-	}
-
 	pub fn undefined_typed(name: impl Into<Fragment>, ty: Type, row_count: usize) -> Self {
 		Column {
 			name: name.into(),
-			data: ColumnData::undefined_typed(ty, row_count),
+			data: ColumnData::none_typed(ty, row_count),
 		}
 	}
 }

@@ -1,112 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{
-	return_error,
-	value::container::{
-		blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer, number::NumberContainer,
-		temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
-	},
-};
+use reifydb_type::{return_error, storage::DataBitVec, util::bitvec::BitVec};
 
 use crate::{
 	error::diagnostic::internal::internal,
 	value::column::{ColumnData, data::with_container},
 };
-
-macro_rules! impl_extend_promote_undefined {
-	($self:expr, $l_len:expr, $typed_r:expr) => {
-		match $typed_r {
-			ColumnData::Bool(r) => {
-				let mut c = BoolContainer::with_capacity($l_len + r.len());
-				c.extend_from_undefined($l_len);
-				c.extend(&r)?;
-				*$self = ColumnData::Bool(c);
-			}
-			ColumnData::Float4(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Float4); }
-			ColumnData::Float8(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Float8); }
-			ColumnData::Int1(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Int1); }
-			ColumnData::Int2(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Int2); }
-			ColumnData::Int4(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Int4); }
-			ColumnData::Int8(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Int8); }
-			ColumnData::Int16(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Int16); }
-			ColumnData::Uint1(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Uint1); }
-			ColumnData::Uint2(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Uint2); }
-			ColumnData::Uint4(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Uint4); }
-			ColumnData::Uint8(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Uint8); }
-			ColumnData::Uint16(r) => { impl_extend_promote_undefined!(@number $self, $l_len, r, Uint16); }
-			ColumnData::Utf8 { container: r, max_bytes } => {
-				let mut c = Utf8Container::with_capacity($l_len + r.len());
-				c.extend_from_undefined($l_len);
-				c.extend(&r)?;
-				*$self = ColumnData::Utf8 { container: c, max_bytes };
-			}
-			ColumnData::Date(r) => { impl_extend_promote_undefined!(@temporal $self, $l_len, r, Date); }
-			ColumnData::DateTime(r) => { impl_extend_promote_undefined!(@temporal $self, $l_len, r, DateTime); }
-			ColumnData::Time(r) => { impl_extend_promote_undefined!(@temporal $self, $l_len, r, Time); }
-			ColumnData::Duration(r) => { impl_extend_promote_undefined!(@temporal $self, $l_len, r, Duration); }
-			ColumnData::Uuid4(r) => { impl_extend_promote_undefined!(@uuid $self, $l_len, r, Uuid4); }
-			ColumnData::Uuid7(r) => { impl_extend_promote_undefined!(@uuid $self, $l_len, r, Uuid7); }
-			ColumnData::Blob { container: r, max_bytes } => {
-				let mut c = BlobContainer::with_capacity($l_len + r.len());
-				c.extend_from_undefined($l_len);
-				c.extend(&r)?;
-				*$self = ColumnData::Blob { container: c, max_bytes };
-			}
-			ColumnData::Int { container: r, max_bytes } => {
-				let mut c = NumberContainer::with_capacity($l_len + r.len());
-				c.extend_from_undefined($l_len);
-				c.extend(&r)?;
-				*$self = ColumnData::Int { container: c, max_bytes };
-			}
-			ColumnData::Uint { container: r, max_bytes } => {
-				let mut c = NumberContainer::with_capacity($l_len + r.len());
-				c.extend_from_undefined($l_len);
-				c.extend(&r)?;
-				*$self = ColumnData::Uint { container: c, max_bytes };
-			}
-			ColumnData::Decimal { container: r, precision, scale } => {
-				let mut c = NumberContainer::with_capacity($l_len + r.len());
-				c.extend_from_undefined($l_len);
-				c.extend(&r)?;
-				*$self = ColumnData::Decimal { container: c, precision, scale };
-			}
-			ColumnData::IdentityId(_) => {
-				return_error!(internal(
-					"Cannot extend IdentityId column from Undefined".to_string()
-				));
-			}
-			ColumnData::DictionaryId(r) => {
-				let mut c = DictionaryContainer::with_capacity($l_len + r.len());
-				c.extend_from_undefined($l_len);
-				c.extend(&r)?;
-				*$self = ColumnData::DictionaryId(c);
-			}
-			ColumnData::Undefined(_) => {}
-			ColumnData::Any(_) => {
-				unreachable!("Any type not supported in extend operations");
-			}
-		}
-	};
-	(@number $self:expr, $l_len:expr, $r:ident, $variant:ident) => {
-		let mut c = NumberContainer::with_capacity($l_len + $r.len());
-		c.extend_from_undefined($l_len);
-		c.extend(&$r)?;
-		*$self = ColumnData::$variant(c);
-	};
-	(@temporal $self:expr, $l_len:expr, $r:ident, $variant:ident) => {
-		let mut c = TemporalContainer::with_capacity($l_len + $r.len());
-		c.extend_from_undefined($l_len);
-		c.extend(&$r)?;
-		*$self = ColumnData::$variant(c);
-	};
-	(@uuid $self:expr, $l_len:expr, $r:ident, $variant:ident) => {
-		let mut c = UuidContainer::with_capacity($l_len + $r.len());
-		c.extend_from_undefined($l_len);
-		c.extend(&$r)?;
-		*$self = ColumnData::$variant(c);
-	};
-}
 
 impl ColumnData {
 	pub fn extend(&mut self, other: ColumnData) -> reifydb_type::Result<()> {
@@ -183,18 +83,102 @@ impl ColumnData {
 				},
 			) => l.extend(&r)?,
 			(ColumnData::DictionaryId(l), ColumnData::DictionaryId(r)) => l.extend(&r)?,
-			(ColumnData::Undefined(l), ColumnData::Undefined(r)) => l.extend(&r)?,
 
-			// Promote Undefined to typed
-			(ColumnData::Undefined(l_container), typed_r) => {
-				let l_len = l_container.len();
-				impl_extend_promote_undefined!(self, l_len, typed_r);
+			// Option + Option: extend inner + bitvec
+			(
+				ColumnData::Option {
+					inner: l_inner,
+					bitvec: l_bitvec,
+				},
+				ColumnData::Option {
+					inner: r_inner,
+					bitvec: r_bitvec,
+				},
+			) => {
+				if l_inner.get_type() == r_inner.get_type() {
+					// Same inner type: normal extend
+					l_inner.extend(*r_inner)?;
+				} else if DataBitVec::count_ones(&r_bitvec) == 0 {
+					// Right is all-none with different type: extend left inner with defaults
+					let r_len = r_inner.len();
+					with_container!(l_inner.as_mut(), |c| {
+						for _ in 0..r_len {
+							c.push_default();
+						}
+					});
+				} else if DataBitVec::count_ones(l_bitvec) == 0 {
+					// Left is all-none with different type: replace left inner type to match
+					// right's
+					let l_len = l_inner.len();
+					let r_type = r_inner.get_type();
+					let (mut new_inner, _) =
+						ColumnData::none_typed(r_type, l_len).into_unwrap_option();
+					new_inner.extend(*r_inner)?;
+					**l_inner = new_inner;
+				} else {
+					// Type mismatch with both having defined values
+					return_error!(internal("column type mismatch in Option extend".to_string()));
+				}
+				DataBitVec::extend_from(l_bitvec, &r_bitvec);
 			}
 
-			// Extend typed with Undefined
-			(typed_l, ColumnData::Undefined(r_container)) => {
-				let r_len = r_container.len();
-				with_container!(typed_l, |c| c.extend_from_undefined(r_len));
+			// Option + bare: extend inner with bare data, extend bitvec with all-true
+			(
+				ColumnData::Option {
+					inner,
+					bitvec,
+				},
+				other,
+			) => {
+				let other_len = other.len();
+				if inner.get_type() != other.get_type() && DataBitVec::count_ones(bitvec) == 0 {
+					// Left is all-none with different type: replace inner type to match bare data
+					let l_len = inner.len();
+					let r_type = other.get_type();
+					let (mut new_inner, _) =
+						ColumnData::none_typed(r_type, l_len).into_unwrap_option();
+					new_inner.extend(other)?;
+					**inner = new_inner;
+				} else {
+					inner.extend(other)?;
+				}
+				for _ in 0..other_len {
+					DataBitVec::push(bitvec, true);
+				}
+			}
+
+			// bare + Option: promote bare to Option, then extend
+			(
+				_,
+				ColumnData::Option {
+					inner: r_inner,
+					bitvec: r_bitvec,
+				},
+			) => {
+				let l_len = self.len();
+				let r_len = r_inner.len();
+				let mut l_bitvec = BitVec::repeat(l_len, true);
+				DataBitVec::extend_from(&mut l_bitvec, &r_bitvec);
+				let inner = std::mem::replace(self, ColumnData::bool(vec![]));
+				let mut boxed_inner = Box::new(inner);
+
+				if boxed_inner.get_type() != r_inner.get_type()
+					&& DataBitVec::count_ones(&r_bitvec) == 0
+				{
+					// Right is all-none with different type: extend left with defaults
+					with_container!(boxed_inner.as_mut(), |c| {
+						for _ in 0..r_len {
+							c.push_default();
+						}
+					});
+				} else {
+					boxed_inner.extend(*r_inner)?;
+				}
+
+				*self = ColumnData::Option {
+					inner: boxed_inner,
+					bitvec: l_bitvec,
+				};
 			}
 
 			// Type mismatch

@@ -114,7 +114,7 @@ pub fn number_out_of_range(
 	target: Type,
 	descriptor: Option<&NumberOfRangeColumnDescriptor>,
 ) -> Diagnostic {
-	let range = value_range(target);
+	let range = value_range(target.clone());
 
 	let label = if let Some(desc) = descriptor {
 		Some(format!(
@@ -161,7 +161,7 @@ pub fn nan_not_allowed() -> Diagnostic {
 		message: "NaN not allowed".to_string(),
 		fragment: Fragment::None,
 		label,
-		help: Some("use a finite number or undefined instead".to_string()),
+		help: Some("use a finite number or none instead".to_string()),
 		notes: vec![],
 		column: None,
 		cause: None,

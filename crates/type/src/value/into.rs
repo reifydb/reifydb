@@ -92,13 +92,13 @@ impl IntoValue for u128 {
 
 impl IntoValue for f32 {
 	fn into_value(self) -> Value {
-		OrderedF32::try_from(self).map(|v| Value::Float4(v)).unwrap_or(Value::Undefined)
+		OrderedF32::try_from(self).map(|v| Value::Float4(v)).unwrap_or(Value::None)
 	}
 }
 
 impl IntoValue for f64 {
 	fn into_value(self) -> Value {
-		OrderedF64::try_from(self).map(|v| Value::Float8(v)).unwrap_or(Value::Undefined)
+		OrderedF64::try_from(self).map(|v| Value::Float8(v)).unwrap_or(Value::None)
 	}
 }
 
@@ -178,7 +178,7 @@ impl<T: IntoValue> IntoValue for Option<T> {
 	fn into_value(self) -> Value {
 		match self {
 			Some(v) => v.into_value(),
-			None => Value::Undefined,
+			None => Value::None,
 		}
 	}
 }
@@ -240,8 +240,8 @@ pub mod tests {
 
 		// Test NaN handling
 
-		assert_eq!(f32::NAN.into_value(), Value::Undefined);
-		assert_eq!(f64::NAN.into_value(), Value::Undefined);
+		assert_eq!(f32::NAN.into_value(), Value::None);
+		assert_eq!(f64::NAN.into_value(), Value::None);
 	}
 
 	#[test]
@@ -253,9 +253,9 @@ pub mod tests {
 	#[test]
 	fn test_into_value_option() {
 		assert_eq!(Some(42i32).into_value(), Value::Int4(42));
-		assert_eq!(None::<i32>.into_value(), Value::Undefined);
+		assert_eq!(None::<i32>.into_value(), Value::None);
 		assert_eq!(Some("hello").into_value(), Value::Utf8("hello".to_string()));
-		assert_eq!(None::<&str>.into_value(), Value::Undefined);
+		assert_eq!(None::<&str>.into_value(), Value::None);
 	}
 
 	#[test]

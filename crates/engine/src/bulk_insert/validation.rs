@@ -91,14 +91,15 @@ fn collect_rows_to_columns(
 	source_name: &str,
 ) -> crate::Result<Vec<ColumnData>> {
 	let num_cols = columns.len();
-	let mut column_data: Vec<ColumnData> = vec![ColumnData::undefined(0); num_cols];
+	let mut column_data: Vec<ColumnData> =
+		columns.iter().map(|col| ColumnData::none_typed(col.constraint.get_type(), 0)).collect();
 
 	for params in rows {
 		match params {
 			Params::Named(map) => {
 				// For each column, look up value in map or use Undefined
 				for (col_idx, col) in columns.iter().enumerate() {
-					let value = map.get(&col.name).cloned().unwrap_or(Value::Undefined);
+					let value = map.get(&col.name).cloned().unwrap_or(Value::None);
 					column_data[col_idx].push_value(value);
 				}
 			}
@@ -112,13 +113,13 @@ fn collect_rows_to_columns(
 					.into());
 				}
 				for col_idx in 0..num_cols {
-					let value = vals.get(col_idx).cloned().unwrap_or(Value::Undefined);
+					let value = vals.get(col_idx).cloned().unwrap_or(Value::None);
 					column_data[col_idx].push_value(value);
 				}
 			}
 			Params::None => {
 				for col_idx in 0..num_cols {
-					column_data[col_idx].push_undefined();
+					column_data[col_idx].push_none();
 				}
 			}
 		}

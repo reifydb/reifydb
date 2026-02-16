@@ -32,7 +32,7 @@ pub fn variable_is_dataframe(name: &str) -> Diagnostic {
 		fragment: Fragment::None,
 		label: None,
 		help: Some(format!(
-			"Extract a scalar value from the dataframe using '${} | only()', '${} | first()', or '${} | first_or_undefined()'",
+			"Extract a scalar value from the dataframe using '${} | only()', '${} | first()', or '${} | first_or_none()'",
 			name, name, name
 		)),
 		notes: vec![

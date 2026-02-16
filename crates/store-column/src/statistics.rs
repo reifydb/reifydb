@@ -8,14 +8,14 @@ pub fn merge(stats: &[ColumnStatistics]) -> Option<ColumnStatistics> {
 		return None;
 	}
 
-	let total_undefined_count: usize = stats.iter().map(|s| s.undefined_count).sum();
+	let total_none_count: usize = stats.iter().map(|s| s.none_count).sum();
 	let total_compressed: usize = stats.iter().map(|s| s.compressed_size).sum();
 	let total_uncompressed: usize = stats.iter().map(|s| s.uncompressed_size).sum();
 
 	Some(ColumnStatistics {
 		min_value: None, // TODO: Find global min
 		max_value: None, // TODO: Find global max
-		undefined_count: total_undefined_count,
+		none_count: total_none_count,
 		distinct_count: None,
 		compression_type: stats[0].compression_type.clone(),
 		compression_ratio: if total_uncompressed > 0 {

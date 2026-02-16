@@ -571,8 +571,7 @@ mod tests {
 		fn test_number_container_with_bump() {
 			let bump_alloc = bumpalo::Bump::new();
 			let data = BumpVec::with_capacity_in(4, &bump_alloc);
-			let bitvec = BumpBitVec::with_capacity_in(4, &bump_alloc);
-			let mut container: NumberContainer<i32, Bump<'_>> = NumberContainer::from_parts(data, bitvec);
+			let mut container: NumberContainer<i32, Bump<'_>> = NumberContainer::from_parts(data);
 
 			container.push(42);
 			container.push(99);
@@ -588,17 +587,18 @@ mod tests {
 
 			let bump_alloc = bumpalo::Bump::new();
 			let data = BumpBitVec::with_capacity_in(4, &bump_alloc);
-			let bitvec = BumpBitVec::with_capacity_in(4, &bump_alloc);
-			let mut container: BoolContainer<Bump<'_>> = BoolContainer::from_parts(data, bitvec);
+			let mut container: BoolContainer<Bump<'_>> = BoolContainer::from_parts(data);
 
 			container.push(true);
 			container.push(false);
-			container.push_undefined();
+			container.push_default();
 
 			assert_eq!(container.len(), 3);
 			assert_eq!(container.get(0), Some(true));
 			assert_eq!(container.get(1), Some(false));
-			assert_eq!(container.get(2), None);
+			// push_default on a bare container pushes false;
+			// nullability is tracked by the Option wrapper at the ColumnData level.
+			assert_eq!(container.get(2), Some(false));
 		}
 
 		#[test]

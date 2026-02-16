@@ -291,7 +291,7 @@ impl Schema {
 		Schema::new(
 			types.iter()
 				.enumerate()
-				.map(|(i, &t)| SchemaField::unconstrained(format!("f{}", i), t))
+				.map(|(i, t)| SchemaField::unconstrained(format!("f{}", i), t.clone()))
 				.collect(),
 		)
 	}

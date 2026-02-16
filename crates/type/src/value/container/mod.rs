@@ -9,6 +9,5 @@ pub mod identity_id;
 pub mod number;
 pub mod row;
 pub mod temporal;
-pub mod undefined;
 pub mod utf8;
 pub mod uuid;

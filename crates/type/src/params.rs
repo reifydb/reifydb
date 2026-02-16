@@ -99,55 +99,55 @@ fn parse_typed_value(type_str: &str, value_val: &serde_json::Value) -> Result<Va
 
 	// Parse the type string to Type enum
 	let value_type = match Type::from_str(type_str) {
-		Ok(Type::Undefined) => return Ok(Value::Undefined),
+		Ok(Type::Option(_)) => return Ok(Value::None),
 		Ok(t) => t,
-		Err(_) => return Ok(Value::Undefined),
+		Err(_) => return Ok(Value::None),
 	};
 
 	// Use the appropriate parse function based on type
-	// If parsing fails, return Value::Undefined
+	// If parsing fails, return Value::None
 	let fragment = Fragment::internal(str_val);
 
 	let parsed_value = match value_type {
-		Type::Boolean => parse_bool(fragment).map(Value::Boolean).unwrap_or(Value::Undefined),
+		Type::Boolean => parse_bool(fragment).map(Value::Boolean).unwrap_or(Value::None),
 		Type::Float4 => parse_float::<f32>(fragment)
 			.ok()
 			.and_then(|f| OrderedF32::try_from(f).ok())
 			.map(Value::Float4)
-			.unwrap_or(Value::Undefined),
+			.unwrap_or(Value::None),
 		Type::Float8 => parse_float::<f64>(fragment)
 			.ok()
 			.and_then(|f| OrderedF64::try_from(f).ok())
 			.map(Value::Float8)
-			.unwrap_or(Value::Undefined),
-		Type::Int1 => parse_primitive_int::<i8>(fragment).map(Value::Int1).unwrap_or(Value::Undefined),
-		Type::Int2 => parse_primitive_int::<i16>(fragment).map(Value::Int2).unwrap_or(Value::Undefined),
-		Type::Int4 => parse_primitive_int::<i32>(fragment).map(Value::Int4).unwrap_or(Value::Undefined),
-		Type::Int8 => parse_primitive_int::<i64>(fragment).map(Value::Int8).unwrap_or(Value::Undefined),
-		Type::Int16 => parse_primitive_int::<i128>(fragment).map(Value::Int16).unwrap_or(Value::Undefined),
+			.unwrap_or(Value::None),
+		Type::Int1 => parse_primitive_int::<i8>(fragment).map(Value::Int1).unwrap_or(Value::None),
+		Type::Int2 => parse_primitive_int::<i16>(fragment).map(Value::Int2).unwrap_or(Value::None),
+		Type::Int4 => parse_primitive_int::<i32>(fragment).map(Value::Int4).unwrap_or(Value::None),
+		Type::Int8 => parse_primitive_int::<i64>(fragment).map(Value::Int8).unwrap_or(Value::None),
+		Type::Int16 => parse_primitive_int::<i128>(fragment).map(Value::Int16).unwrap_or(Value::None),
 		Type::Utf8 => Value::Utf8(str_val.to_string()),
-		Type::Uint1 => parse_primitive_uint::<u8>(fragment).map(Value::Uint1).unwrap_or(Value::Undefined),
-		Type::Uint2 => parse_primitive_uint::<u16>(fragment).map(Value::Uint2).unwrap_or(Value::Undefined),
-		Type::Uint4 => parse_primitive_uint::<u32>(fragment).map(Value::Uint4).unwrap_or(Value::Undefined),
-		Type::Uint8 => parse_primitive_uint::<u64>(fragment).map(Value::Uint8).unwrap_or(Value::Undefined),
-		Type::Uint16 => parse_primitive_uint::<u128>(fragment).map(Value::Uint16).unwrap_or(Value::Undefined),
-		Type::Date => parse_date(fragment).map(Value::Date).unwrap_or(Value::Undefined),
-		Type::DateTime => parse_datetime(fragment).map(Value::DateTime).unwrap_or(Value::Undefined),
-		Type::Time => parse_time(fragment).map(Value::Time).unwrap_or(Value::Undefined),
-		Type::Duration => parse_duration(fragment).map(Value::Duration).unwrap_or(Value::Undefined),
-		Type::Uuid4 => parse_uuid4(fragment).map(Value::Uuid4).unwrap_or(Value::Undefined),
-		Type::Uuid7 => parse_uuid7(fragment).map(Value::Uuid7).unwrap_or(Value::Undefined),
+		Type::Uint1 => parse_primitive_uint::<u8>(fragment).map(Value::Uint1).unwrap_or(Value::None),
+		Type::Uint2 => parse_primitive_uint::<u16>(fragment).map(Value::Uint2).unwrap_or(Value::None),
+		Type::Uint4 => parse_primitive_uint::<u32>(fragment).map(Value::Uint4).unwrap_or(Value::None),
+		Type::Uint8 => parse_primitive_uint::<u64>(fragment).map(Value::Uint8).unwrap_or(Value::None),
+		Type::Uint16 => parse_primitive_uint::<u128>(fragment).map(Value::Uint16).unwrap_or(Value::None),
+		Type::Date => parse_date(fragment).map(Value::Date).unwrap_or(Value::None),
+		Type::DateTime => parse_datetime(fragment).map(Value::DateTime).unwrap_or(Value::None),
+		Type::Time => parse_time(fragment).map(Value::Time).unwrap_or(Value::None),
+		Type::Duration => parse_duration(fragment).map(Value::Duration).unwrap_or(Value::None),
+		Type::Uuid4 => parse_uuid4(fragment).map(Value::Uuid4).unwrap_or(Value::None),
+		Type::Uuid7 => parse_uuid7(fragment).map(Value::Uuid7).unwrap_or(Value::None),
 		Type::IdentityId => parse_uuid7(fragment)
 			.map(|uuid7| Value::IdentityId(IdentityId::from(uuid7)))
-			.unwrap_or(Value::Undefined),
-		Type::Blob => Blob::from_hex(fragment).map(Value::Blob).unwrap_or(Value::Undefined),
-		Type::Undefined => Value::Undefined,
-		Type::Decimal => parse_decimal(fragment).map(Value::Decimal).unwrap_or(Value::Undefined),
+			.unwrap_or(Value::None),
+		Type::Blob => Blob::from_hex(fragment).map(Value::Blob).unwrap_or(Value::None),
+		Type::Option(_) => Value::None,
+		Type::Decimal => parse_decimal(fragment).map(Value::Decimal).unwrap_or(Value::None),
 		Type::Int | Type::Uint => {
 			unimplemented!()
 		}
 		Type::Any => unreachable!("Any type cannot be used as parameter"),
-		Type::DictionaryId => Value::Undefined, // DictionaryId cannot be parsed from string parameters
+		Type::DictionaryId => Value::None, // DictionaryId cannot be parsed from string parameters
 	};
 
 	Ok(parsed_value)

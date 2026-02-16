@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct TextSubstring;
 
@@ -16,6 +16,10 @@ impl TextSubstring {
 
 impl ScalarFunction for TextSubstring {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -42,7 +46,6 @@ impl ScalarFunction for TextSubstring {
 				ColumnData::Int4(length_container),
 			) => {
 				let mut result_data = Vec::with_capacity(text_container.data().len());
-				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if text_container.is_defined(i)
@@ -77,15 +80,13 @@ impl ScalarFunction for TextSubstring {
 						};
 
 						result_data.push(substring);
-						result_bitvec.push(true);
 					} else {
 						result_data.push(String::new());
-						result_bitvec.push(false);
 					}
 				}
 
 				Ok(ColumnData::Utf8 {
-					container: Utf8Container::new(result_data, result_bitvec.into()),
+					container: Utf8Container::new(result_data),
 					max_bytes: *max_bytes,
 				})
 			}
@@ -99,7 +100,6 @@ impl ScalarFunction for TextSubstring {
 				length_data,
 			) => {
 				let mut result_data = Vec::with_capacity(text_container.data().len());
-				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if text_container.is_defined(i) {
@@ -164,15 +164,13 @@ impl ScalarFunction for TextSubstring {
 						};
 
 						result_data.push(substring);
-						result_bitvec.push(true);
 					} else {
 						result_data.push(String::new());
-						result_bitvec.push(false);
 					}
 				}
 
 				Ok(ColumnData::Utf8 {
-					container: Utf8Container::new(result_data, result_bitvec.into()),
+					container: Utf8Container::new(result_data),
 					max_bytes: *max_bytes,
 				})
 			}

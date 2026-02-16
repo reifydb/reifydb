@@ -7,7 +7,7 @@ use reifydb_type::{
 	value::{blob::Blob, r#type::Type},
 };
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct BlobB64;
 
@@ -19,6 +19,10 @@ impl BlobB64 {
 
 impl ScalarFunction for BlobB64 {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 

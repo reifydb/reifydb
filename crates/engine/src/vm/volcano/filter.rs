@@ -20,6 +20,7 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
+	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -90,57 +91,14 @@ impl QueryNode for FilterNode {
 			}
 
 			// Fall back to materialized path
-			if let Some(mut columns) = self.input.next(rx, ctx)? {
-				let mut row_count = columns.row_count();
-
-				// Apply each filter expression sequentially
-				for compiled_expr in compiled {
-					// Early exit if no rows remain
-					if row_count == 0 {
-						break;
-					}
-
-					// Create execution context for all current rows
-					let exec_ctx = EvalContext {
-						target: None,
-						columns: columns.clone(),
-						row_count,
-						take: None,
-						params: &stored_ctx.params,
-						symbol_table: &stored_ctx.stack,
-						is_aggregate_context: false,
-						functions: &stored_ctx.services.functions,
-						clock: &stored_ctx.services.clock,
-						arena: None,
-					};
-
-					// Execute the compiled filter expression
-					let result = compiled_expr.execute(&exec_ctx)?;
-
-					// Create filter mask from result
-					let filter_mask = match result.data() {
-						ColumnData::Bool(container) => {
-							let mut mask = BitVec::repeat(row_count, false);
-							for i in 0..row_count {
-								if i < container.data().len()
-									&& i < container.bitvec().len()
-								{
-									let valid = container.is_defined(i);
-									let filter_result = container.data().get(i);
-									mask.set(i, valid & filter_result);
-								}
-							}
-							mask
-						}
-						ColumnData::Undefined(_) => BitVec::repeat(row_count, false),
-						_ => panic!("filter expression must column to a boolean column"),
-					};
-
-					columns.filter(&filter_mask)?;
-					row_count = columns.row_count();
-				}
-
-				if row_count > 0 {
+			if let Some(columns) = self.input.next(rx, ctx)? {
+				let transform_ctx = TransformContext {
+					functions: &stored_ctx.services.functions,
+					clock: &stored_ctx.services.clock,
+					params: &stored_ctx.params,
+				};
+				let columns = self.apply(&transform_ctx, columns)?;
+				if columns.row_count() > 0 {
 					return Ok(Some(columns));
 				}
 			} else {
@@ -152,6 +110,73 @@ impl QueryNode for FilterNode {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.input.headers()
+	}
+}
+
+impl Transform for FilterNode {
+	fn apply(&self, ctx: &TransformContext, input: Columns) -> reifydb_type::Result<Columns> {
+		let (stored_ctx, compiled) =
+			self.context.as_ref().expect("FilterNode::apply() called before initialize()");
+
+		let mut columns = input;
+		let mut row_count = columns.row_count();
+
+		for compiled_expr in compiled {
+			if row_count == 0 {
+				break;
+			}
+
+			let exec_ctx = EvalContext {
+				target: None,
+				columns: columns.clone(),
+				row_count,
+				take: None,
+				params: ctx.params,
+				symbol_table: &stored_ctx.stack,
+				is_aggregate_context: false,
+				functions: ctx.functions,
+				clock: ctx.clock,
+				arena: None,
+			};
+
+			let result = compiled_expr.execute(&exec_ctx)?;
+
+			let filter_mask = match result.data() {
+				ColumnData::Bool(container) => {
+					let mut mask = BitVec::repeat(row_count, false);
+					for i in 0..row_count {
+						if i < container.len() {
+							let valid = container.is_defined(i);
+							let filter_result = container.data().get(i);
+							mask.set(i, valid & filter_result);
+						}
+					}
+					mask
+				}
+				ColumnData::Option {
+					inner,
+					bitvec,
+				} => match inner.as_ref() {
+					ColumnData::Bool(container) => {
+						let mut mask = BitVec::repeat(row_count, false);
+						for i in 0..row_count {
+							let defined = i < bitvec.len() && bitvec.get(i);
+							let valid = defined && container.is_defined(i);
+							let value = valid && container.data().get(i);
+							mask.set(i, value);
+						}
+						mask
+					}
+					_ => panic!("filter expression must evaluate to a boolean column"),
+				},
+				_ => panic!("filter expression must evaluate to a boolean column"),
+			};
+
+			columns.filter(&filter_mask)?;
+			row_count = columns.row_count();
+		}
+
+		Ok(columns)
 	}
 }
 
@@ -195,7 +220,6 @@ impl FilterNode {
 
 			let result = compiled_expr.execute(&exec_ctx)?;
 
-			// Extract mask from boolean column result
 			match result.data() {
 				ColumnData::Bool(container) => {
 					for i in 0..row_count {
@@ -206,11 +230,22 @@ impl FilterNode {
 						}
 					}
 				}
-				ColumnData::Undefined(_) => {
-					for i in 0..row_count {
-						mask.set(i, false);
+				ColumnData::Option {
+					inner,
+					bitvec,
+				} => match inner.as_ref() {
+					ColumnData::Bool(container) => {
+						for i in 0..row_count {
+							if mask.get(i) {
+								let defined = i < bitvec.len() && bitvec.get(i);
+								let valid = defined && container.is_defined(i);
+								let value = valid && container.data().get(i);
+								mask.set(i, value);
+							}
+						}
 					}
-				}
+					_ => panic!("filter expression must evaluate to a boolean column"),
+				},
 				_ => panic!("filter expression must evaluate to a boolean column"),
 			}
 		}

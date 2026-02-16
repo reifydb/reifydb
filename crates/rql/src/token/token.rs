@@ -66,5 +66,5 @@ pub enum Literal {
 	Temporal,
 	Text,
 	True,
-	Undefined,
+	None,
 }

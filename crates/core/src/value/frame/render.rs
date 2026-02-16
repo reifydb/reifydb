@@ -124,11 +124,7 @@ impl FrameRenderer {
 			// Add encoded number value if present
 			if has_row_numbers {
 				let w = col_widths[0];
-				let s = if row_numberx < frame.row_numbers.len() {
-					frame.row_numbers[row_numberx].to_string()
-				} else {
-					"Undefined".to_string()
-				};
+				let s = frame.row_numbers[row_numberx].to_string();
 				let pad = w - Self::display_width(&s);
 				let l = pad / 2;
 				let r = pad - l;

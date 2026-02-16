@@ -39,6 +39,10 @@ macro_rules! impl_as_slice {
 			fn as_slice(&self) -> &[$t] {
 				match self {
 					ColumnData::$variant(container) => container.data().as_slice(),
+					ColumnData::Option {
+						inner,
+						..
+					} => inner.as_slice(),
 					other => {
 						panic!(
 							"called `as_slice::<{}>()` on ColumnData::{:?}",
@@ -58,6 +62,10 @@ macro_rules! impl_as_slice {
 						container,
 						..
 					} => container.data().as_slice(),
+					ColumnData::Option {
+						inner,
+						..
+					} => inner.as_slice(),
 					other => {
 						panic!(
 							"called `as_slice::<{}>()` on ColumnData::{:?}",
@@ -116,6 +124,10 @@ impl AsSlice<Box<Value>> for ColumnData {
 	fn as_slice(&self) -> &[Box<Value>] {
 		match self {
 			ColumnData::Any(container) => container.data().as_slice(),
+			ColumnData::Option {
+				inner,
+				..
+			} => inner.as_slice(),
 			other => {
 				panic!("called `as_slice::<Box<Value>>()` on ColumnData::{:?}", other.get_type())
 			}

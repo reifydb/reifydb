@@ -20,7 +20,7 @@ use reifydb_type::{
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
+			utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -81,8 +81,11 @@ pub enum ColumnData<S: Storage = Cow> {
 	Any(AnyContainer<S>),
 	// Container for DictionaryEntryId values
 	DictionaryId(DictionaryContainer<S>),
-	// special case: all undefined
-	Undefined(UndefinedContainer),
+	// Nullable wrapper: inner holds the typed data, bitvec tracks definedness
+	Option {
+		inner: Box<ColumnData<S>>,
+		bitvec: S::BitVec,
+	},
 }
 
 impl<S: Storage> Clone for ColumnData<S> {
@@ -147,7 +150,13 @@ impl<S: Storage> Clone for ColumnData<S> {
 			},
 			ColumnData::Any(c) => ColumnData::Any(c.clone()),
 			ColumnData::DictionaryId(c) => ColumnData::DictionaryId(c.clone()),
-			ColumnData::Undefined(c) => ColumnData::Undefined(c.clone()),
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => ColumnData::Option {
+				inner: inner.clone(),
+				bitvec: bitvec.clone(),
+			},
 		}
 	}
 }
@@ -229,7 +238,16 @@ impl<S: Storage> PartialEq for ColumnData<S> {
 			) => a == b && ap == bp && as_ == bs,
 			(ColumnData::Any(a), ColumnData::Any(b)) => a == b,
 			(ColumnData::DictionaryId(a), ColumnData::DictionaryId(b)) => a == b,
-			(ColumnData::Undefined(a), ColumnData::Undefined(b)) => a == b,
+			(
+				ColumnData::Option {
+					inner: ai,
+					bitvec: ab,
+				},
+				ColumnData::Option {
+					inner: bi,
+					bitvec: bb,
+				},
+			) => ai == bi && ab == bb,
 			_ => false,
 		}
 	}
@@ -285,7 +303,10 @@ impl fmt::Debug for ColumnData<Cow> {
 				.finish(),
 			ColumnData::Any(c) => f.debug_tuple("Any").field(c).finish(),
 			ColumnData::DictionaryId(c) => f.debug_tuple("DictionaryId").field(c).finish(),
-			ColumnData::Undefined(c) => f.debug_tuple("Undefined").field(c).finish(),
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => f.debug_struct("Option").field("inner", inner).field("bitvec", bitvec).finish(),
 		}
 	}
 }
@@ -337,7 +358,10 @@ impl Serialize for ColumnData<Cow> {
 			},
 			Any(&'a AnyContainer),
 			DictionaryId(&'a DictionaryContainer),
-			Undefined(&'a UndefinedContainer),
+			Option {
+				inner: &'a Box<ColumnData>,
+				bitvec: &'a reifydb_type::util::bitvec::BitVec,
+			},
 		}
 		let helper = match self {
 			ColumnData::Bool(c) => Helper::Bool(c),
@@ -399,7 +423,13 @@ impl Serialize for ColumnData<Cow> {
 			},
 			ColumnData::Any(c) => Helper::Any(c),
 			ColumnData::DictionaryId(c) => Helper::DictionaryId(c),
-			ColumnData::Undefined(c) => Helper::Undefined(c),
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => Helper::Option {
+				inner,
+				bitvec,
+			},
 		};
 		helper.serialize(serializer)
 	}
@@ -452,7 +482,10 @@ impl<'de> Deserialize<'de> for ColumnData<Cow> {
 			},
 			Any(AnyContainer),
 			DictionaryId(DictionaryContainer),
-			Undefined(UndefinedContainer),
+			Option {
+				inner: Box<ColumnData>,
+				bitvec: reifydb_type::util::bitvec::BitVec,
+			},
 		}
 		let helper = Helper::deserialize(deserializer)?;
 		Ok(match helper {
@@ -515,7 +548,13 @@ impl<'de> Deserialize<'de> for ColumnData<Cow> {
 			},
 			Helper::Any(c) => ColumnData::Any(c),
 			Helper::DictionaryId(c) => ColumnData::DictionaryId(c),
-			Helper::Undefined(c) => ColumnData::Undefined(c),
+			Helper::Option {
+				inner,
+				bitvec,
+			} => ColumnData::Option {
+				inner,
+				bitvec,
+			},
 		})
 	}
 }
@@ -566,7 +605,13 @@ macro_rules! with_container {
 			} => $body,
 			ColumnData::Any($c) => $body,
 			ColumnData::DictionaryId($c) => $body,
-			ColumnData::Undefined($c) => $body,
+			ColumnData::Option {
+				..
+			} => {
+				unreachable!(
+					"with_container! must not be called on Option variant directly; handle it explicitly"
+				)
+			}
 		}
 	};
 }
@@ -574,6 +619,28 @@ macro_rules! with_container {
 pub(crate) use with_container;
 
 impl<S: Storage> ColumnData<S> {
+	/// Unwrap Option to inner data + bitvec. Non-Option returns self + None.
+	pub fn unwrap_option(&self) -> (&ColumnData<S>, Option<&S::BitVec>) {
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => (inner.as_ref(), Some(bitvec)),
+			other => (other, None),
+		}
+	}
+
+	/// Owned version: consume self and return inner data + optional bitvec.
+	pub fn into_unwrap_option(self) -> (ColumnData<S>, Option<S::BitVec>) {
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => (*inner, Some(bitvec)),
+			other => (other, None),
+		}
+	}
+
 	pub fn get_type(&self) -> Type {
 		match self {
 			ColumnData::Bool(_) => Type::Boolean,
@@ -613,7 +680,10 @@ impl<S: Storage> ColumnData<S> {
 			} => Type::Decimal,
 			ColumnData::DictionaryId(_) => Type::DictionaryId,
 			ColumnData::Any(_) => Type::Any,
-			ColumnData::Undefined(_) => Type::Undefined,
+			ColumnData::Option {
+				inner,
+				..
+			} => Type::Option(Box::new(inner.get_type())),
 		}
 	}
 
@@ -661,7 +731,10 @@ impl<S: Storage> ColumnData<S> {
 			} => c.is_defined(idx),
 			ColumnData::DictionaryId(c) => c.is_defined(idx),
 			ColumnData::Any(c) => c.is_defined(idx),
-			ColumnData::Undefined(_) => false,
+			ColumnData::Option {
+				bitvec,
+				..
+			} => idx < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, idx),
 		}
 	}
 
@@ -703,78 +776,66 @@ impl<S: Storage> ColumnData<S> {
 }
 
 impl<S: Storage> ColumnData<S> {
-	pub fn bitvec(&self) -> &S::BitVec {
+	pub fn none_count(&self) -> usize {
 		match self {
-			ColumnData::Bool(c) => c.bitvec(),
-			ColumnData::Float4(c) => c.bitvec(),
-			ColumnData::Float8(c) => c.bitvec(),
-			ColumnData::Int1(c) => c.bitvec(),
-			ColumnData::Int2(c) => c.bitvec(),
-			ColumnData::Int4(c) => c.bitvec(),
-			ColumnData::Int8(c) => c.bitvec(),
-			ColumnData::Int16(c) => c.bitvec(),
-			ColumnData::Uint1(c) => c.bitvec(),
-			ColumnData::Uint2(c) => c.bitvec(),
-			ColumnData::Uint4(c) => c.bitvec(),
-			ColumnData::Uint8(c) => c.bitvec(),
-			ColumnData::Uint16(c) => c.bitvec(),
-			ColumnData::Utf8 {
-				container: c,
+			ColumnData::Option {
+				bitvec,
 				..
-			} => c.bitvec(),
-			ColumnData::Date(c) => c.bitvec(),
-			ColumnData::DateTime(c) => c.bitvec(),
-			ColumnData::Time(c) => c.bitvec(),
-			ColumnData::Duration(c) => c.bitvec(),
-			ColumnData::IdentityId(c) => c.bitvec(),
-			ColumnData::Uuid4(c) => c.bitvec(),
-			ColumnData::Uuid7(c) => c.bitvec(),
-			ColumnData::Blob {
-				container: c,
-				..
-			} => c.bitvec(),
-			ColumnData::Int {
-				container: c,
-				..
-			} => c.bitvec(),
-			ColumnData::Uint {
-				container: c,
-				..
-			} => c.bitvec(),
-			ColumnData::Decimal {
-				container: c,
-				..
-			} => c.bitvec(),
-			ColumnData::DictionaryId(c) => c.bitvec(),
-			ColumnData::Any(c) => c.bitvec(),
-			ColumnData::Undefined(_) => unreachable!(),
+			} => DataBitVec::count_zeros(bitvec),
+			_ => 0,
 		}
-	}
-
-	pub fn undefined_count(&self) -> usize {
-		DataBitVec::count_zeros(self.bitvec())
 	}
 }
 
 impl<S: Storage> ColumnData<S> {
 	pub fn len(&self) -> usize {
-		with_container!(self, |c| c.len())
+		match self {
+			ColumnData::Option {
+				inner,
+				..
+			} => inner.len(),
+			_ => with_container!(self, |c| c.len()),
+		}
 	}
 
 	pub fn capacity(&self) -> usize {
-		with_container!(self, |c| c.capacity())
+		match self {
+			ColumnData::Option {
+				inner,
+				..
+			} => inner.capacity(),
+			_ => with_container!(self, |c| c.capacity()),
+		}
 	}
 
 	/// Clear all data, retaining the allocated capacity for reuse.
 	pub fn clear(&mut self) {
 		match self {
-			ColumnData::Undefined(c) => c.clear(),
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				inner.clear();
+				DataBitVec::clear(bitvec);
+			}
 			_ => with_container!(self, |c| c.clear()),
 		}
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
-		with_container!(self, |c| c.as_string(index))
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
+					inner.as_string(index)
+				} else {
+					"none".to_string()
+				}
+			}
+			_ => with_container!(self, |c| c.as_string(index)),
+		}
 	}
 }
 
@@ -807,7 +868,10 @@ impl ColumnData {
 			Type::Uint => Self::uint_with_capacity(capacity),
 			Type::Decimal => Self::decimal_with_capacity(capacity),
 			Type::DictionaryId => Self::dictionary_id_with_capacity(capacity),
-			Type::Undefined => ColumnData::undefined(0),
+			Type::Option(inner) => ColumnData::Option {
+				inner: Box::new(ColumnData::with_capacity(*inner, capacity)),
+				bitvec: reifydb_type::util::bitvec::BitVec::with_capacity(capacity),
+			},
 			Type::Any => Self::any_with_capacity(capacity),
 		}
 	}

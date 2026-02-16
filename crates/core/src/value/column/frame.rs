@@ -50,7 +50,13 @@ impl From<ColumnData> for FrameColumnData {
 			} => FrameColumnData::Decimal(container),
 			ColumnData::Any(container) => FrameColumnData::Any(container),
 			ColumnData::DictionaryId(container) => FrameColumnData::DictionaryId(container),
-			ColumnData::Undefined(container) => FrameColumnData::Undefined(container),
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => FrameColumnData::Option {
+				inner: Box::new(FrameColumnData::from(*inner)),
+				bitvec,
+			},
 		}
 	}
 }

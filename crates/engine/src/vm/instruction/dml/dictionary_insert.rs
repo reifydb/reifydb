@@ -75,16 +75,16 @@ pub(crate) fn insert_dictionary<'a>(
 				// Use first column if no explicit "value" column
 				first_column.data().get_value(row_idx)
 			} else {
-				Value::Undefined
+				Value::None
 			};
 
 			// Skip undefined values
-			if matches!(value, Value::Undefined) {
+			if matches!(value, Value::None) {
 				continue;
 			}
 
 			// Coerce value to dictionary's value_type
-			let coerced_value = coerce_value_to_dictionary_type(value, dictionary.value_type)?;
+			let coerced_value = coerce_value_to_dictionary_type(value, dictionary.value_type.clone())?;
 
 			// Insert into dictionary
 			let entry_id = txn.insert_into_dictionary(&dictionary, &coerced_value)?;

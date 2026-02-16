@@ -290,6 +290,10 @@ impl BitVec {
 		count
 	}
 
+	pub fn all_ones(&self) -> bool {
+		self.count_ones() == self.inner.len
+	}
+
 	pub fn count_zeros(&self) -> usize {
 		self.inner.len - self.count_ones()
 	}

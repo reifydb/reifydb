@@ -54,7 +54,7 @@ impl<T: AsTransaction> VTable<T> for Views {
 			namespaces.push(view.namespace.0);
 			names.push(view.name.as_str());
 			primary_keys.push_value(
-				view.primary_key.map(|pk| pk.id.0).map(Value::Uint8).unwrap_or(Value::Undefined),
+				view.primary_key.map(|pk| pk.id.0).map(Value::Uint8).unwrap_or(Value::None),
 			);
 		}
 

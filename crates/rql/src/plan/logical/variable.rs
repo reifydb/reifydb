@@ -5,7 +5,7 @@ use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
 	ast::ast::{
-		Ast, AstBlock, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral, AstLiteralUndefined,
+		Ast, AstBlock, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral, AstLiteralNone,
 		AstLoop, AstReturn, AstWhile, LetValue as AstLetValue,
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
@@ -75,9 +75,9 @@ impl<'bump> Compiler<'bump> {
 		let else_branch = if let Some(else_block) = ast.else_block {
 			Some(BumpBox::new_in(self.compile_block_single(else_block, tx)?, self.bump))
 		} else {
-			let undefined_literal = Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
-				kind: TokenKind::Literal(Literal::Undefined),
-				fragment: BumpFragment::internal(self.bump, "undefined"),
+			let undefined_literal = Ast::Literal(AstLiteral::None(AstLiteralNone(Token {
+				kind: TokenKind::Literal(Literal::None),
+				fragment: BumpFragment::internal(self.bump, "none"),
 			})));
 			Some(BumpBox::new_in(self.compile_scalar_as_map(undefined_literal)?, self.bump))
 		};
@@ -102,10 +102,10 @@ impl<'bump> Compiler<'bump> {
 				return self.compile_single(first_node, tx);
 			}
 		}
-		// Empty block → undefined wrapped in MAP
-		let undefined_literal = Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
-			kind: TokenKind::Literal(Literal::Undefined),
-			fragment: BumpFragment::internal(self.bump, "undefined"),
+		// Empty block → none wrapped in MAP
+		let undefined_literal = Ast::Literal(AstLiteral::None(AstLiteralNone(Token {
+			kind: TokenKind::Literal(Literal::None),
+			fragment: BumpFragment::internal(self.bump, "none"),
 		})));
 		self.compile_scalar_as_map(undefined_literal)
 	}

@@ -120,18 +120,18 @@
 // fn column_to_values(data: &ColumnData) -> Vec<Value> {
 // 	match data {
 // 		ColumnData::Bool(container) => {
-// 			container.iter().map(|v| v.map_or(Value::Undefined, Value::Boolean)).collect()
+// 			container.iter().map(|v| v.map_or(Value::None, Value::Boolean)).collect()
 // 		}
 // 		ColumnData::Int4(container) => {
-// 			container.iter().map(|v| v.map_or(Value::Undefined, |i| Value::Int4(i))).collect()
+// 			container.iter().map(|v| v.map_or(Value::None, |i| Value::Int4(i))).collect()
 // 		}
 // 		ColumnData::Int8(container) => {
-// 			container.iter().map(|v| v.map_or(Value::Undefined, |i| Value::Int8(i))).collect()
+// 			container.iter().map(|v| v.map_or(Value::None, |i| Value::Int8(i))).collect()
 // 		}
 // 		ColumnData::Utf8 {
 // 			container,
 // 			..
-// 		} => container.iter().map(|v| v.map_or(Value::Undefined, |s| Value::Utf8(s))).collect(),
+// 		} => container.iter().map(|v| v.map_or(Value::None, |s| Value::Utf8(s))).collect(),
 // 		// Add more types as needed
 // 		_ => vec![],
 // 	}
@@ -146,7 +146,7 @@
 // 				.into_iter()
 // 				.map(|v| match v {
 // 					Value::Boolean(b) => Some(b),
-// 					Value::Undefined => None,
+// 					Value::None => None,
 // 					_ => None,
 // 				})
 // 				.collect();
@@ -157,7 +157,7 @@
 // 				.into_iter()
 // 				.map(|v| match v {
 // 					Value::Int4(i) => Some(i),
-// 					Value::Undefined => None,
+// 					Value::None => None,
 // 					_ => None,
 // 				})
 // 				.collect();
@@ -168,7 +168,7 @@
 // 				.into_iter()
 // 				.map(|v| match v {
 // 					Value::Int8(i) => Some(i),
-// 					Value::Undefined => None,
+// 					Value::None => None,
 // 					_ => None,
 // 				})
 // 				.collect();
@@ -179,7 +179,7 @@
 // 				.into_iter()
 // 				.map(|v| match v {
 // 					Value::Utf8(s) => Some(s),
-// 					Value::Undefined => None,
+// 					Value::None => None,
 // 					_ => None,
 // 				})
 // 				.collect();
@@ -220,5 +220,5 @@
 // }
 //
 // fn count_undefined_in_runs(runs: &RleEncoded) -> usize {
-// 	runs.runs.iter().filter(|run| matches!(run.value, Value::Undefined)).map(|run| run.count as usize).sum()
+// 	runs.runs.iter().filter(|run| matches!(run.value, Value::None)).map(|run| run.count as usize).sum()
 // }

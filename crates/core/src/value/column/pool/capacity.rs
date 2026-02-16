@@ -4,7 +4,7 @@
 use reifydb_type::value::{
 	container::{
 		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, row::RowNumberContainer,
-		temporal::TemporalContainer, undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
+		temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 	},
 	is::{IsNumber, IsTemporal, IsUuid},
 };
@@ -123,22 +123,6 @@ impl ContainerCapacity for BlobContainer {
 }
 
 impl ContainerCapacity for RowNumberContainer {
-	fn with_capacity(capacity: usize) -> Self {
-		Self::with_capacity(capacity)
-	}
-
-	fn clear(&mut self) {
-		// Clear content but preserve capacity
-		let capacity = self.capacity();
-		*self = Self::with_capacity(capacity);
-	}
-
-	fn capacity(&self) -> usize {
-		self.capacity()
-	}
-}
-
-impl ContainerCapacity for UndefinedContainer {
 	fn with_capacity(capacity: usize) -> Self {
 		Self::with_capacity(capacity)
 	}

@@ -15,7 +15,10 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, util::cowvec::CowVec};
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	transform::{Transform, context::TransformContext},
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub(crate) struct SortNode {
 	input: Box<dyn QueryNode>,
@@ -57,11 +60,26 @@ impl QueryNode for SortNode {
 			}
 		}
 
-		let mut columns = match columns_opt {
+		let columns = match columns_opt {
 			Some(f) => f,
 			None => return Ok(None),
 		};
 
+		let transform_ctx = TransformContext {
+			functions: &ctx.services.functions,
+			clock: &ctx.services.clock,
+			params: &ctx.params,
+		};
+		Ok(Some(self.apply(&transform_ctx, columns)?))
+	}
+
+	fn headers(&self) -> Option<ColumnHeaders> {
+		self.input.headers()
+	}
+}
+
+impl Transform for SortNode {
+	fn apply(&self, _ctx: &TransformContext, mut columns: Columns) -> reifydb_type::Result<Columns> {
 		let key_refs =
 			self.by.iter()
 				.map(|key| {
@@ -87,28 +105,21 @@ impl QueryNode for SortNode {
 				};
 				if ord != Equal {
 					return ord;
-				} else {
 				}
 			}
 			Equal
 		});
 
-		// Reorder encoded numbers if present
 		if !columns.row_numbers.is_empty() {
-			let reordered_row_numbers: Vec<_> = indices.iter().map(|&i| columns.row_numbers[i]).collect();
-			columns.row_numbers = CowVec::new(reordered_row_numbers);
+			let reordered: Vec<_> = indices.iter().map(|&i| columns.row_numbers[i]).collect();
+			columns.row_numbers = CowVec::new(reordered);
 		}
 
-		// Reorder columns
 		let cols = columns.columns.make_mut();
 		for col in cols.iter_mut() {
 			col.data_mut().reorder(&indices);
 		}
 
-		Ok(Some(columns))
-	}
-
-	fn headers(&self) -> Option<ColumnHeaders> {
-		self.input.headers()
+		Ok(columns)
 	}
 }

@@ -4,16 +4,16 @@
 use super::{cursor::Cursor, token::Token};
 
 pub mod bool;
+pub mod none;
 pub mod number;
 pub mod temporal;
 pub mod text;
-pub mod undefined;
 
 use bool::scan_boolean;
+use none::scan_none;
 use number::scan_number;
 use temporal::scan_temporal;
 use text::scan_text;
-use undefined::scan_undefined;
 
 /// Scan for any literal token
 pub fn scan_literal<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
@@ -24,7 +24,7 @@ pub fn scan_literal<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		Some(token)
 	} else if let Some(token) = scan_boolean(cursor) {
 		Some(token)
-	} else if let Some(token) = scan_undefined(cursor) {
+	} else if let Some(token) = scan_none(cursor) {
 		Some(token)
 	} else {
 		scan_temporal(cursor)

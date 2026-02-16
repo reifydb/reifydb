@@ -136,7 +136,7 @@ impl QueryNode for NaturalJoinNode {
 				let mut combined = left_row.clone();
 				// Add undefined data for non-common right columns
 				let undefined_count = right_columns.len() - excluded_right_cols.len();
-				combined.extend(vec![Value::Undefined; undefined_count]);
+				combined.extend(vec![Value::None; undefined_count]);
 				result_rows.push(combined);
 				if !left_row_numbers.is_empty() {
 					result_row_numbers.push(left_row_numbers[i]);

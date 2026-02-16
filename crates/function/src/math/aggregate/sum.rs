@@ -3,7 +3,7 @@
 
 use indexmap::IndexMap;
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::Value;
+use reifydb_type::value::{Value, r#type::Type};
 
 use crate::{AggregateFunction, AggregateFunctionContext};
 
@@ -86,7 +86,7 @@ impl AggregateFunction for Sum {
 
 	fn finalize(&mut self) -> crate::error::AggregateFunctionResult<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.sums.len());
-		let mut data = ColumnData::undefined(0);
+		let mut data = ColumnData::none_typed(Type::Boolean, 0);
 
 		for (key, sum) in std::mem::take(&mut self.sums) {
 			keys.push(key);

@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct DateTimeFromEpochMillis;
 
@@ -46,6 +46,9 @@ fn is_integer_type(data: &ColumnData) -> bool {
 
 impl ScalarFunction for DateTimeFromEpochMillis {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -85,7 +88,7 @@ impl ScalarFunction for DateTimeFromEpochMillis {
 			if let Some(millis) = extract_i64(col.data(), i) {
 				container.push(DateTime::from_timestamp_millis(millis as u64));
 			} else {
-				container.push_undefined();
+				container.push_default();
 			}
 		}
 

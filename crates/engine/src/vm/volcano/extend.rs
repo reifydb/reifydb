@@ -19,6 +19,7 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
+	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -60,105 +61,26 @@ impl QueryNode for ExtendNode {
 	#[instrument(name = "volcano::extend::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "ExtendNode::next() called before initialize()");
-		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
-			// Start with all existing columns (EXTEND preserves
-			// everything)
-			let row_count = columns.row_count();
-			let row_numbers = columns.row_numbers.to_vec();
-			let mut new_columns = columns.into_iter().collect::<Vec<_>>();
+			let stored_ctx = &self.context.as_ref().unwrap().0;
+			let transform_ctx = TransformContext {
+				functions: &stored_ctx.services.functions,
+				clock: &stored_ctx.services.clock,
+				params: &stored_ctx.params,
+			};
+			let result = self.apply(&transform_ctx, columns)?;
 
-			// Add the new derived columns
-			let expressions = &self.expressions;
-			for (expr, compiled_expr) in expressions.iter().zip(compiled.iter()) {
-				let mut exec_ctx = EvalContext {
-					target: None,
-					columns: Columns::new(new_columns.clone()),
-					row_count,
-					take: None,
-					params: &ctx.params,
-					symbol_table: &ctx.stack,
-					is_aggregate_context: false,
-					functions: &stored_ctx.services.functions,
-					clock: &stored_ctx.services.clock,
-					arena: None,
-				};
-
-				// Check if this is an alias expression and we have source information
-				if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
-					let alias_name = alias_expr.alias.name();
-
-					// Find the matching column in the source
-					if let Some(table_column) =
-						source.columns().iter().find(|col| col.name == alias_name)
-					{
-						// Create a resolved column with source information
-						let column_ident = Fragment::internal(&table_column.name);
-						let resolved_column = ResolvedColumn::new(
-							column_ident,
-							source.clone(),
-							table_column.clone(),
-						);
-
-						exec_ctx.target = Some(TargetColumn::Resolved(resolved_column));
-					}
-				}
-
-				let mut column = compiled_expr.execute(&exec_ctx)?;
-
-				if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
-					if column.data.get_type() != target_type {
-						let data = cast_column_data(
-							&exec_ctx,
-							&column.data,
-							target_type,
-							&expr.lazy_fragment(),
-						)?;
-						column = reifydb_core::value::column::Column {
-							name: column.name,
-							data,
-						};
-					}
-				}
-
-				new_columns.push(column);
-			}
-
-			// Create layout combining existing and new columns only
-			// once For extend, we preserve all input columns
-			// plus the new expressions
 			if self.headers.is_none() {
 				let mut all_headers = if let Some(input_headers) = self.input.headers() {
 					input_headers.columns.clone()
 				} else {
-					// Extract column names from actual input columns
-					// At this point, new_columns = [input_columns..., extend_columns...]
-					let input_column_count = new_columns.len() - expressions.len();
-					new_columns[..input_column_count].iter().map(|c| c.name().clone()).collect()
+					let input_column_count = result.len() - self.expressions.len();
+					result.iter().take(input_column_count).map(|c| c.name().clone()).collect()
 				};
 
 				let new_names: Vec<Fragment> =
-					expressions.iter().map(column_name_from_expression).collect();
-
-				// Check for duplicate column names against existing columns
-				for new_name in &new_names {
-					for existing_name in &all_headers {
-						if new_name.text() == existing_name.text() {
-							return_error!(extend_duplicate_column(new_name.text()));
-						}
-					}
-				}
-
-				// Check for duplicates within the new column names themselves
-				for i in 0..new_names.len() {
-					for j in (i + 1)..new_names.len() {
-						if new_names[i].text() == new_names[j].text() {
-							return_error!(extend_duplicate_column(new_names[i].text()));
-						}
-					}
-				}
-
+					self.expressions.iter().map(column_name_from_expression).collect();
 				all_headers.extend(new_names);
 
 				self.headers = Some(ColumnHeaders {
@@ -166,18 +88,13 @@ impl QueryNode for ExtendNode {
 				});
 			}
 
-			if row_numbers.is_empty() {
-				return Ok(Some(Columns::new(new_columns)));
-			} else {
-				return Ok(Some(Columns::with_row_numbers(new_columns, row_numbers)));
-			}
+			return Ok(Some(result));
 		}
 		if self.headers.is_none() {
 			if let Some(input_headers) = self.input.headers() {
 				let mut all_headers = input_headers.columns.clone();
-				let expressions = self.expressions.clone();
 				let new_names: Vec<Fragment> =
-					expressions.iter().map(column_name_from_expression).collect();
+					self.expressions.iter().map(column_name_from_expression).collect();
 
 				for new_name in &new_names {
 					for existing_name in &all_headers {
@@ -205,6 +122,91 @@ impl QueryNode for ExtendNode {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone().or(self.input.headers())
+	}
+}
+
+impl Transform for ExtendNode {
+	fn apply(&self, ctx: &TransformContext, input: Columns) -> reifydb_type::Result<Columns> {
+		let (stored_ctx, compiled) =
+			self.context.as_ref().expect("ExtendNode::apply() called before initialize()");
+
+		let row_count = input.row_count();
+		let row_numbers = input.row_numbers.to_vec();
+
+		// Collect existing column names for duplicate checking
+		let existing_names: Vec<Fragment> = input.iter().map(|c| c.name().clone()).collect();
+
+		let mut new_columns = input.into_iter().collect::<Vec<_>>();
+
+		let mut new_names = Vec::with_capacity(compiled.len());
+		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
+			let mut exec_ctx = EvalContext {
+				target: None,
+				columns: Columns::new(new_columns.clone()),
+				row_count,
+				take: None,
+				params: ctx.params,
+				symbol_table: &stored_ctx.stack,
+				is_aggregate_context: false,
+				functions: ctx.functions,
+				clock: ctx.clock,
+				arena: None,
+			};
+
+			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
+				let alias_name = alias_expr.alias.name();
+				if let Some(table_column) = source.columns().iter().find(|col| col.name == alias_name) {
+					let column_ident = Fragment::internal(&table_column.name);
+					let resolved_column =
+						ResolvedColumn::new(column_ident, source.clone(), table_column.clone());
+					exec_ctx.target = Some(TargetColumn::Resolved(resolved_column));
+				}
+			}
+
+			let mut column = compiled_expr.execute(&exec_ctx)?;
+
+			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
+				if column.data.get_type() != target_type {
+					let data = cast_column_data(
+						&exec_ctx,
+						&column.data,
+						target_type,
+						&expr.lazy_fragment(),
+					)?;
+					column = reifydb_core::value::column::Column {
+						name: column.name,
+						data,
+					};
+				}
+			}
+
+			new_columns.push(column);
+			new_names.push(column_name_from_expression(expr));
+		}
+
+		// Validate no duplicate column names against existing columns
+		for new_name in &new_names {
+			for existing_name in &existing_names {
+				if new_name.text() == existing_name.text() {
+					return_error!(extend_duplicate_column(new_name.text()));
+				}
+			}
+		}
+
+		// Validate no duplicates within new columns
+		for i in 0..new_names.len() {
+			for j in (i + 1)..new_names.len() {
+				if new_names[i].text() == new_names[j].text() {
+					return_error!(extend_duplicate_column(new_names[i].text()));
+				}
+			}
+		}
+
+		if row_numbers.is_empty() {
+			Ok(Columns::new(new_columns))
+		} else {
+			Ok(Columns::with_row_numbers(new_columns, row_numbers))
+		}
 	}
 }
 

@@ -86,8 +86,8 @@ impl SerializedRow {
 
 		let mut columns_vec = Vec::with_capacity(layout.names.len());
 		for (i, (name, typ)) in layout.names.iter().zip(layout.types.iter()).enumerate() {
-			let value = values.get(i).cloned().unwrap_or(Value::Undefined);
-			let mut col_data = ColumnData::with_capacity(*typ, 1);
+			let value = values.get(i).cloned().unwrap_or(Value::None);
+			let mut col_data = ColumnData::with_capacity(typ.clone(), 1);
 			col_data.push_value(value);
 			columns_vec.push(Column {
 				name: Fragment::internal(name),
@@ -127,11 +127,11 @@ impl DistinctLayout {
 
 		for (i, new_type) in types.iter().enumerate() {
 			if i < self.types.len() {
-				if self.types[i] == Type::Undefined && *new_type != Type::Undefined {
-					self.types[i] = *new_type;
+				if !self.types[i].is_option() && new_type.is_option() {
+					self.types[i] = new_type.clone();
 				}
 			} else {
-				self.types.push(*new_type);
+				self.types.push(new_type.clone());
 				if i < names.len() {
 					self.names.push(names[i].clone());
 				}

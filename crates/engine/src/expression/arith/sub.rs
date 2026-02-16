@@ -7,7 +7,7 @@ use reifydb_type::{
 	fragment::LazyFragment,
 	return_error,
 	value::{
-		container::{number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer},
+		container::{number::NumberContainer, temporal::TemporalContainer},
 		is::IsNumber,
 		number::{promote::Promote, safe::sub::SafeSub},
 		r#type::{Type, get::GetType},
@@ -22,44 +22,35 @@ pub(crate) fn sub_columns(
 	right: &Column,
 	fragment: impl LazyFragment + Copy,
 ) -> crate::Result<Column> {
-	let target = Type::promote(left.get_type(), right.get_type());
+	crate::expression::option::binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
+		let target = Type::promote(left.get_type(), right.get_type());
 
-	dispatch_arith!(
-		&left.data(), &right.data();
-		fixed: sub_numeric, arb: sub_numeric_clone (ctx, target, fragment);
+		dispatch_arith!(
+			&left.data(), &right.data();
+			fixed: sub_numeric, arb: sub_numeric_clone (ctx, target, fragment);
 
-		// Duration - Duration
-		(ColumnData::Duration(l), ColumnData::Duration(r)) => {
-			let mut container = TemporalContainer::with_capacity(l.len());
-			for i in 0..l.len() {
-				match (l.get(i), r.get(i)) {
-					(Some(lv), Some(rv)) => container.push(*lv - *rv),
-					_ => container.push_undefined(),
+			// Duration - Duration
+			(ColumnData::Duration(l), ColumnData::Duration(r)) => {
+				let mut container = TemporalContainer::with_capacity(l.len());
+				for i in 0..l.len() {
+					match (l.get(i), r.get(i)) {
+						(Some(lv), Some(rv)) => container.push(*lv - *rv),
+						_ => container.push_default(),
+					}
 				}
+				Ok(Column {
+					name: fragment.fragment(),
+					data: ColumnData::Duration(container),
+				})
 			}
-			Ok(Column {
-				name: fragment.fragment(),
-				data: ColumnData::Duration(container),
-			})
-		}
 
-		// Handle undefined values - any operation with
-		// undefined results in undefined
-		(ColumnData::Undefined(l), _) => Ok(Column {
-			name: fragment.fragment(),
-			data: ColumnData::Undefined(UndefinedContainer::new(l.len())),
-		}),
-		(_, ColumnData::Undefined(r)) => Ok(Column {
-			name: fragment.fragment(),
-			data: ColumnData::Undefined(UndefinedContainer::new(r.len())),
-		}),
-
-		_ => return_error!(sub_cannot_be_applied_to_incompatible_types(
-			fragment.fragment(),
-			left.get_type(),
-			right.get_type(),
-		)),
-	)
+			_ => return_error!(sub_cannot_be_applied_to_incompatible_types(
+				fragment.fragment(),
+				left.get_type(),
+				right.get_type(),
+			)),
+		)
+	})
 }
 
 fn sub_numeric<'a, L, R>(
@@ -78,45 +69,20 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	if l.is_fully_defined() && r.is_fully_defined() {
-		// Fast path: all values are defined, no undefined checks needed
-		let mut data = ctx.pooled(target, l.len());
-		let l_data = l.data();
-		let r_data = r.data();
-
-		for i in 0..l.len() {
-			if let Some(value) = ctx.sub(&l_data[i], &r_data[i], fragment)? {
-				data.push(value);
-			} else {
-				data.push_undefined()
-			}
+	let mut data = ColumnData::with_capacity(target, l.len());
+	let l_data = l.data();
+	let r_data = r.data();
+	for i in 0..l.len() {
+		if let Some(value) = ctx.sub(&l_data[i], &r_data[i], fragment)? {
+			data.push(value);
+		} else {
+			data.push_none()
 		}
-
-		Ok(Column {
-			name: fragment.fragment(),
-			data,
-		})
-	} else {
-		// Slow path: some values may be undefined
-		let mut data = ctx.pooled(target, l.len());
-		for i in 0..l.len() {
-			match (l.get(i), r.get(i)) {
-				(Some(l), Some(r)) => {
-					if let Some(value) = ctx.sub(l, r, fragment)? {
-						data.push(value);
-					} else {
-						data.push_undefined()
-					}
-				}
-				_ => data.push_undefined(),
-			}
-		}
-
-		Ok(Column {
-			name: fragment.fragment(),
-			data,
-		})
 	}
+	Ok(Column {
+		name: fragment.fragment(),
+		data,
+	})
 }
 
 fn sub_numeric_clone<'a, L, R>(
@@ -135,47 +101,20 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	if l.is_fully_defined() && r.is_fully_defined() {
-		// Fast path: all values are defined, no undefined checks needed
-		let mut data = ctx.pooled(target, l.len());
-		let l_data = l.data();
-		let r_data = r.data();
-
-		for i in 0..l.len() {
-			let l_clone = l_data[i].clone();
-			let r_clone = r_data[i].clone();
-			if let Some(value) = ctx.sub(&l_clone, &r_clone, fragment)? {
-				data.push(value);
-			} else {
-				data.push_undefined()
-			}
+	let mut data = ColumnData::with_capacity(target, l.len());
+	let l_data = l.data();
+	let r_data = r.data();
+	for i in 0..l.len() {
+		let l_clone = l_data[i].clone();
+		let r_clone = r_data[i].clone();
+		if let Some(value) = ctx.sub(&l_clone, &r_clone, fragment)? {
+			data.push(value);
+		} else {
+			data.push_none()
 		}
-
-		Ok(Column {
-			name: fragment.fragment(),
-			data,
-		})
-	} else {
-		// Slow path: some values may be undefined
-		let mut data = ctx.pooled(target, l.len());
-		for i in 0..l.len() {
-			match (l.get(i), r.get(i)) {
-				(Some(l_val), Some(r_val)) => {
-					let l_clone = l_val.clone();
-					let r_clone = r_val.clone();
-					if let Some(value) = ctx.sub(&l_clone, &r_clone, fragment)? {
-						data.push(value);
-					} else {
-						data.push_undefined()
-					}
-				}
-				_ => data.push_undefined(),
-			}
-		}
-
-		Ok(Column {
-			name: fragment.fragment(),
-			data,
-		})
 	}
+	Ok(Column {
+		name: fragment.fragment(),
+		data,
+	})
 }

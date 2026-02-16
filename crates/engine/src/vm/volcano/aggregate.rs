@@ -119,13 +119,16 @@ impl QueryNode for AggregateNode {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
 					let first_key_type = if group_key_order.is_empty() {
-						Type::Undefined
+						None
 					} else {
-						group_key_order[0][col_idx].get_type()
+						Some(group_key_order[0][col_idx].get_type())
 					};
 					let mut c = Column {
 						name: Fragment::internal(alias.fragment()),
-						data: ColumnData::undefined_typed(first_key_type, 0),
+						data: ColumnData::none_typed(
+							first_key_type.unwrap_or(Type::Boolean),
+							0,
+						),
 					};
 					for key in &group_key_order {
 						c.data_mut().push_value(key[col_idx].clone());

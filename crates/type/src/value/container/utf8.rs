@@ -10,20 +10,18 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	storage::{Cow, DataBitVec, DataVec, Storage},
-	util::{bitvec::BitVec, cowvec::CowVec},
+	util::cowvec::CowVec,
 	value::Value,
 };
 
 pub struct Utf8Container<S: Storage = Cow> {
 	data: S::Vec<String>,
-	bitvec: S::BitVec,
 }
 
 impl<S: Storage> Clone for Utf8Container<S> {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
-			bitvec: self.bitvec.clone(),
 		}
 	}
 }
@@ -31,20 +29,18 @@ impl<S: Storage> Clone for Utf8Container<S> {
 impl<S: Storage> Debug for Utf8Container<S>
 where
 	S::Vec<String>: Debug,
-	S::BitVec: Debug,
 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Utf8Container").field("data", &self.data).field("bitvec", &self.bitvec).finish()
+		f.debug_struct("Utf8Container").field("data", &self.data).finish()
 	}
 }
 
 impl<S: Storage> PartialEq for Utf8Container<S>
 where
 	S::Vec<String>: PartialEq,
-	S::BitVec: PartialEq,
 {
 	fn eq(&self, other: &Self) -> bool {
-		self.data == other.data && self.bitvec == other.bitvec
+		self.data == other.data
 	}
 }
 
@@ -53,11 +49,9 @@ impl Serialize for Utf8Container<Cow> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
 			data: &'a CowVec<String>,
-			bitvec: &'a BitVec,
 		}
 		Helper {
 			data: &self.data,
-			bitvec: &self.bitvec,
 		}
 		.serialize(serializer)
 	}
@@ -68,12 +62,10 @@ impl<'de> Deserialize<'de> for Utf8Container<Cow> {
 		#[derive(Deserialize)]
 		struct Helper {
 			data: CowVec<String>,
-			bitvec: BitVec,
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(Utf8Container {
 			data: h.data,
-			bitvec: h.bitvec,
 		})
 	}
 }
@@ -87,66 +79,54 @@ impl<S: Storage> Deref for Utf8Container<S> {
 }
 
 impl Utf8Container<Cow> {
-	pub fn new(data: Vec<String>, bitvec: BitVec) -> Self {
-		debug_assert_eq!(data.len(), bitvec.len());
+	pub fn new(data: Vec<String>) -> Self {
 		Self {
 			data: CowVec::new(data),
-			bitvec,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
 			data: CowVec::with_capacity(capacity),
-			bitvec: BitVec::with_capacity(capacity),
 		}
 	}
 
 	/// Reconstruct from raw parts previously obtained via `try_into_raw_parts`.
-	pub fn from_raw_parts(data: Vec<String>, bitvec_bits: Vec<u8>, bitvec_len: usize) -> Self {
+	pub fn from_raw_parts(data: Vec<String>) -> Self {
 		Self {
 			data: CowVec::new(data),
-			bitvec: BitVec::from_raw(bitvec_bits, bitvec_len),
 		}
 	}
 
-	/// Try to decompose into raw Vec + bitvec bytes for recycling.
+	/// Try to decompose into raw Vec for recycling.
 	/// Returns `None` if the inner storage is shared.
-	pub fn try_into_raw_parts(self) -> Option<(Vec<String>, Vec<u8>, usize)> {
-		let data = match self.data.try_into_vec() {
-			Ok(v) => v,
-			Err(_) => return None,
-		};
-		match self.bitvec.try_into_raw() {
-			Ok((bits, len)) => Some((data, bits, len)),
+	pub fn try_into_raw_parts(self) -> Option<Vec<String>> {
+		match self.data.try_into_vec() {
+			Ok(v) => Some(v),
 			Err(_) => None,
 		}
 	}
 
 	pub fn from_vec(data: Vec<String>) -> Self {
-		let len = data.len();
 		Self {
 			data: CowVec::new(data),
-			bitvec: BitVec::repeat(len, true),
 		}
 	}
 }
 
 impl<S: Storage> Utf8Container<S> {
-	pub fn from_parts(data: S::Vec<String>, bitvec: S::BitVec) -> Self {
+	pub fn from_parts(data: S::Vec<String>) -> Self {
 		Self {
 			data,
-			bitvec,
 		}
 	}
 
 	pub fn len(&self) -> usize {
-		debug_assert_eq!(DataVec::len(&self.data), DataBitVec::len(&self.bitvec));
 		DataVec::len(&self.data)
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataVec::capacity(&self.data).min(DataBitVec::capacity(&self.bitvec))
+		DataVec::capacity(&self.data)
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -155,41 +135,30 @@ impl<S: Storage> Utf8Container<S> {
 
 	pub fn clear(&mut self) {
 		DataVec::clear(&mut self.data);
-		DataBitVec::clear(&mut self.bitvec);
 	}
 
 	pub fn push(&mut self, value: String) {
 		DataVec::push(&mut self.data, value);
-		DataBitVec::push(&mut self.bitvec, true);
 	}
 
-	pub fn push_undefined(&mut self) {
+	pub fn push_default(&mut self) {
 		DataVec::push(&mut self.data, String::new());
-		DataBitVec::push(&mut self.bitvec, false);
 	}
 
 	pub fn get(&self, index: usize) -> Option<&String> {
-		if index < self.len() && self.is_defined(index) {
+		if index < self.len() {
 			DataVec::get(&self.data, index)
 		} else {
 			None
 		}
 	}
 
-	pub fn bitvec(&self) -> &S::BitVec {
-		&self.bitvec
-	}
-
-	pub fn bitvec_mut(&mut self) -> &mut S::BitVec {
-		&mut self.bitvec
-	}
-
 	pub fn is_defined(&self, idx: usize) -> bool {
-		idx < self.len() && DataBitVec::get(&self.bitvec, idx)
+		idx < self.len()
 	}
 
 	pub fn is_fully_defined(&self) -> bool {
-		DataBitVec::count_ones(&self.bitvec) == self.len()
+		true
 	}
 
 	pub fn data(&self) -> &S::Vec<String> {
@@ -201,95 +170,70 @@ impl<S: Storage> Utf8Container<S> {
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
-		if index < self.len() && self.is_defined(index) {
+		if index < self.len() {
 			self.data[index].clone()
 		} else {
-			"Undefined".to_string()
+			"none".to_string()
 		}
 	}
 
 	pub fn get_value(&self, index: usize) -> Value {
-		if index < self.len() && self.is_defined(index) {
+		if index < self.len() {
 			Value::Utf8(self.data[index].clone())
 		} else {
-			Value::Undefined
+			Value::None
 		}
 	}
 
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
-		DataBitVec::extend_from(&mut self.bitvec, &other.bitvec);
 		Ok(())
 	}
 
-	pub fn extend_from_undefined(&mut self, len: usize) {
-		for _ in 0..len {
-			DataVec::push(&mut self.data, String::new());
-			DataBitVec::push(&mut self.bitvec, false);
-		}
-	}
-
 	pub fn iter(&self) -> impl Iterator<Item = Option<&String>> + '_ {
-		self.data.iter().zip(DataBitVec::iter(&self.bitvec)).map(|(v, defined)| {
-			if defined {
-				Some(v)
-			} else {
-				None
-			}
-		})
+		self.data.iter().map(|v| Some(v))
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let count = (end - start).min(self.len().saturating_sub(start));
 		let mut new_data = DataVec::spawn(&self.data, count);
-		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, count);
 		for i in start..(start + count) {
 			DataVec::push(&mut new_data, self.data[i].clone());
-			DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, i));
 		}
 		Self {
 			data: new_data,
-			bitvec: new_bitvec,
 		}
 	}
 
 	pub fn filter(&mut self, mask: &S::BitVec) {
 		let mut new_data = DataVec::spawn(&self.data, DataBitVec::count_ones(mask));
-		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, DataBitVec::count_ones(mask));
 
 		for (i, keep) in DataBitVec::iter(mask).enumerate() {
 			if keep && i < self.len() {
 				DataVec::push(&mut new_data, self.data[i].clone());
-				DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, i));
 			}
 		}
 
 		self.data = new_data;
-		self.bitvec = new_bitvec;
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
 		let mut new_data = DataVec::spawn(&self.data, indices.len());
-		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, indices.len());
 
 		for &idx in indices {
 			if idx < self.len() {
 				DataVec::push(&mut new_data, self.data[idx].clone());
-				DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, idx));
 			} else {
 				DataVec::push(&mut new_data, String::new());
-				DataBitVec::push(&mut new_bitvec, false);
 			}
 		}
 
 		self.data = new_data;
-		self.bitvec = new_bitvec;
 	}
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
 			data: DataVec::take(&self.data, num),
-			bitvec: DataBitVec::take(&self.bitvec, num),
 		}
 	}
 }
@@ -303,13 +247,11 @@ impl Default for Utf8Container<Cow> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::util::bitvec::BitVec;
 
 	#[test]
 	fn test_new() {
 		let data = vec!["hello".to_string(), "world".to_string(), "test".to_string()];
-		let bitvec = BitVec::from_slice(&[true, true, true]);
-		let container = Utf8Container::new(data.clone(), bitvec);
+		let container = Utf8Container::new(data.clone());
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&"hello".to_string()));
@@ -347,16 +289,16 @@ pub mod tests {
 
 		container.push("first".to_string());
 		container.push("second".to_string());
-		container.push_undefined();
+		container.push_default();
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&"first".to_string()));
 		assert_eq!(container.get(1), Some(&"second".to_string()));
-		assert_eq!(container.get(2), None); // undefined
+		assert_eq!(container.get(2), Some(&"".to_string())); // push_default pushes default
 
 		assert!(container.is_defined(0));
 		assert!(container.is_defined(1));
-		assert!(!container.is_defined(2));
+		assert!(container.is_defined(2));
 	}
 
 	#[test]
@@ -374,24 +316,12 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_extend_from_undefined() {
-		let mut container = Utf8Container::from_vec(vec!["test".to_string()]);
-		container.extend_from_undefined(2);
-
-		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(0), Some(&"test".to_string()));
-		assert_eq!(container.get(1), None); // undefined
-		assert_eq!(container.get(2), None); // undefined
-	}
-
-	#[test]
 	fn test_iter() {
 		let data = vec!["x".to_string(), "y".to_string(), "z".to_string()];
-		let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
-		let container = Utf8Container::new(data, bitvec);
+		let container = Utf8Container::new(data);
 
 		let collected: Vec<Option<&String>> = container.iter().collect();
-		assert_eq!(collected, vec![Some(&"x".to_string()), None, Some(&"z".to_string())]);
+		assert_eq!(collected, vec![Some(&"x".to_string()), Some(&"y".to_string()), Some(&"z".to_string())]);
 	}
 
 	#[test]
@@ -411,6 +341,7 @@ pub mod tests {
 
 	#[test]
 	fn test_filter() {
+		use crate::util::bitvec::BitVec;
 		let mut container = Utf8Container::from_vec(vec![
 			"keep".to_string(),
 			"drop".to_string(),
@@ -449,7 +380,7 @@ pub mod tests {
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&"b".to_string())); // was index 1
-		assert_eq!(container.get(1), None); // out of bounds -> undefined
+		assert_eq!(container.get(1), Some(&"".to_string())); // out of bounds -> default
 		assert_eq!(container.get(2), Some(&"a".to_string())); // was index 0
 	}
 
@@ -457,14 +388,14 @@ pub mod tests {
 	fn test_empty_strings() {
 		let mut container = Utf8Container::with_capacity(2);
 		container.push("".to_string()); // empty string
-		container.push_undefined();
+		container.push_default();
 
 		assert_eq!(container.len(), 2);
 		assert_eq!(container.get(0), Some(&"".to_string()));
-		assert_eq!(container.get(1), None);
+		assert_eq!(container.get(1), Some(&"".to_string()));
 
 		assert!(container.is_defined(0));
-		assert!(!container.is_defined(1));
+		assert!(container.is_defined(1));
 	}
 
 	#[test]

@@ -172,12 +172,9 @@ impl Frame {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::{
-		util::bitvec::BitVec,
-		value::{
-			container::{number::NumberContainer, utf8::Utf8Container},
-			frame::data::FrameColumnData,
-		},
+	use crate::value::{
+		container::{number::NumberContainer, utf8::Utf8Container},
+		frame::data::FrameColumnData,
 	};
 
 	fn make_test_frame() -> Frame {
@@ -189,10 +186,11 @@ pub mod tests {
 				},
 				FrameColumn {
 					name: "name".to_string(),
-					data: FrameColumnData::Utf8(Utf8Container::new(
-						vec!["Alice".to_string(), "Bob".to_string(), String::new()],
-						BitVec::from_slice(&[true, true, false]),
-					)),
+					data: FrameColumnData::Utf8(Utf8Container::new(vec![
+						"Alice".to_string(),
+						"Bob".to_string(),
+						String::new(),
+					])),
 				},
 				FrameColumn {
 					name: "score".to_string(),
@@ -232,9 +230,9 @@ pub mod tests {
 		let name: Option<String> = frame.get("name", 0).unwrap();
 		assert_eq!(name, Some("Alice".to_string()));
 
-		// Get undefined value
-		let name_undefined: Option<String> = frame.get("name", 2).unwrap();
-		assert_eq!(name_undefined, None);
+		// All values are defined (no bitvec), empty string at index 2
+		let name_at_2: Option<String> = frame.get("name", 2).unwrap();
+		assert_eq!(name_at_2, Some(String::new()));
 	}
 
 	#[test]
@@ -258,7 +256,7 @@ pub mod tests {
 		assert_eq!(ids, vec![Some(1), Some(2), Some(3)]);
 
 		let names: Vec<Option<String>> = frame.column_values("name").unwrap();
-		assert_eq!(names, vec![Some("Alice".to_string()), Some("Bob".to_string()), None]);
+		assert_eq!(names, vec![Some("Alice".to_string()), Some("Bob".to_string()), Some(String::new())]);
 	}
 
 	#[test]

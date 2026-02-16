@@ -15,7 +15,7 @@ pub struct CompressedColumn {
 	pub data: Vec<u8>,
 	pub compression: CompressionType,
 	pub uncompressed_size: usize,
-	pub undefined_count: usize,
+	pub none_count: usize,
 	pub row_count: usize,
 }
 

@@ -43,10 +43,10 @@ fn test_unaligned_access_all_types() {
 		// Create unaligned layout: Int1 (1 byte) followed by target
 		// type
 		let schema = Schema::testing(&[
-			Type::Int1,  // 1 byte - creates odd alignment
-			target_type, // At offset 1 (odd)
-			Type::Int1,  // Another 1 byte
-			target_type, // At another odd offset
+			Type::Int1,          // 1 byte - creates odd alignment
+			target_type.clone(), // At offset 1 (odd)
+			Type::Int1,          // Another 1 byte
+			target_type.clone(), // At another odd offset
 		]);
 
 		let mut row = schema.allocate();

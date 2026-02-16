@@ -5,7 +5,7 @@ use num_traits::ToPrimitive;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::number::NumberContainer, decimal::Decimal, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct Floor;
 
@@ -17,6 +17,9 @@ impl Floor {
 
 impl ScalarFunction for Floor {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -65,19 +68,16 @@ impl ScalarFunction for Floor {
 				scale,
 			} => {
 				let mut data = Vec::with_capacity(row_count);
-				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					if let Some(value) = container.get(i) {
 						let f = value.0.to_f64().unwrap_or(0.0);
 						data.push(Decimal::from(f.floor()));
-						bitvec.push(true);
 					} else {
 						data.push(Decimal::default());
-						bitvec.push(false);
 					}
 				}
 				Ok(ColumnData::Decimal {
-					container: NumberContainer::new(data, bitvec.into()),
+					container: NumberContainer::new(data),
 					precision: *precision,
 					scale: *scale,
 				})

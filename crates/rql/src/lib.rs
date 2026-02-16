@@ -77,7 +77,7 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 			let base_type = convert_data_type(name)?;
 
 			// Parse constraint based on type and parameters
-			let constraint = match (base_type, params.as_slice()) {
+			let constraint = match (base_type.clone(), params.as_slice()) {
 				(Type::Utf8, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
 					Some(Constraint::MaxBytes(max_bytes.into()))
@@ -108,6 +108,10 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 				Some(c) => Ok(TypeConstraint::with_constraint(base_type, c)),
 				None => Ok(TypeConstraint::unconstrained(base_type)),
 			}
+		}
+		AstType::Optional(inner) => {
+			let inner_tc = convert_data_type_with_constraints(inner)?;
+			Ok(TypeConstraint::unconstrained(Type::Option(Box::new(inner_tc.get_type()))))
 		}
 	}
 }

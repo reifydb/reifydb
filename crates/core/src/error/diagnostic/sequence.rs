@@ -14,7 +14,7 @@ pub fn sequence_exhausted(value: Type) -> Diagnostic {
 		message: format!("sequence generator of type `{}` is exhausted", value),
 		fragment: Fragment::None,
 		label: Some("no more values can be generated".to_string()),
-		help: Some(format!("maximum value for `{}` is `{}`", value, value_max(value))),
+		help: Some(format!("maximum value for `{}` is `{}`", value, value_max(value.clone()))),
 		column: None,
 		notes: vec![],
 		cause: None,

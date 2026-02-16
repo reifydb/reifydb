@@ -32,10 +32,10 @@ impl ScalarFunction for IsType {
 
 		// Extract target Type from second arg
 		// - ColumnData::Any containing Value::Type → use that type
-		// - Value::Undefined → check for Type::Undefined
+		// - Value::None → check for Option type
 		let target_type = match type_column.data().get_value(0) {
 			Value::Any(boxed) => match boxed.as_ref() {
-				Value::Type(t) => *t,
+				Value::Type(t) => t.clone(),
 				_ => {
 					return Err(ScalarFunctionError::InvalidArgumentType {
 						function: ctx.fragment.clone(),
@@ -45,7 +45,7 @@ impl ScalarFunction for IsType {
 					});
 				}
 			},
-			Value::Undefined => Type::Undefined,
+			Value::None => Type::Option(Box::new(Type::Boolean)),
 			other => {
 				return Err(ScalarFunctionError::InvalidArgumentType {
 					function: ctx.fragment.clone(),

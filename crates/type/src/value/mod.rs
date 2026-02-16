@@ -52,8 +52,8 @@ use uuid::{Uuid4, Uuid7};
 /// A RQL value, represented as a native Rust type.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Value {
-	/// Value is not defined (think null in common programming languages)
-	Undefined,
+	/// Value is none (think null in common programming languages)
+	None,
 	/// A boolean: true or false.
 	Boolean(bool),
 	/// A 4-byte floating point
@@ -113,8 +113,8 @@ pub enum Value {
 }
 
 impl Value {
-	pub fn undefined() -> Self {
-		Value::Undefined
+	pub fn none() -> Self {
+		Value::None
 	}
 
 	pub fn bool(v: impl Into<bool>) -> Self {
@@ -122,11 +122,11 @@ impl Value {
 	}
 
 	pub fn float4(v: impl Into<f32>) -> Self {
-		OrderedF32::try_from(v.into()).map(Value::Float4).unwrap_or(Value::Undefined)
+		OrderedF32::try_from(v.into()).map(Value::Float4).unwrap_or(Value::None)
 	}
 
 	pub fn float8(v: impl Into<f64>) -> Self {
-		OrderedF64::try_from(v.into()).map(Value::Float8).unwrap_or(Value::Undefined)
+		OrderedF64::try_from(v.into()).map(Value::Float8).unwrap_or(Value::None)
 	}
 
 	pub fn int1(v: impl Into<i8>) -> Self {
@@ -241,10 +241,10 @@ impl PartialOrd for Value {
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().partial_cmp(&r.to_u128()),
 			(Value::Type(l), Value::Type(r)) => l.partial_cmp(r),
 			(Value::Any(_), Value::Any(_)) => None, // Any values are not comparable
-			(Value::Undefined, Value::Undefined) => Some(Ordering::Equal),
-			// Undefined sorts after all other values (similar to NULL in SQL)
-			(Value::Undefined, _) => Some(Ordering::Greater),
-			(_, Value::Undefined) => Some(Ordering::Less),
+			(Value::None, Value::None) => Some(Ordering::Equal),
+			// None sorts after all other values (similar to NULL in SQL)
+			(Value::None, _) => Some(Ordering::Greater),
+			(_, Value::None) => Some(Ordering::Less),
 			(left, right) => {
 				unimplemented!("partial cmp {left:?} {right:?}")
 			}
@@ -320,7 +320,7 @@ impl Display for Value {
 			Value::Any(value) => Display::fmt(value, f),
 			Value::DictionaryId(value) => Display::fmt(value, f),
 			Value::Type(value) => Display::fmt(value, f),
-			Value::Undefined => f.write_str("undefined"),
+			Value::None => f.write_str("none"),
 		}
 	}
 }
@@ -328,7 +328,8 @@ impl Display for Value {
 impl Value {
 	pub fn get_type(&self) -> Type {
 		match self {
-			Value::Undefined => Type::Undefined,
+			Value::None => Type::Option(Box::new(Type::Boolean)), // None has no inherent type; context
+			// provides it
 			Value::Boolean(_) => Type::Boolean,
 			Value::Float4(_) => Type::Float4,
 			Value::Float8(_) => Type::Float8,
@@ -356,7 +357,7 @@ impl Value {
 			Value::Decimal(_) => Type::Decimal,
 			Value::Any(_) => Type::Any,
 			Value::DictionaryId(_) => Type::DictionaryId,
-			Value::Type(t) => *t,
+			Value::Type(t) => t.clone(),
 		}
 	}
 }

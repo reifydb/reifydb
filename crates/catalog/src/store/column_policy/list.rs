@@ -61,8 +61,6 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use ColumnPolicyKind::Saturation;
-	use ColumnSaturationPolicy::Undefined;
 	use reifydb_core::interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, TableId},
@@ -87,7 +85,7 @@ pub mod tests {
 				primitive_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
-				policies: vec![Saturation(Undefined)],
+				policies: vec![ColumnPolicyKind::Saturation(ColumnSaturationPolicy::None)],
 				index: ColumnIndex(0),
 				auto_increment: false,
 				dictionary_id: None,
@@ -101,6 +99,6 @@ pub mod tests {
 
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);
-		assert!(matches!(policies[0].policy, Saturation(Undefined)));
+		assert!(matches!(policies[0].policy, ColumnPolicyKind::Saturation(ColumnSaturationPolicy::None)));
 	}
 }

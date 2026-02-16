@@ -77,7 +77,7 @@ impl EventListener<FlowOperatorLoadedEvent> for FlowOperatorEventListener {
 				.iter()
 				.map(|c| OperatorColumnInfo {
 					name: c.name.clone(),
-					field_type: c.field_type,
+					field_type: c.field_type.clone(),
 					description: c.description.clone(),
 				})
 				.collect(),
@@ -86,7 +86,7 @@ impl EventListener<FlowOperatorLoadedEvent> for FlowOperatorEventListener {
 				.iter()
 				.map(|c| OperatorColumnInfo {
 					name: c.name.clone(),
-					field_type: c.field_type,
+					field_type: c.field_type.clone(),
 					description: c.description.clone(),
 				})
 				.collect(),

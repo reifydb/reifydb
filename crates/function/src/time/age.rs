@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::temporal::TemporalContainer, duration::Duration, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct TimeAge;
 
@@ -16,6 +16,9 @@ impl TimeAge {
 
 impl ScalarFunction for TimeAge {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -41,7 +44,7 @@ impl ScalarFunction for TimeAge {
 								- t2.to_nanos_since_midnight() as i64;
 							container.push(Duration::from_nanoseconds(diff_nanos));
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

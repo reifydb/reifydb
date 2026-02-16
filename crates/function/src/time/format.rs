@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct TimeFormat;
 
@@ -79,6 +79,9 @@ fn format_time(hour: u32, minute: u32, second: u32, nanosecond: u32, fmt: &str) 
 
 impl ScalarFunction for TimeFormat {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -102,7 +105,6 @@ impl ScalarFunction for TimeFormat {
 				},
 			) => {
 				let mut result_data = Vec::with_capacity(row_count);
-				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					match (time_container.get(i), fmt_container.is_defined(i)) {
@@ -117,7 +119,6 @@ impl ScalarFunction for TimeFormat {
 							) {
 								Ok(formatted) => {
 									result_data.push(formatted);
-									result_bitvec.push(true);
 								}
 								Err(reason) => {
 									return Err(
@@ -131,13 +132,12 @@ impl ScalarFunction for TimeFormat {
 						}
 						_ => {
 							result_data.push(String::new());
-							result_bitvec.push(false);
 						}
 					}
 				}
 
 				Ok(ColumnData::Utf8 {
-					container: Utf8Container::new(result_data, result_bitvec.into()),
+					container: Utf8Container::new(result_data),
 					max_bytes: MaxBytes::MAX,
 				})
 			}

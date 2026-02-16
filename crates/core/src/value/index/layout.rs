@@ -67,7 +67,7 @@ impl EncodedIndexLayoutInner {
 		let mut fields = Vec::with_capacity(num_fields);
 		let mut max_align = 1;
 
-		for (i, &value) in types.iter().enumerate() {
+		for (i, value) in types.iter().enumerate() {
 			let size = value.size();
 			let align = value.alignment();
 
@@ -76,7 +76,7 @@ impl EncodedIndexLayoutInner {
 				offset,
 				size,
 				align,
-				value,
+				value: value.clone(),
 				direction: directions[i].clone(),
 			});
 
@@ -138,7 +138,7 @@ impl EncodedIndexLayoutInner {
 	}
 
 	pub fn value(&self, index: usize) -> Type {
-		self.fields[index].value
+		self.fields[index].value.clone()
 	}
 
 	pub fn direction(&self, index: usize) -> &SortDirection {

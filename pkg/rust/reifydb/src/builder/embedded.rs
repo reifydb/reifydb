@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_engine::transform::registry::Transforms;
 use reifydb_function::registry::FunctionsBuilder;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
@@ -22,6 +23,7 @@ pub struct EmbeddedBuilder {
 	interceptors: StandardInterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
+	transforms: Option<Transforms>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
@@ -36,6 +38,7 @@ impl EmbeddedBuilder {
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
+			transforms: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
@@ -56,6 +59,11 @@ impl EmbeddedBuilder {
 		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
 	{
 		self.functions_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_transforms(mut self, transforms: Transforms) -> Self {
+		self.transforms = Some(transforms);
 		self
 	}
 
@@ -80,6 +88,10 @@ impl EmbeddedBuilder {
 
 		if let Some(configurator) = self.functions_configurator {
 			builder = builder.with_functions_configurator(configurator);
+		}
+
+		if let Some(transforms) = self.transforms {
+			builder = builder.with_transforms(transforms);
 		}
 
 		#[cfg(feature = "sub_tracing")]

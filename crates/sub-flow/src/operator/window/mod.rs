@@ -99,7 +99,9 @@ impl WindowEvent {
 			.layout_names
 			.iter()
 			.zip(self.layout_types.iter())
-			.map(|(name, ty)| reifydb_core::encoded::schema::SchemaField::unconstrained(name.clone(), *ty))
+			.map(|(name, ty)| {
+				reifydb_core::encoded::schema::SchemaField::unconstrained(name.clone(), ty.clone())
+			})
 			.collect();
 
 		let layout = Schema::new(fields);
@@ -371,7 +373,7 @@ impl WindowOperator {
 		for (field_idx, (field_name, field_type)) in
 			first_event.layout_names.iter().zip(first_event.layout_types.iter()).enumerate()
 		{
-			let mut column_data = ColumnData::with_capacity(*field_type, events.len());
+			let mut column_data = ColumnData::with_capacity(field_type.clone(), events.len());
 
 			for (_event_idx, event) in events.iter().enumerate() {
 				let row = event.to_row();
@@ -447,7 +449,9 @@ impl WindowOperator {
 		let fields: Vec<reifydb_core::encoded::schema::SchemaField> = result_names
 			.iter()
 			.zip(result_types.iter())
-			.map(|(name, ty)| reifydb_core::encoded::schema::SchemaField::unconstrained(name.clone(), *ty))
+			.map(|(name, ty)| {
+				reifydb_core::encoded::schema::SchemaField::unconstrained(name.clone(), ty.clone())
+			})
 			.collect();
 		let layout = Schema::new(fields);
 		let mut encoded = layout.allocate();

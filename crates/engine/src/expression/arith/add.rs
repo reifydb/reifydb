@@ -7,10 +7,7 @@ use reifydb_type::{
 	fragment::{Fragment, LazyFragment},
 	return_error,
 	value::{
-		container::{
-			number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer,
-			utf8::Utf8Container,
-		},
+		container::{number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container},
 		is::IsNumber,
 		number::{promote::Promote, safe::add::SafeAdd},
 		r#type::{Type, get::GetType},
@@ -25,74 +22,65 @@ pub(crate) fn add_columns(
 	right: &Column,
 	fragment: impl LazyFragment + Copy,
 ) -> crate::Result<Column> {
-	let target = Type::promote(left.get_type(), right.get_type());
+	crate::expression::option::binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
+		let target = Type::promote(left.get_type(), right.get_type());
 
-	dispatch_arith!(
-		&left.data(), &right.data();
-		fixed: add_numeric, arb: add_numeric_clone (ctx, target, fragment);
+		dispatch_arith!(
+			&left.data(), &right.data();
+			fixed: add_numeric, arb: add_numeric_clone (ctx, target, fragment);
 
-		// Duration + Duration
-		(ColumnData::Duration(l), ColumnData::Duration(r)) => {
-			let mut container = TemporalContainer::with_capacity(l.len());
-			for i in 0..l.len() {
-				match (l.get(i), r.get(i)) {
-					(Some(lv), Some(rv)) => container.push(*lv + *rv),
-					_ => container.push_undefined(),
+			// Duration + Duration
+			(ColumnData::Duration(l), ColumnData::Duration(r)) => {
+				let mut container = TemporalContainer::with_capacity(l.len());
+				for i in 0..l.len() {
+					match (l.get(i), r.get(i)) {
+						(Some(lv), Some(rv)) => container.push(*lv + *rv),
+						_ => container.push_default(),
+					}
 				}
+				Ok(Column {
+					name: fragment.fragment(),
+					data: ColumnData::Duration(container),
+				})
 			}
-			Ok(Column {
-				name: fragment.fragment(),
-				data: ColumnData::Duration(container),
-			})
-		}
 
-		// String concatenation
-		(
-			ColumnData::Utf8 {
-				container: l,
-				..
-			},
-			ColumnData::Utf8 {
-				container: r,
-				..
-			},
-		) => concat_strings(ctx, l, r, target, fragment.fragment()),
+			// String concatenation
+			(
+				ColumnData::Utf8 {
+					container: l,
+					..
+				},
+				ColumnData::Utf8 {
+					container: r,
+					..
+				},
+			) => concat_strings(l, r, target, fragment.fragment()),
 
-		// String + Other types (auto-promote to string)
-		(
-			ColumnData::Utf8 {
-				container: l,
-				..
-			},
-			r,
-		) if can_promote_to_string(r) => concat_string_with_other(ctx, l, r, true, target, fragment.fragment()),
+			// String + Other types (auto-promote to string)
+			(
+				ColumnData::Utf8 {
+					container: l,
+					..
+				},
+				r,
+			) if can_promote_to_string(r) => concat_string_with_other(l, r, true, target, fragment.fragment()),
 
-		// Other types + String (auto-promote to string)
-		(
-			l,
-			ColumnData::Utf8 {
-				container: r,
-				..
-			},
-		) if can_promote_to_string(l) => concat_string_with_other(ctx, r, l, false, target, fragment.fragment()),
+			// Other types + String (auto-promote to string)
+			(
+				l,
+				ColumnData::Utf8 {
+					container: r,
+					..
+				},
+			) if can_promote_to_string(l) => concat_string_with_other(r, l, false, target, fragment.fragment()),
 
-		// Handle undefined values - any operation with
-		// undefined results in undefined
-		(ColumnData::Undefined(l), _) => Ok(Column {
-			name: fragment.fragment(),
-			data: ColumnData::Undefined(UndefinedContainer::new(l.len())),
-		}),
-		(_, ColumnData::Undefined(r)) => Ok(Column {
-			name: fragment.fragment(),
-			data: ColumnData::Undefined(UndefinedContainer::new(r.len())),
-		}),
-
-		_ => return_error!(add_cannot_be_applied_to_incompatible_types(
-			fragment.fragment(),
-			left.get_type(),
-			right.get_type(),
-		)),
-	)
+			_ => return_error!(add_cannot_be_applied_to_incompatible_types(
+				fragment.fragment(),
+				left.get_type(),
+				right.get_type(),
+			)),
+		)
+	})
 }
 
 fn add_numeric<L, R>(
@@ -111,47 +99,14 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	// Fast path: when both inputs are fully defined
-	// We still need to handle potential overflow (which produces undefined
-	// with Undefined policy)
-	if l.is_fully_defined() && r.is_fully_defined() {
-		let mut data = ctx.pooled(target, l.len());
-		let l_data = l.data();
-		let r_data = r.data();
-
-		// Even with fully-defined inputs, operations can produce
-		// undefined values due to overflow (with Undefined policy) or
-		// other errors
-		for i in 0..l.len() {
-			// Safe to index directly since we know all values are
-			// defined
-			if let Some(value) = ctx.add(&l_data[i], &r_data[i], fragment)? {
-				data.push(value);
-			} else {
-				// Overflow with Undefined policy produces
-				// undefined
-				data.push_undefined()
-			}
-		}
-
-		return Ok(Column {
-			name: fragment.fragment(),
-			data,
-		});
-	}
-
-	// Slow path: some input values may be undefined
-	let mut data = ctx.pooled(target, l.len());
+	let mut data = ColumnData::with_capacity(target, l.len());
+	let l_data = l.data();
+	let r_data = r.data();
 	for i in 0..l.len() {
-		match (l.get(i), r.get(i)) {
-			(Some(l), Some(r)) => {
-				if let Some(value) = ctx.add(l, r, fragment)? {
-					data.push(value);
-				} else {
-					data.push_undefined()
-				}
-			}
-			_ => data.push_undefined(),
+		if let Some(value) = ctx.add(&l_data[i], &r_data[i], fragment)? {
+			data.push(value);
+		} else {
+			data.push_none()
 		}
 	}
 	Ok(Column {
@@ -176,7 +131,7 @@ where
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ctx.pooled(target, l.len());
+	let mut data = ColumnData::with_capacity(target, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l_val), Some(r_val)) => {
@@ -185,10 +140,10 @@ where
 				if let Some(value) = ctx.add(&l_clone, &r_clone, fragment)? {
 					data.push(value);
 				} else {
-					data.push_undefined()
+					data.push_none()
 				}
 			}
-			_ => data.push_undefined(),
+			_ => data.push_none(),
 		}
 	}
 	Ok(Column {
@@ -222,23 +177,17 @@ fn can_promote_to_string(data: &ColumnData) -> bool {
 	)
 }
 
-fn concat_strings(
-	ctx: &EvalContext,
-	l: &Utf8Container,
-	r: &Utf8Container,
-	target: Type,
-	fragment: Fragment,
-) -> crate::Result<Column> {
+fn concat_strings(l: &Utf8Container, r: &Utf8Container, target: Type, fragment: Fragment) -> crate::Result<Column> {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ctx.pooled(target, l.len());
+	let mut data = ColumnData::with_capacity(target, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l_str), Some(r_str)) => {
 				let concatenated = format!("{}{}", l_str, r_str);
 				data.push(concatenated);
 			}
-			_ => data.push_undefined(),
+			_ => data.push_none(),
 		}
 	}
 	Ok(Column {
@@ -248,7 +197,6 @@ fn concat_strings(
 }
 
 fn concat_string_with_other(
-	ctx: &EvalContext,
 	string_data: &Utf8Container,
 	other_data: &ColumnData,
 	string_is_left: bool,
@@ -257,7 +205,7 @@ fn concat_string_with_other(
 ) -> crate::Result<Column> {
 	debug_assert_eq!(string_data.len(), other_data.len());
 
-	let mut data = ctx.pooled(target, string_data.len());
+	let mut data = ColumnData::with_capacity(target, string_data.len());
 	for i in 0..string_data.len() {
 		match (string_data.get(i), other_data.is_defined(i)) {
 			(Some(str_val), true) => {
@@ -269,7 +217,7 @@ fn concat_string_with_other(
 				};
 				data.push(concatenated);
 			}
-			_ => data.push_undefined(),
+			_ => data.push_none(),
 		}
 	}
 	Ok(Column {

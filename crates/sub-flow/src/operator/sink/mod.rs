@@ -64,8 +64,8 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 			target: Some(TargetColumn::Partial {
 				source_name: None,
 				column_name: Some(target_col.name.clone()),
-				column_type: target_type,
-				policies: vec![ColumnPolicyKind::Saturation(ColumnSaturationPolicy::Undefined)],
+				column_type: target_type.clone(),
+				policies: vec![ColumnPolicyKind::Saturation(ColumnSaturationPolicy::None)],
 			}),
 			columns: columns.clone(),
 			row_count,
@@ -83,7 +83,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 			let casted = cast_column_data(
 				&ctx,
 				source_col.data(),
-				target_type,
+				target_type.clone(),
 				Fragment::internal(&target_col.name),
 			)?;
 			result_columns.push(Column {
@@ -123,15 +123,15 @@ pub(crate) fn coerce_subscription_columns(
 	let mut result_columns = Vec::with_capacity(target_columns.len());
 
 	for target_col in target_columns {
-		let target_type = target_col.ty;
+		let target_type = target_col.ty.clone();
 
 		// Create context with Undefined saturation policy for this column
 		let ctx = EvalContext {
 			target: Some(TargetColumn::Partial {
 				source_name: None,
 				column_name: Some(target_col.name.clone()),
-				column_type: target_type,
-				policies: vec![ColumnPolicyKind::Saturation(ColumnSaturationPolicy::Undefined)],
+				column_type: target_type.clone(),
+				policies: vec![ColumnPolicyKind::Saturation(ColumnSaturationPolicy::None)],
 			}),
 			columns: columns.clone(),
 			row_count,
@@ -149,7 +149,7 @@ pub(crate) fn coerce_subscription_columns(
 			let casted = cast_column_data(
 				&ctx,
 				source_col.data(),
-				target_type,
+				target_type.clone(),
 				Fragment::internal(&target_col.name),
 			)?;
 			result_columns.push(Column {
@@ -227,7 +227,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 	for (col_pos, dictionary) in &dict_columns {
 		let col = &columns[*col_pos];
 		let row_count = col.data().len();
-		let mut new_data = ColumnData::with_capacity(dictionary.value_type, row_count);
+		let mut new_data = ColumnData::with_capacity(dictionary.value_type.clone(), row_count);
 
 		for row_idx in 0..row_count {
 			let id_value = col.data().get_value(row_idx);
@@ -237,15 +237,15 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 				match txn.get(&index_key)? {
 					Some(encoded) => {
 						let value: Value =
-							postcard::from_bytes(&encoded).unwrap_or(Value::Undefined);
+							postcard::from_bytes(&encoded).unwrap_or(Value::None);
 						new_data.push_value(value);
 					}
 					None => {
-						new_data.push_value(Value::Undefined);
+						new_data.push_value(Value::None);
 					}
 				}
 			} else {
-				new_data.push_value(Value::Undefined);
+				new_data.push_value(Value::None);
 			}
 		}
 

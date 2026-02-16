@@ -184,7 +184,7 @@ fn execute_table_insert<V: ValidationMode>(
 	for mut values in coerced_rows {
 		// Handle auto-increment columns
 		for (idx, col) in table.columns.iter().enumerate() {
-			if col.auto_increment && matches!(values[idx], Value::Undefined) {
+			if col.auto_increment && matches!(values[idx], Value::None) {
 				values[idx] = catalog.column_sequence_next_value(txn, table.id, col.id)?;
 			}
 		}

@@ -277,7 +277,7 @@ impl JoinedColumnsBuilder {
 		// Add right columns with Undefined values
 		for (right_col, aliased_name) in right_schema.columns.iter().zip(self.right_column_names.iter()) {
 			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), 1);
-			col_data.push_value(Value::Undefined);
+			col_data.push_value(Value::None);
 			result_columns.push(Column {
 				name: Fragment::internal(aliased_name),
 				data: col_data,
@@ -321,7 +321,7 @@ impl JoinedColumnsBuilder {
 		for (right_col, aliased_name) in right_schema.columns.iter().zip(self.right_column_names.iter()) {
 			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), count);
 			for _ in 0..count {
-				col_data.push_value(Value::Undefined);
+				col_data.push_value(Value::None);
 			}
 			result_columns.push(Column {
 				name: Fragment::internal(aliased_name),

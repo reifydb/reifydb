@@ -104,7 +104,7 @@ impl<'a> InlineDataNode {
 					min_val = min_val.min(v as i128);
 					max_val = max_val.max(v as i128);
 				}
-				Value::Undefined => {
+				Value::None => {
 					// Skip undefined values
 				}
 				_ => {
@@ -161,7 +161,7 @@ impl<'a> InlineDataNode {
 		for column_name in all_columns {
 			// First pass: collect all values in a wide column
 			let mut all_values = Vec::new();
-			let mut first_value_type = Type::Undefined;
+			let mut first_value_type: Option<Type> = None;
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(&column_name) {
@@ -191,45 +191,47 @@ impl<'a> InlineDataNode {
 					if let Some(value) = iter.next() {
 						// Track the first non-undefined
 						// value type we see
-						if first_value_type == Type::Undefined
-							&& value.get_type() != Type::Undefined
-						{
-							first_value_type = value.get_type();
+						if first_value_type.is_none() && !matches!(value, Value::None) {
+							first_value_type = Some(value.get_type());
 						}
 						all_values.push(value);
 					} else {
-						all_values.push(Value::Undefined);
+						all_values.push(Value::None);
 					}
 				} else {
-					all_values.push(Value::Undefined);
+					all_values.push(Value::None);
 				}
 			}
 
 			// Determine the initial wide type based on what we saw
-			let wide_type = if first_value_type.is_integer() {
-				Type::Int16 // Start with widest integer type
-			} else if first_value_type.is_floating_point() {
-				Type::Float8 // Start with widest float type
-			} else if first_value_type == Type::Utf8 {
-				Type::Utf8
-			} else if first_value_type == Type::Boolean {
-				Type::Boolean
+			let wide_type = if let Some(ref fvt) = first_value_type {
+				if fvt.is_integer() {
+					Some(Type::Int16) // Start with widest integer type
+				} else if fvt.is_floating_point() {
+					Some(Type::Float8) // Start with widest float type
+				} else if *fvt == Type::Utf8 {
+					Some(Type::Utf8)
+				} else if *fvt == Type::Boolean {
+					Some(Type::Boolean)
+				} else {
+					None
+				}
 			} else {
-				Type::Undefined
+				None
 			};
 
 			// Create the wide column and add all values
-			let mut column_data = if wide_type == Type::Undefined {
-				ColumnData::undefined(all_values.len())
+			let mut column_data = if wide_type.is_none() {
+				ColumnData::none_typed(Type::Boolean, all_values.len())
 			} else {
-				let mut data = ColumnData::with_capacity(wide_type, 0);
+				let mut data = ColumnData::with_capacity(wide_type.clone().unwrap(), 0);
 
 				// Add each value, casting to the wide
 				// type if needed
 				for value in &all_values {
-					if value.get_type() == Type::Undefined {
-						data.push_undefined();
-					} else if value.get_type() == wide_type {
+					if matches!(value, Value::None) {
+						data.push_none();
+					} else if wide_type.as_ref().map_or(false, |wt| value.get_type() == *wt) {
 						data.push_value(value.clone());
 					} else {
 						// Cast to the wide type
@@ -247,17 +249,21 @@ impl<'a> InlineDataNode {
 							arena: None,
 						};
 
-						match cast_column_data(&ctx, &temp_data, wide_type, || Fragment::none())
-						{
+						match cast_column_data(
+							&ctx,
+							&temp_data,
+							wide_type.clone().unwrap(),
+							|| Fragment::none(),
+						) {
 							Ok(casted) => {
 								if let Some(casted_value) = casted.iter().next() {
 									data.push_value(casted_value);
 								} else {
-									data.push_undefined();
+									data.push_none();
 								}
 							}
 							Err(_) => {
-								data.push_undefined();
+								data.push_none();
 							}
 						}
 					}
@@ -268,7 +274,7 @@ impl<'a> InlineDataNode {
 
 			// Now optimize: find the narrowest type and demote if
 			// possible
-			if wide_type == Type::Int16 {
+			if wide_type == Some(Type::Int16) {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
 				if optimal_type != Type::Int16 {
 					// Demote to the optimal type
@@ -330,7 +336,7 @@ impl<'a> InlineDataNode {
 			// Find the corresponding source column for policies
 			let table_column = source.columns().iter().find(|col| col.name == column_name.text()).unwrap();
 
-			let mut column_data = ColumnData::undefined_typed(table_column.constraint.get_type(), 0);
+			let mut column_data = ColumnData::none_typed(table_column.constraint.get_type(), 0);
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(column_name.text()) {
@@ -371,18 +377,17 @@ impl<'a> InlineDataNode {
 					} else if eval_len == 0 {
 						// If evaluation returned empty,
 						// push undefined
-						column_data.push_value(Value::Undefined);
+						column_data.push_value(Value::None);
 					} else {
 						// This shouldn't happen for
 						// single-encoded evaluation
 						// but if it does, take only the
 						// first value
-						let first_value =
-							evaluated.data().iter().next().unwrap_or(Value::Undefined);
+						let first_value = evaluated.data().iter().next().unwrap_or(Value::None);
 						column_data.push_value(first_value);
 					}
 				} else {
-					column_data.push_value(Value::Undefined);
+					column_data.push_value(Value::None);
 				}
 			}
 

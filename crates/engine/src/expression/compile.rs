@@ -24,7 +24,7 @@ use reifydb_type::{
 	},
 	fragment::Fragment,
 	return_error,
-	value::{Value, container::undefined::UndefinedContainer, r#type::Type},
+	value::{Value, r#type::Type},
 };
 
 use super::context::CompileContext;
@@ -86,11 +86,8 @@ impl CompiledExpr {
 			CompiledExprInner::Multi(f) => {
 				let columns = f(ctx)?;
 				Ok(columns.into_iter().next().unwrap_or_else(|| Column {
-					name: Fragment::internal("undefined"),
-					data: ColumnData::with_capacity(
-						reifydb_type::value::r#type::Type::Undefined,
-						0,
-					),
+					name: Fragment::internal("none"),
+					data: ColumnData::with_capacity(Type::Option(Box::new(Type::Boolean)), 0),
 				}))
 			}
 		}
@@ -238,7 +235,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<Equal>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -256,7 +252,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<NotEqual>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -274,7 +269,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<GreaterThan>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -292,7 +286,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<GreaterThanEqual>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -310,7 +303,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<LessThan>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -328,7 +320,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<LessThanEqual>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -382,12 +373,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 		}
 
 		Expression::Type(e) => {
-			let ty = e.ty;
+			let ty = e.ty.clone();
 			let fragment = e.fragment.clone();
 			CompiledExpr::new(move |ctx| {
 				let row_count = ctx.take.unwrap_or(ctx.row_count);
 				let values: Vec<Box<Value>> =
-					(0..row_count).map(|_| Box::new(Value::Type(ty))).collect();
+					(0..row_count).map(|_| Box::new(Value::Type(ty.clone()))).collect();
 				Ok(Column::new(fragment.text(), ColumnData::any(values)))
 			})
 		}
@@ -420,29 +411,17 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let upper_col = upper.execute(ctx)?;
 
 				let ge_result = compare_columns::<GreaterThanEqual>(
-					ctx,
 					&value_col,
 					&lower_col,
 					fragment.clone(),
 					greater_than_equal_cannot_be_applied_to_incompatible_types,
 				)?;
 				let le_result = compare_columns::<LessThanEqual>(
-					ctx,
 					&value_col,
 					&upper_col,
 					fragment.clone(),
 					less_than_equal_cannot_be_applied_to_incompatible_types,
 				)?;
-
-				if matches!(ge_result.data(), ColumnData::Undefined(_))
-					|| matches!(le_result.data(), ColumnData::Undefined(_))
-				{
-					let len = ge_result.data().len();
-					return Ok(Column {
-						name: fragment.clone(),
-						data: ColumnData::Undefined(UndefinedContainer::new(len)),
-					});
-				}
 
 				if !matches!(ge_result.data(), ColumnData::Bool(_))
 					|| !matches!(le_result.data(), ColumnData::Bool(_))
@@ -509,7 +488,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 
 				let first_col = list[0].execute(ctx)?;
 				let mut result = compare_columns::<Equal>(
-					ctx,
 					&value_col,
 					&first_col,
 					fragment.clone(),
@@ -519,7 +497,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				for list_expr in list.iter().skip(1) {
 					let list_col = list_expr.execute(ctx)?;
 					let eq_result = compare_columns::<Equal>(
-						ctx,
 						&value_col,
 						&list_col,
 						fragment.clone(),
@@ -539,14 +516,14 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 		Expression::Cast(e) => {
 			if let Expression::Constant(const_expr) = e.expression.as_ref() {
 				let const_expr = const_expr.clone();
-				let target_type = e.to.ty;
+				let target_type = e.to.ty.clone();
 				CompiledExpr::new(move |ctx| {
 					let row_count = ctx.take.unwrap_or(ctx.row_count);
 					let data = constant_value(&const_expr, row_count)?;
 					let casted = if data.get_type() == target_type {
 						data
 					} else {
-						constant_value_of(&const_expr, target_type, row_count)?
+						constant_value_of(&const_expr, target_type.clone(), row_count)?
 					};
 					Ok(Column {
 						name: const_expr.full_fragment_owned(),
@@ -555,15 +532,22 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				})
 			} else {
 				let inner = compile_expression(_ctx, &e.expression)?;
-				let target_type = e.to.ty;
+				let target_type = e.to.ty.clone();
 				let inner_fragment = e.expression.full_fragment_owned();
 				CompiledExpr::new(move |ctx| {
 					let column = inner.execute(ctx)?;
 					let frag = inner_fragment.clone();
-					let casted = cast_column_data(ctx, &column.data(), target_type, &|| {
-						inner_fragment.clone()
-					})
-					.map_err(|e| error!(cast::invalid_number(frag, target_type, e.diagnostic())))?;
+					let casted =
+						cast_column_data(ctx, &column.data(), target_type.clone(), &|| {
+							inner_fragment.clone()
+						})
+						.map_err(|e| {
+							error!(cast::invalid_number(
+								frag,
+								target_type.clone(),
+								e.diagnostic()
+							))
+						})?;
 					Ok(Column {
 						name: column.name_owned(),
 						data: casted,
@@ -619,9 +603,9 @@ fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> crate::Res
 // --- Helper functions (moved from execute.rs) ---
 
 fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			if l_container.is_fully_defined() && r_container.is_fully_defined() {
+	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
+		match (&left.data(), &right.data()) {
+			(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
 				let data: Vec<bool> = l_container
 					.data()
 					.iter()
@@ -633,57 +617,28 @@ fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> crate::Res
 					name: fragment.clone(),
 					data: ColumnData::bool(data),
 				})
-			} else {
-				let mut data = Vec::with_capacity(l_container.data().len());
-				let mut bitvec = Vec::with_capacity(l_container.bitvec().len());
-
-				for i in 0..l_container.data().len() {
-					match (l_container.get(i), r_container.get(i)) {
-						(Some(l), Some(r)) => {
-							data.push(l && r);
-							bitvec.push(true);
-						}
-						_ => {
-							data.push(false);
-							bitvec.push(false);
-						}
-					}
+			}
+			(l, r) => {
+				if l.is_number() || r.is_number() {
+					return_error!(and_can_not_applied_to_number(fragment.clone()));
+				} else if l.is_text() || r.is_text() {
+					return_error!(and_can_not_applied_to_text(fragment.clone()));
+				} else if l.is_temporal() || r.is_temporal() {
+					return_error!(and_can_not_applied_to_temporal(fragment.clone()));
+				} else if l.is_uuid() || r.is_uuid() {
+					return_error!(and_can_not_applied_to_uuid(fragment.clone()));
+				} else {
+					unimplemented!("{} and {}", l.get_type(), r.get_type());
 				}
-
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool_with_bitvec(data, bitvec),
-				})
 			}
 		}
-		(ColumnData::Undefined(container), _) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(_, ColumnData::Undefined(container)) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(l, r) => {
-			if l.is_number() || r.is_number() {
-				return_error!(and_can_not_applied_to_number(fragment.clone()));
-			} else if l.is_text() || r.is_text() {
-				return_error!(and_can_not_applied_to_text(fragment.clone()));
-			} else if l.is_temporal() || r.is_temporal() {
-				return_error!(and_can_not_applied_to_temporal(fragment.clone()));
-			} else if l.is_uuid() || r.is_uuid() {
-				return_error!(and_can_not_applied_to_uuid(fragment.clone()));
-			} else {
-				unimplemented!("{} and {}", l.get_type(), r.get_type());
-			}
-		}
-	}
+	})
 }
 
 fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			if l_container.is_fully_defined() && r_container.is_fully_defined() {
+	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
+		match (&left.data(), &right.data()) {
+			(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
 				let data: Vec<bool> = l_container
 					.data()
 					.iter()
@@ -695,57 +650,28 @@ fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> crate::Resu
 					name: fragment.clone(),
 					data: ColumnData::bool(data),
 				})
-			} else {
-				let mut data = Vec::with_capacity(l_container.data().len());
-				let mut bitvec = Vec::with_capacity(l_container.bitvec().len());
-
-				for i in 0..l_container.data().len() {
-					match (l_container.get(i), r_container.get(i)) {
-						(Some(l), Some(r)) => {
-							data.push(l || r);
-							bitvec.push(true);
-						}
-						_ => {
-							data.push(false);
-							bitvec.push(false);
-						}
-					}
+			}
+			(l, r) => {
+				if l.is_number() || r.is_number() {
+					return_error!(or_can_not_applied_to_number(fragment.clone()));
+				} else if l.is_text() || r.is_text() {
+					return_error!(or_can_not_applied_to_text(fragment.clone()));
+				} else if l.is_temporal() || r.is_temporal() {
+					return_error!(or_can_not_applied_to_temporal(fragment.clone()));
+				} else if l.is_uuid() || r.is_uuid() {
+					return_error!(or_can_not_applied_to_uuid(fragment.clone()));
+				} else {
+					unimplemented!("{} or {}", l.get_type(), r.get_type());
 				}
-
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool_with_bitvec(data, bitvec),
-				})
 			}
 		}
-		(ColumnData::Undefined(container), _) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(_, ColumnData::Undefined(container)) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(l, r) => {
-			if l.is_number() || r.is_number() {
-				return_error!(or_can_not_applied_to_number(fragment.clone()));
-			} else if l.is_text() || r.is_text() {
-				return_error!(or_can_not_applied_to_text(fragment.clone()));
-			} else if l.is_temporal() || r.is_temporal() {
-				return_error!(or_can_not_applied_to_temporal(fragment.clone()));
-			} else if l.is_uuid() || r.is_uuid() {
-				return_error!(or_can_not_applied_to_uuid(fragment.clone()));
-			} else {
-				unimplemented!("{} or {}", l.get_type(), r.get_type());
-			}
-		}
-	}
+	})
 }
 
 fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			if l_container.is_fully_defined() && r_container.is_fully_defined() {
+	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
+		match (&left.data(), &right.data()) {
+			(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
 				let data: Vec<bool> = l_container
 					.data()
 					.iter()
@@ -757,13 +683,40 @@ fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> crate::Res
 					name: fragment.clone(),
 					data: ColumnData::bool(data),
 				})
-			} else {
-				let mut data = Vec::with_capacity(l_container.data().len());
-				let mut bitvec = Vec::with_capacity(l_container.bitvec().len());
+			}
+			(l, r) => {
+				if l.is_number() || r.is_number() {
+					return_error!(xor_can_not_applied_to_number(fragment.clone()));
+				} else if l.is_text() || r.is_text() {
+					return_error!(xor_can_not_applied_to_text(fragment.clone()));
+				} else if l.is_temporal() || r.is_temporal() {
+					return_error!(xor_can_not_applied_to_temporal(fragment.clone()));
+				} else if l.is_uuid() || r.is_uuid() {
+					return_error!(xor_can_not_applied_to_uuid(fragment.clone()));
+				} else {
+					unimplemented!("{} xor {}", l.get_type(), r.get_type());
+				}
+			}
+		}
+	})
+}
 
-				for i in 0..l_container.data().len() {
-					if l_container.is_defined(i) && r_container.is_defined(i) {
-						data.push(l_container.data().get(i) != r_container.data().get(i));
+fn or_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<Column> {
+	super::option::binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| {
+		match (left.data(), right.data()) {
+			(ColumnData::Bool(l), ColumnData::Bool(r)) => {
+				let len = l.len();
+				let mut data = Vec::with_capacity(len);
+				let mut bitvec = Vec::with_capacity(len);
+
+				for i in 0..len {
+					let l_defined = l.is_defined(i);
+					let r_defined = r.is_defined(i);
+					let l_val = l.data().get(i);
+					let r_val = r.data().get(i);
+
+					if l_defined && r_defined {
+						data.push(l_val || r_val);
 						bitvec.push(true);
 					} else {
 						data.push(false);
@@ -776,75 +729,17 @@ fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> crate::Res
 					data: ColumnData::bool_with_bitvec(data, bitvec),
 				})
 			}
-		}
-		(ColumnData::Undefined(container), _) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(_, ColumnData::Undefined(container)) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(l, r) => {
-			if l.is_number() || r.is_number() {
-				return_error!(xor_can_not_applied_to_number(fragment.clone()));
-			} else if l.is_text() || r.is_text() {
-				return_error!(xor_can_not_applied_to_text(fragment.clone()));
-			} else if l.is_temporal() || r.is_temporal() {
-				return_error!(xor_can_not_applied_to_temporal(fragment.clone()));
-			} else if l.is_uuid() || r.is_uuid() {
-				return_error!(xor_can_not_applied_to_uuid(fragment.clone()));
-			} else {
-				unimplemented!("{} xor {}", l.get_type(), r.get_type());
+			_ => {
+				unreachable!(
+					"OR columns should only be called with boolean columns from equality comparisons"
+				)
 			}
 		}
-	}
-}
-
-fn or_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<Column> {
-	match (left.data(), right.data()) {
-		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
-			let len = l.len();
-			let mut data = Vec::with_capacity(len);
-			let mut bitvec = Vec::with_capacity(len);
-
-			for i in 0..len {
-				let l_defined = l.is_defined(i);
-				let r_defined = r.is_defined(i);
-				let l_val = l.data().get(i);
-				let r_val = r.data().get(i);
-
-				if l_defined && r_defined {
-					data.push(l_val || r_val);
-					bitvec.push(true);
-				} else {
-					data.push(false);
-					bitvec.push(false);
-				}
-			}
-
-			Ok(Column {
-				name: fragment,
-				data: ColumnData::bool_with_bitvec(data, bitvec),
-			})
-		}
-		(ColumnData::Undefined(u), _) | (_, ColumnData::Undefined(u)) => {
-			let len = u.len();
-			let data = vec![false; len];
-			let bitvec = vec![false; len];
-			Ok(Column {
-				name: fragment,
-				data: ColumnData::bool_with_bitvec(data, bitvec),
-			})
-		}
-		_ => {
-			unreachable!("OR columns should only be called with boolean columns from equality comparisons")
-		}
-	}
+	})
 }
 
 fn negate_column(col: Column, fragment: Fragment) -> Column {
-	match col.data() {
+	super::option::unary_op_unwrap_option(&col, |col| match col.data() {
 		ColumnData::Bool(container) => {
 			let len = container.len();
 			let mut data = Vec::with_capacity(len);
@@ -860,21 +755,21 @@ fn negate_column(col: Column, fragment: Fragment) -> Column {
 				}
 			}
 
-			Column {
-				name: fragment,
+			Ok(Column {
+				name: fragment.clone(),
 				data: ColumnData::bool_with_bitvec(data, bitvec),
-			}
+			})
 		}
-		ColumnData::Undefined(_) => col,
 		_ => unreachable!("negate_column should only be called with boolean columns"),
-	}
+	})
+	.unwrap()
 }
 
 fn is_truthy(value: &Value) -> bool {
 	match value {
 		Value::Boolean(true) => true,
 		Value::Boolean(false) => false,
-		Value::Undefined => false,
+		Value::None => false,
 		Value::Int1(0) | Value::Int2(0) | Value::Int4(0) | Value::Int8(0) | Value::Int16(0) => false,
 		Value::Uint1(0) | Value::Uint2(0) | Value::Uint4(0) | Value::Uint8(0) | Value::Uint16(0) => false,
 		Value::Int1(_) | Value::Int2(_) | Value::Int4(_) | Value::Int8(_) | Value::Int16(_) => true,
@@ -922,22 +817,33 @@ fn execute_if_multi(
 			} else if let Some(else_exprs) = else_branch {
 				execute_multi_exprs(ctx, else_exprs)?
 			} else {
-				let mut data = ColumnData::with_capacity(Type::Undefined, ctx.row_count);
-				for _ in 0..ctx.row_count {
-					data.push_undefined();
-				}
-				vec![Column {
-					name: Fragment::internal("undefined"),
-					data,
-				}]
+				vec![]
 			}
 		};
 
+		// Handle empty branch results (from empty blocks like `{}` or no-branch-taken)
+		let is_empty_result = branch_results.is_empty();
+		if is_empty_result {
+			if let Some(data) = result_data.as_mut() {
+				for col_data in data.iter_mut() {
+					col_data.push_value(Value::None);
+				}
+			}
+			continue;
+		}
+
+		// Initialize from first non-empty branch, backfilling previous empty rows
 		if result_data.is_none() {
-			result_data = Some(branch_results
+			let mut data: Vec<ColumnData> = branch_results
 				.iter()
 				.map(|col| ColumnData::with_capacity(col.data().get_type(), ctx.row_count))
-				.collect());
+				.collect();
+			for _ in 0..row_idx {
+				for col_data in data.iter_mut() {
+					col_data.push_value(Value::None);
+				}
+			}
+			result_data = Some(data);
 			result_names = branch_results.iter().map(|col| col.name.clone()).collect();
 		}
 
@@ -962,8 +868,8 @@ fn execute_if_multi(
 
 	if result.is_empty() {
 		Ok(vec![Column {
-			name: Fragment::internal("undefined"),
-			data: ColumnData::with_capacity(Type::Undefined, 0),
+			name: Fragment::internal("none"),
+			data: ColumnData::none_typed(Type::Boolean, ctx.row_count),
 		}])
 	} else {
 		Ok(result)

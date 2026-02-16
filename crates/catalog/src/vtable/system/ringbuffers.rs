@@ -56,7 +56,7 @@ impl<T: AsTransaction> VTable<T> for RingBuffers {
 			names.push(ringbuffer.name.as_str());
 			capacities.push(ringbuffer.capacity);
 			primary_keys.push_value(
-				ringbuffer.primary_key.map(|pk| pk.id.0).map(Value::Uint8).unwrap_or(Value::Undefined),
+				ringbuffer.primary_key.map(|pk| pk.id.0).map(Value::Uint8).unwrap_or(Value::None),
 			);
 		}
 

@@ -13,7 +13,7 @@ use crate::{
 		operator::Operator,
 		separator::Separator::NewLine,
 		token::{
-			Literal::{False, Number, Temporal, Text, True, Undefined},
+			Literal::{False, None, Number, Temporal, Text, True},
 			TokenKind,
 		},
 	},
@@ -123,7 +123,7 @@ impl<'bump> Parser<'bump> {
 				_ if current.is_literal(False) => Ok(Ast::Literal(self.parse_literal_false()?)),
 				_ if current.is_literal(Text) => Ok(Ast::Literal(self.parse_literal_text()?)),
 				_ if current.is_literal(Temporal) => Ok(Ast::Literal(self.parse_literal_temporal()?)),
-				_ if current.is_literal(Undefined) => Ok(Ast::Literal(self.parse_literal_undefined()?)),
+				_ if current.is_literal(None) => Ok(Ast::Literal(self.parse_literal_none()?)),
 				_ if current.is_identifier() => {
 					if self.is_function_call_pattern() {
 						Ok(Ast::CallFunction(self.parse_function_call()?))

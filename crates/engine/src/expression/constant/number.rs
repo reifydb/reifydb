@@ -19,7 +19,7 @@ impl NumberParser {
 	/// Parse a number to a specific target type with detailed error
 	/// handling and range checking
 	pub(crate) fn from_number<'a>(fragment: Fragment, target: Type, row_count: usize) -> crate::Result<ColumnData> {
-		match target {
+		match &target {
 			Type::Boolean => Self::parse_bool(fragment, row_count),
 			Type::Float4 => Self::parse_float4(fragment, row_count),
 			Type::Float8 => Self::parse_float8(fragment, row_count),
@@ -77,7 +77,7 @@ impl NumberParser {
 			} else {
 				return_error!(cast::invalid_number(
 					fragment.clone(),
-					ty,
+					ty.clone(),
 					number::number_out_of_range(fragment, ty, None),
 				))
 			}
@@ -101,14 +101,14 @@ impl NumberParser {
 			} else {
 				return_error!(cast::invalid_number(
 					fragment.clone(),
-					ty,
+					ty.clone(),
 					number::number_out_of_range(fragment, ty, None),
 				))
 			}
 		} else {
 			return_error!(cast::invalid_number(
 				fragment.clone(),
-				ty,
+				ty.clone(),
 				number::invalid_number_format(fragment, ty),
 			))
 		}
@@ -124,14 +124,14 @@ impl NumberParser {
 			} else {
 				return_error!(cast::invalid_number(
 					fragment.clone(),
-					ty,
+					ty.clone(),
 					number::number_out_of_range(fragment, ty, None),
 				))
 			}
 		} else {
 			return_error!(cast::invalid_number(
 				fragment.clone(),
-				ty,
+				ty.clone(),
 				number::invalid_number_format(fragment, ty),
 			))
 		}
@@ -147,14 +147,14 @@ impl NumberParser {
 			} else {
 				return_error!(cast::invalid_number(
 					fragment.clone(),
-					ty,
+					ty.clone(),
 					number::number_out_of_range(fragment, ty, None),
 				))
 			}
 		} else {
 			return_error!(cast::invalid_number(
 				fragment.clone(),
-				ty,
+				ty.clone(),
 				number::invalid_number_format(fragment, ty),
 			))
 		}
@@ -170,14 +170,14 @@ impl NumberParser {
 			} else {
 				return_error!(cast::invalid_number(
 					fragment.clone(),
-					ty,
+					ty.clone(),
 					number::number_out_of_range(fragment, ty, None),
 				))
 			}
 		} else {
 			return_error!(cast::invalid_number(
 				fragment.clone(),
-				ty,
+				ty.clone(),
 				number::invalid_number_format(fragment, ty),
 			))
 		}
@@ -193,14 +193,14 @@ impl NumberParser {
 			} else {
 				return_error!(cast::invalid_number(
 					fragment.clone(),
-					ty,
+					ty.clone(),
 					number::number_out_of_range(fragment, ty, None),
 				))
 			}
 		} else {
 			return_error!(cast::invalid_number(
 				fragment.clone(),
-				ty,
+				ty.clone(),
 				number::invalid_number_format(fragment, ty),
 			))
 		}
@@ -216,14 +216,14 @@ impl NumberParser {
 			} else {
 				return_error!(cast::invalid_number(
 					fragment.clone(),
-					ty,
+					ty.clone(),
 					number::number_out_of_range(fragment, ty, None),
 				))
 			}
 		} else {
 			return_error!(cast::invalid_number(
 				fragment.clone(),
-				ty,
+				ty.clone(),
 				number::invalid_number_format(fragment, ty),
 			))
 		}
@@ -239,14 +239,14 @@ impl NumberParser {
 			} else {
 				return_error!(cast::invalid_number(
 					fragment.clone(),
-					ty,
+					ty.clone(),
 					number::number_out_of_range(fragment, ty, None),
 				))
 			}
 		} else {
 			return_error!(cast::invalid_number(
 				fragment.clone(),
-				ty,
+				ty.clone(),
 				number::invalid_number_format(fragment, ty),
 			))
 		}
@@ -262,14 +262,14 @@ impl NumberParser {
 			} else {
 				return_error!(cast::invalid_number(
 					fragment.clone(),
-					ty,
+					ty.clone(),
 					number::number_out_of_range(fragment, ty, None),
 				))
 			}
 		} else {
 			return_error!(cast::invalid_number(
 				fragment.clone(),
-				ty,
+				ty.clone(),
 				number::invalid_number_format(fragment, ty),
 			))
 		}
@@ -285,14 +285,14 @@ impl NumberParser {
 			} else {
 				return_error!(cast::invalid_number(
 					fragment.clone(),
-					ty,
+					ty.clone(),
 					number::number_out_of_range(fragment, ty, None),
 				))
 			}
 		} else {
 			return_error!(cast::invalid_number(
 				fragment.clone(),
-				ty,
+				ty.clone(),
 				number::invalid_number_format(fragment, ty),
 			))
 		}

@@ -15,7 +15,8 @@ impl From<&Vec<ColumnDef>> for Schema {
 }
 impl From<&[ColumnDef]> for Schema {
 	fn from(value: &[ColumnDef]) -> Self {
-		let fields = value.iter().map(|col| SchemaField::new(col.name.clone(), col.constraint)).collect();
+		let fields =
+			value.iter().map(|col| SchemaField::new(col.name.clone(), col.constraint.clone())).collect();
 		Schema::new(fields)
 	}
 }
@@ -29,7 +30,7 @@ impl From<&[SubscriptionColumnDef]> for Schema {
 	fn from(value: &[SubscriptionColumnDef]) -> Self {
 		let fields = value
 			.iter()
-			.map(|col| SchemaField::new(col.name.clone(), TypeConstraint::unconstrained(col.ty)))
+			.map(|col| SchemaField::new(col.name.clone(), TypeConstraint::unconstrained(col.ty.clone())))
 			.collect();
 		Schema::new(fields)
 	}

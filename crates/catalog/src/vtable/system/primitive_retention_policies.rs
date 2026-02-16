@@ -69,8 +69,8 @@ impl<T: AsTransaction> VTable<T> for PrimitiveRetentionPolicies {
 			match entry.policy {
 				RetentionPolicy::KeepForever => {
 					policy_types.push("keep_forever");
-					cleanup_modes.push_value(Value::Undefined);
-					values.push_value(Value::Undefined);
+					cleanup_modes.push_value(Value::None);
+					values.push_value(Value::None);
 				}
 				RetentionPolicy::KeepVersions {
 					count,

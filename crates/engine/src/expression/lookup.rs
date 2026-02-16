@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::cmp::min;
-
 use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::ColumnExpression;
 use reifydb_type::value::{
@@ -62,7 +60,7 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> cra
 		return extract_column_data(col, ctx);
 	}
 
-	Ok(Column::new(name.to_string(), ColumnData::undefined(ctx.row_count)))
+	Ok(Column::new(name.to_string(), ColumnData::none_typed(Type::Boolean, ctx.row_count)))
 }
 
 fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column> {
@@ -72,6 +70,16 @@ fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column>
 	// This handles cases where the first value is Undefined
 	let col_type = col.data().get_type();
 
+	// Unwrap Option to get the effective data type
+	let effective_type = match col_type {
+		Type::Option(inner) => *inner,
+		other => other,
+	};
+
+	extract_column_data_by_type(col, take, effective_type)
+}
+
+fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> crate::Result<Column> {
 	match col_type {
 		Type::Boolean => extract_typed_column!(col, take, Boolean(b) => b, false, bool_with_bitvec),
 		Type::Float4 => extract_typed_column!(col, take, Float4(v) => v.value(), 0.0f32, float4_with_bitvec),
@@ -113,15 +121,12 @@ fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column>
 		Type::Int => extract_typed_column!(col, take, Int(b) => b.clone(), Int::zero(), int_with_bitvec),
 		Type::Uint => extract_typed_column!(col, take, Uint(b) => b.clone(), Uint::zero(), uint_with_bitvec),
 		Type::Any => {
-			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::Undefined), any_with_bitvec)
+			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::None), any_with_bitvec)
 		}
 		Type::Decimal => {
 			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::from_i64(0), decimal_with_bitvec)
 		}
-		Type::Undefined => {
-			let count = min(ctx.row_count, take);
-			Ok(col.with_new_data(ColumnData::undefined(count)))
-		}
+		Type::Option(inner) => extract_column_data_by_type(col, take, *inner),
 	}
 }
 

@@ -334,7 +334,7 @@ pub mod tests {
 	enum_cow: Key::Cow(vec![0x00, 0x01].into(), false, String::from("foo").into()) => "030001ffff01666f6fffff",
 	enum_cow_borrow: Key::Cow([0x00, 0x01].as_slice().into(), false, "foo".into()) => "030001ffff01666f6fffff",
 
-	value_undefined: Value::Undefined => "00",
+	value_undefined: Value::None => "00",
 	value_bool: Value::Boolean(true) => "0100",
 	value_float4: Value::Float4(OrderedF32::try_from(PI_F32).unwrap()) => "023fb6f024",
 	value_float8: Value::Float8(OrderedF64::try_from(PI_F64).unwrap()) => "033ff6de04abbbd2e7",

@@ -41,7 +41,7 @@ pub(crate) fn prefix_eval(
 	};
 	let column = super::eval::evaluate(&inner_ctx, &prefix.expression, functions, clock)?;
 
-	match column.data() {
+	crate::expression::option::unary_op_unwrap_option(&column, |column| match column.data() {
 		ColumnData::Bool(container) => match prefix.operator {
 			PrefixOperator::Not(_) => {
 				let mut result = Vec::with_capacity(container.data().len());
@@ -53,7 +53,7 @@ pub(crate) fn prefix_eval(
 					}
 				}
 
-				let new_data = ColumnData::bool_with_bitvec(result, container.bitvec());
+				let new_data = ColumnData::bool(result);
 				Ok(column.with_new_data(new_data))
 			}
 			_ => err!(frame_error("Cannot apply arithmetic prefix operator to bool".to_string())),
@@ -76,7 +76,7 @@ pub(crate) fn prefix_eval(
 					result.push(0.0f32);
 				}
 			}
-			let new_data = ColumnData::float4_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::float4(result);
 			Ok(column.with_new_data(new_data))
 		}
 
@@ -97,7 +97,7 @@ pub(crate) fn prefix_eval(
 					result.push(0.0f64);
 				}
 			}
-			let new_data = ColumnData::float8_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::float8(result);
 			Ok(column.with_new_data(new_data))
 		}
 
@@ -118,7 +118,7 @@ pub(crate) fn prefix_eval(
 					result.push(0);
 				}
 			}
-			let new_data = ColumnData::int1_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int1(result);
 			Ok(column.with_new_data(new_data))
 		}
 
@@ -139,7 +139,7 @@ pub(crate) fn prefix_eval(
 					result.push(0);
 				}
 			}
-			let new_data = ColumnData::int2_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int2(result);
 			Ok(column.with_new_data(new_data))
 		}
 
@@ -160,7 +160,7 @@ pub(crate) fn prefix_eval(
 					result.push(0);
 				}
 			}
-			let new_data = ColumnData::int4_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int4(result);
 			Ok(column.with_new_data(new_data))
 		}
 
@@ -181,7 +181,7 @@ pub(crate) fn prefix_eval(
 					result.push(0);
 				}
 			}
-			let new_data = ColumnData::int8_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int8(result);
 			Ok(column.with_new_data(new_data))
 		}
 
@@ -202,7 +202,7 @@ pub(crate) fn prefix_eval(
 					result.push(0);
 				}
 			}
-			let new_data = ColumnData::int16_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int16(result);
 			Ok(column.with_new_data(new_data))
 		}
 
@@ -230,7 +230,7 @@ pub(crate) fn prefix_eval(
 					}
 				});
 			}
-			let new_data = ColumnData::int1_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int1(result);
 			Ok(column.with_new_data(new_data))
 		}
 
@@ -248,7 +248,7 @@ pub(crate) fn prefix_eval(
 					}
 				});
 			}
-			let new_data = ColumnData::int2_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int2(result);
 			Ok(column.with_new_data(new_data))
 		}
 
@@ -266,7 +266,7 @@ pub(crate) fn prefix_eval(
 					}
 				});
 			}
-			let new_data = ColumnData::int4_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int4(result);
 			Ok(column.with_new_data(new_data))
 		}
 
@@ -284,7 +284,7 @@ pub(crate) fn prefix_eval(
 					}
 				});
 			}
-			let new_data = ColumnData::int8_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int8(result);
 			Ok(column.with_new_data(new_data))
 		}
 		ColumnData::Uint16(container) => {
@@ -301,14 +301,9 @@ pub(crate) fn prefix_eval(
 					}
 				});
 			}
-			let new_data = ColumnData::int16_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int16(result);
 			Ok(column.with_new_data(new_data))
 		}
-		// EngineColumnData::Undefined(_) => {
-		//     Err("Cannot apply prefix operator to undefined data".into())
-		// }
-		ColumnData::Undefined(_) => Ok(column),
-
 		ColumnData::Date(_) => match prefix.operator {
 			PrefixOperator::Not(_) => {
 				err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
@@ -380,7 +375,7 @@ pub(crate) fn prefix_eval(
 					result.push(Int::zero());
 				}
 			}
-			let new_data = ColumnData::int_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::int(result);
 			Ok(column.with_new_data(new_data))
 		}
 		ColumnData::Uint {
@@ -397,7 +392,7 @@ pub(crate) fn prefix_eval(
 						result.push(Int::zero());
 					}
 				}
-				let new_data = ColumnData::int_with_bitvec(result, container.bitvec());
+				let new_data = ColumnData::int(result);
 				Ok(column.with_new_data(new_data))
 			}
 			PrefixOperator::Plus(_) => {
@@ -409,7 +404,7 @@ pub(crate) fn prefix_eval(
 						result.push(Uint::zero());
 					}
 				}
-				let new_data = ColumnData::uint_with_bitvec(result, container.bitvec());
+				let new_data = ColumnData::uint(result);
 				Ok(column.with_new_data(new_data))
 			}
 			PrefixOperator::Not(_) => {
@@ -436,7 +431,7 @@ pub(crate) fn prefix_eval(
 					result.push(Decimal::from(0));
 				}
 			}
-			let new_data = ColumnData::decimal_with_bitvec(result, container.bitvec());
+			let new_data = ColumnData::decimal(result);
 			Ok(column.with_new_data(new_data))
 		}
 		ColumnData::DictionaryId(_) => match prefix.operator {
@@ -453,5 +448,8 @@ pub(crate) fn prefix_eval(
 			}
 			_ => err!(frame_error("Cannot apply arithmetic prefix operator to Any type".to_string())),
 		},
-	}
+		ColumnData::Option {
+			..
+		} => unreachable!("nested Option after unwrap"),
+	})
 }

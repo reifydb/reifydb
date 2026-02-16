@@ -334,7 +334,7 @@ fn print_frame_truncated(frame: &reifydb_client::Frame, max_width: usize) {
 			let val = if row_idx < frame.row_numbers.len() {
 				frame.row_numbers[row_idx].to_string()
 			} else {
-				"Undefined".to_string()
+				"none".to_string()
 			};
 			let pad = w - val.width();
 			let l = pad / 2;

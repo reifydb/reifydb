@@ -12,7 +12,6 @@ use reifydb_abi::data::{
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::{
 	fragment::Fragment,
-	util::bitvec::BitVec,
 	value::{
 		blob::Blob,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
@@ -26,6 +25,7 @@ use reifydb_type::{
 		int::Int,
 		row_number::RowNumber,
 		time::Time,
+		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -151,12 +151,9 @@ impl Arena {
 
 		let type_code = column_data_to_type_code(data);
 
-		// Marshal bitvec (iterate and pack bits)
-		let defined_bitvec = if matches!(data, ColumnData::Undefined(_)) {
-			BufferFFI::empty()
-		} else {
-			self.marshal_bitvec(data.bitvec())
-		};
+		// Containers no longer carry bitvecs; all values are defined.
+		// Send an empty defined_bitvec which the unmarshal side interprets as "all defined".
+		let defined_bitvec = BufferFFI::empty();
 
 		// Marshal data and offsets based on type
 		let (data_buffer, offsets_buffer) = self.marshal_column_data_bytes(data);
@@ -167,40 +164,6 @@ impl Arena {
 			data: data_buffer,
 			defined_bitvec,
 			offsets: offsets_buffer,
-		}
-	}
-
-	/// Marshal a bitvec by iterating and packing bits
-	fn marshal_bitvec(&mut self, bitvec: &BitVec) -> BufferFFI {
-		let len = bitvec.len();
-		if len == 0 {
-			return BufferFFI::empty();
-		}
-
-		let byte_count = (len + 7) / 8;
-		let ptr = self.alloc(byte_count);
-		if ptr.is_null() {
-			return BufferFFI::empty();
-		}
-
-		// Zero-initialize
-		unsafe {
-			std::ptr::write_bytes(ptr, 0, byte_count);
-		}
-
-		// Pack bits
-		for (i, bit) in bitvec.iter().enumerate() {
-			if bit {
-				unsafe {
-					*ptr.add(i / 8) |= 1 << (i % 8);
-				}
-			}
-		}
-
-		BufferFFI {
-			ptr,
-			len: byte_count,
-			cap: byte_count,
 		}
 	}
 
@@ -228,123 +191,120 @@ impl Arena {
 	/// Unmarshal ColumnData from FFI representation
 	pub(super) fn unmarshal_column_data(&self, ffi: &ColumnDataFFI, row_count: usize) -> ColumnData {
 		if row_count == 0 {
-			return ColumnData::undefined(0);
+			return ColumnData::none_typed(Type::Boolean, 0);
 		}
-
-		// Unmarshal bitvec
-		let bitvec = self.unmarshal_bitvec(&ffi.defined_bitvec, row_count);
 
 		match ffi.type_code {
 			ColumnTypeCode::Bool => {
-				let container = self.unmarshal_bool_data(ffi, bitvec);
+				let container = self.unmarshal_bool_data(ffi);
 				ColumnData::Bool(container)
 			}
 			ColumnTypeCode::Float4 => {
-				let container = self.unmarshal_numeric_data::<f32>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<f32>(ffi);
 				ColumnData::Float4(container)
 			}
 			ColumnTypeCode::Float8 => {
-				let container = self.unmarshal_numeric_data::<f64>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<f64>(ffi);
 				ColumnData::Float8(container)
 			}
 			ColumnTypeCode::Int1 => {
-				let container = self.unmarshal_numeric_data::<i8>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<i8>(ffi);
 				ColumnData::Int1(container)
 			}
 			ColumnTypeCode::Int2 => {
-				let container = self.unmarshal_numeric_data::<i16>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<i16>(ffi);
 				ColumnData::Int2(container)
 			}
 			ColumnTypeCode::Int4 => {
-				let container = self.unmarshal_numeric_data::<i32>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<i32>(ffi);
 				ColumnData::Int4(container)
 			}
 			ColumnTypeCode::Int8 => {
-				let container = self.unmarshal_numeric_data::<i64>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<i64>(ffi);
 				ColumnData::Int8(container)
 			}
 			ColumnTypeCode::Int16 => {
-				let container = self.unmarshal_numeric_data::<i128>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<i128>(ffi);
 				ColumnData::Int16(container)
 			}
 			ColumnTypeCode::Uint1 => {
-				let container = self.unmarshal_numeric_data::<u8>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<u8>(ffi);
 				ColumnData::Uint1(container)
 			}
 			ColumnTypeCode::Uint2 => {
-				let container = self.unmarshal_numeric_data::<u16>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<u16>(ffi);
 				ColumnData::Uint2(container)
 			}
 			ColumnTypeCode::Uint4 => {
-				let container = self.unmarshal_numeric_data::<u32>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<u32>(ffi);
 				ColumnData::Uint4(container)
 			}
 			ColumnTypeCode::Uint8 => {
-				let container = self.unmarshal_numeric_data::<u64>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<u64>(ffi);
 				ColumnData::Uint8(container)
 			}
 			ColumnTypeCode::Uint16 => {
-				let container = self.unmarshal_numeric_data::<u128>(ffi, bitvec);
+				let container = self.unmarshal_numeric_data::<u128>(ffi);
 				ColumnData::Uint16(container)
 			}
 			ColumnTypeCode::Utf8 => {
-				let container = self.unmarshal_utf8_data(ffi, bitvec);
+				let container = self.unmarshal_utf8_data(ffi);
 				ColumnData::Utf8 {
 					container,
 					max_bytes: MaxBytes::MAX,
 				}
 			}
 			ColumnTypeCode::Date => {
-				let container = self.unmarshal_date_data(ffi, bitvec);
+				let container = self.unmarshal_date_data(ffi);
 				ColumnData::Date(container)
 			}
 			ColumnTypeCode::DateTime => {
-				let container = self.unmarshal_datetime_data(ffi, bitvec);
+				let container = self.unmarshal_datetime_data(ffi);
 				ColumnData::DateTime(container)
 			}
 			ColumnTypeCode::Time => {
-				let container = self.unmarshal_time_data(ffi, bitvec);
+				let container = self.unmarshal_time_data(ffi);
 				ColumnData::Time(container)
 			}
 			ColumnTypeCode::Duration => {
-				let container = self.unmarshal_duration_data(ffi, bitvec);
+				let container = self.unmarshal_duration_data(ffi);
 				ColumnData::Duration(container)
 			}
 			ColumnTypeCode::IdentityId => {
-				let container = self.unmarshal_identity_id_data(ffi, bitvec);
+				let container = self.unmarshal_identity_id_data(ffi);
 				ColumnData::IdentityId(container)
 			}
 			ColumnTypeCode::Uuid4 => {
-				let container = self.unmarshal_uuid4_data(ffi, bitvec);
+				let container = self.unmarshal_uuid4_data(ffi);
 				ColumnData::Uuid4(container)
 			}
 			ColumnTypeCode::Uuid7 => {
-				let container = self.unmarshal_uuid7_data(ffi, bitvec);
+				let container = self.unmarshal_uuid7_data(ffi);
 				ColumnData::Uuid7(container)
 			}
 			ColumnTypeCode::Blob => {
-				let container = self.unmarshal_blob_data(ffi, bitvec);
+				let container = self.unmarshal_blob_data(ffi);
 				ColumnData::Blob {
 					container,
 					max_bytes: MaxBytes::MAX,
 				}
 			}
 			ColumnTypeCode::Int => {
-				let container = self.unmarshal_serialized_data::<Int>(ffi, bitvec);
+				let container = self.unmarshal_serialized_data::<Int>(ffi);
 				ColumnData::Int {
 					container,
 					max_bytes: MaxBytes::MAX,
 				}
 			}
 			ColumnTypeCode::Uint => {
-				let container = self.unmarshal_serialized_data::<Uint>(ffi, bitvec);
+				let container = self.unmarshal_serialized_data::<Uint>(ffi);
 				ColumnData::Uint {
 					container,
 					max_bytes: MaxBytes::MAX,
 				}
 			}
 			ColumnTypeCode::Decimal => {
-				let container = self.unmarshal_serialized_data::<Decimal>(ffi, bitvec);
+				let container = self.unmarshal_serialized_data::<Decimal>(ffi);
 				ColumnData::Decimal {
 					container,
 					precision: Precision::MAX,
@@ -352,40 +312,16 @@ impl Arena {
 				}
 			}
 			ColumnTypeCode::Any => {
-				let container = self.unmarshal_any_data(ffi, bitvec);
+				let container = self.unmarshal_any_data(ffi);
 				ColumnData::Any(container)
 			}
 			ColumnTypeCode::DictionaryId => {
-				let u128_container = self.unmarshal_numeric_data::<u128>(ffi, bitvec);
+				let u128_container = self.unmarshal_numeric_data::<u128>(ffi);
 				let entries: Vec<DictionaryEntryId> =
 					u128_container.data().iter().map(|&v| DictionaryEntryId::U16(v)).collect();
-				let bitvec = u128_container.bitvec().clone();
-				ColumnData::DictionaryId(DictionaryContainer::new(entries, bitvec))
+				ColumnData::DictionaryId(DictionaryContainer::new(entries))
 			}
-			ColumnTypeCode::Undefined => ColumnData::undefined(row_count),
-		}
-	}
-
-	/// Unmarshal bitvec from raw bytes
-	fn unmarshal_bitvec(&self, ffi: &BufferFFI, len: usize) -> BitVec {
-		if ffi.is_empty() || len == 0 {
-			return BitVec::repeat(len, true); // All defined if no bitvec
-		}
-
-		unsafe {
-			let bytes = std::slice::from_raw_parts(ffi.ptr, ffi.len);
-			let mut bits = Vec::with_capacity(len);
-			for i in 0..len {
-				let byte_idx = i / 8;
-				let bit_idx = i % 8;
-				let bit = if byte_idx < bytes.len() {
-					(bytes[byte_idx] & (1 << bit_idx)) != 0
-				} else {
-					true
-				};
-				bits.push(bit);
-			}
-			BitVec::from_slice(&bits)
+			ColumnTypeCode::Undefined => ColumnData::none_typed(Type::Boolean, row_count),
 		}
 	}
 }
@@ -565,8 +501,11 @@ impl Arena {
 				self.marshal_numeric_slice(&encoded)
 			}
 
-			// Undefined has no data
-			ColumnData::Undefined(_) => (BufferFFI::empty(), BufferFFI::empty()),
+			ColumnData::Option {
+				..
+			} => {
+				unreachable!("Option columns cannot be marshalled to FFI yet")
+			}
 		}
 	}
 

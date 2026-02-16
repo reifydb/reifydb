@@ -6,7 +6,7 @@ use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
-	convert_data_type,
+	convert_data_type_with_constraints,
 	plan::{
 		logical,
 		physical::{Compiler, CreateDictionaryNode, PhysicalPlan},
@@ -35,22 +35,8 @@ impl<'bump> Compiler<'bump> {
 			return_error!(namespace_not_found(ns_fragment, &namespace_name));
 		};
 
-		// Convert AstDataType to Type
-		let value_type = match &create.value_type {
-			crate::ast::ast::AstType::Unconstrained(name) => convert_data_type(name)?,
-			crate::ast::ast::AstType::Constrained {
-				name,
-				..
-			} => convert_data_type(name)?,
-		};
-
-		let id_type = match &create.id_type {
-			crate::ast::ast::AstType::Unconstrained(name) => convert_data_type(name)?,
-			crate::ast::ast::AstType::Constrained {
-				name,
-				..
-			} => convert_data_type(name)?,
-		};
+		let value_type = convert_data_type_with_constraints(&create.value_type)?.get_type();
+		let id_type = convert_data_type_with_constraints(&create.id_type)?.get_type();
 
 		Ok(PhysicalPlan::CreateDictionary(CreateDictionaryNode {
 			namespace: namespace_def,

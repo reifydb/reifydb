@@ -11,8 +11,8 @@ impl Type {
 	pub fn promote(left: Type, right: Type) -> Type {
 		use Type::*;
 
-		if left == Undefined || right == Undefined {
-			return Undefined;
+		if matches!(left, Option(_)) || matches!(right, Option(_)) {
+			return left;
 		}
 
 		if left == Utf8 || right == Utf8 {
@@ -34,10 +34,10 @@ impl Type {
 		let signed_order = [Int1, Int2, Int4, Int8, Int16];
 		let unsigned_order = [Uint1, Uint2, Uint4, Uint8, Uint16];
 
-		let is_signed = |k: Type| signed_order.contains(&k);
-		let is_unsigned = |k: Type| unsigned_order.contains(&k);
+		let is_signed = |k: &Type| signed_order.contains(k);
+		let is_unsigned = |k: &Type| unsigned_order.contains(k);
 
-		let rank = |k: Type| match k {
+		let rank = |k: &Type| match k {
 			Int1 | Uint1 => 0,
 			Int2 | Uint2 => 1,
 			Int4 | Uint4 => 2,
@@ -46,16 +46,16 @@ impl Type {
 			_ => usize::MAX,
 		};
 
-		if is_signed(left) && is_signed(right) {
-			return signed_order[min(rank(left).max(rank(right)), 3) + 1];
+		if is_signed(&left) && is_signed(&right) {
+			return signed_order[min(rank(&left).max(rank(&right)), 3) + 1].clone();
 		}
 
-		if is_unsigned(left) && is_unsigned(right) {
-			return unsigned_order[min(rank(left).max(rank(right)), 3) + 1];
+		if is_unsigned(&left) && is_unsigned(&right) {
+			return unsigned_order[min(rank(&left).max(rank(&right)), 3) + 1].clone();
 		}
 
-		if (is_signed(left) && is_unsigned(right)) || (is_unsigned(left) && is_signed(right)) {
-			return match rank(left).max(rank(right)) + 1 {
+		if (is_signed(&left) && is_unsigned(&right)) || (is_unsigned(&left) && is_signed(&right)) {
+			return match rank(&left).max(rank(&right)) + 1 {
 				0 => Int1,
 				1 => Int2,
 				2 => Int4,
@@ -65,19 +65,15 @@ impl Type {
 			};
 		}
 
-		Undefined
+		left
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use crate::value::r#type::{
-		Type,
-		Type::{
-			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16,
-			Undefined, Utf8,
-		},
-	};
+	use Type::*;
+
+	use crate::value::r#type::Type;
 
 	#[test]
 	fn test_promote_bool() {
@@ -96,7 +92,6 @@ pub mod tests {
 			(Boolean, Uint4, Boolean),
 			(Boolean, Uint8, Boolean),
 			(Boolean, Uint16, Boolean),
-			(Boolean, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -120,7 +115,6 @@ pub mod tests {
 			(Float4, Uint4, Float8),
 			(Float4, Uint8, Float8),
 			(Float4, Uint16, Float8),
-			(Float4, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -144,7 +138,6 @@ pub mod tests {
 			(Float8, Uint4, Float8),
 			(Float8, Uint8, Float8),
 			(Float8, Uint16, Float8),
-			(Float8, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -168,7 +161,6 @@ pub mod tests {
 			(Int1, Uint4, Int8),
 			(Int1, Uint8, Int16),
 			(Int1, Uint16, Int16),
-			(Int1, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -192,7 +184,6 @@ pub mod tests {
 			(Int2, Uint4, Int8),
 			(Int2, Uint8, Int16),
 			(Int2, Uint16, Int16),
-			(Int2, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -216,7 +207,6 @@ pub mod tests {
 			(Int4, Uint4, Int8),
 			(Int4, Uint8, Int16),
 			(Int4, Uint16, Int16),
-			(Int4, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -240,7 +230,6 @@ pub mod tests {
 			(Int8, Uint4, Int16),
 			(Int8, Uint8, Int16),
 			(Int8, Uint16, Int16),
-			(Int8, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -264,7 +253,6 @@ pub mod tests {
 			(Int16, Uint4, Int16),
 			(Int16, Uint8, Int16),
 			(Int16, Uint16, Int16),
-			(Int16, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -280,8 +268,6 @@ pub mod tests {
 		for ty in kinds {
 			assert_eq!(Type::promote(Utf8, ty), Utf8);
 		}
-
-		assert_eq!(Type::promote(Utf8, Undefined), Undefined);
 	}
 
 	#[test]
@@ -301,7 +287,6 @@ pub mod tests {
 			(Uint1, Uint4, Uint8),
 			(Uint1, Uint8, Uint16),
 			(Uint1, Uint16, Uint16),
-			(Uint1, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -325,7 +310,6 @@ pub mod tests {
 			(Uint2, Uint4, Uint8),
 			(Uint2, Uint8, Uint16),
 			(Uint2, Uint16, Uint16),
-			(Uint2, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -349,7 +333,6 @@ pub mod tests {
 			(Uint4, Uint4, Uint8),
 			(Uint4, Uint8, Uint16),
 			(Uint4, Uint16, Uint16),
-			(Uint4, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -373,7 +356,6 @@ pub mod tests {
 			(Uint8, Uint4, Uint16),
 			(Uint8, Uint8, Uint16),
 			(Uint8, Uint16, Uint16),
-			(Uint8, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
@@ -397,21 +379,9 @@ pub mod tests {
 			(Uint16, Uint4, Uint16),
 			(Uint16, Uint8, Uint16),
 			(Uint16, Uint16, Uint16),
-			(Uint16, Undefined, Undefined),
 		];
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
-		}
-	}
-
-	#[test]
-	fn test_promote_undefined() {
-		let kinds = [
-			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16, Utf8, Uint1, Uint2, Uint4, Uint8,
-			Uint16, Undefined,
-		];
-		for ty in kinds {
-			assert_eq!(Type::promote(Undefined, ty), Undefined);
 		}
 	}
 }

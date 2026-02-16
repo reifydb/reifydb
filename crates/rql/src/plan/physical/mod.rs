@@ -35,7 +35,7 @@ use tracing::instrument;
 
 use crate::{
 	bump::{Bump, BumpBox},
-	expression::{ConstantExpression::Undefined, Expression, Expression::Constant, VariableExpression},
+	expression::{ConstantExpression, Expression, Expression::Constant, VariableExpression},
 	nodes::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateReducerNode,
 		CreateRingBufferNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, FlowScanNode,
@@ -1358,9 +1358,11 @@ impl<'bump> Compiler<'bump> {
 							}
 							match last_plan {
 								Some(plan) => LetValue::Statement(self.bump_box(plan)),
-								None => LetValue::Expression(Constant(Undefined {
-									fragment: Fragment::internal("undefined"),
-								})),
+								None => LetValue::Expression(Constant(
+									ConstantExpression::None {
+										fragment: Fragment::internal("none"),
+									},
+								)),
 							}
 						}
 						logical::LetValue::EmptyFrame => LetValue::EmptyFrame,
@@ -1388,9 +1390,11 @@ impl<'bump> Compiler<'bump> {
 								Some(plan) => {
 									AssignValue::Statement(self.bump_box(plan))
 								}
-								None => AssignValue::Expression(Constant(Undefined {
-									fragment: Fragment::internal("undefined"),
-								})),
+								None => AssignValue::Expression(Constant(
+									ConstantExpression::None {
+										fragment: Fragment::internal("none"),
+									},
+								)),
 							}
 						}
 					};

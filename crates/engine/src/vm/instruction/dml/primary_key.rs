@@ -149,8 +149,8 @@ pub fn encode_primary_key(
 				// supported
 				panic!("Decimal columns in primary keys not yet supported");
 			}
-			Type::Undefined => {
-				// Undefined values in primary key will be
+			Type::Option(_) => {
+				// None values in primary key will be
 				// handled later with constraints
 				index_layout.set_undefined(&mut index_key, pk_idx);
 			}

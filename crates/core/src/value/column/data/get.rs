@@ -2,17 +2,20 @@
 // Copyright (c) 2025 ReifyDB
 
 use num_traits::NumCast;
-use reifydb_type::value::{
-	Value,
-	date::Date,
-	datetime::DateTime,
-	decimal::Decimal,
-	duration::Duration,
-	identity::IdentityId,
-	int::Int,
-	time::Time,
-	uint::Uint,
-	uuid::{Uuid4, Uuid7},
+use reifydb_type::{
+	storage::DataBitVec,
+	value::{
+		Value,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+	},
 };
 
 use crate::value::column::{ColumnData, data::with_container};
@@ -23,7 +26,19 @@ pub trait FromColumnData: Sized {
 
 impl ColumnData {
 	pub fn get_value(&self, index: usize) -> Value {
-		with_container!(self, |c| c.get_value(index))
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
+					inner.get_value(index)
+				} else {
+					Value::None
+				}
+			}
+			_ => with_container!(self, |c| c.get_value(index)),
+		}
 	}
 
 	pub fn get_as<T: FromColumnData>(&self, index: usize) -> Option<T> {

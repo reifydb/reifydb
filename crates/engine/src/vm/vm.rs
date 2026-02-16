@@ -12,7 +12,7 @@ use reifydb_rql::{
 use reifydb_transaction::transaction::{AsTransaction, Transaction};
 use reifydb_type::{
 	params::Params,
-	value::{Value, frame::frame::Frame},
+	value::{Value, frame::frame::Frame, r#type::Type},
 };
 
 use super::{
@@ -106,8 +106,8 @@ impl Vm {
 				Instruction::PushConst(value) => {
 					self.stack.push(Variable::scalar(value.clone()));
 				}
-				Instruction::PushUndefined => {
-					self.stack.push(Variable::scalar(Value::Undefined));
+				Instruction::PushNone => {
+					self.stack.push(Variable::scalar(Value::None));
 				}
 				Instruction::Pop => {
 					self.stack.pop()?;
@@ -268,7 +268,7 @@ impl Vm {
 					let le = scalar::scalar_le(&value, &upper);
 					let result = match (ge, le) {
 						(Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a && b),
-						_ => Value::Undefined,
+						_ => Value::None,
 					};
 					self.stack.push(Variable::scalar(result));
 				}
@@ -284,10 +284,10 @@ impl Vm {
 					}
 					list_items.reverse();
 					let value = self.pop_value()?;
-					let has_undefined = matches!(value, Value::Undefined)
-						|| list_items.iter().any(|item| matches!(item, Value::Undefined));
+					let has_undefined = matches!(value, Value::None)
+						|| list_items.iter().any(|item| matches!(item, Value::None));
 					if has_undefined {
-						self.stack.push(Variable::scalar(Value::Undefined));
+						self.stack.push(Variable::scalar(Value::None));
 					} else {
 						let found = list_items.iter().any(|item| {
 							matches!(scalar::scalar_eq(&value, item), Value::Boolean(true))
@@ -302,7 +302,7 @@ impl Vm {
 				}
 				Instruction::Cast(target) => {
 					let value = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_cast(value, *target)?));
+					self.stack.push(Variable::scalar(scalar::scalar_cast(value, target.clone())?));
 				}
 
 				// === Control flow ===
@@ -445,7 +445,7 @@ impl Vm {
 						let mut row_columns = Vec::new();
 						for col in columns.columns.iter() {
 							let value = col.data.get_value(index);
-							let mut data = ColumnData::undefined(0);
+							let mut data = ColumnData::none_typed(Type::Boolean, 0);
 							data.push_value(value);
 							row_columns.push(Column::new(col.name.clone(), data));
 						}
@@ -516,7 +516,7 @@ impl Vm {
 							ControlFlow::Normal,
 						) {
 							ControlFlow::Return(c) => Variable::Scalar(
-								c.unwrap_or(Columns::scalar(Value::Undefined)),
+								c.unwrap_or(Columns::scalar(Value::None)),
 							),
 							_ => {
 								// If no explicit return, check if function body emitted
@@ -531,7 +531,7 @@ impl Vm {
 											frame.columns
 												.iter()
 												.map(|fc| {
-													let mut data = ColumnData::undefined(0);
+													let mut data = ColumnData::none_typed(Type::Boolean, 0);
 													for i in 0..fc
 														.data
 														.len()
@@ -543,13 +543,13 @@ impl Vm {
 												.collect();
 										Variable::Columns(Columns::new(cols))
 									} else {
-										Variable::scalar(Value::Undefined)
+										Variable::scalar(Value::None)
 									}
 								} else {
 									// Check if anything was left on the stack by
 									// the function body
 									self.stack.pop().ok().unwrap_or(
-										Variable::scalar(Value::Undefined),
+										Variable::scalar(Value::None),
 									)
 								}
 							}
@@ -595,7 +595,7 @@ impl Vm {
 						let value = if result_column.data.len() > 0 {
 							result_column.data.get_value(0)
 						} else {
-							Value::Undefined
+							Value::None
 						};
 						self.stack.push(Variable::scalar(value));
 					}
@@ -1072,7 +1072,7 @@ fn value_to_expression(value: &Value) -> Expression {
 	use reifydb_rql::expression::ConstantExpression;
 	use reifydb_type::fragment::Fragment;
 	match value {
-		Value::Undefined => Expression::Constant(ConstantExpression::Undefined {
+		Value::None => Expression::Constant(ConstantExpression::None {
 			fragment: Fragment::None,
 		}),
 		Value::Boolean(b) => Expression::Constant(ConstantExpression::Bool {
@@ -1129,7 +1129,7 @@ fn run_query_plan(
 			.into_iter()
 			.map(|name| Column {
 				name,
-				data: ColumnData::undefined(0),
+				data: ColumnData::none_typed(Type::Boolean, 0),
 			})
 			.collect();
 		return Ok(Some(Columns::new(empty_columns)));

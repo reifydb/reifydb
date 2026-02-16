@@ -9,7 +9,13 @@ use reifydb_rql::{
 	query::QueryPlan,
 };
 use reifydb_runtime::clock::Clock;
-use reifydb_type::{error, error::diagnostic::function, fragment::Fragment, params::Params, value::Value};
+use reifydb_type::{
+	error,
+	error::diagnostic::function,
+	fragment::Fragment,
+	params::Params,
+	value::{Value, r#type::Type},
+};
 
 use super::eval::evaluate;
 use crate::{
@@ -32,10 +38,10 @@ fn strip_dollar_prefix(name: &str) -> String {
 /// Convert a slice of Values into ColumnData
 fn column_data_from_values(values: &[Value]) -> ColumnData {
 	if values.is_empty() {
-		return ColumnData::undefined(0);
+		return ColumnData::none_typed(Type::Boolean, 0);
 	}
 
-	let mut data = ColumnData::undefined(0);
+	let mut data = ColumnData::none_typed(Type::Boolean, 0);
 	for value in values {
 		data.push_value(value.clone());
 	}
@@ -71,14 +77,17 @@ pub(crate) fn call_eval(
 		functions.get_scalar(function_name).ok_or(error!(function::unknown_function(call.func.0.clone())))?;
 
 	let row_count = ctx.row_count;
+
+	let final_data = functor.scalar(ScalarFunctionContext {
+		fragment: call.func.0.clone(),
+		columns: &arguments,
+		row_count,
+		clock,
+	})?;
+
 	Ok(Column {
 		name: call.full_fragment_owned(),
-		data: functor.scalar(ScalarFunctionContext {
-			fragment: call.func.0.clone(),
-			columns: &arguments,
-			row_count,
-			clock,
-		})?,
+		data: final_data,
 	})
 }
 
@@ -154,7 +163,7 @@ fn execute_function_body_for_scalar(
 
 			// === Stack ===
 			Instruction::PushConst(v) => stack.push(v.clone()),
-			Instruction::PushUndefined => stack.push(Value::Undefined),
+			Instruction::PushNone => stack.push(Value::None),
 			Instruction::Pop => {
 				stack.pop();
 			}
@@ -171,122 +180,122 @@ fn execute_function_body_for_scalar(
 					.get(&var_name)
 					.map(|v| match v {
 						Variable::Scalar(c) => c.scalar_value(),
-						_ => Value::Undefined,
+						_ => Value::None,
 					})
-					.unwrap_or(Value::Undefined);
+					.unwrap_or(Value::None);
 				stack.push(val);
 			}
 			Instruction::StoreVar(name) => {
-				let val = stack.pop().unwrap_or(Value::Undefined);
+				let val = stack.pop().unwrap_or(Value::None);
 				let var_name = strip_dollar_prefix(name.text());
 				symbol_table.set(var_name, Variable::scalar(val), true)?;
 			}
 			Instruction::DeclareVar(name) => {
-				let val = stack.pop().unwrap_or(Value::Undefined);
+				let val = stack.pop().unwrap_or(Value::None);
 				let var_name = strip_dollar_prefix(name.text());
 				symbol_table.set(var_name, Variable::scalar(val), true)?;
 			}
 
 			// === Arithmetic ===
 			Instruction::Add => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_add(l, r)?);
 			}
 			Instruction::Sub => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_sub(l, r)?);
 			}
 			Instruction::Mul => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_mul(l, r)?);
 			}
 			Instruction::Div => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_div(l, r)?);
 			}
 			Instruction::Rem => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_rem(l, r)?);
 			}
 
 			// === Unary ===
 			Instruction::Negate => {
-				let v = stack.pop().unwrap_or(Value::Undefined);
+				let v = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_negate(v)?);
 			}
 			Instruction::LogicNot => {
-				let v = stack.pop().unwrap_or(Value::Undefined);
+				let v = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_not(&v));
 			}
 
 			// === Comparison ===
 			Instruction::CmpEq => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_eq(&l, &r));
 			}
 			Instruction::CmpNe => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_ne(&l, &r));
 			}
 			Instruction::CmpLt => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_lt(&l, &r));
 			}
 			Instruction::CmpLe => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_le(&l, &r));
 			}
 			Instruction::CmpGt => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_gt(&l, &r));
 			}
 			Instruction::CmpGe => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_ge(&l, &r));
 			}
 
 			// === Logic ===
 			Instruction::LogicAnd => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_and(&l, &r));
 			}
 			Instruction::LogicOr => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_or(&l, &r));
 			}
 			Instruction::LogicXor => {
-				let r = stack.pop().unwrap_or(Value::Undefined);
-				let l = stack.pop().unwrap_or(Value::Undefined);
+				let r = stack.pop().unwrap_or(Value::None);
+				let l = stack.pop().unwrap_or(Value::None);
 				stack.push(scalar::scalar_xor(&l, &r));
 			}
 
 			// === Compound ===
 			Instruction::Cast(target) => {
-				let v = stack.pop().unwrap_or(Value::Undefined);
-				stack.push(scalar::scalar_cast(v, *target)?);
+				let v = stack.pop().unwrap_or(Value::None);
+				stack.push(scalar::scalar_cast(v, target.clone())?);
 			}
 			Instruction::Between => {
-				let upper = stack.pop().unwrap_or(Value::Undefined);
-				let lower = stack.pop().unwrap_or(Value::Undefined);
-				let val = stack.pop().unwrap_or(Value::Undefined);
+				let upper = stack.pop().unwrap_or(Value::None);
+				let lower = stack.pop().unwrap_or(Value::None);
+				let val = stack.pop().unwrap_or(Value::None);
 				let ge = scalar::scalar_ge(&val, &lower);
 				let le = scalar::scalar_le(&val, &upper);
 				let result = match (ge, le) {
 					(Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a && b),
-					_ => Value::Undefined,
+					_ => Value::None,
 				};
 				stack.push(result);
 			}
@@ -298,14 +307,14 @@ fn execute_function_body_for_scalar(
 				let negated = *negated;
 				let mut items: Vec<Value> = Vec::with_capacity(count);
 				for _ in 0..count {
-					items.push(stack.pop().unwrap_or(Value::Undefined));
+					items.push(stack.pop().unwrap_or(Value::None));
 				}
 				items.reverse();
-				let val = stack.pop().unwrap_or(Value::Undefined);
-				let has_undefined = matches!(val, Value::Undefined)
-					|| items.iter().any(|item| matches!(item, Value::Undefined));
+				let val = stack.pop().unwrap_or(Value::None);
+				let has_undefined = matches!(val, Value::None)
+					|| items.iter().any(|item| matches!(item, Value::None));
 				if has_undefined {
-					stack.push(Value::Undefined);
+					stack.push(Value::None);
 				} else {
 					let found = items.iter().any(|item| {
 						matches!(scalar::scalar_eq(&val, item), Value::Boolean(true))
@@ -324,14 +333,14 @@ fn execute_function_body_for_scalar(
 				continue;
 			}
 			Instruction::JumpIfFalsePop(addr) => {
-				let v = stack.pop().unwrap_or(Value::Undefined);
+				let v = stack.pop().unwrap_or(Value::None);
 				if !scalar::value_is_truthy(&v) {
 					ip = *addr;
 					continue;
 				}
 			}
 			Instruction::JumpIfTruePop(addr) => {
-				let v = stack.pop().unwrap_or(Value::Undefined);
+				let v = stack.pop().unwrap_or(Value::None);
 				if scalar::value_is_truthy(&v) {
 					ip = *addr;
 					continue;
@@ -347,11 +356,11 @@ fn execute_function_body_for_scalar(
 
 			// === Return ===
 			Instruction::ReturnValue => {
-				let v = stack.pop().unwrap_or(Value::Undefined);
+				let v = stack.pop().unwrap_or(Value::None);
 				return Ok(v);
 			}
 			Instruction::ReturnVoid => {
-				return Ok(Value::Undefined);
+				return Ok(Value::None);
 			}
 
 			// === Query ===
@@ -398,7 +407,7 @@ fn execute_function_body_for_scalar(
 				let arity = *arity as usize;
 				let mut args: Vec<Value> = Vec::with_capacity(arity);
 				for _ in 0..arity {
-					args.push(stack.pop().unwrap_or(Value::Undefined));
+					args.push(stack.pop().unwrap_or(Value::None));
 				}
 				args.reverse();
 
@@ -429,7 +438,7 @@ fn execute_function_body_for_scalar(
 				} else if let Some(functor) = functions.get_scalar(name.text()) {
 					let mut arg_cols = Vec::with_capacity(args.len());
 					for arg in &args {
-						let mut data = ColumnData::undefined(0);
+						let mut data = ColumnData::none_typed(Type::Boolean, 0);
 						data.push_value(arg.clone());
 						arg_cols.push(Column::new("_", data));
 					}
@@ -443,7 +452,7 @@ fn execute_function_body_for_scalar(
 					if result_data.len() > 0 {
 						stack.push(result_data.get_value(0));
 					} else {
-						stack.push(Value::Undefined);
+						stack.push(Value::None);
 					}
 				}
 			}
@@ -460,7 +469,7 @@ fn execute_function_body_for_scalar(
 	}
 
 	// Return top of stack or Undefined
-	Ok(stack.pop().unwrap_or(Value::Undefined))
+	Ok(stack.pop().unwrap_or(Value::None))
 }
 
 fn handle_aggregate_function(
@@ -527,8 +536,9 @@ fn evaluate_arguments(
 	for expression in expressions {
 		match expression {
 			Expression::Type(type_expr) => {
-				let values: Vec<Box<Value>> =
-					(0..ctx.row_count).map(|_| Box::new(Value::Type(type_expr.ty))).collect();
+				let values: Vec<Box<Value>> = (0..ctx.row_count)
+					.map(|_| Box::new(Value::Type(type_expr.ty.clone())))
+					.collect();
 				result.push(Column::new(type_expr.fragment.text(), ColumnData::any(values)));
 			}
 			_ => result.push(evaluate(&inner_ctx, expression, functions, clock)?),

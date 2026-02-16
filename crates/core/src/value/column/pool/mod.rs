@@ -24,7 +24,7 @@ use std::{collections::HashMap, ops::Deref, rc::Rc};
 use reifydb_type::value::{
 	container::{
 		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, row::RowNumberContainer,
-		temporal::TemporalContainer, undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
+		temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 	},
 	date::Date,
 	datetime::DateTime,
@@ -54,8 +54,6 @@ pub struct PoolsInner {
 	string_pool: StdPoolAllocator<Utf8Container>,
 	blob_pool: StdPoolAllocator<BlobContainer>,
 	row_number_pool: StdPoolAllocator<RowNumberContainer>,
-	undefined_pool: StdPoolAllocator<UndefinedContainer>,
-
 	// Numeric pools for all types
 	i8_pool: StdPoolAllocator<NumberContainer<i8>>,
 	i16_pool: StdPoolAllocator<NumberContainer<i16>>,
@@ -94,8 +92,6 @@ impl Pools {
 			string_pool: StdPoolAllocator::new(max_pool_size),
 			blob_pool: StdPoolAllocator::new(max_pool_size),
 			row_number_pool: StdPoolAllocator::new(max_pool_size),
-			undefined_pool: StdPoolAllocator::new(max_pool_size),
-
 			i8_pool: StdPoolAllocator::new(max_pool_size),
 			i16_pool: StdPoolAllocator::new(max_pool_size),
 			i32_pool: StdPoolAllocator::new(max_pool_size),
@@ -132,10 +128,6 @@ impl Pools {
 	pub fn row_number_pool(&self) -> &StdPoolAllocator<RowNumberContainer> {
 		&self.row_number_pool
 	}
-	pub fn undefined_pool(&self) -> &StdPoolAllocator<UndefinedContainer> {
-		&self.undefined_pool
-	}
-
 	pub fn i8_pool(&self) -> &StdPoolAllocator<NumberContainer<i8>> {
 		&self.i8_pool
 	}
@@ -199,8 +191,6 @@ impl Pools {
 		self.string_pool.clear();
 		self.blob_pool.clear();
 		self.row_number_pool.clear();
-		self.undefined_pool.clear();
-
 		self.i8_pool.clear();
 		self.i16_pool.clear();
 		self.i32_pool.clear();
@@ -231,8 +221,6 @@ impl Pools {
 		stats.insert("string".to_string(), self.string_pool.stats());
 		stats.insert("blob".to_string(), self.blob_pool.stats());
 		stats.insert("row_number".to_string(), self.row_number_pool.stats());
-		stats.insert("undefined".to_string(), self.undefined_pool.stats());
-
 		stats.insert("i8".to_string(), self.i8_pool.stats());
 		stats.insert("i16".to_string(), self.i16_pool.stats());
 		stats.insert("i32".to_string(), self.i32_pool.stats());

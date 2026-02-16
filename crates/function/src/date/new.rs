@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct DateNew;
 
@@ -46,6 +46,10 @@ fn is_integer_type(data: &ColumnData) -> bool {
 
 impl ScalarFunction for DateNew {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -131,13 +135,13 @@ impl ScalarFunction for DateNew {
 					if m >= 1 && d >= 1 {
 						match Date::new(y, m as u32, d as u32) {
 							Some(date) => container.push(date),
-							None => container.push_undefined(),
+							None => container.push_default(),
 						}
 					} else {
-						container.push_undefined();
+						container.push_default();
 					}
 				}
-				_ => container.push_undefined(),
+				_ => container.push_default(),
 			}
 		}
 

@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, duration::Duration, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct DateTimeAge;
 
@@ -16,6 +16,9 @@ impl DateTimeAge {
 
 impl ScalarFunction for DateTimeAge {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -90,7 +93,7 @@ impl ScalarFunction for DateTimeAge {
 							let total_months = years * 12 + months;
 							container.push(Duration::new(total_months, days, nanos_diff));
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

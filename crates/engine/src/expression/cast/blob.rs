@@ -21,7 +21,7 @@ pub fn to_blob(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Re
 					let temp_fragment = Fragment::internal(container[idx].as_str());
 					out.push(Blob::from_utf8(temp_fragment));
 				} else {
-					out.push_undefined()
+					out.push_none()
 				}
 			}
 			Ok(out)

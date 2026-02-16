@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::storage::DataBitVec;
+
 use crate::value::column::ColumnData;
 
 macro_rules! map_container {
@@ -30,7 +32,7 @@ macro_rules! map_container {
 			ColumnData::DateTime($c) => ColumnData::DateTime($body),
 			ColumnData::Time($c) => ColumnData::Time($body),
 			ColumnData::Duration($c) => ColumnData::Duration($body),
-			ColumnData::Undefined($c) => ColumnData::Undefined($body),
+
 			ColumnData::IdentityId($c) => ColumnData::IdentityId($body),
 			ColumnData::DictionaryId($c) => ColumnData::DictionaryId($body),
 			ColumnData::Uuid4($c) => ColumnData::Uuid4($body),
@@ -66,12 +68,39 @@ macro_rules! map_container {
 				scale: *scale,
 			},
 			ColumnData::Any($c) => ColumnData::Any($body),
+			ColumnData::Option {
+				..
+			} => {
+				unreachable!(
+					"map_container! must not be called on Option variant directly; handle it explicitly"
+				)
+			}
 		}
 	};
 }
 
 impl ColumnData {
 	pub fn take(&self, num: usize) -> ColumnData {
-		map_container!(self, |c| c.take(num))
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				let new_bitvec = DataBitVec::take(bitvec, num);
+				// If all bits in the taken bitvec are set (all defined),
+				// unwrap the Option and return the bare inner data.
+				if DataBitVec::count_ones(&new_bitvec) == DataBitVec::len(&new_bitvec)
+					&& DataBitVec::len(&new_bitvec) > 0
+				{
+					inner.take(num)
+				} else {
+					ColumnData::Option {
+						inner: Box::new(inner.take(num)),
+						bitvec: new_bitvec,
+					}
+				}
+			}
+			_ => map_container!(self, |c| c.take(num)),
+		}
 	}
 }

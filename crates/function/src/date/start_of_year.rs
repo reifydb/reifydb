@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct DateStartOfYear;
 
@@ -16,6 +16,10 @@ impl DateStartOfYear {
 
 impl ScalarFunction for DateStartOfYear {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -37,10 +41,10 @@ impl ScalarFunction for DateStartOfYear {
 					if let Some(date) = container.get(i) {
 						match Date::new(date.year(), 1, 1) {
 							Some(d) => result.push(d),
-							None => result.push_undefined(),
+							None => result.push_default(),
 						}
 					} else {
-						result.push_undefined();
+						result.push_default();
 					}
 				}
 

@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, datetime::DateTime, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct DateTimeSubtract;
 
@@ -16,6 +16,9 @@ impl DateTimeSubtract {
 
 impl ScalarFunction for DateTimeSubtract {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -76,13 +79,13 @@ impl ScalarFunction for DateTimeSubtract {
 
 								match DateTime::from_parts(total_seconds, nano_part) {
 									Ok(result) => container.push(result),
-									Err(_) => container.push_undefined(),
+									Err(_) => container.push_default(),
 								}
 							} else {
-								container.push_undefined();
+								container.push_default();
 							}
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

@@ -54,7 +54,7 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> reifydb_type::
 			columns.iter()
 				.map(|c| OperatorColumnDef {
 					name: c.name.clone(),
-					field_type: c.field_type,
+					field_type: c.field_type.clone(),
 					description: c.description.clone(),
 				})
 				.collect()

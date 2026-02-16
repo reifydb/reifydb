@@ -54,7 +54,7 @@ impl EvalContext<'_> {
 					})
 					.map(Some)
 			}
-			ColumnSaturationPolicy::Undefined => {
+			ColumnSaturationPolicy::None => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					return Ok(None);
 				};
@@ -104,7 +104,7 @@ impl EvalContext<'_> {
 					})
 					.map(Some)
 			}
-			ColumnSaturationPolicy::Undefined => {
+			ColumnSaturationPolicy::None => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					return Ok(None);
 				};
@@ -154,7 +154,7 @@ impl EvalContext<'_> {
 					})
 					.map(Some)
 			}
-			ColumnSaturationPolicy::Undefined => {
+			ColumnSaturationPolicy::None => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					return Ok(None);
 				};
@@ -204,7 +204,7 @@ impl EvalContext<'_> {
 					})
 					.map(Some)
 			}
-			ColumnSaturationPolicy::Undefined => {
+			ColumnSaturationPolicy::None => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					return Ok(None);
 				};
@@ -254,7 +254,7 @@ impl EvalContext<'_> {
 					})
 					.map(Some)
 			}
-			ColumnSaturationPolicy::Undefined => {
+			ColumnSaturationPolicy::None => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					return Ok(None);
 				};

@@ -48,6 +48,7 @@ use tracing::instrument;
 use crate::{
 	bulk_insert::builder::BulkInsertBuilder,
 	interceptor::catalog::MaterializedCatalogInterceptor,
+	transform::registry::Transforms,
 	vm::{Admin, Command, Query, executor::Executor},
 };
 
@@ -285,6 +286,7 @@ impl StandardEngine {
 		catalog: Catalog,
 		clock: Clock,
 		functions: Functions,
+		transforms: Transforms,
 		ioc: IocContainer,
 	) -> Self {
 		let flow_operator_store = FlowOperatorStore::new();
@@ -305,6 +307,7 @@ impl StandardEngine {
 				catalog.clone(),
 				clock,
 				functions,
+				transforms,
 				flow_operator_store.clone(),
 				stats_reader,
 				ioc,
@@ -462,7 +465,7 @@ fn convert_vtable_user_columns_to_column_defs(columns: &[UserVTableColumnDef]) -
 		.map(|(idx, col)| {
 			// Note: For virtual tables, we use unconstrained for all types.
 			// The nullable field is still available for documentation purposes.
-			let constraint = TypeConstraint::unconstrained(col.data_type);
+			let constraint = TypeConstraint::unconstrained(col.data_type.clone());
 			ColumnDef {
 				id: ColumnId(idx as u64),
 				name: col.name.clone(),

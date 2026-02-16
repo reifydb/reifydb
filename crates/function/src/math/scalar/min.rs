@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::r#type::Type;
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct Min;
 
@@ -16,6 +16,9 @@ impl Min {
 
 impl ScalarFunction for Min {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -462,10 +465,7 @@ impl ScalarFunction for Min {
 				}
 
 				Ok(ColumnData::Int {
-					container: reifydb_type::value::container::number::NumberContainer::new(
-						result,
-						bitvec.into(),
-					),
+					container: reifydb_type::value::container::number::NumberContainer::new(result),
 					max_bytes: *max_bytes,
 				})
 			}
@@ -514,10 +514,7 @@ impl ScalarFunction for Min {
 				}
 
 				Ok(ColumnData::Uint {
-					container: reifydb_type::value::container::number::NumberContainer::new(
-						result,
-						bitvec.into(),
-					),
+					container: reifydb_type::value::container::number::NumberContainer::new(result),
 					max_bytes: *max_bytes,
 				})
 			}
@@ -567,10 +564,7 @@ impl ScalarFunction for Min {
 				}
 
 				Ok(ColumnData::Decimal {
-					container: reifydb_type::value::container::number::NumberContainer::new(
-						result,
-						bitvec.into(),
-					),
+					container: reifydb_type::value::container::number::NumberContainer::new(result),
 					precision: *precision,
 					scale: *scale,
 				})

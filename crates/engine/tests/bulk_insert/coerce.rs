@@ -85,7 +85,7 @@ fn test_missing_column_uses_undefined() {
 		let a = row.get::<i32>("a").unwrap();
 		assert!(a.is_some());
 		let b = row.get::<i32>("b").unwrap();
-		assert!(b.is_none(), "Expected b to be undefined (None)");
+		assert!(b.is_none(), "Expected b to be none");
 	}
 }
 

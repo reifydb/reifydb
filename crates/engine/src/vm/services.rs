@@ -14,6 +14,8 @@ use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
 
+use crate::transform::registry::Transforms;
+
 /// Services is a container for shared resources used throughout the execution engine.
 ///
 /// This struct provides a single location for all the shared resources that the VM,
@@ -23,6 +25,7 @@ pub struct Services {
 	pub clock: Clock,
 	pub compiler: Compiler,
 	pub functions: Functions,
+	pub transforms: Transforms,
 	pub flow_operator_store: FlowOperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
 	pub stats_reader: MetricReader<SingleStore>,
@@ -34,6 +37,7 @@ impl Services {
 		catalog: Catalog,
 		clock: Clock,
 		functions: Functions,
+		transforms: Transforms,
 		flow_operator_store: FlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
 		ioc: IocContainer,
@@ -43,6 +47,7 @@ impl Services {
 			catalog,
 			clock,
 			functions,
+			transforms,
 			flow_operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
 			stats_reader,
@@ -64,8 +69,8 @@ impl Services {
 				.register_aggregate("math::count", math::aggregate::count::Count::new)
 				.register_scalar("math::abs", math::scalar::abs::Abs::new)
 				.register_scalar("math::avg", math::scalar::avg::Avg::new)
-				.register_scalar("is::defined", is::defined::Defined::new)
-				.register_scalar("is::undefined", is::undefined::IsUndefined::new)
+				.register_scalar("is::some", is::some::IsSome::new)
+				.register_scalar("is::none", is::none::IsNone::new)
 				.register_scalar("is::type", is::r#type::IsType::new)
 				.register_scalar("gen::series", series::Series::new)
 				.register_generator("generate_series", series::GenerateSeries::new)
@@ -74,6 +79,7 @@ impl Services {
 					subscription::inspect::InspectSubscription::new,
 				)
 				.build(),
+			Transforms::empty(),
 			FlowOperatorStore::new(),
 			MetricReader::new(store),
 			IocContainer::new(),

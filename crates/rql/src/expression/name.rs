@@ -56,9 +56,9 @@ fn simplified_name<'a>(expr: &Expression) -> Fragment {
 			ConstantExpression::Temporal {
 				fragment,
 			} => fragment.clone(),
-			ConstantExpression::Undefined {
+			ConstantExpression::None {
 				..
-			} => Fragment::internal("undefined"),
+			} => Fragment::internal("none"),
 		},
 		Expression::AccessSource(access_expr) => {
 			use reifydb_core::interface::identifier::ColumnPrimitive;
