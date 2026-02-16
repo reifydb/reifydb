@@ -85,7 +85,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::Return(_) => "Return",
 		Ast::Append(_) => "Append",
 		Ast::Assert(_) => "Assert",
-		Ast::Dispatch(_) => "Dispatch",
 	};
 
 	let branch = if is_last {
@@ -124,15 +123,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 				let namespace =
 					f.flow.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
 				format!("ALTER FLOW {}{}", namespace, f.flow.name.text())
-			}
-			AstAlter::Reducer(r) => {
-				let namespace = r
-					.reducer
-					.namespace
-					.first()
-					.map(|s| format!("{}.", s.text()))
-					.unwrap_or_default();
-				format!("ALTER REDUCER {}{}", namespace, r.reducer.name.text())
 			}
 		},
 		_ => ty.to_string(),
@@ -447,9 +437,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 				AstAlter::Flow(_) => {
 					// Flow alter doesn't have child operations to display here
 					// The action is part of the flow node itself
-				}
-				AstAlter::Reducer(_) => {
-					// Reducer alter doesn't have child operations to display here
 				}
 			}
 			// Return early since we handled the children

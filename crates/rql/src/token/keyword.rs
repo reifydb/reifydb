@@ -139,11 +139,7 @@ For => "FOR",
 Output => "OUTPUT",
 Append => "APPEND",
 Assert => "ASSERT",
-Patch => "PATCH",
-Reducer  => "REDUCER",
-Action   => "ACTION",
-Dispatch => "DISPATCH",
-Add      => "ADD"}
+Patch => "PATCH"}
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
 	let mut map = HashMap::new();
@@ -233,10 +229,6 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("APPEND", Keyword::Append);
 	map.insert("ASSERT", Keyword::Assert);
 	map.insert("PATCH", Keyword::Patch);
-	map.insert("REDUCER", Keyword::Reducer);
-	map.insert("ACTION", Keyword::Action);
-	map.insert("DISPATCH", Keyword::Dispatch);
-	map.insert("ADD", Keyword::Add);
 	map
 });
 
@@ -412,11 +404,7 @@ pub mod tests {
 	test_keyword_output => (Output, "OUTPUT"),
 	test_keyword_append => (Append, "APPEND"),
 	test_keyword_assert => (Assert, "ASSERT"),
-	test_keyword_patch => (Patch, "PATCH"),
-	test_keyword_reducer => (Reducer, "REDUCER"),
-	test_keyword_action => (Action, "ACTION"),
-	test_keyword_dispatch => (Dispatch, "DISPATCH"),
-	test_keyword_add => (Add, "ADD")}
+	test_keyword_patch => (Patch, "PATCH")}
 
 	fn check_no_keyword(repr: &str) {
 		let bump = Bump::new();
@@ -554,9 +542,5 @@ pub mod tests {
 	test_not_keyword_output => ( "output"),
 	test_not_keyword_append => ( "append"),
 	test_not_keyword_assert => ( "assert"),
-	test_not_keyword_patch => ( "patch"),
-	test_not_keyword_reducer => ( "reducer"),
-	test_not_keyword_action => ( "action"),
-	test_not_keyword_dispatch => ( "dispatch"),
-	test_not_keyword_add => ( "add")}
+	test_not_keyword_patch => ( "patch")}
 }

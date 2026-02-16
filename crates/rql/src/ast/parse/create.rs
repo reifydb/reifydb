@@ -7,12 +7,12 @@ use crate::{
 	ast::{
 		ast::{
 			AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-			AstCreateReducer, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
-			AstCreateTransactionalView, AstIndexColumn, AstInline, AstPrimaryKeyDef, AstType,
+			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
+			AstCreateTransactionalView, AstIndexColumn, AstPrimaryKeyDef, AstType,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier,
-			MaybeQualifiedReducerIdentifier, MaybeQualifiedSequenceIdentifier,
+			MaybeQualifiedSequenceIdentifier,
 		},
 		parse::Parser,
 	},
@@ -102,10 +102,6 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Subscription))?).is_some() {
 			return self.parse_subscription(token);
-		}
-
-		if (self.consume_if(TokenKind::Keyword(Keyword::Reducer))?).is_some() {
-			return self.parse_reducer(token);
 		}
 
 		if self.peek_is_index_creation()? {
@@ -740,141 +736,6 @@ impl<'bump> Parser<'bump> {
 			auto_increment,
 			dictionary,
 		})
-	}
-
-	fn parse_reducer(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let mut segments = self.parse_dot_separated_identifiers()?;
-		let name = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let reducer = if namespace.is_empty() {
-			MaybeQualifiedReducerIdentifier::new(name)
-		} else {
-			MaybeQualifiedReducerIdentifier::new(name).with_namespace(namespace)
-		};
-
-		let columns = self.parse_columns()?;
-
-		// Parse optional WITH block
-		let (key, init) = if !self.is_eof()
-			&& self.current().ok().map(|t| t.is_keyword(Keyword::With)).unwrap_or(false)
-		{
-			self.parse_reducer_with_block()?
-		} else {
-			(Vec::new(), None)
-		};
-
-		Ok(AstCreate::Reducer(AstCreateReducer {
-			token,
-			name: reducer,
-			columns,
-			key,
-			init,
-		}))
-	}
-
-	/// Parse WITH block for reducers: WITH { key: ident, init: { field: expr } }
-	fn parse_reducer_with_block(
-		&mut self,
-	) -> crate::Result<(Vec<crate::bump::BumpFragment<'bump>>, Option<AstInline<'bump>>)> {
-		self.consume_keyword(Keyword::With)?;
-		self.consume_operator(Operator::OpenCurly)?;
-
-		let mut key: Vec<crate::bump::BumpFragment<'bump>> = Vec::new();
-		let mut init: Option<AstInline<'bump>> = None;
-
-		loop {
-			self.skip_new_line()?;
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-
-			// Parse option key - "key" tokenizes as Keyword::Key, so use advance() + text matching
-			let option_key = self.advance()?;
-			self.consume_operator(Colon)?;
-
-			match option_key.fragment.text().to_lowercase().as_str() {
-				"key" => {
-					// Key supports multi-column: key: owner_id (single) or key: { owner_id,
-					// account_id } (multi)
-					if self.current()?.is_operator(Operator::OpenCurly) {
-						self.consume_operator(Operator::OpenCurly)?;
-						loop {
-							self.skip_new_line()?;
-							if self.current()?.is_operator(Operator::CloseCurly) {
-								break;
-							}
-							let ident = self.parse_identifier_with_hyphens()?;
-							key.push(ident.into_fragment());
-							self.skip_new_line()?;
-							if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
-								continue;
-							}
-							if self.current()?.is_operator(Operator::CloseCurly) {
-								break;
-							}
-						}
-						self.consume_operator(Operator::CloseCurly)?;
-					} else {
-						let ident = self.parse_identifier_with_hyphens()?;
-						key.push(ident.into_fragment());
-					}
-				}
-				"init" => {
-					init = Some(self.parse_inline()?);
-				}
-				_other => {
-					return Err(reifydb_type::error::Error(
-						reifydb_type::error::diagnostic::ast::unexpected_token_error(
-							"'key' or 'init'",
-							option_key.fragment.to_owned(),
-						),
-					));
-				}
-			}
-
-			self.skip_new_line()?;
-
-			// Check for comma (optional trailing comma allowed)
-			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
-				continue;
-			}
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-		}
-
-		self.consume_operator(Operator::CloseCurly)?;
-
-		Ok((key, init))
-	}
-
-	/// Parse columns with parentheses instead of curly braces: ( col: type, ... )
-	/// Used for action parameter definitions in ALTER REDUCER ADD ACTION
-	pub(crate) fn parse_action_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate<'bump>>> {
-		let mut result = Vec::new();
-
-		self.consume_operator(Operator::OpenParen)?;
-		loop {
-			self.skip_new_line()?;
-
-			if self.current()?.is_operator(Operator::CloseParen) {
-				break;
-			}
-			result.push(self.parse_column()?);
-
-			self.skip_new_line()?;
-			if self.current()?.is_operator(Operator::CloseParen) {
-				break;
-			}
-
-			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
-				break;
-			};
-		}
-		self.consume_operator(Operator::CloseParen)?;
-		Ok(result)
 	}
 
 	fn parse_flow(&mut self, token: Token<'bump>, or_replace: bool) -> crate::Result<AstCreate<'bump>> {
@@ -2319,120 +2180,6 @@ pub mod tests {
 				assert!(as_clause.is_some(), "AS clause should be present");
 			}
 			_ => unreachable!("Expected Subscription create"),
-		}
-	}
-
-	#[test]
-	fn test_create_reducer_with_single_key_and_init() {
-		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"CREATE REDUCER app.wallet { balance: decimal(18,2) } WITH { key: owner_id, init: { balance: 0 } }"#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Reducer(reducer) => {
-				assert_eq!(reducer.name.namespace[0].text(), "app");
-				assert_eq!(reducer.name.name.text(), "wallet");
-				assert_eq!(reducer.columns.len(), 1);
-				assert_eq!(reducer.columns[0].name.text(), "balance");
-				assert_eq!(reducer.key.len(), 1);
-				assert_eq!(reducer.key[0].text(), "owner_id");
-				assert!(reducer.init.is_some());
-				let init = reducer.init.as_ref().unwrap();
-				assert_eq!(init.len(), 1);
-				assert_eq!(init[0].key.text(), "balance");
-			}
-			_ => unreachable!("Expected Reducer create"),
-		}
-	}
-
-	#[test]
-	fn test_create_reducer_with_multi_column_key() {
-		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"CREATE REDUCER app.portfolio { value: decimal(18,2) } WITH { key: { owner_id, account_id } }"#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Reducer(reducer) => {
-				assert_eq!(reducer.name.name.text(), "portfolio");
-				assert_eq!(reducer.key.len(), 2);
-				assert_eq!(reducer.key[0].text(), "owner_id");
-				assert_eq!(reducer.key[1].text(), "account_id");
-				assert!(reducer.init.is_none());
-			}
-			_ => unreachable!("Expected Reducer create"),
-		}
-	}
-
-	#[test]
-	fn test_create_reducer_singleton_no_with() {
-		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, r#"CREATE REDUCER app.counter { count: int4 }"#).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Reducer(reducer) => {
-				assert_eq!(reducer.name.namespace[0].text(), "app");
-				assert_eq!(reducer.name.name.text(), "counter");
-				assert_eq!(reducer.columns.len(), 1);
-				assert_eq!(reducer.columns[0].name.text(), "count");
-				assert!(reducer.key.is_empty());
-				assert!(reducer.init.is_none());
-			}
-			_ => unreachable!("Expected Reducer create"),
-		}
-	}
-
-	#[test]
-	fn test_create_reducer_no_namespace() {
-		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, r#"CREATE REDUCER wallet { balance: decimal(18,2) } WITH { key: owner_id }"#)
-				.unwrap()
-				.into_iter()
-				.collect();
-		let mut parser = Parser::new(&bump, tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Reducer(reducer) => {
-				assert!(reducer.name.namespace.is_empty());
-				assert_eq!(reducer.name.name.text(), "wallet");
-				assert_eq!(reducer.key.len(), 1);
-				assert_eq!(reducer.key[0].text(), "owner_id");
-			}
-			_ => unreachable!("Expected Reducer create"),
 		}
 	}
 }

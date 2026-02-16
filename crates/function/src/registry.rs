@@ -22,9 +22,7 @@ impl Functions {
 	}
 
 	pub fn defaults() -> FunctionsBuilder {
-		use crate::{
-			blob, clock, date, datetime, duration, flow, is, math, meta, series, subscription, text, time,
-		};
+		use crate::{blob, clock, date, datetime, duration, flow, is, math, meta, series, subscription, text, time};
 
 		Functions::builder()
 			.register_aggregate("math::sum", math::aggregate::sum::Sum::new)

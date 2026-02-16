@@ -14,7 +14,7 @@ impl<'bump> Parser<'bump> {
 	/// Parse `DEF name ($param: type, ...) -> return_type { body }`
 	pub(crate) fn parse_def_function(&mut self) -> crate::Result<AstDefFunction<'bump>> {
 		let token = self.consume_keyword(Keyword::Def)?;
-		let name = self.parse_identifier_with_hyphens()?;
+		let name = self.parse_identifier()?;
 
 		// Parse parameters: ($a: type, $b: type)
 		self.consume_operator(Operator::OpenParen)?;

@@ -371,48 +371,6 @@ impl<'bump> MaybeQualifiedColumnIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified reducer identifier - namespace is optional
-#[derive(Debug, Clone, PartialEq)]
-pub struct MaybeQualifiedReducerIdentifier<'bump> {
-	pub namespace: Vec<BumpFragment<'bump>>,
-	pub name: BumpFragment<'bump>,
-	pub alias: Option<BumpFragment<'bump>>,
-}
-
-impl<'bump> MaybeQualifiedReducerIdentifier<'bump> {
-	pub fn new(name: BumpFragment<'bump>) -> Self {
-		Self {
-			namespace: Vec::new(),
-			name,
-			alias: None,
-		}
-	}
-
-	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
-		self.namespace = namespace;
-		self
-	}
-
-	pub fn with_alias(mut self, alias: BumpFragment<'bump>) -> Self {
-		self.alias = Some(alias);
-		self
-	}
-}
-
-/// Dispatch target identifier - variable-length dot-separated path (e.g. app.wallet.deposit)
-#[derive(Debug, Clone, PartialEq)]
-pub struct DispatchTargetIdentifier<'bump> {
-	pub segments: Vec<BumpFragment<'bump>>,
-}
-
-impl<'bump> DispatchTargetIdentifier<'bump> {
-	pub fn new(segments: Vec<BumpFragment<'bump>>) -> Self {
-		Self {
-			segments,
-		}
-	}
-}
-
 /// Maybe-qualified function identifier - namespaces can be partial
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedFunctionIdentifier<'bump> {
