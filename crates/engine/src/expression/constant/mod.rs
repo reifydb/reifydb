@@ -84,7 +84,7 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> cra
 		ConstantExpression::Temporal {
 			fragment,
 		} => TemporalParser::parse_temporal(fragment.clone(), row_count)?,
-		ConstantExpression::Undefined {
+		ConstantExpression::None {
 			..
 		} => ColumnData::Undefined(UndefinedContainer::new(row_count)),
 	})
@@ -131,7 +131,7 @@ pub(crate) fn constant_value_of(
 				ConstantExpression::Temporal {
 					..
 				} => Type::DateTime,
-				ConstantExpression::Undefined {
+				ConstantExpression::None {
 					..
 				} => Type::Option(Box::new(Type::Boolean)),
 			};

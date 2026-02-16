@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::data::ColumnData;
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct Now;
 
@@ -15,6 +15,10 @@ impl Now {
 
 impl ScalarFunction for Now {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+
 		let row_count = ctx.row_count;
 
 		if ctx.columns.len() != 0 {

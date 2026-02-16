@@ -24,7 +24,7 @@ pub fn namespace_not_found(fragment: Fragment, namespace: &str) -> Diagnostic {
 		statement: None,
 		message: format!("namespace `{}` not found", namespace),
 		fragment,
-		label: Some("undefined namespace reference".to_string()),
+		label: Some("unknown namespace reference".to_string()),
 		help: Some("make sure the namespace exists before using it or create it first".to_string()),
 		column: None,
 		notes: vec![],

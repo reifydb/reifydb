@@ -52,7 +52,7 @@ pub enum ScopeType {
 pub enum Instruction {
 	// === Stack ===
 	PushConst(Value),
-	PushUndefined,
+	PushNone,
 	Pop,
 	Dup,
 

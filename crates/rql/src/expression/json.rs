@@ -33,7 +33,7 @@ use super::{
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum JsonExpression {
 	// Constants
-	Undefined,
+	None,
 	Bool {
 		value: String,
 	},
@@ -214,9 +214,9 @@ impl From<&Expression> for JsonExpression {
 		match expr {
 			// Constants
 			Expression::Constant(constant) => match constant {
-				ConstantExpression::Undefined {
+				ConstantExpression::None {
 					..
-				} => JsonExpression::Undefined,
+				} => JsonExpression::None,
 				ConstantExpression::Bool {
 					fragment,
 				} => JsonExpression::Bool {
@@ -409,7 +409,7 @@ impl TryFrom<JsonExpression> for Expression {
 	fn try_from(json: JsonExpression) -> Result<Self, Self::Error> {
 		Ok(match json {
 			// Constants
-			JsonExpression::Undefined => Expression::Constant(ConstantExpression::Undefined {
+			JsonExpression::None => Expression::Constant(ConstantExpression::None {
 				fragment: Fragment::None,
 			}),
 			JsonExpression::Bool {
@@ -845,12 +845,12 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined() {
-		let expr = Expression::Constant(ConstantExpression::Undefined {
+		let expr = Expression::Constant(ConstantExpression::None {
 			fragment: Fragment::None,
 		});
 
 		let json = to_json(&expr);
-		assert_eq!(json, r#"{"type":"undefined"}"#);
+		assert_eq!(json, r#"{"type":"none"}"#);
 
 		let recovered = from_json(&json).unwrap();
 		assert_eq!(to_json(&recovered), json);

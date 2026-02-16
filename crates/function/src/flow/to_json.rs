@@ -12,7 +12,7 @@ use reifydb_core::{
 use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
 use serde::Serialize;
 
-use crate::{ScalarFunction, ScalarFunctionContext};
+use crate::{ScalarFunction, ScalarFunctionContext, propagate_options};
 
 /// JSON-serializable version of FlowNodeType that uses JsonExpression
 /// for clean expression serialization without Fragment metadata.
@@ -209,6 +209,10 @@ impl FlowNodeToJson {
 
 impl ScalarFunction for FlowNodeToJson {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -279,7 +283,7 @@ impl ScalarFunction for FlowNodeToJson {
 					}
 				}
 
-				Ok(ColumnData::utf8_with_bitvec(result_data, container.bitvec().clone()))
+				Ok(ColumnData::utf8(result_data))
 			}
 			_ => Err(reifydb_type::error::Error(internal!("flow_node::to_json only supports Blob input"))
 				.into()),

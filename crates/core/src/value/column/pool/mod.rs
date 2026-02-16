@@ -231,7 +231,7 @@ impl Pools {
 		stats.insert("string".to_string(), self.string_pool.stats());
 		stats.insert("blob".to_string(), self.blob_pool.stats());
 		stats.insert("row_number".to_string(), self.row_number_pool.stats());
-		stats.insert("undefined".to_string(), self.undefined_pool.stats());
+		stats.insert("none".to_string(), self.undefined_pool.stats());
 
 		stats.insert("i8".to_string(), self.i8_pool.stats());
 		stats.insert("i16".to_string(), self.i16_pool.stats());

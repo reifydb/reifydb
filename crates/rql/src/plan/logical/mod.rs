@@ -717,8 +717,8 @@ pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 
 	match ast.policy {
 		AstPolicyKind::Saturation => {
-			if ast.value.is_literal_undefined() {
-				return Saturation(ColumnSaturationPolicy::Undefined);
+			if ast.value.is_literal_none() {
+				return Saturation(ColumnSaturationPolicy::None);
 			}
 			let ident = ast.value.as_identifier().text();
 			match ident {
@@ -730,6 +730,6 @@ pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 			}
 		}
 		AstPolicyKind::Default => unimplemented!(),
-		AstPolicyKind::NotUndefined => unimplemented!(),
+		AstPolicyKind::NotNone => unimplemented!(),
 	}
 }

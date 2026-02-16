@@ -41,422 +41,424 @@ pub(crate) fn prefix_eval(
 	};
 	let column = super::eval::evaluate(&inner_ctx, &prefix.expression, functions, clock)?;
 
-	match column.data() {
-		ColumnData::Bool(container) => match prefix.operator {
-			PrefixOperator::Not(_) => {
+	crate::expression::option::unary_op_unwrap_option(&column, |column| {
+		match column.data() {
+			ColumnData::Bool(container) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					let mut result = Vec::with_capacity(container.data().len());
+					for (idx, val) in container.data().iter().enumerate() {
+						if container.is_defined(idx) {
+							result.push(!val);
+						} else {
+							result.push(false);
+						}
+					}
+
+					let new_data = ColumnData::bool(result);
+					Ok(column.with_new_data(new_data))
+				}
+				_ => err!(frame_error("Cannot apply arithmetic prefix operator to bool".to_string())),
+			},
+
+			ColumnData::Float4(container) => {
 				let mut result = Vec::with_capacity(container.data().len());
 				for (idx, val) in container.data().iter().enumerate() {
 					if container.is_defined(idx) {
-						result.push(!val);
+						result.push(match prefix.operator {
+							PrefixOperator::Minus(_) => -*val,
+							PrefixOperator::Plus(_) => *val,
+							PrefixOperator::Not(_) => {
+								return err!(not_can_not_applied_to_number(
+									prefix.full_fragment_owned()
+								));
+							}
+						});
 					} else {
-						result.push(false);
+						result.push(0.0f32);
 					}
 				}
-
-				let new_data = ColumnData::bool_with_bitvec(result, container.bitvec());
+				let new_data = ColumnData::float4(result);
 				Ok(column.with_new_data(new_data))
 			}
-			_ => err!(frame_error("Cannot apply arithmetic prefix operator to bool".to_string())),
-		},
 
-		ColumnData::Float4(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
-						}
-					});
-				} else {
-					result.push(0.0f32);
-				}
-			}
-			let new_data = ColumnData::float4_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-
-		ColumnData::Float8(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
-						}
-					});
-				} else {
-					result.push(0.0f64);
-				}
-			}
-			let new_data = ColumnData::float8_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-
-		ColumnData::Int1(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
-						}
-					});
-				} else {
-					result.push(0);
-				}
-			}
-			let new_data = ColumnData::int1_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-
-		ColumnData::Int2(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
-						}
-					});
-				} else {
-					result.push(0);
-				}
-			}
-			let new_data = ColumnData::int2_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-
-		ColumnData::Int4(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
-						}
-					});
-				} else {
-					result.push(0);
-				}
-			}
-			let new_data = ColumnData::int4_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-
-		ColumnData::Int8(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
-						}
-					});
-				} else {
-					result.push(0);
-				}
-			}
-			let new_data = ColumnData::int8_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-
-		ColumnData::Int16(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
-						}
-					});
-				} else {
-					result.push(0);
-				}
-			}
-			let new_data = ColumnData::int16_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-
-		ColumnData::Utf8 {
-			container: _,
-			..
-		} => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(operator::not_can_not_applied_to_text(prefix.full_fragment_owned()))
-			}
-			_ => err!(frame_error("Cannot apply arithmetic prefix operator to text".to_string())),
-		},
-
-		ColumnData::Uint1(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for val in container.data().iter() {
-				let signed = *val as i8;
-				result.push(match prefix.operator {
-					PrefixOperator::Minus(_) => -signed,
-					PrefixOperator::Plus(_) => signed,
-					PrefixOperator::Not(_) => {
-						return err!(not_can_not_applied_to_number(
-							prefix.full_fragment_owned()
-						));
-					}
-				});
-			}
-			let new_data = ColumnData::int1_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-
-		ColumnData::Uint2(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for val in container.data().iter() {
-				let signed = *val as i16;
-				result.push(match prefix.operator {
-					PrefixOperator::Minus(_) => -signed,
-					PrefixOperator::Plus(_) => signed,
-					PrefixOperator::Not(_) => {
-						return err!(not_can_not_applied_to_number(
-							prefix.full_fragment_owned()
-						));
-					}
-				});
-			}
-			let new_data = ColumnData::int2_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-
-		ColumnData::Uint4(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for val in container.data().iter() {
-				let signed = *val as i32;
-				result.push(match prefix.operator {
-					PrefixOperator::Minus(_) => -signed,
-					PrefixOperator::Plus(_) => signed,
-					PrefixOperator::Not(_) => {
-						return err!(not_can_not_applied_to_number(
-							prefix.full_fragment_owned()
-						));
-					}
-				});
-			}
-			let new_data = ColumnData::int4_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-
-		ColumnData::Uint8(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for val in container.data().iter() {
-				let signed = *val as i64;
-				result.push(match prefix.operator {
-					PrefixOperator::Minus(_) => -signed,
-					PrefixOperator::Plus(_) => signed,
-					PrefixOperator::Not(_) => {
-						return err!(not_can_not_applied_to_number(
-							prefix.full_fragment_owned()
-						));
-					}
-				});
-			}
-			let new_data = ColumnData::int8_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-		ColumnData::Uint16(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for val in container.data().iter() {
-				let signed = *val as i128;
-				result.push(match prefix.operator {
-					PrefixOperator::Minus(_) => -signed,
-					PrefixOperator::Plus(_) => signed,
-					PrefixOperator::Not(_) => {
-						return err!(not_can_not_applied_to_number(
-							prefix.full_fragment_owned()
-						));
-					}
-				});
-			}
-			let new_data = ColumnData::int16_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-		// EngineColumnData::Undefined(_) => {
-		//     Err("Cannot apply prefix operator to undefined data".into())
-		// }
-		ColumnData::Undefined(_) => Ok(column),
-
-		ColumnData::Date(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
-			}
-			_ => unimplemented!(),
-		},
-		ColumnData::DateTime(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
-			}
-			_ => unimplemented!(),
-		},
-		ColumnData::Time(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
-			}
-			_ => unimplemented!(),
-		},
-		ColumnData::Duration(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
-			}
-			_ => unimplemented!(),
-		},
-		ColumnData::IdentityId(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
-			}
-			_ => unimplemented!(),
-		},
-		ColumnData::Uuid4(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
-			}
-			_ => unimplemented!(),
-		},
-		ColumnData::Uuid7(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
-			}
-			_ => unimplemented!(),
-		},
-		ColumnData::Blob {
-			container: _,
-			..
-		} => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(frame_error("Cannot apply NOT operator to BLOB".to_string()))
-			}
-			_ => err!(frame_error("Cannot apply arithmetic prefix operator to BLOB".to_string())),
-		},
-		ColumnData::Int {
-			container,
-			..
-		} => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => Int(-val.0.clone()),
-						PrefixOperator::Plus(_) => val.clone(),
-						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
-						}
-					});
-				} else {
-					result.push(Int::zero());
-				}
-			}
-			let new_data = ColumnData::int_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
-		}
-		ColumnData::Uint {
-			container,
-			..
-		} => match prefix.operator {
-			PrefixOperator::Minus(_) => {
+			ColumnData::Float8(container) => {
 				let mut result = Vec::with_capacity(container.data().len());
 				for (idx, val) in container.data().iter().enumerate() {
 					if container.is_defined(idx) {
-						let negated = -val.0.clone();
-						result.push(Int::from(negated));
+						result.push(match prefix.operator {
+							PrefixOperator::Minus(_) => -*val,
+							PrefixOperator::Plus(_) => *val,
+							PrefixOperator::Not(_) => {
+								return err!(not_can_not_applied_to_number(
+									prefix.full_fragment_owned()
+								));
+							}
+						});
+					} else {
+						result.push(0.0f64);
+					}
+				}
+				let new_data = ColumnData::float8(result);
+				Ok(column.with_new_data(new_data))
+			}
+
+			ColumnData::Int1(container) => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for (idx, val) in container.data().iter().enumerate() {
+					if container.is_defined(idx) {
+						result.push(match prefix.operator {
+							PrefixOperator::Minus(_) => -*val,
+							PrefixOperator::Plus(_) => *val,
+							PrefixOperator::Not(_) => {
+								return err!(not_can_not_applied_to_number(
+									prefix.full_fragment_owned()
+								));
+							}
+						});
+					} else {
+						result.push(0);
+					}
+				}
+				let new_data = ColumnData::int1(result);
+				Ok(column.with_new_data(new_data))
+			}
+
+			ColumnData::Int2(container) => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for (idx, val) in container.data().iter().enumerate() {
+					if container.is_defined(idx) {
+						result.push(match prefix.operator {
+							PrefixOperator::Minus(_) => -*val,
+							PrefixOperator::Plus(_) => *val,
+							PrefixOperator::Not(_) => {
+								return err!(not_can_not_applied_to_number(
+									prefix.full_fragment_owned()
+								));
+							}
+						});
+					} else {
+						result.push(0);
+					}
+				}
+				let new_data = ColumnData::int2(result);
+				Ok(column.with_new_data(new_data))
+			}
+
+			ColumnData::Int4(container) => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for (idx, val) in container.data().iter().enumerate() {
+					if container.is_defined(idx) {
+						result.push(match prefix.operator {
+							PrefixOperator::Minus(_) => -*val,
+							PrefixOperator::Plus(_) => *val,
+							PrefixOperator::Not(_) => {
+								return err!(not_can_not_applied_to_number(
+									prefix.full_fragment_owned()
+								));
+							}
+						});
+					} else {
+						result.push(0);
+					}
+				}
+				let new_data = ColumnData::int4(result);
+				Ok(column.with_new_data(new_data))
+			}
+
+			ColumnData::Int8(container) => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for (idx, val) in container.data().iter().enumerate() {
+					if container.is_defined(idx) {
+						result.push(match prefix.operator {
+							PrefixOperator::Minus(_) => -*val,
+							PrefixOperator::Plus(_) => *val,
+							PrefixOperator::Not(_) => {
+								return err!(not_can_not_applied_to_number(
+									prefix.full_fragment_owned()
+								));
+							}
+						});
+					} else {
+						result.push(0);
+					}
+				}
+				let new_data = ColumnData::int8(result);
+				Ok(column.with_new_data(new_data))
+			}
+
+			ColumnData::Int16(container) => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for (idx, val) in container.data().iter().enumerate() {
+					if container.is_defined(idx) {
+						result.push(match prefix.operator {
+							PrefixOperator::Minus(_) => -*val,
+							PrefixOperator::Plus(_) => *val,
+							PrefixOperator::Not(_) => {
+								return err!(not_can_not_applied_to_number(
+									prefix.full_fragment_owned()
+								));
+							}
+						});
+					} else {
+						result.push(0);
+					}
+				}
+				let new_data = ColumnData::int16(result);
+				Ok(column.with_new_data(new_data))
+			}
+
+			ColumnData::Utf8 {
+				container: _,
+				..
+			} => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(operator::not_can_not_applied_to_text(prefix.full_fragment_owned()))
+				}
+				_ => err!(frame_error("Cannot apply arithmetic prefix operator to text".to_string())),
+			},
+
+			ColumnData::Uint1(container) => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for val in container.data().iter() {
+					let signed = *val as i8;
+					result.push(match prefix.operator {
+						PrefixOperator::Minus(_) => -signed,
+						PrefixOperator::Plus(_) => signed,
+						PrefixOperator::Not(_) => {
+							return err!(not_can_not_applied_to_number(
+								prefix.full_fragment_owned()
+							));
+						}
+					});
+				}
+				let new_data = ColumnData::int1(result);
+				Ok(column.with_new_data(new_data))
+			}
+
+			ColumnData::Uint2(container) => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for val in container.data().iter() {
+					let signed = *val as i16;
+					result.push(match prefix.operator {
+						PrefixOperator::Minus(_) => -signed,
+						PrefixOperator::Plus(_) => signed,
+						PrefixOperator::Not(_) => {
+							return err!(not_can_not_applied_to_number(
+								prefix.full_fragment_owned()
+							));
+						}
+					});
+				}
+				let new_data = ColumnData::int2(result);
+				Ok(column.with_new_data(new_data))
+			}
+
+			ColumnData::Uint4(container) => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for val in container.data().iter() {
+					let signed = *val as i32;
+					result.push(match prefix.operator {
+						PrefixOperator::Minus(_) => -signed,
+						PrefixOperator::Plus(_) => signed,
+						PrefixOperator::Not(_) => {
+							return err!(not_can_not_applied_to_number(
+								prefix.full_fragment_owned()
+							));
+						}
+					});
+				}
+				let new_data = ColumnData::int4(result);
+				Ok(column.with_new_data(new_data))
+			}
+
+			ColumnData::Uint8(container) => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for val in container.data().iter() {
+					let signed = *val as i64;
+					result.push(match prefix.operator {
+						PrefixOperator::Minus(_) => -signed,
+						PrefixOperator::Plus(_) => signed,
+						PrefixOperator::Not(_) => {
+							return err!(not_can_not_applied_to_number(
+								prefix.full_fragment_owned()
+							));
+						}
+					});
+				}
+				let new_data = ColumnData::int8(result);
+				Ok(column.with_new_data(new_data))
+			}
+			ColumnData::Uint16(container) => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for val in container.data().iter() {
+					let signed = *val as i128;
+					result.push(match prefix.operator {
+						PrefixOperator::Minus(_) => -signed,
+						PrefixOperator::Plus(_) => signed,
+						PrefixOperator::Not(_) => {
+							return err!(not_can_not_applied_to_number(
+								prefix.full_fragment_owned()
+							));
+						}
+					});
+				}
+				let new_data = ColumnData::int16(result);
+				Ok(column.with_new_data(new_data))
+			}
+			// EngineColumnData::Undefined(_) => {
+			//     Err("Cannot apply prefix operator to undefined data".into())
+			// }
+			ColumnData::Undefined(_) => Ok(column.clone()),
+
+			ColumnData::Date(_) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+				}
+				_ => unimplemented!(),
+			},
+			ColumnData::DateTime(_) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+				}
+				_ => unimplemented!(),
+			},
+			ColumnData::Time(_) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+				}
+				_ => unimplemented!(),
+			},
+			ColumnData::Duration(_) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+				}
+				_ => unimplemented!(),
+			},
+			ColumnData::IdentityId(_) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
+				}
+				_ => unimplemented!(),
+			},
+			ColumnData::Uuid4(_) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
+				}
+				_ => unimplemented!(),
+			},
+			ColumnData::Uuid7(_) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
+				}
+				_ => unimplemented!(),
+			},
+			ColumnData::Blob {
+				container: _,
+				..
+			} => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(frame_error("Cannot apply NOT operator to BLOB".to_string()))
+				}
+				_ => err!(frame_error("Cannot apply arithmetic prefix operator to BLOB".to_string())),
+			},
+			ColumnData::Int {
+				container,
+				..
+			} => {
+				let mut result = Vec::with_capacity(container.data().len());
+				for (idx, val) in container.data().iter().enumerate() {
+					if container.is_defined(idx) {
+						result.push(match prefix.operator {
+							PrefixOperator::Minus(_) => Int(-val.0.clone()),
+							PrefixOperator::Plus(_) => val.clone(),
+							PrefixOperator::Not(_) => {
+								return err!(not_can_not_applied_to_number(
+									prefix.full_fragment_owned()
+								));
+							}
+						});
 					} else {
 						result.push(Int::zero());
 					}
 				}
-				let new_data = ColumnData::int_with_bitvec(result, container.bitvec());
+				let new_data = ColumnData::int(result);
 				Ok(column.with_new_data(new_data))
 			}
-			PrefixOperator::Plus(_) => {
+			ColumnData::Uint {
+				container,
+				..
+			} => match prefix.operator {
+				PrefixOperator::Minus(_) => {
+					let mut result = Vec::with_capacity(container.data().len());
+					for (idx, val) in container.data().iter().enumerate() {
+						if container.is_defined(idx) {
+							let negated = -val.0.clone();
+							result.push(Int::from(negated));
+						} else {
+							result.push(Int::zero());
+						}
+					}
+					let new_data = ColumnData::int(result);
+					Ok(column.with_new_data(new_data))
+				}
+				PrefixOperator::Plus(_) => {
+					let mut result = Vec::with_capacity(container.data().len());
+					for (idx, val) in container.data().iter().enumerate() {
+						if container.is_defined(idx) {
+							result.push(val.clone());
+						} else {
+							result.push(Uint::zero());
+						}
+					}
+					let new_data = ColumnData::uint(result);
+					Ok(column.with_new_data(new_data))
+				}
+				PrefixOperator::Not(_) => {
+					err!(not_can_not_applied_to_number(prefix.full_fragment_owned()))
+				}
+			},
+			ColumnData::Decimal {
+				container,
+				..
+			} => {
 				let mut result = Vec::with_capacity(container.data().len());
 				for (idx, val) in container.data().iter().enumerate() {
 					if container.is_defined(idx) {
-						result.push(val.clone());
+						result.push(match prefix.operator {
+							PrefixOperator::Minus(_) => val.clone().negate(),
+							PrefixOperator::Plus(_) => val.clone(),
+							PrefixOperator::Not(_) => {
+								return err!(not_can_not_applied_to_number(
+									prefix.full_fragment_owned()
+								));
+							}
+						});
 					} else {
-						result.push(Uint::zero());
+						result.push(Decimal::from(0));
 					}
 				}
-				let new_data = ColumnData::uint_with_bitvec(result, container.bitvec());
+				let new_data = ColumnData::decimal(result);
 				Ok(column.with_new_data(new_data))
 			}
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_number(prefix.full_fragment_owned()))
-			}
-		},
-		ColumnData::Decimal {
-			container,
-			..
-		} => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => val.clone().negate(),
-						PrefixOperator::Plus(_) => val.clone(),
-						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
-						}
-					});
-				} else {
-					result.push(Decimal::from(0));
+			ColumnData::DictionaryId(_) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(frame_error("Cannot apply NOT operator to DictionaryId type".to_string()))
 				}
-			}
-			let new_data = ColumnData::decimal_with_bitvec(result, container.bitvec());
-			Ok(column.with_new_data(new_data))
+				_ => err!(frame_error(
+					"Cannot apply arithmetic prefix operator to DictionaryId type".to_string()
+				)),
+			},
+			ColumnData::Any(_) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(frame_error("Cannot apply NOT operator to Any type".to_string()))
+				}
+				_ => err!(frame_error(
+					"Cannot apply arithmetic prefix operator to Any type".to_string()
+				)),
+			},
+			ColumnData::Option {
+				..
+			} => unreachable!("nested Option after unwrap"),
 		}
-		ColumnData::DictionaryId(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(frame_error("Cannot apply NOT operator to DictionaryId type".to_string()))
-			}
-			_ => err!(frame_error(
-				"Cannot apply arithmetic prefix operator to DictionaryId type".to_string()
-			)),
-		},
-		ColumnData::Any(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(frame_error("Cannot apply NOT operator to Any type".to_string()))
-			}
-			_ => err!(frame_error("Cannot apply arithmetic prefix operator to Any type".to_string())),
-		},
-		ColumnData::Option {
-			..
-		} => {
-			unreachable!("Option columns should not reach prefix evaluation directly")
-		}
-	}
+	})
 }

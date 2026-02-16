@@ -85,9 +85,7 @@ fn from_uuid4(
 	lazy_fragment: impl LazyFragment,
 ) -> crate::Result<ColumnData> {
 	match target {
-		Type::Uuid4 => {
-			Ok(ColumnData::Uuid4(UuidContainer::new(container.data().to_vec(), container.bitvec().clone())))
-		}
+		Type::Uuid4 => Ok(ColumnData::Uuid4(UuidContainer::new(container.data().to_vec()))),
 		_ => {
 			let source_type = Type::Uuid4;
 			err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
@@ -102,9 +100,7 @@ fn from_uuid7(
 	lazy_fragment: impl LazyFragment,
 ) -> crate::Result<ColumnData> {
 	match target {
-		Type::Uuid7 => {
-			Ok(ColumnData::Uuid7(UuidContainer::new(container.data().to_vec(), container.bitvec().clone())))
-		}
+		Type::Uuid7 => Ok(ColumnData::Uuid7(UuidContainer::new(container.data().to_vec()))),
 		_ => {
 			let source_type = Type::Uuid7;
 			err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))

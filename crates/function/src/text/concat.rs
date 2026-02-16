@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct TextConcat;
 
@@ -16,6 +16,10 @@ impl TextConcat {
 
 impl ScalarFunction for TextConcat {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -45,7 +49,6 @@ impl ScalarFunction for TextConcat {
 		}
 
 		let mut result_data = Vec::with_capacity(row_count);
-		let mut result_bitvec = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
 			let mut all_defined = true;
@@ -68,15 +71,13 @@ impl ScalarFunction for TextConcat {
 
 			if all_defined {
 				result_data.push(concatenated);
-				result_bitvec.push(true);
 			} else {
 				result_data.push(String::new());
-				result_bitvec.push(false);
 			}
 		}
 
 		Ok(ColumnData::Utf8 {
-			container: Utf8Container::new(result_data, result_bitvec.into()),
+			container: Utf8Container::new(result_data),
 			max_bytes: reifydb_type::value::constraint::bytes::MaxBytes::MAX,
 		})
 	}

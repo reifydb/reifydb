@@ -580,7 +580,7 @@ pub mod tests {
 			("str_col", Value::Utf8("hello".to_string())),
 			("date_col", Value::Date(date.clone())),
 			("time_col", Value::Time(time.clone())),
-			("undefined_col", Value::None),
+			("none_col", Value::None),
 		]);
 
 		assert_eq!(columns.len(), 6);
@@ -592,7 +592,7 @@ pub mod tests {
 		assert_eq!(columns.column("str_col").unwrap().data().get_value(0), Value::Utf8("hello".to_string()));
 		assert_eq!(columns.column("date_col").unwrap().data().get_value(0), Value::Date(date));
 		assert_eq!(columns.column("time_col").unwrap().data().get_value(0), Value::Time(time));
-		assert_eq!(columns.column("undefined_col").unwrap().data().get_value(0), Value::None);
+		assert_eq!(columns.column("none_col").unwrap().data().get_value(0), Value::None);
 	}
 
 	#[test]

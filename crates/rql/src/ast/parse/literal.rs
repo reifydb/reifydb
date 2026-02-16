@@ -4,8 +4,8 @@
 use crate::{
 	ast::{
 		ast::{
-			AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralTemporal, AstLiteralText,
-			AstLiteralUndefined,
+			AstLiteral, AstLiteralBoolean, AstLiteralNone, AstLiteralNumber, AstLiteralTemporal,
+			AstLiteralText,
 		},
 		parse::Parser,
 	},
@@ -33,9 +33,9 @@ impl<'bump> Parser<'bump> {
 		Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
 	}
 
-	pub(crate) fn parse_literal_undefined(&mut self) -> crate::Result<AstLiteral<'bump>> {
-		let token = self.consume_literal(Literal::Undefined)?;
-		Ok(AstLiteral::Undefined(AstLiteralUndefined(token)))
+	pub(crate) fn parse_literal_none(&mut self) -> crate::Result<AstLiteral<'bump>> {
+		let token = self.consume_literal(Literal::None)?;
+		Ok(AstLiteral::None(AstLiteralNone(token)))
 	}
 
 	pub(crate) fn parse_literal_temporal(&mut self) -> crate::Result<AstLiteral<'bump>> {

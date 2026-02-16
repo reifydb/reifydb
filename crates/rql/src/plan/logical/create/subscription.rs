@@ -5,9 +5,9 @@ use reifydb_catalog::catalog::subscription::SubscriptionColumnToCreate;
 use reifydb_transaction::transaction::AsTransaction;
 
 use crate::{
-	ast::ast::{AstCreateSubscription, AstType},
+	ast::ast::AstCreateSubscription,
 	bump::BumpVec,
-	convert_data_type,
+	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateSubscriptionNode, LogicalPlan},
 };
 
@@ -20,19 +20,10 @@ impl<'bump> Compiler<'bump> {
 		let mut columns = Vec::with_capacity(ast.columns.len());
 
 		for col in ast.columns.iter() {
-			let ty = match &col.ty {
-				AstType::Unconstrained(fragment) => convert_data_type(fragment)?,
-				AstType::Constrained {
-					name,
-					..
-				} => {
-					// Subscriptions use simple types without constraints
-					convert_data_type(name)?
-				}
-			};
+			let constraint = convert_data_type_with_constraints(&col.ty)?;
 			columns.push(SubscriptionColumnToCreate {
 				name: col.name.text().to_string(),
-				ty,
+				ty: constraint.get_type(),
 			});
 		}
 

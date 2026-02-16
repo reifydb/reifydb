@@ -121,7 +121,7 @@ pub mod tests {
 	}
 
 	fn create_constant_undefined() -> Expression {
-		Expression::Constant(ConstantExpression::Undefined {
+		Expression::Constant(ConstantExpression::None {
 			fragment: Fragment::internal("none".to_string()),
 		})
 	}

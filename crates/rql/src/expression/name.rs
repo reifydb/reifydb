@@ -56,7 +56,7 @@ fn simplified_name<'a>(expr: &Expression) -> Fragment {
 			ConstantExpression::Temporal {
 				fragment,
 			} => fragment.clone(),
-			ConstantExpression::Undefined {
+			ConstantExpression::None {
 				..
 			} => Fragment::internal("none"),
 		},

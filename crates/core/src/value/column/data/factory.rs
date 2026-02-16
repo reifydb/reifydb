@@ -813,6 +813,16 @@ impl ColumnData {
 		ColumnData::Undefined(UndefinedContainer::new(len))
 	}
 
+	/// Create a single-element None of the given type (bitvec=[false]).
+	/// Unlike `undefined()`, this preserves the column type so comparisons
+	/// see the correct inner type rather than `Option<Boolean>`.
+	pub fn typed_none(ty: &Type) -> Self {
+		match ty {
+			Type::Option(inner) => Self::typed_none(inner),
+			_ => Self::undefined_typed(ty.clone(), 1),
+		}
+	}
+
 	/// Create typed column data with all undefined values (bitvec all false).
 	pub fn undefined_typed(ty: Type, len: usize) -> Self {
 		match ty {

@@ -12,7 +12,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	storage::{Cow, DataBitVec, DataVec, Storage},
-	util::{bitvec::BitVec, cowvec::CowVec},
+	util::cowvec::CowVec,
 	value::{Value, date::Date, datetime::DateTime, duration::Duration, is::IsTemporal, time::Time},
 };
 
@@ -21,14 +21,12 @@ where
 	T: IsTemporal,
 {
 	data: S::Vec<T>,
-	bitvec: S::BitVec,
 }
 
 impl<T: IsTemporal, S: Storage> Clone for TemporalContainer<T, S> {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
-			bitvec: self.bitvec.clone(),
 		}
 	}
 }
@@ -36,20 +34,18 @@ impl<T: IsTemporal, S: Storage> Clone for TemporalContainer<T, S> {
 impl<T: IsTemporal + Debug, S: Storage> Debug for TemporalContainer<T, S>
 where
 	S::Vec<T>: Debug,
-	S::BitVec: Debug,
 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("TemporalContainer").field("data", &self.data).field("bitvec", &self.bitvec).finish()
+		f.debug_struct("TemporalContainer").field("data", &self.data).finish()
 	}
 }
 
 impl<T: IsTemporal, S: Storage> PartialEq for TemporalContainer<T, S>
 where
 	S::Vec<T>: PartialEq,
-	S::BitVec: PartialEq,
 {
 	fn eq(&self, other: &Self) -> bool {
-		self.data == other.data && self.bitvec == other.bitvec
+		self.data == other.data
 	}
 }
 
@@ -58,11 +54,9 @@ impl<T: IsTemporal + Serialize> Serialize for TemporalContainer<T, Cow> {
 		#[derive(Serialize)]
 		struct Helper<'a, T: Clone + PartialEq + Serialize> {
 			data: &'a CowVec<T>,
-			bitvec: &'a BitVec,
 		}
 		Helper {
 			data: &self.data,
-			bitvec: &self.bitvec,
 		}
 		.serialize(serializer)
 	}
@@ -73,12 +67,10 @@ impl<'de, T: IsTemporal + Deserialize<'de>> Deserialize<'de> for TemporalContain
 		#[derive(Deserialize)]
 		struct Helper<T: Clone + PartialEq> {
 			data: CowVec<T>,
-			bitvec: BitVec,
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(TemporalContainer {
 			data: h.data,
-			bitvec: h.bitvec,
 		})
 	}
 }
@@ -95,26 +87,21 @@ impl<T> TemporalContainer<T, Cow>
 where
 	T: IsTemporal + Clone + Debug + Default,
 {
-	pub fn new(data: Vec<T>, bitvec: BitVec) -> Self {
-		debug_assert_eq!(data.len(), bitvec.len());
+	pub fn new(data: Vec<T>) -> Self {
 		Self {
 			data: CowVec::new(data),
-			bitvec,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
 			data: CowVec::with_capacity(capacity),
-			bitvec: BitVec::with_capacity(capacity),
 		}
 	}
 
 	pub fn from_vec(data: Vec<T>) -> Self {
-		let len = data.len();
 		Self {
 			data: CowVec::new(data),
-			bitvec: BitVec::repeat(len, true),
 		}
 	}
 }
@@ -123,20 +110,18 @@ impl<T, S: Storage> TemporalContainer<T, S>
 where
 	T: IsTemporal + Clone + Debug + Default,
 {
-	pub fn from_parts(data: S::Vec<T>, bitvec: S::BitVec) -> Self {
+	pub fn from_parts(data: S::Vec<T>) -> Self {
 		Self {
 			data,
-			bitvec,
 		}
 	}
 
 	pub fn len(&self) -> usize {
-		debug_assert_eq!(DataVec::len(&self.data), DataBitVec::len(&self.bitvec));
 		DataVec::len(&self.data)
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataVec::capacity(&self.data).min(DataBitVec::capacity(&self.bitvec))
+		DataVec::capacity(&self.data)
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -145,41 +130,30 @@ where
 
 	pub fn clear(&mut self) {
 		DataVec::clear(&mut self.data);
-		DataBitVec::clear(&mut self.bitvec);
 	}
 
 	pub fn push(&mut self, value: T) {
 		DataVec::push(&mut self.data, value);
-		DataBitVec::push(&mut self.bitvec, true);
 	}
 
 	pub fn push_undefined(&mut self) {
 		DataVec::push(&mut self.data, T::default());
-		DataBitVec::push(&mut self.bitvec, false);
 	}
 
 	pub fn get(&self, index: usize) -> Option<&T> {
-		if index < self.len() && self.is_defined(index) {
+		if index < self.len() {
 			DataVec::get(&self.data, index)
 		} else {
 			None
 		}
 	}
 
-	pub fn bitvec(&self) -> &S::BitVec {
-		&self.bitvec
-	}
-
-	pub fn bitvec_mut(&mut self) -> &mut S::BitVec {
-		&mut self.bitvec
-	}
-
 	pub fn is_defined(&self, idx: usize) -> bool {
-		idx < self.len() && DataBitVec::get(&self.bitvec, idx)
+		idx < self.len()
 	}
 
 	pub fn is_fully_defined(&self) -> bool {
-		DataBitVec::count_ones(&self.bitvec) == self.len()
+		true
 	}
 
 	pub fn data(&self) -> &S::Vec<T> {
@@ -191,7 +165,7 @@ where
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
-		if index < self.len() && self.is_defined(index) {
+		if index < self.len() {
 			self.data[index].to_string()
 		} else {
 			"none".to_string()
@@ -202,7 +176,7 @@ where
 	where
 		T: 'static,
 	{
-		if index < self.len() && self.is_defined(index) {
+		if index < self.len() {
 			let value = &self.data[index];
 
 			if TypeId::of::<T>() == TypeId::of::<Date>() {
@@ -227,14 +201,12 @@ where
 
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
-		DataBitVec::extend_from(&mut self.bitvec, &other.bitvec);
 		Ok(())
 	}
 
 	pub fn extend_from_undefined(&mut self, len: usize) {
 		for _ in 0..len {
 			DataVec::push(&mut self.data, T::default());
-			DataBitVec::push(&mut self.bitvec, false);
 		}
 	}
 
@@ -242,66 +214,49 @@ where
 	where
 		T: Copy,
 	{
-		self.data.iter().zip(DataBitVec::iter(&self.bitvec)).map(|(&v, defined)| {
-			if defined {
-				Some(v)
-			} else {
-				None
-			}
-		})
+		self.data.iter().map(|&v| Some(v))
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let count = (end - start).min(self.len().saturating_sub(start));
 		let mut new_data = DataVec::spawn(&self.data, count);
-		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, count);
 		for i in start..(start + count) {
 			DataVec::push(&mut new_data, self.data[i].clone());
-			DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, i));
 		}
 		Self {
 			data: new_data,
-			bitvec: new_bitvec,
 		}
 	}
 
 	pub fn filter(&mut self, mask: &S::BitVec) {
 		let mut new_data = DataVec::spawn(&self.data, DataBitVec::count_ones(mask));
-		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, DataBitVec::count_ones(mask));
 
 		for (i, keep) in DataBitVec::iter(mask).enumerate() {
 			if keep && i < self.len() {
 				DataVec::push(&mut new_data, self.data[i].clone());
-				DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, i));
 			}
 		}
 
 		self.data = new_data;
-		self.bitvec = new_bitvec;
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
 		let mut new_data = DataVec::spawn(&self.data, indices.len());
-		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, indices.len());
 
 		for &idx in indices {
 			if idx < self.len() {
 				DataVec::push(&mut new_data, self.data[idx].clone());
-				DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, idx));
 			} else {
 				DataVec::push(&mut new_data, T::default());
-				DataBitVec::push(&mut new_bitvec, false);
 			}
 		}
 
 		self.data = new_data;
-		self.bitvec = new_bitvec;
 	}
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
 			data: DataVec::take(&self.data, num),
-			bitvec: DataBitVec::take(&self.bitvec, num),
 		}
 	}
 }
@@ -333,7 +288,6 @@ pub mod tests {
 		assert_eq!(container.get(1), Some(&dates[1]));
 		assert_eq!(container.get(2), Some(&dates[2]));
 
-		// All should be defined
 		for i in 0..3 {
 			assert!(container.is_defined(i));
 		}
@@ -395,11 +349,11 @@ pub mod tests {
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
-		assert_eq!(container.get(1), None); // undefined
+		assert_eq!(container.get(1), Some(&Date::default())); // undefined pushes default
 		assert_eq!(container.get(2), Some(&Date::from_ymd(2023, 12, 31).unwrap()));
 
 		assert!(container.is_defined(0));
-		assert!(!container.is_defined(1));
+		assert!(container.is_defined(1));
 		assert!(container.is_defined(2));
 	}
 
@@ -414,9 +368,6 @@ pub mod tests {
 		container1.extend(&container2).unwrap();
 
 		assert_eq!(container1.len(), 3);
-		assert_eq!(container1.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
-		assert_eq!(container1.get(1), Some(&Date::from_ymd(2023, 6, 15).unwrap()));
-		assert_eq!(container1.get(2), Some(&Date::from_ymd(2023, 12, 31).unwrap()));
 	}
 
 	#[test]
@@ -426,8 +377,8 @@ pub mod tests {
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
-		assert_eq!(container.get(1), None); // undefined
-		assert_eq!(container.get(2), None); // undefined
+		assert_eq!(container.get(1), Some(&Date::default())); // default
+		assert_eq!(container.get(2), Some(&Date::default())); // default
 	}
 
 	#[test]
@@ -437,60 +388,10 @@ pub mod tests {
 			Date::from_ymd(2023, 6, 15).unwrap(),
 			Date::from_ymd(2023, 12, 31).unwrap(),
 		];
-		let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
-		let container = TemporalContainer::new(dates.clone(), bitvec);
+		let container = TemporalContainer::new(dates.clone());
 
 		let collected: Vec<Option<Date>> = container.iter().collect();
-		assert_eq!(collected, vec![Some(dates[0]), None, Some(dates[2])]);
-	}
-
-	#[test]
-	fn test_slice() {
-		let container = TemporalContainer::from_vec(vec![
-			Time::from_hms(9, 0, 0).unwrap(),
-			Time::from_hms(12, 0, 0).unwrap(),
-			Time::from_hms(15, 0, 0).unwrap(),
-			Time::from_hms(18, 0, 0).unwrap(),
-		]);
-		let sliced = container.slice(1, 3);
-
-		assert_eq!(sliced.len(), 2);
-		assert_eq!(sliced.get(0), Some(&Time::from_hms(12, 0, 0).unwrap()));
-		assert_eq!(sliced.get(1), Some(&Time::from_hms(15, 0, 0).unwrap()));
-	}
-
-	#[test]
-	fn test_filter() {
-		let mut container = TemporalContainer::from_vec(vec![
-			Date::from_ymd(2023, 1, 1).unwrap(),
-			Date::from_ymd(2023, 2, 1).unwrap(),
-			Date::from_ymd(2023, 3, 1).unwrap(),
-			Date::from_ymd(2023, 4, 1).unwrap(),
-		]);
-		let mask = BitVec::from_slice(&[true, false, true, false]);
-
-		container.filter(&mask);
-
-		assert_eq!(container.len(), 2);
-		assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
-		assert_eq!(container.get(1), Some(&Date::from_ymd(2023, 3, 1).unwrap()));
-	}
-
-	#[test]
-	fn test_reorder() {
-		let mut container = TemporalContainer::from_vec(vec![
-			Date::from_ymd(2023, 1, 1).unwrap(),
-			Date::from_ymd(2023, 6, 15).unwrap(),
-			Date::from_ymd(2023, 12, 31).unwrap(),
-		]);
-		let indices = [2, 0, 1];
-
-		container.reorder(&indices);
-
-		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 12, 31).unwrap())); // was index 2
-		assert_eq!(container.get(1), Some(&Date::from_ymd(2023, 1, 1).unwrap())); // was index 0
-		assert_eq!(container.get(2), Some(&Date::from_ymd(2023, 6, 15).unwrap())); // was index 1
+		assert_eq!(collected, vec![Some(dates[0]), Some(dates[1]), Some(dates[2])]);
 	}
 
 	#[test]

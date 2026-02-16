@@ -137,7 +137,6 @@ pub mod tests {
 	use reifydb_core::value::column::data::ColumnData;
 	use reifydb_type::{
 		fragment::Fragment,
-		util::bitvec::BitVec,
 		value::{blob::Blob, container::blob::BlobContainer},
 	};
 
@@ -149,8 +148,7 @@ pub mod tests {
 			Blob::from_utf8(Fragment::internal("Hello")),
 			Blob::from_utf8(Fragment::internal("World")),
 		];
-		let bitvec = BitVec::repeat(2, true);
-		let container = BlobContainer::new(blobs, bitvec);
+		let container = BlobContainer::new(blobs);
 
 		let result = from_blob(&container, || Fragment::testing_empty()).unwrap();
 
@@ -171,8 +169,7 @@ pub mod tests {
 		let blobs = vec![
 			Blob::new(vec![0xFF, 0xFE]), // Invalid UTF-8
 		];
-		let bitvec = BitVec::repeat(1, true);
-		let container = BlobContainer::new(blobs, bitvec);
+		let container = BlobContainer::new(blobs);
 
 		let result = from_blob(&container, || Fragment::testing_empty());
 		assert!(result.is_err());

@@ -16,14 +16,12 @@ use crate::{
 
 pub struct BoolContainer<S: Storage = Cow> {
 	data: S::BitVec,
-	bitvec: S::BitVec,
 }
 
 impl<S: Storage> Clone for BoolContainer<S> {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
-			bitvec: self.bitvec.clone(),
 		}
 	}
 }
@@ -33,7 +31,7 @@ where
 	S::BitVec: Debug,
 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("BoolContainer").field("data", &self.data).field("bitvec", &self.bitvec).finish()
+		f.debug_struct("BoolContainer").field("data", &self.data).finish()
 	}
 }
 
@@ -42,7 +40,7 @@ where
 	S::BitVec: PartialEq,
 {
 	fn eq(&self, other: &Self) -> bool {
-		self.data == other.data && self.bitvec == other.bitvec
+		self.data == other.data
 	}
 }
 
@@ -51,11 +49,9 @@ impl Serialize for BoolContainer<Cow> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
 			data: &'a BitVec,
-			bitvec: &'a BitVec,
 		}
 		Helper {
 			data: &self.data,
-			bitvec: &self.bitvec,
 		}
 		.serialize(serializer)
 	}
@@ -66,12 +62,10 @@ impl<'de> Deserialize<'de> for BoolContainer<Cow> {
 		#[derive(Deserialize)]
 		struct Helper {
 			data: BitVec,
-			bitvec: BitVec,
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(BoolContainer {
 			data: h.data,
-			bitvec: h.bitvec,
 		})
 	}
 }
@@ -85,66 +79,38 @@ impl Deref for BoolContainer<Cow> {
 }
 
 impl BoolContainer<Cow> {
-	pub fn new(data: Vec<bool>, bitvec: BitVec) -> Self {
-		debug_assert_eq!(data.len(), bitvec.len());
+	pub fn new(data: Vec<bool>) -> Self {
 		Self {
 			data: BitVec::from_slice(&data),
-			bitvec,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
 			data: BitVec::with_capacity(capacity),
-			bitvec: BitVec::with_capacity(capacity),
-		}
-	}
-
-	/// Reconstruct from raw bitvec bytes previously obtained via `try_into_raw_parts`.
-	pub fn from_raw_parts(data_bits: Vec<u8>, data_len: usize, bitvec_bits: Vec<u8>, bitvec_len: usize) -> Self {
-		Self {
-			data: BitVec::from_raw(data_bits, data_len),
-			bitvec: BitVec::from_raw(bitvec_bits, bitvec_len),
-		}
-	}
-
-	/// Try to decompose into raw bitvec bytes for recycling.
-	/// Returns `None` if the inner storage is shared.
-	pub fn try_into_raw_parts(self) -> Option<(Vec<u8>, usize, Vec<u8>, usize)> {
-		let (data_bits, data_len) = match self.data.try_into_raw() {
-			Ok(v) => v,
-			Err(_) => return None,
-		};
-		match self.bitvec.try_into_raw() {
-			Ok((bv_bits, bv_len)) => Some((data_bits, data_len, bv_bits, bv_len)),
-			Err(_) => None,
 		}
 	}
 
 	pub fn from_vec(data: Vec<bool>) -> Self {
-		let len = data.len();
 		Self {
 			data: BitVec::from_slice(&data),
-			bitvec: BitVec::repeat(len, true),
 		}
 	}
 }
 
 impl<S: Storage> BoolContainer<S> {
-	pub fn from_parts(data: S::BitVec, bitvec: S::BitVec) -> Self {
+	pub fn from_parts(data: S::BitVec) -> Self {
 		Self {
 			data,
-			bitvec,
 		}
 	}
 
 	pub fn len(&self) -> usize {
-		debug_assert_eq!(DataBitVec::len(&self.data), DataBitVec::len(&self.bitvec));
 		DataBitVec::len(&self.data)
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataBitVec::capacity(&self.data).min(DataBitVec::capacity(&self.bitvec))
+		DataBitVec::capacity(&self.data)
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -153,41 +119,30 @@ impl<S: Storage> BoolContainer<S> {
 
 	pub fn clear(&mut self) {
 		DataBitVec::clear(&mut self.data);
-		DataBitVec::clear(&mut self.bitvec);
 	}
 
 	pub fn push(&mut self, value: bool) {
 		DataBitVec::push(&mut self.data, value);
-		DataBitVec::push(&mut self.bitvec, true);
 	}
 
 	pub fn push_undefined(&mut self) {
 		DataBitVec::push(&mut self.data, false);
-		DataBitVec::push(&mut self.bitvec, false);
 	}
 
 	pub fn get(&self, index: usize) -> Option<bool> {
-		if index < self.len() && self.is_defined(index) {
+		if index < self.len() {
 			Some(DataBitVec::get(&self.data, index))
 		} else {
 			None
 		}
 	}
 
-	pub fn bitvec(&self) -> &S::BitVec {
-		&self.bitvec
-	}
-
-	pub fn bitvec_mut(&mut self) -> &mut S::BitVec {
-		&mut self.bitvec
-	}
-
 	pub fn is_defined(&self, idx: usize) -> bool {
-		idx < self.len() && DataBitVec::get(&self.bitvec, idx)
+		idx < self.len()
 	}
 
 	pub fn is_fully_defined(&self) -> bool {
-		DataBitVec::count_ones(&self.bitvec) == self.len()
+		true
 	}
 
 	pub fn data(&self) -> &S::BitVec {
@@ -199,7 +154,7 @@ impl<S: Storage> BoolContainer<S> {
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
-		if index < self.len() && self.is_defined(index) {
+		if index < self.len() {
 			DataBitVec::get(&self.data, index).to_string()
 		} else {
 			"none".to_string()
@@ -207,7 +162,7 @@ impl<S: Storage> BoolContainer<S> {
 	}
 
 	pub fn get_value(&self, index: usize) -> Value {
-		if index < self.len() && self.is_defined(index) {
+		if index < self.len() {
 			Value::Boolean(DataBitVec::get(&self.data, index))
 		} else {
 			Value::None
@@ -216,90 +171,64 @@ impl<S: Storage> BoolContainer<S> {
 
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataBitVec::extend_from(&mut self.data, &other.data);
-		DataBitVec::extend_from(&mut self.bitvec, &other.bitvec);
 		Ok(())
 	}
 
 	pub fn extend_from_undefined(&mut self, len: usize) {
 		for _ in 0..len {
 			DataBitVec::push(&mut self.data, false);
-			DataBitVec::push(&mut self.bitvec, false);
 		}
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<bool>> + '_ {
-		DataBitVec::iter(&self.data).zip(DataBitVec::iter(&self.bitvec)).map(|(v, defined)| {
-			if defined {
-				Some(v)
-			} else {
-				None
-			}
-		})
+		DataBitVec::iter(&self.data).map(|v| Some(v))
 	}
 
 	pub fn into_iter(self) -> impl Iterator<Item = Option<bool>> {
 		let data: Vec<bool> = DataBitVec::iter(&self.data).collect();
-		let bitvec: Vec<bool> = DataBitVec::iter(&self.bitvec).collect();
-		data.into_iter().zip(bitvec).map(|(v, defined)| {
-			if defined {
-				Some(v)
-			} else {
-				None
-			}
-		})
+		data.into_iter().map(|v| Some(v))
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let count = (end - start).min(self.len().saturating_sub(start));
 		let mut new_data = DataBitVec::spawn(&self.data, count);
-		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, count);
 		for i in start..(start + count) {
 			DataBitVec::push(&mut new_data, DataBitVec::get(&self.data, i));
-			DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, i));
 		}
 		Self {
 			data: new_data,
-			bitvec: new_bitvec,
 		}
 	}
 
 	pub fn filter(&mut self, mask: &S::BitVec) {
 		let mut new_data = DataBitVec::spawn(&self.data, DataBitVec::count_ones(mask));
-		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, DataBitVec::count_ones(mask));
 
 		for (i, keep) in DataBitVec::iter(mask).enumerate() {
 			if keep && i < self.len() {
 				DataBitVec::push(&mut new_data, DataBitVec::get(&self.data, i));
-				DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, i));
 			}
 		}
 
 		self.data = new_data;
-		self.bitvec = new_bitvec;
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
 		let mut new_data = DataBitVec::spawn(&self.data, indices.len());
-		let mut new_bitvec = DataBitVec::spawn(&self.bitvec, indices.len());
 
 		for &idx in indices {
 			if idx < self.len() {
 				DataBitVec::push(&mut new_data, DataBitVec::get(&self.data, idx));
-				DataBitVec::push(&mut new_bitvec, DataBitVec::get(&self.bitvec, idx));
 			} else {
 				DataBitVec::push(&mut new_data, false);
-				DataBitVec::push(&mut new_bitvec, false);
 			}
 		}
 
 		self.data = new_data;
-		self.bitvec = new_bitvec;
 	}
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
 			data: DataBitVec::take(&self.data, num),
-			bitvec: DataBitVec::take(&self.bitvec, num),
 		}
 	}
 }
@@ -313,13 +242,11 @@ impl Default for BoolContainer<Cow> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::util::bitvec::BitVec;
 
 	#[test]
 	fn test_new() {
 		let data = vec![true, false, true];
-		let bitvec = BitVec::from_slice(&[true, true, true]);
-		let container = BoolContainer::new(data.clone(), bitvec);
+		let container = BoolContainer::new(data.clone());
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(true));
@@ -362,11 +289,11 @@ pub mod tests {
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(true));
 		assert_eq!(container.get(1), Some(false));
-		assert_eq!(container.get(2), None); // undefined
+		assert_eq!(container.get(2), Some(false)); // undefined pushes false
 
 		assert!(container.is_defined(0));
 		assert!(container.is_defined(1));
-		assert!(!container.is_defined(2));
+		assert!(container.is_defined(2));
 	}
 
 	#[test]
@@ -386,11 +313,10 @@ pub mod tests {
 	#[test]
 	fn test_iter() {
 		let data = vec![true, false, true];
-		let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
-		let container = BoolContainer::new(data, bitvec);
+		let container = BoolContainer::new(data);
 
 		let collected: Vec<Option<bool>> = container.iter().collect();
-		assert_eq!(collected, vec![Some(true), None, Some(true)]);
+		assert_eq!(collected, vec![Some(true), Some(false), Some(true)]);
 	}
 
 	#[test]
@@ -405,6 +331,7 @@ pub mod tests {
 
 	#[test]
 	fn test_filter() {
+		use crate::util::bitvec::BitVec;
 		let mut container = BoolContainer::from_vec(vec![true, false, true, false]);
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 
@@ -437,7 +364,7 @@ pub mod tests {
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(false)); // was index 1
-		assert_eq!(container.get(1), None); // out of bounds -> undefined
+		assert_eq!(container.get(1), Some(false)); // out of bounds -> default (false)
 		assert_eq!(container.get(2), Some(true)); // was index 0
 	}
 

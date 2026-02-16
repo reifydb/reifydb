@@ -51,8 +51,8 @@ impl<'bump> Parser<'bump> {
 			"saturation" => AstPolicyKind::Saturation,
 			"default" => AstPolicyKind::Default,
 			"not" => {
-				self.consume_literal(Literal::Undefined)?;
-				AstPolicyKind::NotUndefined
+				self.consume_literal(Literal::None)?;
+				AstPolicyKind::NotNone
 			}
 			_ => return_error!(ast::invalid_policy_error(identifier.fragment.to_owned())),
 		};
@@ -92,7 +92,7 @@ pub mod tests {
 	#[test]
 	fn test_saturation_undefined() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"policy {saturation undefined}"#).unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, r#"policy {saturation none}"#).unwrap().into_iter().collect();
 
 		let mut parser = Parser::new(&bump, tokens);
 		let result = parser.parse_policy_block().unwrap();
@@ -103,7 +103,7 @@ pub mod tests {
 
 		let saturation = &policies[0];
 		assert!(matches!(saturation.policy, AstPolicyKind::Saturation));
-		assert_eq!(saturation.value.as_literal_undefined().value(), "undefined");
+		assert_eq!(saturation.value.as_literal_none().value(), "none");
 	}
 
 	#[test]

@@ -12,6 +12,7 @@ pub mod context;
 pub mod convert;
 pub mod eval;
 pub mod lookup;
+pub(crate) mod option;
 pub mod parameter;
 pub mod prefix;
 pub mod scalar;

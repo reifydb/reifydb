@@ -117,14 +117,11 @@ impl QueryNode for FilterNode {
 					// Execute the compiled filter expression
 					let result = compiled_expr.execute(&exec_ctx)?;
 
-					// Create filter mask from result
 					let filter_mask = match result.data() {
 						ColumnData::Bool(container) => {
 							let mut mask = BitVec::repeat(row_count, false);
 							for i in 0..row_count {
-								if i < container.data().len()
-									&& i < container.bitvec().len()
-								{
+								if i < container.data().len() {
 									let valid = container.is_defined(i);
 									let filter_result = container.data().get(i);
 									mask.set(i, valid & filter_result);
@@ -132,8 +129,26 @@ impl QueryNode for FilterNode {
 							}
 							mask
 						}
+						ColumnData::Option {
+							inner,
+							bitvec,
+						} => match inner.as_ref() {
+							ColumnData::Bool(container) => {
+								let mut mask = BitVec::repeat(row_count, false);
+								for i in 0..row_count {
+									let defined = i < bitvec.len() && bitvec.get(i);
+									let valid = defined && container.is_defined(i);
+									let value = valid && container.data().get(i);
+									mask.set(i, value);
+								}
+								mask
+							}
+							_ => panic!(
+								"filter expression must evaluate to a boolean column"
+							),
+						},
 						ColumnData::Undefined(_) => BitVec::repeat(row_count, false),
-						_ => panic!("filter expression must column to a boolean column"),
+						_ => panic!("filter expression must evaluate to a boolean column"),
 					};
 
 					columns.filter(&filter_mask)?;
@@ -195,7 +210,6 @@ impl FilterNode {
 
 			let result = compiled_expr.execute(&exec_ctx)?;
 
-			// Extract mask from boolean column result
 			match result.data() {
 				ColumnData::Bool(container) => {
 					for i in 0..row_count {
@@ -206,6 +220,22 @@ impl FilterNode {
 						}
 					}
 				}
+				ColumnData::Option {
+					inner,
+					bitvec,
+				} => match inner.as_ref() {
+					ColumnData::Bool(container) => {
+						for i in 0..row_count {
+							if mask.get(i) {
+								let defined = i < bitvec.len() && bitvec.get(i);
+								let valid = defined && container.is_defined(i);
+								let value = valid && container.data().get(i);
+								mask.set(i, value);
+							}
+						}
+					}
+					_ => panic!("filter expression must evaluate to a boolean column"),
+				},
 				ColumnData::Undefined(_) => {
 					for i in 0..row_count {
 						mask.set(i, false);

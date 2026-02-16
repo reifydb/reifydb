@@ -59,106 +59,92 @@ fn vec_to_bump<'bump, T: Clone + PartialEq + 'static, S: Storage>(
 fn number_to_cow<T: IsNumber + Clone + Debug + Default, S: Storage>(
 	src: &NumberContainer<T, S>,
 ) -> NumberContainer<T, Cow> {
-	NumberContainer::from_parts(vec_to_cow::<T, S>(src.data()), bitvec_to_cow::<S>(src.bitvec()))
+	NumberContainer::from_parts(vec_to_cow::<T, S>(src.data()))
 }
 
 fn number_to_bump<'bump, T: IsNumber + Clone + Debug + Default, S: Storage>(
 	src: &NumberContainer<T, S>,
 	bump: &'bump bumpalo::Bump,
 ) -> NumberContainer<T, Bump<'bump>> {
-	NumberContainer::from_parts(vec_to_bump::<T, S>(src.data(), bump), bitvec_to_bump::<S>(src.bitvec(), bump))
+	NumberContainer::from_parts(vec_to_bump::<T, S>(src.data(), bump))
 }
 
 fn bool_to_cow<S: Storage>(src: &BoolContainer<S>) -> BoolContainer<Cow> {
-	BoolContainer::from_parts(bitvec_to_cow::<S>(src.data()), bitvec_to_cow::<S>(src.bitvec()))
+	BoolContainer::from_parts(bitvec_to_cow::<S>(src.data()))
 }
 
 fn bool_to_bump<'bump, S: Storage>(src: &BoolContainer<S>, bump: &'bump bumpalo::Bump) -> BoolContainer<Bump<'bump>> {
-	BoolContainer::from_parts(bitvec_to_bump::<S>(src.data(), bump), bitvec_to_bump::<S>(src.bitvec(), bump))
+	BoolContainer::from_parts(bitvec_to_bump::<S>(src.data(), bump))
 }
 
 fn temporal_to_cow<T: IsTemporal + Clone + Debug + Default, S: Storage>(
 	src: &TemporalContainer<T, S>,
 ) -> TemporalContainer<T, Cow> {
-	TemporalContainer::from_parts(vec_to_cow::<T, S>(src.data()), bitvec_to_cow::<S>(src.bitvec()))
+	TemporalContainer::from_parts(vec_to_cow::<T, S>(src.data()))
 }
 
 fn temporal_to_bump<'bump, T: IsTemporal + Clone + Debug + Default, S: Storage>(
 	src: &TemporalContainer<T, S>,
 	bump: &'bump bumpalo::Bump,
 ) -> TemporalContainer<T, Bump<'bump>> {
-	TemporalContainer::from_parts(vec_to_bump::<T, S>(src.data(), bump), bitvec_to_bump::<S>(src.bitvec(), bump))
+	TemporalContainer::from_parts(vec_to_bump::<T, S>(src.data(), bump))
 }
 
 fn uuid_to_cow<T: IsUuid + Clone + Debug + Default, S: Storage>(src: &UuidContainer<T, S>) -> UuidContainer<T, Cow> {
-	UuidContainer::from_parts(vec_to_cow::<T, S>(src.data()), bitvec_to_cow::<S>(src.bitvec()))
+	UuidContainer::from_parts(vec_to_cow::<T, S>(src.data()))
 }
 
 fn uuid_to_bump<'bump, T: IsUuid + Clone + Debug + Default, S: Storage>(
 	src: &UuidContainer<T, S>,
 	bump: &'bump bumpalo::Bump,
 ) -> UuidContainer<T, Bump<'bump>> {
-	UuidContainer::from_parts(vec_to_bump::<T, S>(src.data(), bump), bitvec_to_bump::<S>(src.bitvec(), bump))
+	UuidContainer::from_parts(vec_to_bump::<T, S>(src.data(), bump))
 }
 
 fn utf8_to_cow<S: Storage>(src: &Utf8Container<S>) -> Utf8Container<Cow> {
-	Utf8Container::from_parts(vec_to_cow::<String, S>(src.data()), bitvec_to_cow::<S>(src.bitvec()))
+	Utf8Container::from_parts(vec_to_cow::<String, S>(src.data()))
 }
 
 fn utf8_to_bump<'bump, S: Storage>(src: &Utf8Container<S>, bump: &'bump bumpalo::Bump) -> Utf8Container<Bump<'bump>> {
-	Utf8Container::from_parts(vec_to_bump::<String, S>(src.data(), bump), bitvec_to_bump::<S>(src.bitvec(), bump))
+	Utf8Container::from_parts(vec_to_bump::<String, S>(src.data(), bump))
 }
 
 fn blob_to_cow<S: Storage>(src: &BlobContainer<S>) -> BlobContainer<Cow> {
-	BlobContainer::from_parts(vec_to_cow::<Blob, S>(src.data()), bitvec_to_cow::<S>(src.bitvec()))
+	BlobContainer::from_parts(vec_to_cow::<Blob, S>(src.data()))
 }
 
 fn blob_to_bump<'bump, S: Storage>(src: &BlobContainer<S>, bump: &'bump bumpalo::Bump) -> BlobContainer<Bump<'bump>> {
-	BlobContainer::from_parts(vec_to_bump::<Blob, S>(src.data(), bump), bitvec_to_bump::<S>(src.bitvec(), bump))
+	BlobContainer::from_parts(vec_to_bump::<Blob, S>(src.data(), bump))
 }
 
 fn identity_id_to_cow<S: Storage>(src: &IdentityIdContainer<S>) -> IdentityIdContainer<Cow> {
-	IdentityIdContainer::from_parts(vec_to_cow::<IdentityId, S>(src.data()), bitvec_to_cow::<S>(src.bitvec()))
+	IdentityIdContainer::from_parts(vec_to_cow::<IdentityId, S>(src.data()))
 }
 
 fn identity_id_to_bump<'bump, S: Storage>(
 	src: &IdentityIdContainer<S>,
 	bump: &'bump bumpalo::Bump,
 ) -> IdentityIdContainer<Bump<'bump>> {
-	IdentityIdContainer::from_parts(
-		vec_to_bump::<IdentityId, S>(src.data(), bump),
-		bitvec_to_bump::<S>(src.bitvec(), bump),
-	)
+	IdentityIdContainer::from_parts(vec_to_bump::<IdentityId, S>(src.data(), bump))
 }
 
 fn any_to_cow<S: Storage>(src: &AnyContainer<S>) -> AnyContainer<Cow> {
-	AnyContainer::from_parts(vec_to_cow::<Box<Value>, S>(src.data()), bitvec_to_cow::<S>(src.bitvec()))
+	AnyContainer::from_parts(vec_to_cow::<Box<Value>, S>(src.data()))
 }
 
 fn any_to_bump<'bump, S: Storage>(src: &AnyContainer<S>, bump: &'bump bumpalo::Bump) -> AnyContainer<Bump<'bump>> {
-	AnyContainer::from_parts(
-		vec_to_bump::<Box<Value>, S>(src.data(), bump),
-		bitvec_to_bump::<S>(src.bitvec(), bump),
-	)
+	AnyContainer::from_parts(vec_to_bump::<Box<Value>, S>(src.data(), bump))
 }
 
 fn dictionary_to_cow<S: Storage>(src: &DictionaryContainer<S>) -> DictionaryContainer<Cow> {
-	DictionaryContainer::from_parts(
-		vec_to_cow::<DictionaryEntryId, S>(src.data()),
-		bitvec_to_cow::<S>(src.bitvec()),
-		src.dictionary_id(),
-	)
+	DictionaryContainer::from_parts(vec_to_cow::<DictionaryEntryId, S>(src.data()), src.dictionary_id())
 }
 
 fn dictionary_to_bump<'bump, S: Storage>(
 	src: &DictionaryContainer<S>,
 	bump: &'bump bumpalo::Bump,
 ) -> DictionaryContainer<Bump<'bump>> {
-	DictionaryContainer::from_parts(
-		vec_to_bump::<DictionaryEntryId, S>(src.data(), bump),
-		bitvec_to_bump::<S>(src.bitvec(), bump),
-		src.dictionary_id(),
-	)
+	DictionaryContainer::from_parts(vec_to_bump::<DictionaryEntryId, S>(src.data(), bump), src.dictionary_id())
 }
 
 pub fn column_data_to_cow<S: Storage>(src: &ColumnData<S>) -> ColumnData<Cow> {

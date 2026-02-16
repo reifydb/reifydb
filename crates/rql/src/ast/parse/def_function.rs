@@ -92,6 +92,14 @@ impl<'bump> Parser<'bump> {
 	fn parse_type_annotation(&mut self) -> crate::Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
+		// Check for Option(T) syntax
+		if ty_token.fragment.text().eq_ignore_ascii_case("option") {
+			self.consume_operator(Operator::OpenParen)?;
+			let inner = self.parse_type_annotation()?;
+			self.consume_operator(Operator::CloseParen)?;
+			return Ok(AstType::Optional(Box::new(inner)));
+		}
+
 		// Check for type with parameters like DECIMAL(10,2)
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
 			self.consume_operator(Operator::OpenParen)?;

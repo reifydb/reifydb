@@ -27,6 +27,22 @@ pub fn cast_column_data(
 		}
 		return Ok(result);
 	}
+	// Handle Option-wrapped data: cast the inner data, then re-wrap with the bitvec
+	if let ColumnData::Option {
+		inner,
+		bitvec,
+	} = data
+	{
+		let inner_target = match &target {
+			Type::Option(t) => t.as_ref().clone(),
+			other => other.clone(),
+		};
+		let cast_inner = cast_column_data(ctx, inner, inner_target, lazy_fragment)?;
+		return Ok(ColumnData::Option {
+			inner: Box::new(cast_inner),
+			bitvec: bitvec.clone(),
+		});
+	}
 	let source_type = data.get_type();
 	if target == source_type {
 		return Ok(data.clone());

@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 const IEC_UNITS: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
@@ -43,20 +43,17 @@ pub(super) fn format_bytes_internal(bytes: i64, base: f64, units: &[&str]) -> St
 macro_rules! process_int_column {
 	($container:expr, $row_count:expr, $base:expr, $units:expr) => {{
 		let mut result_data = Vec::with_capacity($row_count);
-		let mut result_bitvec = Vec::with_capacity($row_count);
 
 		for i in 0..$row_count {
 			if let Some(&value) = $container.get(i) {
 				result_data.push(format_bytes_internal(value as i64, $base, $units));
-				result_bitvec.push(true);
 			} else {
 				result_data.push(String::new());
-				result_bitvec.push(false);
 			}
 		}
 
 		Ok(ColumnData::Utf8 {
-			container: Utf8Container::new(result_data, result_bitvec.into()),
+			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
 		})
 	}};
@@ -66,20 +63,17 @@ macro_rules! process_int_column {
 macro_rules! process_float_column {
 	($container:expr, $row_count:expr, $base:expr, $units:expr) => {{
 		let mut result_data = Vec::with_capacity($row_count);
-		let mut result_bitvec = Vec::with_capacity($row_count);
 
 		for i in 0..$row_count {
 			if let Some(&value) = $container.get(i) {
 				result_data.push(format_bytes_internal(value as i64, $base, $units));
-				result_bitvec.push(true);
 			} else {
 				result_data.push(String::new());
-				result_bitvec.push(false);
 			}
 		}
 
 		Ok(ColumnData::Utf8 {
-			container: Utf8Container::new(result_data, result_bitvec.into()),
+			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
 		})
 	}};
@@ -89,7 +83,6 @@ macro_rules! process_float_column {
 macro_rules! process_decimal_column {
 	($container:expr, $row_count:expr, $base:expr, $units:expr) => {{
 		let mut result_data = Vec::with_capacity($row_count);
-		let mut result_bitvec = Vec::with_capacity($row_count);
 
 		for i in 0..$row_count {
 			if let Some(value) = $container.get(i) {
@@ -98,15 +91,13 @@ macro_rules! process_decimal_column {
 				let int_part = s.split('.').next().unwrap_or("0");
 				let bytes = int_part.parse::<i64>().unwrap_or(0);
 				result_data.push(format_bytes_internal(bytes, $base, $units));
-				result_bitvec.push(true);
 			} else {
 				result_data.push(String::new());
-				result_bitvec.push(false);
 			}
 		}
 
 		Ok(ColumnData::Utf8 {
-			container: Utf8Container::new(result_data, result_bitvec.into()),
+			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
 		})
 	}};
@@ -123,6 +114,10 @@ impl FormatBytes {
 
 impl ScalarFunction for FormatBytes {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 

@@ -345,7 +345,7 @@ impl InstructionCompiler {
 			Expression::Constant(c) => {
 				let value = c.to_value();
 				if matches!(value, Value::None) {
-					self.emit(Instruction::PushUndefined);
+					self.emit(Instruction::PushNone);
 				} else {
 					self.emit(Instruction::PushConst(value));
 				}
@@ -505,11 +505,11 @@ impl InstructionCompiler {
 					self.patch_jump_if_false_pop(false_jump, next_start);
 				}
 
-				// Else branch or undefined
+				// Else branch or none
 				if let Some(else_expr) = &i.else_expr {
 					self.compile_expression(else_expr);
 				} else {
-					self.emit(Instruction::PushUndefined);
+					self.emit(Instruction::PushNone);
 				}
 
 				let end_addr = self.current_addr();
@@ -539,7 +539,7 @@ impl InstructionCompiler {
 					self.compile_expression(&t.expressions[0]);
 				} else {
 					// Multi-element tuple - not supported in scripting context
-					self.emit(Instruction::PushUndefined);
+					self.emit(Instruction::PushNone);
 				}
 			}
 			Expression::Map(m) => {
@@ -553,7 +553,7 @@ impl InstructionCompiler {
 						}
 					}
 				} else {
-					self.emit(Instruction::PushUndefined);
+					self.emit(Instruction::PushNone);
 				}
 			}
 			Expression::Type(type_expr) => {
@@ -563,7 +563,7 @@ impl InstructionCompiler {
 			| Expression::AccessSource(_)
 			| Expression::Alias(_)
 			| Expression::Extend(_) => {
-				self.emit(Instruction::PushUndefined);
+				self.emit(Instruction::PushNone);
 			}
 		}
 	}
@@ -751,7 +751,7 @@ impl InstructionCompiler {
 						self.emit(Instruction::Query(query));
 					}
 					physical::LetValue::EmptyFrame => {
-						self.emit(Instruction::PushUndefined);
+						self.emit(Instruction::PushNone);
 					}
 				}
 				self.emit(Instruction::DeclareVar(node.name));

@@ -629,6 +629,28 @@ macro_rules! with_container {
 pub(crate) use with_container;
 
 impl<S: Storage> ColumnData<S> {
+	/// Unwrap Option to inner data + bitvec. Non-Option returns self + None.
+	pub fn unwrap_option(&self) -> (&ColumnData<S>, Option<&S::BitVec>) {
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => (inner.as_ref(), Some(bitvec)),
+			other => (other, None),
+		}
+	}
+
+	/// Owned version: consume self and return inner data + optional bitvec.
+	pub fn into_unwrap_option(self) -> (ColumnData<S>, Option<S::BitVec>) {
+		match self {
+			ColumnData::Option {
+				inner,
+				bitvec,
+			} => (*inner, Some(bitvec)),
+			other => (other, None),
+		}
+	}
+
 	pub fn get_type(&self) -> Type {
 		match self {
 			ColumnData::Bool(_) => Type::Boolean,
@@ -672,7 +694,7 @@ impl<S: Storage> ColumnData<S> {
 				inner,
 				..
 			} => Type::Option(Box::new(inner.get_type())),
-			ColumnData::Undefined(_) => Type::Option(Box::new(Type::Boolean)),
+			ColumnData::Undefined(_) => Type::Option(Box::new(Type::Any)),
 		}
 	}
 
@@ -766,60 +788,15 @@ impl<S: Storage> ColumnData<S> {
 }
 
 impl<S: Storage> ColumnData<S> {
-	pub fn bitvec(&self) -> &S::BitVec {
+	pub fn undefined_count(&self) -> usize {
 		match self {
-			ColumnData::Bool(c) => c.bitvec(),
-			ColumnData::Float4(c) => c.bitvec(),
-			ColumnData::Float8(c) => c.bitvec(),
-			ColumnData::Int1(c) => c.bitvec(),
-			ColumnData::Int2(c) => c.bitvec(),
-			ColumnData::Int4(c) => c.bitvec(),
-			ColumnData::Int8(c) => c.bitvec(),
-			ColumnData::Int16(c) => c.bitvec(),
-			ColumnData::Uint1(c) => c.bitvec(),
-			ColumnData::Uint2(c) => c.bitvec(),
-			ColumnData::Uint4(c) => c.bitvec(),
-			ColumnData::Uint8(c) => c.bitvec(),
-			ColumnData::Uint16(c) => c.bitvec(),
-			ColumnData::Utf8 {
-				container: c,
-				..
-			} => c.bitvec(),
-			ColumnData::Date(c) => c.bitvec(),
-			ColumnData::DateTime(c) => c.bitvec(),
-			ColumnData::Time(c) => c.bitvec(),
-			ColumnData::Duration(c) => c.bitvec(),
-			ColumnData::IdentityId(c) => c.bitvec(),
-			ColumnData::Uuid4(c) => c.bitvec(),
-			ColumnData::Uuid7(c) => c.bitvec(),
-			ColumnData::Blob {
-				container: c,
-				..
-			} => c.bitvec(),
-			ColumnData::Int {
-				container: c,
-				..
-			} => c.bitvec(),
-			ColumnData::Uint {
-				container: c,
-				..
-			} => c.bitvec(),
-			ColumnData::Decimal {
-				container: c,
-				..
-			} => c.bitvec(),
-			ColumnData::DictionaryId(c) => c.bitvec(),
-			ColumnData::Any(c) => c.bitvec(),
 			ColumnData::Option {
 				bitvec,
 				..
-			} => bitvec,
-			ColumnData::Undefined(_) => unreachable!(),
+			} => DataBitVec::count_zeros(bitvec),
+			ColumnData::Undefined(c) => c.len(),
+			_ => 0,
 		}
-	}
-
-	pub fn undefined_count(&self) -> usize {
-		DataBitVec::count_zeros(self.bitvec())
 	}
 }
 

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::cmp::min;
-
 use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::ColumnExpression;
 use reifydb_type::value::{
@@ -72,6 +70,16 @@ fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column>
 	// This handles cases where the first value is Undefined
 	let col_type = col.data().get_type();
 
+	// Unwrap Option to get the effective data type
+	let effective_type = match col_type {
+		Type::Option(inner) => *inner,
+		other => other,
+	};
+
+	extract_column_data_by_type(col, take, effective_type)
+}
+
+fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> crate::Result<Column> {
 	match col_type {
 		Type::Boolean => extract_typed_column!(col, take, Boolean(b) => b, false, bool_with_bitvec),
 		Type::Float4 => extract_typed_column!(col, take, Float4(v) => v.value(), 0.0f32, float4_with_bitvec),
@@ -118,10 +126,7 @@ fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column>
 		Type::Decimal => {
 			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::from_i64(0), decimal_with_bitvec)
 		}
-		Type::Option(_) => {
-			let count = min(ctx.row_count, take);
-			Ok(col.with_new_data(ColumnData::undefined(count)))
-		}
+		Type::Option(inner) => extract_column_data_by_type(col, take, *inner),
 	}
 }
 

@@ -4,7 +4,7 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct TextChar;
 
@@ -16,6 +16,10 @@ impl TextChar {
 
 impl ScalarFunction for TextChar {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -70,28 +74,24 @@ where
 	F: Fn(usize) -> Option<u32>,
 {
 	let mut result_data = Vec::with_capacity(row_count);
-	let mut result_bitvec = Vec::with_capacity(row_count);
 
 	for i in 0..row_count {
 		match get_value(i) {
 			Some(code_point) => {
 				if let Some(ch) = char::from_u32(code_point) {
 					result_data.push(ch.to_string());
-					result_bitvec.push(true);
 				} else {
 					result_data.push(String::new());
-					result_bitvec.push(false);
 				}
 			}
 			None => {
 				result_data.push(String::new());
-				result_bitvec.push(false);
 			}
 		}
 	}
 
 	Ok(ColumnData::Utf8 {
-		container: Utf8Container::new(result_data, result_bitvec.into()),
+		container: Utf8Container::new(result_data),
 		max_bytes: MaxBytes::MAX,
 	})
 }

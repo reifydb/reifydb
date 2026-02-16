@@ -89,7 +89,7 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> crate::Result<BumpVec<'b,
 				',' | ';' => scan_separator(&mut cursor),
 
 				// Letters could be keywords, literals
-				// (true/false/undefined), word operators, or
+				// (true/false/none), word operators, or
 				// identifiers
 				'a'..='z' | 'A'..='Z' | '_' => {
 					// Try in order: keyword, literal,

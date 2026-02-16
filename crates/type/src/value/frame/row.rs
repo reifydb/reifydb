@@ -197,12 +197,9 @@ impl Frame {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::{
-		util::bitvec::BitVec,
-		value::{
-			container::{number::NumberContainer, utf8::Utf8Container},
-			frame::{column::FrameColumn, data::FrameColumnData},
-		},
+	use crate::value::{
+		container::{number::NumberContainer, utf8::Utf8Container},
+		frame::{column::FrameColumn, data::FrameColumnData},
 	};
 
 	fn make_test_frame() -> Frame {
@@ -214,10 +211,11 @@ pub mod tests {
 				},
 				FrameColumn {
 					name: "name".to_string(),
-					data: FrameColumnData::Utf8(Utf8Container::new(
-						vec!["Alice".to_string(), "Bob".to_string(), String::new()],
-						BitVec::from_slice(&[true, true, false]),
-					)),
+					data: FrameColumnData::Utf8(Utf8Container::new(vec![
+						"Alice".to_string(),
+						"Bob".to_string(),
+						String::new(),
+					])),
 				},
 			],
 			vec![100.into(), 200.into(), 300.into()],
@@ -246,7 +244,7 @@ pub mod tests {
 
 		let row2 = rows.nth(1).unwrap(); // Skip to index 2
 		assert_eq!(row2.get::<i64>("id").unwrap(), Some(3i64));
-		assert_eq!(row2.get::<String>("name").unwrap(), None); // Undefined
+		assert_eq!(row2.get::<String>("name").unwrap(), Some(String::new())); // All values are defined
 	}
 
 	#[test]
@@ -287,7 +285,7 @@ pub mod tests {
 		let rows: Vec<_> = frame.rows().collect();
 
 		assert_eq!(rows[0].is_defined("name"), Some(true));
-		assert_eq!(rows[2].is_defined("name"), Some(false)); // Undefined
+		assert_eq!(rows[2].is_defined("name"), Some(true)); // All values are defined
 		assert_eq!(rows[0].is_defined("nonexistent"), None);
 	}
 

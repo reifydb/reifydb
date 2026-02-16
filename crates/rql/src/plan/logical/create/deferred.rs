@@ -6,7 +6,7 @@ use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	ast::ast::{AstCreateDeferredView, AstType},
+	ast::ast::AstCreateDeferredView,
 	bump::BumpVec,
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan},
@@ -25,13 +25,7 @@ impl<'bump> Compiler<'bump> {
 			let column_name = col.name.text().to_string();
 			let constraint = convert_data_type_with_constraints(&col.ty)?;
 
-			let ty_fragment = match &col.ty {
-				AstType::Unconstrained(fragment) => fragment.to_owned(),
-				AstType::Constrained {
-					name,
-					..
-				} => name.to_owned(),
-			};
+			let ty_fragment = col.ty.name_fragment().to_owned();
 
 			let fragment = Some(Fragment::merge_all([col.name.to_owned(), ty_fragment]));
 

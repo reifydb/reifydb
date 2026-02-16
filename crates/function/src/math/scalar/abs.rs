@@ -3,9 +3,13 @@
 
 use num_traits::sign::Signed;
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::r#type::Type;
+use reifydb_type::value::{container::number::NumberContainer, decimal::Decimal, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct Abs;
 
@@ -16,7 +20,10 @@ impl Abs {
 }
 
 impl ScalarFunction for Abs {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -230,23 +237,17 @@ impl ScalarFunction for Abs {
 			} => {
 				use reifydb_type::value::int::Int;
 				let mut data = Vec::with_capacity(row_count);
-				let mut bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if let Some(value) = container.get(i) {
 						data.push(Int::from(value.0.clone().abs()));
-						bitvec.push(true);
 					} else {
 						data.push(Int::default());
-						bitvec.push(false);
 					}
 				}
 
 				Ok(ColumnData::Int {
-					container: reifydb_type::value::container::number::NumberContainer::new(
-						data,
-						bitvec.into(),
-					),
+					container: NumberContainer::new(data),
 					max_bytes: *max_bytes,
 				})
 			}
@@ -257,23 +258,17 @@ impl ScalarFunction for Abs {
 				use reifydb_type::value::uint::Uint;
 				// Unsigned: abs is identity
 				let mut data = Vec::with_capacity(row_count);
-				let mut bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if let Some(value) = container.get(i) {
 						data.push(value.clone());
-						bitvec.push(true);
 					} else {
 						data.push(Uint::default());
-						bitvec.push(false);
 					}
 				}
 
 				Ok(ColumnData::Uint {
-					container: reifydb_type::value::container::number::NumberContainer::new(
-						data,
-						bitvec.into(),
-					),
+					container: NumberContainer::new(data),
 					max_bytes: *max_bytes,
 				})
 			}
@@ -282,25 +277,18 @@ impl ScalarFunction for Abs {
 				precision,
 				scale,
 			} => {
-				use reifydb_type::value::decimal::Decimal;
 				let mut data = Vec::with_capacity(row_count);
-				let mut bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if let Some(value) = container.get(i) {
 						data.push(Decimal::from(value.0.clone().abs()));
-						bitvec.push(true);
 					} else {
 						data.push(Decimal::default());
-						bitvec.push(false);
 					}
 				}
 
 				Ok(ColumnData::Decimal {
-					container: reifydb_type::value::container::number::NumberContainer::new(
-						data,
-						bitvec.into(),
-					),
+					container: NumberContainer::new(data),
 					precision: *precision,
 					scale: *scale,
 				})

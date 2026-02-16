@@ -137,7 +137,7 @@ impl AccessPrimitiveExpression {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConstantExpression {
-	Undefined {
+	None {
 		fragment: Fragment,
 	},
 	Bool {
@@ -160,7 +160,7 @@ pub enum ConstantExpression {
 impl Display for ConstantExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
-			ConstantExpression::Undefined {
+			ConstantExpression::None {
 				..
 			} => write!(f, "none"),
 			ConstantExpression::Bool {
@@ -864,7 +864,7 @@ impl ExpressionCompiler {
 				AstLiteral::Text(_) => Ok(Expression::Constant(ConstantExpression::Text {
 					fragment: literal.fragment().to_owned(),
 				})),
-				AstLiteral::Undefined(_) => Ok(Expression::Constant(ConstantExpression::Undefined {
+				AstLiteral::None(_) => Ok(Expression::Constant(ConstantExpression::None {
 					fragment: literal.fragment().to_owned(),
 				})),
 			},
@@ -1099,8 +1099,8 @@ impl ExpressionCompiler {
 				return Self::compile(first_node);
 			}
 		}
-		// Empty block → undefined
-		Ok(Expression::Constant(ConstantExpression::Undefined {
+		// Empty block → none
+		Ok(Expression::Constant(ConstantExpression::None {
 			fragment,
 		}))
 	}
@@ -1385,7 +1385,7 @@ impl ExpressionCompiler {
 	/// Compile the right-hand side of a namespace access (`ns::...`).
 	///
 	/// Keywords like `undefined` or `true` are treated as identifiers in this
-	/// context so that `is::undefined(x)` resolves to a function call rather
+	/// context so that `is::none(x)` resolves to a function call rather
 	/// than parsing `undefined` as the literal keyword.
 	fn compile_namespace_right(namespace: &str, right_ast: Ast<'_>) -> crate::Result<Expression> {
 		// Helper: extract a token's text from any AST node that should be treated

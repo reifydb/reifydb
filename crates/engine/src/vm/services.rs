@@ -64,8 +64,8 @@ impl Services {
 				.register_aggregate("math::count", math::aggregate::count::Count::new)
 				.register_scalar("math::abs", math::scalar::abs::Abs::new)
 				.register_scalar("math::avg", math::scalar::avg::Avg::new)
-				.register_scalar("is::defined", is::defined::Defined::new)
-				.register_scalar("is::undefined", is::undefined::IsUndefined::new)
+				.register_scalar("is::some", is::some::IsSome::new)
+				.register_scalar("is::none", is::none::IsNone::new)
 				.register_scalar("is::type", is::r#type::IsType::new)
 				.register_generator("generate_series", series::GenerateSeries::new)
 				.register_generator(

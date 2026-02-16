@@ -127,7 +127,13 @@ pub fn optional_int8_column(name: &str, values: Vec<Option<i64>>) -> FrameColumn
 		}
 	}
 
-	column(name, FrameColumnData::Int8(NumberContainer::new(data, BitVec::from_slice(&bits))))
+	column(
+		name,
+		FrameColumnData::Option {
+			inner: Box::new(FrameColumnData::Int8(NumberContainer::new(data))),
+			bitvec: BitVec::from_slice(&bits),
+		},
+	)
 }
 
 pub fn optional_utf8_column(name: &str, values: Vec<Option<&str>>) -> FrameColumn {
@@ -148,7 +154,13 @@ pub fn optional_utf8_column(name: &str, values: Vec<Option<&str>>) -> FrameColum
 		}
 	}
 
-	column(name, FrameColumnData::Utf8(Utf8Container::new(data, BitVec::from_slice(&bits))))
+	column(
+		name,
+		FrameColumnData::Option {
+			inner: Box::new(FrameColumnData::Utf8(Utf8Container::new(data))),
+			bitvec: BitVec::from_slice(&bits),
+		},
+	)
 }
 
 pub fn frame(columns: Vec<FrameColumn>) -> Frame {

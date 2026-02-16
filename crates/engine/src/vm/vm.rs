@@ -106,7 +106,7 @@ impl Vm {
 				Instruction::PushConst(value) => {
 					self.stack.push(Variable::scalar(value.clone()));
 				}
-				Instruction::PushUndefined => {
+				Instruction::PushNone => {
 					self.stack.push(Variable::scalar(Value::None));
 				}
 				Instruction::Pop => {
@@ -1037,7 +1037,7 @@ fn value_to_expression(value: &Value) -> Expression {
 	use reifydb_rql::expression::ConstantExpression;
 	use reifydb_type::fragment::Fragment;
 	match value {
-		Value::None => Expression::Constant(ConstantExpression::Undefined {
+		Value::None => Expression::Constant(ConstantExpression::None {
 			fragment: Fragment::None,
 		}),
 		Value::Boolean(b) => Expression::Constant(ConstantExpression::Bool {

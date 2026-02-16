@@ -108,7 +108,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let policy = Saturation(ColumnSaturationPolicy::Undefined);
+		let policy = Saturation(ColumnSaturationPolicy::None);
 		CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap();
 
 		let err = CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap_err();

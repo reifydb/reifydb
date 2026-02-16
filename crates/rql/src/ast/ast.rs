@@ -168,7 +168,7 @@ impl<'bump> Ast<'bump> {
 				AstLiteral::Number(node) => &node.0,
 				AstLiteral::Temporal(node) => &node.0,
 				AstLiteral::Text(node) => &node.0,
-				AstLiteral::Undefined(node) => &node.0,
+				AstLiteral::None(node) => &node.0,
 			},
 			Ast::Join(node) => match node {
 				AstJoin::InnerJoin {
@@ -531,15 +531,15 @@ impl<'bump> Ast<'bump> {
 		}
 	}
 
-	pub fn is_literal_undefined(&self) -> bool {
-		matches!(self, Ast::Literal(AstLiteral::Undefined(_)))
+	pub fn is_literal_none(&self) -> bool {
+		matches!(self, Ast::Literal(AstLiteral::None(_)))
 	}
 
-	pub fn as_literal_undefined(&self) -> &AstLiteralUndefined<'bump> {
-		if let Ast::Literal(AstLiteral::Undefined(result)) = self {
+	pub fn as_literal_none(&self) -> &AstLiteralNone<'bump> {
+		if let Ast::Literal(AstLiteral::None(result)) = self {
 			result
 		} else {
-			panic!("not literal undefined")
+			panic!("not literal none")
 		}
 	}
 
@@ -943,11 +943,25 @@ pub enum AstDescribe<'bump> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstType<'bump> {
-	Unconstrained(BumpFragment<'bump>), // UTF8, BLOB, etc.
+	Unconstrained(BumpFragment<'bump>),
 	Constrained {
 		name: BumpFragment<'bump>,
 		params: Vec<AstLiteral<'bump>>,
-	}, // UTF8(50), DECIMAL(10,2)
+	},
+	Optional(Box<AstType<'bump>>),
+}
+
+impl<'bump> AstType<'bump> {
+	pub fn name_fragment(&self) -> &BumpFragment<'bump> {
+		match self {
+			AstType::Unconstrained(fragment) => fragment,
+			AstType::Constrained {
+				name,
+				..
+			} => name,
+			AstType::Optional(inner) => inner.name_fragment(),
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -1150,7 +1164,7 @@ pub enum AstLiteral<'bump> {
 	Number(AstLiteralNumber<'bump>),
 	Text(AstLiteralText<'bump>),
 	Temporal(AstLiteralTemporal<'bump>),
-	Undefined(AstLiteralUndefined<'bump>),
+	None(AstLiteralNone<'bump>),
 }
 
 impl<'bump> AstLiteral<'bump> {
@@ -1160,7 +1174,7 @@ impl<'bump> AstLiteral<'bump> {
 			AstLiteral::Number(literal) => literal.0.fragment,
 			AstLiteral::Text(literal) => literal.0.fragment,
 			AstLiteral::Temporal(literal) => literal.0.fragment,
-			AstLiteral::Undefined(literal) => literal.0.fragment,
+			AstLiteral::None(literal) => literal.0.fragment,
 		}
 	}
 }
@@ -1317,9 +1331,9 @@ impl<'bump> AstLiteralBoolean<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstLiteralUndefined<'bump>(pub Token<'bump>);
+pub struct AstLiteralNone<'bump>(pub Token<'bump>);
 
-impl<'bump> AstLiteralUndefined<'bump> {
+impl<'bump> AstLiteralNone<'bump> {
 	pub fn value(&self) -> &str {
 		self.0.fragment.text()
 	}
@@ -1342,7 +1356,7 @@ pub struct AstSort<'bump> {
 pub enum AstPolicyKind {
 	Saturation,
 	Default,
-	NotUndefined,
+	NotNone,
 }
 
 #[derive(Debug)]

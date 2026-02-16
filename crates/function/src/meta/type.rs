@@ -32,10 +32,9 @@ impl ScalarFunction for Type {
 		let type_name = col_type.to_string();
 
 		let result_data: Vec<String> = vec![type_name; row_count];
-		let result_bitvec: Vec<bool> = vec![true; row_count];
 
 		Ok(ColumnData::Utf8 {
-			container: Utf8Container::new(result_data, result_bitvec.into()),
+			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
 		})
 	}

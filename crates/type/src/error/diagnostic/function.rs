@@ -85,10 +85,10 @@ pub fn undefined_argument(function: Fragment, index: usize) -> Diagnostic {
 	Diagnostic {
 		code: "FUNCTION_005".to_string(),
 		statement: None,
-		message: format!("Function {} argument {} is undefined", name, index + 1),
+		message: format!("Function {} argument {} is none", name, index + 1),
 		column: None,
 		fragment: function,
-		label: Some("undefined argument".to_string()),
+		label: Some("none argument".to_string()),
 		help: Some("Provide a defined value for this argument".to_string()),
 		notes: vec![],
 		cause: None,

@@ -7,23 +7,20 @@ use std::{slice::from_raw_parts, str::from_utf8};
 
 use postcard::from_bytes;
 use reifydb_abi::data::{buffer::BufferFFI, column::ColumnDataFFI};
-use reifydb_type::{
-	util::bitvec::BitVec,
-	value::{
-		Value,
-		blob::Blob,
-		container::{
-			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
-			number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
-		},
-		date::Date,
-		datetime::DateTime,
-		duration::Duration,
-		identity::IdentityId,
-		is::IsNumber,
-		time::Time,
-		uuid::{Uuid4, Uuid7},
+use reifydb_type::value::{
+	Value,
+	blob::Blob,
+	container::{
+		any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
+		number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 	},
+	date::Date,
+	datetime::DateTime,
+	duration::Duration,
+	identity::IdentityId,
+	is::IsNumber,
+	time::Time,
+	uuid::{Uuid4, Uuid7},
 };
 use serde::de::DeserializeOwned;
 use uuid::Uuid;
@@ -31,10 +28,10 @@ use uuid::Uuid;
 use crate::ffi::arena::Arena;
 
 impl Arena {
-	pub(super) fn unmarshal_bool_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> BoolContainer {
+	pub(super) fn unmarshal_bool_data(&self, ffi: &ColumnDataFFI) -> BoolContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
-			return BoolContainer::new(vec![false; row_count], bitvec);
+			return BoolContainer::new(vec![false; row_count]);
 		}
 
 		unsafe {
@@ -50,7 +47,7 @@ impl Arena {
 				};
 				values.push(val);
 			}
-			BoolContainer::new(values, bitvec)
+			BoolContainer::new(values)
 		}
 	}
 
@@ -58,26 +55,25 @@ impl Arena {
 	pub(super) fn unmarshal_numeric_data<T: Copy + Default + IsNumber>(
 		&self,
 		ffi: &ColumnDataFFI,
-		bitvec: BitVec,
 	) -> NumberContainer<T> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
-			return NumberContainer::new(vec![T::default(); row_count], bitvec);
+			return NumberContainer::new(vec![T::default(); row_count]);
 		}
 
 		unsafe {
 			let ptr = ffi.data.ptr as *const T;
 			let len = ffi.data.len / size_of::<T>();
 			let slice = from_raw_parts(ptr, len);
-			NumberContainer::new(slice.to_vec(), bitvec)
+			NumberContainer::new(slice.to_vec())
 		}
 	}
 
 	/// Unmarshal UTF8 data with offsets
-	pub(super) fn unmarshal_utf8_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> Utf8Container {
+	pub(super) fn unmarshal_utf8_data(&self, ffi: &ColumnDataFFI) -> Utf8Container {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
-			return Utf8Container::new(vec![String::new(); row_count], bitvec);
+			return Utf8Container::new(vec![String::new(); row_count]);
 		}
 
 		unsafe {
@@ -92,15 +88,15 @@ impl Arena {
 				strings.push(s);
 			}
 
-			Utf8Container::new(strings, bitvec)
+			Utf8Container::new(strings)
 		}
 	}
 
 	/// Unmarshal date data
-	pub(super) fn unmarshal_date_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> TemporalContainer<Date> {
+	pub(super) fn unmarshal_date_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Date> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
-			return TemporalContainer::new(vec![Date::default(); row_count], bitvec);
+			return TemporalContainer::new(vec![Date::default(); row_count]);
 		}
 
 		unsafe {
@@ -111,19 +107,15 @@ impl Arena {
 				.iter()
 				.map(|&days| Date::from_days_since_epoch(days).unwrap_or_default())
 				.collect();
-			TemporalContainer::new(dates, bitvec)
+			TemporalContainer::new(dates)
 		}
 	}
 
 	/// Unmarshal datetime data
-	pub(super) fn unmarshal_datetime_data(
-		&self,
-		ffi: &ColumnDataFFI,
-		bitvec: BitVec,
-	) -> TemporalContainer<DateTime> {
+	pub(super) fn unmarshal_datetime_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<DateTime> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
-			return TemporalContainer::new(vec![DateTime::default(); row_count], bitvec);
+			return TemporalContainer::new(vec![DateTime::default(); row_count]);
 		}
 
 		unsafe {
@@ -132,15 +124,15 @@ impl Arena {
 			let slice = from_raw_parts(ptr, len);
 			let datetimes: Vec<DateTime> =
 				slice.iter().map(|&ts| DateTime::from_timestamp(ts).unwrap_or_default()).collect();
-			TemporalContainer::new(datetimes, bitvec)
+			TemporalContainer::new(datetimes)
 		}
 	}
 
 	/// Unmarshal time data
-	pub(super) fn unmarshal_time_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> TemporalContainer<Time> {
+	pub(super) fn unmarshal_time_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Time> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
-			return TemporalContainer::new(vec![Time::default(); row_count], bitvec);
+			return TemporalContainer::new(vec![Time::default(); row_count]);
 		}
 
 		unsafe {
@@ -151,19 +143,15 @@ impl Arena {
 				.iter()
 				.map(|&ns| Time::from_nanos_since_midnight(ns).unwrap_or_default())
 				.collect();
-			TemporalContainer::new(times, bitvec)
+			TemporalContainer::new(times)
 		}
 	}
 
 	/// Unmarshal duration data (deserialize with postcard since Duration has 3 fields)
-	pub(super) fn unmarshal_duration_data(
-		&self,
-		ffi: &ColumnDataFFI,
-		bitvec: BitVec,
-	) -> TemporalContainer<Duration> {
+	pub(super) fn unmarshal_duration_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Duration> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
-			return TemporalContainer::new(vec![Duration::default(); row_count], bitvec);
+			return TemporalContainer::new(vec![Duration::default(); row_count]);
 		}
 
 		unsafe {
@@ -178,15 +166,15 @@ impl Arena {
 				durations.push(duration);
 			}
 
-			TemporalContainer::new(durations, bitvec)
+			TemporalContainer::new(durations)
 		}
 	}
 
 	/// Unmarshal identity ID data
-	pub(super) fn unmarshal_identity_id_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> IdentityIdContainer {
+	pub(super) fn unmarshal_identity_id_data(&self, ffi: &ColumnDataFFI) -> IdentityIdContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
-			return IdentityIdContainer::new(vec![IdentityId::default(); row_count], bitvec);
+			return IdentityIdContainer::new(vec![IdentityId::default(); row_count]);
 		}
 
 		unsafe {
@@ -200,15 +188,15 @@ impl Arena {
 					IdentityId(Uuid7(Uuid::from_bytes(arr)))
 				})
 				.collect();
-			IdentityIdContainer::new(ids, bitvec)
+			IdentityIdContainer::new(ids)
 		}
 	}
 
 	/// Unmarshal UUID4 data
-	pub(super) fn unmarshal_uuid4_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> UuidContainer<Uuid4> {
+	pub(super) fn unmarshal_uuid4_data(&self, ffi: &ColumnDataFFI) -> UuidContainer<Uuid4> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
-			return UuidContainer::new(vec![Uuid4::default(); row_count], bitvec);
+			return UuidContainer::new(vec![Uuid4::default(); row_count]);
 		}
 
 		unsafe {
@@ -221,15 +209,15 @@ impl Arena {
 					Uuid4(Uuid::from_bytes(arr))
 				})
 				.collect();
-			UuidContainer::new(uuids, bitvec)
+			UuidContainer::new(uuids)
 		}
 	}
 
 	/// Unmarshal UUID7 data
-	pub(super) fn unmarshal_uuid7_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> UuidContainer<Uuid7> {
+	pub(super) fn unmarshal_uuid7_data(&self, ffi: &ColumnDataFFI) -> UuidContainer<Uuid7> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
-			return UuidContainer::new(vec![Uuid7::default(); row_count], bitvec);
+			return UuidContainer::new(vec![Uuid7::default(); row_count]);
 		}
 
 		unsafe {
@@ -242,15 +230,15 @@ impl Arena {
 					Uuid7(Uuid::from_bytes(arr))
 				})
 				.collect();
-			UuidContainer::new(uuids, bitvec)
+			UuidContainer::new(uuids)
 		}
 	}
 
 	/// Unmarshal blob data with offsets
-	pub(super) fn unmarshal_blob_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> BlobContainer {
+	pub(super) fn unmarshal_blob_data(&self, ffi: &ColumnDataFFI) -> BlobContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
-			return BlobContainer::new(vec![Blob::empty(); row_count], bitvec);
+			return BlobContainer::new(vec![Blob::empty(); row_count]);
 		}
 
 		unsafe {
@@ -264,7 +252,7 @@ impl Arena {
 				blobs.push(Blob::new(data[start..end].to_vec()));
 			}
 
-			BlobContainer::new(blobs, bitvec)
+			BlobContainer::new(blobs)
 		}
 	}
 
@@ -272,11 +260,10 @@ impl Arena {
 	pub(super) fn unmarshal_serialized_data<T: Default + Clone + DeserializeOwned + IsNumber>(
 		&self,
 		ffi: &ColumnDataFFI,
-		bitvec: BitVec,
 	) -> NumberContainer<T> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
-			return NumberContainer::new(vec![T::default(); row_count], bitvec);
+			return NumberContainer::new(vec![T::default(); row_count]);
 		}
 
 		unsafe {
@@ -291,15 +278,15 @@ impl Arena {
 				values.push(value);
 			}
 
-			NumberContainer::new(values, bitvec)
+			NumberContainer::new(values)
 		}
 	}
 
 	/// Unmarshal Any data with offsets
-	pub(super) fn unmarshal_any_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> AnyContainer {
+	pub(super) fn unmarshal_any_data(&self, ffi: &ColumnDataFFI) -> AnyContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
-			return AnyContainer::new(vec![Box::new(Value::None); row_count], bitvec);
+			return AnyContainer::new(vec![Box::new(Value::None); row_count]);
 		}
 
 		unsafe {
@@ -314,7 +301,7 @@ impl Arena {
 				values.push(Box::new(value));
 			}
 
-			AnyContainer::new(values, bitvec)
+			AnyContainer::new(values)
 		}
 	}
 

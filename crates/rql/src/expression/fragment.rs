@@ -24,7 +24,7 @@ impl Expression {
 				..
 			}) => expr.full_fragment_owned(),
 			Expression::Constant(expr) => match expr {
-				ConstantExpression::Undefined {
+				ConstantExpression::None {
 					fragment,
 				}
 				| ConstantExpression::Bool {
@@ -100,7 +100,7 @@ impl AddExpression {
 impl ConstantExpression {
 	pub fn full_fragment_owned(&self) -> Fragment {
 		match self {
-			ConstantExpression::Undefined {
+			ConstantExpression::None {
 				fragment,
 			} => fragment.clone(),
 			ConstantExpression::Bool {
@@ -120,7 +120,7 @@ impl ConstantExpression {
 
 	pub fn to_value(&self) -> Value {
 		match self {
-			Self::Undefined {
+			Self::None {
 				..
 			} => Value::None,
 			Self::Bool {

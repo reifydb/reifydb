@@ -5,7 +5,7 @@ use reifydb_core::value::column::data::ColumnData;
 use reifydb_runtime::clock::Clock;
 use reifydb_type::value::r#type::Type;
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
 pub struct Set;
 
@@ -17,6 +17,10 @@ impl Set {
 
 impl ScalarFunction for Set {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 

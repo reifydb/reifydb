@@ -4,6 +4,7 @@
 use reifydb_type::{
 	return_error,
 	storage::DataBitVec,
+	util::bitvec::BitVec,
 	value::container::{
 		blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer, number::NumberContainer,
 		temporal::TemporalContainer, undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
@@ -245,14 +246,61 @@ impl ColumnData {
 				ColumnData::Undefined(r_container),
 			) => {
 				let r_len = r_container.len();
-				inner.extend(ColumnData::Undefined(r_container))?;
+				with_container!(inner.as_mut(), |c| c.extend_from_undefined(r_len));
 				for _ in 0..r_len {
 					DataBitVec::push(bitvec, false);
 				}
 			}
-			(typed_l, ColumnData::Undefined(r_container)) => {
+			(_, ColumnData::Undefined(r_container)) => {
 				let r_len = r_container.len();
-				with_container!(typed_l, |c| c.extend_from_undefined(r_len));
+				let l_len = self.len();
+				// Promote bare typed column to Option
+				let mut bitvec = BitVec::repeat(l_len, true);
+				let inner = std::mem::replace(self, ColumnData::Undefined(UndefinedContainer::new(0)));
+				let mut boxed_inner = Box::new(inner);
+				with_container!(boxed_inner.as_mut(), |c| c.extend_from_undefined(r_len));
+				for _ in 0..r_len {
+					DataBitVec::push(&mut bitvec, false);
+				}
+				*self = ColumnData::Option {
+					inner: boxed_inner,
+					bitvec,
+				};
+			}
+
+			// Option + bare: extend inner with bare data, extend bitvec with all-true
+			(
+				ColumnData::Option {
+					inner,
+					bitvec,
+				},
+				other,
+			) => {
+				let other_len = other.len();
+				inner.extend(other)?;
+				for _ in 0..other_len {
+					DataBitVec::push(bitvec, true);
+				}
+			}
+
+			// bare + Option(same type): promote bare to Option, then extend
+			(
+				_,
+				ColumnData::Option {
+					inner: r_inner,
+					bitvec: r_bitvec,
+				},
+			) => {
+				let l_len = self.len();
+				let mut l_bitvec = BitVec::repeat(l_len, true);
+				DataBitVec::extend_from(&mut l_bitvec, &r_bitvec);
+				let inner = std::mem::replace(self, ColumnData::Undefined(UndefinedContainer::new(0)));
+				let mut boxed_inner = Box::new(inner);
+				boxed_inner.extend(*r_inner)?;
+				*self = ColumnData::Option {
+					inner: boxed_inner,
+					bitvec: l_bitvec,
+				};
 			}
 
 			// Type mismatch

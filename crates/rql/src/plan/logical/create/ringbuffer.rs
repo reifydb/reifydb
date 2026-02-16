@@ -37,13 +37,7 @@ impl<'bump> Compiler<'bump> {
 				vec![]
 			};
 
-			let ty_fragment = match &col.ty {
-				crate::ast::ast::AstType::Unconstrained(fragment) => fragment.to_owned(),
-				crate::ast::ast::AstType::Constrained {
-					name,
-					..
-				} => name.to_owned(),
-			};
+			let ty_fragment = col.ty.name_fragment().to_owned();
 
 			let fragment = Some(Fragment::merge_all([col.name.to_owned(), ty_fragment]));
 

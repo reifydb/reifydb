@@ -188,7 +188,7 @@ pub mod tests {
 			ColumnData::Undefined(container) => {
 				assert_eq!(container.len(), 2);
 			}
-			_ => panic!("Expected undefined column"),
+			_ => panic!("Expected none column"),
 		}
 	}
 

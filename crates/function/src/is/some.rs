@@ -5,15 +5,15 @@ use reifydb_core::value::column::data::ColumnData;
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
 
-pub struct IsUndefined;
+pub struct IsSome;
 
-impl IsUndefined {
+impl IsSome {
 	pub fn new() -> Self {
 		Self
 	}
 }
 
-impl ScalarFunction for IsUndefined {
+impl ScalarFunction for IsSome {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
@@ -27,7 +27,7 @@ impl ScalarFunction for IsUndefined {
 		}
 
 		let column = columns.get(0).unwrap();
-		let data: Vec<bool> = (0..row_count).map(|i| !column.data().is_defined(i)).collect();
+		let data: Vec<bool> = (0..row_count).map(|i| column.data().is_defined(i)).collect();
 
 		Ok(ColumnData::bool(data))
 	}

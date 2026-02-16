@@ -68,7 +68,7 @@ pub fn invalid_row_number_values() -> Diagnostic {
 		fragment: Fragment::None,
 		label: Some("invalid encoded identifiers".to_string()),
 		help: Some("Check that the input data contains valid encoded IDs".to_string()),
-		notes: vec!["RowNumber column must contain valid identifiers, not undefined values".to_string()],
+		notes: vec!["RowNumber column must contain valid identifiers, not none values".to_string()],
 		cause: None,
 		operator_chain: None,
 	}

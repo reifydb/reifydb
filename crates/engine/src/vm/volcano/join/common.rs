@@ -99,20 +99,26 @@ pub fn build_eval_columns(
 	let mut eval_columns = Vec::new();
 
 	for (idx, col) in left_columns.iter().enumerate() {
-		eval_columns.push(col.with_new_data(ColumnData::from(left_row[idx].clone())));
+		let data = match &left_row[idx] {
+			Value::None => ColumnData::typed_none(&col.data().get_type()),
+			value => ColumnData::from(value.clone()),
+		};
+		eval_columns.push(col.with_new_data(data));
 	}
 
 	for (idx, col) in right_columns.iter().enumerate() {
+		let data = match &right_row[idx] {
+			Value::None => ColumnData::typed_none(&col.data().get_type()),
+			value => ColumnData::from(value.clone()),
+		};
 		if let Some(alias) = alias {
-			// For aliased columns, create a name that includes the alias prefix
-			// This matches how the AccessSource expression expects to find the column
 			let aliased_name = Fragment::internal(format!("{}.{}", alias.text(), col.name().text()));
 			eval_columns.push(Column {
 				name: aliased_name,
-				data: ColumnData::from(right_row[idx].clone()),
+				data,
 			});
 		} else {
-			eval_columns.push(col.with_new_data(ColumnData::from(right_row[idx].clone())));
+			eval_columns.push(col.with_new_data(data));
 		}
 	}
 

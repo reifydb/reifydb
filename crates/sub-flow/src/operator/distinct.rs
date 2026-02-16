@@ -127,7 +127,7 @@ impl DistinctLayout {
 
 		for (i, new_type) in types.iter().enumerate() {
 			if i < self.types.len() {
-				if self.types[i].is_option() && !new_type.is_option() {
+				if !self.types[i].is_option() && new_type.is_option() {
 					self.types[i] = new_type.clone();
 				}
 			} else {

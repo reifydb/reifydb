@@ -85,10 +85,21 @@ impl ColumnData {
 			ColumnData::Option {
 				inner,
 				bitvec,
-			} => ColumnData::Option {
-				inner: Box::new(inner.take(num)),
-				bitvec: DataBitVec::take(bitvec, num),
-			},
+			} => {
+				let new_bitvec = DataBitVec::take(bitvec, num);
+				// If all bits in the taken bitvec are set (all defined),
+				// unwrap the Option and return the bare inner data.
+				if DataBitVec::count_ones(&new_bitvec) == DataBitVec::len(&new_bitvec)
+					&& DataBitVec::len(&new_bitvec) > 0
+				{
+					inner.take(num)
+				} else {
+					ColumnData::Option {
+						inner: Box::new(inner.take(num)),
+						bitvec: new_bitvec,
+					}
+				}
+			}
 			_ => map_container!(self, |c| c.take(num)),
 		}
 	}

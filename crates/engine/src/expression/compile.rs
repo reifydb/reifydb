@@ -235,7 +235,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<Equal>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -253,7 +252,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<NotEqual>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -271,7 +269,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<GreaterThan>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -289,7 +286,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<GreaterThanEqual>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -307,7 +303,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<LessThan>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -325,7 +320,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
 				let result = compare_columns::<LessThanEqual>(
-					ctx,
 					&l,
 					&r,
 					fragment.clone(),
@@ -417,14 +411,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let upper_col = upper.execute(ctx)?;
 
 				let ge_result = compare_columns::<GreaterThanEqual>(
-					ctx,
 					&value_col,
 					&lower_col,
 					fragment.clone(),
 					greater_than_equal_cannot_be_applied_to_incompatible_types,
 				)?;
 				let le_result = compare_columns::<LessThanEqual>(
-					ctx,
 					&value_col,
 					&upper_col,
 					fragment.clone(),
@@ -506,7 +498,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 
 				let first_col = list[0].execute(ctx)?;
 				let mut result = compare_columns::<Equal>(
-					ctx,
 					&value_col,
 					&first_col,
 					fragment.clone(),
@@ -516,7 +507,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				for list_expr in list.iter().skip(1) {
 					let list_col = list_expr.execute(ctx)?;
 					let eq_result = compare_columns::<Equal>(
-						ctx,
 						&value_col,
 						&list_col,
 						fragment.clone(),
@@ -623,42 +613,19 @@ fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> crate::Res
 // --- Helper functions (moved from execute.rs) ---
 
 fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	match (&left.data(), &right.data()) {
+	super::option::binary_op_unwrap_option(left, right, |left, right| match (&left.data(), &right.data()) {
 		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			if l_container.is_fully_defined() && r_container.is_fully_defined() {
-				let data: Vec<bool> = l_container
-					.data()
-					.iter()
-					.zip(r_container.data().iter())
-					.map(|(l_val, r_val)| l_val && r_val)
-					.collect();
+			let data: Vec<bool> = l_container
+				.data()
+				.iter()
+				.zip(r_container.data().iter())
+				.map(|(l_val, r_val)| l_val && r_val)
+				.collect();
 
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool(data),
-				})
-			} else {
-				let mut data = Vec::with_capacity(l_container.data().len());
-				let mut bitvec = Vec::with_capacity(l_container.bitvec().len());
-
-				for i in 0..l_container.data().len() {
-					match (l_container.get(i), r_container.get(i)) {
-						(Some(l), Some(r)) => {
-							data.push(l && r);
-							bitvec.push(true);
-						}
-						_ => {
-							data.push(false);
-							bitvec.push(false);
-						}
-					}
-				}
-
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool_with_bitvec(data, bitvec),
-				})
-			}
+			Ok(Column {
+				name: fragment.clone(),
+				data: ColumnData::bool(data),
+			})
 		}
 		(ColumnData::Undefined(container), _) => Ok(Column {
 			name: fragment.clone(),
@@ -681,46 +648,23 @@ fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> crate::Res
 				unimplemented!("{} and {}", l.get_type(), r.get_type());
 			}
 		}
-	}
+	})
 }
 
 fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	match (&left.data(), &right.data()) {
+	super::option::binary_op_unwrap_option(left, right, |left, right| match (&left.data(), &right.data()) {
 		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			if l_container.is_fully_defined() && r_container.is_fully_defined() {
-				let data: Vec<bool> = l_container
-					.data()
-					.iter()
-					.zip(r_container.data().iter())
-					.map(|(l_val, r_val)| l_val || r_val)
-					.collect();
+			let data: Vec<bool> = l_container
+				.data()
+				.iter()
+				.zip(r_container.data().iter())
+				.map(|(l_val, r_val)| l_val || r_val)
+				.collect();
 
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool(data),
-				})
-			} else {
-				let mut data = Vec::with_capacity(l_container.data().len());
-				let mut bitvec = Vec::with_capacity(l_container.bitvec().len());
-
-				for i in 0..l_container.data().len() {
-					match (l_container.get(i), r_container.get(i)) {
-						(Some(l), Some(r)) => {
-							data.push(l || r);
-							bitvec.push(true);
-						}
-						_ => {
-							data.push(false);
-							bitvec.push(false);
-						}
-					}
-				}
-
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool_with_bitvec(data, bitvec),
-				})
-			}
+			Ok(Column {
+				name: fragment.clone(),
+				data: ColumnData::bool(data),
+			})
 		}
 		(ColumnData::Undefined(container), _) => Ok(Column {
 			name: fragment.clone(),
@@ -743,43 +687,23 @@ fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> crate::Resu
 				unimplemented!("{} or {}", l.get_type(), r.get_type());
 			}
 		}
-	}
+	})
 }
 
 fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
 	match (&left.data(), &right.data()) {
 		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			if l_container.is_fully_defined() && r_container.is_fully_defined() {
-				let data: Vec<bool> = l_container
-					.data()
-					.iter()
-					.zip(r_container.data().iter())
-					.map(|(l_val, r_val)| l_val != r_val)
-					.collect();
+			let data: Vec<bool> = l_container
+				.data()
+				.iter()
+				.zip(r_container.data().iter())
+				.map(|(l_val, r_val)| l_val != r_val)
+				.collect();
 
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool(data),
-				})
-			} else {
-				let mut data = Vec::with_capacity(l_container.data().len());
-				let mut bitvec = Vec::with_capacity(l_container.bitvec().len());
-
-				for i in 0..l_container.data().len() {
-					if l_container.is_defined(i) && r_container.is_defined(i) {
-						data.push(l_container.data().get(i) != r_container.data().get(i));
-						bitvec.push(true);
-					} else {
-						data.push(false);
-						bitvec.push(false);
-					}
-				}
-
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool_with_bitvec(data, bitvec),
-				})
-			}
+			Ok(Column {
+				name: fragment.clone(),
+				data: ColumnData::bool(data),
+			})
 		}
 		(ColumnData::Undefined(container), _) => Ok(Column {
 			name: fragment.clone(),
@@ -806,7 +730,7 @@ fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> crate::Res
 }
 
 fn or_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<Column> {
-	match (left.data(), right.data()) {
+	super::option::binary_op_unwrap_option(&left, &right, |left, right| match (left.data(), right.data()) {
 		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
 			let len = l.len();
 			let mut data = Vec::with_capacity(len);
@@ -828,7 +752,7 @@ fn or_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<
 			}
 
 			Ok(Column {
-				name: fragment,
+				name: fragment.clone(),
 				data: ColumnData::bool_with_bitvec(data, bitvec),
 			})
 		}
@@ -837,18 +761,18 @@ fn or_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<
 			let data = vec![false; len];
 			let bitvec = vec![false; len];
 			Ok(Column {
-				name: fragment,
+				name: fragment.clone(),
 				data: ColumnData::bool_with_bitvec(data, bitvec),
 			})
 		}
 		_ => {
 			unreachable!("OR columns should only be called with boolean columns from equality comparisons")
 		}
-	}
+	})
 }
 
 fn negate_column(col: Column, fragment: Fragment) -> Column {
-	match col.data() {
+	super::option::unary_op_unwrap_option(&col, |col| match col.data() {
 		ColumnData::Bool(container) => {
 			let len = container.len();
 			let mut data = Vec::with_capacity(len);
@@ -864,14 +788,15 @@ fn negate_column(col: Column, fragment: Fragment) -> Column {
 				}
 			}
 
-			Column {
-				name: fragment,
+			Ok(Column {
+				name: fragment.clone(),
 				data: ColumnData::bool_with_bitvec(data, bitvec),
-			}
+			})
 		}
-		ColumnData::Undefined(_) => col,
+		ColumnData::Undefined(_) => Ok(col.clone()),
 		_ => unreachable!("negate_column should only be called with boolean columns"),
-	}
+	})
+	.unwrap()
 }
 
 fn is_truthy(value: &Value) -> bool {
@@ -926,23 +851,34 @@ fn execute_if_multi(
 			} else if let Some(else_exprs) = else_branch {
 				execute_multi_exprs(ctx, else_exprs)?
 			} else {
-				let mut data =
-					ColumnData::with_capacity(Type::Option(Box::new(Type::Boolean)), ctx.row_count);
-				for _ in 0..ctx.row_count {
-					data.push_undefined();
-				}
-				vec![Column {
-					name: Fragment::internal("none"),
-					data,
-				}]
+				vec![]
 			}
 		};
 
+		// Handle empty/undefined branch results (from empty blocks like `{}` or no-branch-taken)
+		let is_empty_result = branch_results.is_empty()
+			|| branch_results.iter().all(|col| matches!(col.data(), ColumnData::Undefined(_)));
+		if is_empty_result {
+			if let Some(data) = result_data.as_mut() {
+				for col_data in data.iter_mut() {
+					col_data.push_value(Value::None);
+				}
+			}
+			continue;
+		}
+
+		// Initialize from first non-empty branch, backfilling previous empty rows
 		if result_data.is_none() {
-			result_data = Some(branch_results
+			let mut data: Vec<ColumnData> = branch_results
 				.iter()
 				.map(|col| ColumnData::with_capacity(col.data().get_type(), ctx.row_count))
-				.collect());
+				.collect();
+			for _ in 0..row_idx {
+				for col_data in data.iter_mut() {
+					col_data.push_value(Value::None);
+				}
+			}
+			result_data = Some(data);
 			result_names = branch_results.iter().map(|col| col.name.clone()).collect();
 		}
 
@@ -968,7 +904,7 @@ fn execute_if_multi(
 	if result.is_empty() {
 		Ok(vec![Column {
 			name: Fragment::internal("none"),
-			data: ColumnData::with_capacity(Type::Option(Box::new(Type::Boolean)), 0),
+			data: ColumnData::Undefined(UndefinedContainer::new(ctx.row_count)),
 		}])
 	} else {
 		Ok(result)

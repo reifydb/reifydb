@@ -71,14 +71,17 @@ pub(crate) fn call_eval(
 		functions.get_scalar(function_name).ok_or(error!(function::unknown_function(call.func.0.clone())))?;
 
 	let row_count = ctx.row_count;
+
+	let final_data = functor.scalar(ScalarFunctionContext {
+		fragment: call.func.0.clone(),
+		columns: &arguments,
+		row_count,
+		clock,
+	})?;
+
 	Ok(Column {
 		name: call.full_fragment_owned(),
-		data: functor.scalar(ScalarFunctionContext {
-			fragment: call.func.0.clone(),
-			columns: &arguments,
-			row_count,
-			clock,
-		})?,
+		data: final_data,
 	})
 }
 
@@ -154,7 +157,7 @@ fn execute_function_body_for_scalar(
 
 			// === Stack ===
 			Instruction::PushConst(v) => stack.push(v.clone()),
-			Instruction::PushUndefined => stack.push(Value::None),
+			Instruction::PushNone => stack.push(Value::None),
 			Instruction::Pop => {
 				stack.pop();
 			}

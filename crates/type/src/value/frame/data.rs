@@ -3,22 +3,26 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::value::{
-	Value,
-	container::{
-		any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
-		identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-		undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
+use crate::{
+	storage::DataBitVec,
+	util::bitvec::BitVec,
+	value::{
+		Value,
+		container::{
+			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
+			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
+			undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
+		},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		int::Int,
+		time::Time,
+		r#type::Type,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
 	},
-	date::Date,
-	datetime::DateTime,
-	decimal::Decimal,
-	duration::Duration,
-	int::Int,
-	time::Time,
-	r#type::Type,
-	uint::Uint,
-	uuid::{Uuid4, Uuid7},
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -50,6 +54,11 @@ pub enum FrameColumnData {
 	Decimal(NumberContainer<Decimal>),
 	Any(AnyContainer),
 	DictionaryId(DictionaryContainer),
+	// nullable wrapper
+	Option {
+		inner: Box<FrameColumnData>,
+		bitvec: BitVec,
+	},
 	// special case: all undefined
 	Undefined(UndefinedContainer),
 }
@@ -84,6 +93,10 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(_) => Type::Decimal,
 			FrameColumnData::Any(_) => Type::Any,
 			FrameColumnData::DictionaryId(_) => Type::DictionaryId,
+			FrameColumnData::Option {
+				inner,
+				..
+			} => Type::Option(Box::new(inner.get_type())),
 			FrameColumnData::Undefined(_) => Type::Option(Box::new(Type::Boolean)),
 		}
 	}
@@ -117,6 +130,10 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(container) => container.is_defined(idx),
 			FrameColumnData::Any(container) => container.is_defined(idx),
 			FrameColumnData::DictionaryId(container) => container.is_defined(idx),
+			FrameColumnData::Option {
+				bitvec,
+				..
+			} => idx < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, idx),
 			FrameColumnData::Undefined(_) => false,
 		}
 	}
@@ -191,6 +208,10 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(container) => container.len(),
 			FrameColumnData::Any(container) => container.len(),
 			FrameColumnData::DictionaryId(container) => container.len(),
+			FrameColumnData::Option {
+				inner,
+				..
+			} => inner.len(),
 			FrameColumnData::Undefined(container) => container.len(),
 		}
 	}
@@ -224,6 +245,16 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(container) => container.as_string(index),
 			FrameColumnData::Any(container) => container.as_string(index),
 			FrameColumnData::DictionaryId(container) => container.as_string(index),
+			FrameColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				if DataBitVec::get(bitvec, index) {
+					inner.as_string(index)
+				} else {
+					"none".to_string()
+				}
+			}
 			FrameColumnData::Undefined(container) => container.as_string(index),
 		}
 	}
@@ -259,6 +290,16 @@ impl FrameColumnData {
 			FrameColumnData::Decimal(container) => container.get_value(index),
 			FrameColumnData::Any(container) => container.get_value(index),
 			FrameColumnData::DictionaryId(container) => container.get_value(index),
+			FrameColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				if DataBitVec::get(bitvec, index) {
+					inner.get_value(index)
+				} else {
+					Value::None
+				}
+			}
 			FrameColumnData::Undefined(container) => container.get_value(index),
 		}
 	}
