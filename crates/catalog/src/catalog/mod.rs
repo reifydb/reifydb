@@ -18,6 +18,7 @@ pub mod flow_node;
 pub mod namespace;
 pub mod primary_key;
 pub mod primitive;
+pub mod reducer;
 pub mod resolve;
 pub mod ringbuffer;
 pub mod sequence;

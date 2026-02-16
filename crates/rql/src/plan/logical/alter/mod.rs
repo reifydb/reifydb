@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub mod flow;
+pub mod reducer;
 pub mod sequence;
 pub mod table;
 pub mod view;
@@ -24,7 +25,7 @@ impl<'bump> Compiler<'bump> {
 			AstAlter::Table(node) => self.compile_alter_table(node),
 			AstAlter::View(node) => self.compile_alter_view(node),
 			AstAlter::Flow(node) => self.compile_alter_flow(node, tx),
-			AstAlter::Reducer(_) => unimplemented!("ALTER REDUCER execution not yet supported"),
+			AstAlter::Reducer(node) => self.compile_alter_reducer(node, tx),
 		}
 	}
 }

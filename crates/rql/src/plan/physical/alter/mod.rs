@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod flow;
+pub mod reducer;
 pub mod sequence;
 pub mod table;
 pub mod view;

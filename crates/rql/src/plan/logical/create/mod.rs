@@ -6,6 +6,7 @@ pub mod dictionary;
 pub mod flow;
 pub mod index;
 pub mod namespace;
+pub mod reducer;
 pub mod ringbuffer;
 pub mod series;
 pub mod subscription;
@@ -36,7 +37,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Dictionary(node) => self.compile_create_dictionary(node),
 			AstCreate::Index(node) => self.compile_create_index(node),
 			AstCreate::Subscription(node) => self.compile_create_subscription(node, tx),
-			AstCreate::Reducer(_) => unimplemented!("CREATE REDUCER execution not yet supported"),
+			AstCreate::Reducer(node) => self.compile_create_reducer(node, tx),
 		}
 	}
 }

@@ -51,6 +51,9 @@ pub enum KeyKind {
 	SubscriptionColumn = 0x29,
 	Schema = 0x2A,
 	SchemaField = 0x2B,
+	Reducer = 0x2C,
+	NamespaceReducer = 0x2D,
+	ReducerAction = 0x2E,
 }
 
 impl From<KeyKind> for u8 {
@@ -106,6 +109,9 @@ impl TryFrom<u8> for KeyKind {
 			0x29 => Ok(Self::SubscriptionColumn),
 			0x2A => Ok(Self::Schema),
 			0x2B => Ok(Self::SchemaField),
+			0x2C => Ok(Self::Reducer),
+			0x2D => Ok(Self::NamespaceReducer),
+			0x2E => Ok(Self::ReducerAction),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

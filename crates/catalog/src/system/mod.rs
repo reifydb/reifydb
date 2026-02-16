@@ -386,9 +386,21 @@ pub mod ids {
 		pub const FLOW_NODE: SequenceId = SequenceId(6);
 		pub const FLOW_EDGE: SequenceId = SequenceId(7);
 		pub const PRIMARY_KEY: SequenceId = SequenceId(8);
+		pub const REDUCER: SequenceId = SequenceId(9);
+		pub const REDUCER_ACTION: SequenceId = SequenceId(10);
 
-		pub const ALL: [SequenceId; 8] =
-			[NAMESPACE, SOURCE, COLUMN, COLUMN_POLICY, FLOW, FLOW_NODE, FLOW_EDGE, PRIMARY_KEY];
+		pub const ALL: [SequenceId; 10] = [
+			NAMESPACE,
+			SOURCE,
+			COLUMN,
+			COLUMN_POLICY,
+			FLOW,
+			FLOW_NODE,
+			FLOW_EDGE,
+			PRIMARY_KEY,
+			REDUCER,
+			REDUCER_ACTION,
+		];
 	}
 
 	pub mod vtable {
