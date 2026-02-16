@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
-	value::{Value, row_number::RowNumber},
+	value::{Value, r#type::Type, row_number::RowNumber},
 };
 
 pub struct RowNumberContainer<S: Storage = Cow> {
@@ -157,7 +157,7 @@ impl<S: Storage> RowNumberContainer<S> {
 		if index < self.len() {
 			Value::Uint8(self.data[index].value())
 		} else {
-			Value::None
+			Value::none_of(Type::Uint8)
 		}
 	}
 

@@ -90,4 +90,8 @@ impl ScalarFunction for TimeTrunc {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Time
+	}
 }

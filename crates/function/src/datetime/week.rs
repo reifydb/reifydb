@@ -80,4 +80,8 @@ impl ScalarFunction for DateTimeWeek {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int4
+	}
 }

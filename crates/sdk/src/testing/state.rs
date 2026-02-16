@@ -91,7 +91,7 @@ impl TestStateStore {
 
 		// Convert HashMap to ordered values based on schema field names
 		let ordered_values: Vec<Value> =
-			schema.field_names().map(|name| values.get(name).cloned().unwrap_or(Value::None)).collect();
+			schema.field_names().map(|name| values.get(name).cloned().unwrap_or(Value::none())).collect();
 
 		schema.set_values(&mut encoded, &ordered_values);
 		self.set(key, encoded);

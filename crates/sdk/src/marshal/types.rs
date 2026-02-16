@@ -286,7 +286,7 @@ impl Arena {
 	pub(super) fn unmarshal_any_data(&self, ffi: &ColumnDataFFI) -> AnyContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
-			return AnyContainer::new(vec![Box::new(Value::None); row_count]);
+			return AnyContainer::new(vec![Box::new(Value::none()); row_count]);
 		}
 
 		unsafe {
@@ -297,7 +297,7 @@ impl Arena {
 			for i in 0..row_count {
 				let start = offsets[i] as usize;
 				let end = offsets[i + 1] as usize;
-				let value: Value = postcard::from_bytes(&data[start..end]).unwrap_or(Value::None);
+				let value: Value = postcard::from_bytes(&data[start..end]).unwrap_or(Value::none());
 				values.push(Box::new(value));
 			}
 

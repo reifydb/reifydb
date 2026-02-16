@@ -67,4 +67,8 @@ impl ScalarFunction for BlobB64url {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Blob
+	}
 }

@@ -103,7 +103,7 @@ pub(crate) fn update_ringbuffer<'a>(
 						if let Some(&input_idx) = column_map.get(rb_column.name.as_str()) {
 							columns[input_idx].data().get_value(row_idx)
 						} else {
-							Value::None
+							Value::none()
 						};
 
 					// Create a ResolvedColumn for this ring buffer column

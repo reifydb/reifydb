@@ -63,4 +63,8 @@ impl ScalarFunction for TextTrimEnd {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }

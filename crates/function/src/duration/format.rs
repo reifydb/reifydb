@@ -127,4 +127,8 @@ impl ScalarFunction for DurationFormat {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }

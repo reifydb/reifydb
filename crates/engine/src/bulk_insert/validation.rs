@@ -99,7 +99,7 @@ fn collect_rows_to_columns(
 			Params::Named(map) => {
 				// For each column, look up value in map or use Undefined
 				for (col_idx, col) in columns.iter().enumerate() {
-					let value = map.get(&col.name).cloned().unwrap_or(Value::None);
+					let value = map.get(&col.name).cloned().unwrap_or(Value::none());
 					column_data[col_idx].push_value(value);
 				}
 			}
@@ -113,7 +113,7 @@ fn collect_rows_to_columns(
 					.into());
 				}
 				for col_idx in 0..num_cols {
-					let value = vals.get(col_idx).cloned().unwrap_or(Value::None);
+					let value = vals.get(col_idx).cloned().unwrap_or(Value::none());
 					column_data[col_idx].push_value(value);
 				}
 			}

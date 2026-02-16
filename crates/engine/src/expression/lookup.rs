@@ -121,7 +121,7 @@ fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> cra
 		Type::Int => extract_typed_column!(col, take, Int(b) => b.clone(), Int::zero(), int_with_bitvec),
 		Type::Uint => extract_typed_column!(col, take, Uint(b) => b.clone(), Uint::zero(), uint_with_bitvec),
 		Type::Any => {
-			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::None), any_with_bitvec)
+			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
 		}
 		Type::Decimal => {
 			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::from_i64(0), decimal_with_bitvec)

@@ -84,4 +84,8 @@ impl ScalarFunction for DateTrunc {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Date
+	}
 }

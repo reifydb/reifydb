@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::r#type::Type;
 use std::f64::consts::E;
 
 use reifydb_core::value::column::data::ColumnData;
@@ -33,5 +34,9 @@ impl ScalarFunction for Euler {
 		}
 
 		Ok(ColumnData::float8_with_bitvec(vec![E], vec![true]))
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Float8
 	}
 }

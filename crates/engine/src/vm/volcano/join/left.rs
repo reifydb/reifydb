@@ -132,7 +132,7 @@ impl QueryNode for LeftJoinNode {
 			// Add unmatched left rows with undefined values for right columns
 			if !matched {
 				let mut combined = left_row.clone();
-				combined.extend(vec![Value::None; right_width]);
+				combined.extend(vec![Value::none(); right_width]);
 				result_rows.push(combined);
 				if !left_row_numbers.is_empty() {
 					result_row_numbers.push(left_row_numbers[i]);

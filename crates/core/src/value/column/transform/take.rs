@@ -187,8 +187,8 @@ pub mod tests {
 		test_instance.take(2).unwrap();
 
 		assert_eq!(test_instance[0].data().len(), 2);
-		assert_eq!(test_instance[0].data().get_value(0), reifydb_type::value::Value::None);
-		assert_eq!(test_instance[0].data().get_value(1), reifydb_type::value::Value::None);
+		assert_eq!(test_instance[0].data().get_value(0), reifydb_type::value::Value::none());
+		assert_eq!(test_instance[0].data().get_value(1), reifydb_type::value::Value::none());
 	}
 
 	#[test]
@@ -198,7 +198,7 @@ pub mod tests {
 		test_instance.take(3).unwrap();
 
 		assert_eq!(test_instance[0].data().len(), 3);
-		assert_eq!(test_instance[0].data().get_value(0), reifydb_type::value::Value::None);
+		assert_eq!(test_instance[0].data().get_value(0), reifydb_type::value::Value::none());
 	}
 
 	#[test]

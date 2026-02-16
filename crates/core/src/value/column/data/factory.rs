@@ -712,7 +712,7 @@ impl ColumnData {
 					bitvec.push(true);
 				}
 				None => {
-					values.push(Box::new(reifydb_type::value::Value::None));
+					values.push(Box::new(reifydb_type::value::Value::none()));
 					bitvec.push(false);
 					has_none = true;
 				}
@@ -853,7 +853,7 @@ impl ColumnData {
 			Type::Decimal {
 				..
 			} => Self::decimal(vec![Decimal::from(0); len]),
-			Type::Any => Self::any(vec![Box::new(reifydb_type::value::Value::None); len]),
+			Type::Any => Self::any(vec![Box::new(reifydb_type::value::Value::none()); len]),
 			Type::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
 			Type::Option(inner) => return Self::none_typed(*inner, len),
 		};

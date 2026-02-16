@@ -182,4 +182,8 @@ impl ScalarFunction for TextSubstring {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }

@@ -57,4 +57,8 @@ impl ScalarFunction for DateTimeDay {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int4
+	}
 }

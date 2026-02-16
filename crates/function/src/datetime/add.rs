@@ -96,6 +96,10 @@ impl ScalarFunction for DateTimeAdd {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
 }
 
 fn days_in_month(year: i32, month: u32) -> u32 {

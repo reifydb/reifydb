@@ -297,7 +297,7 @@ impl<'a> KeyDeserializer<'a> {
 				if self.remaining() > 0 && self.buffer[self.position] == 0x00 {
 					Ok(Value::Boolean(true))
 				} else {
-					Ok(Value::None)
+					Ok(Value::none())
 				}
 			}
 			0x01 => {

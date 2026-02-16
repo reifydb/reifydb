@@ -113,4 +113,8 @@ impl ScalarFunction for Gcd {
 
 		Ok(ColumnData::int8_with_bitvec(result, bitvec))
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int8
+	}
 }

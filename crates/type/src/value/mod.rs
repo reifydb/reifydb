@@ -50,10 +50,13 @@ use uint::Uint;
 use uuid::{Uuid4, Uuid7};
 
 /// A RQL value, represented as a native Rust type.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Value {
 	/// Value is none (think null in common programming languages)
-	None,
+	None {
+		#[serde(skip, default = "default_none_inner")]
+		inner: Type,
+	},
 	/// A boolean: true or false.
 	Boolean(bool),
 	/// A 4-byte floating point
@@ -112,9 +115,17 @@ pub enum Value {
 	Type(Type),
 }
 
+fn default_none_inner() -> Type {
+	Type::Any
+}
+
 impl Value {
 	pub fn none() -> Self {
-		Value::None
+		Value::None { inner: Type::Any }
+	}
+
+	pub fn none_of(ty: Type) -> Self {
+		Value::None { inner: ty }
 	}
 
 	pub fn bool(v: impl Into<bool>) -> Self {
@@ -122,11 +133,11 @@ impl Value {
 	}
 
 	pub fn float4(v: impl Into<f32>) -> Self {
-		OrderedF32::try_from(v.into()).map(Value::Float4).unwrap_or(Value::None)
+		OrderedF32::try_from(v.into()).map(Value::Float4).unwrap_or(Value::None { inner: Type::Float4 })
 	}
 
 	pub fn float8(v: impl Into<f64>) -> Self {
-		OrderedF64::try_from(v.into()).map(Value::Float8).unwrap_or(Value::None)
+		OrderedF64::try_from(v.into()).map(Value::Float8).unwrap_or(Value::None { inner: Type::Float8 })
 	}
 
 	pub fn int1(v: impl Into<i8>) -> Self {
@@ -210,6 +221,82 @@ impl Value {
 	}
 }
 
+impl PartialEq for Value {
+	fn eq(&self, other: &Self) -> bool {
+		match (self, other) {
+			(Value::None { .. }, Value::None { .. }) => true,
+			(Value::Boolean(l), Value::Boolean(r)) => l == r,
+			(Value::Float4(l), Value::Float4(r)) => l == r,
+			(Value::Float8(l), Value::Float8(r)) => l == r,
+			(Value::Int1(l), Value::Int1(r)) => l == r,
+			(Value::Int2(l), Value::Int2(r)) => l == r,
+			(Value::Int4(l), Value::Int4(r)) => l == r,
+			(Value::Int8(l), Value::Int8(r)) => l == r,
+			(Value::Int16(l), Value::Int16(r)) => l == r,
+			(Value::Utf8(l), Value::Utf8(r)) => l == r,
+			(Value::Uint1(l), Value::Uint1(r)) => l == r,
+			(Value::Uint2(l), Value::Uint2(r)) => l == r,
+			(Value::Uint4(l), Value::Uint4(r)) => l == r,
+			(Value::Uint8(l), Value::Uint8(r)) => l == r,
+			(Value::Uint16(l), Value::Uint16(r)) => l == r,
+			(Value::Date(l), Value::Date(r)) => l == r,
+			(Value::DateTime(l), Value::DateTime(r)) => l == r,
+			(Value::Time(l), Value::Time(r)) => l == r,
+			(Value::Duration(l), Value::Duration(r)) => l == r,
+			(Value::IdentityId(l), Value::IdentityId(r)) => l == r,
+			(Value::Uuid4(l), Value::Uuid4(r)) => l == r,
+			(Value::Uuid7(l), Value::Uuid7(r)) => l == r,
+			(Value::Blob(l), Value::Blob(r)) => l == r,
+			(Value::Int(l), Value::Int(r)) => l == r,
+			(Value::Uint(l), Value::Uint(r)) => l == r,
+			(Value::Decimal(l), Value::Decimal(r)) => l == r,
+			(Value::Any(l), Value::Any(r)) => l == r,
+			(Value::DictionaryId(l), Value::DictionaryId(r)) => l == r,
+			(Value::Type(l), Value::Type(r)) => l == r,
+			_ => false,
+		}
+	}
+}
+
+impl Eq for Value {}
+
+impl std::hash::Hash for Value {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		std::mem::discriminant(self).hash(state);
+		match self {
+			Value::None { .. } => {} // All Nones hash identically
+			Value::Boolean(v) => v.hash(state),
+			Value::Float4(v) => v.hash(state),
+			Value::Float8(v) => v.hash(state),
+			Value::Int1(v) => v.hash(state),
+			Value::Int2(v) => v.hash(state),
+			Value::Int4(v) => v.hash(state),
+			Value::Int8(v) => v.hash(state),
+			Value::Int16(v) => v.hash(state),
+			Value::Utf8(v) => v.hash(state),
+			Value::Uint1(v) => v.hash(state),
+			Value::Uint2(v) => v.hash(state),
+			Value::Uint4(v) => v.hash(state),
+			Value::Uint8(v) => v.hash(state),
+			Value::Uint16(v) => v.hash(state),
+			Value::Date(v) => v.hash(state),
+			Value::DateTime(v) => v.hash(state),
+			Value::Time(v) => v.hash(state),
+			Value::Duration(v) => v.hash(state),
+			Value::IdentityId(v) => v.hash(state),
+			Value::Uuid4(v) => v.hash(state),
+			Value::Uuid7(v) => v.hash(state),
+			Value::Blob(v) => v.hash(state),
+			Value::Int(v) => v.hash(state),
+			Value::Uint(v) => v.hash(state),
+			Value::Decimal(v) => v.hash(state),
+			Value::Any(v) => v.hash(state),
+			Value::DictionaryId(v) => v.hash(state),
+			Value::Type(v) => v.hash(state),
+		}
+	}
+}
+
 impl PartialOrd for Value {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		match (self, other) {
@@ -241,10 +328,10 @@ impl PartialOrd for Value {
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().partial_cmp(&r.to_u128()),
 			(Value::Type(l), Value::Type(r)) => l.partial_cmp(r),
 			(Value::Any(_), Value::Any(_)) => None, // Any values are not comparable
-			(Value::None, Value::None) => Some(Ordering::Equal),
+			(Value::None { .. }, Value::None { .. }) => Some(Ordering::Equal),
 			// None sorts after all other values (similar to NULL in SQL)
-			(Value::None, _) => Some(Ordering::Greater),
-			(_, Value::None) => Some(Ordering::Less),
+			(Value::None { .. }, _) => Some(Ordering::Greater),
+			(_, Value::None { .. }) => Some(Ordering::Less),
 			(left, right) => {
 				unimplemented!("partial cmp {left:?} {right:?}")
 			}
@@ -255,6 +342,9 @@ impl PartialOrd for Value {
 impl Ord for Value {
 	fn cmp(&self, other: &Self) -> Ordering {
 		match (self, other) {
+			(Value::None { .. }, Value::None { .. }) => Ordering::Equal,
+			(Value::None { .. }, _) => Ordering::Greater,
+			(_, Value::None { .. }) => Ordering::Less,
 			(Value::Boolean(l), Value::Boolean(r)) => l.cmp(r),
 			(Value::Float4(l), Value::Float4(r)) => l.cmp(r),
 			(Value::Float8(l), Value::Float8(r)) => l.cmp(r),
@@ -320,7 +410,7 @@ impl Display for Value {
 			Value::Any(value) => Display::fmt(value, f),
 			Value::DictionaryId(value) => Display::fmt(value, f),
 			Value::Type(value) => Display::fmt(value, f),
-			Value::None => f.write_str("none"),
+			Value::None { .. } => f.write_str("none"),
 		}
 	}
 }
@@ -328,8 +418,7 @@ impl Display for Value {
 impl Value {
 	pub fn get_type(&self) -> Type {
 		match self {
-			Value::None => Type::Option(Box::new(Type::Boolean)), // None has no inherent type; context
-			// provides it
+			Value::None { inner } => Type::Option(Box::new(inner.clone())),
 			Value::Boolean(_) => Type::Boolean,
 			Value::Float4(_) => Type::Float4,
 			Value::Float8(_) => Type::Float8,

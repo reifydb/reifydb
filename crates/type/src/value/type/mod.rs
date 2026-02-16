@@ -366,8 +366,7 @@ impl Display for Type {
 impl From<&Value> for Type {
 	fn from(value: &Value) -> Self {
 		match value {
-			Value::None => Type::Option(Box::new(Type::Boolean)), // None has no inherent type; context
-			// provides it
+			Value::None { inner } => Type::Option(Box::new(inner.clone())),
 			Value::Boolean(_) => Type::Boolean,
 			Value::Float4(_) => Type::Float4,
 			Value::Float8(_) => Type::Float8,

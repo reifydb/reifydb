@@ -45,7 +45,7 @@ impl ScalarFunction for IsType {
 					});
 				}
 			},
-			Value::None => Type::Option(Box::new(Type::Boolean)),
+			Value::None { .. } => Type::Option(Box::new(Type::Any)),
 			other => {
 				return Err(ScalarFunctionError::InvalidArgumentType {
 					function: ctx.fragment.clone(),
@@ -57,9 +57,21 @@ impl ScalarFunction for IsType {
 		};
 
 		// Per-row type check
-		let data: Vec<bool> =
-			(0..row_count).map(|i| value_column.data().get_value(i).get_type() == target_type).collect();
+		let data: Vec<bool> = (0..row_count)
+			.map(|i| {
+				let vtype = value_column.data().get_value(i).get_type();
+				if target_type == Type::Option(Box::new(Type::Any)) {
+					vtype.is_option()
+				} else {
+					vtype == target_type
+				}
+			})
+			.collect();
 
 		Ok(ColumnData::bool(data))
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Boolean
 	}
 }

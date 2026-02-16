@@ -38,7 +38,7 @@ impl ColumnSequence {
 			Type::Uint4 => Value::Uint4(GeneratorU32::next(txn, &key, None)?),
 			Type::Uint8 => Value::Uint8(GeneratorU64::next(txn, &key, None)?),
 			Type::Uint16 => Value::Uint16(GeneratorU128::next(txn, &key, None)?),
-			_ => Value::None,
+			_ => Value::none(),
 		})
 	}
 

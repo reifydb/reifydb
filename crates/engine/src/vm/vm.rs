@@ -107,7 +107,7 @@ impl Vm {
 					self.stack.push(Variable::scalar(value.clone()));
 				}
 				Instruction::PushNone => {
-					self.stack.push(Variable::scalar(Value::None));
+					self.stack.push(Variable::scalar(Value::none()));
 				}
 				Instruction::Pop => {
 					self.stack.pop()?;
@@ -268,7 +268,7 @@ impl Vm {
 					let le = scalar::scalar_le(&value, &upper);
 					let result = match (ge, le) {
 						(Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a && b),
-						_ => Value::None,
+						_ => Value::none(),
 					};
 					self.stack.push(Variable::scalar(result));
 				}
@@ -284,10 +284,10 @@ impl Vm {
 					}
 					list_items.reverse();
 					let value = self.pop_value()?;
-					let has_undefined = matches!(value, Value::None)
-						|| list_items.iter().any(|item| matches!(item, Value::None));
+					let has_undefined = matches!(value, Value::None { .. })
+						|| list_items.iter().any(|item| matches!(item, Value::None { .. }));
 					if has_undefined {
-						self.stack.push(Variable::scalar(Value::None));
+						self.stack.push(Variable::scalar(Value::none()));
 					} else {
 						let found = list_items.iter().any(|item| {
 							matches!(scalar::scalar_eq(&value, item), Value::Boolean(true))
@@ -516,7 +516,7 @@ impl Vm {
 							ControlFlow::Normal,
 						) {
 							ControlFlow::Return(c) => Variable::Scalar(
-								c.unwrap_or(Columns::scalar(Value::None)),
+								c.unwrap_or(Columns::scalar(Value::none())),
 							),
 							_ => {
 								// If no explicit return, check if function body emitted
@@ -543,13 +543,13 @@ impl Vm {
 												.collect();
 										Variable::Columns(Columns::new(cols))
 									} else {
-										Variable::scalar(Value::None)
+										Variable::scalar(Value::none())
 									}
 								} else {
 									// Check if anything was left on the stack by
 									// the function body
 									self.stack.pop().ok().unwrap_or(
-										Variable::scalar(Value::None),
+										Variable::scalar(Value::none()),
 									)
 								}
 							}
@@ -595,7 +595,7 @@ impl Vm {
 						let value = if result_column.data.len() > 0 {
 							result_column.data.get_value(0)
 						} else {
-							Value::None
+							Value::none()
 						};
 						self.stack.push(Variable::scalar(value));
 					}
@@ -1037,7 +1037,7 @@ fn value_to_expression(value: &Value) -> Expression {
 	use reifydb_rql::expression::ConstantExpression;
 	use reifydb_type::fragment::Fragment;
 	match value {
-		Value::None => Expression::Constant(ConstantExpression::None {
+		Value::None { .. } => Expression::Constant(ConstantExpression::None {
 			fragment: Fragment::None,
 		}),
 		Value::Boolean(b) => Expression::Constant(ConstantExpression::Bool {

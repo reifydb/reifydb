@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::r#type::Type;
 use reifydb_core::value::column::data::ColumnData;
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
@@ -27,5 +28,9 @@ impl ScalarFunction for Pi {
 		}
 
 		Ok(ColumnData::float8_with_bitvec(vec![std::f64::consts::PI], vec![true]))
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Float8
 	}
 }

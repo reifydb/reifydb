@@ -97,4 +97,8 @@ impl ScalarFunction for DateTimeFromEpoch {
 
 		Ok(ColumnData::DateTime(container))
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
 }

@@ -3,6 +3,7 @@
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime};
+use reifydb_type::value::r#type::Type;
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
@@ -38,5 +39,9 @@ impl ScalarFunction for DateTimeNow {
 		}
 
 		Ok(ColumnData::DateTime(container))
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
 	}
 }

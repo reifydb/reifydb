@@ -383,4 +383,8 @@ impl ScalarFunction for Round {
 			}),
 		}
 	}
+
+	fn return_type(&self, input_types: &[Type]) -> Type {
+		input_types[0].clone()
+	}
 }

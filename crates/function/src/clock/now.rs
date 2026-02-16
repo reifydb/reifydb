@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::r#type::Type;
 use reifydb_core::value::column::data::ColumnData;
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
@@ -34,5 +35,9 @@ impl ScalarFunction for Now {
 		let bitvec = vec![true; row_count];
 
 		Ok(ColumnData::int8_with_bitvec(data, bitvec))
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int8
 	}
 }

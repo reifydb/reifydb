@@ -76,7 +76,7 @@ pub trait TryFromValue: Sized {
 	/// Undefined values gracefully.
 	fn from_value(value: &Value) -> Option<Self> {
 		match value {
-			Value::None => None,
+			Value::None { .. } => None,
 			v => Self::try_from_value(v).ok(),
 		}
 	}
@@ -95,7 +95,7 @@ pub trait TryFromValueCoerce: Sized {
 	/// Extract with coercion, returning None for Undefined or incompatible types.
 	fn from_value_coerce(value: &Value) -> Option<Self> {
 		match value {
-			Value::None => None,
+			Value::None { .. } => None,
 			v => Self::try_from_value_coerce(v).ok(),
 		}
 	}
@@ -569,9 +569,9 @@ pub mod tests {
 	#[test]
 	fn test_from_value_undefined() {
 		// from_value should return None for Undefined
-		assert_eq!(bool::from_value(&Value::None), None);
-		assert_eq!(i32::from_value(&Value::None), None);
-		assert_eq!(String::from_value(&Value::None), None);
+		assert_eq!(bool::from_value(&Value::none()), None);
+		assert_eq!(i32::from_value(&Value::none()), None);
+		assert_eq!(String::from_value(&Value::none()), None);
 
 		// from_value should return None for type mismatch
 		assert_eq!(bool::from_value(&Value::Int4(42)), None);
@@ -622,8 +622,8 @@ pub mod tests {
 	#[test]
 	fn test_from_value_coerce_undefined() {
 		// from_value_coerce should return None for Undefined
-		assert_eq!(i64::from_value_coerce(&Value::None), None);
-		assert_eq!(u64::from_value_coerce(&Value::None), None);
-		assert_eq!(f64::from_value_coerce(&Value::None), None);
+		assert_eq!(i64::from_value_coerce(&Value::none()), None);
+		assert_eq!(u64::from_value_coerce(&Value::none()), None);
+		assert_eq!(f64::from_value_coerce(&Value::none()), None);
 	}
 }

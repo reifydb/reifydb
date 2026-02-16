@@ -95,7 +95,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 				{
 					input_column.data().get_value(row_idx)
 				} else {
-					Value::None
+					Value::none()
 				};
 
 				// Create a ResolvedColumn for this ring buffer column

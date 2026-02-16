@@ -137,4 +137,8 @@ impl ScalarFunction for TextPadRight {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }

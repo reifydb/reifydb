@@ -62,4 +62,8 @@ impl ScalarFunction for DurationSubtract {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Duration
+	}
 }

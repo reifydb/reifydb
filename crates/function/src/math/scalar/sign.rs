@@ -113,4 +113,8 @@ impl ScalarFunction for Sign {
 
 		Ok(ColumnData::int4_with_bitvec(result, bitvec))
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Float8
+	}
 }

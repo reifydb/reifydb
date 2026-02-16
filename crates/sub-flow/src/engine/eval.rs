@@ -74,7 +74,7 @@ pub fn evaluate_operator_config(
 				let value = if column.data().len() > 0 {
 					column.data().get_value(0)
 				} else {
-					Value::None
+					Value::none()
 				};
 				result.insert(key, value);
 			}
@@ -182,7 +182,7 @@ pub mod tests {
 		let result = evaluate_operator_config(&expressions, &functions, &clock).unwrap();
 
 		assert_eq!(result.len(), 1);
-		assert_eq!(result.get("optional"), Some(&Value::None));
+		assert_eq!(result.get("optional"), Some(&Value::none()));
 	}
 
 	#[test]
@@ -254,7 +254,7 @@ pub mod tests {
 		assert_eq!(result.get("num_val"), Some(&Value::Int1(-42)));
 		assert_eq!(result.get("bool_true"), Some(&Value::Boolean(true)));
 		assert_eq!(result.get("bool_false"), Some(&Value::Boolean(false)));
-		assert_eq!(result.get("undef_val"), Some(&Value::None));
+		assert_eq!(result.get("undef_val"), Some(&Value::none()));
 	}
 
 	#[test]

@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
-	value::{Value, identity::IdentityId},
+	value::{Value, identity::IdentityId, r#type::Type},
 };
 
 pub struct IdentityIdContainer<S: Storage = Cow> {
@@ -163,7 +163,7 @@ impl<S: Storage> IdentityIdContainer<S> {
 	}
 
 	pub fn get_value(&self, index: usize) -> Value {
-		self.get(index).map(Value::IdentityId).unwrap_or(Value::None)
+		self.get(index).map(Value::IdentityId).unwrap_or(Value::none_of(Type::IdentityId))
 	}
 
 	pub fn filter(&mut self, mask: &S::BitVec) {

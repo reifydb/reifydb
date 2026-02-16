@@ -260,7 +260,7 @@ impl Columns {
 
 	/// Check if the value at the given column and row is undefined/null
 	pub fn is_undefined(&self, name: &str, row_idx: usize) -> bool {
-		self.column(name).map(|col| matches!(col.data().get_value(row_idx), Value::None)).unwrap_or(true)
+		self.column(name).map(|col| matches!(col.data().get_value(row_idx), Value::None { .. })).unwrap_or(true)
 	}
 
 	/// Get the row number at the given index

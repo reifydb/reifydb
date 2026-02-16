@@ -208,4 +208,8 @@ impl ScalarFunction for Avg {
 
 		Ok(ColumnData::float8_with_bitvec(data, valids))
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Float8
+	}
 }

@@ -104,7 +104,7 @@ impl<'a> InlineDataNode {
 					min_val = min_val.min(v as i128);
 					max_val = max_val.max(v as i128);
 				}
-				Value::None => {
+				Value::None { .. } => {
 					// Skip undefined values
 				}
 				_ => {
@@ -191,15 +191,15 @@ impl<'a> InlineDataNode {
 					if let Some(value) = iter.next() {
 						// Track the first non-undefined
 						// value type we see
-						if first_value_type.is_none() && !matches!(value, Value::None) {
+						if first_value_type.is_none() && !matches!(value, Value::None { .. }) {
 							first_value_type = Some(value.get_type());
 						}
 						all_values.push(value);
 					} else {
-						all_values.push(Value::None);
+						all_values.push(Value::none());
 					}
 				} else {
-					all_values.push(Value::None);
+					all_values.push(Value::none());
 				}
 			}
 
@@ -229,7 +229,7 @@ impl<'a> InlineDataNode {
 				// Add each value, casting to the wide
 				// type if needed
 				for value in &all_values {
-					if matches!(value, Value::None) {
+					if matches!(value, Value::None { .. }) {
 						data.push_none();
 					} else if wide_type.as_ref().map_or(false, |wt| value.get_type() == *wt) {
 						data.push_value(value.clone());
@@ -377,17 +377,17 @@ impl<'a> InlineDataNode {
 					} else if eval_len == 0 {
 						// If evaluation returned empty,
 						// push undefined
-						column_data.push_value(Value::None);
+						column_data.push_value(Value::none());
 					} else {
 						// This shouldn't happen for
 						// single-encoded evaluation
 						// but if it does, take only the
 						// first value
-						let first_value = evaluated.data().iter().next().unwrap_or(Value::None);
+						let first_value = evaluated.data().iter().next().unwrap_or(Value::none());
 						column_data.push_value(first_value);
 					}
 				} else {
-					column_data.push_value(Value::None);
+					column_data.push_value(Value::none());
 				}
 			}
 

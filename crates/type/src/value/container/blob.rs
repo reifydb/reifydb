@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
-	value::{Value, blob::Blob},
+	value::{Value, blob::Blob, r#type::Type},
 };
 
 pub struct BlobContainer<S: Storage = Cow> {
@@ -161,7 +161,7 @@ impl<S: Storage> BlobContainer<S> {
 		if index < self.len() {
 			Value::Blob(self.data[index].clone())
 		} else {
-			Value::None
+			Value::none_of(Type::Blob)
 		}
 	}
 

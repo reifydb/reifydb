@@ -101,11 +101,11 @@ pub(crate) fn insert_table<'a>(
 				let mut value = if let Some(&input_idx) = column_map.get(table_column.name.as_str()) {
 					columns[input_idx].data().get_value(row_numberx)
 				} else {
-					Value::None
+					Value::none()
 				};
 
 				// Handle auto-increment columns
-				if table_column.auto_increment && matches!(value, Value::None) {
+				if table_column.auto_increment && matches!(value, Value::None { .. }) {
 					value = services.catalog.column_sequence_next_value(
 						txn,
 						table.id,

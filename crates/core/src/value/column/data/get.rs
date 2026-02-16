@@ -34,7 +34,7 @@ impl ColumnData {
 				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
 					inner.get_value(index)
 				} else {
-					Value::None
+					Value::None { inner: inner.get_type() }
 				}
 			}
 			_ => with_container!(self, |c| c.get_value(index)),

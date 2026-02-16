@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::r#type::Type;
 use reifydb_core::value::column::data::ColumnData;
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
@@ -30,5 +31,9 @@ impl ScalarFunction for IsSome {
 		let data: Vec<bool> = (0..row_count).map(|i| column.data().is_defined(i)).collect();
 
 		Ok(ColumnData::bool(data))
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Boolean
 	}
 }

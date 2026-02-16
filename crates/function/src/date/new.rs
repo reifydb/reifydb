@@ -147,4 +147,8 @@ impl ScalarFunction for DateNew {
 
 		Ok(ColumnData::Date(container))
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Date
+	}
 }

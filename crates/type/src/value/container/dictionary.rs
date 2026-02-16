@@ -14,6 +14,7 @@ use crate::{
 	value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
+		r#type::Type,
 	},
 };
 
@@ -187,7 +188,7 @@ impl<S: Storage> DictionaryContainer<S> {
 	}
 
 	pub fn get_value(&self, index: usize) -> Value {
-		self.get(index).map(Value::DictionaryId).unwrap_or(Value::None)
+		self.get(index).map(Value::DictionaryId).unwrap_or(Value::none_of(Type::DictionaryId))
 	}
 
 	pub fn filter(&mut self, mask: &S::BitVec) {

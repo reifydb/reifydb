@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
-	value::Value,
+	value::{Value, r#type::Type},
 };
 
 pub struct Utf8Container<S: Storage = Cow> {
@@ -181,7 +181,7 @@ impl<S: Storage> Utf8Container<S> {
 		if index < self.len() {
 			Value::Utf8(self.data[index].clone())
 		} else {
-			Value::None
+			Value::none_of(Type::Utf8)
 		}
 	}
 

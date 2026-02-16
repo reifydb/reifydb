@@ -28,10 +28,10 @@ pub(crate) fn decode_dictionary_columns(
 				if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
 					match rx.get_from_dictionary(dictionary, entry_id)? {
 						Some(decoded) => new_data.push_value(decoded),
-						None => new_data.push_value(Value::None),
+						None => new_data.push_value(Value::none()),
 					}
 				} else {
-					new_data.push_value(Value::None);
+					new_data.push_value(Value::none());
 				}
 			}
 			columns.columns.make_mut()[col_idx] = Column {

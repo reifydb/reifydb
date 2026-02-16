@@ -59,4 +59,8 @@ impl ScalarFunction for DateTimeQuarter {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int4
+	}
 }

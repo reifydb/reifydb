@@ -334,7 +334,7 @@ pub mod tests {
 	enum_cow: Key::Cow(vec![0x00, 0x01].into(), false, String::from("foo").into()) => "030001ffff01666f6fffff",
 	enum_cow_borrow: Key::Cow([0x00, 0x01].as_slice().into(), false, "foo".into()) => "030001ffff01666f6fffff",
 
-	value_undefined: Value::None => "00",
+	value_none: Value::none() => "00",
 	value_bool: Value::Boolean(true) => "0100",
 	value_float4: Value::Float4(OrderedF32::try_from(PI_F32).unwrap()) => "023fb6f024",
 	value_float8: Value::Float8(OrderedF64::try_from(PI_F64).unwrap()) => "033ff6de04abbbd2e7",
@@ -347,7 +347,113 @@ pub mod tests {
 	value_uint2: Value::Uint2(65535) => "0b0000",
 	value_uint4: Value::Uint4(4294967295) => "0c00000000",
 	value_uint8: Value::Uint8(18446744073709551615) => "0d0000000000000000",
-	value_uint16: Value::Uint16(340282366920938463463374607431768211455u128) => "0e00000000000000000000000000000000",}
+	value_uint16: Value::Uint16(340282366920938463463374607431768211455u128) => "0e00000000000000000000000000000000",
+
+	// Option<bool>
+	option_none_bool: None::<bool> => "00",
+	option_some_true: Some(true) => "0100",
+	option_some_false: Some(false) => "0101",
+
+	// Option<f32>
+	option_none_f32: None::<f32> => "00",
+	option_some_f32: Some(PI_F32) => "013fb6f024",
+
+	// Option<f64>
+	option_none_f64: None::<f64> => "00",
+	option_some_f64: Some(PI_F64) => "013ff6de04abbbd2e7",
+
+	// Option<i8>
+	option_none_i8: None::<i8> => "00",
+	option_some_i8: Some(0i8) => "017f",
+
+	// Option<i16>
+	option_none_i16: None::<i16> => "00",
+	option_some_i16: Some(0i16) => "017fff",
+
+	// Option<i32>
+	option_none_i32: None::<i32> => "00",
+	option_some_i32: Some(0i32) => "017fffffff",
+
+	// Option<i64>
+	option_none_i64: None::<i64> => "00",
+	option_some_i64: Some(0i64) => "017fffffffffffffff",
+
+	// Option<i128>
+	option_none_i128: None::<i128> => "00",
+	option_some_i128: Some(0i128) => "017fffffffffffffffffffffffffffffff",
+
+	// Option<u8>
+	option_none_u8: None::<u8> => "00",
+	option_some_u8: Some(0u8) => "01ff",
+
+	// Option<u16>
+	option_none_u16: None::<u16> => "00",
+	option_some_u16: Some(0u16) => "01ffff",
+
+	// Option<u32>
+	option_none_u32: None::<u32> => "00",
+	option_some_u32: Some(0u32) => "01ffffffff",
+
+	// Option<u64>
+	option_none_u64: None::<u64> => "00",
+	option_some_u64: Some(0u64) => "01ffffffffffffffff",
+
+	// Option<u128>
+	option_none_u128: None::<u128> => "00",
+	option_some_u128: Some(0u128) => "01ffffffffffffffffffffffffffffffff",
+
+	// Option<String>
+	option_none_string: None::<String> => "00",
+	option_some_string: Some("foo".to_string()) => "01666f6fffff",
+	option_some_empty_string: Some("".to_string()) => "01ffff",
+
+	// Option<ByteBuf>
+	option_none_bytes: None::<ByteBuf> => "00",
+	option_some_bytes: Some(ByteBuf::from(vec![0x01, 0xff])) => "0101ff00ffff",
+
+	// Nested Option<Option<bool>>
+	option_nested_none: None::<Option<bool>> => "00",
+	option_nested_some_none: Some(None::<bool>) => "0100",
+	option_nested_some_some_true: Some(Some(true)) => "010100",
+	option_nested_some_some_false: Some(Some(false)) => "010101",
+
+	// Nested Option<Option<i32>>
+	option_nested_none_i32: None::<Option<i32>> => "00",
+	option_nested_some_none_i32: Some(None::<i32>) => "0100",
+	option_nested_some_some_i32: Some(Some(0i32)) => "01017fffffff",
+
+	// Nested Option<Option<String>>
+	option_nested_some_some_string: Some(Some("foo".to_string())) => "0101666f6fffff",
+
+	// Triple nested Option<Option<Option<bool>>>
+	option_triple_none: None::<Option<Option<bool>>> => "00",
+	option_triple_some_none: Some(None::<Option<bool>>) => "0100",
+	option_triple_some_some_none: Some(Some(None::<bool>)) => "010100",
+	option_triple_some_some_some: Some(Some(Some(true))) => "01010100",}
+
+	#[test]
+	fn test_option_ordering() {
+		// Descending: None > Some(MAX) > Some(0) > Some(MIN)
+		// Byte order: None < Some(MAX) < Some(0) < Some(MIN)
+		let none = serialize(&None::<i32>);
+		let some_max = serialize(&Some(i32::MAX));
+		let some_zero = serialize(&Some(0i32));
+		let some_min = serialize(&Some(i32::MIN));
+		assert!(none < some_max);
+		assert!(some_max < some_zero);
+		assert!(some_zero < some_min);
+	}
+
+	#[test]
+	fn test_nested_option_ordering() {
+		let none = serialize(&None::<Option<bool>>);
+		let some_none = serialize(&Some(None::<bool>));
+		let some_some_true = serialize(&Some(Some(true)));
+		let some_some_false = serialize(&Some(Some(false)));
+		assert!(none < some_none);
+		assert!(some_none < some_some_true);
+		assert!(some_some_true < some_some_false);
+	}
 
 	#[test]
 	fn test_key_serializer() {

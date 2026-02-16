@@ -924,4 +924,8 @@ impl ScalarFunction for Power {
 			}
 		}
 	}
+
+	fn return_type(&self, input_types: &[Type]) -> Type {
+		promote_numeric_types(input_types[0].clone(), input_types[1].clone())
+	}
 }

@@ -109,7 +109,7 @@ pub(crate) fn update_table<'a>(
 					{
 						input_column.data().get_value(row_numberx)
 					} else {
-						Value::None
+						Value::none()
 					};
 
 					let column_ident = Fragment::internal(&table_column.name);

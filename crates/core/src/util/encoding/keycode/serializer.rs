@@ -262,7 +262,7 @@ impl KeySerializer {
 	pub fn extend_value(&mut self, value: &Value) -> &mut Self {
 		use reifydb_type::value::Value;
 		match value {
-			Value::None => {
+			Value::None { .. } => {
 				// For undefined, use a special marker byte
 				self.buffer.push(0x00);
 			}
@@ -954,7 +954,7 @@ pub mod tests {
 
 		// Test undefined
 		let mut serializer = KeySerializer::new();
-		serializer.extend_value(&Value::None);
+		serializer.extend_value(&Value::none());
 		let result = serializer.finish();
 		assert_eq!(result, vec![0x00]);
 

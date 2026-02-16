@@ -61,4 +61,8 @@ impl ScalarFunction for DateEndOfMonth {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Date
+	}
 }

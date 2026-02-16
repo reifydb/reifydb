@@ -21,6 +21,7 @@ use crate::{
 		is::IsNumber,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
+		r#type::Type,
 		uint::Uint,
 	},
 };
@@ -190,10 +191,10 @@ where
 
 			if TypeId::of::<T>() == TypeId::of::<f32>() {
 				let f_val = unsafe { transmute_copy::<T, f32>(&value) };
-				OrderedF32::try_from(f_val).map(Value::Float4).unwrap_or(Value::None)
+				OrderedF32::try_from(f_val).map(Value::Float4).unwrap_or(Value::None { inner: Type::Float4 })
 			} else if TypeId::of::<T>() == TypeId::of::<f64>() {
 				let f_val = unsafe { transmute_copy::<T, f64>(&value) };
-				OrderedF64::try_from(f_val).map(Value::Float8).unwrap_or(Value::None)
+				OrderedF64::try_from(f_val).map(Value::Float8).unwrap_or(Value::None { inner: Type::Float8 })
 			} else if TypeId::of::<T>() == TypeId::of::<i8>() {
 				let i_val = unsafe { transmute_copy::<T, i8>(&value) };
 				Int1(i_val)
@@ -237,10 +238,10 @@ where
 				forget(value);
 				Value::Uint(u_val)
 			} else {
-				Value::None
+				Value::none()
 			}
 		} else {
-			Value::None
+			Value::none()
 		}
 	}
 

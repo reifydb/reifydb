@@ -94,4 +94,8 @@ impl ScalarFunction for DurationMinutes {
 
 		Ok(ColumnData::Duration(container))
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Duration
+	}
 }

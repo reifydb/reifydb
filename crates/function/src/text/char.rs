@@ -63,6 +63,10 @@ impl ScalarFunction for TextChar {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }
 
 fn convert_to_char<F>(

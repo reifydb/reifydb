@@ -152,7 +152,7 @@ impl TypeConstraint {
 	pub fn validate(&self, value: &Value) -> Result<(), Error> {
 		// First check type compatibility
 		let value_type = value.get_type();
-		if value_type != self.base_type && !matches!(value, Value::None) {
+		if value_type != self.base_type && !matches!(value, Value::None { .. }) {
 			// For now, return a simple error - we'll create proper
 			// diagnostics later
 			// return Err(crate::error!(crate::error::diagnostic::internal::internal(format!(
@@ -163,7 +163,7 @@ impl TypeConstraint {
 		}
 
 		// If undefined, no further validation needed
-		if matches!(value, Value::None) {
+		if matches!(value, Value::None { .. }) {
 			return Ok(());
 		}
 
@@ -366,7 +366,7 @@ pub mod tests {
 	#[test]
 	fn test_validate_undefined() {
 		let tc = TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(5)));
-		let value = Value::None;
+		let value = Value::none();
 		assert!(tc.validate(&value).is_ok());
 	}
 

@@ -4,7 +4,7 @@
 use reifydb_type::error::Error;
 use serde::{
 	Serialize,
-	ser::{Impossible, SerializeSeq, SerializeTuple, SerializeTupleVariant},
+	ser::{Impossible, SerializeSeq, SerializeStructVariant, SerializeTuple, SerializeTupleVariant},
 };
 
 use super::{
@@ -26,7 +26,7 @@ impl serde::ser::Serializer for &mut Serializer {
 	type SerializeTupleVariant = Self;
 	type SerializeMap = Impossible<(), Error>;
 	type SerializeStruct = Impossible<(), Error>;
-	type SerializeStructVariant = Impossible<(), Error>;
+	type SerializeStructVariant = Self;
 
 	fn serialize_bool(self, v: bool) -> reifydb_type::Result<()> {
 		self.output.push(encode_bool(v));
@@ -107,11 +107,13 @@ impl serde::ser::Serializer for &mut Serializer {
 	}
 
 	fn serialize_none(self) -> reifydb_type::Result<()> {
-		unimplemented!()
+		self.output.push(0x00);
+		Ok(())
 	}
 
-	fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> reifydb_type::Result<()> {
-		unimplemented!()
+	fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> reifydb_type::Result<()> {
+		self.output.push(0x01);
+		value.serialize(self)
 	}
 
 	fn serialize_unit(self) -> reifydb_type::Result<()> {
@@ -175,12 +177,13 @@ impl serde::ser::Serializer for &mut Serializer {
 
 	fn serialize_struct_variant(
 		self,
-		_: &'static str,
-		_: u32,
-		_: &'static str,
-		_: usize,
+		name: &'static str,
+		index: u32,
+		variant: &'static str,
+		_len: usize,
 	) -> reifydb_type::Result<Self::SerializeStructVariant> {
-		unimplemented!()
+		self.serialize_unit_variant(name, index, variant)?;
+		Ok(self)
 	}
 }
 
@@ -215,6 +218,19 @@ impl SerializeTupleVariant for &mut Serializer {
 	type Error = Error;
 
 	fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> reifydb_type::Result<()> {
+		value.serialize(&mut **self)
+	}
+
+	fn end(self) -> reifydb_type::Result<()> {
+		Ok(())
+	}
+}
+
+impl SerializeStructVariant for &mut Serializer {
+	type Ok = ();
+	type Error = Error;
+
+	fn serialize_field<T: Serialize + ?Sized>(&mut self, _key: &'static str, value: &T) -> reifydb_type::Result<()> {
 		value.serialize(&mut **self)
 	}
 

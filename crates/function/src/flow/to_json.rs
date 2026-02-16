@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::r#type::Type;
 use std::time::Duration;
 
 use reifydb_core::{
@@ -288,5 +289,9 @@ impl ScalarFunction for FlowNodeToJson {
 			_ => Err(reifydb_type::error::Error(internal!("flow_node::to_json only supports Blob input"))
 				.into()),
 		}
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
 	}
 }

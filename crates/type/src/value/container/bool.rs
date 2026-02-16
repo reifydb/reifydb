@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{
 	storage::{Cow, DataBitVec, Storage},
 	util::bitvec::BitVec,
-	value::Value,
+	value::{Value, r#type::Type},
 };
 
 pub struct BoolContainer<S: Storage = Cow> {
@@ -165,7 +165,7 @@ impl<S: Storage> BoolContainer<S> {
 		if index < self.len() {
 			Value::Boolean(DataBitVec::get(&self.data, index))
 		} else {
-			Value::None
+			Value::none_of(Type::Boolean)
 		}
 	}
 

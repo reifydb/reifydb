@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::r#type::Type;
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 
 use crate::{GeneratorContext, GeneratorFunction, ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
@@ -83,5 +84,9 @@ impl ScalarFunction for Series {
 
 		let series: Vec<i32> = (start_value..=end_value).collect();
 		Ok(ColumnData::int4(series))
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int4
 	}
 }

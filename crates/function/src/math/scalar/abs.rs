@@ -317,4 +317,8 @@ impl ScalarFunction for Abs {
 			}),
 		}
 	}
+
+	fn return_type(&self, input_types: &[Type]) -> Type {
+		input_types[0].clone()
+	}
 }

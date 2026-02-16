@@ -237,15 +237,15 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 				match txn.get(&index_key)? {
 					Some(encoded) => {
 						let value: Value =
-							postcard::from_bytes(&encoded).unwrap_or(Value::None);
+							postcard::from_bytes(&encoded).unwrap_or(Value::none());
 						new_data.push_value(value);
 					}
 					None => {
-						new_data.push_value(Value::None);
+						new_data.push_value(Value::none());
 					}
 				}
 			} else {
-				new_data.push_value(Value::None);
+				new_data.push_value(Value::none());
 			}
 		}
 

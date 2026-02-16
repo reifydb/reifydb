@@ -60,4 +60,8 @@ impl ScalarFunction for DateTimeDayOfYear {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int4
+	}
 }

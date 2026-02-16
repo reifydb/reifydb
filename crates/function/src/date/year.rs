@@ -58,4 +58,8 @@ impl ScalarFunction for DateYear {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int4
+	}
 }

@@ -75,11 +75,11 @@ pub(crate) fn insert_dictionary<'a>(
 				// Use first column if no explicit "value" column
 				first_column.data().get_value(row_idx)
 			} else {
-				Value::None
+				Value::none()
 			};
 
 			// Skip undefined values
-			if matches!(value, Value::None) {
+			if matches!(value, Value::None { .. }) {
 				continue;
 			}
 

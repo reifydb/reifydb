@@ -104,4 +104,8 @@ impl ScalarFunction for TextReplace {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }

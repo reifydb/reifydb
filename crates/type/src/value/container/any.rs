@@ -126,7 +126,7 @@ impl<S: Storage> AnyContainer<S> {
 	}
 
 	pub fn push_default(&mut self) {
-		DataVec::push(&mut self.data, Box::new(Value::None));
+		DataVec::push(&mut self.data, Box::new(Value::none()));
 	}
 
 	pub fn get(&self, index: usize) -> Option<&Box<Value>> {
@@ -165,7 +165,7 @@ impl<S: Storage> AnyContainer<S> {
 		if index < self.len() {
 			Value::Any(self.data[index].clone())
 		} else {
-			Value::None
+			Value::none()
 		}
 	}
 
@@ -198,7 +198,7 @@ impl<S: Storage> AnyContainer<S> {
 			if idx < self.len() {
 				DataVec::push(&mut new_data, self.data[idx].clone());
 			} else {
-				DataVec::push(&mut new_data, Box::new(Value::None));
+				DataVec::push(&mut new_data, Box::new(Value::none()));
 			}
 		}
 

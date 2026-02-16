@@ -174,4 +174,8 @@ impl ScalarFunction for TimeNew {
 
 		Ok(ColumnData::Time(container))
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Time
+	}
 }

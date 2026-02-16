@@ -86,7 +86,7 @@ impl SerializedRow {
 
 		let mut columns_vec = Vec::with_capacity(layout.names.len());
 		for (i, (name, typ)) in layout.names.iter().zip(layout.types.iter()).enumerate() {
-			let value = values.get(i).cloned().unwrap_or(Value::None);
+			let value = values.get(i).cloned().unwrap_or(Value::none());
 			let mut col_data = ColumnData::with_capacity(typ.clone(), 1);
 			col_data.push_value(value);
 			columns_vec.push(Column {

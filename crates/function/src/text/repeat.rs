@@ -97,4 +97,8 @@ impl ScalarFunction for TextRepeat {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }

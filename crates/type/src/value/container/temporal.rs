@@ -192,10 +192,10 @@ where
 				let duration_val = unsafe { transmute_copy::<T, Duration>(value) };
 				Value::Duration(duration_val)
 			} else {
-				Value::None
+				Value::none()
 			}
 		} else {
-			Value::None
+			Value::none()
 		}
 	}
 

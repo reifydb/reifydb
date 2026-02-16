@@ -57,7 +57,7 @@ impl Columns {
 	/// Used to store scalar values inside `Variable::Scalar(Columns)`.
 	pub fn scalar(value: Value) -> Self {
 		let data = match value {
-			Value::None => ColumnData::none_typed(Type::Boolean, 1),
+			Value::None { .. } => ColumnData::none_typed(Type::Boolean, 1),
 			Value::Boolean(v) => ColumnData::bool([v]),
 			Value::Float4(v) => ColumnData::float4([v.into()]),
 			Value::Float8(v) => ColumnData::float8([v.into()]),
@@ -137,7 +137,7 @@ impl Columns {
 
 		for (idx, (name, value)) in rows.into_iter().enumerate() {
 			let data = match value {
-				Value::None => ColumnData::none_typed(Type::Boolean, 1),
+				Value::None { .. } => ColumnData::none_typed(Type::Boolean, 1),
 				Value::Boolean(v) => ColumnData::bool([v]),
 				Value::Float4(v) => ColumnData::float4([v.into()]),
 				Value::Float8(v) => ColumnData::float8([v.into()]),
@@ -466,7 +466,7 @@ impl Columns {
 			let value = row.schema.get_value(&row.encoded, idx);
 
 			// Use the field type for the column data, handling undefined values
-			let column_type = if matches!(value, Value::None) {
+			let column_type = if matches!(value, Value::None { .. }) {
 				field.constraint.get_type()
 			} else {
 				value.get_type()
@@ -578,7 +578,7 @@ pub mod tests {
 			("str_col", Value::Utf8("hello".to_string())),
 			("date_col", Value::Date(date.clone())),
 			("time_col", Value::Time(time.clone())),
-			("none_col", Value::None),
+			("none_col", Value::none()),
 		]);
 
 		assert_eq!(columns.len(), 6);
@@ -590,7 +590,7 @@ pub mod tests {
 		assert_eq!(columns.column("str_col").unwrap().data().get_value(0), Value::Utf8("hello".to_string()));
 		assert_eq!(columns.column("date_col").unwrap().data().get_value(0), Value::Date(date));
 		assert_eq!(columns.column("time_col").unwrap().data().get_value(0), Value::Time(time));
-		assert_eq!(columns.column("none_col").unwrap().data().get_value(0), Value::None);
+		assert_eq!(columns.column("none_col").unwrap().data().get_value(0), Value::none());
 	}
 
 	#[test]

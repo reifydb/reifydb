@@ -5,6 +5,7 @@ use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container};
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use reifydb_type::value::r#type::Type as ValueType;
 
 pub struct Type;
 
@@ -37,5 +38,9 @@ impl ScalarFunction for Type {
 			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
 		})
+	}
+
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Utf8
 	}
 }

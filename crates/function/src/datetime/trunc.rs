@@ -131,4 +131,8 @@ impl ScalarFunction for DateTimeTrunc {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
 }

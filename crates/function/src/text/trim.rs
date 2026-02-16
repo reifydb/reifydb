@@ -64,4 +64,8 @@ impl ScalarFunction for TextTrim {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }

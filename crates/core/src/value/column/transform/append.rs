@@ -220,7 +220,7 @@ impl Columns {
 						col_data
 					}
 					Type::Any => ColumnData::any_with_bitvec(
-						vec![Box::new(Value::None); size],
+						vec![Box::new(Value::none()); size],
 						BitVec::repeat(size, false),
 					),
 				};
@@ -268,7 +268,7 @@ impl Columns {
 					_ty,
 				) => {
 					let value = schema.get_value(&row, index);
-					if value == Value::None {
+					if matches!(value, Value::None { .. }) {
 						inner.push_none();
 						DataBitVec::push(bitvec, false);
 					} else {
@@ -1354,7 +1354,7 @@ pub mod tests {
 
 			let schema = Schema::testing(&[Type::Int2, Type::Boolean]);
 			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::None, Value::Boolean(false)]);
+			schema.set_values(&mut row, &[Value::none(), Value::Boolean(false)]);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1709,7 +1709,7 @@ pub mod tests {
 			]);
 
 			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::None, Value::Boolean(true)]);
+			schema.set_values(&mut row, &[Value::none(), Value::Boolean(true)]);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 

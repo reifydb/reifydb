@@ -58,4 +58,8 @@ impl ScalarFunction for DateStartOfYear {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Date
+	}
 }

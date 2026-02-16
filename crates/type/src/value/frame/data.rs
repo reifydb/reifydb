@@ -291,7 +291,7 @@ impl FrameColumnData {
 				if DataBitVec::get(bitvec, index) {
 					inner.get_value(index)
 				} else {
-					Value::None
+					Value::none_of(inner.get_type())
 				}
 			}
 		}

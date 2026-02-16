@@ -186,10 +186,10 @@ where
 				let uuid_val = unsafe { transmute_copy::<T, Uuid7>(&value) };
 				Value::Uuid7(uuid_val)
 			} else {
-				Value::None
+				Value::none()
 			}
 		} else {
-			Value::None
+			Value::none()
 		}
 	}
 

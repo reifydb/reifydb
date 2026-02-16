@@ -81,4 +81,8 @@ impl ScalarFunction for TextConcat {
 			max_bytes: reifydb_type::value::constraint::bytes::MaxBytes::MAX,
 		})
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }

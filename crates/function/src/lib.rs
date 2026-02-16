@@ -9,7 +9,7 @@ use reifydb_core::value::column::{
 };
 use reifydb_runtime::clock::Clock;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, util::bitvec::BitVec, value::Value};
+use reifydb_type::{fragment::Fragment, util::bitvec::BitVec, value::r#type::Type};
 
 pub mod blob;
 pub mod clock;
@@ -49,6 +49,7 @@ pub struct ScalarFunctionContext<'a> {
 }
 pub trait ScalarFunction: Send + Sync {
 	fn scalar<'a>(&'a self, ctx: ScalarFunctionContext<'a>) -> ScalarFunctionResult<ColumnData>;
+	fn return_type(&self, input_types: &[Type]) -> Type;
 }
 
 pub struct AggregateFunctionContext<'a> {
@@ -100,11 +101,9 @@ pub fn propagate_options(
 	// (e.g. none typed as Option<Any> would fail numeric type checks).
 	if let Some(ref bv) = combined_bv {
 		if bv.count_ones() == 0 {
-			let dummy = ColumnData::any(vec![Box::new(Value::None); ctx.row_count]);
-			return Some(Ok(ColumnData::Option {
-				inner: Box::new(dummy),
-				bitvec: bv.clone(),
-			}));
+			let input_types: Vec<Type> = unwrapped.iter().map(|c| c.data().get_type()).collect();
+			let result_type = func.return_type(&input_types);
+			return Some(Ok(ColumnData::none_typed(result_type, ctx.row_count)));
 		}
 	}
 

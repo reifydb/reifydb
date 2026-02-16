@@ -769,7 +769,7 @@ fn is_truthy(value: &Value) -> bool {
 	match value {
 		Value::Boolean(true) => true,
 		Value::Boolean(false) => false,
-		Value::None => false,
+		Value::None { .. } => false,
 		Value::Int1(0) | Value::Int2(0) | Value::Int4(0) | Value::Int8(0) | Value::Int16(0) => false,
 		Value::Uint1(0) | Value::Uint2(0) | Value::Uint4(0) | Value::Uint8(0) | Value::Uint16(0) => false,
 		Value::Int1(_) | Value::Int2(_) | Value::Int4(_) | Value::Int8(_) | Value::Int16(_) => true,
@@ -826,7 +826,7 @@ fn execute_if_multi(
 		if is_empty_result {
 			if let Some(data) = result_data.as_mut() {
 				for col_data in data.iter_mut() {
-					col_data.push_value(Value::None);
+					col_data.push_value(Value::none());
 				}
 			}
 			continue;
@@ -840,7 +840,7 @@ fn execute_if_multi(
 				.collect();
 			for _ in 0..row_idx {
 				for col_data in data.iter_mut() {
-					col_data.push_value(Value::None);
+					col_data.push_value(Value::none());
 				}
 			}
 			result_data = Some(data);

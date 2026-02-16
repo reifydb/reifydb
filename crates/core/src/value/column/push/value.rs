@@ -79,7 +79,7 @@ impl ColumnData {
 			bitvec,
 		} = self
 		{
-			if matches!(value, Value::None) {
+			if matches!(value, Value::None { .. }) {
 				inner.push_none();
 				DataBitVec::push(bitvec, false);
 			} else if DataBitVec::count_ones(bitvec) == 0 {
@@ -117,7 +117,7 @@ impl ColumnData {
 					Value::Int(_) => ColumnData::int(vec![Int::default(); len]),
 					Value::Uint(_) => ColumnData::uint(vec![Uint::default(); len]),
 					Value::Decimal(_) => ColumnData::decimal(vec![Decimal::default(); len]),
-					Value::Any(_) => ColumnData::any(vec![Box::new(Value::None); len]),
+					Value::Any(_) => ColumnData::any(vec![Box::new(Value::none()); len]),
 					_ => unreachable!(),
 				};
 				new_inner.push_value(value);
@@ -172,7 +172,7 @@ impl ColumnData {
 			Value::Decimal(v) => {
 				push_or_promote!(struct_direct self, v, Decimal, ColumnData::decimal(vec![]))
 			}
-			Value::None => self.push_none(),
+			Value::None { .. } => self.push_none(),
 			Value::Type(t) => self.push_value(Value::Any(Box::new(Value::Type(t)))),
 			Value::Any(v) => match self {
 				ColumnData::Any(container) => container.push(v),
@@ -214,7 +214,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_bool() {
 		let mut col = ColumnData::bool(vec![true]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		// push_value(None) promotes to Option-wrapped; check via ColumnData API
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
@@ -245,7 +245,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_float4() {
 		let mut col = ColumnData::float4(vec![1.0]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -273,7 +273,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_float8() {
 		let mut col = ColumnData::float8(vec![1.0]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -301,7 +301,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_int1() {
 		let mut col = ColumnData::int1(vec![1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -330,7 +330,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_int2() {
 		let mut col = ColumnData::int2(vec![1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -359,7 +359,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_int4() {
 		let mut col = ColumnData::int4(vec![10]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -388,7 +388,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_int8() {
 		let mut col = ColumnData::int8(vec![100]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -417,7 +417,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_int16() {
 		let mut col = ColumnData::int16(vec![1000]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -446,7 +446,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_uint1() {
 		let mut col = ColumnData::uint1(vec![1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -475,7 +475,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_uint2() {
 		let mut col = ColumnData::uint2(vec![10]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -504,7 +504,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_uint4() {
 		let mut col = ColumnData::uint4(vec![100]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -533,7 +533,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_uint8() {
 		let mut col = ColumnData::uint8(vec![1000]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -562,7 +562,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_uint16() {
 		let mut col = ColumnData::uint16(vec![10000]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -595,7 +595,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_utf8() {
 		let mut col = ColumnData::utf8(vec!["hello".to_string()]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -614,7 +614,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined() {
 		let mut col = ColumnData::int2(vec![1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -636,7 +636,7 @@ pub mod tests {
 	fn test_undefined_date() {
 		let date1 = Date::from_ymd(2023, 1, 1).unwrap();
 		let mut col = ColumnData::date(vec![date1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -669,7 +669,7 @@ pub mod tests {
 	fn test_undefined_datetime() {
 		let dt1 = DateTime::from_timestamp(1672531200).unwrap();
 		let mut col = ColumnData::datetime(vec![dt1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -702,7 +702,7 @@ pub mod tests {
 	fn test_undefined_time() {
 		let time1 = Time::from_hms(12, 30, 0).unwrap();
 		let mut col = ColumnData::time(vec![time1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -735,7 +735,7 @@ pub mod tests {
 	fn test_undefined_duration() {
 		let duration1 = Duration::from_days(30);
 		let mut col = ColumnData::duration(vec![duration1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -768,7 +768,7 @@ pub mod tests {
 	fn test_undefined_identity_id() {
 		let id1 = IdentityId::generate();
 		let mut col = ColumnData::identity_id(vec![id1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -801,7 +801,7 @@ pub mod tests {
 	fn test_undefined_uuid4() {
 		let uuid1 = Uuid4::generate();
 		let mut col = ColumnData::uuid4(vec![uuid1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -834,7 +834,7 @@ pub mod tests {
 	fn test_undefined_uuid7() {
 		let uuid1 = Uuid7::generate();
 		let mut col = ColumnData::uuid7(vec![uuid1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));
@@ -867,7 +867,7 @@ pub mod tests {
 	fn test_undefined_dictionary_id() {
 		let e1 = DictionaryEntryId::U4(10);
 		let mut col = ColumnData::dictionary_id(vec![e1]);
-		col.push_value(Value::None);
+		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));

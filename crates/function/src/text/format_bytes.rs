@@ -172,6 +172,10 @@ impl ScalarFunction for FormatBytes {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }
 
 pub(super) use process_decimal_column;

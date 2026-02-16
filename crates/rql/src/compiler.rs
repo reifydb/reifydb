@@ -344,7 +344,7 @@ impl InstructionCompiler {
 		match expr {
 			Expression::Constant(c) => {
 				let value = c.to_value();
-				if matches!(value, Value::None) {
+				if matches!(value, Value::None { .. }) {
 					self.emit(Instruction::PushNone);
 				} else {
 					self.emit(Instruction::PushConst(value));

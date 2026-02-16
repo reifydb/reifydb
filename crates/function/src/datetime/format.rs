@@ -193,4 +193,8 @@ impl ScalarFunction for DateTimeFormat {
 			}),
 		}
 	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 }
