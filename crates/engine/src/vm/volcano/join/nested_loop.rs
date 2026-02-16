@@ -19,17 +19,24 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-pub struct LeftJoinNode {
+#[derive(Clone, Copy, PartialEq)]
+enum NestedLoopMode {
+	Inner,
+	Left,
+}
+
+pub struct NestedLoopJoinNode {
 	left: Box<dyn QueryNode>,
 	right: Box<dyn QueryNode>,
 	on: Vec<Expression>,
 	alias: Option<Fragment>,
+	mode: NestedLoopMode,
 	headers: Option<ColumnHeaders>,
 	context: JoinContext,
 }
 
-impl LeftJoinNode {
-	pub(crate) fn new(
+impl NestedLoopJoinNode {
+	pub(crate) fn new_inner(
 		left: Box<dyn QueryNode>,
 		right: Box<dyn QueryNode>,
 		on: Vec<Expression>,
@@ -40,14 +47,32 @@ impl LeftJoinNode {
 			right,
 			on,
 			alias,
+			mode: NestedLoopMode::Inner,
+			headers: None,
+			context: JoinContext::new(),
+		}
+	}
+
+	pub(crate) fn new_left(
+		left: Box<dyn QueryNode>,
+		right: Box<dyn QueryNode>,
+		on: Vec<Expression>,
+		alias: Option<Fragment>,
+	) -> Self {
+		Self {
+			left,
+			right,
+			on,
+			alias,
+			mode: NestedLoopMode::Left,
 			headers: None,
 			context: JoinContext::new(),
 		}
 	}
 }
 
-impl QueryNode for LeftJoinNode {
-	#[instrument(name = "volcano::join::left::initialize", level = "trace", skip_all)]
+impl QueryNode for NestedLoopJoinNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
@@ -61,9 +86,9 @@ impl QueryNode for LeftJoinNode {
 		Ok(())
 	}
 
-	#[instrument(name = "volcano::join::left::next", level = "trace", skip_all)]
+	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
-		debug_assert!(self.context.is_initialized(), "LeftJoinNode::next() called before initialize()");
+		debug_assert!(self.context.is_initialized(), "NestedLoopJoinNode::next() called before initialize()");
 		let _stored_ctx = self.context.get();
 
 		if self.headers.is_some() {
@@ -130,7 +155,7 @@ impl QueryNode for LeftJoinNode {
 			}
 
 			// Add unmatched left rows with undefined values for right columns
-			if !matched {
+			if self.mode == NestedLoopMode::Left && !matched {
 				let mut combined = left_row.clone();
 				combined.extend(vec![Value::none(); right_width]);
 				result_rows.push(combined);

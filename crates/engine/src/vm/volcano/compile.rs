@@ -46,7 +46,11 @@ use crate::vm::volcano::{
 	filter::FilterNode,
 	generator::GeneratorNode,
 	inline::InlineDataNode,
-	join::{inner::InnerJoinNode, left::LeftJoinNode, natural::NaturalJoinNode},
+	join::{
+		hash::{self, HashJoinNode},
+		natural::NaturalJoinNode,
+		nested_loop::NestedLoopJoinNode,
+	},
 	map::{MapNode, MapWithoutInputNode},
 	patch::PatchNode,
 	query::{QueryContext, QueryNode},
@@ -184,7 +188,13 @@ pub(crate) fn compile<'a>(
 
 			let left_node = compile(*left, rx, context.clone());
 			let right_node = compile(*right, rx, context.clone());
-			Box::new(InnerJoinNode::new(left_node, right_node, on, effective_alias))
+
+			let analysis = hash::extract_equi_keys(&on);
+			if !analysis.equi_keys.is_empty() {
+				Box::new(HashJoinNode::new_inner(left_node, right_node, analysis, effective_alias))
+			} else {
+				Box::new(NestedLoopJoinNode::new_inner(left_node, right_node, on, effective_alias))
+			}
 		}
 
 		RqlQueryPlan::JoinLeft(RqlJoinLeftNode {
@@ -202,7 +212,13 @@ pub(crate) fn compile<'a>(
 
 			let left_node = compile(*left, rx, context.clone());
 			let right_node = compile(*right, rx, context.clone());
-			Box::new(LeftJoinNode::new(left_node, right_node, on, effective_alias))
+
+			let analysis = hash::extract_equi_keys(&on);
+			if !analysis.equi_keys.is_empty() {
+				Box::new(HashJoinNode::new_left(left_node, right_node, analysis, effective_alias))
+			} else {
+				Box::new(NestedLoopJoinNode::new_left(left_node, right_node, on, effective_alias))
+			}
 		}
 
 		RqlQueryPlan::JoinNatural(RqlJoinNaturalNode {

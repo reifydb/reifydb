@@ -2,6 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod common;
-pub mod inner;
-pub mod left;
+pub mod hash;
 pub mod natural;
+pub mod nested_loop;

@@ -4,11 +4,12 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 
 use crate::{
-	expression::compile::CompiledExpr,
+	expression::{compile::CompiledExpr, context::EvalContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -154,4 +155,76 @@ impl JoinContext {
 	pub fn is_initialized(&self) -> bool {
 		self.context.is_some()
 	}
+}
+
+/// Compute a hash over the values at the given column indices for a single row.
+/// Returns `None` if any key value is `Undefined` (NULL != NULL semantics).
+/// The `buf` parameter is a reusable scratch buffer to avoid per-row allocation.
+pub(crate) fn compute_join_hash(
+	columns: &Columns,
+	col_indices: &[usize],
+	row_idx: usize,
+	buf: &mut Vec<u8>,
+) -> Option<Hash128> {
+	buf.clear();
+	for &idx in col_indices {
+		let value = columns[idx].data().get_value(row_idx);
+		if matches!(value, Value::None { .. }) {
+			return None;
+		}
+		let bytes = postcard::to_stdvec(&value).ok()?;
+		buf.extend_from_slice(&bytes);
+	}
+	Some(xxh3_128(buf))
+}
+
+/// Check actual key equality between two rows by column indices.
+pub(crate) fn keys_equal_by_index(
+	left: &Columns,
+	left_row: usize,
+	left_indices: &[usize],
+	right: &Columns,
+	right_row: usize,
+	right_indices: &[usize],
+) -> bool {
+	for (&li, &ri) in left_indices.iter().zip(right_indices.iter()) {
+		let lv = left[li].data().get_value(left_row);
+		let rv = right[ri].data().get_value(right_row);
+		if lv != rv {
+			return false;
+		}
+	}
+	true
+}
+
+/// Evaluate compiled join condition predicates for a (left_row, right_row) pair.
+pub(crate) fn eval_join_condition(
+	compiled: &[CompiledExpr],
+	left_columns: &Columns,
+	right_columns: &Columns,
+	left_row: &[Value],
+	right_row: &[Value],
+	alias: &Option<Fragment>,
+	ctx: &QueryContext,
+) -> bool {
+	if compiled.is_empty() {
+		return true;
+	}
+	let eval_columns = build_eval_columns(left_columns, right_columns, left_row, right_row, alias);
+	let exec_ctx = EvalContext {
+		target: None,
+		columns: Columns::new(eval_columns),
+		row_count: 1,
+		take: Some(1),
+		params: &ctx.params,
+		symbol_table: &ctx.stack,
+		is_aggregate_context: false,
+		functions: &ctx.services.functions,
+		clock: &ctx.services.clock,
+		arena: None,
+	};
+	compiled.iter().all(|compiled_expr| {
+		let col = compiled_expr.execute(&exec_ctx).unwrap();
+		matches!(col.data().get_value(0), Value::Boolean(true))
+	})
 }

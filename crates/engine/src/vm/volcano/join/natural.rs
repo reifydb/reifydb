@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use reifydb_core::{
 	common::JoinType,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
+use reifydb_runtime::hash::Hash128;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -14,7 +15,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use super::common::{JoinContext, load_and_merge_all, resolve_column_names};
+use super::common::{JoinContext, compute_join_hash, load_and_merge_all, resolve_column_names};
 use crate::vm::volcano::query::{QueryContext, QueryNode};
 
 pub struct NaturalJoinNode {
@@ -79,7 +80,6 @@ impl QueryNode for NaturalJoinNode {
 		let right_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 
 		let left_rows = left_columns.row_count();
-		let right_rows = right_columns.row_count();
 		let left_row_numbers = left_columns.row_numbers.to_vec();
 
 		// Find common columns between left and right columns
@@ -103,30 +103,48 @@ impl QueryNode for NaturalJoinNode {
 		let mut result_rows = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
+		// Build hash table on right-side common column values
+		let right_col_indices: Vec<usize> = common_columns.iter().map(|(_, _, ri)| *ri).collect();
+		let mut hash_buf = Vec::with_capacity(256);
+		let mut hash_table: HashMap<Hash128, Vec<usize>> = HashMap::new();
+		let right_rows = right_columns.row_count();
+		for j in 0..right_rows {
+			if let Some(h) = compute_join_hash(&right_columns, &right_col_indices, j, &mut hash_buf) {
+				hash_table.entry(h).or_default().push(j);
+			}
+		}
+
+		let left_col_indices: Vec<usize> = common_columns.iter().map(|(_, li, _)| *li).collect();
+
 		for i in 0..left_rows {
 			let left_row = left_columns.get_row(i);
 			let mut matched = false;
 
-			for j in 0..right_rows {
-				let right_row = right_columns.get_row(j);
+			let candidates = compute_join_hash(&left_columns, &left_col_indices, i, &mut hash_buf)
+				.and_then(|h| hash_table.get(&h));
 
-				// Check if all common columns match
-				let all_match = common_columns
-					.iter()
-					.all(|(_, left_idx, right_idx)| left_row[*left_idx] == right_row[*right_idx]);
+			if let Some(indices) = candidates {
+				for &j in indices {
+					let right_row = right_columns.get_row(j);
 
-				if all_match {
-					// Combine rows, excluding duplicate columns from right
-					let mut combined = left_row.clone();
-					for (idx, value) in right_row.iter().enumerate() {
-						if !excluded_right_cols.contains(&idx) {
-							combined.push(value.clone());
+					// Verify actual equality (collision safety)
+					let all_match = common_columns.iter().all(|(_, left_idx, right_idx)| {
+						left_row[*left_idx] == right_row[*right_idx]
+					});
+
+					if all_match {
+						// Combine rows, excluding duplicate columns from right
+						let mut combined = left_row.clone();
+						for (idx, value) in right_row.iter().enumerate() {
+							if !excluded_right_cols.contains(&idx) {
+								combined.push(value.clone());
+							}
 						}
-					}
-					result_rows.push(combined);
-					matched = true;
-					if !left_row_numbers.is_empty() {
-						result_row_numbers.push(left_row_numbers[i]);
+						result_rows.push(combined);
+						matched = true;
+						if !left_row_numbers.is_empty() {
+							result_row_numbers.push(left_row_numbers[i]);
+						}
 					}
 				}
 			}
