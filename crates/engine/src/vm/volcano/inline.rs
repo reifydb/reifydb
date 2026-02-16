@@ -222,7 +222,7 @@ impl<'a> InlineDataNode {
 
 			// Create the wide column and add all values
 			let mut column_data = if wide_type.is_none() {
-				ColumnData::undefined(all_values.len())
+				ColumnData::none_typed(Type::Boolean, all_values.len())
 			} else {
 				let mut data = ColumnData::with_capacity(wide_type.clone().unwrap(), 0);
 
@@ -230,7 +230,7 @@ impl<'a> InlineDataNode {
 				// type if needed
 				for value in &all_values {
 					if matches!(value, Value::None) {
-						data.push_undefined();
+						data.push_none();
 					} else if wide_type.as_ref().map_or(false, |wt| value.get_type() == *wt) {
 						data.push_value(value.clone());
 					} else {
@@ -259,11 +259,11 @@ impl<'a> InlineDataNode {
 								if let Some(casted_value) = casted.iter().next() {
 									data.push_value(casted_value);
 								} else {
-									data.push_undefined();
+									data.push_none();
 								}
 							}
 							Err(_) => {
-								data.push_undefined();
+								data.push_none();
 							}
 						}
 					}
@@ -336,7 +336,7 @@ impl<'a> InlineDataNode {
 			// Find the corresponding source column for policies
 			let table_column = source.columns().iter().find(|col| col.name == column_name.text()).unwrap();
 
-			let mut column_data = ColumnData::undefined_typed(table_column.constraint.get_type(), 0);
+			let mut column_data = ColumnData::none_typed(table_column.constraint.get_type(), 0);
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(column_name.text()) {

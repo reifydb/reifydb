@@ -148,7 +148,7 @@ fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFr
 					let val = container.data().get(idx);
 					converter(&mut out, val);
 				} else {
-					out.push_undefined();
+					out.push_none();
 				}
 			}
 			Ok(out)
@@ -399,7 +399,7 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 						}
 					}
 				} else {
-					out.push_undefined();
+					out.push_none();
 				}
 			}
 			Ok(out)
@@ -473,7 +473,7 @@ fn text_to_float<'a>(
 					}
 				}
 			} else {
-				out.push_undefined();
+				out.push_none();
 			}
 		}
 		Ok(out)
@@ -510,7 +510,7 @@ fn text_to_decimal<'a>(
 				})?;
 				out.push::<Decimal>(result);
 			} else {
-				out.push_undefined();
+				out.push_none();
 			}
 		}
 		Ok(out)
@@ -534,10 +534,10 @@ macro_rules! float_to_int_vec {
 					if truncated >= $min_val && truncated <= $max_val {
 						out.push::<$int_ty>(truncated as $int_ty);
 					} else {
-						out.push_undefined();
+						out.push_none();
 					}
 				} else {
-					out.push_undefined();
+					out.push_none();
 				}
 			}
 			Ok(out)
@@ -577,7 +577,7 @@ fn f32_to_int_vec(container: &NumberContainer<f32>) -> crate::Result<ColumnData>
 			let int = Int::from_i64(truncated as i64);
 			out.push::<Int>(int);
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -592,7 +592,7 @@ fn f64_to_int_vec(container: &NumberContainer<f64>) -> crate::Result<ColumnData>
 			let int = Int::from_i64(truncated as i64);
 			out.push::<Int>(int);
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -609,10 +609,10 @@ fn f32_to_uint_vec(container: &NumberContainer<f32>) -> crate::Result<ColumnData
 				let uint = Uint::from_u64(truncated as u64);
 				out.push::<Uint>(uint);
 			} else {
-				out.push_undefined();
+				out.push_none();
 			}
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -628,10 +628,10 @@ fn f64_to_uint_vec(container: &NumberContainer<f64>) -> crate::Result<ColumnData
 				let uint = Uint::from_u64(truncated as u64);
 				out.push::<Uint>(uint);
 			} else {
-				out.push_undefined();
+				out.push_none();
 			}
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -647,7 +647,7 @@ fn f32_to_decimal_vec(container: &NumberContainer<f32>, target: Type) -> crate::
 			let decimal = Decimal::from_i64(val.trunc() as i64);
 			out.push::<Decimal>(decimal);
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -662,7 +662,7 @@ fn f64_to_decimal_vec(container: &NumberContainer<f64>, target: Type) -> crate::
 			let decimal = Decimal::from_i64(val.trunc() as i64);
 			out.push::<Decimal>(decimal);
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -1219,10 +1219,10 @@ where
 			let fragment = lazy_fragment.fragment();
 			match ctx.convert::<From, To>(val, fragment)? {
 				Some(v) => push(&mut out, v),
-				None => out.push_undefined(),
+				None => out.push_none(),
 			}
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -1246,10 +1246,10 @@ where
 			let fragment = lazy_fragment.fragment();
 			match ctx.convert::<From, To>(val, fragment)? {
 				Some(v) => push(&mut out, v),
-				None => out.push_undefined(),
+				None => out.push_none(),
 			}
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)

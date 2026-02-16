@@ -9,7 +9,13 @@ use reifydb_rql::{
 	query::QueryPlan,
 };
 use reifydb_runtime::clock::Clock;
-use reifydb_type::{error, error::diagnostic::function, fragment::Fragment, params::Params, value::Value};
+use reifydb_type::{
+	error,
+	error::diagnostic::function,
+	fragment::Fragment,
+	params::Params,
+	value::{Value, r#type::Type},
+};
 
 use super::eval::evaluate;
 use crate::{
@@ -32,10 +38,10 @@ fn strip_dollar_prefix(name: &str) -> String {
 /// Convert a slice of Values into ColumnData
 fn column_data_from_values(values: &[Value]) -> ColumnData {
 	if values.is_empty() {
-		return ColumnData::undefined(0);
+		return ColumnData::none_typed(Type::Boolean, 0);
 	}
 
-	let mut data = ColumnData::undefined(0);
+	let mut data = ColumnData::none_typed(Type::Boolean, 0);
 	for value in values {
 		data.push_value(value.clone());
 	}
@@ -432,7 +438,7 @@ fn execute_function_body_for_scalar(
 				} else if let Some(functor) = functions.get_scalar(name.text()) {
 					let mut arg_cols = Vec::with_capacity(args.len());
 					for arg in &args {
-						let mut data = ColumnData::undefined(0);
+						let mut data = ColumnData::none_typed(Type::Boolean, 0);
 						data.push_value(arg.clone());
 						arg_cols.push(Column::new("_", data));
 					}

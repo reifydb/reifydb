@@ -10,7 +10,7 @@ pub mod text;
 pub mod uuid;
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::{err, error::diagnostic::cast, fragment::LazyFragment, value::r#type::Type};
+use reifydb_type::{err, error::diagnostic::cast, fragment::LazyFragment, storage::DataBitVec, value::r#type::Type};
 
 use crate::expression::context::EvalContext;
 
@@ -20,13 +20,6 @@ pub fn cast_column_data(
 	target: Type,
 	lazy_fragment: impl LazyFragment + Clone,
 ) -> crate::Result<ColumnData> {
-	if let ColumnData::Undefined(container) = data {
-		let mut result = ColumnData::with_capacity(target.clone(), container.len());
-		for _ in 0..container.len() {
-			result.push_undefined();
-		}
-		return Ok(result);
-	}
 	// Handle Option-wrapped data: cast the inner data, then re-wrap with the bitvec
 	if let ColumnData::Option {
 		inner,
@@ -37,6 +30,11 @@ pub fn cast_column_data(
 			Type::Option(t) => t.as_ref().clone(),
 			other => other.clone(),
 		};
+		// Short-circuit: all-None data can be cast to any target type without
+		// inspecting the placeholder inner data
+		if DataBitVec::count_ones(bitvec) == 0 {
+			return Ok(ColumnData::none_typed(inner_target, inner.len()));
+		}
 		let cast_inner = cast_column_data(ctx, inner, inner_target, lazy_fragment)?;
 		return Ok(ColumnData::Option {
 			inner: Box::new(cast_inner),

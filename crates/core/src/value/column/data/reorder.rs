@@ -30,7 +30,7 @@ impl ColumnData {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{Value, identity::IdentityId};
+	use reifydb_type::value::{Value, identity::IdentityId, r#type::Type};
 
 	use crate::value::column::ColumnData;
 
@@ -89,8 +89,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_reorder_undefined() {
-		let mut col = ColumnData::undefined(3);
+	fn test_reorder_none() {
+		let mut col = ColumnData::none_typed(Type::Boolean, 3);
 		col.reorder(&[2, 0, 1]);
 		assert_eq!(col.len(), 3);
 

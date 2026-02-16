@@ -10,8 +10,7 @@ use reifydb_type::{
 	return_error,
 	value::{
 		container::{
-			bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer,
-			undefined::UndefinedContainer, utf8::Utf8Container,
+			bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container,
 		},
 		decimal::Decimal,
 		int::Int,
@@ -286,7 +285,7 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 	fragment: Fragment,
 	error_fn: impl FnOnce(Fragment, Type, Type) -> Diagnostic,
 ) -> crate::Result<Column> {
-	super::option::binary_op_unwrap_option(left, right, |left, right| {
+	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
 		dispatch_compare!(
 			&left.data(), &right.data();
 			fragment;
@@ -324,12 +323,6 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 				return Ok(compare_utf8::<Op>(l, r, fragment));
 			},
 
-			(ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
-				return Ok(Column {
-					name: Fragment::internal(fragment.text()),
-					data: ColumnData::Undefined(UndefinedContainer::new(container.len())),
-				});
-			},
 			_ => {
 				return_error!(error_fn(fragment, left.get_type(), right.get_type()))
 			},

@@ -67,7 +67,7 @@ macro_rules! impl_to_uuid {
 
 					out.push::<$type>(parsed);
 				} else {
-					out.push_undefined();
+					out.push_none();
 				}
 			}
 			Ok(out)

@@ -50,10 +50,10 @@ impl ScalarFunction for TimeAdd {
 								(time_nanos + dur_nanos).rem_euclid(NANOS_PER_DAY);
 							match Time::from_nanos_since_midnight(result_nanos as u64) {
 								Some(result) => container.push(result),
-								None => container.push_undefined(),
+								None => container.push_default(),
 							}
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

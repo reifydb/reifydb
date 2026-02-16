@@ -14,7 +14,6 @@ use reifydb_type::{
 	return_error,
 	value::{
 		boolean::parse::parse_bool,
-		container::undefined::UndefinedContainer,
 		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
 		r#type::Type,
 	},
@@ -86,7 +85,7 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> cra
 		} => TemporalParser::parse_temporal(fragment.clone(), row_count)?,
 		ConstantExpression::None {
 			..
-		} => ColumnData::Undefined(UndefinedContainer::new(row_count)),
+		} => ColumnData::none_typed(Type::Any, row_count),
 	})
 }
 
@@ -117,6 +116,13 @@ pub(crate) fn constant_value_of(
 			target,
 		) if target.is_temporal() => TemporalParser::from_temporal(fragment.clone(), target, row_count)?,
 
+		(
+			ConstantExpression::None {
+				..
+			},
+			target,
+		) => ColumnData::none_typed(target, row_count),
+
 		(_, target) => {
 			let source_type = match expr {
 				ConstantExpression::Bool {
@@ -133,7 +139,7 @@ pub(crate) fn constant_value_of(
 				} => Type::DateTime,
 				ConstantExpression::None {
 					..
-				} => Type::Option(Box::new(Type::Boolean)),
+				} => Type::Option(Box::new(Type::Any)),
 			};
 			return_error!(cast::unsupported_cast(expr.full_fragment_owned(), source_type, target));
 		}

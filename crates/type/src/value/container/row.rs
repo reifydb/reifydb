@@ -121,7 +121,7 @@ impl<S: Storage> RowNumberContainer<S> {
 		DataVec::push(&mut self.data, value);
 	}
 
-	pub fn push_undefined(&mut self) {
+	pub fn push_default(&mut self) {
 		DataVec::push(&mut self.data, RowNumber::default());
 	}
 
@@ -164,12 +164,6 @@ impl<S: Storage> RowNumberContainer<S> {
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
 		Ok(())
-	}
-
-	pub fn extend_from_undefined(&mut self, len: usize) {
-		for _ in 0..len {
-			DataVec::push(&mut self.data, RowNumber::default());
-		}
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<RowNumber>> + '_ {

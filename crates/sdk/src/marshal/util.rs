@@ -46,7 +46,6 @@ pub(super) fn column_data_to_type_code(data: &ColumnData) -> ColumnTypeCode {
 		} => ColumnTypeCode::Decimal,
 		ColumnData::Any(_) => ColumnTypeCode::Any,
 		ColumnData::DictionaryId(_) => ColumnTypeCode::DictionaryId,
-		ColumnData::Undefined(_) => ColumnTypeCode::Undefined,
 		ColumnData::Option {
 			..
 		} => {

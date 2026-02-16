@@ -20,7 +20,7 @@ use reifydb_type::{
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
+			utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -86,8 +86,6 @@ pub enum ColumnData<S: Storage = Cow> {
 		inner: Box<ColumnData<S>>,
 		bitvec: S::BitVec,
 	},
-	// special case: all undefined
-	Undefined(UndefinedContainer),
 }
 
 impl<S: Storage> Clone for ColumnData<S> {
@@ -159,7 +157,6 @@ impl<S: Storage> Clone for ColumnData<S> {
 				inner: inner.clone(),
 				bitvec: bitvec.clone(),
 			},
-			ColumnData::Undefined(c) => ColumnData::Undefined(c.clone()),
 		}
 	}
 }
@@ -251,7 +248,6 @@ impl<S: Storage> PartialEq for ColumnData<S> {
 					bitvec: bb,
 				},
 			) => ai == bi && ab == bb,
-			(ColumnData::Undefined(a), ColumnData::Undefined(b)) => a == b,
 			_ => false,
 		}
 	}
@@ -311,7 +307,6 @@ impl fmt::Debug for ColumnData<Cow> {
 				inner,
 				bitvec,
 			} => f.debug_struct("Option").field("inner", inner).field("bitvec", bitvec).finish(),
-			ColumnData::Undefined(c) => f.debug_tuple("Undefined").field(c).finish(),
 		}
 	}
 }
@@ -367,7 +362,6 @@ impl Serialize for ColumnData<Cow> {
 				inner: &'a Box<ColumnData>,
 				bitvec: &'a reifydb_type::util::bitvec::BitVec,
 			},
-			Undefined(&'a UndefinedContainer),
 		}
 		let helper = match self {
 			ColumnData::Bool(c) => Helper::Bool(c),
@@ -436,7 +430,6 @@ impl Serialize for ColumnData<Cow> {
 				inner,
 				bitvec,
 			},
-			ColumnData::Undefined(c) => Helper::Undefined(c),
 		};
 		helper.serialize(serializer)
 	}
@@ -493,7 +486,6 @@ impl<'de> Deserialize<'de> for ColumnData<Cow> {
 				inner: Box<ColumnData>,
 				bitvec: reifydb_type::util::bitvec::BitVec,
 			},
-			Undefined(UndefinedContainer),
 		}
 		let helper = Helper::deserialize(deserializer)?;
 		Ok(match helper {
@@ -563,7 +555,6 @@ impl<'de> Deserialize<'de> for ColumnData<Cow> {
 				inner,
 				bitvec,
 			},
-			Helper::Undefined(c) => ColumnData::Undefined(c),
 		})
 	}
 }
@@ -614,7 +605,6 @@ macro_rules! with_container {
 			} => $body,
 			ColumnData::Any($c) => $body,
 			ColumnData::DictionaryId($c) => $body,
-			ColumnData::Undefined($c) => $body,
 			ColumnData::Option {
 				..
 			} => {
@@ -694,7 +684,6 @@ impl<S: Storage> ColumnData<S> {
 				inner,
 				..
 			} => Type::Option(Box::new(inner.get_type())),
-			ColumnData::Undefined(_) => Type::Option(Box::new(Type::Any)),
 		}
 	}
 
@@ -746,7 +735,6 @@ impl<S: Storage> ColumnData<S> {
 				bitvec,
 				..
 			} => idx < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, idx),
-			ColumnData::Undefined(_) => false,
 		}
 	}
 
@@ -788,13 +776,12 @@ impl<S: Storage> ColumnData<S> {
 }
 
 impl<S: Storage> ColumnData<S> {
-	pub fn undefined_count(&self) -> usize {
+	pub fn none_count(&self) -> usize {
 		match self {
 			ColumnData::Option {
 				bitvec,
 				..
 			} => DataBitVec::count_zeros(bitvec),
-			ColumnData::Undefined(c) => c.len(),
 			_ => 0,
 		}
 	}
@@ -824,7 +811,6 @@ impl<S: Storage> ColumnData<S> {
 	/// Clear all data, retaining the allocated capacity for reuse.
 	pub fn clear(&mut self) {
 		match self {
-			ColumnData::Undefined(c) => c.clear(),
 			ColumnData::Option {
 				inner,
 				bitvec,

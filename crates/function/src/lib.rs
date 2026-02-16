@@ -9,7 +9,7 @@ use reifydb_core::value::column::{
 };
 use reifydb_runtime::clock::Clock;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, util::bitvec::BitVec};
+use reifydb_type::{fragment::Fragment, util::bitvec::BitVec, value::Value};
 
 pub mod blob;
 pub mod clock;
@@ -64,7 +64,7 @@ pub trait AggregateFunction: Send + Sync {
 
 /// Helper for scalar functions to opt into Option propagation.
 ///
-/// If any argument column is `ColumnData::Option` or `ColumnData::Undefined`,
+/// If any argument column is `ColumnData::Option`,
 /// this unwraps the Option wrappers, calls `func.scalar()` recursively on the
 /// inner data, and re-wraps the result with the combined bitvec.
 ///
@@ -77,16 +77,9 @@ pub fn propagate_options(
 	func: &dyn ScalarFunction,
 	ctx: &ScalarFunctionContext,
 ) -> Option<ScalarFunctionResult<ColumnData>> {
-	let has_option =
-		ctx.columns.iter().any(|c| matches!(c.data(), ColumnData::Option { .. } | ColumnData::Undefined(_)));
+	let has_option = ctx.columns.iter().any(|c| matches!(c.data(), ColumnData::Option { .. }));
 	if !has_option {
 		return None;
-	}
-
-	// Short-circuit: if any column is entirely Undefined, the result is entirely undefined.
-	// This avoids infinite recursion since unwrap_option() does not unwrap Undefined.
-	if ctx.columns.iter().any(|c| matches!(c.data(), ColumnData::Undefined(_))) {
-		return Some(Ok(ColumnData::undefined(ctx.row_count)));
 	}
 
 	let mut combined_bv: Option<BitVec> = None;
@@ -100,6 +93,19 @@ pub fn propagate_options(
 			});
 		}
 		unwrapped.push(Column::new(col.name().clone(), inner.clone()));
+	}
+
+	// Short-circuit: when all combined values are None, skip the inner function
+	// call entirely to avoid type-validation errors on placeholder inner types
+	// (e.g. none typed as Option<Any> would fail numeric type checks).
+	if let Some(ref bv) = combined_bv {
+		if bv.count_ones() == 0 {
+			let dummy = ColumnData::any(vec![Box::new(Value::None); ctx.row_count]);
+			return Some(Ok(ColumnData::Option {
+				inner: Box::new(dummy),
+				bitvec: bv.clone(),
+			}));
+		}
 	}
 
 	let unwrapped_columns = Columns::new(unwrapped);

@@ -21,21 +21,6 @@ impl Push<Int> for ColumnData {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			ColumnData::Undefined(container) => {
-				let mut new_container = ColumnData::int_with_capacity(container.len());
-
-				if let ColumnData::Int {
-					container: new_container,
-					..
-				} = &mut new_container
-				{
-					for _ in 0..container.len() {
-						new_container.push_undefined();
-					}
-					new_container.push(value);
-				}
-				*self = new_container;
-			}
 			_ => unreachable!("Push<Int> for ColumnData with incompatible type"),
 		}
 	}

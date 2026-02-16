@@ -12,7 +12,7 @@ use reifydb_rql::{
 use reifydb_transaction::transaction::{AsTransaction, Transaction};
 use reifydb_type::{
 	params::Params,
-	value::{Value, frame::frame::Frame},
+	value::{Value, frame::frame::Frame, r#type::Type},
 };
 
 use super::{
@@ -445,7 +445,7 @@ impl Vm {
 						let mut row_columns = Vec::new();
 						for col in columns.columns.iter() {
 							let value = col.data.get_value(index);
-							let mut data = ColumnData::undefined(0);
+							let mut data = ColumnData::none_typed(Type::Boolean, 0);
 							data.push_value(value);
 							row_columns.push(Column::new(col.name.clone(), data));
 						}
@@ -531,7 +531,7 @@ impl Vm {
 											frame.columns
 												.iter()
 												.map(|fc| {
-													let mut data = ColumnData::undefined(0);
+													let mut data = ColumnData::none_typed(Type::Boolean, 0);
 													for i in 0..fc
 														.data
 														.len()
@@ -1094,7 +1094,7 @@ fn run_query_plan(
 			.into_iter()
 			.map(|name| Column {
 				name,
-				data: ColumnData::undefined(0),
+				data: ColumnData::none_typed(Type::Boolean, 0),
 			})
 			.collect();
 		return Ok(Some(Columns::new(empty_columns)));

@@ -7,7 +7,7 @@ use reifydb_type::{
 	fragment::LazyFragment,
 	return_error,
 	value::{
-		container::{number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer},
+		container::{number::NumberContainer, temporal::TemporalContainer},
 		is::IsNumber,
 		number::{promote::Promote, safe::sub::SafeSub},
 		r#type::{Type, get::GetType},
@@ -22,7 +22,7 @@ pub(crate) fn sub_columns(
 	right: &Column,
 	fragment: impl LazyFragment + Copy,
 ) -> crate::Result<Column> {
-	crate::expression::option::binary_op_unwrap_option(left, right, |left, right| {
+	crate::expression::option::binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let target = Type::promote(left.get_type(), right.get_type());
 
 		dispatch_arith!(
@@ -35,7 +35,7 @@ pub(crate) fn sub_columns(
 				for i in 0..l.len() {
 					match (l.get(i), r.get(i)) {
 						(Some(lv), Some(rv)) => container.push(*lv - *rv),
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 				Ok(Column {
@@ -43,17 +43,6 @@ pub(crate) fn sub_columns(
 					data: ColumnData::Duration(container),
 				})
 			}
-
-			// Handle undefined values - any operation with
-			// undefined results in undefined
-			(ColumnData::Undefined(l), _) => Ok(Column {
-				name: fragment.fragment(),
-				data: ColumnData::Undefined(UndefinedContainer::new(l.len())),
-			}),
-			(_, ColumnData::Undefined(r)) => Ok(Column {
-				name: fragment.fragment(),
-				data: ColumnData::Undefined(UndefinedContainer::new(r.len())),
-			}),
 
 			_ => return_error!(sub_cannot_be_applied_to_incompatible_types(
 				fragment.fragment(),
@@ -87,7 +76,7 @@ where
 		if let Some(value) = ctx.sub(&l_data[i], &r_data[i], fragment)? {
 			data.push(value);
 		} else {
-			data.push_undefined()
+			data.push_none()
 		}
 	}
 	Ok(Column {
@@ -121,7 +110,7 @@ where
 		if let Some(value) = ctx.sub(&l_clone, &r_clone, fragment)? {
 			data.push(value);
 		} else {
-			data.push_undefined()
+			data.push_none()
 		}
 	}
 	Ok(Column {

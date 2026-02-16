@@ -54,7 +54,7 @@ pub fn from_any(
 		match temp_result {
 			None => {
 				// This was an undefined value
-				result.push_undefined();
+				result.push_none();
 			}
 			Some(casted_column) => {
 				// Extract the single value from the casted column and add to result
@@ -64,91 +64,91 @@ pub fn from_any(
 						if c.is_defined(0) {
 							result.push::<bool>(c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Int1(c) => {
 						if c.is_defined(0) {
 							result.push::<i8>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Int2(c) => {
 						if c.is_defined(0) {
 							result.push::<i16>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Int4(c) => {
 						if c.is_defined(0) {
 							result.push::<i32>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Int8(c) => {
 						if c.is_defined(0) {
 							result.push::<i64>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Int16(c) => {
 						if c.is_defined(0) {
 							result.push::<i128>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Uint1(c) => {
 						if c.is_defined(0) {
 							result.push::<u8>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Uint2(c) => {
 						if c.is_defined(0) {
 							result.push::<u16>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Uint4(c) => {
 						if c.is_defined(0) {
 							result.push::<u32>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Uint8(c) => {
 						if c.is_defined(0) {
 							result.push::<u64>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Uint16(c) => {
 						if c.is_defined(0) {
 							result.push::<u128>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Float4(c) => {
 						if c.is_defined(0) {
 							result.push::<f32>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Float8(c) => {
 						if c.is_defined(0) {
 							result.push::<f64>(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Utf8 {
@@ -158,7 +158,7 @@ pub fn from_any(
 						if c.is_defined(0) {
 							result.push::<String>(c.get(0).unwrap().clone());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Blob {
@@ -168,56 +168,56 @@ pub fn from_any(
 						if c.is_defined(0) {
 							result.push(c.get(0).unwrap().clone());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Date(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::DateTime(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Time(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Duration(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::IdentityId(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Uuid4(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Uuid7(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Int {
@@ -227,7 +227,7 @@ pub fn from_any(
 						if c.is_defined(0) {
 							result.push(c.get(0).unwrap().clone());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Uint {
@@ -237,7 +237,7 @@ pub fn from_any(
 						if c.is_defined(0) {
 							result.push(c.get(0).unwrap().clone());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::Decimal {
@@ -247,18 +247,15 @@ pub fn from_any(
 						if c.is_defined(0) {
 							result.push(c.get(0).unwrap().clone());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
 					}
 					ColumnData::DictionaryId(c) => {
 						if c.is_defined(0) {
 							result.push(c.get(0).unwrap().clone());
 						} else {
-							result.push_undefined();
+							result.push_none();
 						}
-					}
-					ColumnData::Undefined(_) => {
-						result.push_undefined();
 					}
 					ColumnData::Any(_) => {
 						// This shouldn't happen as we're casting FROM Any

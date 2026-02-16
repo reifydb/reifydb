@@ -65,7 +65,7 @@ pub fn from_blob(container: &BlobContainer, lazy_fragment: impl LazyFragment) ->
 				}
 			}
 		} else {
-			out.push_undefined()
+			out.push_none()
 		}
 	}
 	Ok(out)
@@ -78,7 +78,7 @@ fn from_bool(container: &BoolContainer) -> crate::Result<ColumnData> {
 		if container.is_defined(idx) {
 			out.push::<String>(container.data().get(idx).to_string());
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -94,7 +94,7 @@ where
 		if container.is_defined(idx) {
 			out.push::<String>(container[idx].to_string());
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -110,7 +110,7 @@ where
 		if container.is_defined(idx) {
 			out.push::<String>(container[idx].to_string());
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)
@@ -126,7 +126,7 @@ where
 		if container.is_defined(idx) {
 			out.push::<String>(container[idx].to_string());
 		} else {
-			out.push_undefined();
+			out.push_none();
 		}
 	}
 	Ok(out)

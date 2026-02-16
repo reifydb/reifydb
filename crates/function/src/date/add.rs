@@ -64,13 +64,13 @@ impl ScalarFunction for DateAdd {
 									as i32;
 								match Date::from_days_since_epoch(total_days) {
 									Some(result) => container.push(result),
-									None => container.push_undefined(),
+									None => container.push_default(),
 								}
 							} else {
-								container.push_undefined();
+								container.push_default();
 							}
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

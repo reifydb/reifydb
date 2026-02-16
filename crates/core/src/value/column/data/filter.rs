@@ -35,7 +35,10 @@ impl ColumnData {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{util::bitvec::BitVec, value::Value};
+	use reifydb_type::{
+		util::bitvec::BitVec,
+		value::{Value, r#type::Type},
+	};
 
 	use crate::value::column::ColumnData;
 
@@ -95,8 +98,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_filter_undefined() {
-		let mut col = ColumnData::undefined(5);
+	fn test_filter_none() {
+		let mut col = ColumnData::none_typed(Type::Boolean, 5);
 		let mask = BitVec::from_slice(&[true, false, true, false, false]);
 
 		col.filter(&mask).unwrap();

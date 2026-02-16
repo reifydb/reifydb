@@ -92,7 +92,7 @@ impl ScalarFunction for DurationScale {
 						(Some(dur), Some(scalar)) => {
 							container.push(*dur * scalar);
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

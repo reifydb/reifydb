@@ -41,10 +41,10 @@ impl ScalarFunction for DateStartOfMonth {
 					if let Some(date) = container.get(i) {
 						match Date::new(date.year(), date.month(), 1) {
 							Some(d) => result.push(d),
-							None => result.push_undefined(),
+							None => result.push_default(),
 						}
 					} else {
-						result.push_undefined();
+						result.push_default();
 					}
 				}
 

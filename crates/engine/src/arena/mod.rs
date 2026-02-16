@@ -591,12 +591,12 @@ mod tests {
 
 			container.push(true);
 			container.push(false);
-			container.push_undefined();
+			container.push_default();
 
 			assert_eq!(container.len(), 3);
 			assert_eq!(container.get(0), Some(true));
 			assert_eq!(container.get(1), Some(false));
-			// push_undefined on a bare container pushes false;
+			// push_default on a bare container pushes false;
 			// nullability is tracked by the Option wrapper at the ColumnData level.
 			assert_eq!(container.get(2), Some(false));
 		}

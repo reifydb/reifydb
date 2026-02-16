@@ -125,7 +125,7 @@ impl QueryNode for AggregateNode {
 					};
 					let mut c = Column {
 						name: Fragment::internal(alias.fragment()),
-						data: ColumnData::undefined_typed(
+						data: ColumnData::none_typed(
 							first_key_type.unwrap_or(Type::Boolean),
 							0,
 						),

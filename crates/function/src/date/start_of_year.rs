@@ -41,10 +41,10 @@ impl ScalarFunction for DateStartOfYear {
 					if let Some(date) = container.get(i) {
 						match Date::new(date.year(), 1, 1) {
 							Some(d) => result.push(d),
-							None => result.push_undefined(),
+							None => result.push_default(),
 						}
 					} else {
-						result.push_undefined();
+						result.push_default();
 					}
 				}
 

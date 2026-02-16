@@ -208,7 +208,6 @@ pub fn column_data_to_cow<S: Storage>(src: &ColumnData<S>) -> ColumnData<Cow> {
 		},
 		ColumnData::Any(c) => ColumnData::Any(any_to_cow(c)),
 		ColumnData::DictionaryId(c) => ColumnData::DictionaryId(dictionary_to_cow(c)),
-		ColumnData::Undefined(c) => ColumnData::Undefined(c.clone()),
 		ColumnData::Option {
 			inner,
 			bitvec,
@@ -283,7 +282,6 @@ pub fn column_data_to_bump<'bump, S: Storage>(
 		},
 		ColumnData::Any(c) => ColumnData::Any(any_to_bump(c, bump)),
 		ColumnData::DictionaryId(c) => ColumnData::DictionaryId(dictionary_to_bump(c, bump)),
-		ColumnData::Undefined(c) => ColumnData::Undefined(c.clone()),
 		ColumnData::Option {
 			inner,
 			bitvec,
@@ -305,6 +303,7 @@ pub fn column_to_bump<'bump, S: Storage>(src: &Column<S>, bump: &'bump bumpalo::
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::column::Column;
+	use reifydb_type::value::r#type::Type;
 
 	use super::*;
 
@@ -353,8 +352,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_column_data_undefined_roundtrip() {
-		let original = ColumnData::undefined(5);
+	fn test_column_data_none_roundtrip() {
+		let original = ColumnData::none_typed(Type::Boolean, 5);
 		let bump_alloc = bumpalo::Bump::new();
 
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);

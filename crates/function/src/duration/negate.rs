@@ -40,7 +40,7 @@ impl ScalarFunction for DurationNegate {
 					if let Some(val) = container_in.get(i) {
 						container.push(val.negate());
 					} else {
-						container.push_undefined();
+						container.push_default();
 					}
 				}
 

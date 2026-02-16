@@ -40,7 +40,7 @@ impl ScalarFunction for DateTimeDate {
 					if let Some(dt) = container.get(i) {
 						result.push(dt.date());
 					} else {
-						result.push_undefined();
+						result.push_default();
 					}
 				}
 

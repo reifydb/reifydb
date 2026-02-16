@@ -25,6 +25,7 @@ use reifydb_type::{
 		int::Int,
 		row_number::RowNumber,
 		time::Time,
+		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -190,7 +191,7 @@ impl Arena {
 	/// Unmarshal ColumnData from FFI representation
 	pub(super) fn unmarshal_column_data(&self, ffi: &ColumnDataFFI, row_count: usize) -> ColumnData {
 		if row_count == 0 {
-			return ColumnData::undefined(0);
+			return ColumnData::none_typed(Type::Boolean, 0);
 		}
 
 		match ffi.type_code {
@@ -320,7 +321,7 @@ impl Arena {
 					u128_container.data().iter().map(|&v| DictionaryEntryId::U16(v)).collect();
 				ColumnData::DictionaryId(DictionaryContainer::new(entries))
 			}
-			ColumnTypeCode::Undefined => ColumnData::undefined(row_count),
+			ColumnTypeCode::Undefined => ColumnData::none_typed(Type::Boolean, row_count),
 		}
 	}
 }
@@ -499,9 +500,6 @@ impl Arena {
 				let encoded: Vec<u128> = container.data().iter().map(|id| id.to_u128()).collect();
 				self.marshal_numeric_slice(&encoded)
 			}
-
-			// Undefined has no data
-			ColumnData::Undefined(_) => (BufferFFI::empty(), BufferFFI::empty()),
 
 			ColumnData::Option {
 				..

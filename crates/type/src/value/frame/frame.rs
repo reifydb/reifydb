@@ -134,11 +134,7 @@ impl Display for Frame {
 			let mut col_idx = 0;
 			if has_row_numbers {
 				let w = col_widths[col_idx];
-				let val = if row_idx < self.row_numbers.len() {
-					self.row_numbers[row_idx].to_string()
-				} else {
-					"Undefined".to_string()
-				};
+				let val = self.row_numbers[row_idx].to_string();
 				let pad = w - val.width();
 				let l = pad / 2;
 				let r = pad - l;

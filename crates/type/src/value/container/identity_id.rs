@@ -129,7 +129,7 @@ impl<S: Storage> IdentityIdContainer<S> {
 		}
 	}
 
-	pub fn push_undefined(&mut self) {
+	pub fn push_default(&mut self) {
 		self.push(None);
 	}
 
@@ -160,12 +160,6 @@ impl<S: Storage> IdentityIdContainer<S> {
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataVec::extend_from_slice(&mut self.data, DataVec::as_slice(&other.data));
 		Ok(())
-	}
-
-	pub fn extend_from_undefined(&mut self, count: usize) {
-		for _ in 0..count {
-			DataVec::push(&mut self.data, IdentityId::default());
-		}
 	}
 
 	pub fn get_value(&self, index: usize) -> Value {

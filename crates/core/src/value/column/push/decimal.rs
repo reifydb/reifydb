@@ -21,21 +21,6 @@ impl Push<Decimal> for ColumnData {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			ColumnData::Undefined(container) => {
-				let mut new_container = ColumnData::decimal_with_capacity(container.len());
-
-				if let ColumnData::Decimal {
-					container: new_container,
-					..
-				} = &mut new_container
-				{
-					for _ in 0..container.len() {
-						new_container.push_undefined();
-					}
-					new_container.push(value);
-				}
-				*self = new_container;
-			}
 			_ => unreachable!("Push<Decimal> for ColumnData with incompatible type"),
 		}
 	}

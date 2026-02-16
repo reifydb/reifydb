@@ -10,8 +10,7 @@ use reifydb_type::{
 		blob::Blob,
 		container::{
 			blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
-			number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -160,15 +159,17 @@ pub fn convert_query_response(payload: crate::QueryResponse) -> Vec<Frame> {
 }
 
 fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
-	let len = data.len();
-
 	match target {
 		Type::Option(inner_type) => {
 			let defined: Vec<bool> = data.iter().map(|s| s != "⟪none⟫").collect();
 
-			// All none → short-circuit
+			// All none → short-circuit with Option wrapper (all-false bitvec)
 			if defined.iter().all(|&b| !b) {
-				return FrameColumnData::Undefined(UndefinedContainer::new(len));
+				let inner = convert_column_to_data(*inner_type, data);
+				return FrameColumnData::Option {
+					inner: Box::new(inner),
+					bitvec: BitVec::from_slice(&defined),
+				};
 			}
 
 			let bitvec = BitVec::from_slice(&defined);

@@ -59,7 +59,7 @@ pub trait ColumnStore: Send + Sync + Clone + 'static {
 pub struct ColumnStatistics {
 	pub min_value: Option<Value>,
 	pub max_value: Option<Value>,
-	pub undefined_count: usize,
+	pub none_count: usize,
 	pub distinct_count: Option<usize>,
 	pub compression_type: CompressionType,
 	pub compression_ratio: f64,

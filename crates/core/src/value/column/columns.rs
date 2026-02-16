@@ -11,10 +11,7 @@ use indexmap::IndexMap;
 use reifydb_type::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{
-		Value, constraint::Constraint, container::undefined::UndefinedContainer, row_number::RowNumber,
-		r#type::Type,
-	},
+	value::{Value, constraint::Constraint, row_number::RowNumber, r#type::Type},
 };
 
 use crate::{
@@ -60,7 +57,7 @@ impl Columns {
 	/// Used to store scalar values inside `Variable::Scalar(Columns)`.
 	pub fn scalar(value: Value) -> Self {
 		let data = match value {
-			Value::None => ColumnData::undefined(1),
+			Value::None => ColumnData::none_typed(Type::Boolean, 1),
 			Value::Boolean(v) => ColumnData::bool([v]),
 			Value::Float4(v) => ColumnData::float4([v.into()]),
 			Value::Float8(v) => ColumnData::float8([v.into()]),
@@ -140,7 +137,7 @@ impl Columns {
 
 		for (idx, (name, value)) in rows.into_iter().enumerate() {
 			let data = match value {
-				Value::None => ColumnData::undefined(1),
+				Value::None => ColumnData::none_typed(Type::Boolean, 1),
 				Value::Boolean(v) => ColumnData::bool([v]),
 				Value::Float4(v) => ColumnData::float4([v.into()]),
 				Value::Float8(v) => ColumnData::float8([v.into()]),
@@ -190,7 +187,8 @@ impl Columns {
 		for (i, name) in headers.columns.iter().enumerate() {
 			if i < self.len() {
 				let column = &mut self[i];
-				let data = std::mem::replace(column.data_mut(), ColumnData::undefined(0));
+				let data =
+					std::mem::replace(column.data_mut(), ColumnData::none_typed(Type::Boolean, 0));
 
 				*column = Column {
 					name: name.clone(),
@@ -264,7 +262,7 @@ impl Columns {
 			.iter()
 			.map(|name| Column {
 				name: Fragment::internal(name.to_string()),
-				data: ColumnData::Undefined(UndefinedContainer::new(0)),
+				data: ColumnData::none_typed(Type::Boolean, 0),
 			})
 			.collect();
 
@@ -289,7 +287,7 @@ impl Columns {
 			.iter()
 			.map(|name| Column {
 				name: Fragment::internal(name.to_string()),
-				data: ColumnData::Undefined(UndefinedContainer::new(0)),
+				data: ColumnData::none_typed(Type::Boolean, 0),
 			})
 			.collect();
 
@@ -475,7 +473,7 @@ impl Columns {
 			};
 
 			let mut data = if column_type.is_option() {
-				ColumnData::undefined(0)
+				ColumnData::none_typed(column_type.clone(), 0)
 			} else {
 				ColumnData::with_capacity(column_type.clone(), 1)
 			};

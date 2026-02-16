@@ -89,7 +89,7 @@ impl ScalarFunction for DurationTrunc {
 							};
 							container.push(truncated);
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

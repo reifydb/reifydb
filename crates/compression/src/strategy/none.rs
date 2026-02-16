@@ -24,7 +24,7 @@ impl ColumnCompressor for NoneCompressor {
 			data: serialized,
 			compression: CompressionType::None,
 			uncompressed_size,
-			undefined_count: data.undefined_count(),
+			none_count: data.none_count(),
 			row_count: data.len(),
 		})
 	}
@@ -54,7 +54,7 @@ pub mod tests {
 		let compressed = compressor.compress(&data).unwrap();
 		assert_eq!(compressed.compression, CompressionType::None);
 		assert_eq!(compressed.row_count, 5);
-		assert_eq!(compressed.undefined_count, 2);
+		assert_eq!(compressed.none_count, 2);
 		assert_eq!(compressed.uncompressed_size, compressed.data.len());
 
 		let decompressed = compressor.decompress(&compressed).unwrap();
@@ -77,7 +77,7 @@ pub mod tests {
 		let compressed = compressor.compress(&data).unwrap();
 		assert_eq!(compressed.compression, CompressionType::None);
 		assert_eq!(compressed.row_count, 6);
-		assert_eq!(compressed.undefined_count, 1);
+		assert_eq!(compressed.none_count, 1);
 
 		let decompressed = compressor.decompress(&compressed).unwrap();
 		assert_eq!(data, decompressed);
@@ -98,7 +98,7 @@ pub mod tests {
 		let compressed = compressor.compress(&data).unwrap();
 		assert_eq!(compressed.compression, CompressionType::None);
 		assert_eq!(compressed.row_count, 5);
-		assert_eq!(compressed.undefined_count, 1);
+		assert_eq!(compressed.none_count, 1);
 
 		let decompressed = compressor.decompress(&compressed).unwrap();
 		assert_eq!(data, decompressed);
@@ -112,7 +112,7 @@ pub mod tests {
 
 		let compressed = compressor.compress(&data).unwrap();
 		assert_eq!(compressed.row_count, 0);
-		assert_eq!(compressed.undefined_count, 0);
+		assert_eq!(compressed.none_count, 0);
 
 		let decompressed = compressor.decompress(&compressed).unwrap();
 		assert_eq!(data, decompressed);
@@ -126,7 +126,7 @@ pub mod tests {
 
 		let compressed = compressor.compress(&data).unwrap();
 		assert_eq!(compressed.row_count, 4);
-		assert_eq!(compressed.undefined_count, 4);
+		assert_eq!(compressed.none_count, 4);
 
 		let decompressed = compressor.decompress(&compressed).unwrap();
 		assert_eq!(data, decompressed);

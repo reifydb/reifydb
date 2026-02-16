@@ -141,7 +141,7 @@ impl<S: Storage> Utf8Container<S> {
 		DataVec::push(&mut self.data, value);
 	}
 
-	pub fn push_undefined(&mut self) {
+	pub fn push_default(&mut self) {
 		DataVec::push(&mut self.data, String::new());
 	}
 
@@ -188,12 +188,6 @@ impl<S: Storage> Utf8Container<S> {
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
 		Ok(())
-	}
-
-	pub fn extend_from_undefined(&mut self, len: usize) {
-		for _ in 0..len {
-			DataVec::push(&mut self.data, String::new());
-		}
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<&String>> + '_ {
@@ -295,12 +289,12 @@ pub mod tests {
 
 		container.push("first".to_string());
 		container.push("second".to_string());
-		container.push_undefined();
+		container.push_default();
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&"first".to_string()));
 		assert_eq!(container.get(1), Some(&"second".to_string()));
-		assert_eq!(container.get(2), Some(&"".to_string())); // undefined pushes default
+		assert_eq!(container.get(2), Some(&"".to_string())); // push_default pushes default
 
 		assert!(container.is_defined(0));
 		assert!(container.is_defined(1));
@@ -319,17 +313,6 @@ pub mod tests {
 		assert_eq!(container1.get(1), Some(&"b".to_string()));
 		assert_eq!(container1.get(2), Some(&"c".to_string()));
 		assert_eq!(container1.get(3), Some(&"d".to_string()));
-	}
-
-	#[test]
-	fn test_extend_from_undefined() {
-		let mut container = Utf8Container::from_vec(vec!["test".to_string()]);
-		container.extend_from_undefined(2);
-
-		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(0), Some(&"test".to_string()));
-		assert_eq!(container.get(1), Some(&"".to_string())); // default
-		assert_eq!(container.get(2), Some(&"".to_string())); // default
 	}
 
 	#[test]
@@ -405,7 +388,7 @@ pub mod tests {
 	fn test_empty_strings() {
 		let mut container = Utf8Container::with_capacity(2);
 		container.push("".to_string()); // empty string
-		container.push_undefined();
+		container.push_default();
 
 		assert_eq!(container.len(), 2);
 		assert_eq!(container.get(0), Some(&"".to_string()));

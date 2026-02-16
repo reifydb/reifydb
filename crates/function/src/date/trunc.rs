@@ -61,10 +61,10 @@ impl ScalarFunction for DateTrunc {
 								};
 							match truncated {
 								Some(val) => container.push(val),
-								None => container.push_undefined(),
+								None => container.push_default(),
 							}
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

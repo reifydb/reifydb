@@ -125,7 +125,7 @@ impl<S: Storage> AnyContainer<S> {
 		DataVec::push(&mut self.data, value);
 	}
 
-	pub fn push_undefined(&mut self) {
+	pub fn push_default(&mut self) {
 		DataVec::push(&mut self.data, Box::new(Value::None));
 	}
 
@@ -169,7 +169,7 @@ impl<S: Storage> AnyContainer<S> {
 		}
 	}
 
-	pub fn undefined_count(&self) -> usize {
+	pub fn none_count(&self) -> usize {
 		0
 	}
 
@@ -208,11 +208,5 @@ impl<S: Storage> AnyContainer<S> {
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
 		Ok(())
-	}
-
-	pub fn extend_from_undefined(&mut self, len: usize) {
-		for _ in 0..len {
-			DataVec::push(&mut self.data, Box::new(Value::None));
-		}
 	}
 }

@@ -88,10 +88,10 @@ impl ScalarFunction for DateTimeFromEpoch {
 			if let Some(ts) = extract_i64(col.data(), i) {
 				match DateTime::from_timestamp(ts) {
 					Ok(dt) => container.push(dt),
-					Err(_) => container.push_undefined(),
+					Err(_) => container.push_default(),
 				}
 			} else {
-				container.push_undefined();
+				container.push_default();
 			}
 		}
 

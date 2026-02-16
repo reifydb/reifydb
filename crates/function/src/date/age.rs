@@ -83,7 +83,7 @@ impl ScalarFunction for DateAge {
 						(Some(d1), Some(d2)) => {
 							container.push(date_age(&d1, &d2));
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

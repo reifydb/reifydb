@@ -136,7 +136,7 @@ where
 		DataVec::push(&mut self.data, value);
 	}
 
-	pub fn push_undefined(&mut self) {
+	pub fn push_default(&mut self) {
 		DataVec::push(&mut self.data, T::default());
 	}
 
@@ -202,12 +202,6 @@ where
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
 		Ok(())
-	}
-
-	pub fn extend_from_undefined(&mut self, len: usize) {
-		for _ in 0..len {
-			DataVec::push(&mut self.data, T::default());
-		}
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<T>> + '_
@@ -340,16 +334,16 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_push_with_undefined() {
+	fn test_push_with_default() {
 		let mut container: TemporalContainer<Date> = TemporalContainer::with_capacity(3);
 
 		container.push(Date::from_ymd(2023, 1, 1).unwrap());
-		container.push_undefined();
+		container.push_default();
 		container.push(Date::from_ymd(2023, 12, 31).unwrap());
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
-		assert_eq!(container.get(1), Some(&Date::default())); // undefined pushes default
+		assert_eq!(container.get(1), Some(&Date::default())); // push_default pushes default
 		assert_eq!(container.get(2), Some(&Date::from_ymd(2023, 12, 31).unwrap()));
 
 		assert!(container.is_defined(0));
@@ -368,17 +362,6 @@ pub mod tests {
 		container1.extend(&container2).unwrap();
 
 		assert_eq!(container1.len(), 3);
-	}
-
-	#[test]
-	fn test_extend_from_undefined() {
-		let mut container = TemporalContainer::from_vec(vec![Date::from_ymd(2023, 1, 1).unwrap()]);
-		container.extend_from_undefined(2);
-
-		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
-		assert_eq!(container.get(1), Some(&Date::default())); // default
-		assert_eq!(container.get(2), Some(&Date::default())); // default
 	}
 
 	#[test]

@@ -125,7 +125,7 @@ impl<S: Storage> BlobContainer<S> {
 		DataVec::push(&mut self.data, value);
 	}
 
-	pub fn push_undefined(&mut self) {
+	pub fn push_default(&mut self) {
 		DataVec::push(&mut self.data, Blob::new(vec![]));
 	}
 
@@ -168,12 +168,6 @@ impl<S: Storage> BlobContainer<S> {
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
 		Ok(())
-	}
-
-	pub fn extend_from_undefined(&mut self, len: usize) {
-		for _ in 0..len {
-			DataVec::push(&mut self.data, Blob::new(vec![]));
-		}
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<&Blob>> + '_ {
@@ -271,13 +265,13 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_push_with_undefined() {
+	fn test_push_with_default() {
 		let mut container = BlobContainer::with_capacity(3);
 		let blob1 = Blob::new(vec![1, 2, 3]);
 		let blob2 = Blob::new(vec![7, 8, 9]);
 
 		container.push(blob1.clone());
-		container.push_undefined();
+		container.push_default();
 		container.push(blob2.clone());
 
 		assert_eq!(container.len(), 3);

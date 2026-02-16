@@ -91,7 +91,8 @@ fn collect_rows_to_columns(
 	source_name: &str,
 ) -> crate::Result<Vec<ColumnData>> {
 	let num_cols = columns.len();
-	let mut column_data: Vec<ColumnData> = vec![ColumnData::undefined(0); num_cols];
+	let mut column_data: Vec<ColumnData> =
+		columns.iter().map(|col| ColumnData::none_typed(col.constraint.get_type(), 0)).collect();
 
 	for params in rows {
 		match params {
@@ -118,7 +119,7 @@ fn collect_rows_to_columns(
 			}
 			Params::None => {
 				for col_idx in 0..num_cols {
-					column_data[col_idx].push_undefined();
+					column_data[col_idx].push_none();
 				}
 			}
 		}

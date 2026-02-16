@@ -24,7 +24,7 @@ use reifydb_type::{
 	},
 	fragment::Fragment,
 	return_error,
-	value::{Value, container::undefined::UndefinedContainer, r#type::Type},
+	value::{Value, r#type::Type},
 };
 
 use super::context::CompileContext;
@@ -423,16 +423,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					less_than_equal_cannot_be_applied_to_incompatible_types,
 				)?;
 
-				if matches!(ge_result.data(), ColumnData::Undefined(_))
-					|| matches!(le_result.data(), ColumnData::Undefined(_))
-				{
-					let len = ge_result.data().len();
-					return Ok(Column {
-						name: fragment.clone(),
-						data: ColumnData::Undefined(UndefinedContainer::new(len)),
-					});
-				}
-
 				if !matches!(ge_result.data(), ColumnData::Bool(_))
 					|| !matches!(le_result.data(), ColumnData::Bool(_))
 				{
@@ -613,160 +603,137 @@ fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> crate::Res
 // --- Helper functions (moved from execute.rs) ---
 
 fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	super::option::binary_op_unwrap_option(left, right, |left, right| match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			let data: Vec<bool> = l_container
-				.data()
-				.iter()
-				.zip(r_container.data().iter())
-				.map(|(l_val, r_val)| l_val && r_val)
-				.collect();
+	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
+		match (&left.data(), &right.data()) {
+			(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
+				let data: Vec<bool> = l_container
+					.data()
+					.iter()
+					.zip(r_container.data().iter())
+					.map(|(l_val, r_val)| l_val && r_val)
+					.collect();
 
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool(data),
-			})
-		}
-		(ColumnData::Undefined(container), _) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(_, ColumnData::Undefined(container)) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(l, r) => {
-			if l.is_number() || r.is_number() {
-				return_error!(and_can_not_applied_to_number(fragment.clone()));
-			} else if l.is_text() || r.is_text() {
-				return_error!(and_can_not_applied_to_text(fragment.clone()));
-			} else if l.is_temporal() || r.is_temporal() {
-				return_error!(and_can_not_applied_to_temporal(fragment.clone()));
-			} else if l.is_uuid() || r.is_uuid() {
-				return_error!(and_can_not_applied_to_uuid(fragment.clone()));
-			} else {
-				unimplemented!("{} and {}", l.get_type(), r.get_type());
+				Ok(Column {
+					name: fragment.clone(),
+					data: ColumnData::bool(data),
+				})
+			}
+			(l, r) => {
+				if l.is_number() || r.is_number() {
+					return_error!(and_can_not_applied_to_number(fragment.clone()));
+				} else if l.is_text() || r.is_text() {
+					return_error!(and_can_not_applied_to_text(fragment.clone()));
+				} else if l.is_temporal() || r.is_temporal() {
+					return_error!(and_can_not_applied_to_temporal(fragment.clone()));
+				} else if l.is_uuid() || r.is_uuid() {
+					return_error!(and_can_not_applied_to_uuid(fragment.clone()));
+				} else {
+					unimplemented!("{} and {}", l.get_type(), r.get_type());
+				}
 			}
 		}
 	})
 }
 
 fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	super::option::binary_op_unwrap_option(left, right, |left, right| match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			let data: Vec<bool> = l_container
-				.data()
-				.iter()
-				.zip(r_container.data().iter())
-				.map(|(l_val, r_val)| l_val || r_val)
-				.collect();
+	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
+		match (&left.data(), &right.data()) {
+			(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
+				let data: Vec<bool> = l_container
+					.data()
+					.iter()
+					.zip(r_container.data().iter())
+					.map(|(l_val, r_val)| l_val || r_val)
+					.collect();
 
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool(data),
-			})
-		}
-		(ColumnData::Undefined(container), _) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(_, ColumnData::Undefined(container)) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(l, r) => {
-			if l.is_number() || r.is_number() {
-				return_error!(or_can_not_applied_to_number(fragment.clone()));
-			} else if l.is_text() || r.is_text() {
-				return_error!(or_can_not_applied_to_text(fragment.clone()));
-			} else if l.is_temporal() || r.is_temporal() {
-				return_error!(or_can_not_applied_to_temporal(fragment.clone()));
-			} else if l.is_uuid() || r.is_uuid() {
-				return_error!(or_can_not_applied_to_uuid(fragment.clone()));
-			} else {
-				unimplemented!("{} or {}", l.get_type(), r.get_type());
+				Ok(Column {
+					name: fragment.clone(),
+					data: ColumnData::bool(data),
+				})
+			}
+			(l, r) => {
+				if l.is_number() || r.is_number() {
+					return_error!(or_can_not_applied_to_number(fragment.clone()));
+				} else if l.is_text() || r.is_text() {
+					return_error!(or_can_not_applied_to_text(fragment.clone()));
+				} else if l.is_temporal() || r.is_temporal() {
+					return_error!(or_can_not_applied_to_temporal(fragment.clone()));
+				} else if l.is_uuid() || r.is_uuid() {
+					return_error!(or_can_not_applied_to_uuid(fragment.clone()));
+				} else {
+					unimplemented!("{} or {}", l.get_type(), r.get_type());
+				}
 			}
 		}
 	})
 }
 
 fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			let data: Vec<bool> = l_container
-				.data()
-				.iter()
-				.zip(r_container.data().iter())
-				.map(|(l_val, r_val)| l_val != r_val)
-				.collect();
+	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
+		match (&left.data(), &right.data()) {
+			(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
+				let data: Vec<bool> = l_container
+					.data()
+					.iter()
+					.zip(r_container.data().iter())
+					.map(|(l_val, r_val)| l_val != r_val)
+					.collect();
 
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool(data),
-			})
-		}
-		(ColumnData::Undefined(container), _) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(_, ColumnData::Undefined(container)) => Ok(Column {
-			name: fragment.clone(),
-			data: ColumnData::Undefined(container.clone()),
-		}),
-		(l, r) => {
-			if l.is_number() || r.is_number() {
-				return_error!(xor_can_not_applied_to_number(fragment.clone()));
-			} else if l.is_text() || r.is_text() {
-				return_error!(xor_can_not_applied_to_text(fragment.clone()));
-			} else if l.is_temporal() || r.is_temporal() {
-				return_error!(xor_can_not_applied_to_temporal(fragment.clone()));
-			} else if l.is_uuid() || r.is_uuid() {
-				return_error!(xor_can_not_applied_to_uuid(fragment.clone()));
-			} else {
-				unimplemented!("{} xor {}", l.get_type(), r.get_type());
+				Ok(Column {
+					name: fragment.clone(),
+					data: ColumnData::bool(data),
+				})
+			}
+			(l, r) => {
+				if l.is_number() || r.is_number() {
+					return_error!(xor_can_not_applied_to_number(fragment.clone()));
+				} else if l.is_text() || r.is_text() {
+					return_error!(xor_can_not_applied_to_text(fragment.clone()));
+				} else if l.is_temporal() || r.is_temporal() {
+					return_error!(xor_can_not_applied_to_temporal(fragment.clone()));
+				} else if l.is_uuid() || r.is_uuid() {
+					return_error!(xor_can_not_applied_to_uuid(fragment.clone()));
+				} else {
+					unimplemented!("{} xor {}", l.get_type(), r.get_type());
+				}
 			}
 		}
-	}
+	})
 }
 
 fn or_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<Column> {
-	super::option::binary_op_unwrap_option(&left, &right, |left, right| match (left.data(), right.data()) {
-		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
-			let len = l.len();
-			let mut data = Vec::with_capacity(len);
-			let mut bitvec = Vec::with_capacity(len);
+	super::option::binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| {
+		match (left.data(), right.data()) {
+			(ColumnData::Bool(l), ColumnData::Bool(r)) => {
+				let len = l.len();
+				let mut data = Vec::with_capacity(len);
+				let mut bitvec = Vec::with_capacity(len);
 
-			for i in 0..len {
-				let l_defined = l.is_defined(i);
-				let r_defined = r.is_defined(i);
-				let l_val = l.data().get(i);
-				let r_val = r.data().get(i);
+				for i in 0..len {
+					let l_defined = l.is_defined(i);
+					let r_defined = r.is_defined(i);
+					let l_val = l.data().get(i);
+					let r_val = r.data().get(i);
 
-				if l_defined && r_defined {
-					data.push(l_val || r_val);
-					bitvec.push(true);
-				} else {
-					data.push(false);
-					bitvec.push(false);
+					if l_defined && r_defined {
+						data.push(l_val || r_val);
+						bitvec.push(true);
+					} else {
+						data.push(false);
+						bitvec.push(false);
+					}
 				}
-			}
 
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool_with_bitvec(data, bitvec),
-			})
-		}
-		(ColumnData::Undefined(u), _) | (_, ColumnData::Undefined(u)) => {
-			let len = u.len();
-			let data = vec![false; len];
-			let bitvec = vec![false; len];
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool_with_bitvec(data, bitvec),
-			})
-		}
-		_ => {
-			unreachable!("OR columns should only be called with boolean columns from equality comparisons")
+				Ok(Column {
+					name: fragment.clone(),
+					data: ColumnData::bool_with_bitvec(data, bitvec),
+				})
+			}
+			_ => {
+				unreachable!(
+					"OR columns should only be called with boolean columns from equality comparisons"
+				)
+			}
 		}
 	})
 }
@@ -793,7 +760,6 @@ fn negate_column(col: Column, fragment: Fragment) -> Column {
 				data: ColumnData::bool_with_bitvec(data, bitvec),
 			})
 		}
-		ColumnData::Undefined(_) => Ok(col.clone()),
 		_ => unreachable!("negate_column should only be called with boolean columns"),
 	})
 	.unwrap()
@@ -855,9 +821,8 @@ fn execute_if_multi(
 			}
 		};
 
-		// Handle empty/undefined branch results (from empty blocks like `{}` or no-branch-taken)
-		let is_empty_result = branch_results.is_empty()
-			|| branch_results.iter().all(|col| matches!(col.data(), ColumnData::Undefined(_)));
+		// Handle empty branch results (from empty blocks like `{}` or no-branch-taken)
+		let is_empty_result = branch_results.is_empty();
 		if is_empty_result {
 			if let Some(data) = result_data.as_mut() {
 				for col_data in data.iter_mut() {
@@ -904,7 +869,7 @@ fn execute_if_multi(
 	if result.is_empty() {
 		Ok(vec![Column {
 			name: Fragment::internal("none"),
-			data: ColumnData::Undefined(UndefinedContainer::new(ctx.row_count)),
+			data: ColumnData::none_typed(Type::Boolean, ctx.row_count),
 		}])
 	} else {
 		Ok(result)

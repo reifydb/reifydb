@@ -88,7 +88,7 @@ impl ScalarFunction for DurationWeeks {
 			if let Some(val) = extract_i64(col.data(), i) {
 				container.push(Duration::from_weeks(val));
 			} else {
-				container.push_undefined();
+				container.push_default();
 			}
 		}
 

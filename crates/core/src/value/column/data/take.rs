@@ -32,7 +32,7 @@ macro_rules! map_container {
 			ColumnData::DateTime($c) => ColumnData::DateTime($body),
 			ColumnData::Time($c) => ColumnData::Time($body),
 			ColumnData::Duration($c) => ColumnData::Duration($body),
-			ColumnData::Undefined($c) => ColumnData::Undefined($body),
+
 			ColumnData::IdentityId($c) => ColumnData::IdentityId($body),
 			ColumnData::DictionaryId($c) => ColumnData::DictionaryId($body),
 			ColumnData::Uuid4($c) => ColumnData::Uuid4($body),

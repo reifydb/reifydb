@@ -44,10 +44,10 @@ impl ScalarFunction for DateEndOfMonth {
 						let last_day = Date::days_in_month(year, month);
 						match Date::new(year, month, last_day) {
 							Some(d) => result.push(d),
-							None => result.push_undefined(),
+							None => result.push_default(),
 						}
 					} else {
-						result.push_undefined();
+						result.push_default();
 					}
 				}
 

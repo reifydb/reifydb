@@ -162,13 +162,13 @@ impl ScalarFunction for TimeNew {
 					if h >= 0 && m >= 0 && s >= 0 && n >= 0 {
 						match Time::new(h as u32, m as u32, s as u32, n as u32) {
 							Some(time) => container.push(time),
-							None => container.push_undefined(),
+							None => container.push_default(),
 						}
 					} else {
-						container.push_undefined();
+						container.push_default();
 					}
 				}
-				_ => container.push_undefined(),
+				_ => container.push_default(),
 			}
 		}
 

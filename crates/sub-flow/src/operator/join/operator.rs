@@ -166,7 +166,7 @@ impl JoinOperator {
 			let col = if let Some(col_name) = compiled_expr.access_column_name() {
 				columns.column(col_name)
 					.cloned()
-					.unwrap_or_else(|| Column::undefined(col_name, row_count))
+					.unwrap_or_else(|| Column::undefined_typed(col_name, Type::Boolean, row_count))
 			} else {
 				compiled_expr.execute(&exec_ctx)?
 			};

@@ -145,7 +145,7 @@ where
 		DataVec::push(&mut self.data, value);
 	}
 
-	pub fn push_undefined(&mut self) {
+	pub fn push_default(&mut self) {
 		DataVec::push(&mut self.data, T::default());
 	}
 
@@ -247,12 +247,6 @@ where
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
 		Ok(())
-	}
-
-	pub fn extend_from_undefined(&mut self, len: usize) {
-		for _ in 0..len {
-			DataVec::push(&mut self.data, T::default());
-		}
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<T>> + '_
@@ -362,12 +356,12 @@ pub mod tests {
 
 		container.push(100);
 		container.push(-200);
-		container.push_undefined();
+		container.push_default();
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&100));
 		assert_eq!(container.get(1), Some(&-200));
-		assert_eq!(container.get(2), Some(&0)); // undefined pushes default
+		assert_eq!(container.get(2), Some(&0)); // push_default pushes default
 
 		assert!(container.is_defined(0));
 		assert!(container.is_defined(1));
@@ -386,18 +380,6 @@ pub mod tests {
 		assert_eq!(container1.get(1), Some(&2));
 		assert_eq!(container1.get(2), Some(&3));
 		assert_eq!(container1.get(3), Some(&4));
-	}
-
-	#[test]
-	fn test_extend_from_undefined() {
-		let mut container = NumberContainer::from_vec(vec![1i32, 2]);
-		container.extend_from_undefined(2);
-
-		assert_eq!(container.len(), 4);
-		assert_eq!(container.get(0), Some(&1));
-		assert_eq!(container.get(1), Some(&2));
-		assert_eq!(container.get(2), Some(&0)); // default
-		assert_eq!(container.get(3), Some(&0)); // default
 	}
 
 	#[test]

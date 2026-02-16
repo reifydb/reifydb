@@ -15,8 +15,8 @@ use crate::value::column::ColumnData;
 
 pub mod decimal;
 pub mod int;
+pub mod none;
 pub mod uint;
-pub mod undefined;
 pub mod uuid;
 pub mod value;
 
@@ -49,14 +49,6 @@ macro_rules! impl_push {
 						inner.push(value);
 						DataBitVec::push(bitvec, true);
 					}
-					ColumnData::Undefined(container) => {
-						let mut new_container =
-							ColumnData::$factory(vec![<$t>::default(); container.len()]);
-						if let ColumnData::$variant(new_container) = &mut new_container {
-							new_container.push(value);
-						}
-						*self = new_container;
-					}
 					other => panic!(
 						"called `push::<{}>()` on EngineColumnData::{:?}",
 						stringify!($t),
@@ -76,7 +68,7 @@ macro_rules! impl_numeric_push {
 					$(
 						ColumnData::$variant(container) => match <$from as SafeConvert<$target>>::checked_convert(value) {
 							Some(v) => container.push(v),
-							None => container.push_undefined(),
+							None => container.push_default(),
 						},
 					)*
 					ColumnData::$native_variant(container) => {
@@ -85,13 +77,6 @@ macro_rules! impl_numeric_push {
 					ColumnData::Option { inner, bitvec } => {
 						inner.push(value);
 						DataBitVec::push(bitvec, true);
-					}
-					ColumnData::Undefined(container) => {
-						let mut new_container = ColumnData::$factory(vec![$default; container.len()]);
-						if let ColumnData::$native_variant(new_container) = &mut new_container {
-							new_container.push(value);
-						}
-						*self = new_container;
 					}
 					other => {
 						panic!(
@@ -118,13 +103,6 @@ impl Push<bool> for ColumnData {
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
-			}
-			ColumnData::Undefined(container) => {
-				let mut new_container = ColumnData::bool(vec![false; container.len()]);
-				if let ColumnData::Bool(new_container) = &mut new_container {
-					new_container.push(value);
-				}
-				*self = new_container;
 			}
 			other => panic!("called `push::<bool>()` on EngineColumnData::{:?}", other.get_type()),
 		}
@@ -356,17 +334,6 @@ impl Push<Blob> for ColumnData {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			ColumnData::Undefined(container) => {
-				let mut new_container = ColumnData::blob(vec![Blob::default(); container.len()]);
-				if let ColumnData::Blob {
-					container: new_container,
-					..
-				} = &mut new_container
-				{
-					new_container.push(value);
-				}
-				*self = new_container;
-			}
 			other => panic!("called `push::<Blob>()` on EngineColumnData::{:?}", other.get_type()),
 		}
 	}
@@ -388,17 +355,6 @@ impl Push<String> for ColumnData {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			ColumnData::Undefined(container) => {
-				let mut new_container = ColumnData::utf8(vec![String::default(); container.len()]);
-				if let ColumnData::Utf8 {
-					container: new_container,
-					..
-				} = &mut new_container
-				{
-					new_container.push(value);
-				}
-				*self = new_container;
-			}
 			other => {
 				panic!("called `push::<String>()` on EngineColumnData::{:?}", other.get_type())
 			}
@@ -418,14 +374,6 @@ impl Push<DictionaryEntryId> for ColumnData {
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
-			}
-			ColumnData::Undefined(container) => {
-				let mut new_container =
-					ColumnData::dictionary_id(vec![DictionaryEntryId::default(); container.len()]);
-				if let ColumnData::DictionaryId(new_container) = &mut new_container {
-					new_container.push(value);
-				}
-				*self = new_container;
 			}
 			other => panic!(
 				"called `push::<DictionaryEntryId>()` on EngineColumnData::{:?}",

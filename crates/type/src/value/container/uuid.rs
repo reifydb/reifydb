@@ -140,7 +140,7 @@ where
 		DataVec::push(&mut self.data, value);
 	}
 
-	pub fn push_undefined(&mut self) {
+	pub fn push_default(&mut self) {
 		DataVec::push(&mut self.data, T::default());
 	}
 
@@ -196,12 +196,6 @@ where
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
 		Ok(())
-	}
-
-	pub fn extend_from_undefined(&mut self, len: usize) {
-		for _ in 0..len {
-			DataVec::push(&mut self.data, T::default());
-		}
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<T>> + '_
@@ -305,13 +299,13 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_push_with_undefined() {
+	fn test_push_with_default() {
 		let mut container: UuidContainer<Uuid4> = UuidContainer::with_capacity(3);
 		let uuid1 = Uuid4::generate();
 		let uuid2 = Uuid4::generate();
 
 		container.push(uuid1);
-		container.push_undefined();
+		container.push_default();
 		container.push(uuid2);
 
 		assert_eq!(container.len(), 3);

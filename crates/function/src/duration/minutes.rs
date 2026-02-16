@@ -88,7 +88,7 @@ impl ScalarFunction for DurationMinutes {
 			if let Some(val) = extract_i64(col.data(), i) {
 				container.push(Duration::from_minutes(val));
 			} else {
-				container.push_undefined();
+				container.push_default();
 			}
 		}
 

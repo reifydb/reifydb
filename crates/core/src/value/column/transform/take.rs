@@ -30,6 +30,8 @@ impl Columns {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_type::value::r#type::Type;
+
 	use super::*;
 	use crate::value::column::{Column, ColumnData};
 
@@ -179,31 +181,24 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_undefined_column() {
-		let mut test_instance = Columns::new(vec![Column::undefined("u", 3)]);
+	fn test_none_column() {
+		let mut test_instance = Columns::new(vec![Column::undefined_typed("u", Type::Boolean, 3)]);
 
 		test_instance.take(2).unwrap();
 
-		match &test_instance[0].data() {
-			ColumnData::Undefined(container) => {
-				assert_eq!(container.len(), 2);
-			}
-			_ => panic!("Expected none column"),
-		}
+		assert_eq!(test_instance[0].data().len(), 2);
+		assert_eq!(test_instance[0].data().get_value(0), reifydb_type::value::Value::None);
+		assert_eq!(test_instance[0].data().get_value(1), reifydb_type::value::Value::None);
 	}
 
 	#[test]
-	fn test_handles_undefined() {
-		let mut test_instance = Columns::new(vec![Column::undefined("u", 5)]);
+	fn test_handles_none() {
+		let mut test_instance = Columns::new(vec![Column::undefined_typed("u", Type::Boolean, 5)]);
 
 		test_instance.take(3).unwrap();
 
-		match &test_instance[0].data() {
-			ColumnData::Undefined(container) => {
-				assert_eq!(container.len(), 3)
-			}
-			_ => panic!("Expected Undefined column"),
-		}
+		assert_eq!(test_instance[0].data().len(), 3);
+		assert_eq!(test_instance[0].data().get_value(0), reifydb_type::value::Value::None);
 	}
 
 	#[test]

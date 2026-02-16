@@ -8,7 +8,7 @@ use reifydb_type::{
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
+			utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -809,66 +809,57 @@ impl ColumnData {
 		}
 	}
 
-	pub fn undefined(len: usize) -> Self {
-		ColumnData::Undefined(UndefinedContainer::new(len))
-	}
-
 	/// Create a single-element None of the given type (bitvec=[false]).
-	/// Unlike `undefined()`, this preserves the column type so comparisons
+	/// This preserves the column type so comparisons
 	/// see the correct inner type rather than `Option<Boolean>`.
 	pub fn typed_none(ty: &Type) -> Self {
 		match ty {
 			Type::Option(inner) => Self::typed_none(inner),
-			_ => Self::undefined_typed(ty.clone(), 1),
+			_ => Self::none_typed(ty.clone(), 1),
 		}
 	}
 
-	/// Create typed column data with all undefined values (bitvec all false).
-	pub fn undefined_typed(ty: Type, len: usize) -> Self {
-		match ty {
-			Type::Boolean => Self::bool_with_bitvec(vec![false; len], BitVec::repeat(len, false)),
-			Type::Float4 => Self::float4_with_bitvec(vec![0.0f32; len], BitVec::repeat(len, false)),
-			Type::Float8 => Self::float8_with_bitvec(vec![0.0f64; len], BitVec::repeat(len, false)),
-			Type::Int1 => Self::int1_with_bitvec(vec![0i8; len], BitVec::repeat(len, false)),
-			Type::Int2 => Self::int2_with_bitvec(vec![0i16; len], BitVec::repeat(len, false)),
-			Type::Int4 => Self::int4_with_bitvec(vec![0i32; len], BitVec::repeat(len, false)),
-			Type::Int8 => Self::int8_with_bitvec(vec![0i64; len], BitVec::repeat(len, false)),
-			Type::Int16 => Self::int16_with_bitvec(vec![0i128; len], BitVec::repeat(len, false)),
-			Type::Utf8 => Self::utf8_with_bitvec(vec![String::new(); len], BitVec::repeat(len, false)),
-			Type::Uint1 => Self::uint1_with_bitvec(vec![0u8; len], BitVec::repeat(len, false)),
-			Type::Uint2 => Self::uint2_with_bitvec(vec![0u16; len], BitVec::repeat(len, false)),
-			Type::Uint4 => Self::uint4_with_bitvec(vec![0u32; len], BitVec::repeat(len, false)),
-			Type::Uint8 => Self::uint8_with_bitvec(vec![0u64; len], BitVec::repeat(len, false)),
-			Type::Uint16 => Self::uint16_with_bitvec(vec![0u128; len], BitVec::repeat(len, false)),
-			Type::Date => Self::date_with_bitvec(vec![Date::default(); len], BitVec::repeat(len, false)),
-			Type::DateTime => {
-				Self::datetime_with_bitvec(vec![DateTime::default(); len], BitVec::repeat(len, false))
-			}
-			Type::Time => Self::time_with_bitvec(vec![Time::default(); len], BitVec::repeat(len, false)),
-			Type::Duration => {
-				Self::duration_with_bitvec(vec![Duration::default(); len], BitVec::repeat(len, false))
-			}
-			Type::Blob => Self::blob_with_bitvec(vec![Blob::new(vec![]); len], BitVec::repeat(len, false)),
-			Type::Uuid4 => Self::uuid4_with_bitvec(vec![Uuid4::default(); len], BitVec::repeat(len, false)),
-			Type::Uuid7 => Self::uuid7_with_bitvec(vec![Uuid7::default(); len], BitVec::repeat(len, false)),
-			Type::IdentityId => Self::identity_id_with_bitvec(
-				vec![IdentityId::default(); len],
-				BitVec::repeat(len, false),
-			),
-			Type::Int => Self::int_with_bitvec(vec![Int::default(); len], BitVec::repeat(len, false)),
-			Type::Uint => Self::uint_with_bitvec(vec![Uint::default(); len], BitVec::repeat(len, false)),
+	/// Create typed column data with all none values (bitvec all false).
+	/// Always returns an Option-wrapped column to avoid the *_with_bitvec
+	/// optimization that strips the Option wrapper when the bitvec is all-ones
+	/// (which is vacuously true for empty bitvecs).
+	pub fn none_typed(ty: Type, len: usize) -> Self {
+		let bitvec = BitVec::repeat(len, false);
+		let inner = match ty {
+			Type::Boolean => Self::bool(vec![false; len]),
+			Type::Float4 => Self::float4(vec![0.0f32; len]),
+			Type::Float8 => Self::float8(vec![0.0f64; len]),
+			Type::Int1 => Self::int1(vec![0i8; len]),
+			Type::Int2 => Self::int2(vec![0i16; len]),
+			Type::Int4 => Self::int4(vec![0i32; len]),
+			Type::Int8 => Self::int8(vec![0i64; len]),
+			Type::Int16 => Self::int16(vec![0i128; len]),
+			Type::Utf8 => Self::utf8(vec![String::new(); len]),
+			Type::Uint1 => Self::uint1(vec![0u8; len]),
+			Type::Uint2 => Self::uint2(vec![0u16; len]),
+			Type::Uint4 => Self::uint4(vec![0u32; len]),
+			Type::Uint8 => Self::uint8(vec![0u64; len]),
+			Type::Uint16 => Self::uint16(vec![0u128; len]),
+			Type::Date => Self::date(vec![Date::default(); len]),
+			Type::DateTime => Self::datetime(vec![DateTime::default(); len]),
+			Type::Time => Self::time(vec![Time::default(); len]),
+			Type::Duration => Self::duration(vec![Duration::default(); len]),
+			Type::Blob => Self::blob(vec![Blob::new(vec![]); len]),
+			Type::Uuid4 => Self::uuid4(vec![Uuid4::default(); len]),
+			Type::Uuid7 => Self::uuid7(vec![Uuid7::default(); len]),
+			Type::IdentityId => Self::identity_id(vec![IdentityId::default(); len]),
+			Type::Int => Self::int(vec![Int::default(); len]),
+			Type::Uint => Self::uint(vec![Uint::default(); len]),
 			Type::Decimal {
 				..
-			} => Self::decimal_with_bitvec(vec![Decimal::from(0); len], BitVec::repeat(len, false)),
-			Type::Any => Self::any_with_bitvec(
-				vec![Box::new(reifydb_type::value::Value::None); len],
-				BitVec::repeat(len, false),
-			),
-			Type::DictionaryId => Self::dictionary_id_with_bitvec(
-				vec![DictionaryEntryId::default(); len],
-				BitVec::repeat(len, false),
-			),
-			Type::Option(_) => Self::undefined(len),
+			} => Self::decimal(vec![Decimal::from(0); len]),
+			Type::Any => Self::any(vec![Box::new(reifydb_type::value::Value::None); len]),
+			Type::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
+			Type::Option(inner) => return Self::none_typed(*inner, len),
+		};
+		ColumnData::Option {
+			inner: Box::new(inner),
+			bitvec,
 		}
 	}
 }

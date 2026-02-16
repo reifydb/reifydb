@@ -79,13 +79,13 @@ impl ScalarFunction for DateTimeSubtract {
 
 								match DateTime::from_parts(total_seconds, nano_part) {
 									Ok(result) => container.push(result),
-									Err(_) => container.push_undefined(),
+									Err(_) => container.push_default(),
 								}
 							} else {
-								container.push_undefined();
+								container.push_default();
 							}
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

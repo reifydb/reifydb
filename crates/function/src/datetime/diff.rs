@@ -44,7 +44,7 @@ impl ScalarFunction for DateTimeDiff {
 								dt1.to_nanos_since_epoch() - dt2.to_nanos_since_epoch();
 							container.push(Duration::from_nanoseconds(diff_nanos));
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

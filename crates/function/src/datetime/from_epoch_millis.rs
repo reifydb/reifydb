@@ -88,7 +88,7 @@ impl ScalarFunction for DateTimeFromEpochMillis {
 			if let Some(millis) = extract_i64(col.data(), i) {
 				container.push(DateTime::from_timestamp_millis(millis as u64));
 			} else {
-				container.push_undefined();
+				container.push_default();
 			}
 		}
 

@@ -45,7 +45,7 @@ impl ScalarFunction for DateDiff {
 								- d2.to_days_since_epoch()) as i64;
 							container.push(Duration::from_days(diff_days));
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

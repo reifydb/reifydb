@@ -125,7 +125,7 @@ impl<S: Storage> BoolContainer<S> {
 		DataBitVec::push(&mut self.data, value);
 	}
 
-	pub fn push_undefined(&mut self) {
+	pub fn push_default(&mut self) {
 		DataBitVec::push(&mut self.data, false);
 	}
 
@@ -172,12 +172,6 @@ impl<S: Storage> BoolContainer<S> {
 	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
 		DataBitVec::extend_from(&mut self.data, &other.data);
 		Ok(())
-	}
-
-	pub fn extend_from_undefined(&mut self, len: usize) {
-		for _ in 0..len {
-			DataBitVec::push(&mut self.data, false);
-		}
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<bool>> + '_ {
@@ -284,12 +278,12 @@ pub mod tests {
 
 		container.push(true);
 		container.push(false);
-		container.push_undefined();
+		container.push_default();
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(true));
 		assert_eq!(container.get(1), Some(false));
-		assert_eq!(container.get(2), Some(false)); // undefined pushes false
+		assert_eq!(container.get(2), Some(false)); // default pushes false
 
 		assert!(container.is_defined(0));
 		assert!(container.is_defined(1));

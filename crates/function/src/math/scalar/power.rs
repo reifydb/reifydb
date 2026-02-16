@@ -5,11 +5,7 @@ use num_traits::ToPrimitive;
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::{
 	fragment::Fragment,
-	value::{
-		container::{number::NumberContainer, undefined::UndefinedContainer},
-		decimal::Decimal,
-		r#type::Type,
-	},
+	value::{container::number::NumberContainer, decimal::Decimal, r#type::Type},
 };
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
@@ -470,8 +466,6 @@ impl ScalarFunction for Power {
 		let exponent_column = columns.get(1).unwrap();
 
 		match (base_column.data(), exponent_column.data()) {
-			(ColumnData::Undefined(u), _) => Ok(ColumnData::Undefined(UndefinedContainer::new(u.len()))),
-			(_, ColumnData::Undefined(u)) => Ok(ColumnData::Undefined(UndefinedContainer::new(u.len()))),
 			(ColumnData::Int1(base_container), ColumnData::Int1(exp_container)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);

@@ -60,7 +60,7 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> cra
 		return extract_column_data(col, ctx);
 	}
 
-	Ok(Column::new(name.to_string(), ColumnData::undefined(ctx.row_count)))
+	Ok(Column::new(name.to_string(), ColumnData::none_typed(Type::Boolean, ctx.row_count)))
 }
 
 fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column> {

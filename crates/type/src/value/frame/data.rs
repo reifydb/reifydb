@@ -11,7 +11,7 @@ use crate::{
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
-			undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
+			utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
 		datetime::DateTime,
@@ -59,8 +59,6 @@ pub enum FrameColumnData {
 		inner: Box<FrameColumnData>,
 		bitvec: BitVec,
 	},
-	// special case: all undefined
-	Undefined(UndefinedContainer),
 }
 
 impl FrameColumnData {
@@ -97,7 +95,6 @@ impl FrameColumnData {
 				inner,
 				..
 			} => Type::Option(Box::new(inner.get_type())),
-			FrameColumnData::Undefined(_) => Type::Option(Box::new(Type::Boolean)),
 		}
 	}
 
@@ -134,7 +131,6 @@ impl FrameColumnData {
 				bitvec,
 				..
 			} => idx < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, idx),
-			FrameColumnData::Undefined(_) => false,
 		}
 	}
 
@@ -212,7 +208,6 @@ impl FrameColumnData {
 				inner,
 				..
 			} => inner.len(),
-			FrameColumnData::Undefined(container) => container.len(),
 		}
 	}
 
@@ -255,7 +250,6 @@ impl FrameColumnData {
 					"none".to_string()
 				}
 			}
-			FrameColumnData::Undefined(container) => container.as_string(index),
 		}
 	}
 }
@@ -300,7 +294,6 @@ impl FrameColumnData {
 					Value::None
 				}
 			}
-			FrameColumnData::Undefined(container) => container.get_value(index),
 		}
 	}
 }

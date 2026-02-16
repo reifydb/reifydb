@@ -50,10 +50,10 @@ impl ScalarFunction for DateTimeNew {
 								time.nanosecond(),
 							) {
 								Some(dt) => container.push(dt),
-								None => container.push_undefined(),
+								None => container.push_default(),
 							}
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

@@ -42,7 +42,7 @@ impl ScalarFunction for DurationAdd {
 						(Some(lv), Some(rv)) => {
 							container.push(*lv + *rv);
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

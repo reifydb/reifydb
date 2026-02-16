@@ -147,7 +147,6 @@ impl QueryNode for FilterNode {
 								"filter expression must evaluate to a boolean column"
 							),
 						},
-						ColumnData::Undefined(_) => BitVec::repeat(row_count, false),
 						_ => panic!("filter expression must evaluate to a boolean column"),
 					};
 
@@ -236,11 +235,6 @@ impl FilterNode {
 					}
 					_ => panic!("filter expression must evaluate to a boolean column"),
 				},
-				ColumnData::Undefined(_) => {
-					for i in 0..row_count {
-						mask.set(i, false);
-					}
-				}
 				_ => panic!("filter expression must evaluate to a boolean column"),
 			}
 		}

@@ -116,12 +116,6 @@ impl AggregateFunction for Count {
 						self.counts.insert(group.clone(), count);
 					}
 				}
-				ColumnData::Undefined(_) => {
-					// Undefined columns have no defined values to count
-					for (group, _indices) in groups.iter() {
-						self.counts.insert(group.clone(), 0);
-					}
-				}
 				_ => {
 					// For other column types, use generic is_defined check
 					for (group, indices) in groups.iter() {

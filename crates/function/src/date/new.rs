@@ -135,13 +135,13 @@ impl ScalarFunction for DateNew {
 					if m >= 1 && d >= 1 {
 						match Date::new(y, m as u32, d as u32) {
 							Some(date) => container.push(date),
-							None => container.push_undefined(),
+							None => container.push_default(),
 						}
 					} else {
-						container.push_undefined();
+						container.push_default();
 					}
 				}
-				_ => container.push_undefined(),
+				_ => container.push_default(),
 			}
 		}
 

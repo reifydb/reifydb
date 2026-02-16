@@ -108,7 +108,7 @@ macro_rules! impl_to_temporal {
 
 					out.push::<$type>(parsed);
 				} else {
-					out.push_undefined();
+					out.push_none();
 				}
 			}
 			Ok(out)

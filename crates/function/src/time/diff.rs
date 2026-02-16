@@ -44,7 +44,7 @@ impl ScalarFunction for TimeDiff {
 								- t2.to_nanos_since_midnight() as i64;
 							container.push(Duration::from_nanoseconds(diff_nanos));
 						}
-						_ => container.push_undefined(),
+						_ => container.push_default(),
 					}
 				}
 

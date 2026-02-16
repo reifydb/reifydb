@@ -19,13 +19,6 @@ impl Push<Uuid4> for ColumnData {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			ColumnData::Undefined(container) => {
-				let mut new_container = ColumnData::uuid4(vec![Uuid4::default(); container.len()]);
-				if let ColumnData::Uuid4(new_container) = &mut new_container {
-					new_container.push(value);
-				}
-				*self = new_container;
-			}
 			other => {
 				panic!(
 					"called `push::<Uuid4>()` on incompatible EngineColumnData::{:?}",
@@ -46,13 +39,6 @@ impl Push<Uuid7> for ColumnData {
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
-			}
-			ColumnData::Undefined(container) => {
-				let mut new_container = ColumnData::uuid7(vec![Uuid7::default(); container.len()]);
-				if let ColumnData::Uuid7(new_container) = &mut new_container {
-					new_container.push(value);
-				}
-				*self = new_container;
 			}
 			other => {
 				panic!(
