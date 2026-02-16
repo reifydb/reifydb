@@ -149,14 +149,18 @@ impl Arena {
 			};
 		}
 
-		let type_code = column_data_to_type_code(data);
+		// Unwrap Option to get inner data + optional bitvec
+		let (inner_data, bitvec) = data.unwrap_option();
+		let type_code = column_data_to_type_code(inner_data);
 
-		// Containers no longer carry bitvecs; all values are defined.
-		// Send an empty defined_bitvec which the unmarshal side interprets as "all defined".
-		let defined_bitvec = BufferFFI::empty();
+		// Marshal bitvec if present; empty means "all defined"
+		let defined_bitvec = match bitvec {
+			Some(bv) => self.marshal_bitvec(bv, row_count),
+			None => BufferFFI::empty(),
+		};
 
-		// Marshal data and offsets based on type
-		let (data_buffer, offsets_buffer) = self.marshal_column_data_bytes(data);
+		// Marshal data and offsets based on inner type
+		let (data_buffer, offsets_buffer) = self.marshal_column_data_bytes(inner_data);
 
 		ColumnDataFFI {
 			type_code,
@@ -194,7 +198,7 @@ impl Arena {
 			return ColumnData::none_typed(Type::Boolean, 0);
 		}
 
-		match ffi.type_code {
+		let inner = match ffi.type_code {
 			ColumnTypeCode::Bool => {
 				let container = self.unmarshal_bool_data(ffi);
 				ColumnData::Bool(container)
@@ -322,6 +326,17 @@ impl Arena {
 				ColumnData::DictionaryId(DictionaryContainer::new(entries))
 			}
 			ColumnTypeCode::Undefined => ColumnData::none_typed(Type::Boolean, row_count),
+		};
+
+		// If defined_bitvec is present, wrap in Option
+		if !ffi.defined_bitvec.is_empty() {
+			let bitvec = self.unmarshal_bitvec(&ffi.defined_bitvec, row_count);
+			ColumnData::Option {
+				inner: Box::new(inner),
+				bitvec,
+			}
+		} else {
+			inner
 		}
 	}
 }
@@ -502,10 +517,9 @@ impl Arena {
 			}
 
 			ColumnData::Option {
+				inner,
 				..
-			} => {
-				unreachable!("Option columns cannot be marshalled to FFI yet")
-			}
+			} => self.marshal_column_data_bytes(inner),
 		}
 	}
 
@@ -598,5 +612,39 @@ impl Arena {
 				cap: offsets_byte_len,
 			},
 		)
+	}
+
+	/// Marshal a BitVec (definedness bitmap) to FFI
+	pub(super) fn marshal_bitvec(&mut self, bitvec: &reifydb_type::util::bitvec::BitVec, len: usize) -> BufferFFI {
+		let byte_count = (len + 7) / 8;
+		let ptr = self.alloc(byte_count);
+		if !ptr.is_null() {
+			unsafe {
+				std::ptr::write_bytes(ptr, 0, byte_count);
+			}
+			for i in 0..len {
+				if bitvec.get(i) {
+					unsafe {
+						*ptr.add(i / 8) |= 1 << (i % 8);
+					}
+				}
+			}
+		}
+		BufferFFI {
+			ptr,
+			len: byte_count,
+			cap: byte_count,
+		}
+	}
+
+	/// Unmarshal a BitVec (definedness bitmap) from FFI
+	pub(super) fn unmarshal_bitvec(&self, ffi: &BufferFFI, row_count: usize) -> reifydb_type::util::bitvec::BitVec {
+		if ffi.is_empty() {
+			return reifydb_type::util::bitvec::BitVec::empty();
+		}
+		unsafe {
+			let bytes = std::slice::from_raw_parts(ffi.ptr, ffi.len);
+			reifydb_type::util::bitvec::BitVec::from_raw(bytes.to_vec(), row_count)
+		}
 	}
 }
