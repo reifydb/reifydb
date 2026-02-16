@@ -26,7 +26,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{EngineVersion, engine::StandardEngine, transform::Transforms};
+use reifydb_engine::{EngineVersion, engine::StandardEngine, transform::registry::Transforms};
 use reifydb_function::registry::{Functions, FunctionsBuilder};
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,

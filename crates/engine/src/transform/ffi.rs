@@ -20,7 +20,7 @@ use reifydb_sdk::ffi::arena::Arena;
 use reifydb_type;
 use tracing::{error, instrument};
 
-use super::{Transform, TransformContext};
+use super::{Transform, context::TransformContext};
 
 /// FFI transform that wraps an external transform implementation
 pub struct NativeTransformFFI {

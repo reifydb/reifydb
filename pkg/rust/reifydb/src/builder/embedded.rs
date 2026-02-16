@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_engine::transform::Transforms;
+use reifydb_engine::transform::registry::Transforms;
 use reifydb_function::registry::FunctionsBuilder;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;

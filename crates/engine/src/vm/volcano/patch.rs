@@ -18,6 +18,7 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
+	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -62,100 +63,24 @@ impl QueryNode for PatchNode {
 	#[instrument(name = "volcano::patch::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "PatchNode::next() called before initialize()");
-		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
-			let row_count = columns.row_count();
-			let row_numbers = columns.row_numbers.to_vec();
-
-			let patch_names: Vec<Fragment> =
-				self.expressions.iter().map(column_name_from_expression).collect();
-
-			let expressions = &self.expressions;
-			let mut patch_columns = Vec::with_capacity(expressions.len());
-			for (expr, compiled_expr) in expressions.iter().zip(compiled.iter()) {
-				let mut exec_ctx = EvalContext {
-					target: None,
-					columns: columns.clone(),
-					row_count,
-					take: None,
-					params: &ctx.params,
-					symbol_table: &ctx.stack,
-					is_aggregate_context: false,
-					functions: &stored_ctx.services.functions,
-					clock: &stored_ctx.services.clock,
-					arena: None,
-				};
-
-				if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
-					let alias_name = alias_expr.alias.name();
-
-					if let Some(table_column) =
-						source.columns().iter().find(|col| col.name == alias_name)
-					{
-						let column_ident = Fragment::internal(&table_column.name);
-						let resolved_column = ResolvedColumn::new(
-							column_ident,
-							source.clone(),
-							table_column.clone(),
-						);
-						exec_ctx.target = Some(TargetColumn::Resolved(resolved_column));
-					}
-				}
-
-				let mut column = compiled_expr.execute(&exec_ctx)?;
-
-				if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
-					if column.data.get_type() != target_type {
-						let data = cast_column_data(
-							&exec_ctx,
-							&column.data,
-							target_type,
-							&expr.lazy_fragment(),
-						)?;
-						column = reifydb_core::value::column::Column {
-							name: column.name,
-							data,
-						};
-					}
-				}
-
-				patch_columns.push(column);
-			}
-
-			let mut result_columns = Vec::new();
-			let mut result_headers = Vec::new();
-
-			for original_col in columns.into_iter() {
-				let original_name = original_col.name().text();
-
-				if let Some(patch_idx) = patch_names.iter().position(|n| n.text() == original_name) {
-					result_columns.push(patch_columns[patch_idx].clone());
-					result_headers.push(patch_names[patch_idx].clone());
-				} else {
-					result_headers.push(original_col.name().clone());
-					result_columns.push(original_col);
-				}
-			}
-
-			for (patch_idx, patch_name) in patch_names.iter().enumerate() {
-				if !result_headers.iter().any(|h| h.text() == patch_name.text()) {
-					result_columns.push(patch_columns[patch_idx].clone());
-					result_headers.push(patch_name.clone());
-				}
-			}
+			let stored_ctx = &self.context.as_ref().unwrap().0;
+			let transform_ctx = TransformContext {
+				functions: &stored_ctx.services.functions,
+				clock: &stored_ctx.services.clock,
+				params: &stored_ctx.params,
+			};
+			let result = self.apply(&transform_ctx, columns)?;
 
 			if self.headers.is_none() {
+				let result_headers: Vec<Fragment> = result.iter().map(|c| c.name().clone()).collect();
 				self.headers = Some(ColumnHeaders {
-					columns: result_headers.clone(),
+					columns: result_headers,
 				});
 			}
 
-			if row_numbers.is_empty() {
-				return Ok(Some(Columns::new(result_columns)));
-			} else {
-				return Ok(Some(Columns::with_row_numbers(result_columns, row_numbers)));
-			}
+			return Ok(Some(result));
 		}
 		Ok(None)
 	}
@@ -186,5 +111,87 @@ impl QueryNode for PatchNode {
 		Some(ColumnHeaders {
 			columns: result,
 		})
+	}
+}
+
+impl Transform for PatchNode {
+	fn apply(&self, ctx: &TransformContext, input: Columns) -> reifydb_type::Result<Columns> {
+		let (stored_ctx, compiled) =
+			self.context.as_ref().expect("PatchNode::apply() called before initialize()");
+
+		let row_count = input.row_count();
+		let row_numbers = input.row_numbers.to_vec();
+
+		let patch_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
+
+		let mut patch_columns = Vec::with_capacity(self.expressions.len());
+		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
+			let mut exec_ctx = EvalContext {
+				target: None,
+				columns: input.clone(),
+				row_count,
+				take: None,
+				params: ctx.params,
+				symbol_table: &stored_ctx.stack,
+				is_aggregate_context: false,
+				functions: ctx.functions,
+				clock: ctx.clock,
+				arena: None,
+			};
+
+			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
+				let alias_name = alias_expr.alias.name();
+
+				if let Some(table_column) = source.columns().iter().find(|col| col.name == alias_name) {
+					let column_ident = Fragment::internal(&table_column.name);
+					let resolved_column =
+						ResolvedColumn::new(column_ident, source.clone(), table_column.clone());
+					exec_ctx.target = Some(TargetColumn::Resolved(resolved_column));
+				}
+			}
+
+			let mut column = compiled_expr.execute(&exec_ctx)?;
+
+			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
+				if column.data.get_type() != target_type {
+					let data = cast_column_data(
+						&exec_ctx,
+						&column.data,
+						target_type,
+						&expr.lazy_fragment(),
+					)?;
+					column = reifydb_core::value::column::Column {
+						name: column.name,
+						data,
+					};
+				}
+			}
+
+			patch_columns.push(column);
+		}
+
+		let mut result_columns = Vec::new();
+
+		for original_col in input.into_iter() {
+			let original_name = original_col.name().text();
+
+			if let Some(patch_idx) = patch_names.iter().position(|n| n.text() == original_name) {
+				result_columns.push(patch_columns[patch_idx].clone());
+			} else {
+				result_columns.push(original_col);
+			}
+		}
+
+		for (patch_idx, patch_name) in patch_names.iter().enumerate() {
+			if !result_columns.iter().any(|c| c.name().text() == patch_name.text()) {
+				result_columns.push(patch_columns[patch_idx].clone());
+			}
+		}
+
+		if row_numbers.is_empty() {
+			Ok(Columns::new(result_columns))
+		} else {
+			Ok(Columns::with_row_numbers(result_columns, row_numbers))
+		}
 	}
 }

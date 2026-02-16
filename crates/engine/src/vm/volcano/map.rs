@@ -18,6 +18,7 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
+	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -59,87 +60,88 @@ impl QueryNode for MapNode {
 	#[instrument(name = "volcano::map::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "MapNode::next() called before initialize()");
-		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
-			let mut new_columns = Vec::with_capacity(self.expressions.len());
+			let stored_ctx = &self.context.as_ref().unwrap().0;
+			let transform_ctx = TransformContext {
+				functions: &stored_ctx.services.functions,
+				clock: &stored_ctx.services.clock,
+				params: &stored_ctx.params,
+			};
+			let result = self.apply(&transform_ctx, columns)?;
 
-			let row_count = columns.row_count();
-
-			let expressions = &self.expressions;
-			for (expr, compiled_expr) in expressions.iter().zip(compiled.iter()) {
-				let mut exec_ctx = EvalContext {
-					target: None,
-					columns: columns.clone(),
-					row_count,
-					take: None,
-					params: &stored_ctx.params,
-					symbol_table: &stored_ctx.stack,
-					is_aggregate_context: false,
-					functions: &stored_ctx.services.functions,
-					clock: &stored_ctx.services.clock,
-					arena: None,
-				};
-
-				// Check if this is an alias expression and we have source information
-				if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
-					let alias_name = alias_expr.alias.name();
-
-					// Find the matching column in the source
-					if let Some(table_column) =
-						source.columns().iter().find(|col| col.name == alias_name)
-					{
-						// Create a resolved column with source information
-						let column_ident = Fragment::internal(&table_column.name);
-						let resolved_column = ResolvedColumn::new(
-							column_ident,
-							source.clone(),
-							table_column.clone(),
-						);
-
-						exec_ctx.target = Some(TargetColumn::Resolved(resolved_column));
-					}
-				}
-
-				let mut column = compiled_expr.execute(&exec_ctx)?;
-
-				if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
-					if column.data.get_type() != target_type {
-						let data = cast_column_data(
-							&exec_ctx,
-							&column.data,
-							target_type,
-							&expr.lazy_fragment(),
-						)?;
-						column = reifydb_core::value::column::Column {
-							name: column.name,
-							data,
-						};
-					}
-				}
-
-				new_columns.push(column);
-			}
-
-			let column_names = expressions.iter().map(column_name_from_expression).collect();
+			let column_names = self.expressions.iter().map(column_name_from_expression).collect();
 			self.headers = Some(ColumnHeaders {
 				columns: column_names,
 			});
 
-			// Create new Columns with the original encoded numbers preserved
-			let result_columns = if !columns.row_numbers.is_empty() {
-				Columns::with_row_numbers(new_columns, columns.row_numbers.to_vec())
-			} else {
-				Columns::new(new_columns)
-			};
-
-			return Ok(Some(result_columns));
+			return Ok(Some(result));
 		}
 		Ok(None)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone().or(self.input.headers())
+	}
+}
+
+impl Transform for MapNode {
+	fn apply(&self, ctx: &TransformContext, input: Columns) -> reifydb_type::Result<Columns> {
+		let (stored_ctx, compiled) =
+			self.context.as_ref().expect("MapNode::apply() called before initialize()");
+
+		let row_count = input.row_count();
+		let mut new_columns = Vec::with_capacity(compiled.len());
+
+		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
+			let mut exec_ctx = EvalContext {
+				target: None,
+				columns: input.clone(),
+				row_count,
+				take: None,
+				params: ctx.params,
+				symbol_table: &stored_ctx.stack,
+				is_aggregate_context: false,
+				functions: ctx.functions,
+				clock: ctx.clock,
+				arena: None,
+			};
+
+			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
+				let alias_name = alias_expr.alias.name();
+				if let Some(table_column) = source.columns().iter().find(|col| col.name == alias_name) {
+					let column_ident = Fragment::internal(&table_column.name);
+					let resolved_column =
+						ResolvedColumn::new(column_ident, source.clone(), table_column.clone());
+					exec_ctx.target = Some(TargetColumn::Resolved(resolved_column));
+				}
+			}
+
+			let mut column = compiled_expr.execute(&exec_ctx)?;
+
+			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
+				if column.data.get_type() != target_type {
+					let data = cast_column_data(
+						&exec_ctx,
+						&column.data,
+						target_type,
+						&expr.lazy_fragment(),
+					)?;
+					column = reifydb_core::value::column::Column {
+						name: column.name,
+						data,
+					};
+				}
+			}
+
+			new_columns.push(column);
+		}
+
+		if !input.row_numbers.is_empty() {
+			Ok(Columns::with_row_numbers(new_columns, input.row_numbers.to_vec()))
+		} else {
+			Ok(Columns::new(new_columns))
+		}
 	}
 }
 

@@ -135,7 +135,7 @@ impl WasmDB {
 			Catalog::new(materialized_catalog, SchemaRegistry::new(single)),
 			runtime.clock().clone(),
 			Functions::defaults().build(),
-			reifydb_engine::transform::Transforms::empty(),
+			reifydb_engine::transform::registry::Transforms::empty(),
 			ioc,
 		);
 
