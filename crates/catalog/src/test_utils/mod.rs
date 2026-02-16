@@ -7,7 +7,6 @@ use reifydb_core::interface::catalog::{
 	id::{RingBufferId, TableId},
 	namespace::NamespaceDef,
 	policy::ColumnPolicyKind,
-	reducer::{ReducerActionDef, ReducerDef, ReducerId},
 	ringbuffer::RingBufferDef,
 	table::TableDef,
 	view::ViewDef,
@@ -237,34 +236,4 @@ pub fn create_flow_edge(
 
 	CatalogStore::create_flow_edge(txn, &edge_def).unwrap();
 	edge_def
-}
-
-pub fn create_reducer(txn: &mut AdminTransaction, namespace: &str, reducer: &str, key_columns: &[&str]) -> ReducerDef {
-	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
-	CatalogStore::create_reducer(
-		txn,
-		crate::store::reducer::create::ReducerToCreate {
-			name: Fragment::internal(reducer),
-			namespace: namespace_def.id,
-			key_columns: key_columns.iter().map(|s| s.to_string()).collect(),
-		},
-	)
-	.unwrap()
-}
-
-pub fn create_reducer_action(
-	txn: &mut AdminTransaction,
-	reducer_id: ReducerId,
-	name: &str,
-	data: &[u8],
-) -> ReducerActionDef {
-	let action_id = crate::store::sequence::reducer::next_reducer_action_id(txn).unwrap();
-	let action_def = ReducerActionDef {
-		id: action_id,
-		reducer: reducer_id,
-		name: name.to_string(),
-		data: Blob::from(data),
-	};
-	CatalogStore::create_reducer_action(txn, &action_def).unwrap();
-	action_def
 }

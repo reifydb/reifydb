@@ -37,10 +37,10 @@ use crate::{
 	bump::{Bump, BumpBox},
 	expression::{ConstantExpression, Expression, Expression::Constant, VariableExpression},
 	nodes::{
-		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateReducerNode,
-		CreateRingBufferNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, FlowScanNode,
-		GeneratorNode, IndexScanNode, InlineDataNode, PrimaryKeyDef, RingBufferScanNode, RowListLookupNode,
-		RowPointLookupNode, RowRangeScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
+		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
+		CreateTableNode, DictionaryScanNode, EnvironmentNode, FlowScanNode, GeneratorNode, IndexScanNode,
+		InlineDataNode, PrimaryKeyDef, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
+		RowRangeScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
 	plan::{
 		logical,
@@ -68,7 +68,6 @@ pub enum PhysicalPlan<'bump> {
 	CreateTable(CreateTableNode),
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateFlow(CreateFlowNode<'bump>),
-	CreateReducer(CreateReducerNode),
 	CreateDictionary(CreateDictionaryNode),
 	CreateSubscription(CreateSubscriptionNode<'bump>),
 	// Alter
@@ -76,7 +75,6 @@ pub enum PhysicalPlan<'bump> {
 	AlterTable(nodes::AlterTableNode),
 	AlterView(nodes::AlterViewNode),
 	AlterFlow(AlterFlowNode<'bump>),
-	AlterReducer(AlterReducerNode<'bump>),
 	// Mutate
 	Delete(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
@@ -185,29 +183,6 @@ pub enum AlterFlowAction<'bump> {
 	},
 	Pause,
 	Resume,
-}
-
-#[derive(Debug)]
-pub struct AlterReducerNode<'bump> {
-	pub namespace: NamespaceDef,
-	pub reducer: Fragment,
-	pub action: AlterReducerAction<'bump>,
-}
-
-#[derive(Debug)]
-pub enum AlterReducerAction<'bump> {
-	AddAction {
-		name: Fragment,
-		columns: Vec<reifydb_catalog::catalog::reducer::ReducerColumnToCreate>,
-		on_dispatch: BumpBox<'bump, PhysicalPlan<'bump>>,
-	},
-	AlterAction {
-		name: Fragment,
-		on_dispatch: BumpBox<'bump, PhysicalPlan<'bump>>,
-	},
-	DropAction {
-		name: Fragment,
-	},
 }
 
 #[derive(Debug)]
@@ -551,10 +526,6 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_flow(rx, create)?);
 				}
 
-				LogicalPlan::CreateReducer(create) => {
-					stack.push(self.compile_create_reducer(rx, create)?);
-				}
-
 				LogicalPlan::CreateDeferredView(create) => {
 					stack.push(self.compile_create_deferred(rx, create)?);
 				}
@@ -585,10 +556,6 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::AlterFlow(alter) => {
 					stack.push(self.compile_alter_flow(rx, alter)?);
-				}
-
-				LogicalPlan::AlterReducer(alter) => {
-					stack.push(self.compile_alter_reducer(rx, alter)?);
 				}
 
 				LogicalPlan::Assert(assert_node) => {

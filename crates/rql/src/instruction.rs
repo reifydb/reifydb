@@ -8,11 +8,11 @@ use reifydb_type::{
 
 use crate::{
 	nodes::{
-		AlterFlowNode, AlterReducerNode, AlterSequenceNode, AlterTableNode, AlterViewNode,
-		CreateDeferredViewNode, CreateDictionaryNode, CreateFlowNode, CreateNamespaceNode, CreateReducerNode,
-		CreateRingBufferNode, CreateSubscriptionNode, CreateTableNode, CreateTransactionalViewNode,
-		DeleteRingBufferNode, DeleteTableNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
-		InsertTableNode, UpdateRingBufferNode, UpdateTableNode,
+		AlterFlowNode, AlterSequenceNode, AlterTableNode, AlterViewNode, CreateDeferredViewNode,
+		CreateDictionaryNode, CreateFlowNode, CreateNamespaceNode, CreateRingBufferNode,
+		CreateSubscriptionNode, CreateTableNode, CreateTransactionalViewNode, DeleteRingBufferNode,
+		DeleteTableNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode, InsertTableNode,
+		UpdateRingBufferNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -134,7 +134,6 @@ pub enum Instruction {
 	CreateTable(CreateTableNode),
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateFlow(CreateFlowNode),
-	CreateReducer(CreateReducerNode),
 	CreateDeferredView(CreateDeferredViewNode),
 	CreateTransactionalView(CreateTransactionalViewNode),
 	CreateDictionary(CreateDictionaryNode),
@@ -143,7 +142,6 @@ pub enum Instruction {
 	AlterTable(AlterTableNode),
 	AlterView(AlterViewNode),
 	AlterFlow(AlterFlowNode),
-	AlterReducer(AlterReducerNode),
 
 	// === DML ===
 	Delete(DeleteTableNode),

@@ -87,8 +87,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::CreateRingBuffer(_) => unimplemented!(),
 		LogicalPlan::CreateDictionary(_) => unimplemented!(),
 		LogicalPlan::CreateSubscription(_) => unimplemented!(),
-		LogicalPlan::CreateReducer(_) => unimplemented!(),
-		LogicalPlan::AlterReducer(_) => unimplemented!(),
 		LogicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,

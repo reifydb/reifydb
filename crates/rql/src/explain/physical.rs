@@ -91,8 +91,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreateRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::CreateDictionary(_) => unimplemented!(),
 		PhysicalPlan::CreateSubscription(_) => unimplemented!(),
-		PhysicalPlan::CreateReducer(_) => unimplemented!(),
-		PhysicalPlan::AlterReducer(_) => unimplemented!(),
 		PhysicalPlan::CreateFlow(create_flow) => {
 			let mut label =
 				format!("CreateFlow {}.{}", create_flow.namespace.name, create_flow.flow.text());

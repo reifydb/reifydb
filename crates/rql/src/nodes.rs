@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::catalog::{
-	reducer::ReducerColumnToCreate, ringbuffer::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate,
-	table::TableColumnToCreate, view::ViewColumnToCreate,
+	ringbuffer::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
@@ -47,7 +47,6 @@ pub enum PhysicalPlan {
 	CreateTable(CreateTableNode),
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateFlow(CreateFlowNode),
-	CreateReducer(CreateReducerNode),
 	CreateDictionary(CreateDictionaryNode),
 	CreateSubscription(CreateSubscriptionNode),
 	// Alter
@@ -55,7 +54,6 @@ pub enum PhysicalPlan {
 	AlterTable(AlterTableNode),
 	AlterView(AlterViewNode),
 	AlterFlow(AlterFlowNode),
-	AlterReducer(AlterReducerNode),
 	// Mutate
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),
@@ -130,14 +128,6 @@ pub struct CreateFlowNode {
 	pub flow: Fragment,
 	pub if_not_exists: bool,
 	pub as_clause: Box<QueryPlan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateReducerNode {
-	pub namespace: NamespaceDef,
-	pub reducer: Fragment,
-	pub columns: Vec<ReducerColumnToCreate>,
-	pub key: Vec<Fragment>,
 }
 
 #[derive(Debug, Clone)]
@@ -291,31 +281,6 @@ pub enum AlterFlowAction {
 	},
 	Pause,
 	Resume,
-}
-
-// Alter Reducer types
-
-#[derive(Debug, Clone)]
-pub struct AlterReducerNode {
-	pub namespace: NamespaceDef,
-	pub reducer: Fragment,
-	pub action: AlterReducerAction,
-}
-
-#[derive(Debug, Clone)]
-pub enum AlterReducerAction {
-	AddAction {
-		name: Fragment,
-		columns: Vec<ReducerColumnToCreate>,
-		on_dispatch: Box<QueryPlan>,
-	},
-	AlterAction {
-		name: Fragment,
-		on_dispatch: Box<QueryPlan>,
-	},
-	DropAction {
-		name: Fragment,
-	},
 }
 
 #[derive(Debug, Clone)]

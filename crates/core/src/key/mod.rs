@@ -16,13 +16,10 @@ use kind::KeyKind;
 use namespace::NamespaceKey;
 use namespace_dictionary::NamespaceDictionaryKey;
 use namespace_flow::NamespaceFlowKey;
-use namespace_reducer::NamespaceReducerKey;
 use namespace_ringbuffer::NamespaceRingBufferKey;
 use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
 use primary_key::PrimaryKeyKey;
-use reducer::ReducerKey;
-use reducer_action::ReducerActionKey;
 use retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use row::RowKey;
@@ -60,13 +57,10 @@ pub mod kind;
 pub mod namespace;
 pub mod namespace_dictionary;
 pub mod namespace_flow;
-pub mod namespace_reducer;
 pub mod namespace_ringbuffer;
 pub mod namespace_table;
 pub mod namespace_view;
 pub mod primary_key;
-pub mod reducer;
-pub mod reducer_action;
 pub mod retention_policy;
 pub mod ringbuffer;
 pub mod row;
@@ -106,10 +100,7 @@ pub enum Key {
 	View(ViewKey),
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
-	NamespaceReducer(NamespaceReducerKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
-	Reducer(ReducerKey),
-	ReducerAction(ReducerActionKey),
 	PrimitiveRetentionPolicy(PrimitiveRetentionPolicyKey),
 	OperatorRetentionPolicy(OperatorRetentionPolicyKey),
 	Dictionary(DictionaryKey),
@@ -149,10 +140,7 @@ impl Key {
 			Key::View(key) => key.encode(),
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
-			Key::NamespaceReducer(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
-			Key::Reducer(key) => key.encode(),
-			Key::ReducerAction(key) => key.encode(),
 			Key::PrimitiveRetentionPolicy(key) => key.encode(),
 			Key::OperatorRetentionPolicy(key) => key.encode(),
 			Key::Dictionary(key) => key.encode(),
@@ -273,9 +261,6 @@ impl Key {
 				SubscriptionColumnKey::decode(&key).map(Self::SubscriptionColumn)
 			}
 			KeyKind::SubscriptionRow => SubscriptionRowKey::decode(&key).map(Self::SubscriptionRow),
-			KeyKind::Reducer => ReducerKey::decode(&key).map(Self::Reducer),
-			KeyKind::NamespaceReducer => NamespaceReducerKey::decode(&key).map(Self::NamespaceReducer),
-			KeyKind::ReducerAction => ReducerActionKey::decode(&key).map(Self::ReducerAction),
 			KeyKind::Schema | KeyKind::SchemaField => {
 				// Schema keys are used directly via EncodableKey trait, not through Key enum
 				None

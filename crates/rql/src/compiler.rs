@@ -642,10 +642,6 @@ impl InstructionCompiler {
 				}));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::CreateReducer(node) => {
-				self.emit(Instruction::CreateReducer(node));
-				self.emit(Instruction::Emit);
-			}
 			PhysicalPlan::CreateSubscription(node) => {
 				self.emit(Instruction::CreateSubscription(nodes::CreateSubscriptionNode {
 					columns: node.columns,
@@ -673,41 +669,6 @@ impl InstructionCompiler {
 						},
 						physical::AlterFlowAction::Pause => nodes::AlterFlowAction::Pause,
 						physical::AlterFlowAction::Resume => nodes::AlterFlowAction::Resume,
-					},
-				}));
-				self.emit(Instruction::Emit);
-			}
-
-			PhysicalPlan::AlterReducer(node) => {
-				self.emit(Instruction::AlterReducer(nodes::AlterReducerNode {
-					namespace: node.namespace,
-					reducer: node.reducer,
-					action: match node.action {
-						physical::AlterReducerAction::AddAction {
-							name,
-							columns,
-							on_dispatch,
-						} => nodes::AlterReducerAction::AddAction {
-							name,
-							columns,
-							on_dispatch: Box::new(materialize_query_plan(
-								crate::bump::BumpBox::into_inner(on_dispatch),
-							)),
-						},
-						physical::AlterReducerAction::AlterAction {
-							name,
-							on_dispatch,
-						} => nodes::AlterReducerAction::AlterAction {
-							name,
-							on_dispatch: Box::new(materialize_query_plan(
-								crate::bump::BumpBox::into_inner(on_dispatch),
-							)),
-						},
-						physical::AlterReducerAction::DropAction {
-							name,
-						} => nodes::AlterReducerAction::DropAction {
-							name,
-						},
 					},
 				}));
 				self.emit(Instruction::Emit);

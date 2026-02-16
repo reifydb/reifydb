@@ -12,10 +12,7 @@ use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::{
 	store::sequence::generator::u64::GeneratorU64,
-	system::ids::sequences::{
-		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, NAMESPACE, PRIMARY_KEY, REDUCER, REDUCER_ACTION,
-		SOURCE,
-	},
+	system::ids::sequences::{COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, NAMESPACE, PRIMARY_KEY, SOURCE},
 };
 
 static NAMESPACE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(NAMESPACE));
@@ -33,10 +30,6 @@ pub(crate) static FLOW_NODE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceK
 pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(FLOW_EDGE));
 
 static PRIMARY_KEY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(PRIMARY_KEY));
-
-pub(crate) static REDUCER_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(REDUCER));
-
-pub(crate) static REDUCER_ACTION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(REDUCER_ACTION));
 
 pub(crate) struct SystemSequence {}
 

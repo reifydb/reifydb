@@ -107,13 +107,10 @@ pub mod tests {
 			KeyKind::SubscriptionRow => {}
 			KeyKind::SubscriptionColumn => {}
 			KeyKind::Schema => {}
-			KeyKind::SchemaField => {}
-			KeyKind::Reducer => {}
-			KeyKind::NamespaceReducer => {}
-			KeyKind::ReducerAction => {} /* When adding a new variant, add it here.
-			                              * The compiler will error if you forget.
-			                              * Then add a test and update should_exclude_from_cdc() if
-			                              * needed. */
+			KeyKind::SchemaField => {} /* When adding a new variant, add it here.
+			                            * The compiler will error if you forget.
+			                            * Then add a test and update should_exclude_from_cdc() if
+			                            * needed. */
 		}
 	}
 
@@ -326,20 +323,5 @@ pub mod tests {
 	#[test]
 	fn test_include_namespace_dictionary() {
 		assert!(!should_exclude_from_cdc(KeyKind::NamespaceDictionary));
-	}
-
-	#[test]
-	fn test_include_reducer() {
-		assert!(!should_exclude_from_cdc(KeyKind::Reducer));
-	}
-
-	#[test]
-	fn test_include_namespace_reducer() {
-		assert!(!should_exclude_from_cdc(KeyKind::NamespaceReducer));
-	}
-
-	#[test]
-	fn test_include_reducer_action() {
-		assert!(!should_exclude_from_cdc(KeyKind::ReducerAction));
 	}
 }

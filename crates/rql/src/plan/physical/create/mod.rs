@@ -7,7 +7,6 @@ pub mod deferred;
 pub mod dictionary;
 pub mod flow;
 pub mod namespace;
-pub mod reducer;
 pub mod ringbuffer;
 pub mod subscription;
 pub mod table;

@@ -7,7 +7,6 @@ pub mod flow;
 pub mod generator;
 pub mod get;
 pub mod list;
-pub mod reducer;
 pub mod row;
 pub mod schema;
 pub mod system;

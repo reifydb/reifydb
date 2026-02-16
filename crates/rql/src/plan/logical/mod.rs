@@ -15,8 +15,8 @@ use std::fmt::{Display, Formatter};
 
 use query::window::WindowNode;
 use reifydb_catalog::catalog::{
-	Catalog, reducer::ReducerColumnToCreate, ringbuffer::RingBufferColumnToCreate,
-	subscription::SubscriptionColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
+	Catalog, ringbuffer::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate,
+	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{IndexType, JoinType},
@@ -36,16 +36,14 @@ use crate::{
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
-			MaybeQualifiedIndexIdentifier, MaybeQualifiedReducerIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedIndexIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTransactionalViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
 	expression::{AliasExpression, Expression},
-	plan::logical::alter::{
-		flow::AlterFlowNode, reducer::AlterReducerNode, table::AlterTableNode, view::AlterViewNode,
-	},
+	plan::logical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
 };
 
 pub(crate) struct Compiler<'bump> {
@@ -313,14 +311,12 @@ pub enum LogicalPlan<'bump> {
 	CreateDictionary(CreateDictionaryNode<'bump>),
 	CreateFlow(CreateFlowNode<'bump>),
 	CreateIndex(CreateIndexNode<'bump>),
-	CreateReducer(CreateReducerNode<'bump>),
 	CreateSubscription(CreateSubscriptionNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
 	AlterView(AlterViewNode<'bump>),
 	AlterFlow(AlterFlowNode<'bump>),
-	AlterReducer(AlterReducerNode<'bump>),
 	// Mutate
 	DeleteTable(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
@@ -528,13 +524,6 @@ pub struct CreateFlowNode<'bump> {
 	pub flow: MaybeQualifiedFlowIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
-}
-
-#[derive(Debug)]
-pub struct CreateReducerNode<'bump> {
-	pub reducer: MaybeQualifiedReducerIdentifier<'bump>,
-	pub columns: Vec<ReducerColumnToCreate>,
-	pub key: Vec<BumpFragment<'bump>>,
 }
 
 #[derive(Debug)]

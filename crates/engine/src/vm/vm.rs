@@ -814,41 +814,6 @@ impl Vm {
 					self.stack.push(Variable::Columns(columns));
 				}
 
-				Instruction::CreateReducer(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
-					};
-					let columns = super::instruction::ddl::create::reducer::create_reducer(
-						services,
-						txn,
-						node.clone(),
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::AlterReducer(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
-					};
-					let columns = super::instruction::ddl::alter::reducer::execute_alter_reducer(
-						services,
-						txn,
-						node.clone(),
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-
 				// === DML ===
 				Instruction::Delete(node) => {
 					match tx {

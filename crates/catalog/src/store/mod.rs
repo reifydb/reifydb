@@ -11,7 +11,6 @@ pub(crate) mod namespace;
 #[allow(dead_code)]
 pub(crate) mod primary_key;
 pub(crate) mod primitive;
-pub(crate) mod reducer;
 #[allow(dead_code)]
 pub(crate) mod retention_policy;
 pub(crate) mod ringbuffer;

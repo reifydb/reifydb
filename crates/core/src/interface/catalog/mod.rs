@@ -11,7 +11,6 @@ pub mod layout;
 pub mod namespace;
 pub mod policy;
 pub mod primitive;
-pub mod reducer;
 pub mod ringbuffer;
 pub mod subscription;
 pub mod table;
