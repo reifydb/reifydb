@@ -26,7 +26,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{EngineVersion, engine::StandardEngine};
+use reifydb_engine::{EngineVersion, engine::StandardEngine, transform::registry::Transforms};
 use reifydb_function::registry::{Functions, FunctionsBuilder};
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
@@ -56,6 +56,7 @@ pub struct DatabaseBuilder {
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
+	transforms: Option<Transforms>,
 	multi_store: Option<MultiStore>,
 	single_store: Option<SingleStore>,
 	#[cfg(feature = "sub_tracing")]
@@ -80,6 +81,7 @@ impl DatabaseBuilder {
 			factories: Vec::new(),
 			ioc,
 			functions_configurator: None,
+			transforms: None,
 			multi_store: None,
 			single_store: None,
 			#[cfg(feature = "sub_tracing")]
@@ -130,6 +132,11 @@ impl DatabaseBuilder {
 		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
 	{
 		self.functions_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_transforms(mut self, transforms: Transforms) -> Self {
+		self.transforms = Some(transforms);
 		self
 	}
 
@@ -209,6 +216,8 @@ impl DatabaseBuilder {
 			default_builder.build()
 		};
 
+		let transforms = self.transforms.unwrap_or_else(Transforms::empty);
+
 		// Create engine before CDC worker (CDC worker needs engine for cleanup)
 		let engine = StandardEngine::new(
 			multi.clone(),
@@ -218,6 +227,7 @@ impl DatabaseBuilder {
 			Catalog::new(catalog, schema_registry),
 			runtime.clock().clone(),
 			functions,
+			transforms,
 			self.ioc.clone(),
 		);
 

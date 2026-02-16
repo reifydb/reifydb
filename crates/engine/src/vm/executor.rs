@@ -16,11 +16,14 @@ use reifydb_transaction::transaction::{
 use reifydb_type::{params::Params, value::frame::frame::Frame};
 use tracing::instrument;
 
-use crate::vm::{
-	Admin, Command, Query,
-	services::Services,
-	stack::{SymbolTable, Variable},
-	vm::Vm,
+use crate::{
+	transform::registry::Transforms,
+	vm::{
+		Admin, Command, Query,
+		services::Services,
+		stack::{SymbolTable, Variable},
+		vm::Vm,
+	},
 };
 
 /// Executor is the orchestration layer for RQL statement execution.
@@ -45,11 +48,20 @@ impl Executor {
 		catalog: Catalog,
 		clock: Clock,
 		functions: Functions,
+		transforms: Transforms,
 		flow_operator_store: FlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
 		ioc: IocContainer,
 	) -> Self {
-		Self(Arc::new(Services::new(catalog, clock, functions, flow_operator_store, stats_reader, ioc)))
+		Self(Arc::new(Services::new(
+			catalog,
+			clock,
+			functions,
+			transforms,
+			flow_operator_store,
+			stats_reader,
+			ioc,
+		)))
 	}
 
 	/// Get a reference to the underlying Services

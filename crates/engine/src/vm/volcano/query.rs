@@ -16,7 +16,7 @@ use reifydb_type::params::Params;
 use crate::vm::{services::Services, stack::SymbolTable};
 
 /// Unified trait for query execution nodes following the volcano iterator pattern
-pub(crate) trait QueryNode {
+pub(crate) trait QueryNode: Send + Sync {
 	/// Initialize the operator with execution context
 	/// Called once before iteration begins
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()>;

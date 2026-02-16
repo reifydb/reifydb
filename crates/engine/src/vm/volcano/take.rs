@@ -5,7 +5,10 @@ use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	transform::{Transform, context::TransformContext},
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub(crate) struct TakeNode {
 	input: Box<dyn QueryNode>,
@@ -39,24 +42,33 @@ impl QueryNode for TakeNode {
 			return Ok(None);
 		}
 
-		while let Some(mut columns) = self.input.next(rx, ctx)? {
-			let row_count = columns.row_count();
-			if row_count == 0 {
+		while let Some(columns) = self.input.next(rx, ctx)? {
+			if columns.row_count() == 0 {
 				continue;
 			}
-			return if row_count <= self.remaining {
-				self.remaining -= row_count;
-				Ok(Some(columns))
-			} else {
-				columns.take(self.remaining)?;
-				self.remaining = 0;
-				Ok(Some(columns))
+			let transform_ctx = TransformContext {
+				functions: &ctx.services.functions,
+				clock: &ctx.services.clock,
+				params: &ctx.params,
 			};
+			let result = self.apply(&transform_ctx, columns)?;
+			self.remaining -= result.row_count();
+			return Ok(Some(result));
 		}
 		Ok(None)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.input.headers()
+	}
+}
+
+impl Transform for TakeNode {
+	fn apply(&self, _ctx: &TransformContext, mut input: Columns) -> reifydb_type::Result<Columns> {
+		let row_count = input.row_count();
+		if row_count > self.remaining {
+			input.take(self.remaining)?;
+		}
+		Ok(input)
 	}
 }

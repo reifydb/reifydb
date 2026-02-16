@@ -48,6 +48,7 @@ use tracing::instrument;
 use crate::{
 	bulk_insert::builder::BulkInsertBuilder,
 	interceptor::catalog::MaterializedCatalogInterceptor,
+	transform::registry::Transforms,
 	vm::{Admin, Command, Query, executor::Executor},
 };
 
@@ -285,6 +286,7 @@ impl StandardEngine {
 		catalog: Catalog,
 		clock: Clock,
 		functions: Functions,
+		transforms: Transforms,
 		ioc: IocContainer,
 	) -> Self {
 		let flow_operator_store = FlowOperatorStore::new();
@@ -305,6 +307,7 @@ impl StandardEngine {
 				catalog.clone(),
 				clock,
 				functions,
+				transforms,
 				flow_operator_store.clone(),
 				stats_reader,
 				ioc,
