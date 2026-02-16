@@ -41,7 +41,10 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{constraint::TypeConstraint, r#type::Type},
+};
 
 use crate::engine::StandardEngine;
 
@@ -92,24 +95,23 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 	catalog.create_table(
 		&mut result,
 		TableToCreate {
-			fragment: None,
+			name: Fragment::internal("flows"),
 			namespace: namespace.id,
-			table: "flows".to_string(),
 			columns: vec![
 				TableColumnToCreate {
-					name: "id".to_string(),
+					name: Fragment::internal("id"),
+					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(Type::Int8),
 					policies: vec![],
 					auto_increment: true,
-					fragment: None,
 					dictionary_id: None,
 				},
 				TableColumnToCreate {
-					name: "data".to_string(),
+					name: Fragment::internal("data"),
+					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(Type::Blob),
 					policies: vec![],
 					auto_increment: false,
-					fragment: None,
 					dictionary_id: None,
 				},
 			],

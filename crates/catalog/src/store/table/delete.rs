@@ -58,8 +58,7 @@ pub mod tests {
 		let created = CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
-				fragment: Some(Fragment::internal("test_table".to_string())),
-				table: "test_table".to_string(),
+				name: Fragment::internal("test_table"),
 				namespace: namespace.id,
 				columns: vec![],
 				retention_policy: None,

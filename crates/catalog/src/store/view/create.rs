@@ -27,15 +27,14 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct ViewColumnToCreate {
-	pub name: String,
+	pub name: Fragment,
+	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
-	pub fragment: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ViewToCreate {
-	pub fragment: Option<Fragment>,
-	pub name: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<ViewColumnToCreate>,
 }
@@ -58,18 +57,14 @@ impl CatalogStore {
 	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> crate::Result<ViewDef> {
 		let namespace_id = to_create.namespace;
 
-		if let Some(table) = CatalogStore::find_view_by_name(txn, namespace_id, &to_create.name)? {
+		if let Some(table) = CatalogStore::find_view_by_name(txn, namespace_id, to_create.name.text())? {
 			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
-			return_error!(view_already_exists(
-				to_create.fragment.unwrap_or_else(|| Fragment::None),
-				&namespace.name,
-				&table.name
-			));
+			return_error!(view_already_exists(to_create.name.clone(), &namespace.name, &table.name));
 		}
 
 		let view_id = SystemSequence::next_view_id(txn)?;
 		Self::store_view(txn, view_id, namespace_id, &to_create, kind)?;
-		Self::link_view_to_namespace(txn, namespace_id, view_id, &to_create.name)?;
+		Self::link_view_to_namespace(txn, namespace_id, view_id, to_create.name.text())?;
 
 		Self::insert_columns_for_view(txn, view_id, to_create)?;
 
@@ -86,7 +81,7 @@ impl CatalogStore {
 		let mut row = view::SCHEMA.allocate();
 		view::SCHEMA.set_u64(&mut row, view::ID, view);
 		view::SCHEMA.set_u64(&mut row, view::NAMESPACE, namespace);
-		view::SCHEMA.set_utf8(&mut row, view::NAME, &to_create.name);
+		view::SCHEMA.set_utf8(&mut row, view::NAME, to_create.name.text());
 		view::SCHEMA.set_u8(
 			&mut row,
 			view::KIND,
@@ -128,10 +123,10 @@ impl CatalogStore {
 				txn,
 				view,
 				ColumnToCreate {
-					fragment: column_to_create.fragment.clone(),
+					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace.name.clone(),
-					primitive_name: to_create.name.clone(),
-					column: column_to_create.name,
+					primitive_name: to_create.name.text().to_string(),
+					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					policies: vec![],
 					index: ColumnIndex(idx as u8),
@@ -151,6 +146,7 @@ pub mod tests {
 		key::namespace_view::NamespaceViewKey,
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_type::fragment::Fragment;
 
 	use crate::{
 		CatalogStore,
@@ -166,9 +162,8 @@ pub mod tests {
 
 		let to_create = ViewToCreate {
 			namespace: namespace.id,
-			name: "test_view".to_string(),
+			name: Fragment::internal("test_view"),
 			columns: vec![],
-			fragment: None,
 		};
 
 		// First creation should succeed
@@ -188,18 +183,16 @@ pub mod tests {
 
 		let to_create = ViewToCreate {
 			namespace: namespace.id,
-			name: "test_view".to_string(),
+			name: Fragment::internal("test_view"),
 			columns: vec![],
-			fragment: None,
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
 
 		let to_create = ViewToCreate {
 			namespace: namespace.id,
-			name: "another_view".to_string(),
+			name: Fragment::internal("another_view"),
 			columns: vec![],
-			fragment: None,
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
@@ -228,9 +221,8 @@ pub mod tests {
 
 		let to_create = ViewToCreate {
 			namespace: NamespaceId(999), // Non-existent namespace
-			name: "my_view".to_string(),
+			name: Fragment::internal("my_view"),
 			columns: vec![],
-			fragment: None,
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();

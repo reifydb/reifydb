@@ -21,8 +21,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct ReducerToCreate {
-	pub fragment: Option<Fragment>,
-	pub name: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub key_columns: Vec<String>,
 }
@@ -36,12 +35,12 @@ impl CatalogStore {
 
 		let reducer_id = next_reducer_id(txn)?;
 		Self::store_reducer(txn, reducer_id, namespace_id, &to_create)?;
-		Self::link_reducer_to_namespace(txn, namespace_id, reducer_id, &to_create.name)?;
+		Self::link_reducer_to_namespace(txn, namespace_id, reducer_id, to_create.name.text())?;
 
 		Ok(ReducerDef {
 			id: reducer_id,
 			namespace: namespace_id,
-			name: to_create.name,
+			name: to_create.name.text().to_string(),
 			key_columns: to_create.key_columns,
 		})
 	}
@@ -55,7 +54,7 @@ impl CatalogStore {
 		let mut row = reducer::SCHEMA.allocate();
 		reducer::SCHEMA.set_u64(&mut row, reducer::ID, id);
 		reducer::SCHEMA.set_u64(&mut row, reducer::NAMESPACE, namespace);
-		reducer::SCHEMA.set_utf8(&mut row, reducer::NAME, &to_create.name);
+		reducer::SCHEMA.set_utf8(&mut row, reducer::NAME, to_create.name.text());
 		// Store key columns as comma-separated string
 		let key_columns_str = to_create.key_columns.join(",");
 		reducer::SCHEMA.set_utf8(&mut row, reducer::KEY_COLUMNS, &key_columns_str);
@@ -108,6 +107,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::{interface::catalog::reducer::ReducerId, key::namespace_reducer::NamespaceReducerKey};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_type::fragment::Fragment;
 
 	use crate::{
 		CatalogStore,
@@ -123,8 +123,7 @@ pub mod tests {
 		let result = CatalogStore::create_reducer(
 			&mut txn,
 			ReducerToCreate {
-				fragment: None,
-				name: "test_reducer".to_string(),
+				name: Fragment::internal("test_reducer"),
 				namespace: test_namespace.id,
 				key_columns: vec![],
 			},
@@ -145,8 +144,7 @@ pub mod tests {
 		let result = CatalogStore::create_reducer(
 			&mut txn,
 			ReducerToCreate {
-				fragment: None,
-				name: "keyed_reducer".to_string(),
+				name: Fragment::internal("keyed_reducer"),
 				namespace: test_namespace.id,
 				key_columns: vec!["user_id".to_string(), "region".to_string()],
 			},

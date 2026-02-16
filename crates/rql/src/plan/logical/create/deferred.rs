@@ -12,8 +12,6 @@ use crate::{
 	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan},
 };
 
-// Note: Fragment is imported for use at the materialization boundary (ViewColumnToCreate uses owned Fragment)
-
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_deferred_view<T: AsTransaction>(
 		&self,
@@ -22,23 +20,22 @@ impl<'bump> Compiler<'bump> {
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 		for col in ast.columns.into_iter() {
-			let column_name = col.name.text().to_string();
 			let constraint = convert_data_type_with_constraints(&col.ty)?;
 
+			let name = col.name.to_owned();
 			let ty_fragment = match &col.ty {
-				AstType::Unconstrained(fragment) => fragment.to_owned(),
+				AstType::Unconstrained(f) => f.to_owned(),
 				AstType::Constrained {
 					name,
 					..
 				} => name.to_owned(),
 			};
-
-			let fragment = Some(Fragment::merge_all([col.name.to_owned(), ty_fragment]));
+			let fragment = Fragment::merge_all([name.clone(), ty_fragment]);
 
 			columns.push(ViewColumnToCreate {
-				name: column_name,
-				constraint,
+				name,
 				fragment,
+				constraint,
 			});
 		}
 

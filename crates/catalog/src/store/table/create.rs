@@ -32,18 +32,17 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct TableColumnToCreate {
-	pub name: String,
+	pub name: Fragment,
+	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
-	pub fragment: Option<Fragment>,
 	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TableToCreate {
-	pub fragment: Option<Fragment>,
-	pub table: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
 	pub retention_policy: Option<RetentionPolicy>,
@@ -53,18 +52,14 @@ impl CatalogStore {
 	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
 		let namespace_id = to_create.namespace;
 
-		if let Some(table) = CatalogStore::find_table_by_name(txn, namespace_id, &to_create.table)? {
+		if let Some(table) = CatalogStore::find_table_by_name(txn, namespace_id, to_create.name.text())? {
 			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
-			return_error!(table_already_exists(
-				to_create.fragment.unwrap_or_else(|| Fragment::None),
-				&namespace.name,
-				&table.name
-			));
+			return_error!(table_already_exists(to_create.name.clone(), &namespace.name, &table.name));
 		}
 
 		let table_id = SystemSequence::next_table_id(txn)?;
 		Self::store_table(txn, table_id, namespace_id, &to_create)?;
-		Self::link_table_to_namespace(txn, namespace_id, table_id, &to_create.table)?;
+		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
 
 		if let Some(retention_policy) = &to_create.retention_policy {
 			create_primitive_retention_policy(txn, PrimitiveId::Table(table_id), retention_policy)?;
@@ -84,7 +79,7 @@ impl CatalogStore {
 		let mut row = table::SCHEMA.allocate();
 		table::SCHEMA.set_u64(&mut row, table::ID, table);
 		table::SCHEMA.set_u64(&mut row, table::NAMESPACE, namespace);
-		table::SCHEMA.set_utf8(&mut row, table::NAME, &to_create.table);
+		table::SCHEMA.set_utf8(&mut row, table::NAME, to_create.name.text());
 
 		// Initialize with no primary key
 		table::SCHEMA.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
@@ -118,10 +113,10 @@ impl CatalogStore {
 				txn,
 				table,
 				ColumnToCreate {
-					fragment: column_to_create.fragment.clone(),
+					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace_name.clone(),
-					primitive_name: to_create.table.clone(),
-					column: column_to_create.name,
+					primitive_name: to_create.name.text().to_string(),
+					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					policies: column_to_create.policies.clone(),
 					index: ColumnIndex(idx as u8),
@@ -141,6 +136,7 @@ pub mod tests {
 		key::namespace_table::NamespaceTableKey,
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_type::fragment::Fragment;
 
 	use crate::{
 		CatalogStore,
@@ -156,9 +152,8 @@ pub mod tests {
 
 		let to_create = TableToCreate {
 			namespace: test_namespace.id,
-			table: "test_table".to_string(),
+			name: Fragment::internal("test_table"),
 			columns: vec![],
-			fragment: None,
 			retention_policy: None,
 		};
 
@@ -179,9 +174,8 @@ pub mod tests {
 
 		let to_create = TableToCreate {
 			namespace: test_namespace.id,
-			table: "test_table".to_string(),
+			name: Fragment::internal("test_table"),
 			columns: vec![],
-			fragment: None,
 			retention_policy: None,
 		};
 
@@ -189,9 +183,8 @@ pub mod tests {
 
 		let to_create = TableToCreate {
 			namespace: test_namespace.id,
-			table: "another_table".to_string(),
+			name: Fragment::internal("another_table"),
 			columns: vec![],
-			fragment: None,
 			retention_policy: None,
 		};
 

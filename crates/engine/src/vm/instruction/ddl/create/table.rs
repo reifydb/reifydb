@@ -34,8 +34,7 @@ pub(crate) fn create_table(
 	let table = services.catalog.create_table(
 		txn,
 		TableToCreate {
-			fragment: Some(plan.table.clone()),
-			table: plan.table.text().to_string(),
+			name: plan.table.clone(),
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
 			retention_policy: None,

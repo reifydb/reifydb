@@ -24,8 +24,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct FlowToCreate {
-	pub fragment: Option<Fragment>,
-	pub name: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub status: FlowStatus,
 }
@@ -33,7 +32,6 @@ pub struct FlowToCreate {
 impl From<FlowToCreate> for StoreFlowToCreate {
 	fn from(to_create: FlowToCreate) -> Self {
 		StoreFlowToCreate {
-			fragment: to_create.fragment,
 			name: to_create.name,
 			namespace: to_create.namespace,
 			status: to_create.status,

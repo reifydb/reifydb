@@ -13,7 +13,10 @@ use reifydb_core::interface::catalog::{
 	view::ViewDef,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::{blob::Blob, constraint::TypeConstraint};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{blob::Blob, constraint::TypeConstraint},
+};
 
 use crate::{
 	CatalogStore,
@@ -67,8 +70,7 @@ pub fn create_table(
 	CatalogStore::create_table(
 		txn,
 		TableToCreate {
-			fragment: None,
-			table: table.to_string(),
+			name: Fragment::internal(table),
 			namespace: namespace_def.id,
 			columns: columns.to_vec(),
 			retention_policy: None,
@@ -112,8 +114,7 @@ pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, colu
 	CatalogStore::create_deferred_view(
 		txn,
 		ViewToCreate {
-			fragment: None,
-			name: view.to_string(),
+			name: Fragment::internal(view),
 			namespace: namespace_def.id,
 			columns: columns.to_vec(),
 		},
@@ -143,8 +144,7 @@ pub fn create_ringbuffer(
 	CatalogStore::create_ringbuffer(
 		txn,
 		RingBufferToCreate {
-			fragment: None,
-			ringbuffer: ringbuffer.to_string(),
+			name: Fragment::internal(ringbuffer),
 			namespace: namespace_def.id,
 			capacity,
 			columns: columns.to_vec(),
@@ -187,8 +187,7 @@ pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> F
 	CatalogStore::create_flow(
 		txn,
 		FlowToCreate {
-			fragment: None,
-			name: flow.to_string(),
+			name: Fragment::internal(flow),
 			namespace: namespace_def.id,
 			status: FlowStatus::Active,
 		},
@@ -245,8 +244,7 @@ pub fn create_reducer(txn: &mut AdminTransaction, namespace: &str, reducer: &str
 	CatalogStore::create_reducer(
 		txn,
 		crate::store::reducer::create::ReducerToCreate {
-			fragment: None,
-			name: reducer.to_string(),
+			name: Fragment::internal(reducer),
 			namespace: namespace_def.id,
 			key_columns: key_columns.iter().map(|s| s.to_string()).collect(),
 		},

@@ -18,8 +18,7 @@ use crate::{CatalogStore, catalog::Catalog, store::dictionary::create::Dictionar
 
 #[derive(Debug, Clone)]
 pub struct DictionaryToCreate {
-	pub fragment: Option<Fragment>,
-	pub dictionary: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub value_type: Type,
 	pub id_type: Type,
@@ -28,8 +27,7 @@ pub struct DictionaryToCreate {
 impl From<DictionaryToCreate> for StoreDictionaryToCreate {
 	fn from(to_create: DictionaryToCreate) -> Self {
 		StoreDictionaryToCreate {
-			fragment: to_create.fragment,
-			dictionary: to_create.dictionary,
+			name: to_create.name,
 			namespace: to_create.namespace,
 			value_type: to_create.value_type,
 			id_type: to_create.id_type,

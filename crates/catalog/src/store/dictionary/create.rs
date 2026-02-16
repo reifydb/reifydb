@@ -22,8 +22,7 @@ use crate::{CatalogStore, store::sequence::system::SystemSequence};
 
 #[derive(Debug, Clone)]
 pub struct DictionaryToCreate {
-	pub fragment: Option<Fragment>,
-	pub dictionary: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub value_type: Type,
 	pub id_type: Type,
@@ -38,11 +37,11 @@ impl CatalogStore {
 
 		// Check if dictionary already exists
 		if let Some(dictionary) =
-			CatalogStore::find_dictionary_by_name(txn, namespace_id, &to_create.dictionary)?
+			CatalogStore::find_dictionary_by_name(txn, namespace_id, to_create.name.text())?
 		{
 			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
 			return_error!(dictionary_already_exists(
-				to_create.fragment.unwrap_or_else(|| Fragment::None),
+				to_create.name.clone(),
 				&namespace.name,
 				&dictionary.name
 			));
@@ -55,7 +54,7 @@ impl CatalogStore {
 		Self::store_dictionary(txn, dictionary_id, namespace_id, &to_create)?;
 
 		// Link dictionary to namespace
-		Self::link_dictionary_to_namespace(txn, namespace_id, dictionary_id, &to_create.dictionary)?;
+		Self::link_dictionary_to_namespace(txn, namespace_id, dictionary_id, to_create.name.text())?;
 
 		// Initialize dictionary sequence counter to 0
 		Self::initialize_dictionary_sequence(txn, dictionary_id)?;
@@ -74,7 +73,7 @@ impl CatalogStore {
 		let mut row = dictionary::SCHEMA.allocate();
 		dictionary::SCHEMA.set_u64(&mut row, dictionary::ID, dictionary);
 		dictionary::SCHEMA.set_u64(&mut row, dictionary::NAMESPACE, namespace);
-		dictionary::SCHEMA.set_utf8(&mut row, dictionary::NAME, &to_create.dictionary);
+		dictionary::SCHEMA.set_utf8(&mut row, dictionary::NAME, to_create.name.text());
 		dictionary::SCHEMA.set_u8(&mut row, dictionary::VALUE_TYPE, to_create.value_type.to_u8());
 		dictionary::SCHEMA.set_u8(&mut row, dictionary::ID_TYPE, to_create.id_type.to_u8());
 
@@ -115,7 +114,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
-	use reifydb_type::value::r#type::Type;
+	use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 	use super::*;
 	use crate::{store::dictionary::schema::dictionary_namespace, test_utils::ensure_test_namespace};
@@ -127,10 +126,9 @@ pub mod tests {
 
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
-			dictionary: "token_mints".to_string(),
+			name: Fragment::internal("token_mints"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint2,
-			fragment: None,
 		};
 
 		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
@@ -149,10 +147,9 @@ pub mod tests {
 
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
-			dictionary: "test_dict".to_string(),
+			name: Fragment::internal("test_dict"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint4,
-			fragment: None,
 		};
 
 		// First creation should succeed
@@ -173,20 +170,18 @@ pub mod tests {
 
 		let to_create1 = DictionaryToCreate {
 			namespace: test_namespace.id,
-			dictionary: "dict1".to_string(),
+			name: Fragment::internal("dict1"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint1,
-			fragment: None,
 		};
 
 		CatalogStore::create_dictionary(&mut txn, to_create1).unwrap();
 
 		let to_create2 = DictionaryToCreate {
 			namespace: test_namespace.id,
-			dictionary: "dict2".to_string(),
+			name: Fragment::internal("dict2"),
 			value_type: Type::Uint8,
 			id_type: Type::Uint2,
-			fragment: None,
 		};
 
 		CatalogStore::create_dictionary(&mut txn, to_create2).unwrap();
@@ -222,10 +217,9 @@ pub mod tests {
 		// Test with Uint1 ID type
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
-			dictionary: "small_dict".to_string(),
+			name: Fragment::internal("small_dict"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint1,
-			fragment: None,
 		};
 		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		assert_eq!(result.id_type, Type::Uint1);
@@ -233,10 +227,9 @@ pub mod tests {
 		// Test with Uint8 ID type
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
-			dictionary: "large_dict".to_string(),
+			name: Fragment::internal("large_dict"),
 			value_type: Type::Blob,
 			id_type: Type::Uint8,
-			fragment: None,
 		};
 		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		assert_eq!(result.id_type, Type::Uint8);

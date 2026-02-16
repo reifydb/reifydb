@@ -75,7 +75,10 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
-	use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
+	use reifydb_type::{
+		fragment::Fragment,
+		value::{dictionary::DictionaryId, r#type::Type},
+	};
 
 	use crate::{
 		CatalogStore,
@@ -90,10 +93,9 @@ pub mod tests {
 
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
-			dictionary: "test_dict".to_string(),
+			name: Fragment::internal("test_dict"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint2,
-			fragment: None,
 		};
 
 		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
@@ -124,10 +126,9 @@ pub mod tests {
 
 		let to_create = DictionaryToCreate {
 			namespace: namespace.id,
-			dictionary: "token_mints".to_string(),
+			name: Fragment::internal("token_mints"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint4,
-			fragment: None,
 		};
 
 		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
@@ -171,10 +172,9 @@ pub mod tests {
 		// Create dictionary in namespace1
 		let to_create = DictionaryToCreate {
 			namespace: namespace1.id,
-			dictionary: "shared_name".to_string(),
+			name: Fragment::internal("shared_name"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint2,
-			fragment: None,
 		};
 
 		CatalogStore::create_dictionary(&mut txn, to_create).unwrap();

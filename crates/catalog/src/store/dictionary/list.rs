@@ -75,7 +75,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
-	use reifydb_type::value::r#type::Type;
+	use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 	use crate::{
 		CatalogStore,
@@ -102,10 +102,9 @@ pub mod tests {
 		for i in 0..3 {
 			let to_create = DictionaryToCreate {
 				namespace: namespace.id,
-				dictionary: format!("dict_{}", i),
+				name: Fragment::internal(format!("dict_{}", i)),
 				value_type: Type::Utf8,
 				id_type: Type::Uint2,
-				fragment: None,
 			};
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
@@ -134,10 +133,9 @@ pub mod tests {
 		for i in 0..2 {
 			let to_create = DictionaryToCreate {
 				namespace: namespace1.id,
-				dictionary: format!("ns1_dict_{}", i),
+				name: Fragment::internal(format!("ns1_dict_{}", i)),
 				value_type: Type::Utf8,
 				id_type: Type::Uint2,
-				fragment: None,
 			};
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
@@ -146,10 +144,9 @@ pub mod tests {
 		for i in 0..3 {
 			let to_create = DictionaryToCreate {
 				namespace: namespace2.id,
-				dictionary: format!("ns2_dict_{}", i),
+				name: Fragment::internal(format!("ns2_dict_{}", i)),
 				value_type: Type::Uint8,
 				id_type: Type::Uint4,
-				fragment: None,
 			};
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
@@ -182,10 +179,9 @@ pub mod tests {
 		for i in 0..2 {
 			let to_create = DictionaryToCreate {
 				namespace: namespace1.id,
-				dictionary: format!("ns1_dict_{}", i),
+				name: Fragment::internal(format!("ns1_dict_{}", i)),
 				value_type: Type::Utf8,
 				id_type: Type::Uint2,
-				fragment: None,
 			};
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
@@ -193,10 +189,9 @@ pub mod tests {
 		for i in 0..3 {
 			let to_create = DictionaryToCreate {
 				namespace: namespace2.id,
-				dictionary: format!("ns2_dict_{}", i),
+				name: Fragment::internal(format!("ns2_dict_{}", i)),
 				value_type: Type::Uint8,
 				id_type: Type::Uint4,
-				fragment: None,
 			};
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}

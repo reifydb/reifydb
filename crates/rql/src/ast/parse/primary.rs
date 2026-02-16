@@ -5,7 +5,7 @@ use reifydb_type::{error::diagnostic::ast, return_error};
 
 use crate::{
 	ast::{
-		ast::{Ast, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard},
+		ast::{Ast, AstCallFunction, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard},
 		parse::Parser,
 	},
 	token::{
@@ -94,9 +94,26 @@ impl<'bump> Parser<'bump> {
 						}))
 					}
 					_ => {
-						// Try to parse as statement keyword first, if that fails, treat as
-						// identifier
-						Ok(Ast::Identifier(self.parse_as_identifier()?))
+						// Check if this keyword is used as a function name: keyword(args)
+						if self.position + 1 < self.tokens.len()
+							&& unsafe { self.tokens.get_unchecked(self.position + 1) }
+								.is_operator(Operator::OpenParen)
+						{
+							let first_ident_token = self.consume_keyword_as_ident()?;
+							let open_paren_token = self.advance()?;
+							let arguments = self.parse_tuple_call(open_paren_token)?;
+							use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
+							let function = MaybeQualifiedFunctionIdentifier::new(
+								first_ident_token.fragment,
+							);
+							Ok(Ast::CallFunction(AstCallFunction {
+								token: first_ident_token,
+								function,
+								arguments,
+							}))
+						} else {
+							Ok(Ast::Identifier(self.parse_as_identifier()?))
+						}
 					}
 				}
 			}

@@ -6,7 +6,7 @@ use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	ast::ast::AstCreateReducer,
+	ast::ast::{AstCreateReducer, AstType},
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateReducerNode, LogicalPlan},
 };
@@ -20,23 +20,22 @@ impl<'bump> Compiler<'bump> {
 		let mut columns = Vec::new();
 
 		for col in ast.columns.into_iter() {
-			let column_name = col.name.text().to_string();
 			let constraint = convert_data_type_with_constraints(&col.ty)?;
 
+			let name = col.name.to_owned();
 			let ty_fragment = match &col.ty {
-				crate::ast::ast::AstType::Unconstrained(fragment) => fragment.to_owned(),
-				crate::ast::ast::AstType::Constrained {
+				AstType::Unconstrained(f) => f.to_owned(),
+				AstType::Constrained {
 					name,
 					..
 				} => name.to_owned(),
 			};
-
-			let fragment = Some(Fragment::merge_all([col.name.to_owned(), ty_fragment]));
+			let fragment = Fragment::merge_all([name.clone(), ty_fragment]);
 
 			columns.push(ReducerColumnToCreate {
-				name: column_name,
-				constraint,
+				name,
 				fragment,
+				constraint,
 			});
 		}
 

@@ -25,15 +25,14 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct ViewColumnToCreate {
-	pub name: String,
+	pub name: Fragment,
+	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
-	pub fragment: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ViewToCreate {
-	pub fragment: Option<Fragment>,
-	pub name: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<ViewColumnToCreate>,
 }
@@ -42,8 +41,8 @@ impl From<ViewColumnToCreate> for StoreViewColumnToCreate {
 	fn from(col: ViewColumnToCreate) -> Self {
 		StoreViewColumnToCreate {
 			name: col.name,
-			constraint: col.constraint,
 			fragment: col.fragment,
+			constraint: col.constraint,
 		}
 	}
 }
@@ -51,7 +50,6 @@ impl From<ViewColumnToCreate> for StoreViewColumnToCreate {
 impl From<ViewToCreate> for StoreViewToCreate {
 	fn from(to_create: ViewToCreate) -> Self {
 		StoreViewToCreate {
-			fragment: to_create.fragment,
 			name: to_create.name,
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),

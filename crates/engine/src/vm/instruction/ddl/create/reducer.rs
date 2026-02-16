@@ -29,8 +29,7 @@ pub(crate) fn create_reducer(
 	let _reducer_def = services.catalog.create_reducer(
 		txn,
 		ReducerToCreate {
-			fragment: Some(node.reducer.clone()),
-			name: node.reducer.text().to_string(),
+			name: node.reducer.clone(),
 			namespace: node.namespace.id,
 			key_columns,
 		},

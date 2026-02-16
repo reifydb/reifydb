@@ -25,7 +25,10 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
-	use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
+	use reifydb_type::{
+		fragment::Fragment,
+		value::{dictionary::DictionaryId, r#type::Type},
+	};
 
 	use crate::{CatalogStore, store::dictionary::create::DictionaryToCreate, test_utils::ensure_test_namespace};
 
@@ -36,10 +39,9 @@ pub mod tests {
 
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
-			dictionary: "test_dict".to_string(),
+			name: Fragment::internal("test_dict"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint2,
-			fragment: None,
 		};
 
 		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();

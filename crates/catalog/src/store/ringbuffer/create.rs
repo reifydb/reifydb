@@ -25,18 +25,17 @@ use crate::{CatalogStore, store::sequence::system::SystemSequence};
 
 #[derive(Debug, Clone)]
 pub struct RingBufferColumnToCreate {
-	pub name: String,
+	pub name: Fragment,
+	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
-	pub fragment: Option<Fragment>,
 	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct RingBufferToCreate {
-	pub fragment: Option<Fragment>,
-	pub ringbuffer: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
@@ -50,11 +49,11 @@ impl CatalogStore {
 		let namespace_id = to_create.namespace;
 
 		if let Some(ringbuffer) =
-			CatalogStore::find_ringbuffer_by_name(txn, namespace_id, &to_create.ringbuffer)?
+			CatalogStore::find_ringbuffer_by_name(txn, namespace_id, to_create.name.text())?
 		{
 			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
 			return_error!(ringbuffer_already_exists(
-				to_create.fragment.unwrap_or_else(|| Fragment::None),
+				to_create.name.clone(),
 				&namespace.name,
 				&ringbuffer.name
 			));
@@ -63,7 +62,7 @@ impl CatalogStore {
 		let ringbuffer_id = SystemSequence::next_ringbuffer_id(txn)?;
 
 		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
-		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, &to_create.ringbuffer)?;
+		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
 
 		let capacity = to_create.capacity;
 
@@ -84,7 +83,7 @@ impl CatalogStore {
 		let mut row = ringbuffer::SCHEMA.allocate();
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::ID, ringbuffer);
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::NAMESPACE, namespace);
-		ringbuffer::SCHEMA.set_utf8(&mut row, ringbuffer::NAME, &to_create.ringbuffer);
+		ringbuffer::SCHEMA.set_utf8(&mut row, ringbuffer::NAME, to_create.name.text());
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::CAPACITY, to_create.capacity);
 		// Initialize with no primary key
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
@@ -123,10 +122,10 @@ impl CatalogStore {
 				txn,
 				ringbuffer_id,
 				ColumnToCreate {
-					fragment: col.fragment,
+					fragment: Some(col.fragment.clone()),
 					namespace_name: String::new(),
 					primitive_name: String::new(),
-					column: col.name,
+					column: col.name.text().to_string(),
 					constraint: col.constraint,
 					policies: col.policies,
 					index: ColumnIndex(idx as u8),
@@ -163,7 +162,10 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::key::namespace_ringbuffer::NamespaceRingBufferKey;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_type::{
+		fragment::Fragment,
+		value::{constraint::TypeConstraint, r#type::Type},
+	};
 
 	use super::*;
 	use crate::{store::ringbuffer::schema::ringbuffer_namespace, test_utils::ensure_test_namespace};
@@ -175,27 +177,26 @@ pub mod tests {
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
-			ringbuffer: "trades".to_string(),
+			name: Fragment::internal("trades"),
 			capacity: 1000,
 			columns: vec![
 				RingBufferColumnToCreate {
-					name: "symbol".to_string(),
+					name: Fragment::internal("symbol"),
+					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
-					fragment: None,
 					policies: vec![],
 					auto_increment: false,
 					dictionary_id: None,
 				},
 				RingBufferColumnToCreate {
-					name: "price".to_string(),
+					name: Fragment::internal("price"),
+					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(Type::Float8),
-					fragment: None,
 					policies: vec![],
 					auto_increment: false,
 					dictionary_id: None,
 				},
 			],
-			fragment: None,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -217,10 +218,9 @@ pub mod tests {
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
-			ringbuffer: "empty_buffer".to_string(),
+			name: Fragment::internal("empty_buffer"),
 			capacity: 100,
 			columns: vec![],
-			fragment: None,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -239,10 +239,9 @@ pub mod tests {
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
-			ringbuffer: "test_ringbuffer".to_string(),
+			name: Fragment::internal("test_ringbuffer"),
 			capacity: 50,
 			columns: vec![],
-			fragment: None,
 		};
 
 		// First creation should succeed
@@ -263,20 +262,18 @@ pub mod tests {
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
-			ringbuffer: "buffer1".to_string(),
+			name: Fragment::internal("buffer1"),
 			capacity: 10,
 			columns: vec![],
-			fragment: None,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
-			ringbuffer: "buffer2".to_string(),
+			name: Fragment::internal("buffer2"),
 			capacity: 20,
 			columns: vec![],
-			fragment: None,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -311,10 +308,9 @@ pub mod tests {
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
-			ringbuffer: "metadata_buffer".to_string(),
+			name: Fragment::internal("metadata_buffer"),
 			capacity: 500,
 			columns: vec![],
-			fragment: None,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -339,10 +335,9 @@ pub mod tests {
 		// Create small buffer
 		let small = RingBufferToCreate {
 			namespace: test_namespace.id,
-			ringbuffer: "small_buffer".to_string(),
+			name: Fragment::internal("small_buffer"),
 			capacity: 10,
 			columns: vec![],
-			fragment: None,
 		};
 		let small_result = CatalogStore::create_ringbuffer(&mut txn, small).unwrap();
 		assert_eq!(small_result.capacity, 10);
@@ -350,10 +345,9 @@ pub mod tests {
 		// Create medium buffer
 		let medium = RingBufferToCreate {
 			namespace: test_namespace.id,
-			ringbuffer: "medium_buffer".to_string(),
+			name: Fragment::internal("medium_buffer"),
 			capacity: 1000,
 			columns: vec![],
-			fragment: None,
 		};
 		let medium_result = CatalogStore::create_ringbuffer(&mut txn, medium).unwrap();
 		assert_eq!(medium_result.capacity, 1000);
@@ -361,10 +355,9 @@ pub mod tests {
 		// Create large buffer
 		let large = RingBufferToCreate {
 			namespace: test_namespace.id,
-			ringbuffer: "large_buffer".to_string(),
+			name: Fragment::internal("large_buffer"),
 			capacity: 1000000,
 			columns: vec![],
-			fragment: None,
 		};
 		let large_result = CatalogStore::create_ringbuffer(&mut txn, large).unwrap();
 		assert_eq!(large_result.capacity, 1000000);
@@ -382,25 +375,25 @@ pub mod tests {
 
 		let columns = vec![
 			RingBufferColumnToCreate {
-				name: "first".to_string(),
+				fragment: Fragment::None,
+				name: Fragment::internal("first"),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
-				fragment: None,
 				policies: vec![],
 				auto_increment: false,
 				dictionary_id: None,
 			},
 			RingBufferColumnToCreate {
-				name: "second".to_string(),
+				fragment: Fragment::None,
+				name: Fragment::internal("second"),
 				constraint: TypeConstraint::unconstrained(Type::Uint16),
-				fragment: None,
 				policies: vec![],
 				auto_increment: false,
 				dictionary_id: None,
 			},
 			RingBufferColumnToCreate {
-				name: "third".to_string(),
+				fragment: Fragment::None,
+				name: Fragment::internal("third"),
 				constraint: TypeConstraint::unconstrained(Type::Uint4),
-				fragment: None,
 				policies: vec![],
 				auto_increment: false,
 				dictionary_id: None,
@@ -409,10 +402,9 @@ pub mod tests {
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
-			ringbuffer: "ordered_buffer".to_string(),
+			name: Fragment::internal("ordered_buffer"),
 			capacity: 100,
 			columns: columns.clone(),
-			fragment: None,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();

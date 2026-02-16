@@ -28,8 +28,7 @@ pub(crate) fn create_deferred_view(
 	let result = services.catalog.create_deferred_view(
 		txn,
 		ViewToCreate {
-			fragment: Some(plan.view.clone()),
-			name: plan.view.text().to_string(),
+			name: plan.view.clone(),
 			namespace: plan.namespace.id,
 			columns: plan.columns,
 		},

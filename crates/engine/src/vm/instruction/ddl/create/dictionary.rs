@@ -29,8 +29,7 @@ pub(crate) fn create_dictionary(
 	let result = services.catalog.create_dictionary(
 		txn,
 		DictionaryToCreate {
-			fragment: Some(plan.dictionary.clone()),
-			dictionary: plan.dictionary.text().to_string(),
+			name: plan.dictionary.clone(),
 			namespace: plan.namespace.id,
 			value_type: plan.value_type,
 			id_type: plan.id_type,

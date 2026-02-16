@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::AsTransaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
-	ast::ast::AstCreateRingBuffer,
+	ast::ast::{AstCreateRingBuffer, AstType},
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateRingBufferNode, LogicalPlan, convert_policy},
 };
@@ -37,15 +37,15 @@ impl<'bump> Compiler<'bump> {
 				vec![]
 			};
 
+			let name = col.name.to_owned();
 			let ty_fragment = match &col.ty {
-				crate::ast::ast::AstType::Unconstrained(fragment) => fragment.to_owned(),
-				crate::ast::ast::AstType::Constrained {
+				AstType::Unconstrained(f) => f.to_owned(),
+				AstType::Constrained {
 					name,
 					..
 				} => name.to_owned(),
 			};
-
-			let fragment = Some(Fragment::merge_all([col.name.to_owned(), ty_fragment]));
+			let fragment = Fragment::merge_all([name.clone(), ty_fragment]);
 
 			// Resolve dictionary if specified
 			let dictionary_id = if let Some(ref dict_ident) = col.dictionary {
@@ -95,11 +95,11 @@ impl<'bump> Compiler<'bump> {
 			};
 
 			columns.push(RingBufferColumnToCreate {
-				name: column_name,
+				name,
+				fragment,
 				constraint,
 				policies,
 				auto_increment: col.auto_increment,
-				fragment,
 				dictionary_id,
 			});
 		}

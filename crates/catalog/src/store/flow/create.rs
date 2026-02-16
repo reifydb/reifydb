@@ -22,8 +22,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct FlowToCreate {
-	pub fragment: Option<Fragment>,
-	pub name: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub status: FlowStatus,
 }
@@ -33,18 +32,18 @@ impl CatalogStore {
 		let namespace_id = to_create.namespace;
 
 		// Check if flow already exists
-		if let Some(_flow) = CatalogStore::find_flow_by_name(txn, namespace_id, &to_create.name)? {
+		if let Some(_flow) = CatalogStore::find_flow_by_name(txn, namespace_id, to_create.name.text())? {
 			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
 			return_error!(flow_already_exists(
-				to_create.fragment.unwrap_or_else(|| Fragment::None),
+				to_create.name.clone(),
 				&namespace.name,
-				&to_create.name
+				to_create.name.text()
 			));
 		}
 
 		let flow_id = next_flow_id(txn)?;
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
-		Self::link_flow_to_namespace(txn, namespace_id, flow_id, &to_create.name)?;
+		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;
 
 		Ok(Self::get_flow(txn, flow_id)?)
 	}
@@ -58,7 +57,7 @@ impl CatalogStore {
 	) -> crate::Result<FlowDef> {
 		let namespace_id = to_create.namespace;
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
-		Self::link_flow_to_namespace(txn, namespace_id, flow_id, &to_create.name)?;
+		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;
 
 		Ok(Self::get_flow(txn, flow_id)?)
 	}
@@ -72,7 +71,7 @@ impl CatalogStore {
 		let mut row = flow::SCHEMA.allocate();
 		flow::SCHEMA.set_u64(&mut row, flow::ID, flow);
 		flow::SCHEMA.set_u64(&mut row, flow::NAMESPACE, namespace);
-		flow::SCHEMA.set_utf8(&mut row, flow::NAME, &to_create.name);
+		flow::SCHEMA.set_utf8(&mut row, flow::NAME, to_create.name.text());
 		flow::SCHEMA.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
 
 		let key = FlowKey::encoded(flow);
@@ -106,6 +105,7 @@ pub mod tests {
 		key::namespace_flow::NamespaceFlowKey,
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_type::fragment::Fragment;
 
 	use crate::{
 		CatalogStore,
@@ -119,8 +119,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = FlowToCreate {
-			fragment: None,
-			name: "test_flow".to_string(),
+			name: Fragment::internal("test_flow"),
 			namespace: test_namespace.id,
 			status: FlowStatus::Active,
 		};
@@ -144,16 +143,14 @@ pub mod tests {
 
 		// Create two flows
 		let to_create = FlowToCreate {
-			fragment: None,
-			name: "flow_one".to_string(),
+			name: Fragment::internal("flow_one"),
 			namespace: test_namespace.id,
 			status: FlowStatus::Active,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
 		let to_create = FlowToCreate {
-			fragment: None,
-			name: "flow_two".to_string(),
+			name: Fragment::internal("flow_two"),
 			namespace: test_namespace.id,
 			status: FlowStatus::Paused,
 		};
@@ -201,8 +198,7 @@ pub mod tests {
 
 		// Create flow in first namespace
 		let to_create = FlowToCreate {
-			fragment: None,
-			name: "shared_name".to_string(),
+			name: Fragment::internal("shared_name"),
 			namespace: namespace_one.id,
 			status: FlowStatus::Active,
 		};
@@ -210,8 +206,7 @@ pub mod tests {
 
 		// Should be able to create flow with same name in different namespace
 		let to_create = FlowToCreate {
-			fragment: None,
-			name: "shared_name".to_string(),
+			name: Fragment::internal("shared_name"),
 			namespace: namespace_two.id,
 			status: FlowStatus::Active,
 		};

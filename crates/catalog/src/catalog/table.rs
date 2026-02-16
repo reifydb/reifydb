@@ -38,11 +38,11 @@ use crate::{
 /// Column specification for table creation via Catalog API.
 #[derive(Debug, Clone)]
 pub struct TableColumnToCreate {
-	pub name: String,
+	pub name: Fragment,
+	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
-	pub fragment: Option<Fragment>,
 	pub dictionary_id: Option<DictionaryId>,
 }
 
@@ -53,8 +53,7 @@ pub struct TableColumnToCreate {
 /// to IDs and creating the primary key record.
 #[derive(Debug, Clone)]
 pub struct TableToCreate {
-	pub fragment: Option<Fragment>,
-	pub table: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
 	pub retention_policy: Option<RetentionPolicy>,
@@ -67,10 +66,10 @@ impl From<TableColumnToCreate> for StoreTableColumnToCreate {
 	fn from(col: TableColumnToCreate) -> Self {
 		StoreTableColumnToCreate {
 			name: col.name,
+			fragment: col.fragment,
 			constraint: col.constraint,
 			policies: col.policies,
 			auto_increment: col.auto_increment,
-			fragment: col.fragment,
 			dictionary_id: col.dictionary_id,
 		}
 	}
@@ -79,8 +78,7 @@ impl From<TableColumnToCreate> for StoreTableColumnToCreate {
 impl From<TableToCreate> for StoreTableToCreate {
 	fn from(to_create: TableToCreate) -> Self {
 		StoreTableToCreate {
-			fragment: to_create.fragment,
-			table: to_create.table,
+			name: to_create.name,
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			retention_policy: to_create.retention_policy,

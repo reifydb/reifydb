@@ -34,8 +34,7 @@ pub(crate) fn create_ringbuffer(
 	let result = services.catalog.create_ringbuffer(
 		txn,
 		RingBufferToCreate {
-			fragment: Some(plan.ringbuffer.clone()),
-			ringbuffer: plan.ringbuffer.text().to_string(),
+			name: plan.ringbuffer.clone(),
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
 			capacity: plan.capacity,

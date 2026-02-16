@@ -28,8 +28,7 @@ pub(crate) fn create_flow(
 	let flow_def = services.catalog.create_flow(
 		txn,
 		FlowToCreate {
-			fragment: Some(plan.flow.clone()),
-			name: plan.flow.text().to_string(),
+			name: plan.flow.clone(),
 			namespace: plan.namespace.id,
 			status: FlowStatus::Active,
 		},

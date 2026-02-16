@@ -13,6 +13,7 @@ use reifydb_testing::testscript::{
 	command::Command,
 	runner::{Runner, run_path},
 };
+use reifydb_type::fragment::Fragment;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/rql/tests/scripts/tokenize" as tokenize => run_test }
@@ -77,8 +78,7 @@ impl Runner for TestRunner {
 					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
-							fragment: None,
-							table: "users".to_string(),
+							name: Fragment::internal("users"),
 							namespace: default_namespace.id,
 							columns: vec![],
 							retention_policy: None,
@@ -90,8 +90,7 @@ impl Runner for TestRunner {
 					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
-							fragment: None,
-							table: "orders".to_string(),
+							name: Fragment::internal("orders"),
 							namespace: default_namespace.id,
 							columns: vec![],
 							retention_policy: None,
@@ -116,8 +115,7 @@ impl Runner for TestRunner {
 					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
-							fragment: None,
-							table: "users".to_string(),
+							name: Fragment::internal("users"),
 							namespace: test_ns.id,
 							columns: vec![],
 							retention_policy: None,
@@ -155,8 +153,7 @@ impl Runner for TestRunner {
 					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
-							fragment: None,
-							table: "users".to_string(),
+							name: Fragment::internal("users"),
 							namespace: namespace.id,
 							columns: vec![],
 							retention_policy: None,
@@ -168,8 +165,7 @@ impl Runner for TestRunner {
 					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
-							fragment: None,
-							table: "orders".to_string(),
+							name: Fragment::internal("orders"),
 							namespace: namespace.id,
 							columns: vec![],
 							retention_policy: None,

@@ -32,18 +32,17 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct RingBufferColumnToCreate {
-	pub name: String,
+	pub name: Fragment,
+	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
-	pub fragment: Option<Fragment>,
 	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct RingBufferToCreate {
-	pub fragment: Option<Fragment>,
-	pub ringbuffer: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
@@ -53,10 +52,10 @@ impl From<RingBufferColumnToCreate> for StoreRingBufferColumnToCreate {
 	fn from(col: RingBufferColumnToCreate) -> Self {
 		StoreRingBufferColumnToCreate {
 			name: col.name,
+			fragment: col.fragment,
 			constraint: col.constraint,
 			policies: col.policies,
 			auto_increment: col.auto_increment,
-			fragment: col.fragment,
 			dictionary_id: col.dictionary_id,
 		}
 	}
@@ -65,8 +64,7 @@ impl From<RingBufferColumnToCreate> for StoreRingBufferColumnToCreate {
 impl From<RingBufferToCreate> for StoreRingBufferToCreate {
 	fn from(to_create: RingBufferToCreate) -> Self {
 		StoreRingBufferToCreate {
-			fragment: to_create.fragment,
-			ringbuffer: to_create.ringbuffer,
+			name: to_create.name,
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			capacity: to_create.capacity,

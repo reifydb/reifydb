@@ -71,6 +71,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_type::fragment::Fragment;
 
 	use crate::{
 		CatalogStore,
@@ -96,20 +97,18 @@ pub mod tests {
 		// Create first ring buffer
 		let buffer1 = RingBufferToCreate {
 			namespace: namespace.id,
-			ringbuffer: "buffer1".to_string(),
+			name: Fragment::internal("buffer1"),
 			capacity: 100,
 			columns: vec![],
-			fragment: None,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
 		// Create second ring buffer
 		let buffer2 = RingBufferToCreate {
 			namespace: namespace.id,
-			ringbuffer: "buffer2".to_string(),
+			name: Fragment::internal("buffer2"),
 			capacity: 200,
 			columns: vec![],
-			fragment: None,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 
@@ -139,20 +138,18 @@ pub mod tests {
 		// Create buffer in namespace1
 		let buffer1 = RingBufferToCreate {
 			namespace: namespace1.id,
-			ringbuffer: "buffer1".to_string(),
+			name: Fragment::internal("buffer1"),
 			capacity: 100,
 			columns: vec![],
-			fragment: None,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
 		// Create buffer in namespace2
 		let buffer2 = RingBufferToCreate {
 			namespace: namespace2.id,
-			ringbuffer: "buffer2".to_string(),
+			name: Fragment::internal("buffer2"),
 			capacity: 200,
 			columns: vec![],
-			fragment: None,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 

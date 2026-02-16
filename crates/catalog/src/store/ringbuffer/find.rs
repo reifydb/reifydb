@@ -105,7 +105,10 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, RingBufferId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_type::{
+		fragment::Fragment,
+		value::{constraint::TypeConstraint, r#type::Type},
+	};
 
 	use crate::{
 		CatalogStore,
@@ -174,17 +177,16 @@ pub mod tests {
 		// Create a ring buffer with specific name
 		let to_create = RingBufferToCreate {
 			namespace: namespace.id,
-			ringbuffer: "trades_buffer".to_string(),
+			name: Fragment::internal("trades_buffer"),
 			capacity: 200,
 			columns: vec![RingBufferColumnToCreate {
-				name: "symbol".to_string(),
+				name: Fragment::internal("symbol"),
+				fragment: Fragment::None,
 				constraint: TypeConstraint::unconstrained(Type::Utf8),
-				fragment: None,
 				policies: vec![],
 				auto_increment: false,
 				dictionary_id: None,
 			}],
-			fragment: None,
 		};
 
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -230,10 +232,9 @@ pub mod tests {
 		// Create ring buffer in namespace1
 		let to_create = RingBufferToCreate {
 			namespace: namespace1.id,
-			ringbuffer: "shared_name".to_string(),
+			name: Fragment::internal("shared_name"),
 			capacity: 50,
 			columns: vec![],
-			fragment: None,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -257,27 +258,26 @@ pub mod tests {
 		// Create ring buffer with columns
 		let to_create = RingBufferToCreate {
 			namespace: namespace.id,
-			ringbuffer: "pk_buffer".to_string(),
+			name: Fragment::internal("pk_buffer"),
 			capacity: 100,
 			columns: vec![
 				RingBufferColumnToCreate {
-					name: "id".to_string(),
+					name: Fragment::internal("id"),
+					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
-					fragment: None,
 					policies: vec![],
 					auto_increment: true,
 					dictionary_id: None,
 				},
 				RingBufferColumnToCreate {
-					name: "value".to_string(),
+					name: Fragment::internal("value"),
+					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(Type::Float8),
-					fragment: None,
 					policies: vec![],
 					auto_increment: false,
 					dictionary_id: None,
 				},
 			],
-			fragment: None,
 		};
 
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();

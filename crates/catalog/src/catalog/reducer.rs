@@ -17,15 +17,14 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct ReducerColumnToCreate {
-	pub name: String,
+	pub name: Fragment,
+	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
-	pub fragment: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ReducerToCreate {
-	pub fragment: Option<Fragment>,
-	pub name: String,
+	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub key_columns: Vec<String>,
 }
@@ -33,7 +32,6 @@ pub struct ReducerToCreate {
 impl From<ReducerToCreate> for StoreReducerToCreate {
 	fn from(to_create: ReducerToCreate) -> Self {
 		StoreReducerToCreate {
-			fragment: to_create.fragment,
 			name: to_create.name,
 			namespace: to_create.namespace,
 			key_columns: to_create.key_columns,

@@ -33,8 +33,7 @@ pub(crate) fn create_transactional_view(
 	let result = services.catalog.create_transactional_view(
 		txn,
 		ViewToCreate {
-			fragment: Some(plan.view.clone()),
-			name: plan.view.text().to_string(),
+			name: plan.view.clone(),
 			namespace: plan.namespace.id,
 			columns: plan.columns,
 		},

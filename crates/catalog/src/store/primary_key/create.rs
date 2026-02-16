@@ -105,7 +105,10 @@ pub mod tests {
 		primitive::PrimitiveId,
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_type::{
+		fragment::Fragment,
+		value::{constraint::TypeConstraint, r#type::Type},
+	};
 
 	use super::PrimaryKeyToCreate;
 	use crate::{
@@ -192,19 +195,18 @@ pub mod tests {
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
 			ViewToCreate {
-				fragment: None,
+				name: Fragment::internal("test_view"),
 				namespace: namespace.id,
-				name: "test_view".to_string(),
 				columns: vec![
 					ViewColumnToCreate {
-						name: "id".to_string(),
+						name: Fragment::internal("id"),
+						fragment: Fragment::None,
 						constraint: TypeConstraint::unconstrained(Type::Uint8),
-						fragment: None,
 					},
 					ViewColumnToCreate {
-						name: "name".to_string(),
+						name: Fragment::internal("name"),
+						fragment: Fragment::None,
 						constraint: TypeConstraint::unconstrained(Type::Utf8),
-						fragment: None,
 					},
 				],
 			},
@@ -441,8 +443,7 @@ pub mod tests {
 		let table2 = CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
-				fragment: None,
-				table: "test_table2".to_string(),
+				name: Fragment::internal("test_table2"),
 				namespace: namespace.id,
 				columns: vec![],
 				retention_policy: None,

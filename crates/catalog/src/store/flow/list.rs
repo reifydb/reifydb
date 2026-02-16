@@ -111,13 +111,14 @@ pub mod tests {
 		create_flow(&mut txn, "test_namespace", "active_flow");
 
 		// Create a paused flow by directly using CatalogStore
+		use reifydb_type::fragment::Fragment;
+
 		use crate::store::flow::create::FlowToCreate;
 		let namespace = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap().unwrap();
 		CatalogStore::create_flow(
 			&mut txn,
 			FlowToCreate {
-				fragment: None,
-				name: "paused_flow".to_string(),
+				name: Fragment::internal("paused_flow"),
 				namespace: namespace.id,
 				status: FlowStatus::Paused,
 			},
