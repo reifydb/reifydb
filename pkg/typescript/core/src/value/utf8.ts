@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 import {Type, Value, TypeValuePair} from ".";
-import {UNDEFINED_VALUE} from "../constant";
+import {NONE_VALUE} from "../constant";
 
 export class Utf8Value implements Value {
     readonly type: Type = "Utf8" as const;
@@ -19,7 +19,7 @@ export class Utf8Value implements Value {
     }
 
     static parse(str: string): Utf8Value {
-        if (str === UNDEFINED_VALUE) {
+        if (str === NONE_VALUE) {
             return new Utf8Value(undefined);
         }
         
@@ -31,7 +31,7 @@ export class Utf8Value implements Value {
     }
 
     toString(): string {
-        return this.value === undefined ? 'undefined' : this.value;
+        return this.value === undefined ? 'none' : this.value;
     }
 
     /**
@@ -49,7 +49,7 @@ export class Utf8Value implements Value {
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+            value: this.value === undefined ? NONE_VALUE : this.toString()
         };
     }
 }

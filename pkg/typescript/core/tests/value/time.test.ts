@@ -24,7 +24,7 @@ describe('TimeValue', () => {
         it('should create instance with undefined', () => {
             const time = new TimeValue(undefined);
             expect(time.value).toBeUndefined();
-            expect(time.toString()).toBe('undefined');
+            expect(time.toString()).toBe('none');
         });
 
         it('should throw error for negative nanoseconds', () => {
@@ -266,8 +266,8 @@ describe('TimeValue', () => {
             expect(TimeValue.parse('   ').value).toBeUndefined();
         });
 
-        it('should return undefined for UNDEFINED_VALUE', () => {
-            expect(TimeValue.parse('⟪undefined⟫').value).toBeUndefined();
+        it('should return undefined for NONE_VALUE', () => {
+            expect(TimeValue.parse('⟪none⟫').value).toBeUndefined();
         });
 
         it('should throw error for invalid formats', () => {

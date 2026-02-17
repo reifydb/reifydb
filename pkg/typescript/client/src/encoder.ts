@@ -1,26 +1,21 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
-import {Type, UNDEFINED_VALUE} from "@reifydb/core";
-
-export interface TypeValuePair {
-    type: Type;
-    value: string;
-}
+import {NONE_VALUE, TypeValuePair} from "@reifydb/core";
 
 export function encodeValue(value: any): TypeValuePair {
 
     if (value === null || value === undefined) {
-        return { type: 'Undefined', value: UNDEFINED_VALUE };
+        return { type: 'None', value: NONE_VALUE };
     }
-    
+
     if (value && typeof value === 'object' && 'encode' in value && typeof value.encode === 'function') {
         return value.encode();
     }
-    
+
     if (typeof value === 'boolean') {
         return { type: 'Boolean', value: value.toString() };
     }
-    
+
     if (typeof value === 'number') {
         if (Number.isInteger(value)) {
             // Choose appropriate integer type based on value range
@@ -38,7 +33,7 @@ export function encodeValue(value: any): TypeValuePair {
             return { type: 'Float8', value: value.toString() };
         }
     }
-    
+
     if (typeof value === 'string') {
         if (/^[0-9a-f]{8}-[0-9a-f]{4}-[47][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
             const version = value[14];
@@ -50,7 +45,7 @@ export function encodeValue(value: any): TypeValuePair {
         }
         return { type: 'Utf8', value: value };
     }
-    
+
     if (typeof value === 'bigint') {
         if (value >= BigInt(0)) {
             if (value <= BigInt(255)) {
@@ -72,19 +67,19 @@ export function encodeValue(value: any): TypeValuePair {
             }
         }
     }
-    
+
     if (value instanceof Date) {
         return { type: 'DateTime', value: value.toISOString() };
     }
 
-    
+
     if (value instanceof Uint8Array) {
         const hex = Array.from(value)
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');
         return { type: 'Blob', value: '0x' + hex };
     }
-    
+
     if (value instanceof ArrayBuffer) {
         const uint8Array = new Uint8Array(value);
         const hex = Array.from(uint8Array)
@@ -92,7 +87,7 @@ export function encodeValue(value: any): TypeValuePair {
             .join('');
         return { type: 'Blob', value: '0x' + hex };
     }
-    
+
     throw new Error(`Cannot encode value of type ${typeof value}: ${value}`);
 }
 
@@ -100,7 +95,7 @@ export function encodeParams(params: any): TypeValuePair[] | Record<string, Type
     if (params === undefined || params === null) {
         return [];
     }
-    
+
     if (Array.isArray(params)) {
         return params.map(param => encodeValue(param));
     } else if (typeof params === 'object') {
@@ -110,6 +105,6 @@ export function encodeParams(params: any): TypeValuePair[] | Record<string, Type
         }
         return encoded;
     }
-    
+
     throw new Error(`Invalid parameters type: expected array or object, got ${typeof params}`);
 }

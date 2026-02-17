@@ -289,8 +289,8 @@ describe('DurationValue', () => {
             expect(DurationValue.parse('   ').value).toBeUndefined();
         });
 
-        it('should return undefined for UNDEFINED_VALUE', () => {
-            expect(DurationValue.parse('⟪undefined⟫').value).toBeUndefined();
+        it('should return undefined for NONE_VALUE', () => {
+            expect(DurationValue.parse('⟪none⟫').value).toBeUndefined();
         });
 
         it('should throw error for invalid formats', () => {

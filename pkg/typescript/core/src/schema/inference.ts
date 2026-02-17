@@ -6,16 +6,16 @@ import {
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     DurationValue, TimeValue,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
-    UndefinedValue, Utf8Value,
+    NoneValue, Utf8Value,
     Uuid4Value, Uuid7Value, IdentityIdValue,
-    Type
+    BaseType
 } from '../value';
 import {
     PrimitiveSchemaNode, ObjectSchemaNode, ArraySchemaNode,
     OptionalSchemaNode, ValueSchemaNode, SchemaNode
 } from '.';
 
-export type PrimitiveToTS<T extends Type> =
+export type PrimitiveToTS<T extends BaseType> =
     T extends 'Blob' ? Uint8Array :
         T extends 'Boolean' ? boolean :
             T extends 'Decimal' ? string :
@@ -38,11 +38,11 @@ export type PrimitiveToTS<T extends Type> =
                                                                                 T extends 'Duration' ? string :
                                                                                     T extends 'Uuid4' ? string :
                                                                                         T extends 'Uuid7' ? string :
-                                                                                            T extends 'Undefined' ? undefined :
+                                                                                            T extends 'None' ? undefined :
                                                                                                 T extends 'IdentityId' ? string :
                                                                                                     never;
 
-export type PrimitiveToValue<T extends Type> =
+export type PrimitiveToValue<T extends BaseType> =
     T extends 'Blob' ? BlobValue :
         T extends 'Boolean' ? BooleanValue :
             T extends 'Decimal' ? DecimalValue :
@@ -65,13 +65,13 @@ export type PrimitiveToValue<T extends Type> =
                                                                                 T extends 'Duration' ? DurationValue :
                                                                                     T extends 'Uuid4' ? Uuid4Value :
                                                                                         T extends 'Uuid7' ? Uuid7Value :
-                                                                                            T extends 'Undefined' ? UndefinedValue :
+                                                                                            T extends 'None' ? NoneValue :
                                                                                                 T extends 'IdentityId' ? IdentityIdValue :
                                                                                                     never;
 
 export type InferSchema<S> =
-    S extends PrimitiveSchemaNode<infer T> ? T extends Type ? PrimitiveToTS<T> : never :
-        S extends ValueSchemaNode<infer T> ? T extends Type ? PrimitiveToValue<T> : never :
+    S extends PrimitiveSchemaNode<infer T> ? T extends BaseType ? PrimitiveToTS<T> : never :
+        S extends ValueSchemaNode<infer T> ? T extends BaseType ? PrimitiveToValue<T> : never :
             S extends ObjectSchemaNode<infer P> ? { [K in keyof P]: InferSchema<P[K]> } :
                 S extends ArraySchemaNode<infer T> ? InferSchema<T>[] :
                     S extends OptionalSchemaNode<infer T> ? InferSchema<T> | undefined :

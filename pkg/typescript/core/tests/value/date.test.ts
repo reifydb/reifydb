@@ -26,7 +26,7 @@ describe('DateValue', () => {
         it('should create instance with undefined', () => {
             const date = new DateValue(undefined);
             expect(date.value).toBeUndefined();
-            expect(date.toString()).toBe('undefined');
+            expect(date.toString()).toBe('none');
         });
 
         it('should remove time component from Date', () => {
@@ -167,8 +167,8 @@ describe('DateValue', () => {
             expect(DateValue.parse('   ').value).toBeUndefined();
         });
 
-        it('should return undefined for UNDEFINED_VALUE', () => {
-            expect(DateValue.parse('⟪undefined⟫').value).toBeUndefined();
+        it('should return undefined for NONE_VALUE', () => {
+            expect(DateValue.parse('⟪none⟫').value).toBeUndefined();
         });
 
         it('should throw error for invalid formats', () => {

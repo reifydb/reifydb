@@ -114,8 +114,8 @@ describe('Uuid7Value', () => {
             expect(Uuid7Value.parse('   ').value).toBeUndefined();
         });
 
-        it('should return undefined for UNDEFINED_VALUE', () => {
-            expect(Uuid7Value.parse('⟪undefined⟫').value).toBeUndefined();
+        it('should return undefined for NONE_VALUE', () => {
+            expect(Uuid7Value.parse('⟪none⟫').value).toBeUndefined();
         });
 
         it('should throw error for invalid UUID', () => {
@@ -195,7 +195,7 @@ describe('Uuid7Value', () => {
 
         it('should format undefined as "undefined"', () => {
             const value = new Uuid7Value(undefined);
-            expect(value.toString()).toBe('undefined');
+            expect(value.toString()).toBe('none');
         });
     });
 

@@ -8,7 +8,7 @@ import {
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
     Float4Value, Float8Value, DecimalValue, Utf8Value, BlobValue,
     DateValue, TimeValue, DateTimeValue, DurationValue,
-    Uuid4Value, Uuid7Value, UndefinedValue, IdentityIdValue,
+    Uuid4Value, Uuid7Value, NoneValue, IdentityIdValue,
     Schema
 } from "@reifydb/core";
 import { expectSingleValueResult } from "./test-helper";
@@ -281,14 +281,14 @@ describe('Positional Parameters', () => {
             expectSingleValueResult(frames, new IdentityIdValue(identityId));
         }, 1000);
 
-        it('Undefined', async () => {
+        it('None', async () => {
             const frames = await wsClient.admin(
                 'MAP {result: $1}',
-                [new UndefinedValue()],
-                [Schema.object({result: Schema.undefinedValue()})]
+                [new NoneValue()],
+                [Schema.object({result: Schema.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new UndefinedValue());
+            expectSingleValueResult(frames, new NoneValue());
         }, 1000);
 
     });
@@ -530,14 +530,14 @@ describe('Positional Parameters', () => {
             expectSingleValueResult(frames, new IdentityIdValue(identityId));
         }, 1000);
 
-        it('Undefined', async () => {
+        it('None', async () => {
             const frames = await wsClient.command(
                 'MAP {result: $1}',
-                [new UndefinedValue()],
-                [Schema.object({result: Schema.undefinedValue()})]
+                [new NoneValue()],
+                [Schema.object({result: Schema.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new UndefinedValue());
+            expectSingleValueResult(frames, new NoneValue());
         }, 1000);
 
     });
@@ -779,14 +779,14 @@ describe('Positional Parameters', () => {
             expectSingleValueResult(frames, new IdentityIdValue(identityId));
         }, 1000);
 
-        it('Undefined', async () => {
+        it('None', async () => {
             const frames = await wsClient.query(
                 'MAP {result: $1}',
-                [new UndefinedValue()],
-                [Schema.object({result: Schema.undefinedValue()})]
+                [new NoneValue()],
+                [Schema.object({result: Schema.noneValue()})]
             );
 
-            expectSingleValueResult(frames, new UndefinedValue());
+            expectSingleValueResult(frames, new NoneValue());
         }, 1000);
 
     });

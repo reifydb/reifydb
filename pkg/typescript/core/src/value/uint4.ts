@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 import {Type, Value, TypeValuePair} from ".";
-import {UNDEFINED_VALUE} from "../constant";
+import {NONE_VALUE} from "../constant";
 
 export class Uint4Value implements Value {
     readonly type: Type = "Uint4" as const;
@@ -24,7 +24,7 @@ export class Uint4Value implements Value {
 
     static parse(str: string): Uint4Value {
         const trimmed = str.trim();
-        if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
+        if (trimmed === '' || trimmed === NONE_VALUE) {
             return new Uint4Value(undefined);
         }
         
@@ -42,7 +42,7 @@ export class Uint4Value implements Value {
     }
 
     toString(): string {
-        return this.value === undefined ? 'undefined' : this.value.toString();
+        return this.value === undefined ? 'none' : this.value.toString();
     }
 
     /**
@@ -60,7 +60,7 @@ export class Uint4Value implements Value {
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+            value: this.value === undefined ? NONE_VALUE : this.toString()
         };
     }
 }

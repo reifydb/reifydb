@@ -7,7 +7,7 @@ export function validateSchema(schema: SchemaNode, value: any): boolean {
     if (schema.kind === 'primitive') {
         const schemaType = schema.type as Type;
         if (value === null || value === undefined) {
-            return schemaType === 'Undefined';
+            return schemaType === 'None';
         }
 
         switch (schemaType) {
@@ -39,7 +39,7 @@ export function validateSchema(schema: SchemaNode, value: any): boolean {
                 return value instanceof Date || typeof value === 'string';
             case 'Blob':
                 return value instanceof Uint8Array || value instanceof ArrayBuffer;
-            case 'Undefined':
+            case 'None':
                 return value === undefined;
             default:
                 return false;
@@ -70,6 +70,16 @@ export function validateSchema(schema: SchemaNode, value: any): boolean {
             return true;
         }
         return validateSchema(schema.schema, value);
+    }
+
+    if (schema.kind === 'value') {
+        if (value === null || value === undefined) {
+            return schema.type === 'None';
+        }
+        if (typeof value === 'object' && value !== null && 'type' in value && 'encode' in value) {
+            return value.type === schema.type;
+        }
+        return false;
     }
 
     return false;

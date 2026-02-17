@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 import {describe, expect, it} from 'vitest';
 import {
-    BlobValue, BooleanValue, DateValue, DateTimeValue, Float4Value, Float8Value,
+    BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue, Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, DurationValue,
     TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
-    Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value, decode
+    Uint16Value, NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue, decode
 } from '../../src';
-import {UNDEFINED_VALUE} from '../../src/constant';
+import {NONE_VALUE} from '../../src/constant';
 
 describe('Value encode method', () => {
     describe('BooleanValue', () => {
@@ -33,12 +33,12 @@ describe('Value encode method', () => {
             expect(decoded.valueOf()).toBe(false);
         });
 
-        it('should encode undefined as UNDEFINED_VALUE', () => {
+        it('should encode undefined as NONE_VALUE', () => {
             const value = new BooleanValue(undefined);
             const encoded = value.encode();
 
             expect(encoded.type).toBe('Boolean');
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
 
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
@@ -79,12 +79,12 @@ describe('Value encode method', () => {
             expect(decoded.valueOf()).toBe(0);
         });
 
-        it('should encode undefined as UNDEFINED_VALUE', () => {
+        it('should encode undefined as NONE_VALUE', () => {
             const value = new Int4Value(undefined);
             const encoded = value.encode();
 
             expect(encoded.type).toBe('Int4');
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
 
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
@@ -235,13 +235,13 @@ describe('Value encode method', () => {
         });
     });
 
-    describe('UndefinedValue', () => {
-        it('should encode undefined value as UNDEFINED_VALUE', () => {
-            const value = new UndefinedValue();
+    describe('NoneValue', () => {
+        it('should encode none value as NONE_VALUE', () => {
+            const value = new NoneValue();
             const encoded = value.encode();
 
-            expect(encoded.type).toBe('Undefined');
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.type).toBe('None');
+            expect(encoded.value).toBe(NONE_VALUE);
 
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
@@ -291,11 +291,11 @@ describe('Value encode method', () => {
         });
     });
 
-    describe('Undefined value encoding for all types', () => {
+    describe('None value encoding for all types', () => {
         it('should encode undefined BlobValue', () => {
             const value = new BlobValue(undefined);
             const encoded = value.encode();
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
         });
@@ -303,7 +303,7 @@ describe('Value encode method', () => {
         it('should encode undefined DateValue', () => {
             const value = new DateValue(undefined);
             const encoded = value.encode();
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
         });
@@ -311,7 +311,7 @@ describe('Value encode method', () => {
         it('should encode undefined DateTimeValue', () => {
             const value = new DateTimeValue(undefined);
             const encoded = value.encode();
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
         });
@@ -319,7 +319,7 @@ describe('Value encode method', () => {
         it('should encode undefined Float4Value', () => {
             const value = new Float4Value(undefined);
             const encoded = value.encode();
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
         });
@@ -327,7 +327,7 @@ describe('Value encode method', () => {
         it('should encode undefined Float8Value', () => {
             const value = new Float8Value(undefined);
             const encoded = value.encode();
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
         });
@@ -335,7 +335,7 @@ describe('Value encode method', () => {
         it('should encode undefined DurationValue', () => {
             const value = new DurationValue(undefined);
             const encoded = value.encode();
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
         });
@@ -343,7 +343,7 @@ describe('Value encode method', () => {
         it('should encode undefined TimeValue', () => {
             const value = new TimeValue(undefined);
             const encoded = value.encode();
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
         });
@@ -351,7 +351,7 @@ describe('Value encode method', () => {
         it('should encode undefined Utf8Value', () => {
             const value = new Utf8Value(undefined);
             const encoded = value.encode();
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
         });
@@ -359,7 +359,7 @@ describe('Value encode method', () => {
         it('should encode undefined Uuid4Value', () => {
             const value = new Uuid4Value(undefined);
             const encoded = value.encode();
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
         });
@@ -367,7 +367,23 @@ describe('Value encode method', () => {
         it('should encode undefined Uuid7Value', () => {
             const value = new Uuid7Value(undefined);
             const encoded = value.encode();
-            expect(encoded.value).toBe(UNDEFINED_VALUE);
+            expect(encoded.value).toBe(NONE_VALUE);
+            const decoded = decode(encoded);
+            expect(decoded.valueOf()).toBeUndefined();
+        });
+
+        it('should encode undefined DecimalValue', () => {
+            const value = new DecimalValue(undefined);
+            const encoded = value.encode();
+            expect(encoded.value).toBe(NONE_VALUE);
+            const decoded = decode(encoded);
+            expect(decoded.valueOf()).toBeUndefined();
+        });
+
+        it('should encode undefined IdentityIdValue', () => {
+            const value = new IdentityIdValue(undefined);
+            const encoded = value.encode();
+            expect(encoded.value).toBe(NONE_VALUE);
             const decoded = decode(encoded);
             expect(decoded.valueOf()).toBeUndefined();
         });
@@ -375,6 +391,7 @@ describe('Value encode method', () => {
         const allIntTypes = [
             {name: 'Int1Value', constructor: Int1Value},
             {name: 'Int2Value', constructor: Int2Value},
+            {name: 'Int4Value', constructor: Int4Value},
             {name: 'Int8Value', constructor: Int8Value},
             {name: 'Int16Value', constructor: Int16Value},
             {name: 'Uint1Value', constructor: Uint1Value},
@@ -388,7 +405,7 @@ describe('Value encode method', () => {
             it(`should encode undefined ${name}`, () => {
                 const value = new constructor(undefined);
                 const encoded = value.encode();
-                expect(encoded.value).toBe(UNDEFINED_VALUE);
+                expect(encoded.value).toBe(NONE_VALUE);
                 const decoded = decode(encoded);
                 expect(decoded.valueOf()).toBeUndefined();
             });

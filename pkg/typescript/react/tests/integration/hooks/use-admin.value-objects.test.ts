@@ -397,9 +397,9 @@ describe('useAdmin with Value Objects and Schemas', () => {
                 expect(result.current.result!.rows[0].flag.type).toBe('Boolean');
             });
 
-            it('should handle Undefined value objects', async () => {
+            it('should handle None value objects', async () => {
                 const schema = Schema.object({
-                    nothing: Schema.undefinedValue()
+                    nothing: Schema.noneValue()
                 });
 
                 const {result} = renderHook(() =>
@@ -414,7 +414,7 @@ describe('useAdmin with Value Objects and Schemas', () => {
                     expect(result.current.isExecuting).toBe(false);
                 });
 
-                expect(result.current.result!.rows[0].nothing.type).toBe('Undefined');
+                expect(result.current.result!.rows[0].nothing.type).toBe('None');
             });
         });
     });

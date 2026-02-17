@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 import { Type, Value, TypeValuePair } from ".";
-import { UNDEFINED_VALUE } from "../constant";
+import { NONE_VALUE } from "../constant";
 
 /**
  * A duration value representing a time span or elapsed time.
@@ -135,7 +135,7 @@ export class DurationValue implements Value {
     static parse(str: string): DurationValue {
         const trimmed = str.trim();
         
-        if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
+        if (trimmed === '' || trimmed === NONE_VALUE) {
             return new DurationValue(undefined);
         }
 
@@ -252,7 +252,7 @@ export class DurationValue implements Value {
      */
     toIsoString(): string {
         if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
-            return 'undefined';
+            return 'none';
         }
 
         // Handle zero duration
@@ -326,7 +326,7 @@ export class DurationValue implements Value {
      */
     toString(): string {
         if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
-            return 'undefined';
+            return 'none';
         }
 
         // Handle zero duration
@@ -494,13 +494,13 @@ export class DurationValue implements Value {
     }
 
     toJSON(): string {
-        return this.value === undefined ? UNDEFINED_VALUE : this.toIsoString();
+        return this.value === undefined ? NONE_VALUE : this.toIsoString();
     }
 
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toIsoString()
+            value: this.value === undefined ? NONE_VALUE : this.toIsoString()
         };
     }
 }

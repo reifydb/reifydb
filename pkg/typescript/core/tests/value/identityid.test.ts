@@ -103,8 +103,8 @@ describe('IdentityIdValue', () => {
                 expect(identityId.value).toBeUndefined();
             });
 
-            it('should return undefined for UNDEFINED_VALUE', () => {
-                const identityId = IdentityIdValue.parse('⟪undefined⟫');
+            it('should return undefined for NONE_VALUE', () => {
+                const identityId = IdentityIdValue.parse('⟪none⟫');
                 expect(identityId.value).toBeUndefined();
             });
 
@@ -140,9 +140,9 @@ describe('IdentityIdValue', () => {
                 expect(identityId.toString()).toBe(uuid);
             });
 
-            it('should return "undefined" when value is undefined', () => {
+            it('should return "none" when value is undefined', () => {
                 const identityId = new IdentityIdValue(undefined);
-                expect(identityId.toString()).toBe('undefined');
+                expect(identityId.toString()).toBe('none');
             });
         });
 
@@ -226,7 +226,7 @@ describe('IdentityIdValue', () => {
                 const identityId = new IdentityIdValue(undefined);
                 const encoded = identityId.encode();
                 expect(encoded.type).toBe('IdentityId');
-                expect(encoded.value).toBe('⟪undefined⟫');
+                expect(encoded.value).toBe('⟪none⟫');
             });
         });
     });

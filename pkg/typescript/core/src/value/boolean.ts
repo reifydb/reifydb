@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 import {Type, Value, TypeValuePair} from ".";
-import {UNDEFINED_VALUE} from "../constant";
+import {NONE_VALUE} from "../constant";
 
 export class BooleanValue implements Value {
     readonly type: Type = "Boolean" as const;
@@ -21,7 +21,7 @@ export class BooleanValue implements Value {
     static parse(str: string): BooleanValue {
         const trimmed = str.trim().toLowerCase();
 
-        if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
+        if (trimmed === '' || trimmed === NONE_VALUE) {
             return new BooleanValue(undefined);
         }
 
@@ -41,7 +41,7 @@ export class BooleanValue implements Value {
     }
 
     toString(): string {
-        return this.value === undefined ? 'undefined' : this.value.toString();
+        return this.value === undefined ? 'none' : this.value.toString();
     }
 
     /**
@@ -59,7 +59,7 @@ export class BooleanValue implements Value {
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+            value: this.value === undefined ? NONE_VALUE : this.toString()
         };
     }
 }

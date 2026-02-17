@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import { v4 as uuidv4, NIL as NIL_UUID, validate, version } from 'uuid';
 import { Type, Value, TypeValuePair } from ".";
-import { UNDEFINED_VALUE } from "../constant";
+import { NONE_VALUE } from "../constant";
 
 /**
  * A UUID version 4 (random) value type
@@ -68,7 +68,7 @@ export class Uuid4Value implements Value {
     static parse(str: string): Uuid4Value {
         const trimmed = str.trim();
         
-        if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
+        if (trimmed === '' || trimmed === NONE_VALUE) {
             return new Uuid4Value(undefined);
         }
 
@@ -127,7 +127,7 @@ export class Uuid4Value implements Value {
      */
     toString(): string {
         if (this.uuid === undefined) {
-            return 'undefined';
+            return 'none';
         }
         return this.uuid;
     }
@@ -180,7 +180,7 @@ export class Uuid4Value implements Value {
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+            value: this.value === undefined ? NONE_VALUE : this.toString()
         };
     }
 }

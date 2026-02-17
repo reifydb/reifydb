@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 import {Type, Value, TypeValuePair} from ".";
-import {UNDEFINED_VALUE} from "../constant";
+import {NONE_VALUE} from "../constant";
 import {DateValue} from "./date";
 import {TimeValue} from "./time";
 
@@ -205,7 +205,7 @@ export class DateTimeValue implements Value {
     static parse(str: string): DateTimeValue {
         const trimmed = str.trim();
 
-        if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
+        if (trimmed === '' || trimmed === NONE_VALUE) {
             return new DateTimeValue(undefined);
         }
 
@@ -294,7 +294,7 @@ export class DateTimeValue implements Value {
      */
     toString(): string {
         if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
-            return 'undefined';
+            return 'none';
         }
 
         const year = Math.floor(this.months / 12);
@@ -467,7 +467,7 @@ export class DateTimeValue implements Value {
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+            value: this.value === undefined ? NONE_VALUE : this.toString()
         };
     }
 }

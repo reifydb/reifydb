@@ -71,8 +71,8 @@ describe('BooleanValue', () => {
             expect(bool.value).toBeUndefined();
         });
 
-        it('should return undefined for UNDEFINED_VALUE', () => {
-            const bool = BooleanValue.parse('⟪undefined⟫');
+        it('should return undefined for NONE_VALUE', () => {
+            const bool = BooleanValue.parse('⟪none⟫');
             expect(bool.value).toBeUndefined();
         });
 

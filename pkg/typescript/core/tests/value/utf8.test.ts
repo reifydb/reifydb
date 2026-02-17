@@ -112,14 +112,14 @@ describe('Utf8Value', () => {
             expect(utf8False.value).toBe('false');
         });
 
-        it('should return undefined for UNDEFINED_VALUE', () => {
-            const utf8 = Utf8Value.parse('⟪undefined⟫');
+        it('should return undefined for NONE_VALUE', () => {
+            const utf8 = Utf8Value.parse('⟪none⟫');
             expect(utf8.value).toBeUndefined();
         });
 
-        it('should not return undefined for string containing UNDEFINED_VALUE', () => {
-            const utf8 = Utf8Value.parse('text ⟪undefined⟫ more text');
-            expect(utf8.value).toBe('text ⟪undefined⟫ more text');
+        it('should not return undefined for string containing NONE_VALUE', () => {
+            const utf8 = Utf8Value.parse('text ⟪none⟫ more text');
+            expect(utf8.value).toBe('text ⟪none⟫ more text');
         });
 
         it('should handle multi-line strings', () => {

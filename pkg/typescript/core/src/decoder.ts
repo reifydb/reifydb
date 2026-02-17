@@ -4,12 +4,21 @@ import {
     BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue, Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, DurationValue,
     TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
-    Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
-    Value, TypeValuePair
+    Uint16Value, NoneValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
+    Value, TypeValuePair, isOptionType, unwrapOptionType
 } from './value';
+import {NONE_VALUE} from './constant';
 
 
 export function decode(pair: TypeValuePair): Value {
+    if (isOptionType(pair.type)) {
+        const innerType = unwrapOptionType(pair.type);
+        if (pair.value === NONE_VALUE || pair.value === '') {
+            return new NoneValue(innerType);
+        }
+        return decode({type: innerType, value: pair.value});
+    }
+
     switch (pair.type) {
         case "Blob":
             return BlobValue.parse(pair.value);
@@ -49,8 +58,8 @@ export function decode(pair: TypeValuePair): Value {
             return Uint8Value.parse(pair.value);
         case "Uint16":
             return Uint16Value.parse(pair.value);
-        case "Undefined":
-            return UndefinedValue.parse(pair.value);
+        case "None":
+            return NoneValue.parse(pair.value);
         case "Utf8":
             return Utf8Value.parse(pair.value);
         case "Uuid4":

@@ -19,13 +19,13 @@ export {Uint2Value} from './uint2';
 export {Uint4Value} from './uint4';
 export {Uint8Value} from './uint8';
 export {Uint16Value} from './uint16';
-export {UndefinedValue} from './undefined';
+export {NoneValue} from './none';
 export {Utf8Value} from './utf8';
 export {Uuid4Value} from './uuid4';
 export {Uuid7Value} from './uuid7';
 export {IdentityIdValue} from './identityid';
 
-export type Type =
+export type BaseType =
     | "Blob"
     | "Boolean"
     | "Decimal"
@@ -35,8 +35,20 @@ export type Type =
     | "Utf8"
     | "Date" | "DateTime" | "Time" | "Duration"
     | "Uuid4" | "Uuid7"
-    | "Undefined"
-    | "IdentityId";
+    | "IdentityId"
+    | "None";
+
+export interface OptionType { Option: Type }
+export type Type = BaseType | OptionType;
+
+export function isOptionType(t: Type): t is OptionType {
+    return typeof t === 'object' && t !== null && 'Option' in t;
+}
+
+export function unwrapOptionType(t: Type): BaseType {
+    if (isOptionType(t)) return unwrapOptionType(t.Option);
+    return t;
+}
 
 export interface TypeValuePair {
     type: Type;

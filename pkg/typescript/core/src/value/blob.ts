@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 import {Type, Value, TypeValuePair} from ".";
-import {UNDEFINED_VALUE} from "../constant";
+import {NONE_VALUE} from "../constant";
 
 /**
  * A binary large object (BLOB) value that can hold arbitrary byte data.
@@ -126,7 +126,7 @@ export class BlobValue implements Value {
     static parse(str: string): BlobValue {
         const trimmed = str.trim();
 
-        if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
+        if (trimmed === '' || trimmed === NONE_VALUE) {
             return new BlobValue(undefined);
         }
 
@@ -204,7 +204,7 @@ export class BlobValue implements Value {
      */
     toString(): string {
         if (this.bytes === undefined) {
-            return 'undefined';
+            return 'none';
         }
         return this.toHex()!;
     }
@@ -274,7 +274,7 @@ export class BlobValue implements Value {
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+            value: this.value === undefined ? NONE_VALUE : this.toString()
         };
     }
 }

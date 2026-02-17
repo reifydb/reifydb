@@ -136,7 +136,7 @@ describe('DecimalValue', () => {
         });
 
         it('should return undefined for undefined marker', () => {
-            const decimal = DecimalValue.parse('⟪undefined⟫');
+            const decimal = DecimalValue.parse('⟪none⟫');
             expect(decimal.value).toBeUndefined();
         });
 
@@ -194,9 +194,9 @@ describe('DecimalValue', () => {
             expect(decimal.toString()).toBe('123.456');
         });
 
-        it('should return "undefined" when value is undefined', () => {
+        it('should return "none" when value is undefined', () => {
             const decimal = new DecimalValue(undefined);
-            expect(decimal.toString()).toBe('undefined');
+            expect(decimal.toString()).toBe('none');
         });
 
         it('should return negative value as string', () => {
@@ -286,7 +286,7 @@ describe('DecimalValue', () => {
             const encoded = decimal.encode();
             expect(encoded).toEqual({
                 type: 'Decimal',
-                value: '⟪undefined⟫'
+                value: '⟪none⟫'
             });
         });
 

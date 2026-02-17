@@ -30,7 +30,7 @@ describe('DateTimeValue', () => {
         it('should create instance with undefined', () => {
             const datetime = new DateTimeValue(undefined);
             expect(datetime.value).toBeUndefined();
-            expect(datetime.toString()).toBe('undefined');
+            expect(datetime.toString()).toBe('none');
         });
 
         it('should throw error for invalid datetime string', () => {
@@ -266,8 +266,8 @@ describe('DateTimeValue', () => {
             expect(DateTimeValue.parse('   ').value).toBeUndefined();
         });
 
-        it('should return undefined for UNDEFINED_VALUE', () => {
-            expect(DateTimeValue.parse('⟪undefined⟫').value).toBeUndefined();
+        it('should return undefined for NONE_VALUE', () => {
+            expect(DateTimeValue.parse('⟪none⟫').value).toBeUndefined();
         });
 
         it('should throw error for invalid formats', () => {

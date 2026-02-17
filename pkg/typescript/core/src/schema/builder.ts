@@ -123,8 +123,8 @@ export class SchemaBuilder {
         return {kind: 'primitive', type: 'Uuid7'};
     }
 
-    static undefined(): PrimitiveSchemaNode<'Undefined'> {
-        return {kind: 'primitive', type: 'Undefined'};
+    static none(): PrimitiveSchemaNode<'None'> {
+        return {kind: 'primitive', type: 'None'};
     }
 
     static identityid(): PrimitiveSchemaNode<'IdentityId'> {
@@ -231,8 +231,8 @@ export class SchemaBuilder {
         return {kind: 'value', type: 'Uuid7'};
     }
 
-    static undefinedValue(): ValueSchemaNode<'Undefined'> {
-        return {kind: 'value', type: 'Undefined'};
+    static noneValue(): ValueSchemaNode<'None'> {
+        return {kind: 'value', type: 'None'};
     }
 
     static blobValue(): ValueSchemaNode<'Blob'> {

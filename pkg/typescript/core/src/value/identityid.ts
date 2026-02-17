@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import { v7 as uuidv7, NIL as NIL_UUID, validate, version } from 'uuid';
 import { Type, Value, TypeValuePair } from ".";
-import { UNDEFINED_VALUE } from "../constant";
+import { NONE_VALUE } from "../constant";
 
 /**
  * An IdentityId value type that wraps a UUID v7
@@ -54,7 +54,7 @@ export class IdentityIdValue implements Value {
     static parse(str: string): IdentityIdValue {
         const trimmed = str.trim();
         
-        if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
+        if (trimmed === '' || trimmed === NONE_VALUE) {
             return new IdentityIdValue(undefined);
         }
 
@@ -82,7 +82,7 @@ export class IdentityIdValue implements Value {
      * Format as string
      */
     toString(): string {
-        return this.value === undefined ? 'undefined' : this.value;
+        return this.value === undefined ? 'none' : this.value;
     }
 
     /**
@@ -120,7 +120,7 @@ export class IdentityIdValue implements Value {
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+            value: this.value === undefined ? NONE_VALUE : this.toString()
         };
     }
 }

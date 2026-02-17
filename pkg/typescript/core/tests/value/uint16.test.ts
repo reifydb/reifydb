@@ -153,9 +153,9 @@ describe('Uint16Value', () => {
             expect(uint16.toString()).toBe('1000000');
         });
 
-        it('should return "undefined" when value is undefined', () => {
+        it('should return "none" when value is undefined', () => {
             const uint16 = new Uint16Value(undefined);
-            expect(uint16.toString()).toBe('undefined');
+            expect(uint16.toString()).toBe('none');
         });
 
         it('should convert zero to string', () => {

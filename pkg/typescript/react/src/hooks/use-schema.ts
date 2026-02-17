@@ -142,7 +142,7 @@ export function useSchema(): [boolean, TableInfo[], string | undefined] {
         });
 
         const typeMap: Record<number, string> = {
-            0: 'Undefined',
+            0: 'None',
             1: 'Float4',
             2: 'Float8',
             3: 'Int1',

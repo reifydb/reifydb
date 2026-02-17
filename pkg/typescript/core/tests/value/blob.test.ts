@@ -214,7 +214,7 @@ describe('BlobValue', () => {
 
         it('should format undefined blob', () => {
             const blob = new BlobValue(undefined);
-            expect(blob.toString()).toBe('undefined');
+            expect(blob.toString()).toBe('none');
         });
     });
 
@@ -239,8 +239,8 @@ describe('BlobValue', () => {
             expect(BlobValue.parse('   ').value).toBeUndefined();
         });
 
-        it('should return undefined for UNDEFINED_VALUE', () => {
-            expect(BlobValue.parse('⟪undefined⟫').value).toBeUndefined();
+        it('should return undefined for NONE_VALUE', () => {
+            expect(BlobValue.parse('⟪none⟫').value).toBeUndefined();
         });
 
         it('should throw error for invalid string', () => {

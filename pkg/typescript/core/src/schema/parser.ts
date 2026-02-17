@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 import {
-    BlobValue, BooleanValue, DateValue, DateTimeValue,
+    BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue,
     Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     DurationValue, TimeValue,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
-    UndefinedValue, Utf8Value,
-    Uuid4Value, Uuid7Value,
-    Type
+    NoneValue, Utf8Value,
+    Uuid4Value, Uuid7Value, IdentityIdValue,
+    BaseType
 } from '../value';
 import {SchemaNode} from '.';
 import {PrimitiveToValue} from './inference';
 
-function createValueInstance<T extends Type>(type: T, value: any): PrimitiveToValue<T> {
+function createValueInstance<T extends BaseType>(type: T, value: any): PrimitiveToValue<T> {
     switch (type) {
         case 'Blob':
             return new BlobValue(value) as PrimitiveToValue<T>;
@@ -57,8 +57,12 @@ function createValueInstance<T extends Type>(type: T, value: any): PrimitiveToVa
             return new Uuid4Value(value) as PrimitiveToValue<T>;
         case 'Uuid7':
             return new Uuid7Value(value) as PrimitiveToValue<T>;
-        case 'Undefined':
-            return new UndefinedValue() as PrimitiveToValue<T>;
+        case 'Decimal':
+            return new DecimalValue(value) as PrimitiveToValue<T>;
+        case 'IdentityId':
+            return new IdentityIdValue(value) as PrimitiveToValue<T>;
+        case 'None':
+            return new NoneValue() as PrimitiveToValue<T>;
         default:
             throw new Error(`Unknown type: ${type}`);
     }
@@ -69,7 +73,7 @@ export function parseValue(schema: SchemaNode, value: any): any {
         if (value === null || value === undefined) {
             return undefined;
         }
-        return createValueInstance(schema.type as Type, value);
+        return createValueInstance(schema.type as BaseType, value);
     }
 
     if (schema.kind === 'object') {
@@ -95,6 +99,13 @@ export function parseValue(schema: SchemaNode, value: any): any {
             return undefined;
         }
         return parseValue(schema.schema, value);
+    }
+
+    if (schema.kind === 'value') {
+        if (value === null || value === undefined) {
+            return undefined;
+        }
+        return createValueInstance(schema.type as BaseType, value);
     }
 
     throw new Error(`Unknown schema kind: ${(schema as any).kind}`);

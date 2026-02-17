@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 import {Type, Value, TypeValuePair} from ".";
-import {UNDEFINED_VALUE} from "../constant";
+import {NONE_VALUE} from "../constant";
 
 /**
  * A date value representing a calendar date (year, month, day) without time information.
@@ -81,7 +81,7 @@ export class DateValue implements Value {
     static parse(str: string): DateValue {
         const trimmed = str.trim();
         
-        if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
+        if (trimmed === '' || trimmed === NONE_VALUE) {
             return new DateValue(undefined);
         }
 
@@ -178,7 +178,7 @@ export class DateValue implements Value {
      */
     toString(): string {
         if (this.months === undefined || this.days === undefined) {
-            return 'undefined';
+            return 'none';
         }
 
         const year = Math.floor(this.months / 12);
@@ -297,7 +297,7 @@ export class DateValue implements Value {
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+            value: this.value === undefined ? NONE_VALUE : this.toString()
         };
     }
 }

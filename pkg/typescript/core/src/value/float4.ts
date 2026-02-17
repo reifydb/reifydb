@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 import {Type, Value, TypeValuePair} from ".";
-import {UNDEFINED_VALUE} from "../constant";
+import {NONE_VALUE} from "../constant";
 
 export class Float4Value implements Value {
 
@@ -43,7 +43,7 @@ export class Float4Value implements Value {
 
     static parse(str: string): Float4Value {
         const trimmed = str.trim();
-        if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
+        if (trimmed === '' || trimmed === NONE_VALUE) {
             return new Float4Value(undefined);
         }
 
@@ -61,7 +61,7 @@ export class Float4Value implements Value {
     }
 
     toString(): string {
-        return this.value === undefined ? 'undefined' : this.value.toString();
+        return this.value === undefined ? 'none' : this.value.toString();
     }
 
     /**
@@ -85,7 +85,7 @@ export class Float4Value implements Value {
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+            value: this.value === undefined ? NONE_VALUE : this.toString()
         };
     }
 
