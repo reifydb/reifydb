@@ -11,7 +11,7 @@ impl Schema {
 	pub fn set_time(&self, row: &mut EncodedValues, index: usize, value: Time) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Time);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Time);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,7 +24,7 @@ impl Schema {
 	pub fn get_time(&self, row: &EncodedValues, index: usize) -> Time {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Time);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Time);
 		unsafe {
 			Time::from_nanos_since_midnight(
 				(row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned(),

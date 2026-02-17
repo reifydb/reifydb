@@ -114,9 +114,12 @@ pub(crate) fn insert_table<'a>(
 				}
 
 				// Create ResolvedColumn for this column
-				let column_ident = Fragment::internal(table_column.name.clone());
+				let column_ident = column_map
+					.get(table_column.name.as_str())
+					.map(|&idx| columns[idx].name().clone())
+					.unwrap_or_else(|| Fragment::internal(table_column.name.clone()));
 				let resolved_column = ResolvedColumn::new(
-					column_ident,
+					column_ident.clone(),
 					execution_context.source.clone().unwrap(),
 					table_column.clone(),
 				);
@@ -129,7 +132,8 @@ pub(crate) fn insert_table<'a>(
 				)?;
 
 				// Validate the value against the column's constraint
-				if let Err(e) = table_column.constraint.validate(&value) {
+				if let Err(mut e) = table_column.constraint.validate(&value) {
+					e.0.fragment = column_ident.clone();
 					return Err(e);
 				}
 

@@ -2,10 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container};
+use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type as ValueType};
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
-use reifydb_type::value::r#type::Type as ValueType;
 
 pub struct Type;
 

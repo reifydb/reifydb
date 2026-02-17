@@ -100,7 +100,9 @@ pub fn build_eval_columns(
 
 	for (idx, col) in left_columns.iter().enumerate() {
 		let data = match &left_row[idx] {
-			Value::None { .. } => ColumnData::typed_none(&col.data().get_type()),
+			Value::None {
+				..
+			} => ColumnData::typed_none(&col.data().get_type()),
 			value => ColumnData::from(value.clone()),
 		};
 		eval_columns.push(col.with_new_data(data));
@@ -108,7 +110,9 @@ pub fn build_eval_columns(
 
 	for (idx, col) in right_columns.iter().enumerate() {
 		let data = match &right_row[idx] {
-			Value::None { .. } => ColumnData::typed_none(&col.data().get_type()),
+			Value::None {
+				..
+			} => ColumnData::typed_none(&col.data().get_type()),
 			value => ColumnData::from(value.clone()),
 		};
 		if let Some(alias) = alias {

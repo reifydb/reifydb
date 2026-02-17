@@ -2,8 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime};
-use reifydb_type::value::r#type::Type;
+use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 

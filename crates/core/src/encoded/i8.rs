@@ -11,7 +11,7 @@ impl Schema {
 	pub fn set_i8(&self, row: &mut EncodedValues, index: usize, value: impl Into<i8>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Int1);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int1);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,7 +24,7 @@ impl Schema {
 	pub fn get_i8(&self, row: &EncodedValues, index: usize) -> i8 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Int1);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int1);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const i8).read_unaligned() }
 	}
 

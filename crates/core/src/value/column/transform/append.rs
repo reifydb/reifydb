@@ -41,7 +41,7 @@ impl Columns {
 
 		let columns = self.columns.make_mut();
 		for (i, (l, r)) in columns.iter_mut().zip(other.columns.into_iter()).enumerate() {
-			if l.name() != r.name() {
+			if l.name().text() != r.name().text() {
 				return_error!(frame_error(format!(
 					"column name mismatch at index {}: '{}' vs '{}'",
 					i,

@@ -4,7 +4,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	error::{Error, diagnostic::constraint::utf8_exceeds_max_bytes},
+	error::{
+		Error,
+		diagnostic::constraint::{none_not_allowed, utf8_exceeds_max_bytes},
+	},
 	fragment::Fragment,
 	value::{
 		Value,
@@ -153,18 +156,23 @@ impl TypeConstraint {
 		// First check type compatibility
 		let value_type = value.get_type();
 		if value_type != self.base_type && !matches!(value, Value::None { .. }) {
-			// For now, return a simple error - we'll create proper
-			// diagnostics later
-			// return Err(crate::error!(crate::error::diagnostic::internal::internal(format!(
-			// 	"Type mismatch: expected {}, got {}",
-			// 	self.base_type, value_type
-			// ))));
-			unimplemented!()
+			// For Option types, also accept values matching the inner type
+			if let Type::Option(inner) = &self.base_type {
+				if value_type != **inner {
+					unimplemented!()
+				}
+			} else {
+				unimplemented!()
+			}
 		}
 
-		// If undefined, no further validation needed
+		// If None, only allow for Option types
 		if matches!(value, Value::None { .. }) {
-			return Ok(());
+			if self.base_type.is_option() {
+				return Ok(());
+			} else {
+				return Err(crate::error!(none_not_allowed(Fragment::None, &self.base_type)));
+			}
 		}
 
 		// Check constraints if present
@@ -364,8 +372,15 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_validate_undefined() {
+	fn test_validate_none_rejected_for_non_option() {
 		let tc = TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(5)));
+		let value = Value::none();
+		assert!(tc.validate(&value).is_err());
+	}
+
+	#[test]
+	fn test_validate_none_accepted_for_option() {
+		let tc = TypeConstraint::unconstrained(Type::Option(Box::new(Type::Utf8)));
 		let value = Value::none();
 		assert!(tc.validate(&value).is_ok());
 	}

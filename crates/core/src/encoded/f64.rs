@@ -11,7 +11,7 @@ impl Schema {
 	pub fn set_f64(&self, row: &mut EncodedValues, index: usize, value: impl Into<f64>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Float8);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Float8);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,7 +24,7 @@ impl Schema {
 	pub fn get_f64(&self, row: &EncodedValues, index: usize) -> f64 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Float8);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Float8);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const f64).read_unaligned() }
 	}
 

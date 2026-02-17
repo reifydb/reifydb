@@ -25,7 +25,7 @@ impl Schema {
 	/// - Large values: stored in dynamic section with MSB=1
 	pub fn set_decimal(&self, row: &mut EncodedValues, index: usize, value: &Decimal) {
 		let field = &self.fields()[index];
-		debug_assert!(matches!(field.constraint.get_type(), Type::Decimal { .. }));
+		debug_assert!(matches!(field.constraint.get_type().inner_type(), Type::Decimal { .. }));
 
 		// Get the mantissa and original scale from the BigDecimal
 		let (mantissa, original_scale) = value.inner().as_bigint_and_exponent();
@@ -61,7 +61,7 @@ impl Schema {
 	/// Get a Decimal value, detecting storage mode from MSB
 	pub fn get_decimal(&self, row: &EncodedValues, index: usize) -> Decimal {
 		let field = &self.fields()[index];
-		debug_assert!(matches!(field.constraint.get_type(), Type::Decimal { .. }));
+		debug_assert!(matches!(field.constraint.get_type().inner_type(), Type::Decimal { .. }));
 
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
@@ -89,7 +89,9 @@ impl Schema {
 
 	/// Try to get a Decimal value, returning None if undefined
 	pub fn try_get_decimal(&self, row: &EncodedValues, index: usize) -> Option<Decimal> {
-		if row.is_defined(index) && matches!(self.fields()[index].constraint.get_type(), Type::Decimal { .. }) {
+		if row.is_defined(index)
+			&& matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal { .. })
+		{
 			Some(self.get_decimal(row, index))
 		} else {
 			None

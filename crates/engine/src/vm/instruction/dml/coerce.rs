@@ -6,6 +6,8 @@ use reifydb_core::{
 	value::column::{columns::Columns, data::ColumnData},
 };
 use reifydb_type::{
+	error,
+	error::diagnostic::constraint::none_not_allowed,
 	fragment::Fragment,
 	value::{Value, r#type::Type},
 };
@@ -37,8 +39,19 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 		return Ok(value);
 	}
 
+	// For Option targets, accept values matching the inner type
+	if let Type::Option(inner) = &target {
+		if value.get_type() == **inner {
+			return Ok(value);
+		}
+	}
+
 	if matches!(value, Value::None { .. }) {
-		return Ok(value);
+		return if target.is_option() {
+			Ok(value)
+		} else {
+			Err(error!(none_not_allowed(column.identifier().clone(), &target)))
+		};
 	}
 
 	let temp_column_data = ColumnData::from(value.clone());

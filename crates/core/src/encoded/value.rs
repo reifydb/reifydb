@@ -25,74 +25,194 @@ impl Schema {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 
-		match (field.constraint.get_type(), val) {
+		let field_type = match field.constraint.get_type() {
+			Type::Option(inner) => *inner,
+			other => other,
+		};
+
+		match (field_type, val) {
 			(Type::Boolean, Value::Boolean(v)) => self.set_bool(row, index, *v),
-			(Type::Boolean, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Boolean,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Float4, Value::Float4(v)) => self.set_f32(row, index, v.value()),
-			(Type::Float4, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Float4,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Float8, Value::Float8(v)) => self.set_f64(row, index, v.value()),
-			(Type::Float8, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Float8,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Int1, Value::Int1(v)) => self.set_i8(row, index, *v),
-			(Type::Int1, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Int1,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Int2, Value::Int2(v)) => self.set_i16(row, index, *v),
-			(Type::Int2, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Int2,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Int4, Value::Int4(v)) => self.set_i32(row, index, *v),
-			(Type::Int4, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Int4,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Int8, Value::Int8(v)) => self.set_i64(row, index, *v),
-			(Type::Int8, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Int8,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Int16, Value::Int16(v)) => self.set_i128(row, index, *v),
-			(Type::Int16, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Int16,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Utf8, Value::Utf8(v)) => self.set_utf8(row, index, v),
-			(Type::Utf8, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Utf8,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Uint1, Value::Uint1(v)) => self.set_u8(row, index, *v),
-			(Type::Uint1, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Uint1,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Uint2, Value::Uint2(v)) => self.set_u16(row, index, *v),
-			(Type::Uint2, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Uint2,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Uint4, Value::Uint4(v)) => self.set_u32(row, index, *v),
-			(Type::Uint4, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Uint4,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Uint8, Value::Uint8(v)) => self.set_u64(row, index, *v),
-			(Type::Uint8, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Uint8,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Uint16, Value::Uint16(v)) => self.set_u128(row, index, *v),
-			(Type::Uint16, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Uint16,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Date, Value::Date(v)) => self.set_date(row, index, v.clone()),
-			(Type::Date, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Date,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, v.clone()),
-			(Type::DateTime, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::DateTime,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Time, Value::Time(v)) => self.set_time(row, index, v.clone()),
-			(Type::Time, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Time,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Duration, Value::Duration(v)) => self.set_duration(row, index, v.clone()),
-			(Type::Duration, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Duration,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, v.clone()),
-			(Type::Uuid4, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Uuid4,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Uuid7, Value::Uuid7(v)) => self.set_uuid7(row, index, v.clone()),
-			(Type::Uuid7, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Uuid7,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Blob, Value::Blob(v)) => self.set_blob(row, index, v),
-			(Type::Blob, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Blob,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(Type::Int, Value::Int(v)) => self.set_int(row, index, v),
 			(Type::Uint, Value::Uint(v)) => self.set_uint(row, index, v),
-			(Type::Int, Value::None { .. }) => self.set_undefined(row, index),
-			(Type::Uint, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Int,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
+			(
+				Type::Uint,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
 			(
 				Type::Decimal {
@@ -104,15 +224,26 @@ impl Schema {
 				Type::Decimal {
 					..
 				},
-				Value::None { .. },
+				Value::None {
+					..
+				},
 			) => self.set_undefined(row, index),
 			(Type::DictionaryId, Value::DictionaryId(id)) => self.set_dictionary_id(row, index, id),
 
-			(Type::DictionaryId, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::DictionaryId,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 
-			(Type::Option(_), Value::None { .. }) => {}
 			(Type::Any, Value::Any(_)) => unreachable!("Any type cannot be stored in database"),
-			(Type::Any, Value::None { .. }) => self.set_undefined(row, index),
+			(
+				Type::Any,
+				Value::None {
+					..
+				},
+			) => self.set_undefined(row, index),
 			(ty, val) => unreachable!("{ty:?}, {val:?}"),
 		}
 	}
@@ -122,14 +253,19 @@ impl Schema {
 		if !row.is_defined(index) {
 			return Value::none();
 		}
-		match field.constraint.get_type() {
+		let field_type = match field.constraint.get_type() {
+			Type::Option(inner) => *inner,
+			other => other,
+		};
+
+		match field_type {
 			Type::Boolean => Value::Boolean(self.get_bool(row, index)),
-			Type::Float4 => {
-				OrderedF32::try_from(self.get_f32(row, index)).map(Value::Float4).unwrap_or(Value::none())
-			}
-			Type::Float8 => {
-				OrderedF64::try_from(self.get_f64(row, index)).map(Value::Float8).unwrap_or(Value::none())
-			}
+			Type::Float4 => OrderedF32::try_from(self.get_f32(row, index))
+				.map(Value::Float4)
+				.unwrap_or(Value::none()),
+			Type::Float8 => OrderedF64::try_from(self.get_f64(row, index))
+				.map(Value::Float8)
+				.unwrap_or(Value::none()),
 			Type::Int1 => Value::Int1(self.get_i8(row, index)),
 			Type::Int2 => Value::Int2(self.get_i16(row, index)),
 			Type::Int4 => Value::Int4(self.get_i32(row, index)),
@@ -157,7 +293,7 @@ impl Schema {
 				..
 			} => Value::Decimal(self.get_decimal(row, index)),
 			Type::DictionaryId => Value::DictionaryId(self.get_dictionary_id(row, index)),
-			Type::Option(_) => Value::none(),
+			Type::Option(_) => unreachable!("Option type already unwrapped"),
 			Type::Any => unreachable!("Any type cannot be stored in database"),
 		}
 	}

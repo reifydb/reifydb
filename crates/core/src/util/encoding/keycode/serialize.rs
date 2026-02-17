@@ -230,7 +230,11 @@ impl SerializeStructVariant for &mut Serializer {
 	type Ok = ();
 	type Error = Error;
 
-	fn serialize_field<T: Serialize + ?Sized>(&mut self, _key: &'static str, value: &T) -> reifydb_type::Result<()> {
+	fn serialize_field<T: Serialize + ?Sized>(
+		&mut self,
+		_key: &'static str,
+		value: &T,
+	) -> reifydb_type::Result<()> {
 		value.serialize(&mut **self)
 	}
 

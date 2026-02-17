@@ -12,7 +12,7 @@ impl Schema {
 	pub fn set_identity_id(&self, row: &mut EncodedValues, index: usize, value: IdentityId) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::IdentityId);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::IdentityId);
 		row.set_valid(index, true);
 		unsafe {
 			// IdentityId wraps Uuid7 which is 16 bytes
@@ -26,7 +26,7 @@ impl Schema {
 	pub fn get_identity_id(&self, row: &EncodedValues, index: usize) -> IdentityId {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::IdentityId);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::IdentityId);
 		unsafe {
 			// IdentityId wraps Uuid7 which is 16 bytes
 			let bytes: [u8; 16] =

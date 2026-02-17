@@ -172,7 +172,9 @@ impl ColumnData {
 			Value::Decimal(v) => {
 				push_or_promote!(struct_direct self, v, Decimal, ColumnData::decimal(vec![]))
 			}
-			Value::None { .. } => self.push_none(),
+			Value::None {
+				..
+			} => self.push_none(),
 			Value::Type(t) => self.push_value(Value::Any(Box::new(Value::Type(t)))),
 			Value::Any(v) => match self {
 				ColumnData::Any(container) => container.push(v),

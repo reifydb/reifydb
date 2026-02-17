@@ -206,10 +206,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
 		match self.take_bytes(1)?[0] {
 			0x00 => visitor.visit_none(),
 			0x01 => visitor.visit_some(self),
-			b => Err(error!(serde_keycode_error(format!(
-				"invalid option marker byte 0x{:02x}",
-				b
-			)))),
+			b => Err(error!(serde_keycode_error(format!("invalid option marker byte 0x{:02x}", b)))),
 		}
 	}
 
@@ -310,7 +307,11 @@ impl<'de> VariantAccess<'de> for &mut Deserializer<'de> {
 		visitor.visit_seq(self)
 	}
 
-	fn struct_variant<V: Visitor<'de>>(self, fields: &'static [&'static str], visitor: V) -> reifydb_type::Result<V::Value> {
+	fn struct_variant<V: Visitor<'de>>(
+		self,
+		fields: &'static [&'static str],
+		visitor: V,
+	) -> reifydb_type::Result<V::Value> {
 		self.tuple_variant(fields.len(), visitor)
 	}
 }

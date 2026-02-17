@@ -8,7 +8,10 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::AsTransaction;
-use reifydb_type::{fragment::Fragment, value::{Value, r#type::Type}};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{Value, r#type::Type},
+};
 
 use crate::{
 	CatalogStore,
@@ -54,7 +57,10 @@ impl<T: AsTransaction> VTable<T> for Tables {
 			namespaces.push(table.namespace.0);
 			names.push(table.name.as_str());
 			primary_keys.push_value(
-				table.primary_key.map(|pk| pk.id.0).map(Value::Uint8).unwrap_or(Value::none_of(Type::Uint8)),
+				table.primary_key
+					.map(|pk| pk.id.0)
+					.map(Value::Uint8)
+					.unwrap_or(Value::none_of(Type::Uint8)),
 			);
 		}
 

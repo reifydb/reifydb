@@ -45,7 +45,9 @@ impl ScalarFunction for IsType {
 					});
 				}
 			},
-			Value::None { .. } => Type::Option(Box::new(Type::Any)),
+			Value::None {
+				..
+			} => Type::Option(Box::new(Type::Any)),
 			other => {
 				return Err(ScalarFunctionError::InvalidArgumentType {
 					function: ctx.fragment.clone(),

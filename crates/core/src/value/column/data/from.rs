@@ -34,7 +34,9 @@ impl ColumnData {
 			Value::Uint(v) => ColumnData::uint(vec![v; row_count]),
 			Value::Decimal(v) => ColumnData::decimal(vec![v; row_count]),
 			Value::DictionaryId(v) => ColumnData::dictionary_id(vec![v; row_count]),
-			Value::None { inner } => ColumnData::none_typed(inner, row_count),
+			Value::None {
+				inner,
+			} => ColumnData::none_typed(inner, row_count),
 			Value::Type(t) => ColumnData::any(vec![Box::new(Value::Type(t)); row_count]),
 			Value::Any(v) => ColumnData::any(vec![v.clone(); row_count]),
 		}

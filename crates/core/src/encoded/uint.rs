@@ -29,7 +29,7 @@ impl Schema {
 	/// - Large values: stored in dynamic section with MSB=1
 	pub fn set_uint(&self, row: &mut EncodedValues, index: usize, value: &Uint) {
 		let field = &self.fields()[index];
-		debug_assert_eq!(field.constraint.get_type(), Type::Uint);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint);
 
 		// Uint should already be non-negative, but let's ensure it
 		let unsigned_value = value.0.to_biguint().unwrap_or(BigUint::from(0u32));
@@ -80,7 +80,7 @@ impl Schema {
 	/// Get a Uint value, detecting storage mode from MSB
 	pub fn get_uint(&self, row: &EncodedValues, index: usize) -> Uint {
 		let field = &self.fields()[index];
-		debug_assert_eq!(field.constraint.get_type(), Type::Uint);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint);
 
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);

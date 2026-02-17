@@ -104,7 +104,9 @@ impl<'a> InlineDataNode {
 					min_val = min_val.min(v as i128);
 					max_val = max_val.max(v as i128);
 				}
-				Value::None { .. } => {
+				Value::None {
+					..
+				} => {
 					// Skip undefined values
 				}
 				_ => {
@@ -162,9 +164,13 @@ impl<'a> InlineDataNode {
 			// First pass: collect all values in a wide column
 			let mut all_values = Vec::new();
 			let mut first_value_type: Option<Type> = None;
+			let mut column_fragment: Option<Fragment> = None;
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(&column_name) {
+					if column_fragment.is_none() {
+						column_fragment = Some(alias_expr.fragment.clone());
+					}
 					let ctx = EvalContext {
 						target: None,
 						columns: Columns::empty(),
@@ -302,7 +308,7 @@ impl<'a> InlineDataNode {
 			// if needed
 
 			columns.push(Column {
-				name: Fragment::internal(column_name),
+				name: column_fragment.unwrap_or_else(|| Fragment::internal(column_name)),
 				data: column_data,
 			});
 		}
@@ -337,9 +343,13 @@ impl<'a> InlineDataNode {
 			let table_column = source.columns().iter().find(|col| col.name == column_name.text()).unwrap();
 
 			let mut column_data = ColumnData::none_typed(table_column.constraint.get_type(), 0);
+			let mut column_fragment: Option<Fragment> = None;
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(column_name.text()) {
+					if column_fragment.is_none() {
+						column_fragment = Some(alias_expr.fragment.clone());
+					}
 					let ctx = EvalContext {
 						target: Some(TargetColumn::Partial {
 							source_name: Some(source.identifier().text().to_string()),
@@ -383,7 +393,8 @@ impl<'a> InlineDataNode {
 						// single-encoded evaluation
 						// but if it does, take only the
 						// first value
-						let first_value = evaluated.data().iter().next().unwrap_or(Value::none());
+						let first_value =
+							evaluated.data().iter().next().unwrap_or(Value::none());
 						column_data.push_value(first_value);
 					}
 				} else {
@@ -392,7 +403,9 @@ impl<'a> InlineDataNode {
 			}
 
 			columns.push(Column {
-				name: column_name.clone(),
+				name: column_fragment
+					.map(|f| f.with_text(column_name.text()))
+					.unwrap_or_else(|| column_name.clone()),
 				data: column_data,
 			});
 		}

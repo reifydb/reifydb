@@ -57,7 +57,9 @@ impl Columns {
 	/// Used to store scalar values inside `Variable::Scalar(Columns)`.
 	pub fn scalar(value: Value) -> Self {
 		let data = match value {
-			Value::None { .. } => ColumnData::none_typed(Type::Boolean, 1),
+			Value::None {
+				..
+			} => ColumnData::none_typed(Type::Boolean, 1),
 			Value::Boolean(v) => ColumnData::bool([v]),
 			Value::Float4(v) => ColumnData::float4([v.into()]),
 			Value::Float8(v) => ColumnData::float8([v.into()]),
@@ -137,7 +139,9 @@ impl Columns {
 
 		for (idx, (name, value)) in rows.into_iter().enumerate() {
 			let data = match value {
-				Value::None { .. } => ColumnData::none_typed(Type::Boolean, 1),
+				Value::None {
+					..
+				} => ColumnData::none_typed(Type::Boolean, 1),
 				Value::Boolean(v) => ColumnData::bool([v]),
 				Value::Float4(v) => ColumnData::float4([v.into()]),
 				Value::Float8(v) => ColumnData::float8([v.into()]),

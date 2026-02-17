@@ -11,7 +11,7 @@ impl Schema {
 	pub fn set_bool(&self, row: &mut EncodedValues, index: usize, value: impl Into<bool>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Boolean);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Boolean);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,7 +24,7 @@ impl Schema {
 	pub fn get_bool(&self, row: &EncodedValues, index: usize) -> bool {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Boolean);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Boolean);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const bool).read_unaligned() }
 	}
 

@@ -99,9 +99,13 @@ pub(crate) fn insert_ringbuffer<'a>(
 				};
 
 				// Create a ResolvedColumn for this ring buffer column
-				let column_ident = Fragment::internal(&rb_column.name);
+				let column_ident = columns
+					.iter()
+					.find(|col| col.name() == rb_column.name)
+					.map(|col| col.name().clone())
+					.unwrap_or_else(|| Fragment::internal(&rb_column.name));
 				let resolved_column = ResolvedColumn::new(
-					column_ident,
+					column_ident.clone(),
 					execution_context.source.clone().unwrap(),
 					rb_column.clone(),
 				);
@@ -114,7 +118,8 @@ pub(crate) fn insert_ringbuffer<'a>(
 				)?;
 
 				// Validate the value against the column's constraint
-				if let Err(e) = rb_column.constraint.validate(&value) {
+				if let Err(mut e) = rb_column.constraint.validate(&value) {
+					e.0.fragment = column_ident.clone();
 					return Err(e);
 				}
 

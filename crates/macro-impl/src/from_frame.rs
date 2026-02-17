@@ -414,7 +414,10 @@ fn generate_optional_map_closure(
 		ident("if"),
 		ident("matches"),
 		punct('!'),
-		parens([ident("v"), punct(',')].into_iter().chain(path(&["", crate_path, "value", "Value", "None"])).chain([braces([punct_joint('.'), punct('.')])])),
+		parens([ident("v"), punct(',')]
+			.into_iter()
+			.chain(path(&["", crate_path, "value", "Value", "None"]))
+			.chain([braces([punct_joint('.'), punct('.')])])),
 	];
 
 	// { Ok(None) }

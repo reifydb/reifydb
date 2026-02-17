@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::{
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
-	value::{Value, r#type::Type, row_number::RowNumber},
+	value::{Value, row_number::RowNumber, r#type::Type},
 };
 
 pub struct RowNumberContainer<S: Storage = Cow> {

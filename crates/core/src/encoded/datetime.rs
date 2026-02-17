@@ -11,7 +11,7 @@ impl Schema {
 	pub fn set_datetime(&self, row: &mut EncodedValues, index: usize, value: DateTime) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::DateTime);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DateTime);
 		row.set_valid(index, true);
 
 		let (seconds, nanos) = value.to_parts();
@@ -32,7 +32,7 @@ impl Schema {
 	pub fn get_datetime(&self, row: &EncodedValues, index: usize) -> DateTime {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::DateTime);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DateTime);
 		unsafe {
 			// Read i64 seconds at offset
 			let seconds = (row.as_ptr().add(field.offset as usize) as *const i64).read_unaligned();

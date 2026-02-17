@@ -39,9 +39,11 @@ pub(super) fn coerce_columns(
 
 	for (col_idx, col) in columns.iter().enumerate() {
 		let target = col.constraint.get_type();
+		// For Option(T) columns, cast to the inner type T; None values pass through unchanged
+		let cast_target = target.inner_type().clone();
 		let source_data = &column_data[col_idx];
 
-		let coerced = cast_column_data(&ctx, source_data, target, || Fragment::internal(&col.name))?;
+		let coerced = cast_column_data(&ctx, source_data, cast_target, || Fragment::internal(&col.name))?;
 		coerced_columns.push(coerced);
 	}
 

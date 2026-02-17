@@ -1037,7 +1037,9 @@ fn value_to_expression(value: &Value) -> Expression {
 	use reifydb_rql::expression::ConstantExpression;
 	use reifydb_type::fragment::Fragment;
 	match value {
-		Value::None { .. } => Expression::Constant(ConstantExpression::None {
+		Value::None {
+			..
+		} => Expression::Constant(ConstantExpression::None {
 			fragment: Fragment::None,
 		}),
 		Value::Boolean(b) => Expression::Constant(ConstantExpression::Bool {

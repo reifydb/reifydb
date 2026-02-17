@@ -8,7 +8,7 @@ use crate::encoded::{encoded::EncodedValues, schema::Schema};
 impl Schema {
 	pub fn set_utf8(&self, row: &mut EncodedValues, index: usize, value: impl AsRef<str>) {
 		let field = &self.fields()[index];
-		debug_assert_eq!(field.constraint.get_type(), Type::Utf8);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Utf8);
 		debug_assert!(!row.is_defined(index), "UTF8 field {} already set", index);
 
 		let bytes = value.as_ref().as_bytes();
@@ -31,7 +31,7 @@ impl Schema {
 
 	pub fn get_utf8<'a>(&'a self, row: &'a EncodedValues, index: usize) -> &'a str {
 		let field = &self.fields()[index];
-		debug_assert_eq!(field.constraint.get_type(), Type::Utf8);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Utf8);
 
 		// Read offset and length from static section
 		let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];

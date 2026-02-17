@@ -65,7 +65,9 @@ pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) ->
 		Value::Int(bi) => ColumnData::int(vec![bi.clone(); ctx.row_count]),
 		Value::Uint(bu) => ColumnData::uint(vec![bu.clone(); ctx.row_count]),
 		Value::Decimal(bd) => ColumnData::decimal(vec![bd.clone(); ctx.row_count]),
-		Value::None { .. } => ColumnData::none_typed(Type::Boolean, ctx.row_count),
+		Value::None {
+			..
+		} => ColumnData::none_typed(Type::Boolean, ctx.row_count),
 		Value::Type(_) | Value::Any(_) => unreachable!("Any/Type not supported as parameter"),
 	};
 	Ok(Column {

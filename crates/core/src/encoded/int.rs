@@ -29,7 +29,7 @@ impl Schema {
 	/// - Large values: stored in dynamic section with MSB=1
 	pub fn set_int(&self, row: &mut EncodedValues, index: usize, value: &Int) {
 		let field = &self.fields()[index];
-		debug_assert_eq!(field.constraint.get_type(), Type::Int);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int);
 
 		// Try i128 inline storage first (fits in 127 bits)
 		if let Some(i128_val) = value.0.to_i128() {
@@ -74,7 +74,7 @@ impl Schema {
 	/// Get a Int value, detecting storage mode from MSB
 	pub fn get_int(&self, row: &EncodedValues, index: usize) -> Int {
 		let field = &self.fields()[index];
-		debug_assert_eq!(field.constraint.get_type(), Type::Int);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int);
 
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);

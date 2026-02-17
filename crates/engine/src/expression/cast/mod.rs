@@ -10,7 +10,10 @@ pub mod text;
 pub mod uuid;
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::{err, error::diagnostic::cast, fragment::LazyFragment, storage::DataBitVec, value::r#type::Type};
+use reifydb_type::{
+	err, error::diagnostic::cast, fragment::LazyFragment, storage::DataBitVec, util::bitvec::BitVec,
+	value::r#type::Type,
+};
 
 use crate::expression::context::EvalContext;
 
@@ -30,17 +33,76 @@ pub fn cast_column_data(
 			Type::Option(t) => t.as_ref().clone(),
 			other => other.clone(),
 		};
-		// Short-circuit: all-None data can be cast to any target type without
-		// inspecting the placeholder inner data
-		if DataBitVec::count_ones(bitvec) == 0 {
-			return Ok(ColumnData::none_typed(inner_target, inner.len()));
+		let total_len = inner.len();
+		let defined_count = DataBitVec::count_ones(bitvec);
+
+		if defined_count == 0 {
+			return Ok(ColumnData::none_typed(inner_target, total_len));
 		}
+
+		if defined_count < total_len {
+			// Compact: keep only defined positions (avoids parsing placeholders like "" for text)
+			let mut compacted = inner.as_ref().clone();
+			compacted.filter(bitvec)?;
+
+			// Cast only real values
+			let mut cast_compacted = cast_column_data(ctx, &compacted, inner_target, lazy_fragment)?;
+
+			// Expand back to full length: defined positions → compacted index, None positions → sentinel
+			// (gets type default)
+			let sentinel = defined_count;
+			let mut expand_indices = Vec::with_capacity(total_len);
+			let mut src_idx = 0usize;
+			for i in 0..total_len {
+				if DataBitVec::get(bitvec, i) {
+					expand_indices.push(src_idx);
+					src_idx += 1;
+				} else {
+					expand_indices.push(sentinel);
+				}
+			}
+			cast_compacted.reorder(&expand_indices);
+
+			return Ok(match cast_compacted {
+				already @ ColumnData::Option {
+					..
+				} => already,
+				other => ColumnData::Option {
+					inner: Box::new(other),
+					bitvec: bitvec.clone(),
+				},
+			});
+		}
+
+		// All positions defined — cast directly (fast path)
 		let cast_inner = cast_column_data(ctx, inner, inner_target, lazy_fragment)?;
-		return Ok(ColumnData::Option {
-			inner: Box::new(cast_inner),
-			bitvec: bitvec.clone(),
+		return Ok(match cast_inner {
+			already @ ColumnData::Option {
+				..
+			} => already,
+			other => ColumnData::Option {
+				inner: Box::new(other),
+				bitvec: bitvec.clone(),
+			},
 		});
 	}
+	// Handle bare data -> Option(T) target: cast to inner type, wrap with all-defined bitvec
+	if let Type::Option(inner_target) = &target {
+		let cast_inner = cast_column_data(ctx, data, *inner_target.clone(), lazy_fragment)?;
+		return Ok(match cast_inner {
+			already @ ColumnData::Option {
+				..
+			} => already,
+			other => {
+				let bitvec = BitVec::repeat(other.len(), true);
+				ColumnData::Option {
+					inner: Box::new(other),
+					bitvec,
+				}
+			}
+		});
+	}
+
 	let source_type = data.get_type();
 	if target == source_type {
 		return Ok(data.clone());

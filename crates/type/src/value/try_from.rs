@@ -76,7 +76,9 @@ pub trait TryFromValue: Sized {
 	/// Undefined values gracefully.
 	fn from_value(value: &Value) -> Option<Self> {
 		match value {
-			Value::None { .. } => None,
+			Value::None {
+				..
+			} => None,
 			v => Self::try_from_value(v).ok(),
 		}
 	}
@@ -95,7 +97,9 @@ pub trait TryFromValueCoerce: Sized {
 	/// Extract with coercion, returning None for Undefined or incompatible types.
 	fn from_value_coerce(value: &Value) -> Option<Self> {
 		match value {
-			Value::None { .. } => None,
+			Value::None {
+				..
+			} => None,
 			v => Self::try_from_value_coerce(v).ok(),
 		}
 	}

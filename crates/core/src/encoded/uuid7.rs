@@ -12,7 +12,7 @@ impl Schema {
 	pub fn set_uuid7(&self, row: &mut EncodedValues, index: usize, value: Uuid7) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Uuid7);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uuid7);
 		row.set_valid(index, true);
 		unsafe {
 			// UUIDs are 16 bytes
@@ -26,7 +26,7 @@ impl Schema {
 	pub fn get_uuid7(&self, row: &EncodedValues, index: usize) -> Uuid7 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Uuid7);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uuid7);
 		unsafe {
 			// UUIDs are 16 bytes
 			let bytes: [u8; 16] =

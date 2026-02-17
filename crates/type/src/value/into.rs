@@ -10,8 +10,8 @@ use crate::value::{
 	identity::IdentityId,
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
-	r#type::Type,
 	time::Time,
+	r#type::Type,
 	uuid::{Uuid4, Uuid7},
 };
 
@@ -93,13 +93,17 @@ impl IntoValue for u128 {
 
 impl IntoValue for f32 {
 	fn into_value(self) -> Value {
-		OrderedF32::try_from(self).map(|v| Value::Float4(v)).unwrap_or(Value::None { inner: Type::Float4 })
+		OrderedF32::try_from(self).map(|v| Value::Float4(v)).unwrap_or(Value::None {
+			inner: Type::Float4,
+		})
 	}
 }
 
 impl IntoValue for f64 {
 	fn into_value(self) -> Value {
-		OrderedF64::try_from(self).map(|v| Value::Float8(v)).unwrap_or(Value::None { inner: Type::Float8 })
+		OrderedF64::try_from(self).map(|v| Value::Float8(v)).unwrap_or(Value::None {
+			inner: Type::Float8,
+		})
 	}
 }
 
@@ -213,7 +217,9 @@ impl<const N: usize> IntoValue for &[u8; N] {
 pub mod tests {
 	use std::f64::consts::PI;
 
-	use crate::value::{Value, blob::Blob, into::IntoValue, ordered_f32::OrderedF32, ordered_f64::OrderedF64, r#type::Type};
+	use crate::value::{
+		Value, blob::Blob, into::IntoValue, ordered_f32::OrderedF32, ordered_f64::OrderedF64, r#type::Type,
+	};
 
 	#[test]
 	fn test_into_value_primitives() {
@@ -241,8 +247,18 @@ pub mod tests {
 
 		// Test NaN handling
 
-		assert_eq!(f32::NAN.into_value(), Value::None { inner: Type::Float4 });
-		assert_eq!(f64::NAN.into_value(), Value::None { inner: Type::Float8 });
+		assert_eq!(
+			f32::NAN.into_value(),
+			Value::None {
+				inner: Type::Float4
+			}
+		);
+		assert_eq!(
+			f64::NAN.into_value(),
+			Value::None {
+				inner: Type::Float8
+			}
+		);
 	}
 
 	#[test]

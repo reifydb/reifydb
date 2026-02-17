@@ -11,7 +11,7 @@ impl Schema {
 	pub fn set_dictionary_id(&self, row: &mut EncodedValues, index: usize, entry: &DictionaryEntryId) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::DictionaryId);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DictionaryId);
 		row.set_valid(index, true);
 		unsafe {
 			let ptr = row.make_mut().as_mut_ptr().add(field.offset as usize);
@@ -28,7 +28,7 @@ impl Schema {
 	pub fn get_dictionary_id(&self, row: &EncodedValues, index: usize) -> DictionaryEntryId {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::DictionaryId);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DictionaryId);
 		let id_type = match field.constraint.constraint() {
 			Some(Constraint::Dictionary(_, id_type)) => id_type.clone(),
 			_ => Type::Uint4, // fallback

@@ -46,7 +46,7 @@ impl<T: AsTransaction> VTable<T> for Types {
 		let mut ids = ColumnData::uint1_with_capacity(TYPE_COUNT);
 		let mut names = ColumnData::utf8_with_capacity(TYPE_COUNT);
 
-		for i in 0..TYPE_COUNT as u8 {
+		for i in 1..=TYPE_COUNT as u8 {
 			let ty = Type::from_u8(i);
 			ids.push(i);
 			names.push(ty.to_string().to_lowercase().as_str());

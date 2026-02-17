@@ -11,7 +11,7 @@ impl Schema {
 	pub fn set_date(&self, row: &mut EncodedValues, index: usize, value: Date) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Date);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Date);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,7 +24,7 @@ impl Schema {
 	pub fn get_date(&self, row: &EncodedValues, index: usize) -> Date {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Date);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Date);
 		unsafe {
 			Date::from_days_since_epoch(
 				(row.as_ptr().add(field.offset as usize) as *const i32).read_unaligned(),

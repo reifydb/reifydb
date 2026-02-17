@@ -8,7 +8,7 @@ use crate::encoded::{encoded::EncodedValues, schema::Schema};
 impl Schema {
 	pub fn set_blob(&self, row: &mut EncodedValues, index: usize, value: &Blob) {
 		let field = &self.fields()[index];
-		debug_assert_eq!(field.constraint.get_type(), Type::Blob);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Blob);
 		debug_assert!(!row.is_defined(index), "BLOB field {} already set", index);
 
 		let bytes = value.as_bytes();
@@ -31,7 +31,7 @@ impl Schema {
 
 	pub fn get_blob(&self, row: &EncodedValues, index: usize) -> Blob {
 		let field = &self.fields()[index];
-		debug_assert_eq!(field.constraint.get_type(), Type::Blob);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Blob);
 
 		// Read offset and length from static section
 		let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];

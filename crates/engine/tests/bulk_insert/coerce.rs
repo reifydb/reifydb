@@ -64,8 +64,8 @@ fn test_missing_column_uses_undefined() {
 	let identity = test_identity();
 
 	create_namespace(&engine, "test");
-	// Two columns, but we only insert into one
-	create_table(&engine, "test", "partial", "a: int4, b: int4");
+	// Two columns, but we only insert into one; b is Option to accept none
+	create_table(&engine, "test", "partial", "a: int4, b: Option(int4)");
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder
@@ -90,12 +90,12 @@ fn test_missing_column_uses_undefined() {
 }
 
 #[test]
-fn test_mixed_defined_undefined_values() {
+fn test_mixed_some_none_values() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
 	create_namespace(&engine, "test");
-	create_table(&engine, "test", "mixed", "a: int4, b: int4");
+	create_table(&engine, "test", "mixed", "a: Option(int4), b: Option(int4)");
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder

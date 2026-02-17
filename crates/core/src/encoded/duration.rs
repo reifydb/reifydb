@@ -11,7 +11,7 @@ impl Schema {
 	pub fn set_duration(&self, row: &mut EncodedValues, index: usize, value: Duration) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Duration);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Duration);
 		row.set_valid(index, true);
 
 		let months = value.get_months();
@@ -39,7 +39,7 @@ impl Schema {
 	pub fn get_duration(&self, row: &EncodedValues, index: usize) -> Duration {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.constraint.get_type(), Type::Duration);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Duration);
 		unsafe {
 			// Read months (i32) from offset
 			let months = (row.as_ptr().add(field.offset as usize) as *const i32).read_unaligned();

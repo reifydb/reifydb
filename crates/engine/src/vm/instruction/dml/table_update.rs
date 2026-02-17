@@ -112,9 +112,13 @@ pub(crate) fn update_table<'a>(
 						Value::none()
 					};
 
-					let column_ident = Fragment::internal(&table_column.name);
+					let column_ident = columns
+						.iter()
+						.find(|col| col.name() == table_column.name)
+						.map(|col| col.name().clone())
+						.unwrap_or_else(|| Fragment::internal(&table_column.name));
 					let resolved_column = ResolvedColumn::new(
-						column_ident,
+						column_ident.clone(),
 						context.source.clone().unwrap(),
 						table_column.clone(),
 					);
@@ -126,7 +130,8 @@ pub(crate) fn update_table<'a>(
 						&context,
 					)?;
 
-					if let Err(e) = table_column.constraint.validate(&value) {
+					if let Err(mut e) = table_column.constraint.validate(&value) {
+						e.0.fragment = column_ident.clone();
 						return Err(e);
 					}
 

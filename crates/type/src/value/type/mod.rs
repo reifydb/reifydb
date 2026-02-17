@@ -172,7 +172,7 @@ impl Type {
 impl Type {
 	pub fn to_u8(&self) -> u8 {
 		match self {
-			Type::Option(_) => 0,
+			Type::Option(inner) => 0x80 | inner.to_u8(),
 			Type::Float4 => 1,
 			Type::Float8 => 2,
 			Type::Int1 => 3,
@@ -207,11 +207,11 @@ impl Type {
 }
 
 impl Type {
-	/// Decode a type from a u8 code. For Option types (code 0), the inner type
-	/// code must be provided separately via `from_u8_option`.
 	pub fn from_u8(value: u8) -> Self {
+		if value & 0x80 != 0 {
+			return Type::Option(Box::new(Type::from_u8(value & 0x7F)));
+		}
 		match value {
-			0 => Type::Option(Box::new(Type::Boolean)), // placeholder; caller should use from_u8_option
 			1 => Type::Float4,
 			2 => Type::Float8,
 			3 => Type::Int1,
@@ -241,11 +241,6 @@ impl Type {
 			27 => Type::DictionaryId,
 			_ => unreachable!(),
 		}
-	}
-
-	/// Decode an Option type from a u8 code for the inner type.
-	pub fn from_u8_option(inner_code: u8) -> Self {
-		Type::Option(Box::new(Type::from_u8(inner_code)))
 	}
 }
 
@@ -283,9 +278,10 @@ impl Type {
 				..
 			} => 16, // i128 inline or dynamic
 			// storage with offset + length
-			Type::Option(_) => 0,     // size determined by inner type + bitvec at container level
-			Type::Any => 8,           // pointer size on 64-bit systems
-			Type::DictionaryId => 16, // max possible; actual size determined by constraint's id_type
+			Type::Option(inner) => inner.size(), // size determined by inner type
+			Type::Any => 8,                      // pointer size on 64-bit systems
+			Type::DictionaryId => 16,            /* max possible; actual size determined by constraint's
+			                                       * id_type */
 		}
 	}
 
@@ -356,7 +352,7 @@ impl Display for Type {
 			Type::Int => f.write_str("Int"),
 			Type::Uint => f.write_str("Uint"),
 			Type::Decimal => f.write_str("Decimal"),
-			Type::Option(inner) => write!(f, "Option<{inner}>"),
+			Type::Option(inner) => write!(f, "Option({inner})"),
 			Type::Any => f.write_str("Any"),
 			Type::DictionaryId => f.write_str("DictionaryId"),
 		}
@@ -366,7 +362,9 @@ impl Display for Type {
 impl From<&Value> for Type {
 	fn from(value: &Value) -> Self {
 		match value {
-			Value::None { inner } => Type::Option(Box::new(inner.clone())),
+			Value::None {
+				inner,
+			} => Type::Option(Box::new(inner.clone())),
 			Value::Boolean(_) => Type::Boolean,
 			Value::Float4(_) => Type::Float4,
 			Value::Float8(_) => Type::Float8,

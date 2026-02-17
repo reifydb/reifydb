@@ -10,7 +10,9 @@ pub trait AsString {
 impl AsString for Value {
 	fn as_string(&self) -> String {
 		match self {
-			Value::None { .. } => "none".to_string(),
+			Value::None {
+				..
+			} => "none".to_string(),
 			Value::Boolean(b) => b.to_string(),
 			Value::Float4(f) => f.to_string(),
 			Value::Float8(f) => f.to_string(),

@@ -121,11 +121,15 @@ fn default_none_inner() -> Type {
 
 impl Value {
 	pub fn none() -> Self {
-		Value::None { inner: Type::Any }
+		Value::None {
+			inner: Type::Any,
+		}
 	}
 
 	pub fn none_of(ty: Type) -> Self {
-		Value::None { inner: ty }
+		Value::None {
+			inner: ty,
+		}
 	}
 
 	pub fn bool(v: impl Into<bool>) -> Self {
@@ -133,11 +137,15 @@ impl Value {
 	}
 
 	pub fn float4(v: impl Into<f32>) -> Self {
-		OrderedF32::try_from(v.into()).map(Value::Float4).unwrap_or(Value::None { inner: Type::Float4 })
+		OrderedF32::try_from(v.into()).map(Value::Float4).unwrap_or(Value::None {
+			inner: Type::Float4,
+		})
 	}
 
 	pub fn float8(v: impl Into<f64>) -> Self {
-		OrderedF64::try_from(v.into()).map(Value::Float8).unwrap_or(Value::None { inner: Type::Float8 })
+		OrderedF64::try_from(v.into()).map(Value::Float8).unwrap_or(Value::None {
+			inner: Type::Float8,
+		})
 	}
 
 	pub fn int1(v: impl Into<i8>) -> Self {
@@ -224,7 +232,14 @@ impl Value {
 impl PartialEq for Value {
 	fn eq(&self, other: &Self) -> bool {
 		match (self, other) {
-			(Value::None { .. }, Value::None { .. }) => true,
+			(
+				Value::None {
+					..
+				},
+				Value::None {
+					..
+				},
+			) => true,
 			(Value::Boolean(l), Value::Boolean(r)) => l == r,
 			(Value::Float4(l), Value::Float4(r)) => l == r,
 			(Value::Float8(l), Value::Float8(r)) => l == r,
@@ -264,7 +279,9 @@ impl std::hash::Hash for Value {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		std::mem::discriminant(self).hash(state);
 		match self {
-			Value::None { .. } => {} // All Nones hash identically
+			Value::None {
+				..
+			} => {} // All Nones hash identically
 			Value::Boolean(v) => v.hash(state),
 			Value::Float4(v) => v.hash(state),
 			Value::Float8(v) => v.hash(state),
@@ -328,10 +345,27 @@ impl PartialOrd for Value {
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().partial_cmp(&r.to_u128()),
 			(Value::Type(l), Value::Type(r)) => l.partial_cmp(r),
 			(Value::Any(_), Value::Any(_)) => None, // Any values are not comparable
-			(Value::None { .. }, Value::None { .. }) => Some(Ordering::Equal),
+			(
+				Value::None {
+					..
+				},
+				Value::None {
+					..
+				},
+			) => Some(Ordering::Equal),
 			// None sorts after all other values (similar to NULL in SQL)
-			(Value::None { .. }, _) => Some(Ordering::Greater),
-			(_, Value::None { .. }) => Some(Ordering::Less),
+			(
+				Value::None {
+					..
+				},
+				_,
+			) => Some(Ordering::Greater),
+			(
+				_,
+				Value::None {
+					..
+				},
+			) => Some(Ordering::Less),
 			(left, right) => {
 				unimplemented!("partial cmp {left:?} {right:?}")
 			}
@@ -342,9 +376,26 @@ impl PartialOrd for Value {
 impl Ord for Value {
 	fn cmp(&self, other: &Self) -> Ordering {
 		match (self, other) {
-			(Value::None { .. }, Value::None { .. }) => Ordering::Equal,
-			(Value::None { .. }, _) => Ordering::Greater,
-			(_, Value::None { .. }) => Ordering::Less,
+			(
+				Value::None {
+					..
+				},
+				Value::None {
+					..
+				},
+			) => Ordering::Equal,
+			(
+				Value::None {
+					..
+				},
+				_,
+			) => Ordering::Greater,
+			(
+				_,
+				Value::None {
+					..
+				},
+			) => Ordering::Less,
 			(Value::Boolean(l), Value::Boolean(r)) => l.cmp(r),
 			(Value::Float4(l), Value::Float4(r)) => l.cmp(r),
 			(Value::Float8(l), Value::Float8(r)) => l.cmp(r),
@@ -410,7 +461,9 @@ impl Display for Value {
 			Value::Any(value) => Display::fmt(value, f),
 			Value::DictionaryId(value) => Display::fmt(value, f),
 			Value::Type(value) => Display::fmt(value, f),
-			Value::None { .. } => f.write_str("none"),
+			Value::None {
+				..
+			} => f.write_str("none"),
 		}
 	}
 }
@@ -418,7 +471,9 @@ impl Display for Value {
 impl Value {
 	pub fn get_type(&self) -> Type {
 		match self {
-			Value::None { inner } => Type::Option(Box::new(inner.clone())),
+			Value::None {
+				inner,
+			} => Type::Option(Box::new(inner.clone())),
 			Value::Boolean(_) => Type::Boolean,
 			Value::Float4(_) => Type::Float4,
 			Value::Float8(_) => Type::Float8,

@@ -769,7 +769,9 @@ fn is_truthy(value: &Value) -> bool {
 	match value {
 		Value::Boolean(true) => true,
 		Value::Boolean(false) => false,
-		Value::None { .. } => false,
+		Value::None {
+			..
+		} => false,
 		Value::Int1(0) | Value::Int2(0) | Value::Int4(0) | Value::Int8(0) | Value::Int16(0) => false,
 		Value::Uint1(0) | Value::Uint2(0) | Value::Uint4(0) | Value::Uint8(0) | Value::Uint16(0) => false,
 		Value::Int1(_) | Value::Int2(_) | Value::Int4(_) | Value::Int8(_) | Value::Int16(_) => true,
