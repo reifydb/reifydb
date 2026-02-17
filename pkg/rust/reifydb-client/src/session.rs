@@ -451,11 +451,11 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 				.into_iter()
 				.map(|s| {
 					if s == "⟪none⟫" {
-						parse_uuid4("00000000-0000-0000-0000-000000000000".into()).unwrap()
+						parse_uuid4("00000000-0000-4000-8000-000000000000".into()).unwrap()
 					} else if let Ok(uuid) = parse_uuid4(s.into()) {
 						uuid
 					} else {
-						parse_uuid4("00000000-0000-0000-0000-000000000000".into()).unwrap()
+						parse_uuid4("00000000-0000-4000-8000-000000000000".into()).unwrap()
 					}
 				})
 				.collect();

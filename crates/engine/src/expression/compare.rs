@@ -10,11 +10,12 @@ use reifydb_type::{
 	return_error,
 	value::{
 		container::{
-			bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container,
+			blob::BlobContainer, bool::BoolContainer, number::NumberContainer,
+			temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 		},
 		decimal::Decimal,
 		int::Int,
-		is::{IsNumber, IsTemporal},
+		is::{IsNumber, IsTemporal, IsUuid},
 		number::{compare::partial_cmp, promote::Promote},
 		r#type::Type,
 		uint::Uint,
@@ -244,6 +245,41 @@ where
 }
 
 #[inline]
+fn compare_uuid<Op: CompareOp, T>(l: &UuidContainer<T>, r: &UuidContainer<T>, fragment: Fragment) -> Column
+where
+	T: IsUuid + PartialOrd,
+{
+	debug_assert_eq!(l.len(), r.len());
+
+	let data: Vec<bool> =
+		l.data().iter()
+			.zip(r.data().iter())
+			.map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val)))
+			.collect();
+
+	Column {
+		name: Fragment::internal(fragment.text()),
+		data: ColumnData::bool(data),
+	}
+}
+
+#[inline]
+fn compare_blob<Op: CompareOp>(l: &BlobContainer, r: &BlobContainer, fragment: Fragment) -> Column {
+	debug_assert_eq!(l.len(), r.len());
+
+	let data: Vec<bool> =
+		l.data().iter()
+			.zip(r.data().iter())
+			.map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val)))
+			.collect();
+
+	Column {
+		name: Fragment::internal(fragment.text()),
+		data: ColumnData::bool(data),
+	}
+}
+
+#[inline]
 fn compare_utf8<Op: CompareOp>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
@@ -321,6 +357,25 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 				},
 			) => {
 				return Ok(compare_utf8::<Op>(l, r, fragment));
+			},
+
+			(ColumnData::Uuid4(l), ColumnData::Uuid4(r)) => {
+				return Ok(compare_uuid::<Op, _>(l, r, fragment));
+			},
+			(ColumnData::Uuid7(l), ColumnData::Uuid7(r)) => {
+				return Ok(compare_uuid::<Op, _>(l, r, fragment));
+			},
+			(
+				ColumnData::Blob {
+					container: l,
+					..
+				},
+				ColumnData::Blob {
+					container: r,
+					..
+				},
+			) => {
+				return Ok(compare_blob::<Op>(l, r, fragment));
 			},
 
 			_ => {
