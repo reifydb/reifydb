@@ -40,6 +40,7 @@ use tracing::instrument;
 
 use crate::vm::volcano::{
 	aggregate::AggregateNode,
+	distinct::DistinctNode,
 	assert::{AssertNode, AssertWithoutInputNode},
 	environment::EnvironmentNode,
 	extend::{ExtendNode, ExtendWithoutInputNode},
@@ -379,7 +380,10 @@ pub(crate) fn compile<'a>(
 			Box::new(ScalarizeNode::new(input))
 		}
 
-		RqlQueryPlan::Distinct(_) => unreachable!(),
+		RqlQueryPlan::Distinct(distinct_node) => {
+			let input = compile(*distinct_node.input, rx, context);
+			Box::new(DistinctNode::new(input, distinct_node.columns))
+		}
 		RqlQueryPlan::Apply(apply_node) => {
 			let operator_name = apply_node.operator.text().to_string();
 			let transform = context

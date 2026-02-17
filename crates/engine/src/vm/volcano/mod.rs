@@ -47,6 +47,7 @@ pub mod aggregate;
 pub mod apply_transform;
 pub mod assert;
 pub mod compile;
+pub mod distinct;
 pub mod environment;
 pub mod extend;
 pub mod filter;
