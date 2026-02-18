@@ -48,7 +48,7 @@ pub mod sync;
 
 pub mod actor;
 
-use std::{future::Future, sync::Arc};
+use std::{future::Future, mem::ManuallyDrop, sync::Arc, time::Duration};
 
 use crate::{
 	actor::system::{ActorSystem, ActorSystemConfig},
@@ -171,9 +171,22 @@ impl std::error::Error for WasmJoinError {}
 /// Inner shared state for the runtime (native).
 #[cfg(not(target_arch = "wasm32"))]
 struct SharedRuntimeInner {
-	tokio: Runtime,
+	tokio: ManuallyDrop<Runtime>,
 	system: ActorSystem,
 	clock: Clock,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for SharedRuntimeInner {
+	fn drop(&mut self) {
+		// SAFETY: drop is called exactly once; taking the Runtime here
+		// prevents its default Drop (which calls shutdown_background and
+		// does NOT wait). We call shutdown_timeout instead so that worker
+		// threads and I/O resources (epoll fd, timer fd, etc.) are fully
+		// reclaimed before this function returns.
+		let rt = unsafe { ManuallyDrop::take(&mut self.tokio) };
+		rt.shutdown_timeout(Duration::from_secs(5));
+	}
 }
 
 /// Inner shared state for the runtime (WASM).
@@ -212,7 +225,7 @@ impl SharedRuntime {
 		let system = ActorSystem::new(config.actor_system_config());
 
 		Self(Arc::new(SharedRuntimeInner {
-			tokio,
+			tokio: ManuallyDrop::new(tokio),
 			system,
 			clock: config.clock,
 		}))
@@ -314,6 +327,7 @@ impl SharedRuntime {
 	{
 		self.0.system.install(f)
 	}
+
 }
 
 impl std::fmt::Debug for SharedRuntime {

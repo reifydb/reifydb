@@ -28,7 +28,7 @@ use reifydb_type::error;
 use tokio::{
 	net::TcpListener,
 	select,
-	sync::{Semaphore, watch},
+	sync::{Semaphore, oneshot, watch},
 	time::interval,
 };
 use tracing::info;
@@ -73,6 +73,8 @@ pub struct WsSubsystem {
 	active_connections: Arc<AtomicUsize>,
 	/// Channel to send shutdown signal.
 	shutdown_tx: Option<watch::Sender<bool>>,
+	/// Channel to receive shutdown completion.
+	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
 	/// Semaphore for connection limiting.
 	connection_semaphore: Arc<Semaphore>,
 	/// Shared tokio runtime.
@@ -110,6 +112,7 @@ impl WsSubsystem {
 			running: Arc::new(AtomicBool::new(false)),
 			active_connections: Arc::new(AtomicUsize::new(0)),
 			shutdown_tx: None,
+			shutdown_complete_rx: None,
 			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
 			runtime,
 			registry: Arc::new(SubscriptionRegistry::new()),
@@ -173,6 +176,7 @@ impl Subsystem for WsSubsystem {
 		info!("WebSocket server bound to {}", actual_addr);
 
 		let (tx, mut rx) = watch::channel(false);
+		let (complete_tx, complete_rx) = oneshot::channel();
 		let state = self.state.clone();
 		let running = self.running.clone();
 		let active_connections = self.active_connections.clone();
@@ -271,16 +275,21 @@ impl Subsystem for WsSubsystem {
 			}
 
 			running.store(false, Ordering::SeqCst);
+			let _ = complete_tx.send(());
 			info!("WebSocket server stopped");
 		});
 
 		self.shutdown_tx = Some(tx);
+		self.shutdown_complete_rx = Some(complete_rx);
 		Ok(())
 	}
 
 	fn shutdown(&mut self) -> reifydb_type::Result<()> {
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(true);
+		}
+		if let Some(rx) = self.shutdown_complete_rx.take() {
+			let _ = self.runtime.block_on(rx);
 		}
 		Ok(())
 	}

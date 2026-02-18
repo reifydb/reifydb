@@ -8,6 +8,7 @@
 mod pool;
 
 use std::{
+	any::Any,
 	fmt::{Debug, Formatter},
 	sync::{Arc, Mutex},
 };
@@ -36,6 +37,7 @@ struct ActorSystemInner {
 	cancel: CancellationToken,
 	scheduler: SchedulerHandle,
 	wakers: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
+	keepalive: Mutex<Vec<Box<dyn Any + Send + Sync>>>,
 }
 
 /// Unified system for all concurrent work.
@@ -69,6 +71,7 @@ impl ActorSystem {
 				cancel: CancellationToken::new(),
 				scheduler,
 				wakers: Mutex::new(Vec::new()),
+				keepalive: Mutex::new(Vec::new()),
 			}),
 		}
 	}
@@ -84,18 +87,33 @@ impl ActorSystem {
 	}
 
 	/// Signal shutdown to all actors and the timer scheduler.
+	///
+	/// Cancels all actors, wakes any that are parked, then drops the waker
+	/// and keepalive references so actor cells can be freed.
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
-		// Wake all parked actors so they see cancellation
-		let wakers = self.inner.wakers.lock().unwrap();
-		for waker in wakers.iter() {
+
+		// Drain wakers: wake all parked actors and release the closures in one step.
+		let wakers = std::mem::take(&mut *self.inner.wakers.lock().unwrap());
+		for waker in &wakers {
 			waker();
 		}
+		drop(wakers);
+
+		// Release keepalive references so actor cells can be freed.
+		self.inner.keepalive.lock().unwrap().clear();
 	}
 
 	/// Register a waker to be called on shutdown.
 	pub(crate) fn register_waker(&self, f: Arc<dyn Fn() + Send + Sync>) {
 		self.inner.wakers.lock().unwrap().push(f);
+	}
+
+	/// Register an actor cell to be kept alive while the system is running.
+	///
+	/// Cleared on shutdown so actor cells can be freed.
+	pub(crate) fn register_keepalive(&self, cell: Box<dyn Any + Send + Sync>) {
+		self.inner.keepalive.lock().unwrap().push(cell);
 	}
 
 	/// Get the timer scheduler for scheduling delayed/periodic callbacks.

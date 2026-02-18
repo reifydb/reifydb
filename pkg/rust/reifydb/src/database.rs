@@ -144,8 +144,16 @@ impl Database {
 
 		debug!("Stopping system gracefully");
 
-		// Stop all subsystems
+		// Stop all subsystems (now synchronously waits for each to finish)
 		self.subsystems.stop_all()?;
+
+		// Shutdown the actor system: cancels all actors and releases keepalive
+		// references so ActorCells (holding engine clones, event bus, etc.) can be freed
+		self.shared_runtime.actor_system().shutdown();
+
+		// Break the IoC reference cycle so the SharedRuntime Arc can reach zero
+		self.engine.executor().ioc.clear();
+
 		self.running = false;
 		debug!("System stopped successfully");
 		self.health_monitor.update_component_health("system".to_string(), HealthStatus::Healthy, false);
@@ -251,7 +259,7 @@ impl Database {
 			SubscriptionId(sub_id),
 			batch_size,
 			self.engine.clone(),
-			self.shared_runtime.actor_system(),
+			self.shared_runtime().actor_system(),
 		))
 	}
 

@@ -52,6 +52,10 @@ impl IocContainer {
 		self.dependencies.write().unwrap().insert(TypeId::of::<T>(), BoxedValue::new(service));
 	}
 
+	pub fn clear(&self) {
+		self.dependencies.write().unwrap().clear();
+	}
+
 	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> reifydb_type::Result<T> {
 		self.dependencies
 			.read()

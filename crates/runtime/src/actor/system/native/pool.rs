@@ -211,15 +211,19 @@ where
 		pool,
 	});
 
-	// Set up the notify callback so sends wake the actor
-	let cell_for_notify = Arc::clone(&cell);
+	// Notify closure uses Weak to avoid ActorCell ↔ notify self-referential cycle.
+	let cell_weak = Arc::downgrade(&cell);
 	let notify_fn: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-		notify(&cell_for_notify);
+		if let Some(cell) = cell_weak.upgrade() {
+			notify(&cell);
+		}
 	});
 	actor_ref.set_notify(notify_fn.clone());
-
-	// Register waker with system for cancellation wakeup
 	system.register_waker(notify_fn);
+
+	// The Weak-based notify closure doesn't keep the cell alive, so register a
+	// strong ref that the system drops on shutdown.
+	system.register_keepalive(Box::new(Arc::clone(&cell)));
 
 	// Spawn init + first batch on the pool
 	let actor_name = name.to_string();

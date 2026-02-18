@@ -16,7 +16,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::instrument;
 
 use crate::{
@@ -35,6 +35,8 @@ pub struct TaskSubsystem {
 	handle: Option<TaskHandle>,
 	/// Sender to the coordinator
 	coordinator_tx: Option<Sender<CoordinatorMessage>>,
+	/// Join handle for the coordinator task
+	coordinator_handle: Option<JoinHandle<()>>,
 	/// Shared runtime for spawning tasks
 	runtime: SharedRuntime,
 	/// Database engine for task execution
@@ -57,6 +59,7 @@ impl TaskSubsystem {
 			running: AtomicBool::new(false),
 			handle: None,
 			coordinator_tx: None,
+			coordinator_handle: None,
 			runtime,
 			engine,
 			registry,
@@ -109,13 +112,14 @@ impl Subsystem for TaskSubsystem {
 		let runtime = self.runtime.clone();
 		let engine = self.engine.clone();
 
-		self.runtime.spawn(async move {
+		let join_handle = self.runtime.spawn(async move {
 			coordinator::run_coordinator(registry, coordinator_rx, runtime, engine).await;
 		});
 
 		// Store handle and coordinator_tx
 		self.handle = Some(handle);
 		self.coordinator_tx = Some(coordinator_tx);
+		self.coordinator_handle = Some(join_handle);
 		self.running.store(true, Ordering::Release);
 
 		tracing::info!("Task subsystem started");
@@ -135,6 +139,11 @@ impl Subsystem for TaskSubsystem {
 		// Send shutdown message to coordinator
 		if let Some(coordinator_tx) = self.coordinator_tx.take() {
 			let _ = coordinator_tx.blocking_send(CoordinatorMessage::Shutdown);
+		}
+
+		// Wait for the coordinator task to finish
+		if let Some(join_handle) = self.coordinator_handle.take() {
+			let _ = self.runtime.block_on(join_handle);
 		}
 
 		self.handle = None;

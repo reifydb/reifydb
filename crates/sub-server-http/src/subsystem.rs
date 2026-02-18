@@ -173,6 +173,9 @@ impl Subsystem for HttpSubsystem {
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}
+		if let Some(rx) = self.shutdown_complete_rx.take() {
+			let _ = self.runtime.block_on(rx);
+		}
 		Ok(())
 	}
 
