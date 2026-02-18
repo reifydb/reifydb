@@ -13,6 +13,7 @@ use crate::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		dictionary::DictionaryId,
+		sumtype::SumTypeId,
 		r#type::Type,
 	},
 };
@@ -37,6 +38,8 @@ pub enum Constraint {
 	PrecisionScale(Precision, Scale),
 	/// Dictionary constraint: (catalog dictionary ID, id_type)
 	Dictionary(DictionaryId, Type),
+	/// Sum type constraint: links a logical column to a catalog SumTypeDef
+	SumType(SumTypeId),
 }
 
 /// FFI-safe representation of a TypeConstraint
@@ -45,7 +48,7 @@ pub enum Constraint {
 pub struct FFITypeConstraint {
 	/// Base type code (Type::to_u8)
 	pub base_type: u8,
-	/// Constraint type: 0=None, 1=MaxBytes, 2=PrecisionScale, 3=Dictionary
+	/// Constraint type: 0=None, 1=MaxBytes, 2=PrecisionScale, 3=Dictionary, 4=SumType
 	pub constraint_type: u8,
 	/// First constraint param: MaxBytes value OR precision OR dictionary_id low 32 bits
 	pub constraint_param1: u32,
@@ -75,6 +78,14 @@ impl TypeConstraint {
 		Self {
 			base_type: Type::DictionaryId,
 			constraint: Some(Constraint::Dictionary(dictionary_id, id_type)),
+		}
+	}
+
+	/// Create a sum type constraint (tag stored as Uint1)
+	pub fn sumtype(id: SumTypeId) -> Self {
+		Self {
+			base_type: Type::Uint1,
+			constraint: Some(Constraint::SumType(id)),
 		}
 	}
 
@@ -125,6 +136,12 @@ impl TypeConstraint {
 				constraint_param1: dict_id.to_u64() as u32,
 				constraint_param2: id_type.to_u8() as u32,
 			},
+			Some(Constraint::SumType(id)) => FFITypeConstraint {
+				base_type,
+				constraint_type: 4,
+				constraint_param1: id.to_u64() as u32,
+				constraint_param2: 0,
+			},
 		}
 	}
 
@@ -146,6 +163,10 @@ impl TypeConstraint {
 					DictionaryId::from(ffi.constraint_param1 as u64),
 					Type::from_u8(ffi.constraint_param2 as u8),
 				),
+			),
+			4 => Self::with_constraint(
+				ty,
+				Constraint::SumType(SumTypeId::from(ffi.constraint_param1 as u64)),
 			),
 			_ => Self::unconstrained(ty),
 		}
@@ -315,6 +336,9 @@ impl TypeConstraint {
 			}
 			Some(Constraint::Dictionary(dict_id, id_type)) => {
 				format!("DictionaryId(dict={}, {})", dict_id, id_type)
+			}
+			Some(Constraint::SumType(id)) => {
+				format!("SumType({})", id)
 			}
 		}
 	}

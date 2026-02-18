@@ -308,6 +308,7 @@ pub enum LogicalPlan<'bump> {
 	CreateTable(CreateTableNode<'bump>),
 	CreateRingBuffer(CreateRingBufferNode<'bump>),
 	CreateDictionary(CreateDictionaryNode<'bump>),
+	CreateSumType(CreateSumTypeNode<'bump>),
 	CreateFlow(CreateFlowNode<'bump>),
 	CreateIndex(CreateIndexNode<'bump>),
 	CreateSubscription(CreateSubscriptionNode<'bump>),
@@ -516,6 +517,13 @@ pub struct CreateDictionaryNode<'bump> {
 	pub if_not_exists: bool,
 	pub value_type: AstType<'bump>,
 	pub id_type: AstType<'bump>,
+}
+
+#[derive(Debug)]
+pub struct CreateSumTypeNode<'bump> {
+	pub name: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub if_not_exists: bool,
+	pub variants: Vec<crate::ast::ast::AstVariantDef<'bump>>,
 }
 
 #[derive(Debug)]

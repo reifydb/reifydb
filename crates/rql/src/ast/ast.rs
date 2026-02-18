@@ -117,6 +117,8 @@ pub enum Ast<'bump> {
 	Rownum(AstRownum<'bump>),
 	DefFunction(AstDefFunction<'bump>),
 	Return(AstReturn<'bump>),
+	SumTypeConstructor(AstSumTypeConstructor<'bump>),
+	IsVariant(AstIsVariant<'bump>),
 }
 
 impl<'bump> Default for Ast<'bump> {
@@ -204,6 +206,8 @@ impl<'bump> Ast<'bump> {
 			Ast::Rownum(node) => &node.token,
 			Ast::DefFunction(node) => &node.token,
 			Ast::Return(node) => &node.token,
+			Ast::SumTypeConstructor(node) => &node.token,
+			Ast::IsVariant(node) => &node.token,
 		}
 	}
 
@@ -752,6 +756,24 @@ impl<'bump> Index<usize> for AstInline<'bump> {
 }
 
 #[derive(Debug)]
+pub struct AstSumTypeConstructor<'bump> {
+	pub token: Token<'bump>,
+	pub namespace: BumpFragment<'bump>,
+	pub sumtype_name: BumpFragment<'bump>,
+	pub variant_name: BumpFragment<'bump>,
+	pub columns: AstInline<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstIsVariant<'bump> {
+	pub token: Token<'bump>,
+	pub expression: BumpBox<'bump, Ast<'bump>>,
+	pub namespace: Option<BumpFragment<'bump>>,
+	pub sumtype_name: BumpFragment<'bump>,
+	pub variant_name: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
 pub enum AstCreate<'bump> {
 	DeferredView(AstCreateDeferredView<'bump>),
 	TransactionalView(AstCreateTransactionalView<'bump>),
@@ -762,6 +784,7 @@ pub enum AstCreate<'bump> {
 	Table(AstCreateTable<'bump>),
 	RingBuffer(AstCreateRingBuffer<'bump>),
 	Dictionary(AstCreateDictionary<'bump>),
+	Enum(AstCreateSumType<'bump>),
 	Index(AstCreateIndex<'bump>),
 }
 
@@ -927,6 +950,20 @@ pub struct AstCreateDictionary<'bump> {
 }
 
 #[derive(Debug)]
+pub struct AstCreateSumType<'bump> {
+	pub token: Token<'bump>,
+	pub if_not_exists: bool,
+	pub name: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub variants: Vec<AstVariantDef<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstVariantDef<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub columns: Vec<AstColumnToCreate<'bump>>,
+}
+
+#[derive(Debug)]
 pub struct AstAssert<'bump> {
 	pub token: Token<'bump>,
 	pub node: BumpBox<'bump, Ast<'bump>>,
@@ -949,6 +986,10 @@ pub enum AstType<'bump> {
 		params: Vec<AstLiteral<'bump>>,
 	},
 	Optional(Box<AstType<'bump>>),
+	Qualified {
+		namespace: BumpFragment<'bump>,
+		name: BumpFragment<'bump>,
+	},
 }
 
 impl<'bump> AstType<'bump> {
@@ -960,6 +1001,20 @@ impl<'bump> AstType<'bump> {
 				..
 			} => name,
 			AstType::Optional(inner) => inner.name_fragment(),
+			AstType::Qualified {
+				name,
+				..
+			} => name,
+		}
+	}
+
+	pub fn namespace_fragment(&self) -> Option<&BumpFragment<'bump>> {
+		match self {
+			AstType::Qualified {
+				namespace,
+				..
+			} => Some(namespace),
+			_ => None,
 		}
 	}
 }
@@ -1026,6 +1081,10 @@ impl<'bump> AstCreate<'bump> {
 				..
 			}) => token,
 			AstCreate::Dictionary(AstCreateDictionary {
+				token,
+				..
+			}) => token,
+			AstCreate::Enum(AstCreateSumType {
 				token,
 				..
 			}) => token,

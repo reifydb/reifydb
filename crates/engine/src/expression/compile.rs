@@ -593,6 +593,50 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			let expr = e.clone();
 			CompiledExpr::new(move |ctx| call_eval(ctx, &expr, ctx.functions, ctx.clock))
 		}
+
+		Expression::SumTypeConstructor(_) => {
+			panic!(
+				"SumTypeConstructor in expression context — constructors should be expanded by InlineDataNode before expression compilation"
+			);
+		}
+
+		Expression::IsVariant(e) => {
+			let col_name = match e.expression.as_ref() {
+				Expression::Column(c) => c.0.name.text().to_string(),
+				other => other.full_fragment_owned().text().to_string(),
+			};
+			let tag_col_name = format!("{}_tag", col_name);
+			let tag = e.tag.expect("IS variant tag must be resolved before compilation");
+			let fragment = e.fragment.clone();
+			CompiledExpr::new(move |ctx| {
+				if let Some(tag_col) =
+					ctx.columns.iter().find(|c| c.name().text() == tag_col_name.as_str())
+				{
+					match tag_col.data() {
+						ColumnData::Uint1(container) => {
+							let results: Vec<bool> = container
+								.iter()
+								.take(ctx.row_count)
+								.map(|v| v == Some(tag))
+								.collect();
+							Ok(Column {
+								name: fragment.clone(),
+								data: ColumnData::bool(results),
+							})
+						}
+						_ => Ok(Column {
+							name: fragment.clone(),
+							data: ColumnData::none_typed(Type::Boolean, ctx.row_count),
+						}),
+					}
+				} else {
+					Ok(Column {
+						name: fragment.clone(),
+						data: ColumnData::none_typed(Type::Boolean, ctx.row_count),
+					})
+				}
+			})
+		}
 	})
 }
 

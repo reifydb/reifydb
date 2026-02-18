@@ -9,10 +9,11 @@ use reifydb_core::interface::catalog::{
 	namespace::NamespaceDef,
 	ringbuffer::RingBufferDef,
 	subscription::SubscriptionDef,
+	sumtype::SumTypeDef,
 	table::TableDef,
 	view::ViewDef,
 };
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 
 use crate::TransactionId;
 
@@ -22,6 +23,7 @@ pub trait TransactionalChanges:
 	+ TransactionalNamespaceChanges
 	+ TransactionalRingBufferChanges
 	+ TransactionalSubscriptionChanges
+	+ TransactionalSumTypeChanges
 	+ TransactionalTableChanges
 	+ TransactionalViewChanges
 {
@@ -89,6 +91,16 @@ pub trait TransactionalViewChanges {
 
 /// Trait for querying subscription changes within a transaction.
 /// Note: Subscriptions do NOT have names - they are identified only by ID.
+pub trait TransactionalSumTypeChanges {
+	fn find_sumtype(&self, id: SumTypeId) -> Option<&SumTypeDef>;
+
+	fn find_sumtype_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SumTypeDef>;
+
+	fn is_sumtype_deleted(&self, id: SumTypeId) -> bool;
+
+	fn is_sumtype_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
 pub trait TransactionalSubscriptionChanges {
 	fn find_subscription(&self, id: SubscriptionId) -> Option<&SubscriptionDef>;
 
@@ -108,6 +120,7 @@ pub struct TransactionalDefChanges {
 	/// All ring buffer definition changes in order (no coalescing)
 	pub ringbuffer_def: Vec<Change<RingBufferDef>>,
 	/// All subscription definition changes in order (no coalescing)
+	pub sumtype_def: Vec<Change<SumTypeDef>>,
 	pub subscription_def: Vec<Change<SubscriptionDef>>,
 	/// All table definition changes in order (no coalescing)
 	pub table_def: Vec<Change<TableDef>>,
@@ -208,6 +221,21 @@ impl TransactionalDefChanges {
 		});
 	}
 
+	pub fn add_sumtype_def_change(&mut self, change: Change<SumTypeDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|s| s.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.sumtype_def.push(change);
+		self.log.push(Operation::SumType {
+			id,
+			op,
+		});
+	}
+
 	pub fn add_subscription_def_change(&mut self, change: Change<SubscriptionDef>) {
 		let id = change
 			.post
@@ -263,6 +291,10 @@ pub enum Operation {
 		id: RingBufferId,
 		op: OperationType,
 	},
+	SumType {
+		id: SumTypeId,
+		op: OperationType,
+	},
 	Subscription {
 		id: SubscriptionId,
 		op: OperationType,
@@ -285,6 +317,7 @@ impl TransactionalDefChanges {
 			flow_def: Vec::new(),
 			namespace_def: Vec::new(),
 			ringbuffer_def: Vec::new(),
+			sumtype_def: Vec::new(),
 			subscription_def: Vec::new(),
 			table_def: Vec::new(),
 			view_def: Vec::new(),
@@ -369,6 +402,7 @@ impl TransactionalDefChanges {
 		self.flow_def.clear();
 		self.namespace_def.clear();
 		self.ringbuffer_def.clear();
+		self.sumtype_def.clear();
 		self.subscription_def.clear();
 		self.table_def.clear();
 		self.view_def.clear();

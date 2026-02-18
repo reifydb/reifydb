@@ -48,6 +48,7 @@ pub enum PhysicalPlan {
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateFlow(CreateFlowNode),
 	CreateDictionary(CreateDictionaryNode),
+	CreateSumType(CreateSumTypeNode),
 	CreateSubscription(CreateSubscriptionNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
@@ -172,6 +173,26 @@ pub struct CreateDictionaryNode {
 	pub if_not_exists: bool,
 	pub value_type: Type,
 	pub id_type: Type,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSumTypeNode {
+	pub namespace: NamespaceDef,
+	pub name: Fragment,
+	pub if_not_exists: bool,
+	pub variants: Vec<CreateSumTypeVariant>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSumTypeVariant {
+	pub name: String,
+	pub columns: Vec<CreateSumTypeColumn>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSumTypeColumn {
+	pub name: String,
+	pub column_type: TypeConstraint,
 }
 
 #[derive(Debug, Clone)]

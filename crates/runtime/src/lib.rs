@@ -327,7 +327,6 @@ impl SharedRuntime {
 	{
 		self.0.system.install(f)
 	}
-
 }
 
 impl std::fmt::Debug for SharedRuntime {

@@ -3,11 +3,13 @@
 
 use reifydb_catalog::catalog::table::TableColumnToCreate;
 use reifydb_core::{
-	error::diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch},
+	error::diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch, sumtype_not_found},
 	interface::catalog::policy::ColumnPolicyKind,
 };
 use reifydb_transaction::transaction::AsTransaction;
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_type::{
+	error::diagnostic::ast::unrecognized_type, fragment::Fragment, return_error, value::constraint::TypeConstraint,
+};
 
 use crate::{
 	ast::ast::AstCreateTable,
@@ -28,7 +30,35 @@ impl<'bump> Compiler<'bump> {
 
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.text().to_string();
-			let constraint = convert_data_type_with_constraints(&col.ty)?;
+			let constraint = match &col.ty {
+				crate::ast::ast::AstType::Qualified {
+					namespace,
+					name,
+				} => {
+					let ns_name = namespace.text();
+					let type_name = name.text();
+					let ns = self.catalog.find_namespace_by_name(tx, ns_name)?;
+					let sumtype = ns
+						.and_then(|ns| {
+							self.catalog
+								.find_sumtype_by_name(tx, ns.id, type_name)
+								.transpose()
+						})
+						.transpose()?;
+					match sumtype {
+						Some(def) => TypeConstraint::sumtype(def.id),
+						None => return_error!(sumtype_not_found(
+							Fragment::merge_all([namespace.to_owned(), name.to_owned()]),
+							ns_name,
+							type_name,
+						)),
+					}
+				}
+				_ => match convert_data_type_with_constraints(&col.ty) {
+					Ok(c) => c,
+					Err(_) => return_error!(unrecognized_type(col.ty.name_fragment().to_owned())),
+				},
+			};
 			let column_type = constraint.get_type();
 
 			let policies = if let Some(policy_block) = &col.policies {

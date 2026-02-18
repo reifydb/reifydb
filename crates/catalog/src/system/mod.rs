@@ -9,6 +9,7 @@ pub mod cdc_consumers;
 pub mod column_policies;
 pub mod columns;
 pub mod dictionaries;
+pub mod enums;
 pub mod flow_edges;
 pub mod flow_lags;
 pub mod flow_node_types;
@@ -43,6 +44,7 @@ use cdc_consumers::cdc_consumers;
 use column_policies::column_policies;
 use columns::columns;
 use dictionaries::dictionaries;
+use enums::enums;
 use flow_edges::flow_edges;
 use flow_lags::flow_lags;
 use flow_node_types::flow_node_types;
@@ -176,6 +178,16 @@ pub mod ids {
 
 			pub const ALL: [ColumnId; 8] =
 				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
+		}
+
+		pub mod enums {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+
+			pub const ALL: [ColumnId; 3] = [ID, NAMESPACE_ID, NAME];
 		}
 
 		pub mod dictionaries {
@@ -427,8 +439,9 @@ pub mod ids {
 		pub const FLOW_LAGS: VTableId = VTableId(31);
 		pub const SCHEMAS: VTableId = VTableId(32);
 		pub const SCHEMA_FIELDS: VTableId = VTableId(33);
+		pub const ENUMS: VTableId = VTableId(34);
 
-		pub const ALL: [VTableId; 33] = [
+		pub const ALL: [VTableId; 34] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -462,6 +475,7 @@ pub mod ids {
 			FLOW_LAGS,
 			SCHEMAS,
 			SCHEMA_FIELDS,
+			ENUMS,
 		];
 	}
 }
@@ -651,5 +665,10 @@ impl SystemCatalog {
 	/// Get the schema_fields virtual table definition
 	pub fn get_system_schema_fields_table_def() -> Arc<VTableDef> {
 		schema_fields()
+	}
+
+	/// Get the enums virtual table definition
+	pub fn get_system_enums_table_def() -> Arc<VTableDef> {
+		enums()
 	}
 }

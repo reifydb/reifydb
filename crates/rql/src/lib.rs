@@ -113,6 +113,12 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 			let inner_tc = convert_data_type_with_constraints(inner)?;
 			Ok(TypeConstraint::unconstrained(Type::Option(Box::new(inner_tc.get_type()))))
 		}
+		AstType::Qualified {
+			name,
+			..
+		} => {
+			return_error!(unrecognized_type(name.to_owned()))
+		}
 	}
 }
 

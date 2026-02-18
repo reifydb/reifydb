@@ -10,7 +10,7 @@ use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedPrimitive},
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
-use reifydb_rql::expression::AliasExpression;
+use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -49,11 +49,88 @@ impl InlineDataNode {
 			columns: source.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		}
 	}
+
+	fn expand_sumtype_constructors<'a>(&mut self, txn: &mut Transaction<'a>) -> crate::Result<()> {
+		let ctx = match self.context.as_ref() {
+			Some(ctx) => ctx.clone(),
+			None => return Ok(()),
+		};
+
+		let mut has_sumtype = false;
+		for row in &self.rows {
+			for alias_expr in row {
+				if matches!(alias_expr.expression.as_ref(), Expression::SumTypeConstructor(_)) {
+					has_sumtype = true;
+					break;
+				}
+			}
+			if has_sumtype {
+				break;
+			}
+		}
+		if !has_sumtype {
+			return Ok(());
+		}
+
+		for row in &mut self.rows {
+			let original = std::mem::take(row);
+			let mut expanded = Vec::with_capacity(original.len());
+
+			for alias_expr in original {
+				if !matches!(alias_expr.expression.as_ref(), Expression::SumTypeConstructor(_)) {
+					expanded.push(alias_expr);
+					continue;
+				}
+
+				let col_name = alias_expr.alias.0.text().to_string();
+				let fragment = alias_expr.fragment.clone();
+				let Expression::SumTypeConstructor(ctor) = *alias_expr.expression else {
+					unreachable!()
+				};
+
+				let ns_name = ctor.namespace.text();
+				let ns = ctx.services.catalog.find_namespace_by_name(txn, ns_name)?.unwrap();
+				let sumtype_name = ctor.sumtype_name.text();
+				let sumtype_def =
+					ctx.services.catalog.find_sumtype_by_name(txn, ns.id, sumtype_name)?.unwrap();
+
+				let variant_name_lower = ctor.variant_name.text().to_lowercase();
+				let variant =
+					sumtype_def.variants.iter().find(|v| v.name == variant_name_lower).unwrap();
+
+				expanded.push(AliasExpression {
+					alias: IdentExpression(Fragment::internal(format!("{}_tag", col_name))),
+					expression: Box::new(Expression::Constant(ConstantExpression::Number {
+						fragment: Fragment::internal(variant.tag.to_string()),
+					})),
+					fragment: fragment.clone(),
+				});
+
+				for (field_name, field_expr) in ctor.columns {
+					let phys_col_name = format!(
+						"{}_{}_{}",
+						col_name,
+						variant_name_lower,
+						field_name.text().to_lowercase()
+					);
+					expanded.push(AliasExpression {
+						alias: IdentExpression(Fragment::internal(phys_col_name)),
+						expression: Box::new(field_expr),
+						fragment: fragment.clone(),
+					});
+				}
+			}
+
+			*row = expanded;
+		}
+
+		Ok(())
+	}
 }
 
 impl QueryNode for InlineDataNode {
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
-		// Already has context from constructor
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+		self.expand_sumtype_constructors(rx)?;
 		Ok(())
 	}
 

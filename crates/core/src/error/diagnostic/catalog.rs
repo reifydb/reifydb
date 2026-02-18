@@ -144,6 +144,36 @@ pub fn ringbuffer_not_found(fragment: Fragment, namespace: &str, ringbuffer: &st
 	}
 }
 
+pub fn sumtype_already_exists(fragment: Fragment, namespace: &str, name: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_003".to_string(),
+		statement: None,
+		message: format!("enum `{}.{}` already exists", namespace, name),
+		fragment,
+		label: Some("duplicate enum definition".to_string()),
+		help: Some("choose a different name or drop the existing enum first".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn sumtype_not_found(fragment: Fragment, namespace: &str, name: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_002".to_string(),
+		statement: None,
+		message: format!("type `{}.{}` not found", namespace, name),
+		fragment,
+		label: Some("unknown type".to_string()),
+		help: Some(format!("create the enum first with `CREATE ENUM {}.{} {{ ... }}`", namespace, name)),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn dictionary_already_exists(fragment: Fragment, namespace: &str, dictionary: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_006".to_string(),

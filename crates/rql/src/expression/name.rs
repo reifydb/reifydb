@@ -171,5 +171,18 @@ fn simplified_name<'a>(expr: &Expression) -> Fragment {
 			simplified_name(&in_expr.value).text(),
 			simplified_name(&in_expr.list).text()
 		)),
+		Expression::SumTypeConstructor(ctor) => {
+			Fragment::internal(format!("{}::{}", ctor.sumtype_name.text(), ctor.variant_name.text()))
+		}
+		Expression::IsVariant(e) => Fragment::internal(format!(
+			"{} IS {}{}::{}",
+			simplified_name(&e.expression).text(),
+			match &e.namespace {
+				Some(ns) => format!("{}.", ns.text()),
+				None => String::new(),
+			},
+			e.sumtype_name.text(),
+			e.variant_name.text()
+		)),
 	}
 }

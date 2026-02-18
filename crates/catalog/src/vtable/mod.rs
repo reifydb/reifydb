@@ -87,6 +87,7 @@ impl VTableRegistry {
 			RINGBUFFERS => Some(SystemCatalog::get_system_ringbuffers_table_def()),
 			SCHEMAS => Some(SystemCatalog::get_system_schemas_table_def()),
 			SCHEMA_FIELDS => Some(SystemCatalog::get_system_schema_fields_table_def()),
+			ENUMS => Some(SystemCatalog::get_system_enums_table_def()),
 			_ => None,
 		})
 	}
@@ -112,6 +113,7 @@ impl VTableRegistry {
 			SystemCatalog::get_system_ringbuffers_table_def(),
 			SystemCatalog::get_system_schemas_table_def(),
 			SystemCatalog::get_system_schema_fields_table_def(),
+			SystemCatalog::get_system_enums_table_def(),
 		])
 	}
 }

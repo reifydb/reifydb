@@ -395,6 +395,12 @@ impl From<&Expression> for JsonExpression {
 			Expression::Type(e) => JsonExpression::Type {
 				ty: format!("{:?}", e.ty),
 			},
+			Expression::SumTypeConstructor(_) => JsonExpression::Type {
+				ty: "SumTypeConstructor".to_string(),
+			},
+			Expression::IsVariant(_) => JsonExpression::Type {
+				ty: "IsVariant".to_string(),
+			},
 		}
 	}
 }

@@ -6,6 +6,7 @@ pub mod column_policies;
 pub mod columns;
 pub mod dictionaries;
 pub mod dictionary_storage_stats;
+pub mod enums;
 pub mod flow_edges;
 pub mod flow_lags;
 pub mod flow_node_storage_stats;

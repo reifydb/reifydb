@@ -50,7 +50,7 @@ use reifydb_type::{error::diagnostic::ast, return_error};
 
 use crate::{
 	ast::{
-		ast::{Ast, AstInfix, AstStatement, InfixOperator},
+		ast::{Ast, AstInfix, AstInline, AstIsVariant, AstStatement, AstSumTypeConstructor, InfixOperator},
 		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
 	},
 	bump::{Bump, BumpBox},
@@ -241,12 +241,14 @@ impl<'bump> Parser<'bump> {
 				Between,
 				In,
 				NotIn,
+				Is,
 			}
 
 			let special = if let Ok(current) = self.current() {
 				match current.kind {
 					TokenKind::Keyword(Keyword::Between) => Some(SpecialInfix::Between),
 					TokenKind::Keyword(Keyword::In) => Some(SpecialInfix::In),
+					TokenKind::Keyword(Keyword::Is) => Some(SpecialInfix::Is),
 					TokenKind::Operator(Operator::Not) => {
 						// Check if next token is IN for NOT IN
 						if self.is_next_keyword(Keyword::In) {
@@ -271,12 +273,69 @@ impl<'bump> Parser<'bump> {
 				Some(SpecialInfix::NotIn) => {
 					left = Ast::Infix(self.parse_in(left, true)?);
 				}
+				Some(SpecialInfix::Is) => {
+					left = self.parse_is(left)?;
+				}
 				_ => {
-					left = Ast::Infix(self.parse_infix(left)?);
+					let infix = self.parse_infix(left)?;
+					if matches!(infix.operator, InfixOperator::AccessNamespace(_)) {
+						if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+							left = self.parse_sumtype_constructor(infix)?;
+							continue;
+						}
+						if matches!(infix.left.as_ref(), Ast::Infix(inner) if matches!(inner.operator, InfixOperator::AccessTable(_)))
+						{
+							left = self.parse_sumtype_unit_constructor(infix)?;
+							continue;
+						}
+					}
+					left = Ast::Infix(infix);
 				}
 			}
 		}
 		Ok(left)
+	}
+
+	fn parse_sumtype_constructor(&mut self, infix: AstInfix<'bump>) -> crate::Result<Ast<'bump>> {
+		let variant_name = *infix.right.as_identifier().fragment();
+		let (namespace, sumtype_name) = match infix.left.as_ref() {
+			Ast::Infix(inner) if matches!(inner.operator, InfixOperator::AccessTable(_)) => {
+				let ns = *inner.left.as_identifier().fragment();
+				let name = *inner.right.as_identifier().fragment();
+				(ns, name)
+			}
+			_ => {
+				let name = *infix.left.as_identifier().fragment();
+				(name, name)
+			}
+		};
+		let columns = self.parse_inline()?;
+		Ok(Ast::SumTypeConstructor(AstSumTypeConstructor {
+			token: infix.token,
+			namespace,
+			sumtype_name,
+			variant_name,
+			columns,
+		}))
+	}
+
+	fn parse_sumtype_unit_constructor(&mut self, infix: AstInfix<'bump>) -> crate::Result<Ast<'bump>> {
+		let variant_name = *infix.right.as_identifier().fragment();
+		let Ast::Infix(inner) = infix.left.as_ref() else {
+			unreachable!()
+		};
+		let namespace = *inner.left.as_identifier().fragment();
+		let sumtype_name = *inner.right.as_identifier().fragment();
+		Ok(Ast::SumTypeConstructor(AstSumTypeConstructor {
+			token: infix.token,
+			namespace,
+			sumtype_name,
+			variant_name,
+			columns: AstInline {
+				token: infix.token,
+				keyed_values: vec![],
+			},
+		}))
 	}
 
 	pub(crate) fn advance(&mut self) -> crate::Result<Token<'bump>> {
@@ -398,6 +457,7 @@ impl<'bump> Parser<'bump> {
 			}
 			TokenKind::Keyword(Keyword::Between) => Ok(Precedence::Comparison),
 			TokenKind::Keyword(Keyword::In) => Ok(Precedence::Comparison),
+			TokenKind::Keyword(Keyword::Is) => Ok(Precedence::Comparison),
 			_ => Ok(Precedence::None),
 		}
 	}
@@ -481,6 +541,32 @@ impl<'bump> Parser<'bump> {
 			operator,
 			right: BumpBox::new_in(right, self.bump()),
 		})
+	}
+
+	/// Parse an IS expression: `value IS [namespace.]SumType::Variant`
+	pub(crate) fn parse_is(&mut self, left: Ast<'bump>) -> crate::Result<Ast<'bump>> {
+		let is_token = self.consume_keyword(Keyword::Is)?;
+
+		let first = self.consume(TokenKind::Identifier)?;
+
+		let (namespace, sumtype_name) = if !self.is_eof() && self.current()?.is_operator(Operator::Dot) {
+			self.consume_operator(Operator::Dot)?;
+			let sumtype_token = self.consume(TokenKind::Identifier)?;
+			(Some(first.fragment), sumtype_token.fragment)
+		} else {
+			(None, first.fragment)
+		};
+
+		self.consume_operator(Operator::DoubleColon)?;
+		let variant_token = self.consume(TokenKind::Identifier)?;
+
+		Ok(Ast::IsVariant(AstIsVariant {
+			token: is_token,
+			expression: BumpBox::new_in(left, self.bump()),
+			namespace,
+			sumtype_name,
+			variant_name: variant_token.fragment,
+		}))
 	}
 
 	/// Parse a comma-separated list of expressions with optional braces

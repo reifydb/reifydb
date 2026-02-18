@@ -16,9 +16,9 @@ use super::{
 	Batch, VTable, VTableContext,
 	system::{
 		cdc_consumers::CdcConsumers, column_policies::ColumnPolicies, columns::ColumnsTable,
-		dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, flow_edges::FlowEdges,
-		flow_lags::FlowLags, flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes,
-		flow_nodes::FlowNodes, flow_operator_inputs::FlowOperatorInputs,
+		dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, enums::Enums,
+		flow_edges::FlowEdges, flow_lags::FlowLags, flow_node_storage_stats::FlowNodeStorageStats,
+		flow_node_types::FlowNodeTypes, flow_nodes::FlowNodes, flow_operator_inputs::FlowOperatorInputs,
 		flow_operator_outputs::FlowOperatorOutputs, flow_operators::FlowOperators,
 		flow_storage_stats::FlowStorageStats, flows::Flows, index_storage_stats::IndexStorageStats,
 		namespaces::Namespaces, operator_retention_policies::OperatorRetentionPolicies,
@@ -74,6 +74,7 @@ pub enum VTables {
 	DictionaryStorageStats(DictionaryStorageStats),
 	Schemas(Schemas),
 	SchemaFields(SchemaFields),
+	Enums(Enums),
 
 	/// User-defined virtual table (callback-based)
 	UserDefined {
@@ -122,6 +123,7 @@ impl VTables {
 			Self::DictionaryStorageStats(t) => &t.definition,
 			Self::Schemas(t) => &t.definition,
 			Self::SchemaFields(t) => &t.definition,
+			Self::Enums(t) => &t.definition,
 			Self::UserDefined {
 				def,
 				..
@@ -165,6 +167,7 @@ impl VTables {
 			Self::DictionaryStorageStats(t) => t.initialize(txn, ctx),
 			Self::Schemas(t) => t.initialize(txn, ctx),
 			Self::SchemaFields(t) => t.initialize(txn, ctx),
+			Self::Enums(t) => t.initialize(txn, ctx),
 			Self::UserDefined {
 				params: stored_params,
 				exhausted,
@@ -222,6 +225,7 @@ impl VTables {
 			Self::DictionaryStorageStats(t) => t.next(txn),
 			Self::Schemas(t) => t.next(txn),
 			Self::SchemaFields(t) => t.next(txn),
+			Self::Enums(t) => t.next(txn),
 			Self::UserDefined {
 				data_fn,
 				params: stored_params,

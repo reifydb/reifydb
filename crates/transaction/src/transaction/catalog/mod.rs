@@ -10,6 +10,7 @@ pub mod flow;
 pub mod namespace;
 pub mod ringbuffer;
 pub mod subscription;
+pub mod sumtype;
 pub mod table;
 pub mod view;
 

@@ -10,9 +10,9 @@ use crate::{
 	nodes::{
 		AlterFlowNode, AlterSequenceNode, AlterTableNode, AlterViewNode, CreateDeferredViewNode,
 		CreateDictionaryNode, CreateFlowNode, CreateNamespaceNode, CreateRingBufferNode,
-		CreateSubscriptionNode, CreateTableNode, CreateTransactionalViewNode, DeleteRingBufferNode,
-		DeleteTableNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode, InsertTableNode,
-		UpdateRingBufferNode, UpdateTableNode,
+		CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode, CreateTransactionalViewNode,
+		DeleteRingBufferNode, DeleteTableNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
+		InsertTableNode, UpdateRingBufferNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -137,6 +137,7 @@ pub enum Instruction {
 	CreateDeferredView(CreateDeferredViewNode),
 	CreateTransactionalView(CreateTransactionalViewNode),
 	CreateDictionary(CreateDictionaryNode),
+	CreateSumType(CreateSumTypeNode),
 	CreateSubscription(CreateSubscriptionNode),
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode),

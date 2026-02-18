@@ -17,6 +17,7 @@ use namespace::NamespaceKey;
 use namespace_dictionary::NamespaceDictionaryKey;
 use namespace_flow::NamespaceFlowKey;
 use namespace_ringbuffer::NamespaceRingBufferKey;
+use namespace_sumtype::NamespaceSumTypeKey;
 use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
 use primary_key::PrimaryKeyKey;
@@ -27,6 +28,7 @@ use row_sequence::RowSequenceKey;
 use subscription::SubscriptionKey;
 use subscription_column::SubscriptionColumnKey;
 use subscription_row::SubscriptionRowKey;
+use sumtype::SumTypeKey;
 use system_sequence::SystemSequenceKey;
 use system_version::SystemVersionKey;
 use table::TableKey;
@@ -58,6 +60,7 @@ pub mod namespace;
 pub mod namespace_dictionary;
 pub mod namespace_flow;
 pub mod namespace_ringbuffer;
+pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
 pub mod primary_key;
@@ -69,6 +72,7 @@ pub mod schema;
 pub mod subscription;
 pub mod subscription_column;
 pub mod subscription_row;
+pub mod sumtype;
 pub mod system_sequence;
 pub mod system_version;
 pub mod table;
@@ -108,6 +112,8 @@ pub enum Key {
 	DictionaryEntryIndex(DictionaryEntryIndexKey),
 	DictionarySequence(DictionarySequenceKey),
 	NamespaceDictionary(NamespaceDictionaryKey),
+	SumType(SumTypeKey),
+	NamespaceSumType(NamespaceSumTypeKey),
 	Subscription(SubscriptionKey),
 	SubscriptionColumn(SubscriptionColumnKey),
 	SubscriptionRow(SubscriptionRowKey),
@@ -148,6 +154,8 @@ impl Key {
 			Key::DictionaryEntryIndex(key) => key.encode(),
 			Key::DictionarySequence(key) => key.encode(),
 			Key::NamespaceDictionary(key) => key.encode(),
+			Key::SumType(key) => key.encode(),
+			Key::NamespaceSumType(key) => key.encode(),
 			Key::Subscription(key) => key.encode(),
 			Key::SubscriptionColumn(key) => key.encode(),
 			Key::SubscriptionRow(key) => key.encode(),
@@ -252,6 +260,8 @@ impl Key {
 			KeyKind::NamespaceDictionary => {
 				NamespaceDictionaryKey::decode(&key).map(Self::NamespaceDictionary)
 			}
+			KeyKind::SumType => SumTypeKey::decode(&key).map(Self::SumType),
+			KeyKind::NamespaceSumType => NamespaceSumTypeKey::decode(&key).map(Self::NamespaceSumType),
 			KeyKind::Metric => {
 				// Storage tracker keys are used for internal persistence, not through Key enum
 				None
@@ -271,7 +281,7 @@ impl Key {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::row_number::RowNumber;
+	use reifydb_type::value::{row_number::RowNumber, sumtype::SumTypeId};
 
 	use crate::{
 		interface::catalog::{
@@ -282,8 +292,9 @@ pub mod tests {
 		key::{
 			Key, column::ColumnKey, column_policy::ColumnPolicyKey, column_sequence::ColumnSequenceKey,
 			columns::ColumnsKey, flow_node_state::FlowNodeStateKey, index::IndexKey,
-			namespace::NamespaceKey, namespace_table::NamespaceTableKey, row::RowKey,
-			row_sequence::RowSequenceKey, system_sequence::SystemSequenceKey, table::TableKey,
+			namespace::NamespaceKey, namespace_sumtype::NamespaceSumTypeKey,
+			namespace_table::NamespaceTableKey, row::RowKey, row_sequence::RowSequenceKey,
+			sumtype::SumTypeKey, system_sequence::SystemSequenceKey, table::TableKey,
 			transaction_version::TransactionVersionKey,
 		},
 	};
@@ -508,6 +519,42 @@ pub mod tests {
 			Key::FlowNodeState(decoded_inner) => {
 				assert_eq!(decoded_inner.node, 0xCAFEBABE);
 				assert_eq!(decoded_inner.key, vec![1, 2, 3]);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_sumtype_key() {
+		let key = Key::SumType(SumTypeKey {
+			sumtype: SumTypeId(42),
+		});
+
+		let encoded = key.encode();
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+		match decoded {
+			Key::SumType(decoded_inner) => {
+				assert_eq!(decoded_inner.sumtype, 42);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_namespace_sumtype_key() {
+		let key = Key::NamespaceSumType(NamespaceSumTypeKey {
+			namespace: NamespaceId(42),
+			sumtype: SumTypeId(999_999),
+		});
+
+		let encoded = key.encode();
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+		match decoded {
+			Key::NamespaceSumType(decoded_inner) => {
+				assert_eq!(decoded_inner.namespace, 42);
+				assert_eq!(decoded_inner.sumtype, 999_999);
 			}
 			_ => unreachable!(),
 		}

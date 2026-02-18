@@ -115,6 +115,8 @@ pub enum Expression {
 	If(IfExpression),
 	Map(MapExpression),
 	Extend(ExtendExpression),
+	SumTypeConstructor(SumTypeConstructorExpression),
+	IsVariant(IsVariantExpression),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -643,6 +645,18 @@ impl Display for Expression {
 					.collect::<Vec<_>>()
 					.join(", ")
 			),
+			Expression::SumTypeConstructor(ctor) => write!(
+				f,
+				"{}::{}{{ {} }}",
+				ctor.sumtype_name.text(),
+				ctor.variant_name.text(),
+				ctor.columns
+					.iter()
+					.map(|(name, expr)| format!("{}: {}", name.text(), expr))
+					.collect::<Vec<_>>()
+					.join(", ")
+			),
+			Expression::IsVariant(e) => write!(f, "({} IS {})", e.expression, e.variant_name.text()),
 		}
 	}
 }
@@ -1085,6 +1099,32 @@ impl ExpressionCompiler {
 					fragment: list.token.fragment.to_owned(),
 				}))
 			}
+			Ast::SumTypeConstructor(ctor) => {
+				let mut columns = Vec::with_capacity(ctor.columns.keyed_values.len());
+				for kv in ctor.columns.keyed_values {
+					let name = kv.key.token.fragment.to_owned();
+					let expr = Self::compile(BumpBox::into_inner(kv.value))?;
+					columns.push((name, expr));
+				}
+				Ok(Expression::SumTypeConstructor(SumTypeConstructorExpression {
+					namespace: ctor.namespace.to_owned(),
+					sumtype_name: ctor.sumtype_name.to_owned(),
+					variant_name: ctor.variant_name.to_owned(),
+					columns,
+					fragment: ctor.token.fragment.to_owned(),
+				}))
+			}
+			Ast::IsVariant(is) => {
+				let expression = Self::compile(BumpBox::into_inner(is.expression))?;
+				Ok(Expression::IsVariant(IsVariantExpression {
+					expression: Box::new(expression),
+					namespace: is.namespace.map(|n| n.to_owned()),
+					sumtype_name: is.sumtype_name.to_owned(),
+					variant_name: is.variant_name.to_owned(),
+					tag: None,
+					fragment: is.token.fragment.to_owned(),
+				}))
+			}
 			ast => unimplemented!("{:?}", ast),
 		}
 	}
@@ -1499,5 +1539,24 @@ pub struct MapExpression {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtendExpression {
 	pub expressions: Vec<Expression>,
+	pub fragment: Fragment,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SumTypeConstructorExpression {
+	pub namespace: Fragment,
+	pub sumtype_name: Fragment,
+	pub variant_name: Fragment,
+	pub columns: Vec<(Fragment, Expression)>,
+	pub fragment: Fragment,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsVariantExpression {
+	pub expression: Box<Expression>,
+	pub namespace: Option<Fragment>,
+	pub sumtype_name: Fragment,
+	pub variant_name: Fragment,
+	pub tag: Option<u8>,
 	pub fragment: Fragment,
 }

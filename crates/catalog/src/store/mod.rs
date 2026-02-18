@@ -17,5 +17,6 @@ pub(crate) mod ringbuffer;
 pub(crate) mod schema;
 pub(crate) mod sequence;
 pub(crate) mod subscription;
+pub(crate) mod sumtype;
 pub(crate) mod table;
 pub(crate) mod view;

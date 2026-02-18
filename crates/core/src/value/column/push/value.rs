@@ -20,7 +20,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::value::column::data::ColumnData;
+use crate::value::column::data::{ColumnData, with_container};
 
 macro_rules! push_or_promote {
 	// Helper: wrap a column in Option if there are preceding none values
@@ -80,7 +80,7 @@ impl ColumnData {
 		} = self
 		{
 			if matches!(value, Value::None { .. }) {
-				inner.push_none();
+				with_container!(inner.as_mut(), |c| c.push_default());
 				DataBitVec::push(bitvec, false);
 			} else if DataBitVec::count_ones(bitvec) == 0 {
 				// All-none Option column - need to promote inner type to match the value

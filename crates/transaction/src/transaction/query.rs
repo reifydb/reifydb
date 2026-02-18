@@ -12,13 +12,17 @@ use reifydb_core::{
 			namespace::NamespaceDef,
 			ringbuffer::RingBufferDef,
 			subscription::SubscriptionDef,
+			sumtype::SumTypeDef,
 			table::TableDef,
 			view::ViewDef,
 		},
 		store::{MultiVersionBatch, MultiVersionValues},
 	},
 };
-use reifydb_type::{Result, value::dictionary::DictionaryId};
+use reifydb_type::{
+	Result,
+	value::{dictionary::DictionaryId, sumtype::SumTypeId},
+};
 use tracing::instrument;
 
 use crate::{
@@ -26,7 +30,7 @@ use crate::{
 	change::{
 		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalNamespaceChanges, TransactionalRingBufferChanges, TransactionalSubscriptionChanges,
-		TransactionalTableChanges, TransactionalViewChanges,
+		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -250,6 +254,24 @@ impl TransactionalViewChanges for QueryTransaction {
 	}
 
 	fn is_view_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalSumTypeChanges for QueryTransaction {
+	fn find_sumtype(&self, _id: SumTypeId) -> Option<&SumTypeDef> {
+		None
+	}
+
+	fn find_sumtype_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&SumTypeDef> {
+		None
+	}
+
+	fn is_sumtype_deleted(&self, _id: SumTypeId) -> bool {
+		false
+	}
+
+	fn is_sumtype_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

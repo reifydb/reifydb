@@ -64,7 +64,7 @@ pub fn compile_subscription_flow(
 /// Compiler for converting RQL plans into executable Flows
 pub(crate) struct FlowCompiler {
 	/// The catalog for persisting flow nodes and edges
-	catalog: Catalog,
+	pub(crate) catalog: Catalog,
 	/// The flow builder being used for construction
 	builder: FlowBuilder,
 	/// The sink view schema (for terminal nodes)

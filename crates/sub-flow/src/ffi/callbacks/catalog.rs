@@ -412,5 +412,6 @@ fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
 			// Dictionary constraint: encode as type 3
 			(base_type, 3, 0, 0)
 		}
+		Some(reifydb_type::value::constraint::Constraint::SumType(id)) => (base_type, 4, id.to_u64() as u32, 0),
 	}
 }

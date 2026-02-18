@@ -9,6 +9,7 @@ pub mod namespace;
 pub mod ringbuffer;
 pub mod series;
 pub mod subscription;
+pub mod sumtype;
 pub mod table;
 pub mod transactional;
 
@@ -34,6 +35,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Table(node) => self.compile_create_table(node, tx),
 			AstCreate::RingBuffer(node) => self.compile_create_ringbuffer(node, tx),
 			AstCreate::Dictionary(node) => self.compile_create_dictionary(node),
+			AstCreate::Enum(node) => self.compile_create_sumtype(node),
 			AstCreate::Index(node) => self.compile_create_index(node),
 			AstCreate::Subscription(node) => self.compile_create_subscription(node, tx),
 		}

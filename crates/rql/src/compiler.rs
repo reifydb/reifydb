@@ -562,7 +562,9 @@ impl InstructionCompiler {
 			Expression::Column(_)
 			| Expression::AccessSource(_)
 			| Expression::Alias(_)
-			| Expression::Extend(_) => {
+			| Expression::Extend(_)
+			| Expression::SumTypeConstructor(_)
+			| Expression::IsVariant(_) => {
 				self.emit(Instruction::PushNone);
 			}
 		}
@@ -589,6 +591,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::CreateDictionary(node) => {
 				self.emit(Instruction::CreateDictionary(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateSumType(node) => {
+				self.emit(Instruction::CreateSumType(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::AlterSequence(node) => {

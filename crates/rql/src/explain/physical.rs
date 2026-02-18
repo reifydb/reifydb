@@ -90,6 +90,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::CreateRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::CreateDictionary(_) => unimplemented!(),
+		PhysicalPlan::CreateSumType(_) => unimplemented!(),
 		PhysicalPlan::CreateSubscription(_) => unimplemented!(),
 		PhysicalPlan::CreateFlow(create_flow) => {
 			let mut label =

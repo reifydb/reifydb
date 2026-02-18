@@ -8,7 +8,7 @@
 
 use crate::interface::catalog::{
 	dictionary::DictionaryDef, flow::FlowDef, namespace::NamespaceDef, ringbuffer::RingBufferDef,
-	subscription::SubscriptionDef, table::TableDef, view::ViewDef,
+	subscription::SubscriptionDef, sumtype::SumTypeDef, table::TableDef, view::ViewDef,
 };
 
 /// Trait for tracking table definition changes during a transaction.
@@ -80,6 +80,15 @@ pub trait CatalogTrackSubscriptionChangeOperations {
 	fn track_subscription_def_deleted(&mut self, subscription: SubscriptionDef) -> reifydb_type::Result<()>;
 }
 
+/// Trait for tracking sum type definition changes during a transaction.
+pub trait CatalogTrackSumTypeChangeOperations {
+	fn track_sumtype_def_created(&mut self, sumtype: SumTypeDef) -> reifydb_type::Result<()>;
+
+	fn track_sumtype_def_updated(&mut self, pre: SumTypeDef, post: SumTypeDef) -> reifydb_type::Result<()>;
+
+	fn track_sumtype_def_deleted(&mut self, sumtype: SumTypeDef) -> reifydb_type::Result<()>;
+}
+
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackDictionaryChangeOperations
@@ -87,6 +96,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
 	+ CatalogTrackSubscriptionChangeOperations
+	+ CatalogTrackSumTypeChangeOperations
 	+ CatalogTrackTableChangeOperations
 	+ CatalogTrackViewChangeOperations
 {

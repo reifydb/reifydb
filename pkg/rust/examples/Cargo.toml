@@ -25,6 +25,10 @@ path = "examples/basic/01_hello_world.rs"
 name = "basic-tables"
 path = "examples/basic/02_tables.rs"
 
+[[bin]]
+name = "basic-enums"
+path = "examples/basic/03_enums.rs"
+
 # RQL examples (ReifyDB Query Language)
 [[bin]]
 name = "rql-from"

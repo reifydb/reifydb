@@ -20,6 +20,7 @@ cargo run --bin basic-hello-world
 |--------------|----------------------------------------------------|-------------------|
 | `make basic-hello-world` | Simple hello world example with in-memory database | None |
 | `make basic-tables` | Table creation and namespace definition example    | None |
+| `make basic-enums` | Enum types: creation, insertion, querying, variant filtering | None |
 
 ### RQL (Query Language) Examples
 

@@ -7,9 +7,9 @@ use reifydb_catalog::vtable::{
 	VTableContext,
 	system::{
 		cdc_consumers::CdcConsumers, column_policies::ColumnPolicies, columns::ColumnsTable,
-		dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, flow_edges::FlowEdges,
-		flow_lags::FlowLags, flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes,
-		flow_nodes::FlowNodes, flow_operator_inputs::FlowOperatorInputs,
+		dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, enums::Enums,
+		flow_edges::FlowEdges, flow_lags::FlowLags, flow_node_storage_stats::FlowNodeStorageStats,
+		flow_node_types::FlowNodeTypes, flow_nodes::FlowNodes, flow_operator_inputs::FlowOperatorInputs,
 		flow_operator_outputs::FlowOperatorOutputs, flow_operators::FlowOperators,
 		flow_storage_stats::FlowStorageStats, flows::Flows, index_storage_stats::IndexStorageStats,
 		namespaces::Namespaces, operator_retention_policies::OperatorRetentionPolicies,
@@ -22,7 +22,10 @@ use reifydb_catalog::vtable::{
 	},
 	tables::VTables,
 };
-use reifydb_core::interface::catalog::id::{IndexId, NamespaceId};
+use reifydb_core::interface::{
+	catalog::id::{IndexId, NamespaceId},
+	resolved::ResolvedPrimitive,
+};
 use reifydb_rql::{
 	nodes::{
 		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, ExtendNode as RqlExtendNode,
@@ -83,6 +86,20 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 	}
 }
 
+pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedPrimitive> {
+	match plan {
+		RqlQueryPlan::TableScan(node) => Some(ResolvedPrimitive::Table(node.source.clone())),
+		RqlQueryPlan::ViewScan(node) => Some(ResolvedPrimitive::View(node.source.clone())),
+		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedPrimitive::RingBuffer(node.source.clone())),
+		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedPrimitive::Dictionary(node.source.clone())),
+		RqlQueryPlan::Filter(node) => extract_resolved_source(&node.input),
+		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
+		RqlQueryPlan::Map(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
+		RqlQueryPlan::Take(node) => extract_resolved_source(&node.input),
+		_ => None,
+	}
+}
+
 #[instrument(name = "volcano::compile", level = "trace", skip(plan, rx, context))]
 pub(crate) fn compile<'a>(
 	plan: RqlQueryPlan,
@@ -113,9 +130,20 @@ pub(crate) fn compile<'a>(
 		}
 
 		RqlQueryPlan::Filter(RqlFilterNode {
-			conditions,
+			mut conditions,
 			input,
 		}) => {
+			if let Some(source) = extract_resolved_source(&input) {
+				for expr in &mut conditions {
+					super::filter::resolve_is_variant_tags(
+						expr,
+						&source,
+						&context.services.catalog,
+						rx,
+					)
+					.expect("resolve IS variant tags");
+				}
+			}
 			let input_node = compile(*input, rx, context);
 			Box::new(FilterNode::new(input_node, conditions))
 		}
@@ -351,6 +379,7 @@ pub(crate) fn compile<'a>(
 					"schema_fields" => VTables::SchemaFields(SchemaFields::new(
 						context.services.catalog.clone(),
 					)),
+					"enums" => VTables::Enums(Enums::new()),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {

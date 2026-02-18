@@ -8,7 +8,7 @@ use reifydb_core::{
 	key::system_sequence::SystemSequenceKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 
 use crate::{
 	store::sequence::generator::u64::GeneratorU64,
@@ -64,5 +64,9 @@ impl SystemSequence {
 
 	pub(crate) fn next_dictionary_id(txn: &mut AdminTransaction) -> crate::Result<DictionaryId> {
 		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(DictionaryId)
+	}
+
+	pub(crate) fn next_sumtype_id(txn: &mut AdminTransaction) -> crate::Result<SumTypeId> {
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(SumTypeId)
 	}
 }

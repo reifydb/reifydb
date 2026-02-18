@@ -37,6 +37,11 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 			bytes.push(id_type.to_u8());
 			bytes
 		}
+		Some(Constraint::SumType(id)) => {
+			let mut bytes = vec![4];
+			bytes.extend_from_slice(&id.to_u64().to_le_bytes());
+			bytes
+		}
 	}
 }
 

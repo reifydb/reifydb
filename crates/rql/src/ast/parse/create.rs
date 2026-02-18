@@ -7,12 +7,12 @@ use crate::{
 	ast::{
 		ast::{
 			AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
-			AstCreateTransactionalView, AstIndexColumn, AstPrimaryKeyDef, AstType,
+			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable,
+			AstCreateTransactionalView, AstIndexColumn, AstPrimaryKeyDef, AstType, AstVariantDef,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier,
-			MaybeQualifiedSequenceIdentifier,
+			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSumTypeIdentifier,
 		},
 		parse::Parser,
 	},
@@ -94,6 +94,10 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Dictionary))?).is_some() {
 			return self.parse_dictionary(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Enum))?).is_some() {
+			return self.parse_enum(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
@@ -600,6 +604,64 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
+	fn parse_enum(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
+			self.consume_operator(Not)?;
+			self.consume_keyword(Exists)?;
+			true
+		} else {
+			false
+		};
+
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name_frag = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let sumtype_ident = if namespace.is_empty() {
+			MaybeQualifiedSumTypeIdentifier::new(name_frag)
+		} else {
+			MaybeQualifiedSumTypeIdentifier::new(name_frag).with_namespace(namespace)
+		};
+
+		self.consume_operator(Operator::OpenCurly)?;
+		let mut variants = Vec::new();
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let variant_name = self.parse_identifier_with_hyphens()?.into_fragment();
+
+			let columns = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+				self.parse_columns()?
+			} else {
+				Vec::new()
+			};
+
+			variants.push(AstVariantDef {
+				name: variant_name,
+				columns,
+			});
+
+			self.skip_new_line()?;
+			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+				self.skip_new_line()?;
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstCreate::Enum(AstCreateSumType {
+			token,
+			if_not_exists,
+			name: sumtype_ident,
+			variants,
+		}))
+	}
+
 	fn parse_type(&mut self) -> crate::Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
@@ -609,6 +671,15 @@ impl<'bump> Parser<'bump> {
 			let inner = self.parse_type()?;
 			self.consume_operator(Operator::CloseParen)?;
 			return Ok(AstType::Optional(Box::new(inner)));
+		}
+
+		if !self.is_eof() && self.current()?.is_operator(Operator::Dot) {
+			self.consume_operator(Operator::Dot)?;
+			let name_token = self.consume(TokenKind::Identifier)?;
+			return Ok(AstType::Qualified {
+				namespace: ty_token.fragment,
+				name: name_token.fragment,
+			});
 		}
 
 		// Check for type with parameters like DECIMAL(10,2)
@@ -674,6 +745,13 @@ impl<'bump> Parser<'bump> {
 			let inner = self.parse_type()?;
 			self.consume_operator(Operator::CloseParen)?;
 			AstType::Optional(Box::new(inner))
+		} else if !self.is_eof() && self.current()?.is_operator(Operator::Dot) {
+			self.consume_operator(Operator::Dot)?;
+			let name_token = self.consume(TokenKind::Identifier)?;
+			AstType::Qualified {
+				namespace: ty_token.fragment,
+				name: name_token.fragment,
+			}
 		} else if self.current()?.is_operator(Operator::OpenParen) {
 			// Type with parameters like UTF8(50) or DECIMAL(10,2)
 			self.consume_operator(Operator::OpenParen)?;
@@ -853,8 +931,8 @@ pub mod tests {
 		ast::{
 			ast::{
 				Ast, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-				AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
-				AstCreateTransactionalView, AstPolicyKind, AstType,
+				AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType,
+				AstCreateTable, AstCreateTransactionalView, AstPolicyKind, AstType,
 			},
 			parse::Parser,
 		},
@@ -1895,6 +1973,138 @@ pub mod tests {
 				}
 			}
 			_ => unreachable!("Expected Dictionary create"),
+		}
+	}
+
+	#[test]
+	fn test_create_enum_basic() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE ENUM Status { Active, Inactive, Pending }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Enum(AstCreateSumType {
+				if_not_exists,
+				name,
+				variants,
+				..
+			}) => {
+				assert!(!if_not_exists);
+				assert!(name.namespace.is_empty());
+				assert_eq!(name.name.text(), "Status");
+				assert_eq!(variants.len(), 3);
+				assert_eq!(variants[0].name.text(), "Active");
+				assert_eq!(variants[1].name.text(), "Inactive");
+				assert_eq!(variants[2].name.text(), "Pending");
+				assert!(variants[0].columns.is_empty());
+				assert!(variants[1].columns.is_empty());
+				assert!(variants[2].columns.is_empty());
+			}
+			_ => unreachable!("Expected Enum create"),
+		}
+	}
+
+	#[test]
+	fn test_create_enum_with_fields() {
+		let bump = Bump::new();
+		let tokens = tokenize(
+			&bump,
+			"CREATE ENUM Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
+		)
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Enum(AstCreateSumType {
+				name,
+				variants,
+				..
+			}) => {
+				assert_eq!(name.name.text(), "Shape");
+				assert_eq!(variants.len(), 2);
+
+				assert_eq!(variants[0].name.text(), "Circle");
+				assert_eq!(variants[0].columns.len(), 1);
+				assert_eq!(variants[0].columns[0].name.text(), "radius");
+
+				assert_eq!(variants[1].name.text(), "Rectangle");
+				assert_eq!(variants[1].columns.len(), 2);
+				assert_eq!(variants[1].columns[0].name.text(), "width");
+				assert_eq!(variants[1].columns[1].name.text(), "height");
+			}
+			_ => unreachable!("Expected Enum create"),
+		}
+	}
+
+	#[test]
+	fn test_create_enum_qualified_name() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "CREATE ENUM analytics.Status { Active, Inactive }")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Enum(AstCreateSumType {
+				name,
+				variants,
+				..
+			}) => {
+				assert_eq!(name.namespace[0].text(), "analytics");
+				assert_eq!(name.name.text(), "Status");
+				assert_eq!(variants.len(), 2);
+			}
+			_ => unreachable!("Expected Enum create"),
+		}
+	}
+
+	#[test]
+	fn test_create_enum_if_not_exists() {
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "CREATE ENUM IF NOT EXISTS Status { Active }").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Enum(AstCreateSumType {
+				if_not_exists,
+				name,
+				variants,
+				..
+			}) => {
+				assert!(if_not_exists);
+				assert!(name.namespace.is_empty());
+				assert_eq!(name.name.text(), "Status");
+				assert_eq!(variants.len(), 1);
+				assert_eq!(variants[0].name.text(), "Active");
+			}
+			_ => unreachable!("Expected Enum create"),
 		}
 	}
 

@@ -8,6 +8,7 @@ help:
 	@echo "Basic Examples:"
 	@echo "  make basic-hello-world   - Simple hello world example"
 	@echo "  make basic-tables        - Create and define table, namespaces"
+	@echo "  make basic-enums         - Enum types (sum types / tagged unions)"
 	@echo ""
 	@echo "RQL (Query Language) Examples:"
 	@echo "  make rql-from            - FROM operator: loading data from inline arrays and tables"
@@ -42,6 +43,10 @@ basic-hello-world:
 .PHONY: basic-tables
 basic-tables:
 	cargo run --bin basic-tables
+
+.PHONY: basic-enums
+basic-enums:
+	cargo run --bin basic-enums
 
 # RQL Examples
 .PHONY: rql-from
@@ -99,7 +104,7 @@ subscription-cursor:
 	RUST_LOG=info cargo run --bin subscription-cursor
 
 # Define example groups
-BASIC_EXAMPLES := basic-hello-world basic-tables
+BASIC_EXAMPLES := basic-hello-world basic-tables basic-enums
 RQL_EXAMPLES := rql-from rql-map rql-filter rql-sort rql-take rql-aggregate rql-join rql-arithmetic rql-comparison rql-logical
 INTERCEPT_EXAMPLES := intercept-table-view intercept-deferred-view
 SUBSCRIPTION_EXAMPLES := subscription-cursor

@@ -8,13 +8,14 @@ use reifydb_core::interface::catalog::{
 	namespace::NamespaceDef,
 	policy::ColumnPolicyKind,
 	ringbuffer::RingBufferDef,
+	sumtype::{SumTypeDef, VariantDef},
 	table::TableDef,
 	view::ViewDef,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{
 	fragment::Fragment,
-	value::{blob::Blob, constraint::TypeConstraint},
+	value::{blob::Blob, constraint::TypeConstraint, sumtype::SumTypeId},
 };
 
 use crate::{
@@ -236,4 +237,39 @@ pub fn create_flow_edge(
 
 	CatalogStore::create_flow_edge(txn, &edge_def).unwrap();
 	edge_def
+}
+
+pub fn create_sumtype(
+	txn: &mut AdminTransaction,
+	namespace: &str,
+	name: &str,
+	variants: Vec<VariantDef>,
+) -> SumTypeDef {
+	use crate::store::sumtype::create::SumTypeToCreate;
+
+	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+
+	CatalogStore::create_sumtype(
+		txn,
+		SumTypeToCreate {
+			name: Fragment::internal(name),
+			namespace: namespace_def.id,
+			def: SumTypeDef {
+				id: SumTypeId(0),
+				namespace: namespace_def.id,
+				name: name.to_string(),
+				variants,
+			},
+		},
+	)
+	.unwrap()
+}
+
+pub fn ensure_test_sumtype(txn: &mut AdminTransaction) -> SumTypeDef {
+	let namespace = ensure_test_namespace(txn);
+
+	if let Some(result) = CatalogStore::find_sumtype_by_name(txn, namespace.id, "test_sumtype").unwrap() {
+		return result;
+	}
+	create_sumtype(txn, "test_namespace", "test_sumtype", vec![])
 }

@@ -10,6 +10,7 @@ pub mod primary_key;
 pub mod primitive_retention_policy;
 pub mod ringbuffer;
 pub mod subscription;
+pub mod sumtype;
 pub mod table;
 pub mod view;
 
@@ -27,6 +28,7 @@ use reifydb_core::{
 		primitive::PrimitiveId,
 		ringbuffer::RingBufferDef,
 		subscription::SubscriptionDef,
+		sumtype::SumTypeDef,
 		table::TableDef,
 		view::ViewDef,
 		vtable::{VTableDef, VTableId},
@@ -34,7 +36,7 @@ use reifydb_core::{
 	retention::RetentionPolicy,
 	util::multi::MultiVersionContainer,
 };
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
@@ -44,6 +46,7 @@ pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
 pub type MultiVersionDictionaryDef = MultiVersionContainer<DictionaryDef>;
 pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
+pub type MultiVersionSumTypeDef = MultiVersionContainer<SumTypeDef>;
 pub type MultiVersionSubscriptionDef = MultiVersionContainer<SubscriptionDef>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
@@ -80,6 +83,10 @@ pub struct MaterializedCatalogInner {
 	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionaryDef>,
 	/// Index from (namespace_id, dictionary_name) to dictionary ID for fast name lookups
 	pub(crate) dictionaries_by_name: SkipMap<(NamespaceId, String), DictionaryId>,
+	/// MultiVersion sum type definitions indexed by sum type ID
+	pub(crate) sumtypes: SkipMap<SumTypeId, MultiVersionSumTypeDef>,
+	/// Index from (namespace_id, sumtype_name) to sum type ID for fast name lookups
+	pub(crate) sumtypes_by_name: SkipMap<(NamespaceId, String), SumTypeId>,
 	/// MultiVersion ringbuffer definitions indexed by ringbuffer ID
 	pub(crate) ringbuffers: SkipMap<RingBufferId, MultiVersionRingBufferDef>,
 	/// Index from (namespace_id, ringbuffer_name) to ringbuffer ID for fast name lookups
@@ -141,6 +148,8 @@ impl MaterializedCatalog {
 			operator_retention_policies: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),
+			sumtypes: SkipMap::new(),
+			sumtypes_by_name: SkipMap::new(),
 			ringbuffers: SkipMap::new(),
 			ringbuffers_by_name: SkipMap::new(),
 			subscriptions: SkipMap::new(),

@@ -107,6 +107,8 @@ pub mod tests {
 			KeyKind::SubscriptionRow => {}
 			KeyKind::SubscriptionColumn => {}
 			KeyKind::Schema => {}
+			KeyKind::SumType => {}
+			KeyKind::NamespaceSumType => {}
 			KeyKind::SchemaField => {} /* When adding a new variant, add it here.
 			                            * The compiler will error if you forget.
 			                            * Then add a test and update should_exclude_from_cdc() if
