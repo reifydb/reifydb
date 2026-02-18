@@ -1,7 +1,7 @@
 {
   "name": "reifydb",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "scripts": {
     "build": "pnpm -r build",
     "clean": "rm -rf node_modules core/node_modules core/dist client/node_modules client/dist react/node_modules react/dist coverage core/coverage client/coverage react/coverage .turbo core/.turbo client/.turbo react/.turbo pnpm-lock.yaml",
@@ -16,7 +16,7 @@
     "publish:client": "pnpm --filter @reifydb/client publish:npm",
     "publish:react": "pnpm --filter @reifydb/react publish:npm",
     "publish:shell": "pnpm --filter @reifydb/shell publish:npm"
- },
+  },
   "dependencies": {
     "@reifydb/core": "link:core",
     "@reifydb/client": "link:core"

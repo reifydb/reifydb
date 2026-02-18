@@ -111,7 +111,7 @@ if [ $SKIP_CRATES -eq 0 ]; then
     echo -e "${YELLOW}[Phase 1/2] Publishing Rust crates to crates.io${NC}"
 
     # Check if cargo-workspaces is installed
-    if ! command -v cargo-workspaces &> /dev/null; then
+    if ! cargo ws --version &> /dev/null; then
         echo -e "${RED}  Error: cargo-workspaces not installed${NC}"
         echo -e "${YELLOW}  Install with: cargo install cargo-workspaces${NC}"
         echo -e "${YELLOW}  Or temporarily use CARGO_NET_OFFLINE=false cargo install cargo-workspaces${NC}"
