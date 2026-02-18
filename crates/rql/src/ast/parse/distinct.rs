@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::distinct_missing_braces;
-use reifydb_type::return_error;
-
 use crate::{
 	ast::{ast::AstDistinct, identifier::MaybeQualifiedColumnIdentifier, parse::Parser},
 	token::{keyword::Keyword, operator::Operator, separator::Separator},
@@ -13,11 +10,7 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_distinct(&mut self) -> crate::Result<AstDistinct<'bump>> {
 		let token = self.consume_keyword(Keyword::Distinct)?;
 
-		let (columns, has_braces) = self.parse_identifiers()?;
-
-		if !has_braces {
-			return_error!(distinct_missing_braces(token.fragment.to_owned()));
-		}
+		let (columns, _has_braces) = self.parse_identifiers()?;
 
 		Ok(AstDistinct {
 			token,
@@ -116,13 +109,34 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_distinct_without_braces_fails() {
+	fn test_distinct_bare_at_eof() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DISTINCT name").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "DISTINCT").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, tokens);
-		let result = parser.parse();
+		let mut result = parser.parse().unwrap();
 
-		assert!(result.is_err());
-		assert_eq!(result.unwrap_err().code, "DISTINCT_002");
+		let result = result.pop().unwrap();
+		if let crate::ast::ast::Ast::Distinct(distinct) = result.first_unchecked() {
+			assert_eq!(distinct.columns.len(), 0);
+		} else {
+			panic!("Expected Distinct operator");
+		}
+	}
+
+	#[test]
+	fn test_distinct_bare_followed_by_operator() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "DISTINCT FROM users").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let result = parser.parse().unwrap();
+
+		// Should parse as one statement with two nodes: DISTINCT (bare, 0 columns) then FROM users
+		let statement = &result[0];
+		assert!(statement.nodes.len() >= 2);
+		if let crate::ast::ast::Ast::Distinct(distinct) = &statement.nodes[0] {
+			assert_eq!(distinct.columns.len(), 0);
+		} else {
+			panic!("Expected Distinct operator");
+		}
 	}
 }

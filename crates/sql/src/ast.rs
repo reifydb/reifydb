@@ -103,12 +103,14 @@ pub struct CreateTableStatement {
 	pub table: String,
 	pub schema: Option<String>,
 	pub columns: Vec<ColumnDef>,
+	pub primary_key: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ColumnDef {
 	pub name: String,
 	pub data_type: SqlType,
+	pub nullable: bool,
 }
 
 #[derive(Debug, Clone)]

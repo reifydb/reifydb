@@ -63,26 +63,40 @@ impl QueryNode for DistinctNode {
 			}
 		};
 
-		// 2. Determine which column names to use for hashing
-		let distinct_col_names: Vec<&str> = self.columns.iter().map(|c| c.name()).collect();
-
-		// 3. For each row, hash the distinct column values and track first occurrences
+		// 2. For each row, hash the distinct column values and track first occurrences
 		let row_count = all_columns.row_count();
 		let mut seen = HashSet::<Hash128>::new();
 		let mut kept_indices = Vec::new();
 
-		for row_idx in 0..row_count {
-			let mut data = Vec::new();
-			for col_name in &distinct_col_names {
-				if let Some(col) = all_columns.column(col_name) {
+		if self.columns.is_empty() {
+			// Hash all columns when no specific columns are specified
+			for row_idx in 0..row_count {
+				let mut data = Vec::new();
+				for col in all_columns.iter() {
 					let value = col.data().get_value(row_idx);
 					let value_str = value.to_string();
 					data.extend_from_slice(value_str.as_bytes());
 				}
+				let hash = xxh3_128(&data);
+				if seen.insert(hash) {
+					kept_indices.push(row_idx);
+				}
 			}
-			let hash = xxh3_128(&data);
-			if seen.insert(hash) {
-				kept_indices.push(row_idx);
+		} else {
+			let distinct_col_names: Vec<&str> = self.columns.iter().map(|c| c.name()).collect();
+			for row_idx in 0..row_count {
+				let mut data = Vec::new();
+				for col_name in &distinct_col_names {
+					if let Some(col) = all_columns.column(col_name) {
+						let value = col.data().get_value(row_idx);
+						let value_str = value.to_string();
+						data.extend_from_slice(value_str.as_bytes());
+					}
+				}
+				let hash = xxh3_128(&data);
+				if seen.insert(hash) {
+					kept_indices.push(row_idx);
+				}
 			}
 		}
 

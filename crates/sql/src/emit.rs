@@ -87,8 +87,12 @@ fn emit_select_inner(sel: &SelectStatement, cte_names: &HashSet<String>) -> Resu
 	} else {
 		// DISTINCT
 		if sel.distinct {
-			let cols = emit_select_columns_plain(&sel.columns)?;
-			parts.push(format!("DISTINCT {{{cols}}}"));
+			if is_all_columns(&sel.columns) {
+				parts.push("DISTINCT {}".into());
+			} else {
+				let cols = emit_select_columns_plain(&sel.columns)?;
+				parts.push(format!("DISTINCT {{{cols}}}"));
+			}
 		}
 		// MAP (column projection) — only if not SELECT *
 		else if !is_all_columns(&sel.columns) {
@@ -309,10 +313,21 @@ fn emit_create_table(ct: &CreateTableStatement) -> Result<String, Error> {
 
 	let mut cols = Vec::new();
 	for col in &ct.columns {
-		cols.push(format!("{}: {}", col.name, emit_rql_type(&col.data_type)));
+		let ty = emit_rql_type(&col.data_type);
+		if col.nullable {
+			cols.push(format!("{}: Option({})", col.name, ty));
+		} else {
+			cols.push(format!("{}: {}", col.name, ty));
+		}
 	}
 
-	Ok(format!("CREATE TABLE {} {{{}}}", table, cols.join(", ")))
+	let mut result = format!("CREATE TABLE {} {{{}}}", table, cols.join(", "));
+
+	if !ct.primary_key.is_empty() {
+		result.push_str(&format!(" WITH {{primary_key: {{{}}}}}", ct.primary_key.join(", ")));
+	}
+
+	Ok(result)
 }
 
 fn emit_rql_type(ty: &SqlType) -> &'static str {
@@ -719,7 +734,15 @@ mod tests {
 	fn test_create_table() {
 		assert_eq!(
 			transpile("CREATE TABLE users (id INT, name TEXT, active BOOLEAN)"),
-			"CREATE TABLE users {id: int4, name: utf8, active: bool}"
+			"CREATE TABLE users {id: Option(int4), name: Option(utf8), active: Option(bool)}"
+		);
+	}
+
+	#[test]
+	fn test_create_table_not_null() {
+		assert_eq!(
+			transpile("CREATE TABLE t (id INT NOT NULL, name TEXT)"),
+			"CREATE TABLE t {id: int4, name: Option(utf8)}"
 		);
 	}
 
@@ -821,6 +844,18 @@ mod tests {
 	#[test]
 	fn test_insert_without_columns() {
 		assert_eq!(transpile("INSERT INTO t1 VALUES (1, 'true')"), "INSERT t1 [(1, 'true')]");
+	}
+
+	#[test]
+	fn test_create_table_primary_key() {
+		assert_eq!(
+			transpile("CREATE TABLE t (v1 INT NOT NULL, v2 INT NOT NULL, PRIMARY KEY(v1))"),
+			"CREATE TABLE t {v1: int4, v2: int4} WITH {primary_key: {v1}}"
+		);
+		assert_eq!(
+			transpile("CREATE TABLE t (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY(a, b))"),
+			"CREATE TABLE t {a: int4, b: int4} WITH {primary_key: {a, b}}"
+		);
 	}
 
 	#[test]

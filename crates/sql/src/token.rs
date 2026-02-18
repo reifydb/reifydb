@@ -95,6 +95,8 @@ pub enum Keyword {
 	Char,
 	Utf8,
 	Blob,
+	Primary,
+	Key,
 	With,
 	Recursive,
 }
@@ -330,6 +332,8 @@ pub fn tokenize(sql: &str) -> Result<Vec<Token>, Error> {
 				"CHAR" => Token::Keyword(Keyword::Char),
 				"UTF8" => Token::Keyword(Keyword::Utf8),
 				"BLOB" => Token::Keyword(Keyword::Blob),
+				"PRIMARY" => Token::Keyword(Keyword::Primary),
+				"KEY" => Token::Keyword(Keyword::Key),
 				"WITH" => Token::Keyword(Keyword::With),
 				"RECURSIVE" => Token::Keyword(Keyword::Recursive),
 				_ => Token::Ident(word),

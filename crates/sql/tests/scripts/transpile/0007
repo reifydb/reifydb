@@ -5,8 +5,24 @@
 
 transpile 'CREATE TABLE users (id INT, name TEXT, active BOOLEAN)'
 ---
-CREATE TABLE users {id: int4, name: utf8, active: bool}
+CREATE TABLE users {id: Option(int4), name: Option(utf8), active: Option(bool)}
 
 transpile 'CREATE TABLE test.scores (id BIGINT, score SMALLINT, grade VARCHAR)'
 ---
-CREATE TABLE test.scores {id: int8, score: int2, grade: utf8}
+CREATE TABLE test.scores {id: Option(int8), score: Option(int2), grade: Option(utf8)}
+
+transpile 'CREATE TABLE t (id INT NOT NULL, name TEXT)'
+---
+CREATE TABLE t {id: int4, name: Option(utf8)}
+
+transpile 'CREATE TABLE t (id INT NOT NULL, name TEXT NULL)'
+---
+CREATE TABLE t {id: int4, name: Option(utf8)}
+
+transpile 'CREATE TABLE t (v1 INT NOT NULL, v2 INT NOT NULL, PRIMARY KEY(v1))'
+---
+CREATE TABLE t {v1: int4, v2: int4} WITH {primary_key: {v1}}
+
+transpile 'CREATE TABLE t (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY(a, b))'
+---
+CREATE TABLE t {a: int4, b: int4} WITH {primary_key: {a, b}}

@@ -444,15 +444,39 @@ impl Parser {
 
 		self.expect_token(Token::OpenParen)?;
 		let mut columns = Vec::new();
+		let mut primary_key = Vec::new();
 		loop {
 			if self.at_token(&Token::CloseParen) {
 				break;
 			}
+			// Check for PRIMARY KEY(...) table constraint
+			if self.at_keyword(&Keyword::Primary) {
+				self.advance()?;
+				self.expect_keyword(Keyword::Key)?;
+				self.expect_token(Token::OpenParen)?;
+				primary_key = self.parse_ident_list()?;
+				self.expect_token(Token::CloseParen)?;
+				if self.at_token(&Token::Comma) {
+					self.advance()?;
+				}
+				continue;
+			}
 			let name = self.expect_ident()?;
 			let data_type = self.parse_sql_type()?;
+			let nullable = if self.at_keyword(&Keyword::Not) {
+				self.advance()?;
+				self.expect_keyword(Keyword::Null)?;
+				false
+			} else if self.at_keyword(&Keyword::Null) {
+				self.advance()?;
+				true
+			} else {
+				true
+			};
 			columns.push(ColumnDef {
 				name,
 				data_type,
+				nullable,
 			});
 			if self.at_token(&Token::Comma) {
 				self.advance()?;
@@ -466,6 +490,7 @@ impl Parser {
 			table,
 			schema,
 			columns,
+			primary_key,
 		}))
 	}
 
@@ -981,6 +1006,8 @@ fn keyword_to_string(kw: &Keyword) -> String {
 		Keyword::Char => "CHAR",
 		Keyword::Utf8 => "UTF8",
 		Keyword::Blob => "BLOB",
+		Keyword::Primary => "PRIMARY",
+		Keyword::Key => "KEY",
 		Keyword::With => "WITH",
 		Keyword::Recursive => "RECURSIVE",
 	}
