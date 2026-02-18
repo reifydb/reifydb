@@ -1884,6 +1884,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-sql"
+version = "0.2.0"
+dependencies = [
+ "reifydb-testing",
+ "test_each_file",
+]
+
+[[package]]
 name = "reifydb-store-column"
 version = "0.2.0"
 dependencies = [

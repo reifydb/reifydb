@@ -1,0 +1,24 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# CTEs (WITH clause)
+
+transpile 'WITH t AS (SELECT * FROM users WHERE active = true) SELECT * FROM t'
+---
+LET $t = FROM users FILTER {active == true}; FROM $t
+
+transpile 'WITH t AS (SELECT id, name FROM users) SELECT * FROM t'
+---
+LET $t = FROM users MAP {id, name}; FROM $t
+
+transpile 'WITH t AS (SELECT * FROM users) SELECT * FROM t WHERE age > 18'
+---
+LET $t = FROM users; FROM $t FILTER {age > 18}
+
+transpile 'WITH a AS (SELECT * FROM users WHERE active = true), b AS (SELECT id FROM a) SELECT * FROM b'
+---
+LET $a = FROM users FILTER {active == true}; LET $b = FROM $a MAP {id}; FROM $b
+
+transpile 'WITH dept_counts AS (SELECT dept, COUNT(id) FROM users GROUP BY dept) SELECT * FROM dept_counts'
+---
+LET $dept_counts = FROM users AGGREGATE {math::count(id)} BY {dept}; FROM $dept_counts

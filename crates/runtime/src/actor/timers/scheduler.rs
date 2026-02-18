@@ -167,9 +167,10 @@ impl SchedulerHandle {
 
 impl Drop for SchedulerHandle {
 	fn drop(&mut self) {
-		// Signal shutdown if not already done
 		let _ = self.command_tx.send(SchedulerCommand::Shutdown);
-		// Note: We don't join here to avoid blocking in drop
+		if let Some(handle) = self.join_handle.take() {
+			let _ = handle.join();
+		}
 	}
 }
 

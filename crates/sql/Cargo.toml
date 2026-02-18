@@ -1,0 +1,17 @@
+[package]
+name = "reifydb-sql"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SQL to RQL transpiler"
+
+[features]
+default = []
+
+[dependencies]
+
+[dev-dependencies]
+reifydb-testing = { workspace = true }
+test_each_file = { workspace = true }

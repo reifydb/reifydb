@@ -1,0 +1,36 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Special expressions: BETWEEN, IN, IS NULL, CAST, computed-only queries
+
+transpile 'SELECT * FROM t WHERE x BETWEEN 1 AND 10'
+---
+FROM t FILTER {x between 1 and 10}
+
+transpile 'SELECT * FROM t WHERE x IN (1, 2, 3)'
+---
+FROM t FILTER {x in (1, 2, 3)}
+
+transpile 'SELECT * FROM t WHERE x IS NULL'
+---
+FROM t FILTER {x == none}
+
+transpile 'SELECT * FROM t WHERE x IS NOT NULL'
+---
+FROM t FILTER {x != none}
+
+transpile 'SELECT CAST(x AS INT)'
+---
+MAP {cast(x, int4)}
+
+transpile 'SELECT 1 + 2'
+---
+MAP {1 + 2}
+
+transpile 'SELECT NULL'
+---
+MAP {none}
+
+transpile 'SELECT TRUE, FALSE'
+---
+MAP {true, false}

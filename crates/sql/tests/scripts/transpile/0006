@@ -1,0 +1,32 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# INSERT, UPDATE, DELETE
+
+transpile "INSERT INTO users (id, name) VALUES (1, 'Alice')"
+---
+INSERT users [{id: 1, name: 'Alice'}]
+
+transpile 'INSERT INTO t (a, b) VALUES (1, 2), (3, 4)'
+---
+INSERT t [{a: 1, b: 2}, {a: 3, b: 4}]
+
+transpile "UPDATE users SET name = 'Bob' WHERE id = 1"
+---
+UPDATE users {name: 'Bob'} FILTER {id == 1}
+
+transpile 'DELETE FROM users WHERE id = 1'
+---
+DELETE users FILTER {id == 1}
+
+transpile "INSERT INTO t1 VALUES (1, 'true')"
+---
+INSERT t1 [(1, 'true')]
+
+transpile "INSERT INTO t1 VALUES (1, 'true'), (0, 'false')"
+---
+INSERT t1 [(1, 'true'), (0, 'false')]
+
+transpile "INSERT INTO t1 VALUES (NULL, 'NULL')"
+---
+INSERT t1 [(none, 'NULL')]
