@@ -75,4 +75,32 @@ impl Catalog {
 
 		Ok(ResolvedRingBuffer::new(ringbuffer_ident, resolved_namespace, ringbuffer_def))
 	}
+
+	/// Resolve column names for a target entity (table, ring buffer, or dictionary) by name.
+	pub fn resolve_column_names<T: AsTransaction>(
+		&self,
+		txn: &mut T,
+		namespace_name: &str,
+		target_name: &str,
+	) -> crate::Result<Vec<String>> {
+		let namespace_id = if let Some(ns) = self.find_namespace_by_name(txn, namespace_name)? {
+			ns.id
+		} else {
+			return Ok(vec![]);
+		};
+
+		if let Some(table_def) = self.find_table_by_name(txn, namespace_id, target_name)? {
+			return Ok(table_def.columns.iter().map(|c| c.name.clone()).collect());
+		}
+
+		if let Some(rb_def) = self.find_ringbuffer_by_name(txn, namespace_id, target_name)? {
+			return Ok(rb_def.columns.iter().map(|c| c.name.clone()).collect());
+		}
+
+		if self.find_dictionary_by_name(txn, namespace_id, target_name)?.is_some() {
+			return Ok(vec!["id".to_string(), "value".to_string()]);
+		}
+
+		Ok(vec![])
+	}
 }

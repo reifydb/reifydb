@@ -12,7 +12,7 @@ use crate::{
 		keyword::Keyword,
 		operator::{
 			Operator,
-			Operator::{CloseBracket, OpenBracket, OpenCurly},
+			Operator::{CloseBracket, OpenBracket, OpenCurly, OpenParen},
 		},
 		separator::Separator,
 		token::TokenKind,
@@ -177,7 +177,17 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			nodes.push(Ast::Inline(self.parse_inline()?));
+			let current = self.current()?;
+			if current.is_operator(OpenParen) {
+				nodes.push(Ast::Tuple(self.parse_tuple()?));
+			} else if current.is_operator(OpenCurly) {
+				nodes.push(Ast::Inline(self.parse_inline()?));
+			} else {
+				return Err(Error(unexpected_token_error(
+					"expected '{' or '(' in inline data",
+					current.fragment.to_owned(),
+				)));
+			}
 
 			self.consume_if(TokenKind::Separator(Separator::Comma))?;
 		}
@@ -470,6 +480,34 @@ pub mod tests {
 
 				assert_eq!(row.keyed_values[0].key.text(), "field");
 				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_parse_static_with_tuples() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "FROM [(1, \"a\"), (2, \"b\")]").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let from = result.first_unchecked().as_from();
+
+		match from {
+			AstFrom::Inline {
+				list,
+				..
+			} => {
+				assert_eq!(list.len(), 2);
+
+				let tuple0 = list[0].as_tuple();
+				assert_eq!(tuple0.len(), 2);
+
+				let tuple1 = list[1].as_tuple();
+				assert_eq!(tuple1.len(), 2);
 			}
 			_ => unreachable!(),
 		}
