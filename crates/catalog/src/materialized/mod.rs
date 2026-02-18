@@ -117,8 +117,15 @@ impl MaterializedCatalog {
 		container.insert(1, system_namespace);
 		namespaces.insert(system_namespace_id, container);
 
+		let default_namespace = NamespaceDef::default_namespace();
+		let default_namespace_id = default_namespace.id;
+		let default_container = MultiVersionContainer::new();
+		default_container.insert(1, default_namespace);
+		namespaces.insert(default_namespace_id, default_container);
+
 		let namespaces_by_name = SkipMap::new();
 		namespaces_by_name.insert("system".to_string(), system_namespace_id);
+		namespaces_by_name.insert("default".to_string(), default_namespace_id);
 
 		Self(Arc::new(MaterializedCatalogInner {
 			namespaces,

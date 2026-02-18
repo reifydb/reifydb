@@ -164,5 +164,4 @@ impl<'bump> Compiler<'bump> {
 			rows,
 		}))
 	}
-
 }

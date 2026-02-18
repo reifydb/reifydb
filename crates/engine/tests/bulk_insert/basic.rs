@@ -230,8 +230,6 @@ fn test_qualified_name_default_namespace() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	// Create "default" namespace first - it doesn't exist automatically
-	create_namespace(&engine, "default");
 	create_table(&engine, "default", "simple", "x: int4");
 
 	let mut builder = engine.bulk_insert(&identity);

@@ -4,7 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb_catalog::catalog::{Catalog, namespace::NamespaceToCreate, table::TableToCreate};
-use reifydb_core::interface::catalog::id::NamespaceId;
+use reifydb_core::interface::catalog::{id::NamespaceId, namespace::NamespaceDef};
 use reifydb_engine::test_utils::create_test_admin_transaction;
 use reifydb_rql::explain::{
 	ast::explain_ast, logical::explain_logical_plan, physical::explain_physical_plan, tokenize::explain_tokenize,
@@ -64,16 +64,7 @@ impl Runner for TestRunner {
 					let mut dummy_tx = create_test_admin_transaction();
 					let catalog = Catalog::testing();
 
-					let default_namespace = catalog
-						.create_namespace(
-							&mut dummy_tx,
-							NamespaceToCreate {
-								namespace_fragment: None,
-								name: "default".to_string(),
-								parent_id: NamespaceId::ROOT,
-							},
-						)
-						.unwrap();
+					let default_namespace = NamespaceDef::default_namespace();
 
 					catalog.create_table(
 						&mut dummy_tx,
@@ -139,16 +130,7 @@ impl Runner for TestRunner {
 					let mut dummy_tx = create_test_admin_transaction();
 					let catalog = Catalog::testing();
 
-					let namespace = catalog
-						.create_namespace(
-							&mut dummy_tx,
-							NamespaceToCreate {
-								namespace_fragment: None,
-								name: "default".to_string(),
-								parent_id: NamespaceId::ROOT,
-							},
-						)
-						.unwrap();
+					let namespace = NamespaceDef::default_namespace();
 
 					catalog.create_table(
 						&mut dummy_tx,

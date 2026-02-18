@@ -41,6 +41,7 @@ impl CatalogStore {
 		}
 
 		result.push(NamespaceDef::system());
+		result.push(NamespaceDef::default_namespace());
 
 		Ok(result)
 	}

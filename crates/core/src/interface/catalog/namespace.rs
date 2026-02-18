@@ -24,4 +24,12 @@ impl NamespaceDef {
 			parent_id: NamespaceId::ROOT,
 		}
 	}
+
+	pub fn default_namespace() -> Self {
+		Self {
+			id: NamespaceId(2),
+			name: "default".to_string(),
+			parent_id: NamespaceId::ROOT,
+		}
+	}
 }

@@ -190,7 +190,7 @@ pub mod tests {
 	#[test]
 	fn test_namespace_versioning() {
 		let catalog = MaterializedCatalog::new();
-		let namespace_id = NamespaceId(2);
+		let namespace_id = NamespaceId(10);
 
 		// Create multiple versions
 		let namespace_v1 = create_test_namespace(namespace_id, "namespace_v1");

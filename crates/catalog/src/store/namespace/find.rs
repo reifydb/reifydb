@@ -25,6 +25,10 @@ impl CatalogStore {
 			return Ok(Some(NamespaceDef::system()));
 		}
 
+		if name == "default" {
+			return Ok(Some(NamespaceDef::default_namespace()));
+		}
+
 		let mut txn = rx.as_transaction();
 		let mut stream = txn.range(NamespaceKey::full_scan(), 1024)?;
 
@@ -47,6 +51,10 @@ impl CatalogStore {
 		// Special case for system namespace - hardcoded with fixed ID
 		if id == NamespaceId(1) {
 			return Ok(Some(NamespaceDef::system()));
+		}
+
+		if id == NamespaceId(2) {
+			return Ok(Some(NamespaceDef::default_namespace()));
 		}
 
 		let mut txn = rx.as_transaction();
