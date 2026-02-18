@@ -30,6 +30,7 @@ pub enum Token {
 	Gt,         // >
 	LtEq,       // <=
 	GtEq,       // >=
+	Concat,     // ||
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +100,29 @@ pub enum Keyword {
 	Key,
 	With,
 	Recursive,
+	// New keywords for extended SQL support
+	Case,
+	When,
+	Then,
+	Else,
+	End,
+	Exists,
+	Union,
+	All,
+	Intersect,
+	Except,
+	Like,
+	Glob,
+	If,
+	FloatKw,
+	Index,
+	Unique,
+	Drop,
+	Cross,
+	Outer,
+	Full,
+	Natural,
+	Numeric,
 }
 
 pub fn tokenize(sql: &str) -> Result<Vec<Token>, Error> {
@@ -211,6 +235,14 @@ pub fn tokenize(sql: &str) -> Result<Vec<Token>, Error> {
 					continue;
 				}
 				return Err(Error(format!("unexpected character '!' at position {i}")));
+			}
+			'|' => {
+				if i + 1 < len && chars[i + 1] == '|' {
+					tokens.push(Token::Concat);
+					i += 2;
+					continue;
+				}
+				return Err(Error(format!("unexpected character '|' at position {i}")));
 			}
 			_ => {}
 		}
@@ -336,6 +368,28 @@ pub fn tokenize(sql: &str) -> Result<Vec<Token>, Error> {
 				"KEY" => Token::Keyword(Keyword::Key),
 				"WITH" => Token::Keyword(Keyword::With),
 				"RECURSIVE" => Token::Keyword(Keyword::Recursive),
+				"CASE" => Token::Keyword(Keyword::Case),
+				"WHEN" => Token::Keyword(Keyword::When),
+				"THEN" => Token::Keyword(Keyword::Then),
+				"ELSE" => Token::Keyword(Keyword::Else),
+				"END" => Token::Keyword(Keyword::End),
+				"EXISTS" => Token::Keyword(Keyword::Exists),
+				"UNION" => Token::Keyword(Keyword::Union),
+				"ALL" => Token::Keyword(Keyword::All),
+				"INTERSECT" => Token::Keyword(Keyword::Intersect),
+				"EXCEPT" => Token::Keyword(Keyword::Except),
+				"LIKE" => Token::Keyword(Keyword::Like),
+				"GLOB" => Token::Keyword(Keyword::Glob),
+				"IF" => Token::Keyword(Keyword::If),
+				"FLOAT" => Token::Keyword(Keyword::FloatKw),
+				"INDEX" => Token::Keyword(Keyword::Index),
+				"UNIQUE" => Token::Keyword(Keyword::Unique),
+				"DROP" => Token::Keyword(Keyword::Drop),
+				"CROSS" => Token::Keyword(Keyword::Cross),
+				"OUTER" => Token::Keyword(Keyword::Outer),
+				"FULL" => Token::Keyword(Keyword::Full),
+				"NATURAL" => Token::Keyword(Keyword::Natural),
+				"NUMERIC" => Token::Keyword(Keyword::Numeric),
 				_ => Token::Ident(word),
 			};
 			tokens.push(token);

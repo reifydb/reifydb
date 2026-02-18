@@ -8,6 +8,8 @@ pub enum Statement {
 	Update(UpdateStatement),
 	Delete(DeleteStatement),
 	CreateTable(CreateTableStatement),
+	CreateIndex(CreateIndexStatement),
+	DropTable(DropTableStatement),
 }
 
 #[derive(Debug, Clone)]
@@ -29,6 +31,15 @@ pub struct SelectStatement {
 	pub order_by: Vec<OrderByItem>,
 	pub limit: Option<u64>,
 	pub offset: Option<u64>,
+	pub set_op: Option<(SetOp, Box<SelectStatement>)>,
+}
+
+#[derive(Debug, Clone)]
+pub enum SetOp {
+	Union,
+	UnionAll,
+	Intersect,
+	Except,
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +56,7 @@ pub enum FromClause {
 	Table {
 		name: String,
 		schema: Option<String>,
+		alias: Option<String>,
 	},
 	Subquery(Box<SelectStatement>),
 }
@@ -61,6 +73,7 @@ pub struct JoinClause {
 pub enum JoinType {
 	Inner,
 	Left,
+	Cross,
 }
 
 #[derive(Debug, Clone)]
@@ -80,7 +93,13 @@ pub struct InsertStatement {
 	pub table: String,
 	pub schema: Option<String>,
 	pub columns: Vec<String>,
-	pub values: Vec<Vec<Expr>>,
+	pub source: InsertSource,
+}
+
+#[derive(Debug, Clone)]
+pub enum InsertSource {
+	Values(Vec<Vec<Expr>>),
+	Select(SelectStatement),
 }
 
 #[derive(Debug, Clone)]
@@ -104,6 +123,29 @@ pub struct CreateTableStatement {
 	pub schema: Option<String>,
 	pub columns: Vec<ColumnDef>,
 	pub primary_key: Vec<String>,
+	pub if_not_exists: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateIndexStatement {
+	pub unique: bool,
+	pub index_name: String,
+	pub table: String,
+	pub schema: Option<String>,
+	pub columns: Vec<IndexColumn>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexColumn {
+	pub name: String,
+	pub direction: Option<OrderDirection>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropTableStatement {
+	pub table: String,
+	pub schema: Option<String>,
+	pub if_exists: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -133,6 +175,8 @@ pub enum SqlType {
 	Text,
 	Utf8,
 	Blob,
+	FloatType,
+	Numeric,
 }
 
 #[derive(Debug, Clone)]
@@ -168,6 +212,11 @@ pub enum Expr {
 		list: Vec<Expr>,
 		negated: bool,
 	},
+	InSelect {
+		expr: Box<Expr>,
+		subquery: Box<SelectStatement>,
+		negated: bool,
+	},
 	IsNull {
 		expr: Box<Expr>,
 		negated: bool,
@@ -177,6 +226,18 @@ pub enum Expr {
 		data_type: SqlType,
 	},
 	Nested(Box<Expr>),
+	Case {
+		operand: Option<Box<Expr>>,
+		when_clauses: Vec<(Expr, Expr)>,
+		else_clause: Option<Box<Expr>>,
+	},
+	Exists(Box<SelectStatement>),
+	Subquery(Box<SelectStatement>),
+	Like {
+		expr: Box<Expr>,
+		pattern: Box<Expr>,
+		negated: bool,
+	},
 }
 
 #[derive(Debug, Clone)]
@@ -194,6 +255,7 @@ pub enum BinaryOp {
 	Mul,
 	Div,
 	Mod,
+	Concat,
 }
 
 #[derive(Debug, Clone)]

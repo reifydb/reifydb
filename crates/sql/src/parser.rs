@@ -28,6 +28,7 @@ impl Parser {
 			Token::Keyword(Keyword::Update) => self.parse_update()?,
 			Token::Keyword(Keyword::Delete) => self.parse_delete()?,
 			Token::Keyword(Keyword::Create) => self.parse_create()?,
+			Token::Keyword(Keyword::Drop) => self.parse_drop()?,
 			other => return Err(Error(format!("unexpected token: {other:?}"))),
 		};
 		// Skip optional trailing semicolon
@@ -93,9 +94,24 @@ impl Parser {
 		}
 	}
 
+	/// Check if next token is an identifier-like token (not a structural keyword).
+	/// Used for optional alias detection.
+	fn is_ident_like(&self) -> bool {
+		match self.tokens.get(self.pos) {
+			Some(Token::Ident(_)) => true,
+			Some(Token::Keyword(kw)) => !is_structural_keyword(kw),
+			_ => false,
+		}
+	}
+
 	// ── SELECT ──────────────────────────────────────────────────────────
 
 	fn parse_select(&mut self) -> Result<Statement, Error> {
+		let sel = self.parse_select_statement()?;
+		Ok(Statement::Select(sel))
+	}
+
+	fn parse_select_statement(&mut self) -> Result<SelectStatement, Error> {
 		let ctes = if self.at_keyword(&Keyword::With) {
 			self.parse_cte_list()?
 		} else {
@@ -113,14 +129,33 @@ impl Parser {
 
 		let columns = self.parse_select_columns()?;
 
-		let from = if self.at_keyword(&Keyword::From) {
-			self.advance()?;
-			Some(self.parse_from_clause()?)
-		} else {
-			None
-		};
-
+		let mut from = None;
 		let mut joins = Vec::new();
+
+		if self.at_keyword(&Keyword::From) {
+			self.advance()?;
+			let (first_from, _first_alias) = self.parse_from_item()?;
+			from = Some(first_from);
+
+			// Handle comma-separated tables (implicit cross join)
+			while self.at_token(&Token::Comma) {
+				self.advance()?;
+				let (extra_from, extra_alias) = self.parse_from_item()?;
+				let alias = extra_alias.or_else(|| match &extra_from {
+					FromClause::Table {
+						name,
+						..
+					} => Some(name.clone()),
+					_ => None,
+				});
+				joins.push(JoinClause {
+					join_type: JoinType::Cross,
+					table: extra_from,
+					table_alias: alias,
+					on: Expr::BoolLiteral(true),
+				});
+			}
+		}
 		while self.parse_join_if_present()? {
 			let join = self.finish_parse_join()?;
 			joins.push(join);
@@ -170,7 +205,30 @@ impl Parser {
 			None
 		};
 
-		Ok(Statement::Select(SelectStatement {
+		// Set operations: UNION [ALL] / INTERSECT / EXCEPT
+		let set_op = if self.at_keyword(&Keyword::Union) {
+			self.advance()?;
+			let op = if self.at_keyword(&Keyword::All) {
+				self.advance()?;
+				SetOp::UnionAll
+			} else {
+				SetOp::Union
+			};
+			let right = self.parse_select_statement()?;
+			Some((op, Box::new(right)))
+		} else if self.at_keyword(&Keyword::Intersect) {
+			self.advance()?;
+			let right = self.parse_select_statement()?;
+			Some((SetOp::Intersect, Box::new(right)))
+		} else if self.at_keyword(&Keyword::Except) {
+			self.advance()?;
+			let right = self.parse_select_statement()?;
+			Some((SetOp::Except, Box::new(right)))
+		} else {
+			None
+		};
+
+		Ok(SelectStatement {
 			ctes,
 			distinct,
 			columns,
@@ -182,7 +240,72 @@ impl Parser {
 			order_by,
 			limit,
 			offset,
-		}))
+			set_op,
+		})
+	}
+
+	/// Parse a single FROM item (table or subquery) with optional alias.
+	/// Returns (FromClause, Option<alias>).
+	fn parse_from_item(&mut self) -> Result<(FromClause, Option<String>), Error> {
+		let from = if self.at_token(&Token::OpenParen) {
+			// Could be a subquery
+			self.advance()?;
+			if self.at_keyword(&Keyword::Select) {
+				let sel = self.parse_select_statement()?;
+				self.expect_token(Token::CloseParen)?;
+				FromClause::Subquery(Box::new(sel))
+			} else {
+				return Err(Error("expected subquery after '('".into()));
+			}
+		} else {
+			let name = self.expect_ident()?;
+			if self.at_token(&Token::Dot) {
+				self.advance()?;
+				let table = self.expect_ident()?;
+				FromClause::Table {
+					schema: Some(name),
+					name: table,
+					alias: None,
+				}
+			} else {
+				FromClause::Table {
+					name,
+					schema: None,
+					alias: None,
+				}
+			}
+		};
+
+		// Optional alias: AS alias or bare alias
+		let alias = if self.at_keyword(&Keyword::As) {
+			self.advance()?;
+			Some(self.expect_ident()?)
+		} else if !self.is_eof() && self.is_ident_like() {
+			Some(self.expect_ident()?)
+		} else {
+			None
+		};
+
+		// Embed alias into FromClause::Table if possible
+		if let Some(alias) = alias {
+			match from {
+				FromClause::Table {
+					name,
+					schema,
+					..
+				} => Ok((
+					FromClause::Table {
+						name,
+						schema,
+						alias: Some(alias),
+					},
+					None,
+				)),
+				other => Ok((other, Some(alias))),
+			}
+		} else {
+			Ok((from, None))
+		}
 	}
 
 	fn parse_cte_list(&mut self) -> Result<Vec<CteDefinition>, Error> {
@@ -195,11 +318,7 @@ impl Parser {
 			let name = self.expect_ident()?;
 			self.expect_keyword(Keyword::As)?;
 			self.expect_token(Token::OpenParen)?;
-			let stmt = self.parse_select()?;
-			let query = match stmt {
-				Statement::Select(sel) => sel,
-				_ => return Err(Error("expected SELECT in CTE definition".into())),
-			};
+			let query = self.parse_select_statement()?;
 			self.expect_token(Token::CloseParen)?;
 			ctes.push(CteDefinition {
 				name,
@@ -227,7 +346,11 @@ impl Parser {
 				|| self.at_keyword(&Keyword::Limit)
 				|| self.at_keyword(&Keyword::Group)
 				|| self.at_keyword(&Keyword::Having)
+				|| self.at_keyword(&Keyword::Union)
+				|| self.at_keyword(&Keyword::Intersect)
+				|| self.at_keyword(&Keyword::Except)
 				|| self.at_token(&Token::Semicolon)
+				|| self.at_token(&Token::CloseParen)
 			{
 				break;
 			} else {
@@ -254,39 +377,14 @@ impl Parser {
 	}
 
 	fn parse_from_clause(&mut self) -> Result<FromClause, Error> {
-		if self.at_token(&Token::OpenParen) {
-			// Could be a subquery
-			self.advance()?;
-			if self.at_keyword(&Keyword::Select) {
-				let stmt = self.parse_select()?;
-				self.expect_token(Token::CloseParen)?;
-				if let Statement::Select(sel) = stmt {
-					return Ok(FromClause::Subquery(Box::new(sel)));
-				}
-			}
-			return Err(Error("expected subquery after '('".into()));
-		}
-
-		let name = self.expect_ident()?;
-		if self.at_token(&Token::Dot) {
-			self.advance()?;
-			let table = self.expect_ident()?;
-			Ok(FromClause::Table {
-				schema: Some(name),
-				name: table,
-			})
-		} else {
-			Ok(FromClause::Table {
-				name,
-				schema: None,
-			})
-		}
+		let (from, _alias) = self.parse_from_item()?;
+		Ok(from)
 	}
 
 	// ── JOIN ────────────────────────────────────────────────────────────
 
 	/// Check if the next tokens form a JOIN clause.  Returns true and
-	/// consumes the join-type keywords (INNER/LEFT and JOIN) if present.
+	/// consumes the join-type keywords (INNER/LEFT/CROSS and JOIN) if present.
 	fn parse_join_if_present(&mut self) -> Result<bool, Error> {
 		if self.is_eof() {
 			return Ok(false);
@@ -295,9 +393,21 @@ impl Parser {
 		if self.at_keyword(&Keyword::Join) {
 			return Ok(true);
 		}
-		// INNER JOIN / LEFT JOIN
-		if self.at_keyword(&Keyword::Inner) || self.at_keyword(&Keyword::Left) {
-			if let Some(Token::Keyword(Keyword::Join)) = self.tokens.get(self.pos + 1) {
+		// INNER JOIN / LEFT JOIN / LEFT OUTER JOIN / CROSS JOIN / NATURAL JOIN / RIGHT JOIN / FULL JOIN / FULL
+		// OUTER JOIN
+		if self.at_keyword(&Keyword::Inner)
+			|| self.at_keyword(&Keyword::Left)
+			|| self.at_keyword(&Keyword::Right)
+			|| self.at_keyword(&Keyword::Cross)
+			|| self.at_keyword(&Keyword::Natural)
+			|| self.at_keyword(&Keyword::Full)
+		{
+			// Look ahead for JOIN (possibly with OUTER in between)
+			let mut look = self.pos + 1;
+			if look < self.tokens.len() && self.tokens[look] == Token::Keyword(Keyword::Outer) {
+				look += 1;
+			}
+			if look < self.tokens.len() && self.tokens[look] == Token::Keyword(Keyword::Join) {
 				return Ok(true);
 			}
 		}
@@ -307,12 +417,37 @@ impl Parser {
 	fn finish_parse_join(&mut self) -> Result<JoinClause, Error> {
 		let join_type = if self.at_keyword(&Keyword::Left) {
 			self.advance()?;
+			if self.at_keyword(&Keyword::Outer) {
+				self.advance()?;
+			}
 			self.expect_keyword(Keyword::Join)?;
 			JoinType::Left
 		} else if self.at_keyword(&Keyword::Inner) {
 			self.advance()?;
 			self.expect_keyword(Keyword::Join)?;
 			JoinType::Inner
+		} else if self.at_keyword(&Keyword::Cross) {
+			self.advance()?;
+			self.expect_keyword(Keyword::Join)?;
+			JoinType::Cross
+		} else if self.at_keyword(&Keyword::Natural) {
+			self.advance()?;
+			self.expect_keyword(Keyword::Join)?;
+			JoinType::Inner
+		} else if self.at_keyword(&Keyword::Right) {
+			self.advance()?;
+			if self.at_keyword(&Keyword::Outer) {
+				self.advance()?;
+			}
+			self.expect_keyword(Keyword::Join)?;
+			JoinType::Inner // best-effort: treat as inner
+		} else if self.at_keyword(&Keyword::Full) {
+			self.advance()?;
+			if self.at_keyword(&Keyword::Outer) {
+				self.advance()?;
+			}
+			self.expect_keyword(Keyword::Join)?;
+			JoinType::Inner // best-effort: treat as inner
 		} else {
 			self.expect_keyword(Keyword::Join)?;
 			JoinType::Inner
@@ -322,14 +457,26 @@ impl Parser {
 		let table_alias = if self.at_keyword(&Keyword::As) {
 			self.advance()?;
 			Some(self.expect_ident()?)
-		} else if !self.is_eof() && matches!(self.peek()?, Token::Ident(_)) && !self.at_keyword(&Keyword::On) {
+		} else if !self.is_eof() && self.is_ident_like() && !self.at_keyword(&Keyword::On) {
 			Some(self.expect_ident()?)
 		} else {
-			None
+			// Check if alias was embedded in FromClause::Table
+			match &table {
+				FromClause::Table {
+					alias,
+					..
+				} => alias.clone(),
+				_ => None,
+			}
 		};
 
-		self.expect_keyword(Keyword::On)?;
-		let on = self.parse_expr()?;
+		let on = if self.at_keyword(&Keyword::On) {
+			self.advance()?;
+			self.parse_expr()?
+		} else {
+			// CROSS JOIN or NATURAL JOIN might not have ON
+			Expr::BoolLiteral(true)
+		};
 
 		Ok(JoinClause {
 			join_type,
@@ -356,6 +503,17 @@ impl Parser {
 			vec![]
 		};
 
+		// INSERT INTO ... SELECT or INSERT INTO ... VALUES
+		if self.at_keyword(&Keyword::Select) || self.at_keyword(&Keyword::With) {
+			let sel = self.parse_select_statement()?;
+			return Ok(Statement::Insert(InsertStatement {
+				table,
+				schema,
+				columns,
+				source: InsertSource::Select(sel),
+			}));
+		}
+
 		self.expect_keyword(Keyword::Values)?;
 
 		let mut values = Vec::new();
@@ -375,7 +533,7 @@ impl Parser {
 			table,
 			schema,
 			columns,
-			values,
+			source: InsertSource::Values(values),
 		}))
 	}
 
@@ -435,11 +593,37 @@ impl Parser {
 		}))
 	}
 
-	// ── CREATE TABLE ────────────────────────────────────────────────────
+	// ── CREATE TABLE / CREATE INDEX ────────────────────────────────────
 
 	fn parse_create(&mut self) -> Result<Statement, Error> {
 		self.expect_keyword(Keyword::Create)?;
+
+		// CREATE UNIQUE INDEX ...
+		if self.at_keyword(&Keyword::Unique) {
+			self.advance()?;
+			self.expect_keyword(Keyword::Index)?;
+			return self.parse_create_index(true);
+		}
+
+		// CREATE INDEX ...
+		if self.at_keyword(&Keyword::Index) {
+			self.advance()?;
+			return self.parse_create_index(false);
+		}
+
+		// CREATE TABLE ...
 		self.expect_keyword(Keyword::Table)?;
+
+		// IF NOT EXISTS
+		let if_not_exists = if self.at_keyword(&Keyword::If) {
+			self.advance()?;
+			self.expect_keyword(Keyword::Not)?;
+			self.expect_keyword(Keyword::Exists)?;
+			true
+		} else {
+			false
+		};
+
 		let (schema, table) = self.parse_table_name()?;
 
 		self.expect_token(Token::OpenParen)?;
@@ -461,18 +645,43 @@ impl Parser {
 				}
 				continue;
 			}
+			// Check for UNIQUE(...) table constraint (skip it)
+			if self.at_keyword(&Keyword::Unique) {
+				self.advance()?;
+				self.expect_token(Token::OpenParen)?;
+				let _cols = self.parse_ident_list()?;
+				self.expect_token(Token::CloseParen)?;
+				if self.at_token(&Token::Comma) {
+					self.advance()?;
+				}
+				continue;
+			}
 			let name = self.expect_ident()?;
 			let data_type = self.parse_sql_type()?;
-			let nullable = if self.at_keyword(&Keyword::Not) {
+			let mut nullable = true;
+			if self.at_keyword(&Keyword::Not) {
 				self.advance()?;
 				self.expect_keyword(Keyword::Null)?;
-				false
+				nullable = false;
 			} else if self.at_keyword(&Keyword::Null) {
 				self.advance()?;
-				true
-			} else {
-				true
-			};
+				nullable = true;
+			}
+			// Column-level PRIMARY KEY
+			if self.at_keyword(&Keyword::Primary) {
+				self.advance()?;
+				self.expect_keyword(Keyword::Key)?;
+				primary_key.push(name.clone());
+				nullable = false; // PRIMARY KEY implies NOT NULL
+			}
+			// Column-level UNIQUE (skip)
+			if self.at_keyword(&Keyword::Unique) {
+				self.advance()?;
+			}
+			// DEFAULT clause (skip the expression)
+			if !self.is_eof() && matches!(self.tokens.get(self.pos), Some(Token::Keyword(Keyword::Set))) {
+				// "DEFAULT" would be an ident, not a keyword - skip
+			}
 			columns.push(ColumnDef {
 				name,
 				data_type,
@@ -491,6 +700,104 @@ impl Parser {
 			schema,
 			columns,
 			primary_key,
+			if_not_exists,
+		}))
+	}
+
+	fn parse_create_index(&mut self, unique: bool) -> Result<Statement, Error> {
+		// CREATE [UNIQUE] INDEX [IF NOT EXISTS] name ON table (columns...)
+		// Handle IF NOT EXISTS
+		if self.at_keyword(&Keyword::If) {
+			self.advance()?;
+			self.expect_keyword(Keyword::Not)?;
+			self.expect_keyword(Keyword::Exists)?;
+		}
+
+		let index_name = self.expect_ident()?;
+		self.expect_keyword(Keyword::On)?;
+		let (schema, table) = self.parse_table_name()?;
+
+		self.expect_token(Token::OpenParen)?;
+		let mut columns = Vec::new();
+		loop {
+			let name = self.expect_ident()?;
+			let direction = if self.at_keyword(&Keyword::Asc) {
+				self.advance()?;
+				Some(OrderDirection::Asc)
+			} else if self.at_keyword(&Keyword::Desc) {
+				self.advance()?;
+				Some(OrderDirection::Desc)
+			} else {
+				None
+			};
+			columns.push(IndexColumn {
+				name,
+				direction,
+			});
+			if self.at_token(&Token::Comma) {
+				self.advance()?;
+			} else {
+				break;
+			}
+		}
+		self.expect_token(Token::CloseParen)?;
+
+		// Skip optional WHERE clause for partial indexes
+		if self.at_keyword(&Keyword::Where) {
+			self.advance()?;
+			let _ = self.parse_expr()?;
+		}
+
+		Ok(Statement::CreateIndex(CreateIndexStatement {
+			unique,
+			index_name,
+			table,
+			schema,
+			columns,
+		}))
+	}
+
+	// ── DROP TABLE ─────────────────────────────────────────────────────
+
+	fn parse_drop(&mut self) -> Result<Statement, Error> {
+		self.expect_keyword(Keyword::Drop)?;
+
+		// DROP INDEX (skip entirely)
+		if self.at_keyword(&Keyword::Index) {
+			self.advance()?;
+			// IF EXISTS
+			let _if_exists = if self.at_keyword(&Keyword::If) {
+				self.advance()?;
+				self.expect_keyword(Keyword::Exists)?;
+				true
+			} else {
+				false
+			};
+			let index_name = self.expect_ident()?;
+			// DROP INDEX just emits as-is
+			return Ok(Statement::DropTable(DropTableStatement {
+				table: index_name,
+				schema: None,
+				if_exists: _if_exists,
+			}));
+		}
+
+		self.expect_keyword(Keyword::Table)?;
+
+		let if_exists = if self.at_keyword(&Keyword::If) {
+			self.advance()?;
+			self.expect_keyword(Keyword::Exists)?;
+			true
+		} else {
+			false
+		};
+
+		let (schema, table) = self.parse_table_name()?;
+
+		Ok(Statement::DropTable(DropTableStatement {
+			table,
+			schema,
+			if_exists,
 		}))
 	}
 
@@ -508,6 +815,8 @@ impl Parser {
 			Token::Keyword(Keyword::Bigint) => Ok(SqlType::Bigint),
 			Token::Keyword(Keyword::Float4) => Ok(SqlType::Float4),
 			Token::Keyword(Keyword::Float8) => Ok(SqlType::Float8),
+			Token::Keyword(Keyword::FloatKw) => Ok(SqlType::FloatType),
+			Token::Keyword(Keyword::Numeric) => Ok(SqlType::Numeric),
 			Token::Keyword(Keyword::Real) => Ok(SqlType::Real),
 			Token::Keyword(Keyword::Double) => {
 				// DOUBLE PRECISION
@@ -583,6 +892,18 @@ impl Parser {
 
 	fn parse_not(&mut self) -> Result<Expr, Error> {
 		if self.at_keyword(&Keyword::Not) {
+			// Check for NOT EXISTS
+			if matches!(self.tokens.get(self.pos + 1), Some(Token::Keyword(Keyword::Exists))) {
+				self.advance()?; // NOT
+				self.advance()?; // EXISTS
+				self.expect_token(Token::OpenParen)?;
+				let sel = self.parse_select_statement()?;
+				self.expect_token(Token::CloseParen)?;
+				return Ok(Expr::UnaryOp {
+					op: UnaryOp::Not,
+					expr: Box::new(Expr::Exists(Box::new(sel))),
+				});
+			}
 			self.advance()?;
 			let expr = self.parse_not()?;
 			Ok(Expr::UnaryOp {
@@ -646,6 +967,54 @@ impl Parser {
 			});
 		}
 
+		// NOT LIKE / LIKE
+		if self.at_keyword(&Keyword::Not)
+			&& matches!(self.tokens.get(self.pos + 1), Some(Token::Keyword(Keyword::Like)))
+		{
+			self.advance()?; // NOT
+			self.advance()?; // LIKE
+			let pattern = self.parse_addition()?;
+			return Ok(Expr::Like {
+				expr: Box::new(left),
+				pattern: Box::new(pattern),
+				negated: true,
+			});
+		}
+
+		if self.at_keyword(&Keyword::Like) {
+			self.advance()?;
+			let pattern = self.parse_addition()?;
+			return Ok(Expr::Like {
+				expr: Box::new(left),
+				pattern: Box::new(pattern),
+				negated: false,
+			});
+		}
+
+		// NOT GLOB / GLOB (treat like LIKE for now)
+		if self.at_keyword(&Keyword::Not)
+			&& matches!(self.tokens.get(self.pos + 1), Some(Token::Keyword(Keyword::Glob)))
+		{
+			self.advance()?; // NOT
+			self.advance()?; // GLOB
+			let pattern = self.parse_addition()?;
+			return Ok(Expr::Like {
+				expr: Box::new(left),
+				pattern: Box::new(pattern),
+				negated: true,
+			});
+		}
+
+		if self.at_keyword(&Keyword::Glob) {
+			self.advance()?;
+			let pattern = self.parse_addition()?;
+			return Ok(Expr::Like {
+				expr: Box::new(left),
+				pattern: Box::new(pattern),
+				negated: false,
+			});
+		}
+
 		// NOT IN / IN (...)
 		if self.at_keyword(&Keyword::Not)
 			&& matches!(self.tokens.get(self.pos + 1), Some(Token::Keyword(Keyword::In)))
@@ -653,6 +1022,16 @@ impl Parser {
 			self.advance()?; // NOT
 			self.advance()?; // IN
 			self.expect_token(Token::OpenParen)?;
+			// Check for subquery
+			if self.at_keyword(&Keyword::Select) || self.at_keyword(&Keyword::With) {
+				let sel = self.parse_select_statement()?;
+				self.expect_token(Token::CloseParen)?;
+				return Ok(Expr::InSelect {
+					expr: Box::new(left),
+					subquery: Box::new(sel),
+					negated: true,
+				});
+			}
 			let list = self.parse_expr_list()?;
 			self.expect_token(Token::CloseParen)?;
 			return Ok(Expr::InList {
@@ -665,6 +1044,16 @@ impl Parser {
 		if self.at_keyword(&Keyword::In) {
 			self.advance()?;
 			self.expect_token(Token::OpenParen)?;
+			// Check for subquery
+			if self.at_keyword(&Keyword::Select) || self.at_keyword(&Keyword::With) {
+				let sel = self.parse_select_statement()?;
+				self.expect_token(Token::CloseParen)?;
+				return Ok(Expr::InSelect {
+					expr: Box::new(left),
+					subquery: Box::new(sel),
+					negated: false,
+				});
+			}
 			let list = self.parse_expr_list()?;
 			self.expect_token(Token::CloseParen)?;
 			return Ok(Expr::InList {
@@ -703,6 +1092,7 @@ impl Parser {
 			let op = match self.tokens.get(self.pos) {
 				Some(Token::Plus) => Some(BinaryOp::Add),
 				Some(Token::Minus) => Some(BinaryOp::Sub),
+				Some(Token::Concat) => Some(BinaryOp::Concat),
 				_ => None,
 			};
 			if let Some(op) = op {
@@ -747,11 +1137,16 @@ impl Parser {
 	fn parse_unary(&mut self) -> Result<Expr, Error> {
 		if self.at_token(&Token::Minus) {
 			self.advance()?;
-			let expr = self.parse_primary()?;
+			let expr = self.parse_unary()?;
 			return Ok(Expr::UnaryOp {
 				op: UnaryOp::Neg,
 				expr: Box::new(expr),
 			});
+		}
+		// Unary + (identity)
+		if self.at_token(&Token::Plus) {
+			self.advance()?;
+			return self.parse_unary();
 		}
 		self.parse_primary()
 	}
@@ -784,6 +1179,30 @@ impl Parser {
 				Ok(Expr::Null)
 			}
 			Token::Keyword(Keyword::Cast) => self.parse_cast_expr(),
+			Token::Keyword(Keyword::Case) => self.parse_case_expr(),
+			Token::Keyword(Keyword::Exists) => {
+				self.advance()?;
+				self.expect_token(Token::OpenParen)?;
+				let sel = self.parse_select_statement()?;
+				self.expect_token(Token::CloseParen)?;
+				Ok(Expr::Exists(Box::new(sel)))
+			}
+			Token::Keyword(Keyword::Not) => {
+				// NOT EXISTS handled at parse_not level, but if we get here via parse_primary...
+				if matches!(self.tokens.get(self.pos + 1), Some(Token::Keyword(Keyword::Exists))) {
+					self.advance()?; // NOT
+					self.advance()?; // EXISTS
+					self.expect_token(Token::OpenParen)?;
+					let sel = self.parse_select_statement()?;
+					self.expect_token(Token::CloseParen)?;
+					Ok(Expr::UnaryOp {
+						op: UnaryOp::Not,
+						expr: Box::new(Expr::Exists(Box::new(sel))),
+					})
+				} else {
+					Err(Error(format!("unexpected token in expression: {tok:?}")))
+				}
+			}
 			// Aggregate function keywords
 			Token::Keyword(Keyword::Count)
 			| Token::Keyword(Keyword::Sum)
@@ -795,6 +1214,13 @@ impl Parser {
 					_ => unreachable!(),
 				});
 				self.expect_token(Token::OpenParen)?;
+				// Handle DISTINCT inside aggregate: COUNT(DISTINCT x)
+				let distinct_prefix = if self.at_keyword(&Keyword::Distinct) {
+					self.advance()?;
+					true
+				} else {
+					false
+				};
 				let args = if self.at_token(&Token::Asterisk) {
 					self.advance()?;
 					vec![Expr::Identifier("*".into())]
@@ -802,13 +1228,27 @@ impl Parser {
 					self.parse_expr_list()?
 				};
 				self.expect_token(Token::CloseParen)?;
-				Ok(Expr::FunctionCall {
-					name,
-					args,
-				})
+				if distinct_prefix {
+					// Wrap as DISTINCT_name function
+					Ok(Expr::FunctionCall {
+						name: format!("{name}_DISTINCT"),
+						args,
+					})
+				} else {
+					Ok(Expr::FunctionCall {
+						name,
+						args,
+					})
+				}
 			}
 			Token::OpenParen => {
 				self.advance()?;
+				// Check for subquery
+				if self.at_keyword(&Keyword::Select) || self.at_keyword(&Keyword::With) {
+					let sel = self.parse_select_statement()?;
+					self.expect_token(Token::CloseParen)?;
+					return Ok(Expr::Subquery(Box::new(sel)));
+				}
 				let expr = self.parse_expr()?;
 				self.expect_token(Token::CloseParen)?;
 				Ok(Expr::Nested(Box::new(expr)))
@@ -873,6 +1313,41 @@ impl Parser {
 		Ok(Expr::Cast {
 			expr: Box::new(expr),
 			data_type,
+		})
+	}
+
+	fn parse_case_expr(&mut self) -> Result<Expr, Error> {
+		self.expect_keyword(Keyword::Case)?;
+
+		// Simple CASE (CASE expr WHEN ...) vs Searched CASE (CASE WHEN ...)
+		let operand = if !self.at_keyword(&Keyword::When) {
+			Some(Box::new(self.parse_expr()?))
+		} else {
+			None
+		};
+
+		let mut when_clauses = Vec::new();
+		while self.at_keyword(&Keyword::When) {
+			self.advance()?;
+			let condition = self.parse_expr()?;
+			self.expect_keyword(Keyword::Then)?;
+			let result = self.parse_expr()?;
+			when_clauses.push((condition, result));
+		}
+
+		let else_clause = if self.at_keyword(&Keyword::Else) {
+			self.advance()?;
+			Some(Box::new(self.parse_expr()?))
+		} else {
+			None
+		};
+
+		self.expect_keyword(Keyword::End)?;
+
+		Ok(Expr::Case {
+			operand,
+			when_clauses,
+			else_clause,
 		})
 	}
 
@@ -944,6 +1419,29 @@ impl Parser {
 	}
 }
 
+/// Keywords that are structural (end a FROM/SELECT clause, etc.)
+/// and should NOT be treated as bare aliases.
+fn is_structural_keyword(kw: &Keyword) -> bool {
+	matches!(
+		kw,
+		Keyword::Where
+			| Keyword::Order | Keyword::Group
+			| Keyword::Having | Keyword::Limit
+			| Keyword::Offset | Keyword::Join
+			| Keyword::Inner | Keyword::Left
+			| Keyword::Right | Keyword::Cross
+			| Keyword::Outer | Keyword::Full
+			| Keyword::Natural | Keyword::On
+			| Keyword::Set | Keyword::Values
+			| Keyword::Select | Keyword::From
+			| Keyword::Union | Keyword::Intersect
+			| Keyword::Except | Keyword::When
+			| Keyword::Then | Keyword::Else
+			| Keyword::End | Keyword::And
+			| Keyword::Or | Keyword::Not
+	)
+}
+
 fn keyword_to_string(kw: &Keyword) -> String {
 	match kw {
 		Keyword::Select => "SELECT",
@@ -1010,6 +1508,28 @@ fn keyword_to_string(kw: &Keyword) -> String {
 		Keyword::Key => "KEY",
 		Keyword::With => "WITH",
 		Keyword::Recursive => "RECURSIVE",
+		Keyword::Case => "CASE",
+		Keyword::When => "WHEN",
+		Keyword::Then => "THEN",
+		Keyword::Else => "ELSE",
+		Keyword::End => "END",
+		Keyword::Exists => "EXISTS",
+		Keyword::Union => "UNION",
+		Keyword::All => "ALL",
+		Keyword::Intersect => "INTERSECT",
+		Keyword::Except => "EXCEPT",
+		Keyword::Like => "LIKE",
+		Keyword::Glob => "GLOB",
+		Keyword::If => "IF",
+		Keyword::FloatKw => "FLOAT",
+		Keyword::Index => "INDEX",
+		Keyword::Unique => "UNIQUE",
+		Keyword::Drop => "DROP",
+		Keyword::Cross => "CROSS",
+		Keyword::Outer => "OUTER",
+		Keyword::Full => "FULL",
+		Keyword::Natural => "NATURAL",
+		Keyword::Numeric => "NUMERIC",
 	}
 	.into()
 }
@@ -1064,7 +1584,10 @@ mod tests {
 			Statement::Insert(ins) => {
 				assert_eq!(ins.table, "users");
 				assert_eq!(ins.columns.len(), 2);
-				assert_eq!(ins.values.len(), 1);
+				match &ins.source {
+					InsertSource::Values(v) => assert_eq!(v.len(), 1),
+					_ => panic!("expected values"),
+				}
 			}
 			_ => panic!("expected insert"),
 		}
