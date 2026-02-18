@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use super::decode_retention_policy;
 use crate::CatalogStore;
@@ -15,22 +15,20 @@ impl CatalogStore {
 	/// Find a retention policy for a source (table, view, or ring buffer)
 	/// Returns None if no retention policy is set
 	pub(crate) fn find_primitive_retention_policy(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		source: PrimitiveId,
 	) -> crate::Result<Option<RetentionPolicy>> {
-		let mut txn = rx.as_transaction();
-		let value = txn.get(&PrimitiveRetentionPolicyKey::encoded(source))?;
+		let value = rx.get(&PrimitiveRetentionPolicyKey::encoded(source))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
 
 	/// Find a retention policy for an operator
 	/// Returns None if no retention policy is set
 	pub(crate) fn find_operator_retention_policy(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		operator: FlowNodeId,
 	) -> crate::Result<Option<RetentionPolicy>> {
-		let mut txn = rx.as_transaction();
-		let value = txn.get(&OperatorRetentionPolicyKey::encoded(operator))?;
+		let value = rx.get(&OperatorRetentionPolicyKey::encoded(operator))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
 }
@@ -42,6 +40,7 @@ pub mod tests {
 		retention::{CleanupMode, RetentionPolicy},
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;
 	use crate::store::retention_policy::create::{
@@ -60,7 +59,8 @@ pub mod tests {
 
 		create_primitive_retention_policy(&mut txn, source, &policy).unwrap();
 
-		let found = CatalogStore::find_primitive_retention_policy(&mut txn, source).unwrap();
+		let found = CatalogStore::find_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
+			.unwrap();
 		assert_eq!(found, Some(policy));
 	}
 
@@ -69,7 +69,8 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let source = PrimitiveId::Table(TableId(9999));
 
-		let found = CatalogStore::find_primitive_retention_policy(&mut txn, source).unwrap();
+		let found = CatalogStore::find_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
+			.unwrap();
 		assert_eq!(found, None);
 	}
 
@@ -85,7 +86,8 @@ pub mod tests {
 
 		_create_operator_retention_policy(&mut txn, operator, &policy).unwrap();
 
-		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();
+		let found = CatalogStore::find_operator_retention_policy(&mut Transaction::Admin(&mut txn), operator)
+			.unwrap();
 		assert_eq!(found, Some(policy));
 	}
 
@@ -94,7 +96,8 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let operator = FlowNodeId(9999);
 
-		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();
+		let found = CatalogStore::find_operator_retention_policy(&mut Transaction::Admin(&mut txn), operator)
+			.unwrap();
 		assert_eq!(found, None);
 	}
 }

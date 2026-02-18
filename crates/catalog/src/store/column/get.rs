@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{internal, key::columns::ColumnsKey};
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	error::Error,
 	value::{
@@ -63,9 +63,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn get_column(rx: &mut impl AsTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
-		let mut txn = rx.as_transaction();
-		let multi = txn.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
+	pub(crate) fn get_column(rx: &mut Transaction<'_>, column: ColumnId) -> crate::Result<ColumnDef> {
+		let multi = rx.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
 			Error(internal!(
 				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				column
@@ -95,7 +94,7 @@ impl CatalogStore {
 			Some(DictionaryId(dict_id_raw))
 		};
 
-		let policies = Self::list_column_policies(&mut txn, id)?;
+		let policies = Self::list_column_policies(rx, id)?;
 
 		Ok(ColumnDef {
 			id,
@@ -113,6 +112,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::ColumnId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{CatalogStore, test_utils::create_test_column};
@@ -124,7 +124,7 @@ pub mod tests {
 		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
 		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
 
-		let result = CatalogStore::get_column(&mut txn, ColumnId(8194)).unwrap();
+		let result = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8194)).unwrap();
 
 		assert_eq!(result.id, ColumnId(8194));
 		assert_eq!(result.name, "col_2");
@@ -139,7 +139,7 @@ pub mod tests {
 		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
 		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
 
-		let err = CatalogStore::get_column(&mut txn, ColumnId(4)).unwrap_err();
+		let err = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(4)).unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ColumnId(4)"));
 		assert!(err.message.contains("not found in catalog"));

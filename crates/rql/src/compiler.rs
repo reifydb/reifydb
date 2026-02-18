@@ -6,7 +6,7 @@ use std::{fmt::Debug, sync::Arc};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::util::lru::LruCache;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, error::diagnostic::runtime, value::Value};
 
 use crate::{
@@ -69,7 +69,7 @@ impl Compiler {
 		}))
 	}
 
-	pub fn compile<T: AsTransaction>(&self, tx: &mut T, query: &str) -> Result<CompilationResult> {
+	pub fn compile(&self, tx: &mut Transaction<'_>, query: &str) -> Result<CompilationResult> {
 		let hash = xxh3_128(query.as_bytes());
 
 		if let Some(cached) = self.0.cache.get(&hash) {
@@ -111,9 +111,9 @@ impl Compiler {
 
 	/// Compile the next statement in an incremental compilation.
 	/// Returns `None` when all statements have been compiled.
-	pub fn compile_next<T: AsTransaction>(
+	pub fn compile_next(
 		&self,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 		state: &mut IncrementalCompilation,
 	) -> Result<Option<Compiled>> {
 		if state.current >= state.total_statements {

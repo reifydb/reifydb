@@ -11,7 +11,7 @@ use reifydb_core::{
 		schema::{SchemaFieldKey, SchemaKey},
 	},
 };
-use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::AsTransaction};
+use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::Transaction};
 use reifydb_type::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
@@ -92,21 +92,19 @@ pub(crate) fn find_schema_by_fingerprint(
 #[instrument(
 	name = "schema_store::load_all",
 	level = "debug",
-	skip(txn),
+	skip(rx),
 	fields(
 		schema_count = tracing::field::Empty,
 		total_fields = tracing::field::Empty
 	)
 )]
-pub fn load_all_schemas(txn: &mut impl AsTransaction) -> crate::Result<Vec<Schema>> {
-	let mut std_txn = txn.as_transaction();
-
+pub fn load_all_schemas(rx: &mut Transaction<'_>) -> crate::Result<Vec<Schema>> {
 	// First pass: collect all schema headers (fingerprint, field_count)
 	let mut schema_headers: Vec<(SchemaFingerprint, usize)> = Vec::new();
 
 	{
 		let range = SchemaKey::full_scan();
-		let mut stream = std_txn.range(range, 1024)?;
+		let mut stream = rx.range(range, 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
@@ -130,7 +128,7 @@ pub fn load_all_schemas(txn: &mut impl AsTransaction) -> crate::Result<Vec<Schem
 
 		for i in 0..field_count {
 			let field_key = SchemaFieldKey::encoded(fingerprint, i as u16);
-			let field_entry = std_txn.get(&field_key)?.ok_or_else(|| {
+			let field_entry = rx.get(&field_key)?.ok_or_else(|| {
 				Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
 			})?;
 

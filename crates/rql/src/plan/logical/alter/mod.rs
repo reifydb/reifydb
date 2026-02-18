@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::ast::AstAlter,
@@ -14,10 +14,10 @@ pub mod table;
 pub mod view;
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_alter<T: AsTransaction>(
+	pub(crate) fn compile_alter(
 		&self,
 		ast: AstAlter<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		match ast {
 			AstAlter::Sequence(node) => self.compile_alter_sequence(node),

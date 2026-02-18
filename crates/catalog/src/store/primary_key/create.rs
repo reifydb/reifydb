@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::primary_key::PrimaryKeyKey,
 	return_internal_error,
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -41,7 +41,7 @@ impl CatalogStore {
 
 		// Get the columns for the table/view and validate all primary
 		// key columns belong to it
-		let source_columns = Self::list_columns(txn, to_create.primitive)?;
+		let source_columns = Self::list_columns(&mut Transaction::Admin(&mut *txn), to_create.primitive)?;
 		let source_column_ids: std::collections::HashSet<_> = source_columns.iter().map(|c| c.id).collect();
 
 		// Validate that all columns belong to the table/view
@@ -105,6 +105,7 @@ pub mod tests {
 		primitive::PrimitiveId,
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, r#type::Type},
@@ -175,8 +176,9 @@ pub mod tests {
 		assert_eq!(primary_key_id, PrimaryKeyId(1));
 
 		// Find and verify the primary key
-		let found_pk =
-			CatalogStore::find_primary_key(&mut txn, table.id).unwrap().expect("Primary key should exist");
+		let found_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), table.id)
+			.unwrap()
+			.expect("Primary key should exist");
 
 		assert_eq!(found_pk.id, primary_key_id);
 		assert_eq!(found_pk.columns.len(), 2);
@@ -214,7 +216,7 @@ pub mod tests {
 		.unwrap();
 
 		// Get column IDs for the view
-		let columns = CatalogStore::list_columns(&mut txn, view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		// Create primary key on first column only
@@ -231,8 +233,9 @@ pub mod tests {
 		assert_eq!(primary_key_id, PrimaryKeyId(1));
 
 		// Find and verify the primary key
-		let found_pk =
-			CatalogStore::find_primary_key(&mut txn, view.id).unwrap().expect("Primary key should exist");
+		let found_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), view.id)
+			.unwrap()
+			.expect("Primary key should exist");
 
 		assert_eq!(found_pk.id, primary_key_id);
 		assert_eq!(found_pk.columns.len(), 1);
@@ -278,8 +281,9 @@ pub mod tests {
 		.unwrap();
 
 		// Find and verify the primary key
-		let found_pk =
-			CatalogStore::find_primary_key(&mut txn, table.id).unwrap().expect("Primary key should exist");
+		let found_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), table.id)
+			.unwrap()
+			.expect("Primary key should exist");
 
 		assert_eq!(found_pk.id, primary_key_id);
 		assert_eq!(found_pk.columns.len(), 3);
@@ -295,7 +299,7 @@ pub mod tests {
 		let table = ensure_test_table(&mut txn);
 
 		// Initially, table does not have primary key
-		let initial_pk = CatalogStore::find_primary_key(&mut txn, table.id).unwrap();
+		let initial_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 		assert!(initial_pk.is_none());
 
 		// Create a column
@@ -327,8 +331,9 @@ pub mod tests {
 		.unwrap();
 
 		// Now table should have the primary key
-		let updated_pk =
-			CatalogStore::find_primary_key(&mut txn, table.id).unwrap().expect("Primary key should exist");
+		let updated_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), table.id)
+			.unwrap()
+			.expect("Primary key should exist");
 
 		assert_eq!(updated_pk.id, primary_key_id);
 	}
@@ -439,7 +444,8 @@ pub mod tests {
 		.unwrap();
 
 		// Create another table
-		let namespace = CatalogStore::get_namespace(&mut txn, table1.namespace).unwrap();
+		let namespace =
+			CatalogStore::get_namespace(&mut Transaction::Admin(&mut txn), table1.namespace).unwrap();
 		let table2 = CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {

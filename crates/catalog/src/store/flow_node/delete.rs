@@ -5,14 +5,14 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::flow_node::{FlowNodeByFlowKey, FlowNodeKey},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn delete_flow_node(txn: &mut AdminTransaction, node_id: FlowNodeId) -> crate::Result<()> {
 		// First, get the node to find the flow ID for index deletion
-		let node = CatalogStore::find_flow_node(txn, node_id)?;
+		let node = CatalogStore::find_flow_node(&mut Transaction::Admin(&mut *txn), node_id)?;
 
 		if let Some(node_def) = node {
 			// Delete from main flow_node table
@@ -30,6 +30,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -45,13 +46,13 @@ pub mod tests {
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
 		// Node should exist
-		assert!(CatalogStore::find_flow_node(&mut txn, node.id).unwrap().is_some());
+		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node.id).unwrap().is_some());
 
 		// Delete node
 		CatalogStore::delete_flow_node(&mut txn, node.id).unwrap();
 
 		// Node should no longer exist
-		assert!(CatalogStore::find_flow_node(&mut txn, node.id).unwrap().is_none());
+		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node.id).unwrap().is_none());
 	}
 
 	#[test]
@@ -63,14 +64,14 @@ pub mod tests {
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
 		// Node should be in flow index
-		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(nodes.len(), 1);
 
 		// Delete node
 		CatalogStore::delete_flow_node(&mut txn, node.id).unwrap();
 
 		// Node should be removed from flow index
-		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert!(nodes.is_empty());
 	}
 
@@ -95,11 +96,11 @@ pub mod tests {
 		CatalogStore::delete_flow_node(&mut txn, node1.id).unwrap();
 
 		// First node should be gone, second should remain
-		assert!(CatalogStore::find_flow_node(&mut txn, node1.id).unwrap().is_none());
-		assert!(CatalogStore::find_flow_node(&mut txn, node2.id).unwrap().is_some());
+		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node1.id).unwrap().is_none());
+		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node2.id).unwrap().is_some());
 
 		// List should only have second node
-		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(nodes.len(), 1);
 		assert_eq!(nodes[0].id, node2.id);
 	}

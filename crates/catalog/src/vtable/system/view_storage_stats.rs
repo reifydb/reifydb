@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_metric::{MetricId, metric::MetricReader, multi::Tier};
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
@@ -43,13 +43,13 @@ fn tier_to_str(tier: Tier) -> &'static str {
 	}
 }
 
-impl<T: AsTransaction> VTable<T> for ViewStorageStats {
-	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+impl VTable for ViewStorageStats {
+	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::ast::{
@@ -20,10 +20,10 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_let<T: AsTransaction>(
+	pub(crate) fn compile_let(
 		&self,
 		ast: AstLet<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let value = match ast.value {
 			AstLetValue::Expression(expr) => {
@@ -47,10 +47,10 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	pub(crate) fn compile_if<T: AsTransaction>(
+	pub(crate) fn compile_if(
 		&self,
 		ast: AstIf<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		// Compile the condition expression
 		let condition = ExpressionCompiler::compile(BumpBox::into_inner(ast.condition))?;
@@ -92,10 +92,10 @@ impl<'bump> Compiler<'bump> {
 
 	/// Compile a block as a single logical plan node.
 	/// Takes the first expression from the first statement.
-	fn compile_block_single<T: AsTransaction>(
+	fn compile_block_single(
 		&self,
 		block: AstBlock<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		if let Some(first_stmt) = block.statements.into_iter().next() {
 			if let Some(first_node) = first_stmt.nodes.into_iter().next() {
@@ -111,10 +111,10 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	/// Compile all statements in a block into a Vec<BumpVec<LogicalPlan>>
-	pub(crate) fn compile_block<T: AsTransaction>(
+	pub(crate) fn compile_block(
 		&self,
 		block: AstBlock<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<Vec<BumpVec<'bump, LogicalPlan<'bump>>>> {
 		let mut result = Vec::new();
 		for stmt in block.statements {
@@ -124,10 +124,10 @@ impl<'bump> Compiler<'bump> {
 		Ok(result)
 	}
 
-	pub(crate) fn compile_loop<T: AsTransaction>(
+	pub(crate) fn compile_loop(
 		&self,
 		ast: AstLoop<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let body = self.compile_block(ast.body, tx)?;
 		Ok(LogicalPlan::Loop(LoopNode {
@@ -135,10 +135,10 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	pub(crate) fn compile_while<T: AsTransaction>(
+	pub(crate) fn compile_while(
 		&self,
 		ast: AstWhile<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let condition = ExpressionCompiler::compile(BumpBox::into_inner(ast.condition))?;
 		let body = self.compile_block(ast.body, tx)?;
@@ -148,10 +148,10 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	pub(crate) fn compile_for<T: AsTransaction>(
+	pub(crate) fn compile_for(
 		&self,
 		ast: AstFor<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let variable_name = {
 			let text = ast.variable.token.fragment.text();
@@ -178,10 +178,10 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	/// Compile a function definition
-	pub(crate) fn compile_def_function<T: AsTransaction>(
+	pub(crate) fn compile_def_function(
 		&self,
 		ast: AstDefFunction<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		// Convert function name
 		let name = ast.name.token.fragment;

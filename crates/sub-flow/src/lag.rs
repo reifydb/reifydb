@@ -11,6 +11,7 @@ use reifydb_core::{
 	interface::flow::{FlowLagRow, FlowLagsProvider},
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{catalog::FlowCatalog, tracker::PrimitiveVersionTracker};
 
@@ -60,7 +61,9 @@ impl FlowLagsProvider for FlowLags {
 
 		// Calculate lags only for registered flows
 		for flow_id in &registered {
-			let flow_version = CdcCheckpoint::fetch(&mut txn, flow_id).unwrap_or(CommitVersion(0)).0;
+			let flow_version = CdcCheckpoint::fetch(&mut Transaction::Query(&mut txn), flow_id)
+				.unwrap_or(CommitVersion(0))
+				.0;
 
 			for (primitive_id, version) in &primitive_versions {
 				let lag = version.0.saturating_sub(flow_version);

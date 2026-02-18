@@ -6,9 +6,10 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{Batch, QueryTransaction, VTableDef},
+	interface::{Batch, VTableDef},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 
 use super::{VTable, VTableContext};
@@ -34,13 +35,13 @@ impl<U: UserVTable> UserVTableAdapter<U> {
 	}
 }
 
-impl<U: UserVTable, T: QueryTransaction> VTable<T> for UserVTableAdapter<U> {
-	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+impl<U: UserVTable> VTable for UserVTableAdapter<U> {
+	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -87,8 +88,8 @@ impl<U: UserVTableIterator> UserVTableIteratorAdapter<U> {
 	}
 }
 
-impl<U: UserVTableIterator, T: QueryTransaction> VTable<T> for UserVTableIteratorAdapter<U> {
-	fn initialize(&mut self, _txn: &mut T, ctx: VTableContext) -> crate::Result<()> {
+impl<U: UserVTableIterator> VTable for UserVTableIteratorAdapter<U> {
+	fn initialize(&mut self, _txn: &mut Transaction<'_>, ctx: VTableContext) -> crate::Result<()> {
 		// Convert internal context to user pushdown context
 		let user_ctx = match ctx {
 			VTableContext::Basic {
@@ -107,7 +108,7 @@ impl<U: UserVTableIterator, T: QueryTransaction> VTable<T> for UserVTableIterato
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>> {
 		if !self.initialized {
 			return Ok(None);
 		}

@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	key::view::ViewKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	materialized::MaterializedCatalog,
@@ -22,10 +22,9 @@ use crate::{
 	},
 };
 
-pub(crate) fn load_views(rx: &mut impl AsTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
-	let mut txn = rx.as_transaction();
+pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let range = ViewKey::full_scan();
-	let mut stream = txn.range(range, 1024)?;
+	let mut stream = rx.range(range, 1024)?;
 
 	while let Some(entry) = stream.next() {
 		let multi = entry?;

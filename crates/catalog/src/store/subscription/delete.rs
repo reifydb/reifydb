@@ -53,6 +53,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, store::subscription::create::SubscriptionToCreate};
 
@@ -69,14 +70,14 @@ pub mod tests {
 		.unwrap();
 
 		// Verify it exists
-		let found = CatalogStore::find_subscription(&mut txn, created.id).unwrap();
+		let found = CatalogStore::find_subscription(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_some());
 
 		// Delete it
 		CatalogStore::delete_subscription(&mut txn, created.id).unwrap();
 
 		// Verify it's gone
-		let found = CatalogStore::find_subscription(&mut txn, created.id).unwrap();
+		let found = CatalogStore::find_subscription(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none());
 	}
 

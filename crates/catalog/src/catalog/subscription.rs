@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_transaction::transaction::{AsTransaction, Transaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{error, fragment::Fragment, value::r#type::Type};
 use tracing::{instrument, warn};
 
@@ -55,12 +55,12 @@ impl From<SubscriptionToCreate> for StoreSubscriptionToCreate {
 impl Catalog {
 	/// Find a subscription by ID
 	#[instrument(name = "catalog::subscription::find", level = "trace", skip(self, txn))]
-	pub fn find_subscription<T: AsTransaction>(
+	pub fn find_subscription(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		id: SubscriptionId,
 	) -> crate::Result<Option<SubscriptionDef>> {
-		match txn.as_transaction() {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(subscription) = self.materialized.find_subscription(id, cmd.version()) {
@@ -68,7 +68,9 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(subscription) = CatalogStore::find_subscription(cmd, id)? {
+				if let Some(subscription) =
+					CatalogStore::find_subscription(&mut Transaction::Command(&mut *cmd), id)?
+				{
 					warn!(
 						"Subscription with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -85,7 +87,9 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(subscription) = CatalogStore::find_subscription(admin, id)? {
+				if let Some(subscription) =
+					CatalogStore::find_subscription(&mut Transaction::Admin(&mut *admin), id)?
+				{
 					warn!(
 						"Subscription with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -102,7 +106,9 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(subscription) = CatalogStore::find_subscription(qry, id)? {
+				if let Some(subscription) =
+					CatalogStore::find_subscription(&mut Transaction::Query(&mut *qry), id)?
+				{
 					warn!(
 						"Subscription with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -117,9 +123,9 @@ impl Catalog {
 
 	/// Get a subscription by ID, error if not found
 	#[instrument(name = "catalog::subscription::get", level = "trace", skip(self, txn))]
-	pub fn get_subscription<T: AsTransaction>(
+	pub fn get_subscription(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		id: SubscriptionId,
 	) -> crate::Result<SubscriptionDef> {
 		self.find_subscription(txn, id)?.ok_or_else(|| {
@@ -132,9 +138,9 @@ impl Catalog {
 
 	/// Resolve a subscription ID to a fully resolved subscription
 	#[instrument(name = "catalog::resolve::subscription", level = "trace", skip(self, txn))]
-	pub fn resolve_subscription<T: AsTransaction>(
+	pub fn resolve_subscription(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		subscription_id: SubscriptionId,
 	) -> crate::Result<ResolvedSubscription> {
 		let subscription_def = self.get_subscription(txn, subscription_id)?;
@@ -167,7 +173,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::subscription::list_all", level = "debug", skip(self, txn))]
-	pub fn list_subscriptions_all<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<SubscriptionDef>> {
+	pub fn list_subscriptions_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<SubscriptionDef>> {
 		CatalogStore::list_subscriptions_all(txn)
 	}
 }

@@ -2106,6 +2106,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
+ "reifydb-transaction",
  "reifydb-type",
  "tokio",
  "tracing",

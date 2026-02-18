@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{policy::ColumnPolicyKind, primitive::PrimitiveId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	return_error,
@@ -80,7 +80,9 @@ impl CatalogStore {
 		let source = source.into();
 
 		// FIXME policies
-		if let Some(column) = Self::find_column_by_name(txn, source, &column_to_create.column)? {
+		if let Some(column) =
+			Self::find_column_by_name(&mut Transaction::Admin(&mut *txn), source, &column_to_create.column)?
+		{
 			return_error!(table_column_already_exists(
 				Fragment::None,
 				&column_to_create.namespace_name,
@@ -145,7 +147,7 @@ impl CatalogStore {
 			name: column_to_create.column,
 			constraint: column_to_create.constraint,
 			index: column_to_create.index,
-			policies: Self::list_column_policies(txn, id)?,
+			policies: Self::list_column_policies(&mut Transaction::Admin(&mut *txn), id)?,
 			auto_increment: column_to_create.auto_increment,
 			dictionary_id: column_to_create.dictionary_id,
 		})
@@ -159,6 +161,7 @@ pub mod test {
 		id::{ColumnId, TableId},
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
@@ -202,14 +205,14 @@ pub mod test {
 		)
 		.unwrap();
 
-		let column_1 = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
+		let column_1 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8193)).unwrap();
 
 		assert_eq!(column_1.id, 8193);
 		assert_eq!(column_1.name, "col_1");
 		assert_eq!(column_1.constraint.get_type(), Type::Boolean);
 		assert_eq!(column_1.auto_increment, false);
 
-		let column_2 = CatalogStore::get_column(&mut txn, ColumnId(8194)).unwrap();
+		let column_2 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8194)).unwrap();
 
 		assert_eq!(column_2.id, 8194);
 		assert_eq!(column_2.name, "col_2");
@@ -239,7 +242,7 @@ pub mod test {
 		)
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
+		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8193)).unwrap();
 
 		assert_eq!(column.id, ColumnId(8193));
 		assert_eq!(column.name, "id");

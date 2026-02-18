@@ -10,7 +10,7 @@ use reifydb_core::interface::{
 	},
 	version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_transaction::transaction::{AsTransaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 pub mod catalog;
 pub mod materialized;
@@ -28,7 +28,7 @@ pub(crate) struct CatalogStore;
 ///
 /// This is a low-level function that bypasses the MaterializedCatalog cache.
 /// For most use cases, prefer using `Catalog::find_subscription` instead.
-pub fn find_subscription(txn: &mut impl AsTransaction, id: SubscriptionId) -> Result<Option<SubscriptionDef>> {
+pub fn find_subscription(txn: &mut Transaction<'_>, id: SubscriptionId) -> Result<Option<SubscriptionDef>> {
 	CatalogStore::find_subscription(txn, id)
 }
 

@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	key::ringbuffer::RingBufferKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
 use crate::store::ringbuffer::schema::{
@@ -20,10 +20,9 @@ use crate::store::ringbuffer::schema::{
 	ringbuffer::{CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
 };
 
-pub(crate) fn load_ringbuffers(rx: &mut impl AsTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
-	let mut txn = rx.as_transaction();
+pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let range = RingBufferKey::full_scan();
-	let mut stream = txn.range(range, 1024)?;
+	let mut stream = rx.range(range, 1024)?;
 
 	while let Some(entry) = stream.next() {
 		let multi = entry?;

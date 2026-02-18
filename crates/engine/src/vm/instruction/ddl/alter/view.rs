@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{AlterViewNode, AlterViewOperation};
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
 use crate::vm::services::Services;
@@ -26,14 +26,16 @@ pub(crate) fn execute_alter_view<'a>(
 	let view_name = plan.view.name.text();
 
 	// Find the namespace
-	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
+	let Some(namespace) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), namespace_name)?
+	else {
 		let ns_fragment =
 			plan.view.namespace.clone().unwrap_or_else(|| Fragment::internal("default".to_string()));
 		return_error!(namespace_not_found(ns_fragment, namespace_name,));
 	};
 
 	// Find the view
-	let Some(view) = services.catalog.find_view_by_name(txn, namespace.id, view_name)? else {
+	let Some(view) = services.catalog.find_view_by_name(&mut Transaction::Admin(txn), namespace.id, view_name)?
+	else {
 		return_error!(view_not_found(plan.view.name.clone(), &namespace.name, view_name,));
 	};
 

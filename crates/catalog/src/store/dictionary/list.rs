@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use crate::{
@@ -16,14 +16,13 @@ use crate::{
 impl CatalogStore {
 	/// List all dictionaries in a namespace
 	pub(crate) fn list_dictionaries(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 	) -> crate::Result<Vec<DictionaryDef>> {
-		let mut txn = rx.as_transaction();
 		// Collect dictionary IDs first to avoid borrow conflict
 		let mut dictionary_ids = Vec::new();
 		{
-			let mut stream = txn.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
+			let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				let row = &multi.values;
@@ -35,7 +34,7 @@ impl CatalogStore {
 
 		let mut dictionaries = Vec::new();
 		for dictionary_id in dictionary_ids {
-			if let Some(dictionary) = Self::find_dictionary(&mut txn, dictionary_id)? {
+			if let Some(dictionary) = Self::find_dictionary(rx, dictionary_id)? {
 				dictionaries.push(dictionary);
 			}
 		}
@@ -44,11 +43,10 @@ impl CatalogStore {
 	}
 
 	/// List all dictionaries in the database
-	pub(crate) fn list_all_dictionaries(rx: &mut impl AsTransaction) -> crate::Result<Vec<DictionaryDef>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> crate::Result<Vec<DictionaryDef>> {
 		let mut dictionaries = Vec::new();
 
-		let mut stream = txn.range(DictionaryKey::full_scan(), 1024)?;
+		let mut stream = rx.range(DictionaryKey::full_scan(), 1024)?;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.values;
@@ -75,6 +73,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 	use crate::{
@@ -88,7 +87,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).unwrap();
+		let result = CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace.id).unwrap();
 
 		assert!(result.is_empty());
 	}
@@ -109,7 +108,7 @@ pub mod tests {
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
 
-		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).unwrap();
+		let result = CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace.id).unwrap();
 
 		assert_eq!(result.len(), 3);
 	}
@@ -152,11 +151,13 @@ pub mod tests {
 		}
 
 		// Verify namespace1 has 2 dictionaries
-		let ns1_dicts = CatalogStore::list_dictionaries(&mut txn, namespace1.id).unwrap();
+		let ns1_dicts =
+			CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace1.id).unwrap();
 		assert_eq!(ns1_dicts.len(), 2);
 
 		// Verify namespace2 has 3 dictionaries
-		let ns2_dicts = CatalogStore::list_dictionaries(&mut txn, namespace2.id).unwrap();
+		let ns2_dicts =
+			CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace2.id).unwrap();
 		assert_eq!(ns2_dicts.len(), 3);
 	}
 
@@ -197,7 +198,7 @@ pub mod tests {
 		}
 
 		// List all dictionaries
-		let all_dicts = CatalogStore::list_all_dictionaries(&mut txn).unwrap();
+		let all_dicts = CatalogStore::list_all_dictionaries(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(all_dicts.len(), 5);
 	}
 }

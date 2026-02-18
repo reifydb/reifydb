@@ -13,7 +13,7 @@ use reifydb_core::{
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	return_error,
@@ -52,8 +52,12 @@ impl CatalogStore {
 	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
 		let namespace_id = to_create.namespace;
 
-		if let Some(table) = CatalogStore::find_table_by_name(txn, namespace_id, to_create.name.text())? {
-			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
+		if let Some(table) = CatalogStore::find_table_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			namespace_id,
+			to_create.name.text(),
+		)? {
+			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return_error!(table_already_exists(to_create.name.clone(), &namespace.name, &table.name));
 		}
 
@@ -67,7 +71,7 @@ impl CatalogStore {
 
 		Self::insert_columns(txn, table_id, to_create)?;
 
-		Ok(Self::get_table(txn, table_id)?)
+		Ok(Self::get_table(&mut Transaction::Admin(&mut *txn), table_id)?)
 	}
 
 	fn store_table(
@@ -104,7 +108,7 @@ impl CatalogStore {
 
 	fn insert_columns(txn: &mut AdminTransaction, table: TableId, to_create: TableToCreate) -> crate::Result<()> {
 		// Look up namespace name for error messages
-		let namespace_name = Self::find_namespace(txn, to_create.namespace)?
+		let namespace_name = Self::find_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?
 			.map(|s| s.name)
 			.unwrap_or_else(|| format!("namespace_{}", to_create.namespace));
 

@@ -8,16 +8,15 @@ use reifydb_core::{
 	},
 	key::{Key, flow::FlowKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::flow::schema::flow};
 
 impl CatalogStore {
-	pub(crate) fn list_flows_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<FlowDef>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<FlowDef>> {
 		let mut result = Vec::new();
 
-		let mut stream = txn.range(FlowKey::full_scan(), 1024)?;
+		let mut stream = rx.range(FlowKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
@@ -51,6 +50,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowStatus;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -67,7 +67,7 @@ pub mod tests {
 		create_flow(&mut txn, "namespace_one", "flow_two");
 		create_flow(&mut txn, "namespace_two", "flow_three");
 
-		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
+		let result = CatalogStore::list_flows_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(result.len(), 3);
 
 		// Verify all flows are present (order may vary)
@@ -98,7 +98,7 @@ pub mod tests {
 	fn test_list_flows_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
+		let result = CatalogStore::list_flows_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(result.len(), 0);
 	}
 
@@ -114,7 +114,10 @@ pub mod tests {
 		use reifydb_type::fragment::Fragment;
 
 		use crate::store::flow::create::FlowToCreate;
-		let namespace = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap().unwrap();
+		let namespace =
+			CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_namespace")
+				.unwrap()
+				.unwrap();
 		CatalogStore::create_flow(
 			&mut txn,
 			FlowToCreate {
@@ -125,7 +128,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
+		let result = CatalogStore::list_flows_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(result.len(), 2);
 
 		// Verify both flows are present with correct statuses (order may vary)

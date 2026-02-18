@@ -29,6 +29,7 @@ use reifydb_runtime::{
 	},
 	clock::Clock,
 };
+use reifydb_transaction::transaction::Transaction;
 use tracing::{debug, error, trace};
 
 use crate::{
@@ -238,7 +239,7 @@ where
 	fn try_cleanup(&self) {
 		let result: reifydb_type::Result<()> = (|| {
 			let mut txn = self.host.begin_command()?;
-			let watermark = compute_watermark(&mut txn)?;
+			let watermark = compute_watermark(&mut Transaction::Command(&mut txn))?;
 			txn.rollback()?;
 
 			let result = self.storage.drop_before(watermark)?;

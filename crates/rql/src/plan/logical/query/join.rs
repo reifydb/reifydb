@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::common::JoinType;
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::{
@@ -73,10 +73,10 @@ fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -
 }
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_join<T: AsTransaction>(
+	pub(crate) fn compile_join(
 		&self,
 		ast: AstJoin<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		match ast {
 			AstJoin::InnerJoin {
@@ -130,11 +130,11 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	fn compile_join_subquery<T: AsTransaction>(
+	fn compile_join_subquery(
 		&self,
 		with: &crate::ast::ast::AstSubQuery,
 		alias: &BumpFragment<'_>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<BumpVec<'bump, LogicalPlan<'bump>>> {
 		let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
 		match with_ast {
@@ -205,11 +205,11 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	fn compile_natural_join_subquery<T: AsTransaction>(
+	fn compile_natural_join_subquery(
 		&self,
 		with: &crate::ast::ast::AstSubQuery,
 		alias: &BumpFragment<'_>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<BumpVec<'bump, LogicalPlan<'bump>>> {
 		let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
 		match with_ast {

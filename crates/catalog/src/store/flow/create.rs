@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -32,8 +32,12 @@ impl CatalogStore {
 		let namespace_id = to_create.namespace;
 
 		// Check if flow already exists
-		if let Some(_flow) = CatalogStore::find_flow_by_name(txn, namespace_id, to_create.name.text())? {
-			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
+		if let Some(_flow) = CatalogStore::find_flow_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			namespace_id,
+			to_create.name.text(),
+		)? {
+			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return_error!(flow_already_exists(
 				to_create.name.clone(),
 				&namespace.name,
@@ -45,7 +49,7 @@ impl CatalogStore {
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;
 
-		Ok(Self::get_flow(txn, flow_id)?)
+		Ok(Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?)
 	}
 
 	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
@@ -59,7 +63,7 @@ impl CatalogStore {
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;
 
-		Ok(Self::get_flow(txn, flow_id)?)
+		Ok(Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?)
 	}
 
 	fn store_flow(

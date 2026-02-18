@@ -5,14 +5,14 @@ use reifydb_core::{
 	interface::catalog::flow::FlowEdgeId,
 	key::flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn delete_flow_edge(txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
 		// First, get the edge to find the flow ID for index deletion
-		let edge = CatalogStore::find_flow_edge(txn, edge_id)?;
+		let edge = CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut *txn), edge_id)?;
 
 		if let Some(edge_def) = edge {
 			// Delete from main flow_edge table
@@ -30,6 +30,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowEdgeId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -47,13 +48,13 @@ pub mod tests {
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		// Edge should exist
-		assert!(CatalogStore::find_flow_edge(&mut txn, edge.id).unwrap().is_some());
+		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_some());
 
 		// Delete edge
 		CatalogStore::delete_flow_edge(&mut txn, edge.id).unwrap();
 
 		// Edge should no longer exist
-		assert!(CatalogStore::find_flow_edge(&mut txn, edge.id).unwrap().is_none());
+		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_none());
 	}
 
 	#[test]
@@ -67,14 +68,14 @@ pub mod tests {
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		// Edge should be in flow index
-		let edges = CatalogStore::list_flow_edges_by_flow(&mut txn, flow.id).unwrap();
+		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(edges.len(), 1);
 
 		// Delete edge
 		CatalogStore::delete_flow_edge(&mut txn, edge.id).unwrap();
 
 		// Edge should be removed from flow index
-		let edges = CatalogStore::list_flow_edges_by_flow(&mut txn, flow.id).unwrap();
+		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert!(edges.is_empty());
 	}
 
@@ -103,11 +104,11 @@ pub mod tests {
 		CatalogStore::delete_flow_edge(&mut txn, edge1.id).unwrap();
 
 		// First edge should be gone, second should remain
-		assert!(CatalogStore::find_flow_edge(&mut txn, edge1.id).unwrap().is_none());
-		assert!(CatalogStore::find_flow_edge(&mut txn, edge2.id).unwrap().is_some());
+		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap().is_none());
+		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge2.id).unwrap().is_some());
 
 		// List should only have second edge
-		let edges = CatalogStore::list_flow_edges_by_flow(&mut txn, flow.id).unwrap();
+		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(edges.len(), 1);
 		assert_eq!(edges[0].id, edge2.id);
 	}

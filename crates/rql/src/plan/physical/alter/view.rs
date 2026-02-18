@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	nodes::{
@@ -14,9 +14,9 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_alter_view<T: AsTransaction>(
+	pub(crate) fn compile_alter_view(
 		&mut self,
-		_rx: &mut T,
+		_rx: &mut Transaction<'_>,
 		alter: logical::alter::view::AlterViewNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Materialize logical node to physical node

@@ -5,14 +5,14 @@ use reifydb_core::{
 	interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef},
 	internal,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn get_subscription(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		subscription: SubscriptionId,
 	) -> crate::Result<SubscriptionDef> {
 		CatalogStore::find_subscription(rx, subscription)?.ok_or_else(|| {
@@ -28,6 +28,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::SubscriptionId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, store::subscription::create::SubscriptionToCreate};
 
@@ -43,7 +44,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let result = CatalogStore::get_subscription(&mut txn, created.id).unwrap();
+		let result = CatalogStore::get_subscription(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert_eq!(result.id, created.id);
 	}
 
@@ -52,7 +53,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		let non_existent = SubscriptionId(999999);
-		let err = CatalogStore::get_subscription(&mut txn, non_existent).unwrap_err();
+		let err = CatalogStore::get_subscription(&mut Transaction::Admin(&mut txn), non_existent).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("not found in catalog"));

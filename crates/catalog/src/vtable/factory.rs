@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{QueryTransaction, VTableDef};
+use reifydb_core::interface::VTableDef;
 
 use super::VTable;
 
@@ -20,8 +20,8 @@ use super::VTable;
 ///     definition: Arc<VTableDef>,
 /// }
 ///
-/// impl<T: QueryTransaction> VirtualTableFactory<T> for MyTableFactory {
-///     fn create_boxed(&self) -> Box<dyn VTable<T> + Send + Sync> {
+/// impl VirtualTableFactory for MyTableFactory {
+///     fn create_boxed(&self) -> Box<dyn VTable + Send + Sync> {
 ///         Box::new(MyVirtualTable::new(self.definition.clone()))
 ///     }
 ///
@@ -30,11 +30,11 @@ use super::VTable;
 ///     }
 /// }
 /// ```
-pub trait VirtualTableFactory<T: QueryTransaction>: Send + Sync + 'static {
+pub trait VirtualTableFactory: Send + Sync + 'static {
 	/// Create a new virtual table instance.
 	///
 	/// Each call should return a fresh instance ready to process a new query.
-	fn create_boxed(&self) -> Box<dyn VTable<T> + Send + Sync>;
+	fn create_boxed(&self) -> Box<dyn VTable + Send + Sync>;
 
 	/// Get the table definition (schema).
 	///

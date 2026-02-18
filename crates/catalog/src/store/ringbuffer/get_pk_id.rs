@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::id::{PrimaryKeyId, RingBufferId},
 	key::ringbuffer::RingBufferKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
 
@@ -13,11 +13,10 @@ impl CatalogStore {
 	/// Get the primary key ID for a ring buffer
 	/// Returns None if the ring buffer doesn't exist or has no primary key
 	pub(crate) fn get_ringbuffer_pk_id(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		ringbuffer_id: RingBufferId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let mut txn = rx.as_transaction();
-		let multi = match txn.get(&RingBufferKey::encoded(ringbuffer_id))? {
+		let multi = match rx.get(&RingBufferKey::encoded(ringbuffer_id))? {
 			Some(v) => v,
 			None => return Ok(None),
 		};
@@ -36,6 +35,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{PrimaryKeyId, RingBufferId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};
 
@@ -44,7 +44,8 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
-		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).unwrap();
+		let pk_id =
+			CatalogStore::get_ringbuffer_pk_id(&mut Transaction::Admin(&mut txn), ringbuffer.id).unwrap();
 
 		assert_eq!(pk_id, None);
 	}
@@ -59,7 +60,8 @@ pub mod tests {
 		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id).unwrap();
 
 		// Get and verify
-		let retrieved_pk = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).unwrap();
+		let retrieved_pk =
+			CatalogStore::get_ringbuffer_pk_id(&mut Transaction::Admin(&mut txn), ringbuffer.id).unwrap();
 
 		assert_eq!(retrieved_pk, Some(pk_id));
 	}
@@ -68,7 +70,8 @@ pub mod tests {
 	fn test_get_ringbuffer_pk_id_nonexistent_ringbuffer() {
 		let mut txn = create_test_admin_transaction();
 
-		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut txn, RingBufferId(999)).unwrap();
+		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut Transaction::Admin(&mut txn), RingBufferId(999))
+			.unwrap();
 
 		assert_eq!(pk_id, None);
 	}

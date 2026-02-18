@@ -11,17 +11,16 @@ use reifydb_core::{
 	},
 	key::sumtype::SumTypeKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::SumTypeId;
 use tracing::warn;
 
 use super::MaterializedCatalog;
 use crate::store::sumtype::schema::sumtype::{ID, NAME, NAMESPACE, SCHEMA, VARIANTS_JSON};
 
-pub(crate) fn load_sumtypes(rx: &mut impl AsTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
-	let mut txn = rx.as_transaction();
+pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let range = SumTypeKey::full_scan();
-	let mut stream = txn.range(range, 1024)?;
+	let mut stream = rx.range(range, 1024)?;
 
 	while let Some(entry) = stream.next() {
 		let multi = entry?;

@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
@@ -16,9 +16,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_view(rx: &mut impl AsTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
-		let mut txn = rx.as_transaction();
-		let Some(multi) = txn.get(&ViewKey::encoded(id))? else {
+	pub(crate) fn find_view(rx: &mut Transaction<'_>, id: ViewId) -> crate::Result<Option<ViewDef>> {
+		let Some(multi) = rx.get(&ViewKey::encoded(id))? else {
 			return Ok(None);
 		};
 
@@ -38,19 +37,18 @@ impl CatalogStore {
 			name,
 			namespace,
 			kind,
-			columns: Self::list_columns(&mut txn, id)?,
-			primary_key: Self::find_view_primary_key(&mut txn, id)?,
+			columns: Self::list_columns(rx, id)?,
+			primary_key: Self::find_view_primary_key(rx, id)?,
 		}))
 	}
 
 	pub(crate) fn find_view_by_name(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
-		let mut txn = rx.as_transaction();
-		let mut stream = txn.range(NamespaceViewKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceViewKey::full_scan(namespace), 1024)?;
 
 		let mut found_view = None;
 		while let Some(entry) = stream.next() {
@@ -69,7 +67,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_view(&mut txn, view)?))
+		Ok(Some(Self::get_view(rx, view)?))
 	}
 }
 
@@ -77,6 +75,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, ViewId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -95,7 +94,13 @@ pub mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1027), "view_two").unwrap().unwrap();
+		let result = CatalogStore::find_view_by_name(
+			&mut Transaction::Admin(&mut txn),
+			NamespaceId(1027),
+			"view_two",
+		)
+		.unwrap()
+		.unwrap();
 		assert_eq!(result.id, ViewId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "view_two");
@@ -105,7 +110,12 @@ pub mod tests {
 	fn test_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1025), "some_view").unwrap();
+		let result = CatalogStore::find_view_by_name(
+			&mut Transaction::Admin(&mut txn),
+			NamespaceId(1025),
+			"some_view",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -121,7 +131,12 @@ pub mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1025), "view_four_two").unwrap();
+		let result = CatalogStore::find_view_by_name(
+			&mut Transaction::Admin(&mut txn),
+			NamespaceId(1025),
+			"view_four_two",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -137,7 +152,9 @@ pub mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(2), "view_two").unwrap();
+		let result =
+			CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), NamespaceId(2), "view_two")
+				.unwrap();
 		assert!(result.is_none());
 	}
 }

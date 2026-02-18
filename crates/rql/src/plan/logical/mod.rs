@@ -26,7 +26,7 @@ use reifydb_core::{
 	},
 	sort::{SortDirection, SortKey},
 };
-use reifydb_transaction::transaction::{AsTransaction, command::CommandTransaction, query::QueryTransaction};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
 use reifydb_type::{error::diagnostic::ast::unsupported_ast_node, fragment::Fragment, return_error};
 use tracing::instrument;
 
@@ -53,10 +53,10 @@ pub(crate) struct Compiler<'bump> {
 
 /// Compile AST to logical plan using any transaction type that implements IntoTransaction
 #[instrument(name = "rql::compile::logical", level = "trace", skip(bump, catalog, tx, ast))]
-pub fn compile_logical<'b, T: AsTransaction>(
+pub fn compile_logical<'b>(
 	bump: &'b Bump,
 	catalog: &Catalog,
-	tx: &mut T,
+	tx: &mut Transaction<'_>,
 	ast: AstStatement<'b>,
 ) -> crate::Result<BumpVec<'b, LogicalPlan<'b>>> {
 	Compiler {
@@ -73,7 +73,7 @@ pub fn compile_logical_query<'b>(
 	tx: &mut QueryTransaction,
 	ast: AstStatement<'b>,
 ) -> crate::Result<BumpVec<'b, LogicalPlan<'b>>> {
-	compile_logical(bump, catalog, tx, ast)
+	compile_logical(bump, catalog, &mut Transaction::Query(tx), ast)
 }
 
 #[instrument(name = "rql::compile::logical_command", level = "trace", skip(bump, catalog, tx, ast))]
@@ -83,14 +83,14 @@ pub fn compile_logical_command<'b>(
 	tx: &mut CommandTransaction,
 	ast: AstStatement<'b>,
 ) -> crate::Result<BumpVec<'b, LogicalPlan<'b>>> {
-	compile_logical(bump, catalog, tx, ast)
+	compile_logical(bump, catalog, &mut Transaction::Command(tx), ast)
 }
 
 impl<'bump> Compiler<'bump> {
-	pub fn compile<T: AsTransaction>(
+	pub fn compile(
 		&self,
 		ast: AstStatement<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<BumpVec<'bump, LogicalPlan<'bump>>> {
 		if ast.is_empty() {
 			return Ok(BumpVec::new_in(self.bump));
@@ -126,11 +126,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	// Helper to compile a single AST operator
-	pub fn compile_single<T: AsTransaction>(
-		&self,
-		node: Ast<'bump>,
-		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	pub fn compile_single(&self, node: Ast<'bump>, tx: &mut Transaction<'_>) -> crate::Result<LogicalPlan<'bump>> {
 		match node {
 			Ast::Create(node) => self.compile_create(node, tx),
 			Ast::Alter(node) => self.compile_alter(node, tx),

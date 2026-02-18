@@ -44,8 +44,11 @@ use reifydb_sub_tracing::builder::TracingBuilder;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
-	TransactionVersion, interceptor::builder::StandardInterceptorBuilder, multi::transaction::MultiTransaction,
-	single::SingleTransaction, transaction::query::QueryTransaction,
+	TransactionVersion,
+	interceptor::builder::StandardInterceptorBuilder,
+	multi::transaction::MultiTransaction,
+	single::SingleTransaction,
+	transaction::{Transaction, query::QueryTransaction},
 };
 use tracing::debug;
 
@@ -327,7 +330,7 @@ impl DatabaseBuilder {
 		let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone());
 
 		debug!("Loading materialized catalog");
-		MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
+		MaterializedCatalogLoader::load_all(&mut Transaction::Query(&mut qt), catalog)?;
 
 		Ok(())
 	}
@@ -341,7 +344,7 @@ impl DatabaseBuilder {
 		let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone());
 
 		debug!("Loading schema registry");
-		SchemaRegistryLoader::load_all(&mut qt, registry)?;
+		SchemaRegistryLoader::load_all(&mut Transaction::Query(&mut qt), registry)?;
 
 		Ok(())
 	}

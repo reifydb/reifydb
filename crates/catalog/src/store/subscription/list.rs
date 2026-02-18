@@ -6,18 +6,16 @@ use reifydb_core::{
 	interface::catalog::subscription::SubscriptionDef,
 	key::{Key, subscription::SubscriptionKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::subscription::schema::subscription};
 
 impl CatalogStore {
-	pub(crate) fn list_subscriptions_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<SubscriptionDef>> {
-		let mut txn = rx.as_transaction();
-
+	pub(crate) fn list_subscriptions_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<SubscriptionDef>> {
 		// First, collect all subscription IDs and metadata
 		let mut subscription_data = Vec::new();
 		{
-			let mut stream = txn.range(SubscriptionKey::full_scan(), 1024)?;
+			let mut stream = rx.range(SubscriptionKey::full_scan(), 1024)?;
 
 			while let Some(result_entry) = stream.next() {
 				let entry = result_entry?;
@@ -35,13 +33,13 @@ impl CatalogStore {
 					}
 				}
 			}
-		} // stream dropped here, releasing the borrow on txn
+		} // stream dropped here, releasing the borrow on rx
 
 		// Now load columns for each subscription
 		let mut result = Vec::new();
 		for (subscription_id, acknowledged_version) in subscription_data {
 			// Load columns (works for all transaction types)
-			let columns = Self::list_subscription_columns(&mut txn, subscription_id)?;
+			let columns = Self::list_subscription_columns(rx, subscription_id)?;
 
 			let subscription_def = SubscriptionDef {
 				id: subscription_id,
@@ -63,6 +61,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::SubscriptionId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, store::subscription::create::SubscriptionToCreate};
 
@@ -70,7 +69,7 @@ pub mod tests {
 	fn test_list_subscriptions_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::list_subscriptions_all(&mut txn).unwrap();
+		let result = CatalogStore::list_subscriptions_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert!(result.is_empty());
 	}
 
@@ -102,7 +101,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let result = CatalogStore::list_subscriptions_all(&mut txn).unwrap();
+		let result = CatalogStore::list_subscriptions_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(result.len(), 3);
 
 		// Verify all have unique IDs (order may vary due to key encoding)

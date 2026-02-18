@@ -5,13 +5,13 @@ use reifydb_core::{
 	interface::catalog::{id::TableId, table::TableDef},
 	internal,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_table(rx: &mut impl AsTransaction, table: TableId) -> crate::Result<TableDef> {
+	pub(crate) fn get_table(rx: &mut Transaction<'_>, table: TableId) -> crate::Result<TableDef> {
 		CatalogStore::find_table(rx, table)?.ok_or_else(|| {
 			Error(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -25,6 +25,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, TableId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -43,7 +44,7 @@ pub mod tests {
 		create_table(&mut txn, "namespace_two", "table_two", &[]);
 		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let result = CatalogStore::get_table(&mut txn, TableId(1026)).unwrap();
+		let result = CatalogStore::get_table(&mut Transaction::Admin(&mut txn), TableId(1026)).unwrap();
 
 		assert_eq!(result.id, TableId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
@@ -62,7 +63,7 @@ pub mod tests {
 		create_table(&mut txn, "namespace_two", "table_two", &[]);
 		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let err = CatalogStore::get_table(&mut txn, TableId(42)).unwrap_err();
+		let err = CatalogStore::get_table(&mut Transaction::Admin(&mut txn), TableId(42)).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("TableId(42)"));

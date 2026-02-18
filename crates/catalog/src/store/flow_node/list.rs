@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowNodeDef, FlowNodeId},
 	key::{EncodableKey, flow_node::FlowNodeKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
@@ -14,16 +14,14 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn list_flow_nodes_by_flow(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowNodeDef>> {
-		let mut txn = rx.as_transaction();
-
 		// First collect all node IDs to avoid holding stream borrow
 		let mut node_ids = Vec::new();
 		{
 			let mut stream =
-				txn.range(reifydb_core::key::flow_node::FlowNodeByFlowKey::full_scan(flow_id), 1024)?;
+				rx.range(reifydb_core::key::flow_node::FlowNodeByFlowKey::full_scan(flow_id), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				node_ids.push(FlowNodeId(
@@ -35,7 +33,7 @@ impl CatalogStore {
 		// Then fetch each node
 		let mut nodes = Vec::new();
 		for node_id in node_ids {
-			if let Some(node) = Self::find_flow_node(&mut txn, node_id)? {
+			if let Some(node) = Self::find_flow_node(rx, node_id)? {
 				nodes.push(node);
 			}
 		}
@@ -43,11 +41,10 @@ impl CatalogStore {
 		Ok(nodes)
 	}
 
-	pub(crate) fn list_flow_nodes_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<FlowNodeDef>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_flow_nodes_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<FlowNodeDef>> {
 		let mut result = Vec::new();
 
-		let mut stream = txn.range(FlowNodeKey::full_scan(), 1024)?;
+		let mut stream = rx.range(FlowNodeKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
@@ -75,6 +72,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -89,7 +87,7 @@ pub mod tests {
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(nodes.len(), 1);
 		assert_eq!(nodes[0].id, node.id);
 	}
@@ -100,7 +98,7 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert!(nodes.is_empty());
 	}
 
@@ -114,7 +112,7 @@ pub mod tests {
 		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
 		let node3 = create_flow_node(&mut txn, flow.id, 5, &[0x03]);
 
-		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(nodes.len(), 3);
 
 		// Verify all nodes are present
@@ -133,7 +131,7 @@ pub mod tests {
 		create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 		create_flow_node(&mut txn, flow.id, 4, &[0x02]);
 
-		let nodes = CatalogStore::list_flow_nodes_all(&mut txn).unwrap();
+		let nodes = CatalogStore::list_flow_nodes_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(nodes.len(), 2);
 	}
 
@@ -141,7 +139,7 @@ pub mod tests {
 	fn test_list_flow_nodes_all_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let nodes = CatalogStore::list_flow_nodes_all(&mut txn).unwrap();
+		let nodes = CatalogStore::list_flow_nodes_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert!(nodes.is_empty());
 	}
 
@@ -157,7 +155,7 @@ pub mod tests {
 		create_flow_node(&mut txn, flow1.id, 4, &[0x02]);
 		create_flow_node(&mut txn, flow2.id, 1, &[0x03]);
 
-		let all_nodes = CatalogStore::list_flow_nodes_all(&mut txn).unwrap();
+		let all_nodes = CatalogStore::list_flow_nodes_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(all_nodes.len(), 3);
 
 		// Verify nodes are from correct flows

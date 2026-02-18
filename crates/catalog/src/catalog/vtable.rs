@@ -4,16 +4,16 @@
 use std::sync::Arc;
 
 use reifydb_core::interface::catalog::{id::NamespaceId, vtable::VTableDef};
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::catalog::Catalog;
 
 impl Catalog {
 	/// Find a user-defined virtual table by name.
 	/// VTables are not transactionally modified, so this just delegates to the materialized catalog.
-	pub fn find_vtable_user_by_name<T: AsTransaction>(
+	pub fn find_vtable_user_by_name(
 		&self,
-		_txn: &mut T,
+		_txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
 	) -> Option<Arc<VTableDef>> {

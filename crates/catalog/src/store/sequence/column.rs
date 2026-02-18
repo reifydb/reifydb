@@ -24,7 +24,7 @@ impl ColumnSequence {
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,
 	) -> crate::Result<Value> {
-		let column = CatalogStore::get_column(txn, column)?;
+		let column = CatalogStore::get_column(&mut txn.as_transaction(), column)?;
 		let key = ColumnSequenceKey::encoded(source, column.id);
 
 		Ok(match column.constraint.get_type() {
@@ -49,7 +49,7 @@ impl ColumnSequence {
 		value: Value,
 	) -> crate::Result<()> {
 		// let table = CatalogStore::get_table(txn, table)?;
-		let column = CatalogStore::get_column(txn, column)?;
+		let column = CatalogStore::get_column(&mut txn.as_transaction(), column)?;
 
 		if !column.auto_increment {
 			// return_error!(can_not_alter_not_auto_increment(plan.

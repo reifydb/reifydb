@@ -7,7 +7,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreateSumTypeNode;
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
 use crate::vm::services::Services;
@@ -17,7 +17,11 @@ pub(crate) fn create_sumtype(
 	txn: &mut AdminTransaction,
 	plan: CreateSumTypeNode,
 ) -> crate::Result<Columns> {
-	if let Some(_) = services.catalog.find_sumtype_by_name(txn, plan.namespace.id, plan.name.text())? {
+	if let Some(_) = services.catalog.find_sumtype_by_name(
+		&mut Transaction::Admin(&mut *txn),
+		plan.namespace.id,
+		plan.name.text(),
+	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
 				("namespace", Value::Utf8(plan.namespace.name.clone())),

@@ -12,7 +12,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::flow::FlowId;
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::Result;
 
 pub struct FlowCatalog {
@@ -30,7 +30,7 @@ impl FlowCatalog {
 
 	/// Get or load flow from catalog with caching (double-check locking pattern).
 	/// Returns (FlowDag, is_new) where is_new is true if the flow was newly cached.
-	pub fn get_or_load_flow<T: AsTransaction>(&self, txn: &mut T, flow_id: FlowId) -> Result<(FlowDag, bool)> {
+	pub fn get_or_load_flow(&self, txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<(FlowDag, bool)> {
 		// Fast path: read lock - flow already cached
 		{
 			let cache = self.flows.read();

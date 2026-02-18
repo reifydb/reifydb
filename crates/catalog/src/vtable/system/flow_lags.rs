@@ -8,7 +8,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
@@ -35,13 +35,13 @@ impl FlowLags {
 	}
 }
 
-impl<T: AsTransaction> VTable<T> for FlowLags {
-	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+impl VTable for FlowLags {
+	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}

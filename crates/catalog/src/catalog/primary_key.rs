@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	key::PrimaryKeyDef,
 	primitive::PrimitiveId,
 };
-use reifydb_transaction::transaction::{AsTransaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use tracing::instrument;
 
 use crate::{
@@ -39,21 +39,21 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::primary_key::find", level = "trace", skip(self, txn, source))]
-	pub fn find_primary_key<T: AsTransaction>(
+	pub fn find_primary_key(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		source: impl Into<PrimitiveId>,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
 		CatalogStore::find_primary_key(txn, source)
 	}
 
 	#[instrument(name = "catalog::primary_key::list", level = "debug", skip(self, txn))]
-	pub fn list_primary_keys<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<PrimaryKeyDef>> {
+	pub fn list_primary_keys(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<PrimaryKeyDef>> {
 		Ok(CatalogStore::list_primary_keys(txn)?.into_iter().map(|info| info.def).collect())
 	}
 
 	#[instrument(name = "catalog::primary_key::list_columns", level = "debug", skip(self, txn))]
-	pub fn list_primary_key_columns<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<(u64, u64, usize)>> {
+	pub fn list_primary_key_columns(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<(u64, u64, usize)>> {
 		CatalogStore::list_primary_key_columns(txn)
 	}
 }

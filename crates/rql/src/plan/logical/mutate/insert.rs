@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::error::diagnostic::operation::{insert_mixed_row_types, insert_positional_wrong_length};
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{err, fragment::Fragment};
 
 use crate::{
@@ -23,10 +23,10 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_insert<T: AsTransaction>(
+	pub(crate) fn compile_insert(
 		&self,
 		ast: AstInsert<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let unresolved_target = ast.target;
 		let source_ast = BumpBox::into_inner(ast.source);
@@ -48,11 +48,11 @@ impl<'bump> Compiler<'bump> {
 		self.build_insert_node(unresolved_target, source, tx)
 	}
 
-	fn build_insert_node<T: AsTransaction>(
+	fn build_insert_node(
 		&self,
 		unresolved_target: UnresolvedPrimitiveIdentifier<'bump>,
 		source: LogicalPlan<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let namespace_name = unresolved_target.namespace.first().map(|n| n.text().to_string());
 		let namespace_name_str = namespace_name.as_deref().unwrap_or("default");
@@ -110,11 +110,11 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	fn compile_positional_tuples<T: AsTransaction>(
+	fn compile_positional_tuples(
 		&self,
 		target: &UnresolvedPrimitiveIdentifier<'bump>,
 		nodes: Vec<Ast<'bump>>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let namespace_name = target.namespace.first().map(|n| n.text().to_string());
 		let namespace_name_str = namespace_name.as_deref().unwrap_or("default");

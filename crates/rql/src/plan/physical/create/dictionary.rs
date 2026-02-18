@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::error::diagnostic::catalog::namespace_not_found;
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -14,9 +14,9 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_dictionary<T: AsTransaction>(
+	pub(crate) fn compile_create_dictionary(
 		&mut self,
-		rx: &mut T,
+		rx: &mut Transaction<'_>,
 		create: logical::CreateDictionaryNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Get namespace name from the MaybeQualified type (join all segments for nested namespaces)

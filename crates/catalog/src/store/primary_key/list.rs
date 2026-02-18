@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::{column::ColumnDef, id::PrimaryKeyId, key::PrimaryKeyDef},
 	key::{Key, primary_key::PrimaryKeyKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
@@ -21,8 +21,7 @@ pub struct PrimaryKeyInfo {
 }
 
 impl CatalogStore {
-	pub(crate) fn list_primary_keys(rx: &mut impl AsTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_primary_keys(rx: &mut Transaction<'_>) -> crate::Result<Vec<PrimaryKeyInfo>> {
 		let mut result = Vec::new();
 
 		// Scan all primary key entries from storage
@@ -38,7 +37,7 @@ impl CatalogStore {
 		// Collect entries first to avoid borrow checker issues
 		let mut entries = Vec::new();
 		{
-			let mut stream = txn.range(primary_key_range, 1024)?;
+			let mut stream = rx.range(primary_key_range, 1024)?;
 			while let Some(entry) = stream.next() {
 				entries.push(entry?);
 			}
@@ -61,7 +60,7 @@ impl CatalogStore {
 					// ID
 					let mut columns = Vec::new();
 					for column_id in column_ids {
-						let column_def = Self::get_column(&mut txn, column_id)?;
+						let column_def = Self::get_column(rx, column_id)?;
 						columns.push(ColumnDef {
 							id: column_def.id,
 							name: column_def.name,
@@ -89,8 +88,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_primary_key_columns(rx: &mut impl AsTransaction) -> crate::Result<Vec<(u64, u64, usize)>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_primary_key_columns(rx: &mut Transaction<'_>) -> crate::Result<Vec<(u64, u64, usize)>> {
 		let mut result = Vec::new();
 
 		// Scan all primary key entries from storage using same approach
@@ -102,7 +100,7 @@ impl CatalogStore {
 			EncodedKeyRange::new(Bound::Included(start_key), Bound::Included(end_key))
 		};
 
-		let mut stream = txn.range(primary_key_range, 1024)?;
+		let mut stream = rx.range(primary_key_range, 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let entry = entry?;

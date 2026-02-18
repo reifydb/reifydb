@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::system_sequence::SystemSequenceKey,
 	return_internal_error,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
@@ -18,7 +18,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_sequence(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		sequence_id: SequenceId,
 	) -> crate::Result<Option<Sequence>> {
 		let (namespace, name) = match sequence_id {
@@ -39,8 +39,7 @@ impl CatalogStore {
 		// Read current value from single storage
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
-		let mut txn = rx.as_transaction();
-		let value = match txn.get(&sequence_key)? {
+		let value = match rx.get(&sequence_key)? {
 			Some(row) => SCHEMA.get_u64(&row.values, VALUE),
 			None => 0,
 		};

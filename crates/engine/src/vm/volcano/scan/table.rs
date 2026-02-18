@@ -16,7 +16,7 @@ use reifydb_core::{
 		column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 	},
 };
-use reifydb_transaction::transaction::{AsTransaction, Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, fragment::Fragment, util::cowvec::CowVec, value::r#type::Type};
 use tracing::instrument;
 
@@ -37,11 +37,7 @@ pub(crate) struct TableScanNode {
 }
 
 impl TableScanNode {
-	pub fn new<Rx: AsTransaction>(
-		table: ResolvedTable,
-		context: Arc<QueryContext>,
-		rx: &mut Rx,
-	) -> crate::Result<Self> {
+	pub fn new(table: ResolvedTable, context: Arc<QueryContext>, rx: &mut Transaction<'_>) -> crate::Result<Self> {
 		// Look up dictionaries and build storage types
 		let mut storage_types = Vec::with_capacity(table.columns().len());
 		let mut dictionaries = Vec::with_capacity(table.columns().len());

@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{AlterTableNode, AlterTableOperation};
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
 use crate::vm::services::Services;
@@ -26,14 +26,17 @@ pub(crate) fn alter_table<'a>(
 	let table_name = plan.table.name.text();
 
 	// Find the namespace
-	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
+	let Some(namespace) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), namespace_name)?
+	else {
 		let ns_fragment =
 			plan.table.namespace.clone().unwrap_or_else(|| Fragment::internal("default".to_string()));
 		return_error!(namespace_not_found(ns_fragment, namespace_name));
 	};
 
 	// Find the table
-	let Some(table) = services.catalog.find_table_by_name(txn, namespace.id, table_name)? else {
+	let Some(table) =
+		services.catalog.find_table_by_name(&mut Transaction::Admin(txn), namespace.id, table_name)?
+	else {
 		return_error!(table_not_found(plan.table.name.clone(), &namespace.name, table_name,));
 	};
 
@@ -48,7 +51,8 @@ pub(crate) fn alter_table<'a>(
 			} => {
 				// Get all columns for the table to
 				// validate and resolve column IDs
-				let table_columns = services.catalog.list_columns(txn, table.id)?;
+				let table_columns =
+					services.catalog.list_columns(&mut Transaction::Admin(txn), table.id)?;
 
 				let mut column_ids = Vec::new();
 				for alter_column in columns {

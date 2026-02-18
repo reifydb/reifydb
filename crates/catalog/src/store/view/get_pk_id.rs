@@ -5,19 +5,15 @@ use reifydb_core::{
 	interface::catalog::id::{PrimaryKeyId, ViewId},
 	key::view::ViewKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::view::schema::view};
 
 impl CatalogStore {
 	/// Get the primary key ID for a view
 	/// Returns None if the view doesn't exist or has no primary key
-	pub(crate) fn get_view_pk_id(
-		rx: &mut impl AsTransaction,
-		view_id: ViewId,
-	) -> crate::Result<Option<PrimaryKeyId>> {
-		let mut txn = rx.as_transaction();
-		let multi = match txn.get(&ViewKey::encoded(view_id))? {
+	pub(crate) fn get_view_pk_id(rx: &mut Transaction<'_>, view_id: ViewId) -> crate::Result<Option<PrimaryKeyId>> {
+		let multi = match rx.get(&ViewKey::encoded(view_id))? {
 			Some(v) => v,
 			None => return Ok(None),
 		};
@@ -36,6 +32,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{id::ViewId, primitive::PrimitiveId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, r#type::Type},
@@ -71,7 +68,7 @@ pub mod tests {
 		.unwrap();
 
 		// Get column IDs for the view
-		let columns = CatalogStore::list_columns(&mut txn, view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id).unwrap();
 
 		// Create primary key
 		let pk_id = CatalogStore::create_primary_key(
@@ -84,8 +81,9 @@ pub mod tests {
 		.unwrap();
 
 		// Get the primary key ID
-		let retrieved_pk_id =
-			CatalogStore::get_view_pk_id(&mut txn, view.id).unwrap().expect("Primary key ID should exist");
+		let retrieved_pk_id = CatalogStore::get_view_pk_id(&mut Transaction::Admin(&mut txn), view.id)
+			.unwrap()
+			.expect("Primary key ID should exist");
 
 		assert_eq!(retrieved_pk_id, pk_id);
 	}
@@ -111,7 +109,7 @@ pub mod tests {
 		.unwrap();
 
 		// Get the primary key ID - should be None
-		let pk_id = CatalogStore::get_view_pk_id(&mut txn, view.id).unwrap();
+		let pk_id = CatalogStore::get_view_pk_id(&mut Transaction::Admin(&mut txn), view.id).unwrap();
 
 		assert!(pk_id.is_none());
 	}
@@ -121,7 +119,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// Get the primary key ID for non-existent view - should be None
-		let pk_id = CatalogStore::get_view_pk_id(&mut txn, ViewId(999)).unwrap();
+		let pk_id = CatalogStore::get_view_pk_id(&mut Transaction::Admin(&mut txn), ViewId(999)).unwrap();
 
 		assert!(pk_id.is_none());
 	}

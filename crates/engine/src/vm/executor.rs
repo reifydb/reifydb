@@ -102,7 +102,7 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
-		match self.compiler.compile(txn, cmd.rql)? {
+		match self.compiler.compile(&mut Transaction::Admin(txn), cmd.rql)? {
 			CompilationResult::Ready(compiled) => {
 				for compiled in compiled.iter() {
 					result.clear();
@@ -117,7 +117,9 @@ impl Executor {
 				}
 			}
 			CompilationResult::Incremental(mut state) => {
-				while let Some(compiled) = self.compiler.compile_next(txn, &mut state)? {
+				while let Some(compiled) =
+					self.compiler.compile_next(&mut Transaction::Admin(txn), &mut state)?
+				{
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
 					let mut vm = Vm::new(symbol_table);
@@ -143,7 +145,7 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
-		let compiled = match self.compiler.compile(txn, cmd.rql)? {
+		let compiled = match self.compiler.compile(&mut Transaction::Command(txn), cmd.rql)? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {
 				unreachable!("DDL statements require admin transactions, not command transactions")
@@ -174,7 +176,7 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &qry.params)?;
 
-		let compiled = match self.compiler.compile(txn, qry.rql)? {
+		let compiled = match self.compiler.compile(&mut Transaction::Query(txn), qry.rql)? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {
 				unreachable!("DDL statements require admin transactions, not query transactions")

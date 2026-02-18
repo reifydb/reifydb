@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::{
@@ -31,10 +31,10 @@ pub enum AlterFlowAction<'bump> {
 }
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_alter_flow<T: AsTransaction>(
+	pub(crate) fn compile_alter_flow(
 		&self,
 		ast: AstAlterFlow<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let flow = ast.flow.clone();
 

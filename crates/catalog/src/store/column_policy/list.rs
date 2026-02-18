@@ -8,17 +8,16 @@ use reifydb_core::{
 	},
 	key::column_policy::ColumnPolicyKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::column_policy::schema::column_policy};
 
 impl CatalogStore {
 	pub(crate) fn list_column_policies(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
-		let mut txn = rx.as_transaction();
-		let mut stream = txn.range(ColumnPolicyKey::full_scan(column), 1024)?;
+		let mut stream = rx.range(ColumnPolicyKey::full_scan(column), 1024)?;
 		let mut result = Vec::new();
 
 		while let Some(entry) = stream.next() {
@@ -42,16 +41,15 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_column_policies_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<ColumnPolicy>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_column_policies_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<ColumnPolicy>> {
 		let mut result = Vec::new();
 
 		// Get all columns from tables and views
-		let columns = CatalogStore::list_columns_all(&mut txn)?;
+		let columns = CatalogStore::list_columns_all(rx)?;
 
 		// For each column, get its policies
 		for info in columns {
-			let policies = CatalogStore::list_column_policies(&mut txn, info.column.id)?;
+			let policies = CatalogStore::list_column_policies(rx, info.column.id)?;
 			result.extend(policies);
 		}
 
@@ -67,6 +65,7 @@ pub mod tests {
 		policy::{ColumnPolicyKind, ColumnSaturationPolicy},
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
@@ -93,9 +92,10 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
+		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8193)).unwrap();
 
-		let policies = CatalogStore::list_column_policies(&mut txn, column.id).unwrap();
+		let policies =
+			CatalogStore::list_column_policies(&mut Transaction::Admin(&mut txn), column.id).unwrap();
 
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);

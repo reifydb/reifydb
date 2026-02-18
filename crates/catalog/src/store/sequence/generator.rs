@@ -8,16 +8,18 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	single::write::SingleWriteTransaction,
-	transaction::{AsTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction},
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_type::{Result as TxResult, return_error, value::r#type::Type};
 
 /// Trait abstracting over write-capable transaction types (CommandTransaction, AdminTransaction).
 /// Both types share the same write API but have no common trait in the transaction crate.
-pub trait SequenceTransaction: AsTransaction {
+pub trait SequenceTransaction: Send {
 	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>;
+
+	fn as_transaction(&mut self) -> Transaction<'_>;
 }
 
 impl SequenceTransaction for CommandTransaction {
@@ -26,6 +28,10 @@ impl SequenceTransaction for CommandTransaction {
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		CommandTransaction::begin_single_command(self, keys)
+	}
+
+	fn as_transaction(&mut self) -> Transaction<'_> {
+		Transaction::Command(self)
 	}
 }
 
@@ -36,6 +42,10 @@ impl SequenceTransaction for AdminTransaction {
 	{
 		AdminTransaction::begin_single_command(self, keys)
 	}
+
+	fn as_transaction(&mut self) -> Transaction<'_> {
+		Transaction::Admin(self)
+	}
 }
 
 impl SequenceTransaction for Transaction<'_> {
@@ -44,6 +54,10 @@ impl SequenceTransaction for Transaction<'_> {
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		Transaction::begin_single_command(self, keys)
+	}
+
+	fn as_transaction(&mut self) -> Transaction<'_> {
+		self.reborrow()
 	}
 }
 

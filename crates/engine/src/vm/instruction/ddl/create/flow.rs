@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::flow::FlowToCreate;
 use reifydb_core::{interface::catalog::flow::FlowStatus, value::column::columns::Columns};
 use reifydb_rql::nodes::CreateFlowNode;
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
 use crate::{flow::compiler::compile_flow, vm::services::Services};
@@ -14,7 +14,9 @@ pub(crate) fn create_flow(
 	txn: &mut AdminTransaction,
 	plan: CreateFlowNode,
 ) -> crate::Result<Columns> {
-	if let Some(_) = services.catalog.find_flow_by_name(txn, plan.namespace.id, plan.flow.text())? {
+	if let Some(_) =
+		services.catalog.find_flow_by_name(&mut Transaction::Admin(txn), plan.namespace.id, plan.flow.text())?
+	{
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
 				("namespace", Value::Utf8(plan.namespace.name.to_string())),

@@ -19,7 +19,7 @@ use namespace::load_namespaces;
 use operator_retention_policy::load_operator_retention_policies;
 use primary_key::load_primary_keys;
 use primitive_retention_policy::load_source_retention_policies;
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use ringbuffer::load_ringbuffers;
 use subscription::load_subscriptions;
 use sumtype::load_sumtypes;
@@ -33,26 +33,27 @@ pub struct MaterializedCatalogLoader;
 
 impl MaterializedCatalogLoader {
 	/// Load all catalog data from storage into the MaterializedCatalog
-	pub fn load_all(rx: &mut impl AsTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
-		let mut txn = rx.as_transaction();
-		load_namespaces(&mut txn, catalog)?;
+	pub fn load_all(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+		load_namespaces(rx, catalog)?;
 		// Load primary keys first so they're available when loading
 		// tables/views
-		load_primary_keys(&mut txn, catalog)?;
+		load_primary_keys(rx, catalog)?;
 
-		load_tables(&mut txn, catalog)?;
-		load_views(&mut txn, catalog)?;
-		load_flows(&mut txn, catalog)?;
-		load_ringbuffers(&mut txn, catalog)?;
+		load_tables(rx, catalog)?;
+		load_views(rx, catalog)?;
+		load_flows(rx, catalog)?;
+		load_ringbuffers(rx, catalog)?;
 
 		// Load retention policies
-		load_source_retention_policies(&mut txn, catalog)?;
-		load_operator_retention_policies(&mut txn, catalog)?;
+		load_source_retention_policies(rx, catalog)?;
+		load_operator_retention_policies(rx, catalog)?;
 
-		load_dictionaries(&mut txn, catalog)?;
-		load_sumtypes(&mut txn, catalog)?;
+		// Load dictionaries and sumtypes
+		load_dictionaries(rx, catalog)?;
+		load_sumtypes(rx, catalog)?;
 
-		load_subscriptions(&mut txn, catalog)?;
+		// Load subscriptions
+		load_subscriptions(rx, catalog)?;
 
 		Ok(())
 	}

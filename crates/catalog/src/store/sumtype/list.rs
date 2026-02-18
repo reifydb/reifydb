@@ -5,20 +5,19 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, sumtype::SumTypeDef},
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::SumTypeId;
 
 use crate::{CatalogStore, store::sumtype::schema::sumtype_namespace};
 
 impl CatalogStore {
 	pub(crate) fn list_sumtypes(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 	) -> crate::Result<Vec<SumTypeDef>> {
-		let mut txn = rx.as_transaction();
 		let mut ids = Vec::new();
 		{
-			let mut stream = txn.range(NamespaceSumTypeKey::full_scan(namespace), 1024)?;
+			let mut stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				let row = &multi.values;
@@ -28,7 +27,7 @@ impl CatalogStore {
 
 		let mut results = Vec::new();
 		for id in ids {
-			if let Some(def) = Self::find_sumtype(&mut txn, id)? {
+			if let Some(def) = Self::find_sumtype(rx, id)? {
 				results.push(def);
 			}
 		}
@@ -36,11 +35,10 @@ impl CatalogStore {
 		Ok(results)
 	}
 
-	pub(crate) fn list_all_sumtypes(rx: &mut impl AsTransaction) -> crate::Result<Vec<SumTypeDef>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_all_sumtypes(rx: &mut Transaction<'_>) -> crate::Result<Vec<SumTypeDef>> {
 		let mut results = Vec::new();
 
-		let mut stream = txn.range(SumTypeKey::full_scan(), 1024)?;
+		let mut stream = rx.range(SumTypeKey::full_scan(), 1024)?;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			results.push(super::sumtype_def_from_row(&multi.values));

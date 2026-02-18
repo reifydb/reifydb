@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
@@ -16,9 +16,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_table(rx: &mut impl AsTransaction, table: TableId) -> crate::Result<Option<TableDef>> {
-		let mut txn = rx.as_transaction();
-		let Some(multi) = txn.get(&TableKey::encoded(table))? else {
+	pub(crate) fn find_table(rx: &mut Transaction<'_>, table: TableId) -> crate::Result<Option<TableDef>> {
+		let Some(multi) = rx.get(&TableKey::encoded(table))? else {
 			return Ok(None);
 		};
 
@@ -31,19 +30,18 @@ impl CatalogStore {
 			id,
 			name,
 			namespace,
-			columns: Self::list_columns(&mut txn, id)?,
-			primary_key: Self::find_primary_key(&mut txn, id)?,
+			columns: Self::list_columns(rx, id)?,
+			primary_key: Self::find_primary_key(rx, id)?,
 		}))
 	}
 
 	pub(crate) fn find_table_by_name(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<TableDef>> {
 		let name = name.as_ref();
-		let mut txn = rx.as_transaction();
-		let mut stream = txn.range(NamespaceTableKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceTableKey::full_scan(namespace), 1024)?;
 
 		let mut found_table = None;
 		while let Some(entry) = stream.next() {
@@ -62,7 +60,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_table(&mut txn, table)?))
+		Ok(Some(Self::get_table(rx, table)?))
 	}
 }
 
@@ -70,6 +68,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, TableId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -88,8 +87,13 @@ pub mod tests {
 		create_table(&mut txn, "namespace_two", "table_two", &[]);
 		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let result =
-			CatalogStore::find_table_by_name(&mut txn, NamespaceId(1027), "table_two").unwrap().unwrap();
+		let result = CatalogStore::find_table_by_name(
+			&mut Transaction::Admin(&mut txn),
+			NamespaceId(1027),
+			"table_two",
+		)
+		.unwrap()
+		.unwrap();
 		assert_eq!(result.id, TableId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "table_two");
@@ -99,7 +103,12 @@ pub mod tests {
 	fn test_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "some_table").unwrap();
+		let result = CatalogStore::find_table_by_name(
+			&mut Transaction::Admin(&mut txn),
+			NamespaceId(1025),
+			"some_table",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -115,7 +124,12 @@ pub mod tests {
 		create_table(&mut txn, "namespace_two", "table_two", &[]);
 		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "table_four_two").unwrap();
+		let result = CatalogStore::find_table_by_name(
+			&mut Transaction::Admin(&mut txn),
+			NamespaceId(1025),
+			"table_four_two",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -131,7 +145,12 @@ pub mod tests {
 		create_table(&mut txn, "namespace_two", "table_two", &[]);
 		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(2), "table_two").unwrap();
+		let result = CatalogStore::find_table_by_name(
+			&mut Transaction::Admin(&mut txn),
+			NamespaceId(2),
+			"table_two",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 }

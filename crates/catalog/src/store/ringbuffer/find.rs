@@ -11,7 +11,7 @@ use reifydb_core::{
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
@@ -20,11 +20,10 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_ringbuffer(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferDef>> {
-		let mut txn = rx.as_transaction();
-		let Some(multi) = txn.get(&RingBufferKey::encoded(ringbuffer))? else {
+		let Some(multi) = rx.get(&RingBufferKey::encoded(ringbuffer))? else {
 			return Ok(None);
 		};
 
@@ -39,17 +38,16 @@ impl CatalogStore {
 			namespace,
 			name,
 			capacity,
-			columns: Self::list_columns(&mut txn, id)?,
-			primary_key: Self::find_primary_key(&mut txn, id)?,
+			columns: Self::list_columns(rx, id)?,
+			primary_key: Self::find_primary_key(rx, id)?,
 		}))
 	}
 
 	pub(crate) fn find_ringbuffer_metadata(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferMetadata>> {
-		let mut txn = rx.as_transaction();
-		let Some(multi) = txn.get(&RingBufferMetadataKey::encoded(ringbuffer))? else {
+		let Some(multi) = rx.get(&RingBufferMetadataKey::encoded(ringbuffer))? else {
 			return Ok(None);
 		};
 
@@ -70,13 +68,12 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_ringbuffer_by_name(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<RingBufferDef>> {
 		let name = name.as_ref();
-		let mut txn = rx.as_transaction();
-		let mut stream = txn.range(NamespaceRingBufferKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceRingBufferKey::full_scan(namespace), 1024)?;
 
 		let mut found_ringbuffer = None;
 		while let Some(entry) = stream.next() {
@@ -97,7 +94,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_ringbuffer(&mut txn, ringbuffer)?))
+		Ok(Some(Self::get_ringbuffer(rx, ringbuffer)?))
 	}
 }
 
@@ -105,6 +102,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, RingBufferId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, r#type::Type},
@@ -125,7 +123,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
-		let found = CatalogStore::find_ringbuffer(&mut txn, ringbuffer.id)
+		let found = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), ringbuffer.id)
 			.unwrap()
 			.expect("Ring buffer should exist");
 
@@ -139,7 +137,8 @@ pub mod tests {
 	fn test_find_ringbuffer_not_exists() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::find_ringbuffer(&mut txn, RingBufferId(999)).unwrap();
+		let result =
+			CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), RingBufferId(999)).unwrap();
 
 		assert!(result.is_none());
 	}
@@ -149,7 +148,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
-		let metadata = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
+		let metadata = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
 			.unwrap()
 			.expect("Metadata should exist");
 
@@ -164,7 +163,9 @@ pub mod tests {
 	fn test_find_ringbuffer_metadata_not_exists() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::find_ringbuffer_metadata(&mut txn, RingBufferId(999)).unwrap();
+		let result =
+			CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), RingBufferId(999))
+				.unwrap();
 
 		assert!(result.is_none());
 	}
@@ -192,9 +193,13 @@ pub mod tests {
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
 		// Find by name
-		let found = CatalogStore::find_ringbuffer_by_name(&mut txn, namespace.id, "trades_buffer")
-			.unwrap()
-			.expect("Should find ring buffer by name");
+		let found = CatalogStore::find_ringbuffer_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace.id,
+			"trades_buffer",
+		)
+		.unwrap()
+		.expect("Should find ring buffer by name");
 
 		assert_eq!(found.id, created.id);
 		assert_eq!(found.name, "trades_buffer");
@@ -207,8 +212,12 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let result =
-			CatalogStore::find_ringbuffer_by_name(&mut txn, namespace.id, "nonexistent_buffer").unwrap();
+		let result = CatalogStore::find_ringbuffer_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace.id,
+			"nonexistent_buffer",
+		)
+		.unwrap();
 
 		assert!(result.is_none());
 	}
@@ -240,12 +249,22 @@ pub mod tests {
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
 		// Try to find in namespace2 - should not exist
-		let result = CatalogStore::find_ringbuffer_by_name(&mut txn, namespace2.id, "shared_name").unwrap();
+		let result = CatalogStore::find_ringbuffer_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace2.id,
+			"shared_name",
+		)
+		.unwrap();
 
 		assert!(result.is_none());
 
 		// Find in namespace1 - should exist
-		let found = CatalogStore::find_ringbuffer_by_name(&mut txn, namespace1.id, "shared_name").unwrap();
+		let found = CatalogStore::find_ringbuffer_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace1.id,
+			"shared_name",
+		)
+		.unwrap();
 
 		assert!(found.is_some());
 	}
@@ -283,7 +302,7 @@ pub mod tests {
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
 		// Add primary key
-		let columns = CatalogStore::list_columns(&mut txn, created.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -294,8 +313,9 @@ pub mod tests {
 		.unwrap();
 
 		// Find and verify
-		let found =
-			CatalogStore::find_ringbuffer(&mut txn, created.id).unwrap().expect("Ring buffer should exist");
+		let found = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), created.id)
+			.unwrap()
+			.expect("Ring buffer should exist");
 
 		assert_eq!(found.columns.len(), 2);
 		assert_eq!(found.columns[0].name, "id");

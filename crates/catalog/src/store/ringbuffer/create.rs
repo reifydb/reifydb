@@ -14,7 +14,7 @@ use reifydb_core::{
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	return_error,
@@ -48,10 +48,12 @@ impl CatalogStore {
 	) -> crate::Result<RingBufferDef> {
 		let namespace_id = to_create.namespace;
 
-		if let Some(ringbuffer) =
-			CatalogStore::find_ringbuffer_by_name(txn, namespace_id, to_create.name.text())?
-		{
-			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
+		if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			namespace_id,
+			to_create.name.text(),
+		)? {
+			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return_error!(ringbuffer_already_exists(
 				to_create.name.clone(),
 				&namespace.name,
@@ -69,7 +71,7 @@ impl CatalogStore {
 		Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create)?;
 		Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
 
-		Ok(Self::get_ringbuffer(txn, ringbuffer_id)?)
+		Ok(Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)?)
 	}
 
 	fn store_ringbuffer(
@@ -162,6 +164,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::key::namespace_ringbuffer::NamespaceRingBufferKey;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, r#type::Type},
@@ -316,7 +319,7 @@ pub mod tests {
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
 		// Check that metadata was created
-		let metadata = CatalogStore::find_ringbuffer_metadata(&mut txn, result.id)
+		let metadata = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), result.id)
 			.unwrap()
 			.expect("Metadata should exist");
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::ast::AstCreateFlow,
@@ -9,10 +9,10 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_flow<T: AsTransaction>(
+	pub(crate) fn compile_create_flow(
 		&self,
 		ast: AstCreateFlow<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		// Use the flow identifier directly from AST
 		let flow = ast.flow;

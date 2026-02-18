@@ -8,19 +8,18 @@ use reifydb_core::{
 	},
 	key::{Key, view::ViewKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::view::schema::view};
 
 impl CatalogStore {
-	pub(crate) fn list_views_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<ViewDef>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_views_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<ViewDef>> {
 		let mut result = Vec::new();
 
 		// Collect view data first to avoid holding stream borrow
 		let mut view_data = Vec::new();
 		{
-			let mut stream = txn.range(ViewKey::full_scan(), 1024)?;
+			let mut stream = rx.range(ViewKey::full_scan(), 1024)?;
 			while let Some(entry) = stream.next() {
 				let entry = entry?;
 				if let Some(key) = Key::decode(&entry.key) {
@@ -48,8 +47,8 @@ impl CatalogStore {
 
 		// Now fetch additional details for each view
 		for (view_id, namespace_id, name, kind) in view_data {
-			let primary_key = Self::find_primary_key(&mut txn, view_id)?;
-			let columns = Self::list_columns(&mut txn, view_id)?;
+			let primary_key = Self::find_primary_key(rx, view_id)?;
+			let columns = Self::list_columns(rx, view_id)?;
 
 			let view_def = ViewDef {
 				id: view_id,

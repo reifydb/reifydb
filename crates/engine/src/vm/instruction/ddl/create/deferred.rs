@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::view::ViewToCreate;
 use reifydb_core::{interface::catalog::change::CatalogTrackViewChangeOperations, value::column::columns::Columns};
 use reifydb_rql::nodes::CreateDeferredViewNode;
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
 use super::create_deferred_view_flow;
@@ -15,7 +15,9 @@ pub(crate) fn create_deferred_view(
 	txn: &mut AdminTransaction,
 	plan: CreateDeferredViewNode,
 ) -> crate::Result<Columns> {
-	if let Some(_) = services.catalog.find_view_by_name(txn, plan.namespace.id, plan.view.text())? {
+	if let Some(_) =
+		services.catalog.find_view_by_name(&mut Transaction::Admin(txn), plan.namespace.id, plan.view.text())?
+	{
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
 				("namespace", Value::Utf8(plan.namespace.name.to_string())),

@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
-use reifydb_transaction::transaction::{AsTransaction, Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	value::{row_number::RowNumber, r#type::Type},
@@ -37,10 +37,10 @@ pub struct RingBufferScan {
 }
 
 impl RingBufferScan {
-	pub fn new<Rx: AsTransaction>(
+	pub fn new(
 		ringbuffer: ResolvedRingBuffer,
 		context: Arc<QueryContext>,
-		rx: &mut Rx,
+		rx: &mut Transaction<'_>,
 	) -> crate::Result<Self> {
 		// Build storage types and dictionaries
 		let mut storage_types = Vec::with_capacity(ringbuffer.columns().len());

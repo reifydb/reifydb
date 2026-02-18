@@ -35,6 +35,7 @@ impl crate::CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowNodeDef;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::blob::Blob;
 
 	use crate::{
@@ -60,7 +61,7 @@ pub mod tests {
 		CatalogStore::create_flow_node(&mut txn, &node_def).unwrap();
 
 		// Verify node was created
-		let result = CatalogStore::get_flow_node(&mut txn, node_id).unwrap();
+		let result = CatalogStore::get_flow_node(&mut Transaction::Admin(&mut txn), node_id).unwrap();
 		assert_eq!(result.id, node_id);
 		assert_eq!(result.flow, flow.id);
 		assert_eq!(result.node_type, 1);
@@ -94,8 +95,8 @@ pub mod tests {
 		CatalogStore::create_flow_node(&mut txn, &node2).unwrap();
 
 		// Verify both nodes exist
-		let result1 = CatalogStore::get_flow_node(&mut txn, node1_id).unwrap();
-		let result2 = CatalogStore::get_flow_node(&mut txn, node2_id).unwrap();
+		let result1 = CatalogStore::get_flow_node(&mut Transaction::Admin(&mut txn), node1_id).unwrap();
+		let result2 = CatalogStore::get_flow_node(&mut Transaction::Admin(&mut txn), node2_id).unwrap();
 
 		assert_eq!(result1.node_type, 1);
 		assert_eq!(result2.node_type, 4);
@@ -131,8 +132,8 @@ pub mod tests {
 		CatalogStore::create_flow_node(&mut txn, &node2).unwrap();
 
 		// Verify nodes are in correct flows
-		let result1 = CatalogStore::get_flow_node(&mut txn, node1_id).unwrap();
-		let result2 = CatalogStore::get_flow_node(&mut txn, node2_id).unwrap();
+		let result1 = CatalogStore::get_flow_node(&mut Transaction::Admin(&mut txn), node1_id).unwrap();
+		let result2 = CatalogStore::get_flow_node(&mut Transaction::Admin(&mut txn), node2_id).unwrap();
 
 		assert_eq!(result1.flow, flow1.id);
 		assert_eq!(result2.flow, flow2.id);
@@ -155,7 +156,7 @@ pub mod tests {
 		CatalogStore::create_flow_node(&mut txn, &node_def).unwrap();
 
 		// Verify node appears in flow index by listing nodes for flow
-		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(nodes.len(), 1);
 		assert_eq!(nodes[0].id, node_id);
 	}

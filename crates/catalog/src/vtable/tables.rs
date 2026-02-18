@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{interface::catalog::vtable::VTableDef, value::column::columns::Columns};
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::params::Params;
 
 use super::{
@@ -132,7 +132,7 @@ impl VTables {
 	}
 
 	/// Initialize the virtual table iterator with context
-	pub fn initialize<T: AsTransaction>(&mut self, txn: &mut T, ctx: VTableContext) -> crate::Result<()> {
+	pub fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> crate::Result<()> {
 		match self {
 			Self::Sequences(t) => t.initialize(txn, ctx),
 			Self::Namespaces(t) => t.initialize(txn, ctx),
@@ -190,7 +190,7 @@ impl VTables {
 	}
 
 	/// Get the next batch of results (volcano iterator pattern)
-	pub fn next<T: AsTransaction>(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	pub fn next(&mut self, txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>> {
 		match self {
 			Self::Sequences(t) => t.next(txn),
 			Self::Namespaces(t) => t.next(txn),

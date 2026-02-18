@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::interface::catalog::primitive::{PrimitiveDef, PrimitiveId};
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, vtable::VTableRegistry};
 
@@ -12,36 +12,35 @@ impl CatalogStore {
 	/// Find a primitive (table, store::view, or virtual table) by its PrimitiveId
 	/// Returns None if the primitive doesn't exist
 	pub(crate) fn find_primitive(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<Option<PrimitiveDef>> {
 		let primitive_id = primitive.into();
-		let mut txn = rx.as_transaction();
 
 		match primitive_id {
 			PrimitiveId::Table(table_id) => {
-				if let Some(table) = Self::find_table(&mut txn, table_id)? {
+				if let Some(table) = Self::find_table(rx, table_id)? {
 					Ok(Some(PrimitiveDef::Table(table)))
 				} else {
 					Ok(None)
 				}
 			}
 			PrimitiveId::View(view_id) => {
-				if let Some(view) = Self::find_view(&mut txn, view_id)? {
+				if let Some(view) = Self::find_view(rx, view_id)? {
 					Ok(Some(PrimitiveDef::View(view)))
 				} else {
 					Ok(None)
 				}
 			}
 			PrimitiveId::Flow(flow_id) => {
-				if let Some(flow) = Self::find_flow(&mut txn, flow_id)? {
+				if let Some(flow) = Self::find_flow(rx, flow_id)? {
 					Ok(Some(PrimitiveDef::Flow(flow)))
 				} else {
 					Ok(None)
 				}
 			}
 			PrimitiveId::TableVirtual(vtable_id) => {
-				if let Some(vtable) = VTableRegistry::find_vtable(&mut txn, vtable_id)? {
+				if let Some(vtable) = VTableRegistry::find_vtable(rx, vtable_id)? {
 					// Convert Arc<VTableDef> to VTableDef
 					let vtable_def = Arc::try_unwrap(vtable).unwrap_or_else(|arc| (*arc).clone());
 					Ok(Some(PrimitiveDef::TableVirtual(vtable_def)))
@@ -73,6 +72,7 @@ pub mod tests {
 		vtable::VTableId,
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, r#type::Type},
@@ -90,8 +90,9 @@ pub mod tests {
 		let table = ensure_test_table(&mut txn);
 
 		// Find primitive by TableId
-		let primitive =
-			CatalogStore::find_primitive(&mut txn, table.id).unwrap().expect("Primitive should exist");
+		let primitive = CatalogStore::find_primitive(&mut Transaction::Admin(&mut txn), table.id)
+			.unwrap()
+			.expect("Primitive should exist");
 
 		match primitive {
 			PrimitiveDef::Table(t) => {
@@ -102,9 +103,10 @@ pub mod tests {
 		}
 
 		// Find primitive by PrimitiveId::Table
-		let primitive = CatalogStore::find_primitive(&mut txn, PrimitiveId::Table(table.id))
-			.unwrap()
-			.expect("Primitive should exist");
+		let primitive =
+			CatalogStore::find_primitive(&mut Transaction::Admin(&mut txn), PrimitiveId::Table(table.id))
+				.unwrap()
+				.expect("Primitive should exist");
 
 		match primitive {
 			PrimitiveDef::Table(t) => {
@@ -134,8 +136,9 @@ pub mod tests {
 		.unwrap();
 
 		// Find primitive by ViewId
-		let primitive =
-			CatalogStore::find_primitive(&mut txn, view.id).unwrap().expect("Primitive should exist");
+		let primitive = CatalogStore::find_primitive(&mut Transaction::Admin(&mut txn), view.id)
+			.unwrap()
+			.expect("Primitive should exist");
 
 		match primitive {
 			PrimitiveDef::View(v) => {
@@ -146,9 +149,10 @@ pub mod tests {
 		}
 
 		// Find primitive by PrimitiveId::View
-		let primitive = CatalogStore::find_primitive(&mut txn, PrimitiveId::View(view.id))
-			.unwrap()
-			.expect("Primitive should exist");
+		let primitive =
+			CatalogStore::find_primitive(&mut Transaction::Admin(&mut txn), PrimitiveId::View(view.id))
+				.unwrap()
+				.expect("Primitive should exist");
 
 		match primitive {
 			PrimitiveDef::View(v) => {
@@ -163,15 +167,15 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// Non-existent table
-		let primitive = CatalogStore::find_primitive(&mut txn, TableId(999)).unwrap();
+		let primitive = CatalogStore::find_primitive(&mut Transaction::Admin(&mut txn), TableId(999)).unwrap();
 		assert!(primitive.is_none());
 
 		// Non-existent view
-		let primitive = CatalogStore::find_primitive(&mut txn, ViewId(999)).unwrap();
+		let primitive = CatalogStore::find_primitive(&mut Transaction::Admin(&mut txn), ViewId(999)).unwrap();
 		assert!(primitive.is_none());
 
 		// Non-existent virtual table
-		let primitive = CatalogStore::find_primitive(&mut txn, VTableId(999)).unwrap();
+		let primitive = CatalogStore::find_primitive(&mut Transaction::Admin(&mut txn), VTableId(999)).unwrap();
 		assert!(primitive.is_none());
 	}
 
@@ -181,7 +185,7 @@ pub mod tests {
 
 		// Find the sequences virtual table
 		let sequences_id = crate::system::ids::vtable::SEQUENCES;
-		let primitive = CatalogStore::find_primitive(&mut txn, sequences_id)
+		let primitive = CatalogStore::find_primitive(&mut Transaction::Admin(&mut txn), sequences_id)
 			.unwrap()
 			.expect("Sequences virtual table should exist");
 
@@ -194,9 +198,12 @@ pub mod tests {
 		}
 
 		// Find primitive by PrimitiveId::TableVirtual
-		let primitive = CatalogStore::find_primitive(&mut txn, PrimitiveId::TableVirtual(sequences_id))
-			.unwrap()
-			.expect("Primitive should exist");
+		let primitive = CatalogStore::find_primitive(
+			&mut Transaction::Admin(&mut txn),
+			PrimitiveId::TableVirtual(sequences_id),
+		)
+		.unwrap()
+		.expect("Primitive should exist");
 
 		match primitive {
 			PrimitiveDef::TableVirtual(tv) => {

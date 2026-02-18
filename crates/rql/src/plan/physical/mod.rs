@@ -24,7 +24,7 @@ use reifydb_core::{
 	},
 	sort::SortKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	error::diagnostic::function::internal_error,
 	fragment::Fragment,
@@ -475,10 +475,10 @@ pub(crate) fn materialize_primary_key(
 }
 
 #[instrument(name = "rql::compile::physical", level = "trace", skip(bump, catalog, rx, logical))]
-pub fn compile_physical<'b, T: AsTransaction>(
+pub fn compile_physical<'b>(
 	bump: &'b Bump,
 	catalog: &Catalog,
-	rx: &mut T,
+	rx: &mut Transaction<'_>,
 	logical: impl IntoIterator<Item = LogicalPlan<'b>>,
 ) -> crate::Result<Option<PhysicalPlan<'b>>> {
 	Compiler {
@@ -494,9 +494,9 @@ impl<'bump> Compiler<'bump> {
 		BumpBox::new_in(plan, self.bump)
 	}
 
-	pub fn compile<T: AsTransaction>(
+	pub fn compile(
 		&mut self,
-		rx: &mut T,
+		rx: &mut Transaction<'_>,
 		logical: impl IntoIterator<Item = LogicalPlan<'bump>>,
 	) -> crate::Result<Option<PhysicalPlan<'bump>>> {
 		let mut stack: Vec<PhysicalPlan<'bump>> = Vec::new();

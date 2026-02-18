@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use super::decode_retention_policy;
 use crate::CatalogStore;
@@ -34,12 +34,11 @@ pub struct OperatorRetentionPolicyEntry {
 impl CatalogStore {
 	/// List all retention policies for primitives (tables, views, ring buffers)
 	pub(crate) fn list_primitive_retention_policies(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 	) -> crate::Result<Vec<PrimitiveRetentionPolicyEntry>> {
-		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
-		let mut stream = txn.range(PrimitiveRetentionPolicyKeyRange::full_scan(), 1024)?;
+		let mut stream = rx.range(PrimitiveRetentionPolicyKeyRange::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
@@ -58,12 +57,11 @@ impl CatalogStore {
 
 	/// List all retention policies for operators
 	pub(crate) fn list_operator_retention_policies(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 	) -> crate::Result<Vec<OperatorRetentionPolicyEntry>> {
-		let mut txn = rx.as_transaction();
 		let mut result = Vec::new();
 
-		let mut stream = txn.range(OperatorRetentionPolicyKeyRange::full_scan(), 1024)?;
+		let mut stream = rx.range(OperatorRetentionPolicyKeyRange::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
@@ -88,6 +86,7 @@ pub mod tests {
 		retention::{CleanupMode, RetentionPolicy},
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;
 	use crate::store::retention_policy::create::{
@@ -98,7 +97,8 @@ pub mod tests {
 	fn test_list_primitive_retention_policies_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let policies = CatalogStore::list_primitive_retention_policies(&mut txn).unwrap();
+		let policies =
+			CatalogStore::list_primitive_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 
 		assert_eq!(policies.len(), 0);
 	}
@@ -127,7 +127,8 @@ pub mod tests {
 		create_primitive_retention_policy(&mut txn, ringbuffer_source, &ringbuffer_policy).unwrap();
 
 		// List all policies
-		let policies = CatalogStore::list_primitive_retention_policies(&mut txn).unwrap();
+		let policies =
+			CatalogStore::list_primitive_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 
 		assert_eq!(policies.len(), 3);
 
@@ -141,7 +142,8 @@ pub mod tests {
 	fn test_list_operator_retention_policies_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
+		let policies =
+			CatalogStore::list_operator_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 
 		assert_eq!(policies.len(), 0);
 	}
@@ -170,7 +172,8 @@ pub mod tests {
 		_create_operator_retention_policy(&mut txn, operator3, &policy3).unwrap();
 
 		// List all policies
-		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
+		let policies =
+			CatalogStore::list_operator_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 
 		assert_eq!(policies.len(), 3);
 
@@ -190,7 +193,8 @@ pub mod tests {
 		let policy1 = RetentionPolicy::KeepForever;
 		create_primitive_retention_policy(&mut txn, source, &policy1).unwrap();
 
-		let policies = CatalogStore::list_primitive_retention_policies(&mut txn).unwrap();
+		let policies =
+			CatalogStore::list_primitive_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy1);
 
@@ -202,7 +206,8 @@ pub mod tests {
 		create_primitive_retention_policy(&mut txn, source, &policy2).unwrap();
 
 		// Should still have only 1 entry (updated, not added)
-		let policies = CatalogStore::list_primitive_retention_policies(&mut txn).unwrap();
+		let policies =
+			CatalogStore::list_primitive_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy2);
 	}
@@ -220,7 +225,8 @@ pub mod tests {
 		};
 		_create_operator_retention_policy(&mut txn, operator, &policy1).unwrap();
 
-		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
+		let policies =
+			CatalogStore::list_operator_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy1);
 
@@ -229,7 +235,8 @@ pub mod tests {
 		_create_operator_retention_policy(&mut txn, operator, &policy2).unwrap();
 
 		// Should still have only 1 entry (updated, not added)
-		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
+		let policies =
+			CatalogStore::list_operator_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy2);
 	}

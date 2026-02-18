@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{common::CommitVersion, key::cdc_consumer::CdcConsumerKeyRange};
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 /// Computes the consumer watermark by finding the minimum checkpoint version
 /// across all registered CDC consumers.
@@ -10,10 +10,10 @@ use reifydb_transaction::transaction::AsTransaction;
 /// The watermark represents the lowest commit version that any consumer has
 /// checkpointed. Retention policies must not clean up versions at or above
 /// this watermark, as consumers still need them.
-pub fn compute_watermark(txn: &mut impl AsTransaction) -> reifydb_type::Result<CommitVersion> {
+pub fn compute_watermark(txn: &mut Transaction<'_>) -> reifydb_type::Result<CommitVersion> {
 	let mut min_version: Option<CommitVersion> = None;
 
-	for multi in txn.as_transaction().range(CdcConsumerKeyRange::full_scan(), 1024)? {
+	for multi in txn.range(CdcConsumerKeyRange::full_scan(), 1024)? {
 		let multi = multi?;
 		// Checkpoint values are stored as 8-byte big-endian u64
 		if multi.values.len() >= 8 {

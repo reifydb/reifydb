@@ -11,9 +11,7 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_transaction::transaction::{
-	AsTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
-};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
 use reifydb_type::{
 	error,
 	fragment::Fragment,
@@ -74,34 +72,52 @@ impl From<RingBufferToCreate> for StoreRingBufferToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::ringbuffer::find", level = "trace", skip(self, txn))]
-	pub fn find_ringbuffer<T: AsTransaction>(
+	pub fn find_ringbuffer(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		id: RingBufferId,
 	) -> crate::Result<Option<RingBufferDef>> {
-		match txn.as_transaction() {
-			Transaction::Command(cmd) => CatalogStore::find_ringbuffer(cmd, id),
-			Transaction::Admin(admin) => CatalogStore::find_ringbuffer(admin, id),
-			Transaction::Query(qry) => CatalogStore::find_ringbuffer(qry, id),
+		match txn.reborrow() {
+			Transaction::Command(cmd) => {
+				CatalogStore::find_ringbuffer(&mut Transaction::Command(&mut *cmd), id)
+			}
+			Transaction::Admin(admin) => {
+				CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut *admin), id)
+			}
+			Transaction::Query(qry) => {
+				CatalogStore::find_ringbuffer(&mut Transaction::Query(&mut *qry), id)
+			}
 		}
 	}
 
 	#[instrument(name = "catalog::ringbuffer::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_ringbuffer_by_name<T: AsTransaction>(
+	pub fn find_ringbuffer_by_name(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
 	) -> crate::Result<Option<RingBufferDef>> {
-		match txn.as_transaction() {
-			Transaction::Command(cmd) => CatalogStore::find_ringbuffer_by_name(cmd, namespace, name),
-			Transaction::Admin(admin) => CatalogStore::find_ringbuffer_by_name(admin, namespace, name),
-			Transaction::Query(qry) => CatalogStore::find_ringbuffer_by_name(qry, namespace, name),
+		match txn.reborrow() {
+			Transaction::Command(cmd) => CatalogStore::find_ringbuffer_by_name(
+				&mut Transaction::Command(&mut *cmd),
+				namespace,
+				name,
+			),
+			Transaction::Admin(admin) => CatalogStore::find_ringbuffer_by_name(
+				&mut Transaction::Admin(&mut *admin),
+				namespace,
+				name,
+			),
+			Transaction::Query(qry) => CatalogStore::find_ringbuffer_by_name(
+				&mut Transaction::Query(&mut *qry),
+				namespace,
+				name,
+			),
 		}
 	}
 
 	#[instrument(name = "catalog::ringbuffer::get", level = "trace", skip(self, txn))]
-	pub fn get_ringbuffer<T: AsTransaction>(&self, txn: &mut T, id: RingBufferId) -> crate::Result<RingBufferDef> {
+	pub fn get_ringbuffer(&self, txn: &mut Transaction<'_>, id: RingBufferId) -> crate::Result<RingBufferDef> {
 		self.find_ringbuffer(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"RingBuffer with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -126,23 +142,23 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::ringbuffer::list_all", level = "debug", skip(self, txn))]
-	pub fn list_ringbuffers_all<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<RingBufferDef>> {
+	pub fn list_ringbuffers_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<RingBufferDef>> {
 		CatalogStore::list_ringbuffers_all(txn)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::find_metadata", level = "trace", skip(self, txn))]
-	pub fn find_ringbuffer_metadata<T: AsTransaction>(
+	pub fn find_ringbuffer_metadata(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		id: RingBufferId,
 	) -> crate::Result<Option<RingBufferMetadata>> {
 		CatalogStore::find_ringbuffer_metadata(txn, id)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::get_metadata", level = "trace", skip(self, txn))]
-	pub fn get_ringbuffer_metadata<T: AsTransaction>(
+	pub fn get_ringbuffer_metadata(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		id: RingBufferId,
 	) -> crate::Result<RingBufferMetadata> {
 		CatalogStore::get_ringbuffer_metadata(txn, id)
@@ -186,9 +202,9 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::ringbuffer::get_pk_id", level = "trace", skip(self, txn))]
-	pub fn get_ringbuffer_pk_id<T: AsTransaction>(
+	pub fn get_ringbuffer_pk_id(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		ringbuffer_id: RingBufferId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
 		CatalogStore::get_ringbuffer_pk_id(txn, ringbuffer_id)

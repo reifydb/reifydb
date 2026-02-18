@@ -3,7 +3,7 @@
 
 use PhysicalPlan::CreateTransactionalView;
 use reifydb_core::error::diagnostic::catalog::namespace_not_found;
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::plan::{
@@ -12,9 +12,9 @@ use crate::plan::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_transactional<T: AsTransaction>(
+	pub(crate) fn compile_create_transactional(
 		&mut self,
-		rx: &mut T,
+		rx: &mut Transaction<'_>,
 		create: logical::CreateTransactionalViewNode<'bump>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Get namespace name from the MaybeQualified type (join all segments for nested namespaces)

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::catalog::subscription::SubscriptionColumnToCreate;
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::ast::AstCreateSubscription,
@@ -12,10 +12,10 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_subscription<T: AsTransaction>(
+	pub(crate) fn compile_create_subscription(
 		&self,
 		ast: AstCreateSubscription<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let mut columns = Vec::with_capacity(ast.columns.len());
 

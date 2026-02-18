@@ -5,13 +5,13 @@ use reifydb_core::{
 	interface::catalog::{id::ViewId, view::ViewDef},
 	internal,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_view(rx: &mut impl AsTransaction, view: ViewId) -> crate::Result<ViewDef> {
+	pub(crate) fn get_view(rx: &mut Transaction<'_>, view: ViewId) -> crate::Result<ViewDef> {
 		CatalogStore::find_view(rx, view)?.ok_or_else(|| {
 			Error(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -25,6 +25,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, ViewId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -43,7 +44,7 @@ pub mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result = CatalogStore::get_view(&mut txn, ViewId(1026)).unwrap();
+		let result = CatalogStore::get_view(&mut Transaction::Admin(&mut txn), ViewId(1026)).unwrap();
 
 		assert_eq!(result.id, ViewId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
@@ -62,7 +63,7 @@ pub mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let err = CatalogStore::get_view(&mut txn, ViewId(42)).unwrap_err();
+		let err = CatalogStore::get_view(&mut Transaction::Admin(&mut txn), ViewId(42)).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ViewId(42)"));

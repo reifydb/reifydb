@@ -8,19 +8,18 @@ use reifydb_core::{
 	},
 	key::{Key, ringbuffer::RingBufferKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
 
 impl CatalogStore {
-	pub(crate) fn list_ringbuffers_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<RingBufferDef>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_ringbuffers_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<RingBufferDef>> {
 		let mut result = Vec::new();
 
 		// Collect ringbuffer data first to avoid holding stream borrow
 		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64)> = Vec::new();
 		{
-			let mut stream = txn.range(RingBufferKey::full_scan(), 1024)?;
+			let mut stream = rx.range(RingBufferKey::full_scan(), 1024)?;
 
 			while let Some(entry) = stream.next() {
 				let entry = entry?;
@@ -48,8 +47,8 @@ impl CatalogStore {
 
 		// Now fetch additional details for each ringbuffer
 		for (ringbuffer_id, namespace_id, name, capacity) in ringbuffer_data {
-			let primary_key = Self::find_primary_key(&mut txn, ringbuffer_id)?;
-			let columns = Self::list_columns(&mut txn, ringbuffer_id)?;
+			let primary_key = Self::find_primary_key(rx, ringbuffer_id)?;
+			let columns = Self::list_columns(rx, ringbuffer_id)?;
 
 			let ringbuffer_def = RingBufferDef {
 				id: ringbuffer_id,
@@ -71,6 +70,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::fragment::Fragment;
 
 	use crate::{
@@ -84,7 +84,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		ensure_test_namespace(&mut txn);
 
-		let buffers = CatalogStore::list_ringbuffers_all(&mut txn).unwrap();
+		let buffers = CatalogStore::list_ringbuffers_all(&mut Transaction::Admin(&mut txn)).unwrap();
 
 		assert_eq!(buffers.len(), 0);
 	}
@@ -112,7 +112,7 @@ pub mod tests {
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 
-		let buffers = CatalogStore::list_ringbuffers_all(&mut txn).unwrap();
+		let buffers = CatalogStore::list_ringbuffers_all(&mut Transaction::Admin(&mut txn)).unwrap();
 
 		assert_eq!(buffers.len(), 2);
 		assert!(buffers.iter().any(|b| b.name == "buffer1"));
@@ -154,7 +154,7 @@ pub mod tests {
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 
 		// List all buffers
-		let all_buffers = CatalogStore::list_ringbuffers_all(&mut txn).unwrap();
+		let all_buffers = CatalogStore::list_ringbuffers_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(all_buffers.len(), 2);
 
 		// Check that buffer1 is in namespace1

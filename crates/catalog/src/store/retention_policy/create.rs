@@ -41,6 +41,7 @@ pub mod tests {
 		retention::{CleanupMode, RetentionPolicy},
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;
 	use crate::CatalogStore;
@@ -59,9 +60,10 @@ pub mod tests {
 		create_primitive_retention_policy(&mut txn, source, &policy).unwrap();
 
 		// Verify the policy was stored
-		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source)
-			.unwrap()
-			.expect("Policy should be stored");
+		let retrieved_policy =
+			CatalogStore::find_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
+				.unwrap()
+				.expect("Policy should be stored");
 
 		assert_eq!(retrieved_policy, policy);
 	}
@@ -77,9 +79,10 @@ pub mod tests {
 		create_primitive_retention_policy(&mut txn, source, &policy).unwrap();
 
 		// Verify the policy was stored
-		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source)
-			.unwrap()
-			.expect("Policy should be stored");
+		let retrieved_policy =
+			CatalogStore::find_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
+				.unwrap()
+				.expect("Policy should be stored");
 
 		assert_eq!(retrieved_policy, policy);
 	}
@@ -98,9 +101,10 @@ pub mod tests {
 		create_primitive_retention_policy(&mut txn, source, &policy).unwrap();
 
 		// Verify the policy was stored
-		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source)
-			.unwrap()
-			.expect("Policy should be stored");
+		let retrieved_policy =
+			CatalogStore::find_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
+				.unwrap()
+				.expect("Policy should be stored");
 
 		assert_eq!(retrieved_policy, policy);
 	}
@@ -118,9 +122,10 @@ pub mod tests {
 		_create_operator_retention_policy(&mut txn, operator, &policy).unwrap();
 
 		// Verify the policy was stored
-		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator)
-			.unwrap()
-			.expect("Policy should be stored");
+		let retrieved_policy =
+			CatalogStore::find_operator_retention_policy(&mut Transaction::Admin(&mut txn), operator)
+				.unwrap()
+				.expect("Policy should be stored");
 
 		assert_eq!(retrieved_policy, policy);
 	}
@@ -143,9 +148,10 @@ pub mod tests {
 		create_primitive_retention_policy(&mut txn, source, &policy2).unwrap();
 
 		// Verify the latest policy is stored
-		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source)
-			.unwrap()
-			.expect("Policy should be stored");
+		let retrieved_policy =
+			CatalogStore::find_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
+				.unwrap()
+				.expect("Policy should be stored");
 
 		assert_eq!(retrieved_policy, policy2);
 	}
@@ -167,9 +173,10 @@ pub mod tests {
 		_create_operator_retention_policy(&mut txn, operator, &policy2).unwrap();
 
 		// Verify the latest policy is stored
-		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator)
-			.unwrap()
-			.expect("Policy should be stored");
+		let retrieved_policy =
+			CatalogStore::find_operator_retention_policy(&mut Transaction::Admin(&mut txn), operator)
+				.unwrap()
+				.expect("Policy should be stored");
 
 		assert_eq!(retrieved_policy, policy2);
 	}
@@ -179,7 +186,9 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let source = PrimitiveId::Table(TableId(9999));
 
-		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source).unwrap();
+		let retrieved_policy =
+			CatalogStore::find_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
+				.unwrap();
 
 		assert!(retrieved_policy.is_none());
 	}
@@ -189,7 +198,9 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let operator = FlowNodeId(9999);
 
-		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();
+		let retrieved_policy =
+			CatalogStore::find_operator_retention_policy(&mut Transaction::Admin(&mut txn), operator)
+				.unwrap();
 
 		assert!(retrieved_policy.is_none());
 	}

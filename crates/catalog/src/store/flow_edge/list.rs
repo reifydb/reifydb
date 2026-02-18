@@ -9,7 +9,7 @@ use reifydb_core::{
 		flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey},
 	},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
@@ -18,15 +18,13 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn list_flow_edges_by_flow(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowEdgeDef>> {
-		let mut txn = rx.as_transaction();
-
 		// Collect edge IDs first to avoid holding stream borrow
 		let mut edge_ids = Vec::new();
 		{
-			let mut stream = txn.range(FlowEdgeByFlowKey::full_scan(flow_id), 1024)?;
+			let mut stream = rx.range(FlowEdgeByFlowKey::full_scan(flow_id), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				edge_ids.push(FlowEdgeId(SCHEMA.get_u64(&multi.values, flow_edge_by_flow::ID)));
@@ -36,7 +34,7 @@ impl CatalogStore {
 		// Then fetch each edge
 		let mut edges = Vec::new();
 		for edge_id in edge_ids {
-			if let Some(edge) = Self::find_flow_edge(&mut txn, edge_id)? {
+			if let Some(edge) = Self::find_flow_edge(rx, edge_id)? {
 				edges.push(edge);
 			}
 		}
@@ -47,11 +45,10 @@ impl CatalogStore {
 		Ok(edges)
 	}
 
-	pub(crate) fn list_flow_edges_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<FlowEdgeDef>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_flow_edges_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<FlowEdgeDef>> {
 		let mut result = Vec::new();
 
-		let mut stream = txn.range(FlowEdgeKey::full_scan(), 1024)?;
+		let mut stream = rx.range(FlowEdgeKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
@@ -79,6 +76,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -95,7 +93,7 @@ pub mod tests {
 		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		let edges = CatalogStore::list_flow_edges_by_flow(&mut txn, flow.id).unwrap();
+		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(edges.len(), 1);
 		assert_eq!(edges[0].id, edge.id);
 	}
@@ -106,7 +104,7 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let edges = CatalogStore::list_flow_edges_by_flow(&mut txn, flow.id).unwrap();
+		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert!(edges.is_empty());
 	}
 
@@ -123,7 +121,7 @@ pub mod tests {
 		let edge1 = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 		let edge2 = create_flow_edge(&mut txn, flow.id, node2.id, node3.id);
 
-		let edges = CatalogStore::list_flow_edges_by_flow(&mut txn, flow.id).unwrap();
+		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(edges.len(), 2);
 
 		// Verify all edges are present
@@ -143,7 +141,7 @@ pub mod tests {
 
 		create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		let edges = CatalogStore::list_flow_edges_all(&mut txn).unwrap();
+		let edges = CatalogStore::list_flow_edges_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(edges.len(), 1);
 	}
 
@@ -151,7 +149,7 @@ pub mod tests {
 	fn test_list_flow_edges_all_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let edges = CatalogStore::list_flow_edges_all(&mut txn).unwrap();
+		let edges = CatalogStore::list_flow_edges_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert!(edges.is_empty());
 	}
 
@@ -171,7 +169,7 @@ pub mod tests {
 		create_flow_edge(&mut txn, flow1.id, node1a.id, node1b.id);
 		create_flow_edge(&mut txn, flow2.id, node2a.id, node2b.id);
 
-		let all_edges = CatalogStore::list_flow_edges_all(&mut txn).unwrap();
+		let all_edges = CatalogStore::list_flow_edges_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(all_edges.len(), 2);
 
 		// Verify edges are from correct flows

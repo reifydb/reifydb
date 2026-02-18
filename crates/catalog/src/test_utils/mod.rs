@@ -12,7 +12,7 @@ use reifydb_core::interface::catalog::{
 	table::TableDef,
 	view::ViewDef,
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	value::{blob::Blob, constraint::TypeConstraint, sumtype::SumTypeId},
@@ -43,7 +43,9 @@ pub fn create_namespace(txn: &mut AdminTransaction, namespace: &str) -> Namespac
 }
 
 pub fn ensure_test_namespace(txn: &mut AdminTransaction) -> NamespaceDef {
-	if let Some(result) = CatalogStore::find_namespace_by_name(txn, "test_namespace").unwrap() {
+	if let Some(result) =
+		CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), "test_namespace").unwrap()
+	{
 		return result;
 	}
 	create_namespace(txn, "test_namespace")
@@ -52,7 +54,10 @@ pub fn ensure_test_namespace(txn: &mut AdminTransaction) -> NamespaceDef {
 pub fn ensure_test_table(txn: &mut AdminTransaction) -> TableDef {
 	let namespace = ensure_test_namespace(txn);
 
-	if let Some(result) = CatalogStore::find_table_by_name(txn, namespace.id, "test_table").unwrap() {
+	if let Some(result) =
+		CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut *txn), namespace.id, "test_table")
+			.unwrap()
+	{
 		return result;
 	}
 	create_table(txn, "test_namespace", "test_table", &[])
@@ -65,7 +70,9 @@ pub fn create_table(
 	columns: &[TableColumnToCreate],
 ) -> TableDef {
 	// First look up the namespace to get its ID
-	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+	let namespace_def = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
+		.unwrap()
+		.expect("Namespace not found");
 
 	CatalogStore::create_table(
 		txn,
@@ -87,7 +94,7 @@ pub fn create_test_column(
 ) {
 	ensure_test_table(txn);
 
-	let columns = CatalogStore::list_columns(txn, TableId(1)).unwrap();
+	let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut *txn), TableId(1)).unwrap();
 
 	CatalogStore::create_column(
 		txn,
@@ -109,7 +116,9 @@ pub fn create_test_column(
 
 pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, columns: &[ViewColumnToCreate]) -> ViewDef {
 	// First look up the namespace to get its ID
-	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+	let namespace_def = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
+		.unwrap()
+		.expect("Namespace not found");
 
 	CatalogStore::create_deferred_view(
 		txn,
@@ -125,7 +134,13 @@ pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, colu
 pub fn ensure_test_ringbuffer(txn: &mut AdminTransaction) -> RingBufferDef {
 	let namespace = ensure_test_namespace(txn);
 
-	if let Some(result) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, "test_ringbuffer").unwrap() {
+	if let Some(result) = CatalogStore::find_ringbuffer_by_name(
+		&mut Transaction::Admin(&mut *txn),
+		namespace.id,
+		"test_ringbuffer",
+	)
+	.unwrap()
+	{
 		return result;
 	}
 	create_ringbuffer(txn, "test_namespace", "test_ringbuffer", 100, &[])
@@ -139,7 +154,9 @@ pub fn create_ringbuffer(
 	columns: &[RingBufferColumnToCreate],
 ) -> RingBufferDef {
 	// First look up the namespace to get its ID
-	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+	let namespace_def = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
+		.unwrap()
+		.expect("Namespace not found");
 
 	CatalogStore::create_ringbuffer(
 		txn,
@@ -160,7 +177,7 @@ pub fn create_test_ringbuffer_column(
 	constraint: TypeConstraint,
 	policies: Vec<ColumnPolicyKind>,
 ) {
-	let columns = CatalogStore::list_columns(txn, ringbuffer_id).unwrap();
+	let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut *txn), ringbuffer_id).unwrap();
 
 	CatalogStore::create_column(
 		txn,
@@ -182,7 +199,9 @@ pub fn create_test_ringbuffer_column(
 
 pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> FlowDef {
 	// First look up the namespace to get its ID
-	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+	let namespace_def = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
+		.unwrap()
+		.expect("Namespace not found");
 
 	CatalogStore::create_flow(
 		txn,
@@ -198,7 +217,9 @@ pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> F
 pub fn ensure_test_flow(txn: &mut AdminTransaction) -> FlowDef {
 	let namespace = ensure_test_namespace(txn);
 
-	if let Some(result) = CatalogStore::find_flow_by_name(txn, namespace.id, "test_flow").unwrap() {
+	if let Some(result) =
+		CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut *txn), namespace.id, "test_flow").unwrap()
+	{
 		return result;
 	}
 	create_flow(txn, "test_namespace", "test_flow")
@@ -247,7 +268,9 @@ pub fn create_sumtype(
 ) -> SumTypeDef {
 	use crate::store::sumtype::create::SumTypeToCreate;
 
-	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+	let namespace_def = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
+		.unwrap()
+		.expect("Namespace not found");
 
 	CatalogStore::create_sumtype(
 		txn,
@@ -268,7 +291,10 @@ pub fn create_sumtype(
 pub fn ensure_test_sumtype(txn: &mut AdminTransaction) -> SumTypeDef {
 	let namespace = ensure_test_namespace(txn);
 
-	if let Some(result) = CatalogStore::find_sumtype_by_name(txn, namespace.id, "test_sumtype").unwrap() {
+	if let Some(result) =
+		CatalogStore::find_sumtype_by_name(&mut Transaction::Admin(&mut *txn), namespace.id, "test_sumtype")
+			.unwrap()
+	{
 		return result;
 	}
 	create_sumtype(txn, "test_namespace", "test_sumtype", vec![])

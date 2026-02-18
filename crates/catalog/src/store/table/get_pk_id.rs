@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::id::{PrimaryKeyId, TableId},
 	key::table::TableKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::table::schema::table};
 
@@ -13,11 +13,10 @@ impl CatalogStore {
 	/// Get the primary key ID for a table
 	/// Returns None if the table doesn't exist or has no primary key
 	pub(crate) fn get_table_pk_id(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let mut txn = rx.as_transaction();
-		let multi = match txn.get(&TableKey::encoded(table_id))? {
+		let multi = match rx.get(&TableKey::encoded(table_id))? {
 			Some(v) => v,
 			None => return Ok(None),
 		};
@@ -36,6 +35,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId, primitive::PrimitiveId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
@@ -78,7 +78,7 @@ pub mod tests {
 		.unwrap();
 
 		// Get the primary key ID
-		let retrieved_pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id)
+		let retrieved_pk_id = CatalogStore::get_table_pk_id(&mut Transaction::Admin(&mut txn), table.id)
 			.unwrap()
 			.expect("Primary key ID should exist");
 
@@ -91,7 +91,7 @@ pub mod tests {
 		let table = ensure_test_table(&mut txn);
 
 		// Get the primary key ID - should be None
-		let pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id).unwrap();
+		let pk_id = CatalogStore::get_table_pk_id(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 
 		assert!(pk_id.is_none());
 	}
@@ -102,7 +102,7 @@ pub mod tests {
 
 		// Get the primary key ID for non-existent table - should be
 		// None
-		let pk_id = CatalogStore::get_table_pk_id(&mut txn, TableId(999)).unwrap();
+		let pk_id = CatalogStore::get_table_pk_id(&mut Transaction::Admin(&mut txn), TableId(999)).unwrap();
 
 		assert!(pk_id.is_none());
 	}

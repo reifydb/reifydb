@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Filter, nodes::FilterNode, query::QueryPlan};
-use reifydb_transaction::transaction::{AsTransaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::Result;
 
 use crate::{
@@ -29,7 +29,7 @@ impl CompileOperator for FilterCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
 		let mut conditions = self.conditions;
 		if let Some(source) = extract_resolved_source(&self.input) {
-			let mut tx = txn.as_transaction();
+			let mut tx = Transaction::Admin(&mut *txn);
 			for expr in &mut conditions {
 				resolve_is_variant_tags(expr, &source, &compiler.catalog, &mut tx)?;
 			}

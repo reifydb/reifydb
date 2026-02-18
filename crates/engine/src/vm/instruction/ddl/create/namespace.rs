@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::change::CatalogTrackNamespaceChangeOperations, value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreateNamespaceNode;
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
 use crate::vm::services::Services;
@@ -24,7 +24,9 @@ pub(crate) fn create_namespace(
 	let mut parent_id = NamespaceId::ROOT;
 	for i in 0..plan.segments.len().saturating_sub(1) {
 		let prefix: String = plan.segments[..=i].iter().map(|s| s.text()).collect::<Vec<_>>().join(".");
-		if let Some(existing) = services.catalog.find_namespace_by_name(txn, &prefix)? {
+		if let Some(existing) =
+			services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &prefix)?
+		{
 			parent_id = existing.id;
 		} else {
 			let result = services.catalog.create_namespace(
@@ -41,7 +43,7 @@ pub(crate) fn create_namespace(
 	}
 
 	// Create the final (leaf) namespace
-	if let Some(_) = services.catalog.find_namespace_by_name(txn, &full_name)? {
+	if let Some(_) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
 				("namespace", Value::Utf8(full_name)),

@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	id::{ColumnId, RingBufferId, SequenceId, TableId},
 	primitive::PrimitiveId,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{Value, row_number::RowNumber};
 use tracing::instrument;
 
@@ -17,17 +17,17 @@ use crate::{
 
 impl Catalog {
 	#[instrument(name = "catalog::sequence::find", level = "trace", skip(self, txn))]
-	pub fn find_sequence<T: AsTransaction>(&self, txn: &mut T, id: SequenceId) -> crate::Result<Option<Sequence>> {
+	pub fn find_sequence(&self, txn: &mut Transaction<'_>, id: SequenceId) -> crate::Result<Option<Sequence>> {
 		CatalogStore::find_sequence(txn, id)
 	}
 
 	#[instrument(name = "catalog::sequence::get", level = "trace", skip(self, txn))]
-	pub fn get_sequence<T: AsTransaction>(&self, txn: &mut T, id: SequenceId) -> crate::Result<Sequence> {
+	pub fn get_sequence(&self, txn: &mut Transaction<'_>, id: SequenceId) -> crate::Result<Sequence> {
 		CatalogStore::get_sequence(txn, id)
 	}
 
 	#[instrument(name = "catalog::sequence::list", level = "debug", skip(self, txn))]
-	pub fn list_sequences<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<Sequence>> {
+	pub fn list_sequences(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<Sequence>> {
 		CatalogStore::list_sequences(txn)
 	}
 

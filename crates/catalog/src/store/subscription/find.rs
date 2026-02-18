@@ -6,17 +6,16 @@ use reifydb_core::{
 	interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef},
 	key::subscription::SubscriptionKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::subscription::schema::subscription};
 
 impl CatalogStore {
 	pub(crate) fn find_subscription(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		id: SubscriptionId,
 	) -> crate::Result<Option<SubscriptionDef>> {
-		let mut txn = rx.as_transaction();
-		let Some(multi) = txn.get(&SubscriptionKey::encoded(id))? else {
+		let Some(multi) = rx.get(&SubscriptionKey::encoded(id))? else {
 			return Ok(None);
 		};
 
@@ -25,7 +24,7 @@ impl CatalogStore {
 		let acknowledged_version =
 			CommitVersion(subscription::SCHEMA.get_u64(&row, subscription::ACKNOWLEDGED_VERSION));
 
-		let columns = Self::list_subscription_columns(&mut txn, id)?;
+		let columns = Self::list_subscription_columns(rx, id)?;
 
 		Ok(Some(SubscriptionDef {
 			id,
@@ -40,6 +39,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::SubscriptionId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, store::subscription::create::SubscriptionToCreate};
 
@@ -55,7 +55,9 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let found = CatalogStore::find_subscription(&mut txn, created.id).unwrap().unwrap();
+		let found = CatalogStore::find_subscription(&mut Transaction::Admin(&mut txn), created.id)
+			.unwrap()
+			.unwrap();
 		assert_eq!(found.id, created.id);
 	}
 
@@ -64,7 +66,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		let non_existent = SubscriptionId(999999);
-		let result = CatalogStore::find_subscription(&mut txn, non_existent).unwrap();
+		let result = CatalogStore::find_subscription(&mut Transaction::Admin(&mut txn), non_existent).unwrap();
 		assert!(result.is_none());
 	}
 }

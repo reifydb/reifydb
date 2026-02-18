@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
 
 use crate::{
@@ -57,8 +57,12 @@ impl CatalogStore {
 	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> crate::Result<ViewDef> {
 		let namespace_id = to_create.namespace;
 
-		if let Some(table) = CatalogStore::find_view_by_name(txn, namespace_id, to_create.name.text())? {
-			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
+		if let Some(table) = CatalogStore::find_view_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			namespace_id,
+			to_create.name.text(),
+		)? {
+			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return_error!(view_already_exists(to_create.name.clone(), &namespace.name, &table.name));
 		}
 
@@ -68,7 +72,7 @@ impl CatalogStore {
 
 		Self::insert_columns_for_view(txn, view_id, to_create)?;
 
-		Ok(Self::get_view(txn, view_id)?)
+		Ok(Self::get_view(&mut Transaction::Admin(&mut *txn), view_id)?)
 	}
 
 	fn store_view(
@@ -116,7 +120,7 @@ impl CatalogStore {
 		to_create: ViewToCreate,
 	) -> crate::Result<()> {
 		// Look up namespace name for error messages
-		let namespace = Self::get_namespace(txn, to_create.namespace)?;
+		let namespace = Self::get_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?;
 
 		for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
 			Self::create_column(

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::error::diagnostic::catalog::namespace_not_found;
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -15,9 +15,9 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_sumtype<T: AsTransaction>(
+	pub(crate) fn compile_create_sumtype(
 		&mut self,
-		rx: &mut T,
+		rx: &mut Transaction<'_>,
 		create: logical::CreateSumTypeNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		let namespace_name = if create.name.namespace.is_empty() {

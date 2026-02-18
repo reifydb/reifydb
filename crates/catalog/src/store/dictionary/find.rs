@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use crate::{
@@ -15,11 +15,10 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_dictionary(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		dictionary_id: DictionaryId,
 	) -> crate::Result<Option<DictionaryDef>> {
-		let mut txn = rx.as_transaction();
-		let Some(multi) = txn.get(&DictionaryKey::encoded(dictionary_id))? else {
+		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id))? else {
 			return Ok(None);
 		};
 
@@ -40,13 +39,12 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_dictionary_by_name(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<DictionaryDef>> {
 		let name = name.as_ref();
-		let mut txn = rx.as_transaction();
-		let mut stream = txn.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
 
 		let mut found_dictionary_id = None;
 		while let Some(entry) = stream.next() {
@@ -67,7 +65,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_dictionary(&mut txn, dictionary_id)?))
+		Ok(Some(Self::get_dictionary(rx, dictionary_id)?))
 	}
 }
 
@@ -75,6 +73,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
 		value::{dictionary::DictionaryId, r#type::Type},
@@ -100,8 +99,9 @@ pub mod tests {
 
 		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 
-		let found =
-			CatalogStore::find_dictionary(&mut txn, created.id).unwrap().expect("Dictionary should exist");
+		let found = CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), created.id)
+			.unwrap()
+			.expect("Dictionary should exist");
 
 		assert_eq!(found.id, created.id);
 		assert_eq!(found.name, created.name);
@@ -114,7 +114,8 @@ pub mod tests {
 	fn test_find_dictionary_not_exists() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::find_dictionary(&mut txn, DictionaryId(999)).unwrap();
+		let result =
+			CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), DictionaryId(999)).unwrap();
 
 		assert!(result.is_none());
 	}
@@ -133,9 +134,13 @@ pub mod tests {
 
 		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 
-		let found = CatalogStore::find_dictionary_by_name(&mut txn, namespace.id, "token_mints")
-			.unwrap()
-			.expect("Should find dictionary by name");
+		let found = CatalogStore::find_dictionary_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace.id,
+			"token_mints",
+		)
+		.unwrap()
+		.expect("Should find dictionary by name");
 
 		assert_eq!(found.id, created.id);
 		assert_eq!(found.name, "token_mints");
@@ -148,7 +153,12 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let result = CatalogStore::find_dictionary_by_name(&mut txn, namespace.id, "nonexistent_dict").unwrap();
+		let result = CatalogStore::find_dictionary_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace.id,
+			"nonexistent_dict",
+		)
+		.unwrap();
 
 		assert!(result.is_none());
 	}
@@ -180,12 +190,22 @@ pub mod tests {
 		CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 
 		// Try to find in namespace2 - should not exist
-		let result = CatalogStore::find_dictionary_by_name(&mut txn, namespace2.id, "shared_name").unwrap();
+		let result = CatalogStore::find_dictionary_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace2.id,
+			"shared_name",
+		)
+		.unwrap();
 
 		assert!(result.is_none());
 
 		// Find in namespace1 - should exist
-		let found = CatalogStore::find_dictionary_by_name(&mut txn, namespace1.id, "shared_name").unwrap();
+		let found = CatalogStore::find_dictionary_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace1.id,
+			"shared_name",
+		)
+		.unwrap();
 
 		assert!(found.is_some());
 	}

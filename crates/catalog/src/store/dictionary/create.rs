@@ -10,7 +10,7 @@ use reifydb_core::{
 		namespace_dictionary::NamespaceDictionaryKey,
 	},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	return_error,
@@ -36,10 +36,12 @@ impl CatalogStore {
 		let namespace_id = to_create.namespace;
 
 		// Check if dictionary already exists
-		if let Some(dictionary) =
-			CatalogStore::find_dictionary_by_name(txn, namespace_id, to_create.name.text())?
-		{
-			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
+		if let Some(dictionary) = CatalogStore::find_dictionary_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			namespace_id,
+			to_create.name.text(),
+		)? {
+			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return_error!(dictionary_already_exists(
 				to_create.name.clone(),
 				&namespace.name,
@@ -59,7 +61,7 @@ impl CatalogStore {
 		// Initialize dictionary sequence counter to 0
 		Self::initialize_dictionary_sequence(txn, dictionary_id)?;
 
-		Ok(Self::get_dictionary(txn, dictionary_id)?)
+		Ok(Self::get_dictionary(&mut Transaction::Admin(&mut *txn), dictionary_id)?)
 	}
 
 	fn store_dictionary(

@@ -5,14 +5,14 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowEdgeDef, FlowEdgeId},
 	internal,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn get_flow_edge(txn: &mut impl AsTransaction, edge_id: FlowEdgeId) -> crate::Result<FlowEdgeDef> {
-		CatalogStore::find_flow_edge(txn, edge_id)?.ok_or_else(|| {
+	pub(crate) fn get_flow_edge(rx: &mut Transaction<'_>, edge_id: FlowEdgeId) -> crate::Result<FlowEdgeDef> {
+		CatalogStore::find_flow_edge(rx, edge_id)?.ok_or_else(|| {
 			Error(internal!(
 				"Flow edge with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				edge_id
@@ -25,6 +25,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowEdgeId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -41,7 +42,7 @@ pub mod tests {
 		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		let result = CatalogStore::get_flow_edge(&mut txn, edge.id).unwrap();
+		let result = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap();
 		assert_eq!(result.id, edge.id);
 		assert_eq!(result.flow, flow.id);
 		assert_eq!(result.source, node1.id);
@@ -52,7 +53,7 @@ pub mod tests {
 	fn test_get_flow_edge_not_found() {
 		let mut txn = create_test_admin_transaction();
 
-		let err = CatalogStore::get_flow_edge(&mut txn, FlowEdgeId(999)).unwrap_err();
+		let err = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), FlowEdgeId(999)).unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("FlowEdgeId(999)"));
 		assert!(err.message.contains("not found in catalog"));

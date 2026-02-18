@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::plan::{
 	logical,
@@ -9,9 +9,9 @@ use crate::plan::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_subscription<T: AsTransaction>(
+	pub(crate) fn compile_create_subscription(
 		&mut self,
-		rx: &mut T,
+		rx: &mut Transaction<'_>,
 		create: logical::CreateSubscriptionNode<'bump>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		let as_clause = if !create.as_clause.is_empty() {

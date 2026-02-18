@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::primitive::{PrimitiveDef, PrimitiveId},
 	internal,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
@@ -14,7 +14,7 @@ impl CatalogStore {
 	/// Get a primitive (table or view) by its PrimitiveId
 	/// Returns an error if the primitive doesn't exist
 	pub(crate) fn get_primitive(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<PrimitiveDef> {
 		let primitive_id = primitive.into();
@@ -45,6 +45,7 @@ pub mod tests {
 		primitive::{PrimitiveDef, PrimitiveId},
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, r#type::Type},
@@ -62,7 +63,7 @@ pub mod tests {
 		let table = ensure_test_table(&mut txn);
 
 		// Get primitive by TableId
-		let primitive = CatalogStore::get_primitive(&mut txn, table.id).unwrap();
+		let primitive = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 
 		match primitive {
 			PrimitiveDef::Table(t) => {
@@ -73,7 +74,9 @@ pub mod tests {
 		}
 
 		// Get primitive by PrimitiveId::Table
-		let primitive = CatalogStore::get_primitive(&mut txn, PrimitiveId::Table(table.id)).unwrap();
+		let primitive =
+			CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), PrimitiveId::Table(table.id))
+				.unwrap();
 
 		match primitive {
 			PrimitiveDef::Table(t) => {
@@ -103,7 +106,7 @@ pub mod tests {
 		.unwrap();
 
 		// Get primitive by ViewId
-		let primitive = CatalogStore::get_primitive(&mut txn, view.id).unwrap();
+		let primitive = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), view.id).unwrap();
 
 		match primitive {
 			PrimitiveDef::View(v) => {
@@ -114,7 +117,9 @@ pub mod tests {
 		}
 
 		// Get primitive by PrimitiveId::View
-		let primitive = CatalogStore::get_primitive(&mut txn, PrimitiveId::View(view.id)).unwrap();
+		let primitive =
+			CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), PrimitiveId::View(view.id))
+				.unwrap();
 
 		match primitive {
 			PrimitiveDef::View(v) => {
@@ -129,7 +134,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// Non-existent table should error
-		let result = CatalogStore::get_primitive(&mut txn, TableId(999));
+		let result = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), TableId(999));
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();
@@ -142,7 +147,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// Non-existent view should error
-		let result = CatalogStore::get_primitive(&mut txn, ViewId(999));
+		let result = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), ViewId(999));
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();

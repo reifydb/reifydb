@@ -7,7 +7,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{AlterFlowAction, AlterFlowNode};
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
 use crate::vm::services::Services;
@@ -22,7 +22,8 @@ pub(crate) fn execute_alter_flow(
 	let flow_name = plan.flow.name.text();
 
 	// Find the namespace
-	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
+	let Some(namespace) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), namespace_name)?
+	else {
 		let ns_fragment =
 			plan.flow.namespace.clone().unwrap_or_else(|| Fragment::internal("default".to_string()));
 
@@ -30,7 +31,8 @@ pub(crate) fn execute_alter_flow(
 	};
 
 	// Find the flow
-	let Some(flow) = services.catalog.find_flow_by_name(txn, namespace.id, flow_name)? else {
+	let Some(flow) = services.catalog.find_flow_by_name(&mut Transaction::Admin(txn), namespace.id, flow_name)?
+	else {
 		return_error!(flow_not_found(plan.flow.name.clone(), &namespace.name, flow_name,));
 	};
 

@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreateTableNode;
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	return_error,
@@ -30,7 +30,11 @@ pub(crate) fn create_table(
 	plan: CreateTableNode,
 ) -> crate::Result<Columns> {
 	// Check if table already exists using the catalog
-	if let Some(_) = services.catalog.find_table_by_name(txn, plan.namespace.def().id, plan.table.text())? {
+	if let Some(_) = services.catalog.find_table_by_name(
+		&mut Transaction::Admin(txn),
+		plan.namespace.def().id,
+		plan.table.text(),
+	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
@@ -59,7 +63,7 @@ pub(crate) fn create_table(
 	// If primary key is specified, create it immediately
 	if let Some(pk_def) = plan.primary_key {
 		// Get the table columns to resolve column IDs
-		let table_columns = services.catalog.list_columns(txn, table.id)?;
+		let table_columns = services.catalog.list_columns(&mut Transaction::Admin(txn), table.id)?;
 
 		// Resolve column names to IDs
 		let mut column_ids = Vec::new();
@@ -98,7 +102,7 @@ fn expand_sumtype_columns(
 	for col in columns {
 		match col.constraint.constraint() {
 			Some(Constraint::SumType(id)) => {
-				let def = services.catalog.get_sumtype(txn, *id)?;
+				let def = services.catalog.get_sumtype(&mut Transaction::Admin(&mut *txn), *id)?;
 				let col_name = col.name.text();
 
 				expanded.push(TableColumnToCreate {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	nodes::AlterFlowIdentifier,
@@ -12,9 +12,9 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_alter_flow<T: AsTransaction>(
+	pub(crate) fn compile_alter_flow(
 		&mut self,
-		rx: &mut T,
+		rx: &mut Transaction<'_>,
 		alter: logical::alter::flow::AlterFlowNode<'bump>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		let flow = AlterFlowIdentifier {

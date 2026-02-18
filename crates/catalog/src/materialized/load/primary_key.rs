@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{column::ColumnDef, id::PrimaryKeyId, key::PrimaryKeyDef},
 	key::primary_key::PrimaryKeyKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
 use crate::{
@@ -17,14 +17,13 @@ use crate::{
 };
 
 /// Load all primary keys from storage
-pub fn load_primary_keys(rx: &mut impl AsTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
-	let mut txn = rx.as_transaction();
+pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let range = PrimaryKeyKey::full_scan();
 
 	// Collect entries first to avoid borrow issues with nested async calls
 	let mut entries = Vec::new();
 	{
-		let mut stream = txn.range(range, 1024)?;
+		let mut stream = rx.range(range, 1024)?;
 		while let Some(entry) = stream.next() {
 			entries.push(entry?);
 		}
@@ -41,7 +40,7 @@ pub fn load_primary_keys(rx: &mut impl AsTransaction, catalog: &MaterializedCata
 
 		let mut columns = Vec::new();
 		for column_id in column_ids {
-			let column_def = CatalogStore::get_column(&mut txn, column_id)?;
+			let column_def = CatalogStore::get_column(rx, column_id)?;
 			columns.push(ColumnDef {
 				id: column_def.id,
 				name: column_def.name,

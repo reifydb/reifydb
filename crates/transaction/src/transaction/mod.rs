@@ -140,39 +140,17 @@ impl<'a> From<&'a mut QueryTransaction> for Transaction<'a> {
 	}
 }
 
-pub trait AsTransaction: Send {
-	fn as_transaction(&mut self) -> Transaction<'_>;
-}
-
-impl AsTransaction for CommandTransaction {
-	fn as_transaction(&mut self) -> Transaction<'_> {
-		Transaction::Command(self)
-	}
-}
-
-impl AsTransaction for AdminTransaction {
-	fn as_transaction(&mut self) -> Transaction<'_> {
-		Transaction::Admin(self)
-	}
-}
-
-impl AsTransaction for QueryTransaction {
-	fn as_transaction(&mut self) -> Transaction<'_> {
-		Transaction::Query(self)
-	}
-}
-
-impl AsTransaction for Transaction<'_> {
-	fn as_transaction(&mut self) -> Transaction<'_> {
+impl<'a> Transaction<'a> {
+	/// Re-borrow this transaction with a shorter lifetime, enabling
+	/// multiple sequential uses of the same transaction binding.
+	pub fn reborrow(&mut self) -> Transaction<'_> {
 		match self {
 			Transaction::Command(cmd) => Transaction::Command(cmd),
 			Transaction::Admin(admin) => Transaction::Admin(admin),
 			Transaction::Query(qry) => Transaction::Query(qry),
 		}
 	}
-}
 
-impl<'a> Transaction<'a> {
 	/// Extract the underlying CommandTransaction, panics if this is
 	/// not a Command transaction
 	pub fn command(self) -> &'a mut CommandTransaction {

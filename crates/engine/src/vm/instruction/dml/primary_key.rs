@@ -8,7 +8,7 @@ use reifydb_core::{
 	sort::SortDirection,
 	value::index::{encoded::EncodedIndexKey, layout::EncodedIndexLayout},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::r#type::Type;
 
 /// Extract primary key values from a encoded and encode them as an index key
@@ -167,9 +167,9 @@ pub fn encode_primary_key(
 }
 
 /// Helper to load the primary key definition if the table has one
-pub fn get_primary_key<T: AsTransaction>(
+pub fn get_primary_key(
 	catalog: &Catalog,
-	txn: &mut T,
+	txn: &mut Transaction<'_>,
 	table: &TableDef,
 ) -> crate::Result<Option<PrimaryKeyDef>> {
 	if let Some(_pk_id) = catalog.get_table_pk_id(txn, table.id)? {

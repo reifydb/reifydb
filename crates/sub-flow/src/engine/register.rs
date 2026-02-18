@@ -20,7 +20,7 @@ use reifydb_rql::flow::{
 		},
 	},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::error::Error;
 use tracing::instrument;
 
@@ -74,7 +74,7 @@ impl FlowEngine {
 			SourceTable {
 				table,
 			} => {
-				let table = self.catalog.get_table(txn, table)?;
+				let table = self.catalog.get_table(&mut Transaction::Command(&mut *txn), table)?;
 
 				self.add_source(flow.id, node.id, PrimitiveId::table(table.id));
 				self.operators.insert(
@@ -85,7 +85,7 @@ impl FlowEngine {
 			SourceView {
 				view,
 			} => {
-				let view = self.catalog.get_view(txn, view)?;
+				let view = self.catalog.get_view(&mut Transaction::Command(&mut *txn), view)?;
 				self.add_source(flow.id, node.id, PrimitiveId::view(view.id));
 				self.operators.insert(
 					node.id,
@@ -95,7 +95,8 @@ impl FlowEngine {
 			SourceFlow {
 				flow: source_flow,
 			} => {
-				let source_flow_def = self.catalog.get_flow(txn, source_flow)?;
+				let source_flow_def =
+					self.catalog.get_flow(&mut Transaction::Command(&mut *txn), source_flow)?;
 				self.add_source(flow.id, node.id, PrimitiveId::flow(source_flow_def.id));
 				self.operators.insert(
 					node.id,
@@ -115,7 +116,7 @@ impl FlowEngine {
 					.clone();
 
 				self.add_sink(flow.id, node.id, PrimitiveId::view(*view));
-				let resolved = self.catalog.resolve_view(txn, view)?;
+				let resolved = self.catalog.resolve_view(&mut Transaction::Command(&mut *txn), view)?;
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SinkView(SinkViewOperator::new(parent, node.id, resolved))),
@@ -138,7 +139,9 @@ impl FlowEngine {
 
 				// Note: Subscriptions use UUID-based IDs and are not added to the sinks map
 				// which uses PrimitiveId (u64-based). Subscriptions are ephemeral 1:1 mapped.
-				let resolved = self.catalog.resolve_subscription(txn, subscription)?;
+				let resolved = self
+					.catalog
+					.resolve_subscription(&mut Transaction::Command(&mut *txn), subscription)?;
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SinkSubscription(SinkSubscriptionOperator::new(

@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::change::CatalogTrackRingBufferChangeOperations, value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreateRingBufferNode;
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
 use crate::vm::services::Services;
@@ -17,9 +17,11 @@ pub(crate) fn create_ringbuffer(
 	plan: CreateRingBufferNode,
 ) -> crate::Result<Columns> {
 	// Check if ring buffer already exists using the catalog
-	if let Some(_) =
-		services.catalog.find_ringbuffer_by_name(txn, plan.namespace.def().id, plan.ringbuffer.text())?
-	{
+	if let Some(_) = services.catalog.find_ringbuffer_by_name(
+		&mut Transaction::Admin(txn),
+		plan.namespace.def().id,
+		plan.ringbuffer.text(),
+	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),

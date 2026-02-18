@@ -13,6 +13,7 @@ use reifydb_testing::testscript::{
 	command::Command,
 	runner::{Runner, run_path},
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 use test_each_file::test_each_path;
 
@@ -156,7 +157,8 @@ impl Runner for TestRunner {
 					)
 					.unwrap();
 
-					explain_physical_plan(&catalog, &mut dummy_tx, query).unwrap()
+					explain_physical_plan(&catalog, &mut Transaction::Admin(&mut dummy_tx), query)
+						.unwrap()
 				});
 				writeln!(output, "{}", result).unwrap();
 			}

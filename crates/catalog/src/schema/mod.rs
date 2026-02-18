@@ -21,7 +21,7 @@ use reifydb_core::{
 	error::diagnostic::internal::internal,
 	key::schema::{SchemaFieldKey, SchemaKey},
 };
-use reifydb_transaction::{single::SingleTransaction, transaction::AsTransaction};
+use reifydb_transaction::{single::SingleTransaction, transaction::Transaction};
 use reifydb_type::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
@@ -160,7 +160,7 @@ impl SchemaRegistry {
 	pub fn get_or_load(
 		&self,
 		fingerprint: SchemaFingerprint,
-		txn: &mut impl AsTransaction,
+		txn: &mut Transaction<'_>,
 	) -> crate::Result<Option<Schema>> {
 		// Check cache first
 		if let Some(entry) = self.0.cache.get(&fingerprint) {
@@ -170,12 +170,9 @@ impl SchemaRegistry {
 			return Ok(Some(schema));
 		}
 
-		// Check storage (inlined from find_schema_by_fingerprint for Transaction)
-		let mut std_txn = txn.as_transaction();
-
 		// Read schema header
 		let header_key = SchemaKey::encoded(fingerprint);
-		let header_entry = match std_txn.get(&header_key)? {
+		let header_entry = match txn.get(&header_key)? {
 			Some(entry) => entry,
 			None => {
 				Span::current().record("cache_hit", false);
@@ -190,7 +187,7 @@ impl SchemaRegistry {
 		let mut fields = Vec::with_capacity(field_count);
 		for i in 0..field_count {
 			let field_key = SchemaFieldKey::encoded(fingerprint, i as u16);
-			let field_entry = std_txn.get(&field_key)?.ok_or_else(|| {
+			let field_entry = txn.get(&field_key)?.ok_or_else(|| {
 				Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
 			})?;
 

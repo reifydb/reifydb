@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_transaction::{
 	change::TransactionalDictionaryChanges,
-	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
+	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{
 	fragment::Fragment,
@@ -37,12 +37,12 @@ impl From<DictionaryToCreate> for StoreDictionaryToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self, txn))]
-	pub fn find_dictionary<T: AsTransaction>(
+	pub fn find_dictionary(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		id: DictionaryId,
 	) -> crate::Result<Option<DictionaryDef>> {
-		match txn.as_transaction() {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(dict) = self.materialized.find_dictionary_at(id, cmd.version()) {
@@ -50,7 +50,9 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary(cmd, id)? {
+				if let Some(dict) =
+					CatalogStore::find_dictionary(&mut Transaction::Command(&mut *cmd), id)?
+				{
 					warn!(
 						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -77,7 +79,9 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary(admin, id)? {
+				if let Some(dict) =
+					CatalogStore::find_dictionary(&mut Transaction::Admin(&mut *admin), id)?
+				{
 					warn!(
 						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -94,7 +98,9 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary(qry, id)? {
+				if let Some(dict) =
+					CatalogStore::find_dictionary(&mut Transaction::Query(&mut *qry), id)?
+				{
 					warn!(
 						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -108,13 +114,13 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::dictionary::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_dictionary_by_name<T: AsTransaction>(
+	pub fn find_dictionary_by_name(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
 	) -> crate::Result<Option<DictionaryDef>> {
-		match txn.as_transaction() {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(dict) =
@@ -124,7 +130,11 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary_by_name(cmd, namespace, name)? {
+				if let Some(dict) = CatalogStore::find_dictionary_by_name(
+					&mut Transaction::Command(&mut *cmd),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -156,7 +166,11 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary_by_name(admin, namespace, name)? {
+				if let Some(dict) = CatalogStore::find_dictionary_by_name(
+					&mut Transaction::Admin(&mut *admin),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -175,7 +189,11 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary_by_name(qry, namespace, name)? {
+				if let Some(dict) = CatalogStore::find_dictionary_by_name(
+					&mut Transaction::Query(&mut *qry),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -189,7 +207,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::dictionary::get", level = "trace", skip(self, txn))]
-	pub fn get_dictionary<T: AsTransaction>(&self, txn: &mut T, id: DictionaryId) -> crate::Result<DictionaryDef> {
+	pub fn get_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> crate::Result<DictionaryDef> {
 		CatalogStore::get_dictionary(txn, id)
 	}
 
@@ -205,16 +223,16 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::dictionary::list", level = "debug", skip(self, txn))]
-	pub fn list_dictionaries<T: AsTransaction>(
+	pub fn list_dictionaries(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 	) -> crate::Result<Vec<DictionaryDef>> {
 		CatalogStore::list_dictionaries(txn, namespace)
 	}
 
 	#[instrument(name = "catalog::dictionary::list_all", level = "debug", skip(self, txn))]
-	pub fn list_all_dictionaries<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<DictionaryDef>> {
+	pub fn list_all_dictionaries(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<DictionaryDef>> {
 		CatalogStore::list_all_dictionaries(txn)
 	}
 }

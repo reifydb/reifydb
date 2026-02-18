@@ -39,6 +39,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{PrimaryKeyId, RingBufferId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};
 
@@ -52,7 +53,8 @@ pub mod tests {
 		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id).unwrap();
 
 		// Verify it was set
-		let retrieved_pk = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).unwrap();
+		let retrieved_pk =
+			CatalogStore::get_ringbuffer_pk_id(&mut Transaction::Admin(&mut txn), ringbuffer.id).unwrap();
 		assert_eq!(retrieved_pk, Some(pk_id));
 	}
 
@@ -82,7 +84,8 @@ pub mod tests {
 		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id2).unwrap();
 
 		// Verify second one is set
-		let retrieved_pk = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).unwrap();
+		let retrieved_pk =
+			CatalogStore::get_ringbuffer_pk_id(&mut Transaction::Admin(&mut txn), ringbuffer.id).unwrap();
 		assert_eq!(retrieved_pk, Some(pk_id2));
 	}
 }

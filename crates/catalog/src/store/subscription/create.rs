@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey},
 };
-use reifydb_transaction::transaction::{AsTransaction, admin::AdminTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::r#type::Type;
 
 use crate::{
@@ -41,7 +41,7 @@ impl CatalogStore {
 		Self::store_subscription(txn, subscription_id)?;
 		Self::insert_columns_for_subscription(txn, subscription_id, &to_create)?;
 
-		Ok(Self::get_subscription(txn, subscription_id)?)
+		Ok(Self::get_subscription(&mut Transaction::Admin(&mut *txn), subscription_id)?)
 	}
 
 	fn store_subscription(txn: &mut AdminTransaction, subscription: SubscriptionId) -> crate::Result<()> {
@@ -82,11 +82,10 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn list_subscription_columns(
-		txn: &mut impl AsTransaction,
+		txn: &mut Transaction<'_>,
 		subscription: SubscriptionId,
 	) -> crate::Result<Vec<SubscriptionColumnDef>> {
-		let mut std_txn = txn.as_transaction();
-		let mut stream = std_txn.range(SubscriptionColumnKey::subscription_range(subscription), 256)?;
+		let mut stream = txn.range(SubscriptionColumnKey::subscription_range(subscription), 256)?;
 
 		let mut columns = Vec::new();
 		while let Some(result) = stream.next() {

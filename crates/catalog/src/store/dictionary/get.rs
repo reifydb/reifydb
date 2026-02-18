@@ -2,14 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::dictionary::DictionaryDef, return_internal_error};
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn get_dictionary(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		dictionary: DictionaryId,
 	) -> crate::Result<DictionaryDef> {
 		match Self::find_dictionary(rx, dictionary)? {
@@ -25,6 +25,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
 		value::{dictionary::DictionaryId, r#type::Type},
@@ -46,7 +47,7 @@ pub mod tests {
 
 		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 
-		let result = CatalogStore::get_dictionary(&mut txn, created.id).unwrap();
+		let result = CatalogStore::get_dictionary(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 
 		assert_eq!(result.id, created.id);
 		assert_eq!(result.name, "test_dict");
@@ -58,7 +59,7 @@ pub mod tests {
 	fn test_get_dictionary_not_exists() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::get_dictionary(&mut txn, DictionaryId(999));
+		let result = CatalogStore::get_dictionary(&mut Transaction::Admin(&mut txn), DictionaryId(999));
 
 		assert!(result.is_err());
 	}

@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, sumtype::SumTypeDef},
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, return_error};
 
 use super::schema::{sumtype as sumtype_schema, sumtype_namespace};
@@ -26,8 +26,12 @@ impl CatalogStore {
 	) -> crate::Result<SumTypeDef> {
 		let namespace_id = to_create.namespace;
 
-		if let Some(_existing) = CatalogStore::find_sumtype_by_name(txn, namespace_id, to_create.name.text())? {
-			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
+		if let Some(_existing) = CatalogStore::find_sumtype_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			namespace_id,
+			to_create.name.text(),
+		)? {
+			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return_error!(sumtype_already_exists(
 				to_create.name.clone(),
 				&namespace.name,
@@ -54,7 +58,7 @@ impl CatalogStore {
 
 		txn.set(&NamespaceSumTypeKey::encoded(namespace_id, sumtype_id), ns_row)?;
 
-		Ok(CatalogStore::get_sumtype(txn, sumtype_id)?)
+		Ok(CatalogStore::get_sumtype(&mut Transaction::Admin(&mut *txn), sumtype_id)?)
 	}
 }
 

@@ -8,14 +8,14 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn get_ringbuffer(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RingBufferDef> {
 		Self::find_ringbuffer(rx, ringbuffer)?.ok_or_else(|| {
@@ -27,7 +27,7 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn get_ringbuffer_metadata(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RingBufferMetadata> {
 		Self::find_ringbuffer_metadata(rx, ringbuffer)?.ok_or_else(|| {
@@ -43,6 +43,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::RingBufferId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};
 
@@ -51,7 +52,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
-		let result = CatalogStore::get_ringbuffer(&mut txn, ringbuffer.id).unwrap();
+		let result = CatalogStore::get_ringbuffer(&mut Transaction::Admin(&mut txn), ringbuffer.id).unwrap();
 
 		assert_eq!(result.id, ringbuffer.id);
 		assert_eq!(result.name, ringbuffer.name);
@@ -61,7 +62,7 @@ pub mod tests {
 	fn test_get_ringbuffer_not_exists() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::get_ringbuffer(&mut txn, RingBufferId(999));
+		let result = CatalogStore::get_ringbuffer(&mut Transaction::Admin(&mut txn), RingBufferId(999));
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();
@@ -75,7 +76,8 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
-		let result = CatalogStore::get_ringbuffer_metadata(&mut txn, ringbuffer.id).unwrap();
+		let result = CatalogStore::get_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
+			.unwrap();
 
 		assert_eq!(result.id, ringbuffer.id);
 		assert_eq!(result.capacity, ringbuffer.capacity);
@@ -85,7 +87,8 @@ pub mod tests {
 	fn test_get_ringbuffer_metadata_not_exists() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::get_ringbuffer_metadata(&mut txn, RingBufferId(999));
+		let result =
+			CatalogStore::get_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), RingBufferId(999));
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();

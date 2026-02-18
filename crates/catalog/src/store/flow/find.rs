@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
@@ -16,9 +16,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_flow(rx: &mut impl AsTransaction, id: FlowId) -> crate::Result<Option<FlowDef>> {
-		let mut txn = rx.as_transaction();
-		let Some(multi) = txn.get(&FlowKey::encoded(id))? else {
+	pub(crate) fn find_flow(rx: &mut Transaction<'_>, id: FlowId) -> crate::Result<Option<FlowDef>> {
+		let Some(multi) = rx.get(&FlowKey::encoded(id))? else {
 			return Ok(None);
 		};
 
@@ -38,13 +37,12 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_flow_by_name(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<FlowDef>> {
 		let name = name.as_ref();
-		let mut txn = rx.as_transaction();
-		let mut stream = txn.range(NamespaceFlowKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceFlowKey::full_scan(namespace), 1024)?;
 
 		let mut found_flow = None;
 		while let Some(entry) = stream.next() {
@@ -63,13 +61,14 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_flow(&mut txn, flow)?))
+		Ok(Some(Self::get_flow(rx, flow)?))
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -85,7 +84,13 @@ pub mod tests {
 		create_flow(&mut txn, "namespace_one", "flow_one");
 		create_flow(&mut txn, "namespace_two", "flow_two");
 
-		let result = CatalogStore::find_flow_by_name(&mut txn, namespace_two.id, "flow_two").unwrap().unwrap();
+		let result = CatalogStore::find_flow_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace_two.id,
+			"flow_two",
+		)
+		.unwrap()
+		.unwrap();
 		assert_eq!(result.name, "flow_two");
 		assert_eq!(result.namespace, namespace_two.id);
 	}
@@ -95,7 +100,12 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
-		let result = CatalogStore::find_flow_by_name(&mut txn, test_namespace.id, "some_flow").unwrap();
+		let result = CatalogStore::find_flow_by_name(
+			&mut Transaction::Admin(&mut txn),
+			test_namespace.id,
+			"some_flow",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -107,7 +117,12 @@ pub mod tests {
 		create_flow(&mut txn, "test_namespace", "flow_one");
 		create_flow(&mut txn, "test_namespace", "flow_two");
 
-		let result = CatalogStore::find_flow_by_name(&mut txn, test_namespace.id, "flow_three").unwrap();
+		let result = CatalogStore::find_flow_by_name(
+			&mut Transaction::Admin(&mut txn),
+			test_namespace.id,
+			"flow_three",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -120,7 +135,9 @@ pub mod tests {
 		create_flow(&mut txn, "namespace_one", "my_flow");
 
 		// Flow exists in namespace_one but not in namespace_two
-		let result = CatalogStore::find_flow_by_name(&mut txn, namespace_two.id, "my_flow").unwrap();
+		let result =
+			CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), namespace_two.id, "my_flow")
+				.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -132,10 +149,14 @@ pub mod tests {
 		create_flow(&mut txn, "test_namespace", "MyFlow");
 
 		// Flow names are case-sensitive
-		let result = CatalogStore::find_flow_by_name(&mut txn, test_namespace.id, "myflow").unwrap();
+		let result =
+			CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), test_namespace.id, "myflow")
+				.unwrap();
 		assert!(result.is_none());
 
-		let result = CatalogStore::find_flow_by_name(&mut txn, test_namespace.id, "MyFlow").unwrap();
+		let result =
+			CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), test_namespace.id, "MyFlow")
+				.unwrap();
 		assert!(result.is_some());
 	}
 
@@ -146,7 +167,7 @@ pub mod tests {
 
 		let flow = create_flow(&mut txn, "test_namespace", "test_flow");
 
-		let result = CatalogStore::find_flow(&mut txn, flow.id).unwrap().unwrap();
+		let result = CatalogStore::find_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap().unwrap();
 		assert_eq!(result.id, flow.id);
 		assert_eq!(result.name, "test_flow");
 	}
@@ -155,7 +176,7 @@ pub mod tests {
 	fn test_find_flow_by_id_not_found() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::find_flow(&mut txn, 999.into()).unwrap();
+		let result = CatalogStore::find_flow(&mut Transaction::Admin(&mut txn), 999.into()).unwrap();
 		assert!(result.is_none());
 	}
 }

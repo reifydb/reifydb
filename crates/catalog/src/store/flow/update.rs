@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowStatus},
 	key::flow::FlowKey,
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::{CatalogStore, store::flow::schema::flow};
 
@@ -17,7 +17,7 @@ impl CatalogStore {
 		new_name: String,
 	) -> crate::Result<()> {
 		// Get the existing flow
-		let flow = Self::get_flow(txn, flow_id)?;
+		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
 		// Update the name field
 		let mut row = flow::SCHEMA.allocate();
@@ -38,7 +38,7 @@ impl CatalogStore {
 		status: FlowStatus,
 	) -> crate::Result<()> {
 		// Get the existing flow
-		let flow = Self::get_flow(txn, flow_id)?;
+		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
 		// Update the status field
 		let mut row = flow::SCHEMA.allocate();
@@ -57,6 +57,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowStatus;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;
 	use crate::test_utils::ensure_test_flow;
@@ -70,7 +71,7 @@ pub mod tests {
 		CatalogStore::update_flow_name(&mut txn, flow.id, "new_flow_name".to_string()).unwrap();
 
 		// Verify update
-		let updated = CatalogStore::get_flow(&mut txn, flow.id).unwrap();
+		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(updated.name, "new_flow_name");
 		assert_eq!(updated.namespace, flow.namespace);
 		assert_eq!(updated.status, flow.status);
@@ -86,17 +87,17 @@ pub mod tests {
 
 		// Update to Paused
 		CatalogStore::update_flow_status(&mut txn, flow.id, FlowStatus::Paused).unwrap();
-		let updated = CatalogStore::get_flow(&mut txn, flow.id).unwrap();
+		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(updated.status, FlowStatus::Paused);
 
 		// Update to Failed
 		CatalogStore::update_flow_status(&mut txn, flow.id, FlowStatus::Failed).unwrap();
-		let updated = CatalogStore::get_flow(&mut txn, flow.id).unwrap();
+		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(updated.status, FlowStatus::Failed);
 
 		// Update back to Active
 		CatalogStore::update_flow_status(&mut txn, flow.id, FlowStatus::Active).unwrap();
-		let updated = CatalogStore::get_flow(&mut txn, flow.id).unwrap();
+		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(updated.status, FlowStatus::Active);
 	}
 }

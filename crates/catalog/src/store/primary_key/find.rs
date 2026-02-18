@@ -11,7 +11,7 @@ use reifydb_core::{
 	key::primary_key::PrimaryKeyKey,
 	return_internal_error,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
@@ -20,18 +20,17 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_primary_key(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
 		let primitive_id = primitive.into();
-		let mut txn = rx.as_transaction();
 
 		let primary_key_id = match primitive_id {
-			PrimitiveId::Table(table_id) => match Self::get_table_pk_id(&mut txn, table_id)? {
+			PrimitiveId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			PrimitiveId::View(view_id) => match Self::get_view_pk_id(&mut txn, view_id)? {
+			PrimitiveId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
@@ -44,7 +43,7 @@ impl CatalogStore {
 				return Ok(None);
 			}
 			PrimitiveId::RingBuffer(ringbuffer_id) => {
-				match Self::get_ringbuffer_pk_id(&mut txn, ringbuffer_id)? {
+				match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
 					Some(pk_id) => pk_id,
 					None => return Ok(None),
 				}
@@ -56,7 +55,7 @@ impl CatalogStore {
 		};
 
 		// Fetch the primary key details
-		let primary_key_multi = match txn.get(&PrimaryKeyKey::encoded(primary_key_id))? {
+		let primary_key_multi = match rx.get(&PrimaryKeyKey::encoded(primary_key_id))? {
 			Some(multi) => multi,
 			None => return_internal_error!(format!(
 				"Primary key with ID {:?} referenced but not found",
@@ -71,7 +70,7 @@ impl CatalogStore {
 		// Fetch full ColumnDef for each column ID
 		let mut columns = Vec::new();
 		for column_id in column_ids {
-			let column_def = Self::get_column(&mut txn, column_id)?;
+			let column_def = Self::get_column(rx, column_id)?;
 			columns.push(ColumnDef {
 				id: column_def.id,
 				name: column_def.name,
@@ -91,7 +90,7 @@ impl CatalogStore {
 
 	#[inline]
 	pub(crate) fn find_table_primary_key(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
 		Self::find_primary_key(rx, table_id)
@@ -99,7 +98,7 @@ impl CatalogStore {
 
 	#[inline]
 	pub(crate) fn find_view_primary_key(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		view_id: ViewId,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
 		Self::find_primary_key(rx, view_id)

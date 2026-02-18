@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::TransactionalFlowChanges,
-	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
+	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{error, fragment::Fragment};
 use tracing::{instrument, warn};
@@ -41,8 +41,8 @@ impl From<FlowToCreate> for StoreFlowToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::flow::find", level = "trace", skip(self, txn))]
-	pub fn find_flow<T: AsTransaction>(&self, txn: &mut T, id: FlowId) -> crate::Result<Option<FlowDef>> {
-		match txn.as_transaction() {
+	pub fn find_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> crate::Result<Option<FlowDef>> {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(flow) = self.materialized.find_flow_at(id, cmd.version()) {
@@ -50,7 +50,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow(cmd, id)? {
+				if let Some(flow) = CatalogStore::find_flow(&mut Transaction::Command(&mut *cmd), id)? {
 					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(flow));
 				}
@@ -74,7 +74,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow(admin, id)? {
+				if let Some(flow) = CatalogStore::find_flow(&mut Transaction::Admin(&mut *admin), id)? {
 					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(flow));
 				}
@@ -88,7 +88,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow(qry, id)? {
+				if let Some(flow) = CatalogStore::find_flow(&mut Transaction::Query(&mut *qry), id)? {
 					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(flow));
 				}
@@ -99,13 +99,13 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_flow_by_name<T: AsTransaction>(
+	pub fn find_flow_by_name(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
 	) -> crate::Result<Option<FlowDef>> {
-		match txn.as_transaction() {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(flow) =
@@ -115,7 +115,11 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow_by_name(cmd, namespace, name)? {
+				if let Some(flow) = CatalogStore::find_flow_by_name(
+					&mut Transaction::Command(&mut *cmd),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -145,7 +149,11 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow_by_name(admin, namespace, name)? {
+				if let Some(flow) = CatalogStore::find_flow_by_name(
+					&mut Transaction::Admin(&mut *admin),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -164,7 +172,11 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow_by_name(qry, namespace, name)? {
+				if let Some(flow) = CatalogStore::find_flow_by_name(
+					&mut Transaction::Query(&mut *qry),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -178,7 +190,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::get", level = "trace", skip(self, txn))]
-	pub fn get_flow<T: AsTransaction>(&self, txn: &mut T, id: FlowId) -> crate::Result<FlowDef> {
+	pub fn get_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> crate::Result<FlowDef> {
 		self.find_flow(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Flow with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -216,7 +228,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::list_all", level = "debug", skip(self, txn))]
-	pub fn list_flows_all<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<FlowDef>> {
+	pub fn list_flows_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<FlowDef>> {
 		CatalogStore::list_flows_all(txn)
 	}
 

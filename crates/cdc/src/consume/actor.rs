@@ -14,6 +14,7 @@ use reifydb_runtime::actor::{
 	system::ActorConfig,
 	traits::{Actor, Directive},
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::Result;
 use tracing::{debug, error};
 
@@ -208,7 +209,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			}
 		};
 
-		let checkpoint = match CdcCheckpoint::fetch(&mut query, &self.consumer_key) {
+		let checkpoint = match CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &self.consumer_key) {
 			Ok(c) => c,
 			Err(e) => {
 				error!("[Consumer {:?}] Error fetching checkpoint: {}", self.config.consumer_id, e);

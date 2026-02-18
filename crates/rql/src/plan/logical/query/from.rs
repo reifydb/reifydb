@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{err, error::diagnostic::Diagnostic, fragment::Fragment};
 
 use crate::{
@@ -17,10 +17,10 @@ use crate::{
 // Note: Fragment is still imported for use at materialization boundaries (Expression types use owned Fragment)
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_from<T: AsTransaction>(
+	pub(crate) fn compile_from(
 		&self,
 		ast: AstFrom<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		match ast {
 			AstFrom::Source {

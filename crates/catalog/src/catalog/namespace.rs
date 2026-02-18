@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::TransactionalNamespaceChanges,
-	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
+	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{error, fragment::Fragment};
 use tracing::{instrument, warn};
@@ -35,12 +35,12 @@ impl From<NamespaceToCreate> for StoreNamespaceToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::namespace::find", level = "trace", skip(self, txn))]
-	pub fn find_namespace<T: AsTransaction>(
+	pub fn find_namespace(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		id: NamespaceId,
 	) -> crate::Result<Option<NamespaceDef>> {
-		match txn.as_transaction() {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(namespace) = self.materialized.find_namespace_at(id, cmd.version()) {
@@ -48,7 +48,9 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace(cmd, id)? {
+				if let Some(namespace) =
+					CatalogStore::find_namespace(&mut Transaction::Command(&mut *cmd), id)?
+				{
 					warn!(
 						"Namespace with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -75,7 +77,9 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace(admin, id)? {
+				if let Some(namespace) =
+					CatalogStore::find_namespace(&mut Transaction::Admin(&mut *admin), id)?
+				{
 					warn!(
 						"Namespace with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -92,7 +96,9 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace(qry, id)? {
+				if let Some(namespace) =
+					CatalogStore::find_namespace(&mut Transaction::Query(&mut *qry), id)?
+				{
 					warn!(
 						"Namespace with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -106,12 +112,12 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_namespace_by_name<T: AsTransaction>(
+	pub fn find_namespace_by_name(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		name: &str,
 	) -> crate::Result<Option<NamespaceDef>> {
-		match txn.as_transaction() {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(namespace) =
@@ -121,7 +127,10 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace_by_name(cmd, name)? {
+				if let Some(namespace) = CatalogStore::find_namespace_by_name(
+					&mut Transaction::Command(&mut *cmd),
+					name,
+				)? {
 					warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
 					return Ok(Some(namespace));
 				}
@@ -149,7 +158,10 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace_by_name(admin, name)? {
+				if let Some(namespace) = CatalogStore::find_namespace_by_name(
+					&mut Transaction::Admin(&mut *admin),
+					name,
+				)? {
 					warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
 					return Ok(Some(namespace));
 				}
@@ -165,7 +177,9 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace_by_name(qry, name)? {
+				if let Some(namespace) =
+					CatalogStore::find_namespace_by_name(&mut Transaction::Query(&mut *qry), name)?
+				{
 					warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
 					return Ok(Some(namespace));
 				}
@@ -176,7 +190,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::get", level = "trace", skip(self, txn))]
-	pub fn get_namespace<T: AsTransaction>(&self, txn: &mut T, id: NamespaceId) -> crate::Result<NamespaceDef> {
+	pub fn get_namespace(&self, txn: &mut Transaction<'_>, id: NamespaceId) -> crate::Result<NamespaceDef> {
 		self.find_namespace(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Namespace with ID {} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -186,9 +200,9 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::get_by_name", level = "trace", skip(self, txn, name))]
-	pub fn get_namespace_by_name<T: AsTransaction>(
+	pub fn get_namespace_by_name(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		name: impl Into<Fragment> + Send,
 	) -> crate::Result<NamespaceDef> {
 		let name = name.into();
@@ -215,7 +229,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::list_all", level = "debug", skip(self, txn))]
-	pub fn list_namespaces_all<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<NamespaceDef>> {
+	pub fn list_namespaces_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<NamespaceDef>> {
 		CatalogStore::list_namespaces_all(txn)
 	}
 }

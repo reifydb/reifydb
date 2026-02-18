@@ -6,7 +6,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch, sumtype_not_found},
 	interface::catalog::policy::ColumnPolicyKind,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	error::diagnostic::ast::unrecognized_type, fragment::Fragment, return_error, value::constraint::TypeConstraint,
 };
@@ -18,10 +18,10 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_table<T: AsTransaction>(
+	pub(crate) fn compile_create_table(
 		&self,
 		ast: AstCreateTable<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 

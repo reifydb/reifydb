@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::TransactionalViewChanges,
-	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
+	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::{instrument, warn};
@@ -59,8 +59,8 @@ impl From<ViewToCreate> for StoreViewToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::view::find", level = "trace", skip(self, txn))]
-	pub fn find_view<T: AsTransaction>(&self, txn: &mut T, id: ViewId) -> crate::Result<Option<ViewDef>> {
-		match txn.as_transaction() {
+	pub fn find_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> crate::Result<Option<ViewDef>> {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(view) = self.materialized.find_view_at(id, cmd.version()) {
@@ -68,7 +68,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view(cmd, id)? {
+				if let Some(view) = CatalogStore::find_view(&mut Transaction::Command(&mut *cmd), id)? {
 					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(view));
 				}
@@ -92,7 +92,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view(admin, id)? {
+				if let Some(view) = CatalogStore::find_view(&mut Transaction::Admin(&mut *admin), id)? {
 					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(view));
 				}
@@ -106,7 +106,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view(qry, id)? {
+				if let Some(view) = CatalogStore::find_view(&mut Transaction::Query(&mut *qry), id)? {
 					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(view));
 				}
@@ -117,13 +117,13 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_view_by_name<T: AsTransaction>(
+	pub fn find_view_by_name(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
 	) -> crate::Result<Option<ViewDef>> {
-		match txn.as_transaction() {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(view) =
@@ -133,7 +133,11 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view_by_name(cmd, namespace, name)? {
+				if let Some(view) = CatalogStore::find_view_by_name(
+					&mut Transaction::Command(&mut *cmd),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -163,7 +167,11 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view_by_name(admin, namespace, name)? {
+				if let Some(view) = CatalogStore::find_view_by_name(
+					&mut Transaction::Admin(&mut *admin),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -182,7 +190,11 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view_by_name(qry, namespace, name)? {
+				if let Some(view) = CatalogStore::find_view_by_name(
+					&mut Transaction::Query(&mut *qry),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -196,7 +208,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::get", level = "trace", skip(self, txn))]
-	pub fn get_view<T: AsTransaction>(&self, txn: &mut T, id: ViewId) -> crate::Result<ViewDef> {
+	pub fn get_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> crate::Result<ViewDef> {
 		self.find_view(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -236,7 +248,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::list_all", level = "debug", skip(self, txn))]
-	pub fn list_views_all<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<ViewDef>> {
+	pub fn list_views_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<ViewDef>> {
 		CatalogStore::list_views_all(txn)
 	}
 
@@ -251,9 +263,9 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::get_pk_id", level = "trace", skip(self, txn))]
-	pub fn get_view_pk_id<T: AsTransaction>(
+	pub fn get_view_pk_id(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		view_id: ViewId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
 		CatalogStore::get_view_pk_id(txn, view_id)

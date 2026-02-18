@@ -36,6 +36,7 @@ use reifydb_runtime::{
 	},
 	clock::Clock,
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, error::Error};
 use tracing::{Span, debug, info, instrument};
 
@@ -289,7 +290,7 @@ impl CoordinatorActor {
 				}
 			};
 			for flow_id in new_flow_ids {
-				match self.catalog.get_or_load_flow(&mut query, flow_id) {
+				match self.catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
 					Ok((flow, is_new)) => {
 						if is_new {
 							new_flows.push(flow);
@@ -565,7 +566,8 @@ impl CoordinatorActor {
 
 			// Get current checkpoint for this flow
 			let from_version = match self.engine.begin_query() {
-				Ok(mut query) => CdcCheckpoint::fetch(&mut query, &flow_id).unwrap_or(CommitVersion(0)),
+				Ok(mut query) => CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &flow_id)
+					.unwrap_or(CommitVersion(0)),
 				Err(e) => {
 					(consume_ctx.original_reply)(coordinator_error(e));
 					return;

@@ -5,18 +5,17 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
 	key::{Key, namespace::NamespaceKey},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::namespace::schema::namespace};
 
 impl CatalogStore {
-	pub(crate) fn list_namespaces_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<NamespaceDef>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_namespaces_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<NamespaceDef>> {
 		let mut result = Vec::new();
 
 		let namespace_range = NamespaceKey::full_scan();
 
-		let mut stream = txn.range(namespace_range, 1024)?;
+		let mut stream = rx.range(namespace_range, 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let entry = entry?;

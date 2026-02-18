@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::{auth::Identity, catalog::id::IndexId},
 	key::{EncodableKey, index_entry::IndexEntryKey},
 };
-use reifydb_transaction::transaction::command::CommandTransaction;
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{
 	fragment::Fragment,
 	value::{Value, row_number::RowNumber, r#type::Type},
@@ -161,15 +161,19 @@ fn execute_table_insert<V: ValidationMode>(
 
 	// 1. Look up namespace and table from catalog
 	let namespace = catalog
-		.find_namespace_by_name(txn, &pending.namespace)?
+		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
 		.ok_or_else(|| BulkInsertError::namespace_not_found(Fragment::None, &pending.namespace))?;
 
 	let table = catalog
-		.find_table_by_name(txn, namespace.id, &pending.table)?
+		.find_table_by_name(&mut Transaction::Command(txn), namespace.id, &pending.table)?
 		.ok_or_else(|| BulkInsertError::table_not_found(Fragment::None, &pending.namespace, &pending.table))?;
 
 	// 2. Get or create schema with proper field names and constraints
-	let schema = crate::vm::instruction::dml::schema::get_or_create_table_schema(catalog, &table, txn)?;
+	let schema = crate::vm::instruction::dml::schema::get_or_create_table_schema(
+		catalog,
+		&table,
+		&mut Transaction::Command(txn),
+	)?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == std::any::TypeId::of::<Validated>();
@@ -192,13 +196,15 @@ fn execute_table_insert<V: ValidationMode>(
 		// Handle dictionary encoding
 		for (idx, col) in table.columns.iter().enumerate() {
 			if let Some(dict_id) = col.dictionary_id {
-				let dictionary = catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-					reifydb_core::internal_error!(
-						"Dictionary {:?} not found for column {}",
-						dict_id,
-						col.name
-					)
-				})?;
+				let dictionary = catalog
+					.find_dictionary(&mut Transaction::Command(txn), dict_id)?
+					.ok_or_else(|| {
+						reifydb_core::internal_error!(
+							"Dictionary {:?} not found for column {}",
+							dict_id,
+							col.name
+						)
+					})?;
 				let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx])?;
 				values[idx] = entry_id.to_value();
 			}
@@ -236,7 +242,7 @@ fn execute_table_insert<V: ValidationMode>(
 		txn.insert_table(table.clone(), row.clone(), row_number)?;
 
 		// Handle primary key index if table has one
-		if let Some(pk_def) = primary_key::get_primary_key(catalog, txn, &table)? {
+		if let Some(pk_def) = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), &table)? {
 			let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &schema)?;
 			let index_entry_key =
 				IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key.clone());
@@ -276,19 +282,26 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	type_id: std::any::TypeId,
 ) -> crate::Result<RingBufferInsertResult> {
 	let namespace = catalog
-		.find_namespace_by_name(txn, &pending.namespace)?
+		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
 		.ok_or_else(|| BulkInsertError::namespace_not_found(Fragment::None, &pending.namespace))?;
 
-	let ringbuffer = catalog.find_ringbuffer_by_name(txn, namespace.id, &pending.ringbuffer)?.ok_or_else(|| {
-		BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
-	})?;
+	let ringbuffer = catalog
+		.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id, &pending.ringbuffer)?
+		.ok_or_else(|| {
+			BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
+		})?;
 
-	let mut metadata = catalog.find_ringbuffer_metadata(txn, ringbuffer.id)?.ok_or_else(|| {
-		BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
-	})?;
+	let mut metadata =
+		catalog.find_ringbuffer_metadata(&mut Transaction::Command(txn), ringbuffer.id)?.ok_or_else(|| {
+			BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
+		})?;
 
 	// Get or create schema with proper field names and constraints
-	let schema = crate::vm::instruction::dml::schema::get_or_create_ringbuffer_schema(catalog, &ringbuffer, txn)?;
+	let schema = crate::vm::instruction::dml::schema::get_or_create_ringbuffer_schema(
+		catalog,
+		&ringbuffer,
+		&mut Transaction::Command(txn),
+	)?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == std::any::TypeId::of::<Validated>();
@@ -305,13 +318,15 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		// Handle dictionary encoding
 		for (idx, col) in ringbuffer.columns.iter().enumerate() {
 			if let Some(dict_id) = col.dictionary_id {
-				let dictionary = catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-					reifydb_core::internal_error!(
-						"Dictionary {:?} not found for column {}",
-						dict_id,
-						col.name
-					)
-				})?;
+				let dictionary = catalog
+					.find_dictionary(&mut Transaction::Command(txn), dict_id)?
+					.ok_or_else(|| {
+						reifydb_core::internal_error!(
+							"Dictionary {:?} not found for column {}",
+							dict_id,
+							col.name
+						)
+					})?;
 				let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx])?;
 				values[idx] = entry_id.to_value();
 			}

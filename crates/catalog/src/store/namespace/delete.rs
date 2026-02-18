@@ -22,6 +22,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::fragment::Fragment;
 
 	use crate::{CatalogStore, store::namespace::create::NamespaceToCreate};
@@ -41,14 +42,14 @@ pub mod tests {
 		.unwrap();
 
 		// Verify it exists
-		let found = CatalogStore::find_namespace_by_name(&mut txn, "test_ns").unwrap();
+		let found = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_ns").unwrap();
 		assert!(found.is_some());
 
 		// Delete it
 		CatalogStore::delete_namespace(&mut txn, created.id).unwrap();
 
 		// Verify it's gone
-		let found = CatalogStore::find_namespace_by_name(&mut txn, "test_ns").unwrap();
+		let found = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_ns").unwrap();
 		assert!(found.is_none());
 	}
 

@@ -17,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::TransactionalTableChanges,
-	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
+	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{
 	error,
@@ -88,8 +88,8 @@ impl From<TableToCreate> for StoreTableToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self, txn))]
-	pub fn find_table<T: AsTransaction>(&self, txn: &mut T, id: TableId) -> crate::Result<Option<TableDef>> {
-		match txn.as_transaction() {
+	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> crate::Result<Option<TableDef>> {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(table) = self.materialized.find_table_at(id, cmd.version()) {
@@ -97,7 +97,8 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table(cmd, id)? {
+				if let Some(table) = CatalogStore::find_table(&mut Transaction::Command(&mut *cmd), id)?
+				{
 					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(table));
 				}
@@ -121,7 +122,8 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table(admin, id)? {
+				if let Some(table) = CatalogStore::find_table(&mut Transaction::Admin(&mut *admin), id)?
+				{
 					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(table));
 				}
@@ -135,7 +137,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table(qry, id)? {
+				if let Some(table) = CatalogStore::find_table(&mut Transaction::Query(&mut *qry), id)? {
 					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(table));
 				}
@@ -146,13 +148,13 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_table_by_name<T: AsTransaction>(
+	pub fn find_table_by_name(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
 	) -> crate::Result<Option<TableDef>> {
-		match txn.as_transaction() {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
 				if let Some(table) =
@@ -162,7 +164,11 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table_by_name(cmd, namespace, name)? {
+				if let Some(table) = CatalogStore::find_table_by_name(
+					&mut Transaction::Command(&mut *cmd),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -193,7 +199,11 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table_by_name(admin, namespace, name)? {
+				if let Some(table) = CatalogStore::find_table_by_name(
+					&mut Transaction::Admin(&mut *admin),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -212,7 +222,11 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table_by_name(qry, namespace, name)? {
+				if let Some(table) = CatalogStore::find_table_by_name(
+					&mut Transaction::Query(&mut *qry),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -226,7 +240,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::get", level = "trace", skip(self, txn))]
-	pub fn get_table<T: AsTransaction>(&self, txn: &mut T, id: TableId) -> crate::Result<TableDef> {
+	pub fn get_table(&self, txn: &mut Transaction<'_>, id: TableId) -> crate::Result<TableDef> {
 		self.find_table(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -236,9 +250,9 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::get_by_name", level = "trace", skip(self, txn, name))]
-	pub fn get_table_by_name<T: AsTransaction>(
+	pub fn get_table_by_name(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl Into<Fragment> + Send,
 	) -> crate::Result<TableDef> {
@@ -265,7 +279,7 @@ impl Catalog {
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
 
 		if let Some(pk_columns) = pk_columns {
-			let table_columns = CatalogStore::list_columns(txn, table.id)?;
+			let table_columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut *txn), table.id)?;
 			let column_ids = pk_columns
 				.iter()
 				.map(|name| {
@@ -289,7 +303,7 @@ impl Catalog {
 
 			// txn.track_primary_key_created(pk_id, PrimitiveId::Table(table.id))?;
 
-			return Ok(CatalogStore::get_table(txn, table.id)?);
+			return Ok(CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table.id)?);
 		}
 
 		Ok(table)
@@ -304,13 +318,13 @@ impl Catalog {
 
 	/// Lists all tables in the catalog.
 	#[instrument(name = "catalog::table::list_all", level = "debug", skip(self, txn))]
-	pub fn list_tables_all<T: AsTransaction>(&self, txn: &mut T) -> crate::Result<Vec<TableDef>> {
+	pub fn list_tables_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<TableDef>> {
 		CatalogStore::list_tables_all(txn)
 	}
 
 	/// Lists all columns for a given table.
 	#[instrument(name = "catalog::table::list_columns", level = "debug", skip(self, txn))]
-	pub fn list_columns<T: AsTransaction>(&self, txn: &mut T, table_id: TableId) -> crate::Result<Vec<ColumnDef>> {
+	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> crate::Result<Vec<ColumnDef>> {
 		CatalogStore::list_columns(txn, table_id)
 	}
 
@@ -327,9 +341,9 @@ impl Catalog {
 
 	/// Gets the primary key ID for a table.
 	#[instrument(name = "catalog::table::get_pk_id", level = "trace", skip(self, txn))]
-	pub fn get_table_pk_id<T: AsTransaction>(
+	pub fn get_table_pk_id(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
 		CatalogStore::get_table_pk_id(txn, table_id)

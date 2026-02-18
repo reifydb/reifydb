@@ -13,7 +13,7 @@ pub mod sumtype;
 pub mod table;
 pub mod transactional;
 
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::ast::AstCreate,
@@ -21,10 +21,10 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create<T: AsTransaction>(
+	pub(crate) fn compile_create(
 		&self,
 		ast: AstCreate<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		match ast {
 			AstCreate::DeferredView(node) => self.compile_deferred_view(node, tx),

@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
 	key::namespace::NamespaceKey,
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -29,7 +29,9 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		to_create: NamespaceToCreate,
 	) -> crate::Result<NamespaceDef> {
-		if let Some(namespace) = Self::find_namespace_by_name(txn, &to_create.name)? {
+		if let Some(namespace) =
+			Self::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), &to_create.name)?
+		{
 			return_error!(namespace_already_exists(
 				to_create.namespace_fragment.unwrap_or_else(|| Fragment::None),
 				&namespace.name
@@ -45,7 +47,7 @@ impl CatalogStore {
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
 
-		Ok(Self::get_namespace(txn, namespace_id)?)
+		Ok(Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?)
 	}
 }
 

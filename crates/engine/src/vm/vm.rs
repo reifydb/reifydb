@@ -9,7 +9,7 @@ use reifydb_rql::{
 	instruction::{Instruction, ScopeType},
 	query::QueryPlan,
 };
-use reifydb_transaction::transaction::{AsTransaction, Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	params::Params,
 	value::{Value, frame::frame::Frame, r#type::Type},
@@ -844,7 +844,7 @@ impl Vm {
 						}
 						_ => {}
 					}
-					let mut std_txn = tx.as_transaction();
+					let mut std_txn = tx.reborrow();
 					let columns = super::instruction::dml::table_delete::delete(
 						services,
 						&mut std_txn,
@@ -865,7 +865,7 @@ impl Vm {
 						}
 						_ => {}
 					}
-					let mut std_txn = tx.as_transaction();
+					let mut std_txn = tx.reborrow();
 					let columns = super::instruction::dml::ringbuffer_delete::delete_ringbuffer(
 						services,
 						&mut std_txn,
@@ -886,7 +886,7 @@ impl Vm {
 						}
 						_ => {}
 					}
-					let mut std_txn = tx.as_transaction();
+					let mut std_txn = tx.reborrow();
 					let columns = super::instruction::dml::table_insert::insert_table(
 						services,
 						&mut std_txn,
@@ -907,7 +907,7 @@ impl Vm {
 						}
 						_ => {}
 					}
-					let mut std_txn = tx.as_transaction();
+					let mut std_txn = tx.reborrow();
 					let columns = super::instruction::dml::ringbuffer_insert::insert_ringbuffer(
 						services,
 						&mut std_txn,
@@ -928,7 +928,7 @@ impl Vm {
 						}
 						_ => {}
 					}
-					let mut std_txn = tx.as_transaction();
+					let mut std_txn = tx.reborrow();
 					let columns = super::instruction::dml::dictionary_insert::insert_dictionary(
 						services,
 						&mut std_txn,
@@ -949,7 +949,7 @@ impl Vm {
 						}
 						_ => {}
 					}
-					let mut std_txn = tx.as_transaction();
+					let mut std_txn = tx.reborrow();
 					let columns = super::instruction::dml::table_update::update_table(
 						services,
 						&mut std_txn,
@@ -970,7 +970,7 @@ impl Vm {
 						}
 						_ => {}
 					}
-					let mut std_txn = tx.as_transaction();
+					let mut std_txn = tx.reborrow();
 					let columns = super::instruction::dml::ringbuffer_update::update_ringbuffer(
 						services,
 						&mut std_txn,
@@ -982,7 +982,7 @@ impl Vm {
 
 				// === Query ===
 				Instruction::Query(plan) => {
-					let mut std_txn = tx.as_transaction();
+					let mut std_txn = tx.reborrow();
 					if let Some(columns) = run_query_plan(
 						services,
 						&mut std_txn,

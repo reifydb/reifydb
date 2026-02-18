@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{err, error::diagnostic::Diagnostic, fragment::Fragment};
 
 use crate::{
@@ -12,10 +12,10 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_append<T: AsTransaction>(
+	pub(crate) fn compile_append(
 		&self,
 		ast: AstAppend<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		match ast {
 			AstAppend::IntoVariable {

@@ -6,7 +6,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch},
 	interface::catalog::policy::ColumnPolicyKind,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -16,10 +16,10 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_ringbuffer<T: AsTransaction>(
+	pub(crate) fn compile_create_ringbuffer(
 		&self,
 		ast: AstCreateRingBuffer<'bump>,
-		tx: &mut T,
+		tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<RingBufferColumnToCreate> = vec![];
 

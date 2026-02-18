@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{column::ColumnDef, id::ColumnId, primitive::PrimitiveId},
 	key::column::ColumnKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::column::schema::primitive_column};
 
@@ -18,17 +18,16 @@ pub struct ColumnInfo {
 
 impl CatalogStore {
 	pub(crate) fn list_columns(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		source: impl Into<PrimitiveId>,
 	) -> crate::Result<Vec<ColumnDef>> {
-		let mut txn = rx.as_transaction();
 		let source = source.into();
 		let mut result = vec![];
 
 		// Collect column IDs first to avoid holding stream borrow
 		let mut ids = Vec::new();
 		{
-			let mut stream = txn.range(ColumnKey::full_scan(source), 1024)?;
+			let mut stream = rx.range(ColumnKey::full_scan(source), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				let row = multi.values;
@@ -37,7 +36,7 @@ impl CatalogStore {
 		}
 
 		for id in ids {
-			result.push(Self::get_column(&mut txn, id)?);
+			result.push(Self::get_column(rx, id)?);
 		}
 
 		result.sort_by_key(|c| c.index);
@@ -45,14 +44,13 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_columns_all(rx: &mut impl AsTransaction) -> crate::Result<Vec<ColumnInfo>> {
-		let mut txn = rx.as_transaction();
+	pub(crate) fn list_columns_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<ColumnInfo>> {
 		let mut result = Vec::new();
 
 		// Get all tables
-		let tables = CatalogStore::list_tables_all(&mut txn)?;
+		let tables = CatalogStore::list_tables_all(rx)?;
 		for table in tables {
-			let columns = CatalogStore::list_columns(&mut txn, table.id)?;
+			let columns = CatalogStore::list_columns(rx, table.id)?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
@@ -63,9 +61,9 @@ impl CatalogStore {
 		}
 
 		// Get all views
-		let views = CatalogStore::list_views_all(&mut txn)?;
+		let views = CatalogStore::list_views_all(rx)?;
 		for view in views {
-			let columns = CatalogStore::list_columns(&mut txn, view.id)?;
+			let columns = CatalogStore::list_columns(rx, view.id)?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
@@ -76,9 +74,9 @@ impl CatalogStore {
 		}
 
 		// Get all ring buffers
-		let ringbuffers = CatalogStore::list_ringbuffers_all(&mut txn)?;
+		let ringbuffers = CatalogStore::list_ringbuffers_all(rx)?;
 		for ringbuffer in ringbuffers {
-			let columns = CatalogStore::list_columns(&mut txn, ringbuffer.id)?;
+			let columns = CatalogStore::list_columns(rx, ringbuffer.id)?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
@@ -96,6 +94,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
@@ -140,7 +139,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), TableId(1)).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		assert_eq!(columns[0].name, "a_col"); // index 0
@@ -158,7 +157,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), TableId(1)).unwrap();
 		assert!(columns.is_empty());
 	}
 
@@ -166,7 +165,7 @@ pub mod tests {
 	fn test_table_does_not_exist() {
 		let mut txn = create_test_admin_transaction();
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), TableId(1)).unwrap();
 		assert!(columns.is_empty());
 	}
 }

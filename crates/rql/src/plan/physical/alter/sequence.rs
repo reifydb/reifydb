@@ -7,7 +7,7 @@ use reifydb_core::{
 		ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedSequence, ResolvedTable, SequenceDef,
 	},
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
@@ -19,9 +19,9 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_alter_sequence<T: AsTransaction>(
+	pub(crate) fn compile_alter_sequence(
 		&mut self,
-		rx: &mut T,
+		rx: &mut Transaction<'_>,
 		alter: logical::AlterSequenceNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		// Get the namespace name from the sequence identifier

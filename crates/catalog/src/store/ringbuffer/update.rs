@@ -48,6 +48,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;
 	use crate::test_utils::ensure_test_ringbuffer;
@@ -58,9 +59,10 @@ pub mod tests {
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		// Get initial metadata
-		let mut metadata = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
-			.unwrap()
-			.expect("Metadata should exist");
+		let mut metadata =
+			CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
+				.unwrap()
+				.expect("Metadata should exist");
 
 		assert_eq!(metadata.count, 0);
 		assert_eq!(metadata.head, 0);
@@ -74,7 +76,7 @@ pub mod tests {
 		CatalogStore::update_ringbuffer_metadata_admin(&mut txn, metadata.clone()).unwrap();
 
 		// Verify update
-		let updated = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
+		let updated = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
 			.unwrap()
 			.expect("Metadata should exist");
 
@@ -89,9 +91,10 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
-		let mut metadata = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
-			.unwrap()
-			.expect("Metadata should exist");
+		let mut metadata =
+			CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
+				.unwrap()
+				.expect("Metadata should exist");
 
 		// Simulate wrap-around scenario
 		metadata.count = metadata.capacity;
@@ -100,7 +103,7 @@ pub mod tests {
 
 		CatalogStore::update_ringbuffer_metadata_admin(&mut txn, metadata.clone()).unwrap();
 
-		let updated = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
+		let updated = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
 			.unwrap()
 			.expect("Metadata should exist");
 

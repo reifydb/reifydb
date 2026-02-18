@@ -6,17 +6,13 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeId},
 	key::flow_edge::FlowEdgeKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, store::flow_edge::schema::flow_edge};
 
 impl CatalogStore {
-	pub(crate) fn find_flow_edge(
-		rx: &mut impl AsTransaction,
-		edge: FlowEdgeId,
-	) -> crate::Result<Option<FlowEdgeDef>> {
-		let mut txn = rx.as_transaction();
-		let Some(multi) = txn.get(&FlowEdgeKey::encoded(edge))? else {
+	pub(crate) fn find_flow_edge(rx: &mut Transaction<'_>, edge: FlowEdgeId) -> crate::Result<Option<FlowEdgeDef>> {
+		let Some(multi) = rx.get(&FlowEdgeKey::encoded(edge))? else {
 			return Ok(None);
 		};
 
@@ -39,6 +35,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowEdgeId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -55,7 +52,7 @@ pub mod tests {
 		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		let result = CatalogStore::find_flow_edge(&mut txn, edge.id).unwrap();
+		let result = CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap();
 		assert!(result.is_some());
 		let found = result.unwrap();
 		assert_eq!(found.id, edge.id);
@@ -68,7 +65,7 @@ pub mod tests {
 	fn test_find_flow_edge_not_found() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::find_flow_edge(&mut txn, FlowEdgeId(999)).unwrap();
+		let result = CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), FlowEdgeId(999)).unwrap();
 		assert!(result.is_none());
 	}
 }

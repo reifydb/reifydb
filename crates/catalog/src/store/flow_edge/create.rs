@@ -34,6 +34,7 @@ impl crate::CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
 		CatalogStore,
@@ -52,7 +53,7 @@ pub mod tests {
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		// Verify edge was created
-		let result = CatalogStore::get_flow_edge(&mut txn, edge.id).unwrap();
+		let result = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap();
 		assert_eq!(result.id, edge.id);
 		assert_eq!(result.flow, flow.id);
 		assert_eq!(result.source, node1.id);
@@ -73,8 +74,8 @@ pub mod tests {
 		let edge2 = create_flow_edge(&mut txn, flow.id, node2.id, node3.id);
 
 		// Verify both edges exist
-		let result1 = CatalogStore::get_flow_edge(&mut txn, edge1.id).unwrap();
-		let result2 = CatalogStore::get_flow_edge(&mut txn, edge2.id).unwrap();
+		let result1 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap();
+		let result2 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge2.id).unwrap();
 
 		assert_eq!(result1.source, node1.id);
 		assert_eq!(result1.target, node2.id);
@@ -99,8 +100,8 @@ pub mod tests {
 		let edge2 = create_flow_edge(&mut txn, flow2.id, node2a.id, node2b.id);
 
 		// Verify edges are in correct flows
-		let result1 = CatalogStore::get_flow_edge(&mut txn, edge1.id).unwrap();
-		let result2 = CatalogStore::get_flow_edge(&mut txn, edge2.id).unwrap();
+		let result1 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap();
+		let result2 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge2.id).unwrap();
 
 		assert_eq!(result1.flow, flow1.id);
 		assert_eq!(result2.flow, flow2.id);
@@ -118,7 +119,7 @@ pub mod tests {
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		// Verify edge appears in flow index by listing edges for flow
-		let edges = CatalogStore::list_flow_edges_by_flow(&mut txn, flow.id).unwrap();
+		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(edges.len(), 1);
 		assert_eq!(edges[0].id, edge.id);
 	}

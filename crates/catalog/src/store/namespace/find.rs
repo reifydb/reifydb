@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
 	key::namespace::NamespaceKey,
 };
-use reifydb_transaction::transaction::AsTransaction;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
@@ -15,7 +15,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_namespace_by_name(
-		rx: &mut impl AsTransaction,
+		rx: &mut Transaction<'_>,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<NamespaceDef>> {
 		let name = name.as_ref();
@@ -29,8 +29,7 @@ impl CatalogStore {
 			return Ok(Some(NamespaceDef::default_namespace()));
 		}
 
-		let mut txn = rx.as_transaction();
-		let mut stream = txn.range(NamespaceKey::full_scan(), 1024)?;
+		let mut stream = rx.range(NamespaceKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
@@ -44,10 +43,7 @@ impl CatalogStore {
 		Ok(None)
 	}
 
-	pub(crate) fn find_namespace(
-		rx: &mut impl AsTransaction,
-		id: NamespaceId,
-	) -> crate::Result<Option<NamespaceDef>> {
+	pub(crate) fn find_namespace(rx: &mut Transaction<'_>, id: NamespaceId) -> crate::Result<Option<NamespaceDef>> {
 		// Special case for system namespace - hardcoded with fixed ID
 		if id == NamespaceId(1) {
 			return Ok(Some(NamespaceDef::system()));
@@ -57,14 +53,14 @@ impl CatalogStore {
 			return Ok(Some(NamespaceDef::default_namespace()));
 		}
 
-		let mut txn = rx.as_transaction();
-		Ok(txn.get(&NamespaceKey::encoded(id))?.map(convert_namespace))
+		Ok(rx.get(&NamespaceKey::encoded(id))?.map(convert_namespace))
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, store::namespace::NamespaceId, test_utils::create_namespace};
 
@@ -74,7 +70,10 @@ pub mod tests {
 
 		create_namespace(&mut txn, "test_namespace");
 
-		let namespace = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap().unwrap();
+		let namespace =
+			CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_namespace")
+				.unwrap()
+				.unwrap();
 
 		assert_eq!(namespace.id, NamespaceId(1025));
 		assert_eq!(namespace.name, "test_namespace");
@@ -84,7 +83,8 @@ pub mod tests {
 	fn test_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
+		let result = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_namespace")
+			.unwrap();
 
 		assert_eq!(result, None);
 	}
@@ -95,7 +95,8 @@ pub mod tests {
 
 		create_namespace(&mut txn, "another_namespace");
 
-		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
+		let result = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_namespace")
+			.unwrap();
 		assert_eq!(result, None);
 	}
 }

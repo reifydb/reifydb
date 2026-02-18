@@ -16,6 +16,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error::Error, fragment::Fragment};
 use tracing::debug;
 
@@ -35,7 +36,10 @@ impl SubscriptionConsumer {
 		let mut cmd_txn = engine.begin_command()?;
 
 		// Get subscription definition using catalog function
-		let _sub_def = match reifydb_catalog::find_subscription(&mut cmd_txn, db_subscription_id)? {
+		let _sub_def = match reifydb_catalog::find_subscription(
+			&mut Transaction::Command(&mut cmd_txn),
+			db_subscription_id,
+		)? {
 			Some(def) => def,
 			None => {
 				tracing::warn!("Subscription {} not found", db_subscription_id);
@@ -79,8 +83,9 @@ impl SubscriptionConsumer {
 				let fingerprint = entry.values.fingerprint();
 
 				// Resolve schema using SchemaRegistry
-				let schema =
-					schema_registry.get_or_load(fingerprint, &mut cmd_txn)?.ok_or_else(|| {
+				let schema = schema_registry
+					.get_or_load(fingerprint, &mut Transaction::Command(&mut cmd_txn))?
+					.ok_or_else(|| {
 						Error(internal(format!(
 							"Schema not found for fingerprint: {:?}",
 							fingerprint

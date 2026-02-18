@@ -5,14 +5,14 @@ use reifydb_core::{
 	interface::catalog::id::TableId,
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub(crate) fn delete_table(txn: &mut AdminTransaction, table: TableId) -> crate::Result<()> {
 		// First, find the table to get its namespace
-		if let Some(table_def) = Self::find_table(txn, table)? {
+		if let Some(table_def) = Self::find_table(&mut Transaction::Admin(&mut *txn), table)? {
 			// Delete the namespace-table link (secondary index)
 			txn.remove(&NamespaceTableKey::encoded(table_def.namespace, table))?;
 		}
@@ -32,6 +32,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::fragment::Fragment;
 
 	use crate::{
@@ -67,14 +68,18 @@ pub mod tests {
 		.unwrap();
 
 		// Verify it exists
-		let found = CatalogStore::find_table_by_name(&mut txn, namespace.id, "test_table").unwrap();
+		let found =
+			CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), namespace.id, "test_table")
+				.unwrap();
 		assert!(found.is_some());
 
 		// Delete it
 		CatalogStore::delete_table(&mut txn, created.id).unwrap();
 
 		// Verify it's gone
-		let found = CatalogStore::find_table_by_name(&mut txn, namespace.id, "test_table").unwrap();
+		let found =
+			CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), namespace.id, "test_table")
+				.unwrap();
 		assert!(found.is_none());
 	}
 

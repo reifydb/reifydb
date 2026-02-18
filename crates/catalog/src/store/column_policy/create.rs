@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::column_policy::ColumnPolicyKey,
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::return_error;
 
 use crate::{
@@ -24,10 +24,10 @@ impl CatalogStore {
 		policy: ColumnPolicyKind,
 	) -> crate::Result<ColumnPolicy> {
 		let (policy_kind, _value_kind) = policy.to_u8();
-		for existing in Self::list_column_policies(txn, column)? {
+		for existing in Self::list_column_policies(&mut Transaction::Admin(&mut *txn), column)? {
 			let (existing_kind, _) = existing.policy.to_u8();
 			if existing_kind == policy_kind {
-				let column = Self::get_column(txn, column)?;
+				let column = Self::get_column(&mut Transaction::Admin(&mut *txn), column)?;
 
 				return_error!(table_column_policy_already_exists(&policy.to_string(), &column.name));
 			}

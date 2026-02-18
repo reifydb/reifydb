@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_transaction::{
 	change::TransactionalSumTypeChanges,
-	transaction::{AsTransaction, Transaction, admin::AdminTransaction},
+	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
 use tracing::{instrument, warn};
@@ -39,14 +39,15 @@ impl From<SumTypeToCreate> for StoreSumTypeToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::sumtype::find", level = "trace", skip(self, txn))]
-	pub fn find_sumtype<T: AsTransaction>(&self, txn: &mut T, id: SumTypeId) -> crate::Result<Option<SumTypeDef>> {
-		match txn.as_transaction() {
+	pub fn find_sumtype(&self, txn: &mut Transaction<'_>, id: SumTypeId) -> crate::Result<Option<SumTypeDef>> {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(def) = self.materialized.find_sumtype_at(id, cmd.version()) {
 					return Ok(Some(def));
 				}
 
-				if let Some(def) = CatalogStore::find_sumtype(cmd, id)? {
+				if let Some(def) = CatalogStore::find_sumtype(&mut Transaction::Command(&mut *cmd), id)?
+				{
 					warn!(
 						"SumType with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -69,7 +70,8 @@ impl Catalog {
 					return Ok(Some(def));
 				}
 
-				if let Some(def) = CatalogStore::find_sumtype(admin, id)? {
+				if let Some(def) = CatalogStore::find_sumtype(&mut Transaction::Admin(&mut *admin), id)?
+				{
 					warn!(
 						"SumType with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -84,7 +86,7 @@ impl Catalog {
 					return Ok(Some(def));
 				}
 
-				if let Some(def) = CatalogStore::find_sumtype(qry, id)? {
+				if let Some(def) = CatalogStore::find_sumtype(&mut Transaction::Query(&mut *qry), id)? {
 					warn!(
 						"SumType with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -98,13 +100,13 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::sumtype::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_sumtype_by_name<T: AsTransaction>(
+	pub fn find_sumtype_by_name(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
 	) -> crate::Result<Option<SumTypeDef>> {
-		match txn.as_transaction() {
+		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(def) =
 					self.materialized.find_sumtype_by_name_at(namespace, name, cmd.version())
@@ -112,7 +114,11 @@ impl Catalog {
 					return Ok(Some(def));
 				}
 
-				if let Some(def) = CatalogStore::find_sumtype_by_name(cmd, namespace, name)? {
+				if let Some(def) = CatalogStore::find_sumtype_by_name(
+					&mut Transaction::Command(&mut *cmd),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"SumType '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -139,7 +145,11 @@ impl Catalog {
 					return Ok(Some(def));
 				}
 
-				if let Some(def) = CatalogStore::find_sumtype_by_name(admin, namespace, name)? {
+				if let Some(def) = CatalogStore::find_sumtype_by_name(
+					&mut Transaction::Admin(&mut *admin),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"SumType '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -156,7 +166,11 @@ impl Catalog {
 					return Ok(Some(def));
 				}
 
-				if let Some(def) = CatalogStore::find_sumtype_by_name(qry, namespace, name)? {
+				if let Some(def) = CatalogStore::find_sumtype_by_name(
+					&mut Transaction::Query(&mut *qry),
+					namespace,
+					name,
+				)? {
 					warn!(
 						"SumType '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -170,7 +184,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::sumtype::get", level = "trace", skip(self, txn))]
-	pub fn get_sumtype<T: AsTransaction>(&self, txn: &mut T, id: SumTypeId) -> crate::Result<SumTypeDef> {
+	pub fn get_sumtype(&self, txn: &mut Transaction<'_>, id: SumTypeId) -> crate::Result<SumTypeDef> {
 		CatalogStore::get_sumtype(txn, id)
 	}
 
@@ -186,9 +200,9 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::sumtype::list", level = "debug", skip(self, txn))]
-	pub fn list_sumtypes<T: AsTransaction>(
+	pub fn list_sumtypes(
 		&self,
-		txn: &mut T,
+		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 	) -> crate::Result<Vec<SumTypeDef>> {
 		CatalogStore::list_sumtypes(txn, namespace)

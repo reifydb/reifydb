@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::change::CatalogTrackDictionaryChangeOperations, value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreateDictionaryNode;
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
 use crate::vm::services::Services;
@@ -16,7 +16,11 @@ pub(crate) fn create_dictionary(
 	txn: &mut AdminTransaction,
 	plan: CreateDictionaryNode,
 ) -> crate::Result<Columns> {
-	if let Some(_) = services.catalog.find_dictionary_by_name(txn, plan.namespace.id, plan.dictionary.text())? {
+	if let Some(_) = services.catalog.find_dictionary_by_name(
+		&mut Transaction::Admin(txn),
+		plan.namespace.id,
+		plan.dictionary.text(),
+	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
 				("namespace", Value::Utf8(plan.namespace.name.clone())),
