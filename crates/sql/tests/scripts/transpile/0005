@@ -1,0 +1,12 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# DISTINCT
+
+transpile 'SELECT DISTINCT name FROM users'
+---
+FROM users DISTINCT {name}
+
+transpile 'SELECT DISTINCT name, dept FROM users'
+---
+FROM users DISTINCT {name, dept}

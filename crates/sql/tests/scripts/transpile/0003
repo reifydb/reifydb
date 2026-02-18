@@ -1,0 +1,28 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# ORDER BY, LIMIT, OFFSET
+
+transpile 'SELECT * FROM users ORDER BY name ASC'
+---
+FROM users SORT {name:asc}
+
+transpile 'SELECT * FROM users ORDER BY age DESC'
+---
+FROM users SORT {age}
+
+transpile 'SELECT * FROM users ORDER BY dept ASC, name DESC'
+---
+FROM users SORT {dept:asc, name}
+
+transpile 'SELECT * FROM users ORDER BY name'
+---
+FROM users SORT {name:asc}
+
+transpile 'SELECT * FROM users LIMIT 10'
+---
+FROM users TAKE 10
+
+transpile 'SELECT * FROM users LIMIT 10 OFFSET 20'
+---
+FROM users TAKE 10 OFFSET 20

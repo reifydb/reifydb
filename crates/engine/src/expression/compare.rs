@@ -10,8 +10,8 @@ use reifydb_type::{
 	return_error,
 	value::{
 		container::{
-			blob::BlobContainer, bool::BoolContainer, number::NumberContainer,
-			temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
+			blob::BlobContainer, bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer,
+			utf8::Utf8Container, uuid::UuidContainer,
 		},
 		decimal::Decimal,
 		int::Int,

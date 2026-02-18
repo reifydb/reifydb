@@ -1,0 +1,20 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# GROUP BY, AGGREGATE, HAVING
+
+transpile 'SELECT COUNT(id) FROM users GROUP BY dept'
+---
+FROM users AGGREGATE {math::count(id)} BY {dept}
+
+transpile 'SELECT dept, COUNT(id) FROM users GROUP BY dept'
+---
+FROM users AGGREGATE {math::count(id)} BY {dept}
+
+transpile 'SELECT COUNT(id), SUM(salary) FROM users GROUP BY dept'
+---
+FROM users AGGREGATE {math::count(id), math::sum(salary)} BY {dept}
+
+transpile 'SELECT COUNT(id) FROM users GROUP BY dept HAVING COUNT(id) > 5'
+---
+FROM users AGGREGATE {math::count(id)} BY {dept} FILTER {math::count(id) > 5}

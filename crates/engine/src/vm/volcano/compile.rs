@@ -40,8 +40,8 @@ use tracing::instrument;
 
 use crate::vm::volcano::{
 	aggregate::AggregateNode,
-	distinct::DistinctNode,
 	assert::{AssertNode, AssertWithoutInputNode},
+	distinct::DistinctNode,
 	environment::EnvironmentNode,
 	extend::{ExtendNode, ExtendWithoutInputNode},
 	filter::FilterNode,

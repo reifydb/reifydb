@@ -1,0 +1,16 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Basic SELECT queries
+
+transpile 'SELECT * FROM users'
+---
+FROM users
+
+transpile 'SELECT id, name FROM users'
+---
+FROM users MAP {id, name}
+
+transpile 'SELECT id, name AS username FROM users'
+---
+FROM users MAP {id, username: name}

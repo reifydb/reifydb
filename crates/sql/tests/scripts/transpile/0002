@@ -1,0 +1,24 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# WHERE clause / FILTER
+
+transpile 'SELECT * FROM users WHERE age > 18'
+---
+FROM users FILTER {age > 18}
+
+transpile 'SELECT * FROM t WHERE a <> b'
+---
+FROM t FILTER {a != b}
+
+transpile 'SELECT * FROM t WHERE a = 1 AND b = 2'
+---
+FROM t FILTER {a == 1 and b == 2}
+
+transpile 'SELECT * FROM t WHERE a = 1 OR b = 2'
+---
+FROM t FILTER {a == 1 or b == 2}
+
+transpile 'SELECT * FROM t WHERE NOT active'
+---
+FROM t FILTER {not active}
