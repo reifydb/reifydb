@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
+use reifydb_core::error::diagnostic::operation::{insert_mixed_row_types, insert_positional_wrong_length};
 use reifydb_transaction::transaction::AsTransaction;
+use reifydb_type::{err, fragment::Fragment};
 
 use crate::{
 	ast::{
-		ast::AstInsert,
+		ast::{Ast, AstFrom, AstInsert},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTableIdentifier, UnresolvedPrimitiveIdentifier,
 		},
 	},
 	bump::BumpBox,
-	plan::logical::{Compiler, InsertDictionaryNode, InsertRingBufferNode, InsertTableNode, LogicalPlan},
+	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
+	plan::logical::{
+		Compiler, InlineDataNode, InsertDictionaryNode, InsertRingBufferNode, InsertTableNode, LogicalPlan,
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -22,11 +29,31 @@ impl<'bump> Compiler<'bump> {
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let unresolved_target = ast.target;
+		let source_ast = BumpBox::into_inner(ast.source);
 
-		// Compile the source (the FROM clause)
-		let source = self.compile_single(BumpBox::into_inner(ast.source), tx)?;
+		let source = match source_ast {
+			Ast::From(AstFrom::Inline {
+				list,
+				..
+			}) if list.nodes.iter().any(|n| matches!(n, Ast::Tuple(_))) => {
+				let has_inlines = list.nodes.iter().any(|n| matches!(n, Ast::Inline(_)));
+				if has_inlines {
+					return err!(insert_mixed_row_types(list.token.fragment.to_owned()));
+				}
+				self.compile_positional_tuples(&unresolved_target, list.nodes, tx)?
+			}
+			other => self.compile_single(other, tx)?,
+		};
 
-		// Check in the catalog whether the target is a table, ring buffer, or dictionary
+		self.build_insert_node(unresolved_target, source, tx)
+	}
+
+	fn build_insert_node<T: AsTransaction>(
+		&self,
+		unresolved_target: UnresolvedPrimitiveIdentifier<'bump>,
+		source: LogicalPlan<'bump>,
+		tx: &mut T,
+	) -> crate::Result<LogicalPlan<'bump>> {
 		let namespace_name = unresolved_target.namespace.first().map(|n| n.text().to_string());
 		let namespace_name_str = namespace_name.as_deref().unwrap_or("default");
 		let target_name = unresolved_target.name.text();
@@ -82,4 +109,60 @@ impl<'bump> Compiler<'bump> {
 			source: BumpBox::new_in(source, self.bump),
 		}))
 	}
+
+	fn compile_positional_tuples<T: AsTransaction>(
+		&self,
+		target: &UnresolvedPrimitiveIdentifier<'bump>,
+		nodes: Vec<Ast<'bump>>,
+		tx: &mut T,
+	) -> crate::Result<LogicalPlan<'bump>> {
+		let namespace_name = target.namespace.first().map(|n| n.text().to_string());
+		let namespace_name_str = namespace_name.as_deref().unwrap_or("default");
+		let target_name = target.name.text();
+
+		let column_names = self.catalog.resolve_column_names(tx, namespace_name_str, target_name)?;
+
+		let mut rows = Vec::with_capacity(nodes.len());
+		for node in nodes {
+			let tuple = match node {
+				Ast::Tuple(t) => t,
+				_ => unreachable!("validated to contain only tuples"),
+			};
+			let tuple_len = tuple.nodes.len();
+
+			if tuple_len != column_names.len() {
+				return err!(insert_positional_wrong_length(
+					tuple.token.fragment.to_owned(),
+					column_names.len(),
+					tuple_len,
+					&column_names,
+				));
+			}
+
+			let mut alias_fields = Vec::with_capacity(tuple_len);
+			for (i, value_ast) in tuple.nodes.into_iter().enumerate() {
+				let col_name = &column_names[i];
+				let value_token_fragment = &value_ast.token().fragment;
+				let fragment = Fragment::Statement {
+					text: Arc::from(col_name.as_str()),
+					line: value_token_fragment.line(),
+					column: value_token_fragment.column(),
+				};
+				let alias = IdentExpression(fragment.clone());
+				let expr = ExpressionCompiler::compile(value_ast)?;
+
+				alias_fields.push(AliasExpression {
+					alias,
+					expression: Box::new(expr),
+					fragment,
+				});
+			}
+			rows.push(alias_fields);
+		}
+
+		Ok(LogicalPlan::InlineData(InlineDataNode {
+			rows,
+		}))
+	}
+
 }

@@ -283,4 +283,92 @@ pub mod tests {
 			panic!("Expected FROM with inline data");
 		}
 	}
+
+	#[test]
+	fn test_insert_positional_single_row() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"INSERT users [(1, "Alice")]"#).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let insert = result.first_unchecked().as_insert();
+
+		assert!(insert.target.namespace.is_empty());
+		assert_eq!(insert.target.name.text(), "users");
+
+		if let Ast::From(AstFrom::Inline {
+			list,
+			..
+		}) = &*insert.source
+		{
+			assert_eq!(list.len(), 1);
+			let tuple = list[0].as_tuple();
+			assert_eq!(tuple.len(), 2);
+		} else {
+			panic!("Expected FROM with inline data");
+		}
+	}
+
+	#[test]
+	fn test_insert_positional_multiple_rows() {
+		let bump = Bump::new();
+		let tokens = tokenize(
+			&bump,
+			r#"
+			INSERT users [
+			  (1, "Alice", "alice@example.com", true),
+			  (2, "Bob", "bob@example.com", false)
+			]
+			"#,
+		)
+		.unwrap()
+		.into_iter()
+		.collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let insert = result.first_unchecked().as_insert();
+
+		if let Ast::From(AstFrom::Inline {
+			list,
+			..
+		}) = &*insert.source
+		{
+			assert_eq!(list.len(), 2);
+			assert_eq!(list[0].as_tuple().len(), 4);
+			assert_eq!(list[1].as_tuple().len(), 4);
+		} else {
+			panic!("Expected FROM with inline data");
+		}
+	}
+
+	#[test]
+	fn test_insert_positional_with_namespace() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, r#"INSERT test.users [(1, "Alice")]"#).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let insert = result.first_unchecked().as_insert();
+
+		assert_eq!(insert.target.namespace[0].text(), "test");
+		assert_eq!(insert.target.name.text(), "users");
+
+		if let Ast::From(AstFrom::Inline {
+			list,
+			..
+		}) = &*insert.source
+		{
+			assert_eq!(list.len(), 1);
+			assert!(matches!(list[0], Ast::Tuple(_)));
+		} else {
+			panic!("Expected FROM with inline data");
+		}
+	}
 }

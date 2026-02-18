@@ -476,6 +476,48 @@ pub fn insert_missing_source(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+pub fn insert_mixed_row_types(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "INSERT_003".to_string(),
+		statement: None,
+		message: "Cannot mix keyed {key: value} and positional (value, ...) rows in the same INSERT".to_string(),
+		column: None,
+		fragment,
+		label: Some("mixed row types".to_string()),
+		help: Some("Use either all keyed rows [{id: 1, name: \"Alice\"}] or all positional rows [(1, \"Alice\")] in a single INSERT".to_string()),
+		notes: vec![
+			"Keyed rows use curly braces: { column: value, ... }".to_string(),
+			"Positional rows use parentheses: (value1, value2, ...)".to_string(),
+			"All rows in a single INSERT must use the same style".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn insert_positional_wrong_length(
+	fragment: Fragment,
+	expected: usize,
+	actual: usize,
+	column_names: &[String],
+) -> Diagnostic {
+	Diagnostic {
+		code: "INSERT_004".to_string(),
+		statement: None,
+		message: format!("Positional INSERT expects {} values (one per column), got {}", expected, actual),
+		column: None,
+		fragment,
+		label: Some(format!("expected {} values", expected)),
+		help: Some(format!("Provide a value for each column in order: ({})", column_names.join(", "))),
+		notes: vec![
+			format!("Table has {} columns: {}", expected, column_names.join(", ")),
+			"Positional inserts must provide a value for every column".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 /// SORT missing braces error
 pub fn sort_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
