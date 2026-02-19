@@ -3,7 +3,7 @@
 
 use crate::{
 	ast::{
-		ast::{Ast, AstAlter, AstAlterTableOperation, AstAlterViewOperation, AstFrom, AstJoin},
+		ast::{Ast, AstAlter, AstCreate, AstFrom, AstJoin},
 		parse::parse,
 	},
 	bump::Bump,
@@ -61,8 +61,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::Literal(_) => "Literal",
 		Ast::Nop => "Nop",
 		Ast::Sort(_) => "Sort",
-		Ast::Policy(_) => "Policy",
-		Ast::PolicyBlock(_) => "PolicyBlock",
 		Ast::Prefix(_) => "Prefix",
 		Ast::Map(_) => "Map",
 		Ast::Generator(_) => "Generator",
@@ -104,16 +102,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 			format!("{} ({} fields: {})", ty, r.keyed_values.len(), field_names.join(", "))
 		}
 		Ast::Alter(alter) => match alter {
-			AstAlter::Table(t) => {
-				let namespace =
-					t.table.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
-				format!("ALTER TABLE {}{}", namespace, t.table.name.text())
-			}
-			AstAlter::View(v) => {
-				let namespace =
-					v.view.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
-				format!("ALTER VIEW {}{}", namespace, v.view.name.text())
-			}
 			AstAlter::Sequence(s) => {
 				let namespace = s
 					.sequence
@@ -128,6 +116,20 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 					f.flow.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
 				format!("ALTER FLOW {}{}", namespace, f.flow.name.text())
 			}
+		},
+		Ast::Create(create) => match create {
+			AstCreate::PrimaryKey(pk) => {
+				let namespace =
+					pk.table.namespace
+						.first()
+						.map(|s| format!("{}.", s.text()))
+						.unwrap_or_default();
+				format!("CREATE PRIMARY KEY ON {}{}", namespace, pk.table.name.text())
+			}
+			AstCreate::Policy(p) => {
+				format!("CREATE POLICY ON {}", p.column.name.text())
+			}
+			_ => ty.to_string(),
 		},
 		_ => ty.to_string(),
 	};
@@ -296,12 +298,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 			// simple AST nodes Skip adding them as children for
 			// explain purposes
 		}
-		Ast::PolicyBlock(pb) => {
-			for p in &pb.policies {
-				ref_children.push(&p.value);
-			}
-		}
-		Ast::Policy(p) => ref_children.push(&p.value),
 		Ast::Inline(r) => {
 			// Add each field as a child - they will be displayed as
 			// key: value pairs
@@ -318,122 +314,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::Alter(alter) => {
 			// Handle ALTER operations as child nodes
 			match alter {
-				AstAlter::Table(t) => {
-					for (i, op) in t.operations.iter().enumerate() {
-						let last = i == t.operations.len() - 1;
-						let op_branch = if last {
-							"└──"
-						} else {
-							"├──"
-						};
-
-						match op {
-							AstAlterTableOperation::CreatePrimaryKey {
-								name,
-								columns,
-							} => {
-								// Show the CREATE PRIMARY KEY operation
-								let pk_name = name
-									.as_ref()
-									.map(|n| format!(" {}", n.text()))
-									.unwrap_or_default();
-								output.push_str(&format!(
-									"{}{}CREATE PRIMARY KEY{}\n",
-									child_prefix, op_branch, pk_name
-								));
-
-								// Show columns as children of the primary key
-								let pk_prefix = format!(
-									"{}{}    ",
-									child_prefix,
-									if last {
-										" "
-									} else {
-										"│"
-									}
-								);
-								for (j, col) in columns.iter().enumerate() {
-									let col_last = j == columns.len() - 1;
-									let col_branch = if col_last {
-										"└──"
-									} else {
-										"├──"
-									};
-									output.push_str(&format!(
-										"{}{}Column: {}\n",
-										pk_prefix,
-										col_branch,
-										col.column.name.text()
-									));
-								}
-							}
-							AstAlterTableOperation::DropPrimaryKey => {
-								output.push_str(&format!(
-									"{}{}DROP PRIMARY KEY\n",
-									child_prefix, op_branch
-								));
-							}
-						}
-					}
-				}
-				AstAlter::View(v) => {
-					for (i, op) in v.operations.iter().enumerate() {
-						let last = i == v.operations.len() - 1;
-						let op_branch = if last {
-							"└──"
-						} else {
-							"├──"
-						};
-
-						match op {
-							AstAlterViewOperation::CreatePrimaryKey {
-								name,
-								columns,
-							} => {
-								// Show the CREATE PRIMARY KEY operation
-								let pk_name = name
-									.as_ref()
-									.map(|n| format!(" {}", n.text()))
-									.unwrap_or_default();
-								output.push_str(&format!(
-									"{}{}CREATE PRIMARY KEY{}\n",
-									child_prefix, op_branch, pk_name
-								));
-
-								// Show columns as children of the primary key
-								let pk_prefix = format!(
-									"{}{}    ",
-									child_prefix,
-									if last {
-										" "
-									} else {
-										"│"
-									}
-								);
-								for (j, col) in columns.iter().enumerate() {
-									let col_last = j == columns.len() - 1;
-									let col_branch = if col_last {
-										"└──"
-									} else {
-										"├──"
-									};
-									output.push_str(&format!(
-										"{}{}Column: {}\n",
-										pk_prefix,
-										col_branch,
-										col.column.name.text()
-									));
-								}
-							}
-							AstAlterViewOperation::DropPrimaryKey => {
-								output.push_str(&format!(
-									"{}{}DROP PRIMARY KEY\n",
-									child_prefix, op_branch
-								));
-							}
-						}
-					}
-				}
 				AstAlter::Sequence(_) => {
 					// Sequence alter doesn't have child
 					// operations

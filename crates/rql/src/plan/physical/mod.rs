@@ -39,8 +39,8 @@ use crate::{
 	nodes::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
 		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, FlowScanNode, GeneratorNode,
-		IndexScanNode, InlineDataNode, PrimaryKeyDef, RingBufferScanNode, RowListLookupNode,
-		RowPointLookupNode, RowRangeScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
+		IndexScanNode, InlineDataNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
+		RowRangeScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
 	plan::{
 		logical,
@@ -71,10 +71,10 @@ pub enum PhysicalPlan<'bump> {
 	CreateDictionary(CreateDictionaryNode),
 	CreateSumType(CreateSumTypeNode),
 	CreateSubscription(CreateSubscriptionNode<'bump>),
+	CreatePrimaryKey(nodes::CreatePrimaryKeyNode),
+	CreatePolicy(nodes::CreatePolicyNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
-	AlterTable(nodes::AlterTableNode),
-	AlterView(nodes::AlterViewNode),
 	AlterFlow(AlterFlowNode<'bump>),
 	// Mutate
 	Delete(DeleteTableNode<'bump>),
@@ -143,7 +143,6 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<reifydb_catalog::catalog::view::ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
-	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug)]
@@ -153,7 +152,6 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<reifydb_catalog::catalog::view::ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
-	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug)]
@@ -465,23 +463,6 @@ pub(crate) struct Compiler<'bump> {
 	pub bump: &'bump Bump,
 }
 
-/// Materialize a bump-allocated PrimaryKeyDef to an owned version
-pub(crate) fn materialize_primary_key(
-	interner: &mut crate::bump::FragmentInterner,
-	pk: Option<crate::plan::logical::PrimaryKeyDef<'_>>,
-) -> Option<crate::nodes::PrimaryKeyDef> {
-	pk.map(|pk_def| crate::nodes::PrimaryKeyDef {
-		columns: pk_def
-			.columns
-			.into_iter()
-			.map(|col| crate::nodes::PrimaryKeyColumn {
-				column: interner.intern_fragment(&col.column),
-				order: col.order,
-			})
-			.collect(),
-	})
-}
-
 #[instrument(name = "rql::compile::physical", level = "trace", skip(bump, catalog, rx, logical))]
 pub fn compile_physical<'b>(
 	bump: &'b Bump,
@@ -559,12 +540,12 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_alter_sequence(rx, alter)?);
 				}
 
-				LogicalPlan::AlterTable(alter) => {
-					stack.push(self.compile_alter_table(rx, alter)?);
+				LogicalPlan::CreatePrimaryKey(create) => {
+					stack.push(self.compile_create_primary_key(rx, create)?);
 				}
 
-				LogicalPlan::AlterView(alter) => {
-					stack.push(self.compile_alter_view(rx, alter)?);
+				LogicalPlan::CreatePolicy(create) => {
+					stack.push(self.compile_create_policy(rx, create)?);
 				}
 
 				LogicalPlan::AlterFlow(alter) => {

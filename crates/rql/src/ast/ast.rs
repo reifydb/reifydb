@@ -102,8 +102,6 @@ pub enum Ast<'bump> {
 	Environment(AstEnvironment<'bump>),
 	Sort(AstSort<'bump>),
 	SubQuery(AstSubQuery<'bump>),
-	Policy(AstPolicy<'bump>),
-	PolicyBlock(AstPolicyBlock<'bump>),
 	Prefix(AstPrefix<'bump>),
 	Map(AstMap<'bump>),
 	Generator(AstGenerator<'bump>),
@@ -192,8 +190,6 @@ impl<'bump> Ast<'bump> {
 			Ast::Variable(node) => &node.token,
 			Ast::Sort(node) => &node.token,
 			Ast::SubQuery(node) => &node.token,
-			Ast::Policy(node) => &node.token,
-			Ast::PolicyBlock(node) => &node.token,
 			Ast::Prefix(node) => node.node.token(),
 			Ast::Map(node) => &node.token,
 			Ast::Generator(node) => &node.token,
@@ -561,28 +557,6 @@ impl<'bump> Ast<'bump> {
 			panic!("not sort")
 		}
 	}
-	pub fn is_policy(&self) -> bool {
-		matches!(self, Ast::Policy(_))
-	}
-	pub fn as_policy(&self) -> &AstPolicy<'bump> {
-		if let Ast::Policy(result) = self {
-			result
-		} else {
-			panic!("not policy")
-		}
-	}
-
-	pub fn is_policy_block(&self) -> bool {
-		matches!(self, Ast::PolicyBlock(_))
-	}
-	pub fn as_policy_block(&self) -> &AstPolicyBlock<'bump> {
-		if let Ast::PolicyBlock(result) = self {
-			result
-		} else {
-			panic!("not policy block")
-		}
-	}
-
 	pub fn is_inline(&self) -> bool {
 		matches!(self, Ast::Inline(_))
 	}
@@ -802,13 +776,13 @@ pub enum AstCreate<'bump> {
 	Dictionary(AstCreateDictionary<'bump>),
 	Enum(AstCreateSumType<'bump>),
 	Index(AstCreateIndex<'bump>),
+	PrimaryKey(AstCreatePrimaryKey<'bump>),
+	Policy(AstCreatePolicy<'bump>),
 }
 
 #[derive(Debug)]
 pub enum AstAlter<'bump> {
 	Sequence(AstAlterSequence<'bump>),
-	Table(AstAlterTable<'bump>),
-	View(AstAlterView<'bump>),
 	Flow(AstAlterFlow<'bump>),
 }
 
@@ -834,42 +808,10 @@ pub struct AstAlterSequence<'bump> {
 	pub value: AstLiteral<'bump>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct AstAlterTable<'bump> {
-	pub token: Token<'bump>,
-	pub table: MaybeQualifiedTableIdentifier<'bump>,
-	pub operations: Vec<AstAlterTableOperation<'bump>>,
-}
-
 #[derive(Debug)]
 pub struct AstSubQuery<'bump> {
 	pub token: Token<'bump>,
 	pub statement: AstStatement<'bump>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AstAlterTableOperation<'bump> {
-	CreatePrimaryKey {
-		name: Option<BumpFragment<'bump>>,
-		columns: Vec<AstIndexColumn<'bump>>,
-	},
-	DropPrimaryKey,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AstAlterView<'bump> {
-	pub token: Token<'bump>,
-	pub view: crate::ast::identifier::MaybeQualifiedViewIdentifier<'bump>,
-	pub operations: Vec<AstAlterViewOperation<'bump>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AstAlterViewOperation<'bump> {
-	CreatePrimaryKey {
-		name: Option<BumpFragment<'bump>>,
-		columns: Vec<AstIndexColumn<'bump>>,
-	},
-	DropPrimaryKey,
 }
 
 #[derive(Debug)]
@@ -897,7 +839,6 @@ pub struct AstCreateDeferredView<'bump> {
 	pub view: MaybeQualifiedDeferredViewIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
-	pub primary_key: Option<AstPrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
@@ -906,7 +847,6 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub view: MaybeQualifiedTransactionalViewIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
-	pub primary_key: Option<AstPrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
@@ -944,7 +884,6 @@ pub struct AstCreateTable<'bump> {
 	pub token: Token<'bump>,
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
-	pub primary_key: Option<AstPrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
@@ -953,7 +892,6 @@ pub struct AstCreateRingBuffer<'bump> {
 	pub ringbuffer: crate::ast::identifier::MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub capacity: u64,
-	pub primary_key: Option<AstPrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1039,7 +977,6 @@ impl<'bump> AstType<'bump> {
 pub struct AstColumnToCreate<'bump> {
 	pub name: BumpFragment<'bump>,
 	pub ty: AstType<'bump>,
-	pub policies: Option<AstPolicyBlock<'bump>>,
 	pub auto_increment: bool,
 	pub dictionary: Option<MaybeQualifiedDictionaryIdentifier<'bump>>,
 }
@@ -1112,6 +1049,14 @@ impl<'bump> AstCreate<'bump> {
 				token,
 				..
 			}) => token,
+			AstCreate::PrimaryKey(AstCreatePrimaryKey {
+				token,
+				..
+			}) => token,
+			AstCreate::Policy(AstCreatePolicy {
+				token,
+				..
+			}) => token,
 		}
 	}
 }
@@ -1120,14 +1065,6 @@ impl<'bump> AstAlter<'bump> {
 	pub fn token(&self) -> &Token<'bump> {
 		match self {
 			AstAlter::Sequence(AstAlterSequence {
-				token,
-				..
-			}) => token,
-			AstAlter::Table(AstAlterTable {
-				token,
-				..
-			}) => token,
-			AstAlter::View(AstAlterView {
 				token,
 				..
 			}) => token,
@@ -1430,20 +1367,26 @@ pub struct AstSort<'bump> {
 pub enum AstPolicyKind {
 	Saturation,
 	Default,
-	NotNone,
 }
 
 #[derive(Debug)]
-pub struct AstPolicy<'bump> {
-	pub token: Token<'bump>,
-	pub policy: AstPolicyKind,
+pub struct AstPolicyEntry<'bump> {
+	pub kind: AstPolicyKind,
 	pub value: BumpBox<'bump, Ast<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct AstPolicyBlock<'bump> {
+pub struct AstCreatePrimaryKey<'bump> {
 	pub token: Token<'bump>,
-	pub policies: Vec<AstPolicy<'bump>>,
+	pub table: MaybeQualifiedTableIdentifier<'bump>,
+	pub columns: Vec<AstIndexColumn<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstCreatePolicy<'bump> {
+	pub token: Token<'bump>,
+	pub column: MaybeQualifiedColumnIdentifier<'bump>,
+	pub policies: Vec<AstPolicyEntry<'bump>>,
 }
 
 #[derive(Debug)]

@@ -7,15 +7,18 @@ use crate::{
 	ast::{
 		ast::{
 			AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable,
-			AstCreateTransactionalView, AstIndexColumn, AstPrimaryKeyDef, AstType, AstVariantDef,
+			AstCreatePolicy, AstCreatePrimaryKey, AstCreateRingBuffer, AstCreateSeries,
+			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTransactionalView,
+			AstIndexColumn, AstPolicyEntry, AstPolicyKind, AstPrimaryKeyDef, AstType, AstVariantDef,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier,
 			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSumTypeIdentifier,
+			MaybeQualifiedTableIdentifier,
 		},
 		parse::Parser,
 	},
+	bump::BumpBox,
 	token::{
 		keyword::{
 			Keyword,
@@ -32,12 +35,6 @@ use crate::{
 		token::{Literal, Token, TokenKind},
 	},
 };
-
-/// Structure to hold WITH block options
-struct WithOptions<'bump> {
-	capacity: Option<u64>,
-	primary_key: Option<AstPrimaryKeyDef<'bump>>,
-}
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate<'bump>> {
@@ -106,6 +103,15 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Subscription))?).is_some() {
 			return self.parse_subscription(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Primary))?).is_some() {
+			self.consume_keyword(Keyword::Key)?;
+			return self.parse_create_primary_key(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+			return self.parse_create_policy(token);
 		}
 
 		if self.peek_is_index_creation()? {
@@ -289,22 +295,11 @@ impl<'bump> Parser<'bump> {
 			None
 		};
 
-		// Parse optional WITH block (after AS clause if present)
-		let primary_key = if !self.is_eof()
-			&& self.current().ok().map(|t| t.is_keyword(Keyword::With)).unwrap_or(false)
-		{
-			let options = self.parse_with_block()?;
-			options.primary_key
-		} else {
-			None
-		};
-
 		Ok(AstCreate::DeferredView(AstCreateDeferredView {
 			token,
 			view,
 			columns,
 			as_clause,
-			primary_key,
 		}))
 	}
 
@@ -358,22 +353,11 @@ impl<'bump> Parser<'bump> {
 			None
 		};
 
-		// Parse optional WITH block (after AS clause if present)
-		let primary_key = if !self.is_eof()
-			&& self.current().ok().map(|t| t.is_keyword(Keyword::With)).unwrap_or(false)
-		{
-			let options = self.parse_with_block()?;
-			options.primary_key
-		} else {
-			None
-		};
-
 		Ok(AstCreate::TransactionalView(AstCreateTransactionalView {
 			token,
 			view,
 			columns,
 			as_clause,
-			primary_key,
 		}))
 	}
 
@@ -383,24 +367,12 @@ impl<'bump> Parser<'bump> {
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
-		let primary_key = if !self.is_eof()
-			&& self.current().ok().map(|t| t.is_keyword(Keyword::With)).unwrap_or(false)
-		{
-			let options = self.parse_with_block()?;
-			options.primary_key
-		} else {
-			None
-		};
-
-		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
-
 		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
 
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
 			table,
 			columns,
-			primary_key,
 		}))
 	}
 
@@ -411,9 +383,58 @@ impl<'bump> Parser<'bump> {
 		let columns = self.parse_columns()?;
 
 		// Parse WITH block (required for ringbuffer - must have capacity)
-		let options = self.parse_with_block()?;
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
 
-		let capacity = options.capacity.ok_or_else(|| {
+		let mut capacity: Option<u64> = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"capacity" => {
+					let capacity_token = self.consume(TokenKind::Literal(Literal::Number))?;
+					capacity =
+						Some(capacity_token.fragment.text().parse::<u64>().map_err(|_| {
+							reifydb_type::error::Error(
+								reifydb_type::error::diagnostic::ast::unexpected_token_error(
+									"valid capacity number",
+									capacity_token.fragment.to_owned(),
+								),
+							)
+						})?);
+				}
+				_other => {
+					return Err(reifydb_type::error::Error(
+						reifydb_type::error::diagnostic::ast::unexpected_token_error(
+							"'capacity'",
+							key.fragment.to_owned(),
+						),
+					));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		let capacity = capacity.ok_or_else(|| {
 			reifydb_type::error::Error(reifydb_type::error::diagnostic::ast::unexpected_token_error(
 				"'capacity' is required for RINGBUFFER",
 				self.current()
@@ -432,7 +453,6 @@ impl<'bump> Parser<'bump> {
 			ringbuffer,
 			columns,
 			capacity,
-			primary_key: options.primary_key,
 		}))
 	}
 
@@ -503,13 +523,33 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse WITH block: WITH { capacity: N, primary_key: {col1, col2} }
-	fn parse_with_block(&mut self) -> crate::Result<WithOptions<'bump>> {
-		self.consume_keyword(Keyword::With)?;
+	/// Parse CREATE PRIMARY KEY ON ns.table { col1, col2: desc }
+	fn parse_create_primary_key(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+		self.consume_keyword(Keyword::On)?;
+
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
+
+		let pk_def = self.parse_primary_key_definition()?;
+
+		Ok(AstCreate::PrimaryKey(AstCreatePrimaryKey {
+			token,
+			table,
+			columns: pk_def.columns,
+		}))
+	}
+
+	/// Parse CREATE POLICY ON ns.table.column { saturation: error, default: 0 }
+	fn parse_create_policy(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+		self.consume_keyword(Keyword::On)?;
+
+		let column = self.parse_column_identifier()?;
+
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut capacity: Option<u64> = None;
-		let mut primary_key: Option<AstPrimaryKeyDef> = None;
+		let mut policies = Vec::new();
 
 		loop {
 			self.skip_new_line()?;
@@ -518,39 +558,33 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Parse option key
-			let key = self.consume(TokenKind::Identifier)?;
-			self.consume_operator(Operator::Colon)?;
-
-			match key.fragment.text() {
-				"capacity" => {
-					let capacity_token = self.consume(TokenKind::Literal(Literal::Number))?;
-					capacity =
-						Some(capacity_token.fragment.text().parse::<u64>().map_err(|_| {
-							reifydb_type::error::Error(
-								reifydb_type::error::diagnostic::ast::unexpected_token_error(
-									"valid capacity number",
-									capacity_token.fragment.to_owned(),
-								),
-							)
-						})?);
-				}
-				"primary_key" => {
-					primary_key = Some(self.parse_primary_key_definition()?);
-				}
-				_other => {
+			// Parse policy kind
+			let kind_token = self.consume(TokenKind::Identifier)?;
+			let kind = match kind_token.fragment.text() {
+				"saturation" => AstPolicyKind::Saturation,
+				"default" => AstPolicyKind::Default,
+				_ => {
 					return Err(reifydb_type::error::Error(
-						reifydb_type::error::diagnostic::ast::unexpected_token_error(
-							"'capacity' or 'primary_key'",
-							key.fragment.to_owned(),
+						reifydb_type::error::diagnostic::ast::invalid_policy_error(
+							kind_token.fragment.to_owned(),
 						),
 					));
 				}
-			}
+			};
+
+			// Consume colon separator
+			self.consume_operator(Operator::Colon)?;
+
+			// Parse policy value
+			let value = BumpBox::new_in(self.parse_node(crate::ast::parse::Precedence::None)?, self.bump());
+
+			policies.push(AstPolicyEntry {
+				kind,
+				value,
+			});
 
 			self.skip_new_line()?;
 
-			// Check for comma (optional trailing comma allowed)
 			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
 				continue;
 			}
@@ -562,10 +596,11 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
-		Ok(WithOptions {
-			capacity,
-			primary_key,
-		})
+		Ok(AstCreate::Policy(AstCreatePolicy {
+			token,
+			column,
+			policies,
+		}))
 	}
 
 	fn parse_dictionary(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
@@ -801,16 +836,9 @@ impl<'bump> Parser<'bump> {
 			None
 		};
 
-		let policies = if self.current()?.is_keyword(Keyword::Policy) {
-			Some(self.parse_policy_block()?)
-		} else {
-			None
-		};
-
 		Ok(AstColumnToCreate {
 			name,
 			ty,
-			policies,
 			auto_increment,
 			dictionary,
 		})
@@ -932,7 +960,7 @@ pub mod tests {
 			ast::{
 				Ast, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
 				AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType,
-				AstCreateTable, AstCreateTransactionalView, AstPolicyKind, AstType,
+				AstCreateTable, AstCreateTransactionalView, AstType,
 			},
 			parse::Parser,
 		},
@@ -1350,7 +1378,6 @@ pub mod tests {
 						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
-					assert!(col.policies.is_none());
 				}
 
 				{
@@ -1375,58 +1402,7 @@ pub mod tests {
 						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
-					assert!(col.policies.is_none());
 				}
-			}
-			_ => unreachable!(),
-		}
-	}
-
-	#[test]
-	fn test_create_table_with_saturation_policy() {
-		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
-        create table test.items{field: int2 policy {saturation error} }
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Table(AstCreateTable {
-				table,
-				columns,
-				..
-			}) => {
-				assert_eq!(table.namespace[0].text(), "test");
-				assert_eq!(table.name.text(), "items");
-
-				assert_eq!(columns.len(), 1);
-
-				let col = &columns[0];
-				assert_eq!(col.name.text(), "field");
-				match &col.ty {
-					AstType::Unconstrained(ident) => {
-						assert_eq!(ident.text(), "int2")
-					}
-					_ => panic!("Expected simple type"),
-				}
-				assert_eq!(col.auto_increment, false);
-
-				let policies = &col.policies.as_ref().unwrap().policies;
-				assert_eq!(policies.len(), 1);
-				let policy = &policies[0];
-				assert!(matches!(policy.policy, AstPolicyKind::Saturation));
-				assert_eq!(policy.value.as_identifier().text(), "error");
 			}
 			_ => unreachable!(),
 		}
@@ -1471,7 +1447,6 @@ pub mod tests {
 						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, true);
-					assert!(col.policies.is_none());
 				}
 
 				{
@@ -1484,7 +1459,6 @@ pub mod tests {
 						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
-					assert!(col.policies.is_none());
 				}
 			}
 			_ => unreachable!(),
@@ -1497,7 +1471,7 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-        create deferred view test.views{field: int2 policy { saturation error} }
+        create deferred view test.views{field: int2}
     "#,
 		)
 		.unwrap()
@@ -1529,12 +1503,6 @@ pub mod tests {
 					_ => panic!("Expected simple type"),
 				}
 				assert_eq!(col.auto_increment, false);
-
-				let policies = &col.policies.as_ref().unwrap().policies;
-				assert_eq!(policies.len(), 1);
-				let policy = &policies[0];
-				assert!(matches!(policy.policy, AstPolicyKind::Saturation));
-				assert_eq!(policy.value.as_identifier().text(), "error");
 			}
 			_ => unreachable!(),
 		}
@@ -1579,7 +1547,6 @@ pub mod tests {
 						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
-					assert!(col.policies.is_none());
 				}
 
 				{
@@ -1592,7 +1559,6 @@ pub mod tests {
 						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
-					assert!(col.policies.is_none());
 				}
 			}
 			_ => unreachable!(),

@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::{column::ColumnDef, id::ColumnId, primitive::PrimitiveId};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_core::interface::catalog::{
+	column::ColumnDef,
+	id::ColumnId,
+	policy::{ColumnPolicy, ColumnPolicyKind},
+	primitive::PrimitiveId,
+};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use tracing::instrument;
 
 use crate::{CatalogStore, catalog::Catalog, store::column::list::ColumnInfo};
@@ -26,5 +31,15 @@ impl Catalog {
 	#[instrument(name = "catalog::column::list_all", level = "debug", skip(self, txn))]
 	pub fn list_columns_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<ColumnInfo>> {
 		CatalogStore::list_columns_all(txn)
+	}
+
+	#[instrument(name = "catalog::column::create_policy", level = "debug", skip(self, txn))]
+	pub fn create_column_policy(
+		&self,
+		txn: &mut AdminTransaction,
+		column: ColumnId,
+		policy: ColumnPolicyKind,
+	) -> crate::Result<ColumnPolicy> {
+		CatalogStore::create_column_policy(txn, column, policy)
 	}
 }

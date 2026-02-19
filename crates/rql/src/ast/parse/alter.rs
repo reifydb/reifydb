@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::sort::SortDirection;
-
 use crate::{
 	ast::{
-		ast::{
-			AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstAlterTable,
-			AstAlterTableOperation, AstAlterView, AstAlterViewOperation, AstIndexColumn, AstStatement,
-		},
+		ast::{AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstStatement},
 		identifier::MaybeQualifiedFlowIdentifier,
 		parse::Parser,
 	},
@@ -29,22 +24,12 @@ impl<'bump> Parser<'bump> {
 			return self.parse_alter_sequence(token);
 		}
 
-		if self.current()?.is_keyword(Keyword::Table) {
-			self.consume_keyword(Keyword::Table)?;
-			return self.parse_alter_table(token);
-		}
-
-		if self.current()?.is_keyword(Keyword::View) {
-			self.consume_keyword(Keyword::View)?;
-			return self.parse_alter_view(token);
-		}
-
 		if self.current()?.is_keyword(Keyword::Flow) {
 			self.consume_keyword(Keyword::Flow)?;
 			return self.parse_alter_flow(token);
 		}
 
-		unimplemented!("Only ALTER SEQUENCE, ALTER TABLE, ALTER VIEW, and ALTER FLOW are supported");
+		unimplemented!("Only ALTER SEQUENCE and ALTER FLOW are supported");
 	}
 
 	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
@@ -79,204 +64,6 @@ impl<'bump> Parser<'bump> {
 			column,
 			value,
 		}))
-	}
-
-	fn parse_alter_table(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
-		let mut segments = self.parse_dot_separated_identifiers()?;
-		let table_name = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-
-		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
-		let table = MaybeQualifiedTableIdentifier::new(table_name).with_namespace(namespace);
-
-		// Parse block of operations
-		self.consume_operator(Operator::OpenCurly)?;
-
-		let mut operations = Vec::new();
-
-		loop {
-			self.skip_new_line()?;
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-
-			// Parse operation
-			if self.current()?.is_keyword(Keyword::Create) {
-				self.consume_keyword(Keyword::Create)?;
-				self.consume_keyword(Keyword::Primary)?;
-				self.consume_keyword(Keyword::Key)?;
-
-				// Check for optional name
-				let name = if !self.current()?.is_operator(Operator::OpenCurly) {
-					Some(self.parse_identifier()?.token.fragment)
-				} else {
-					None
-				};
-
-				// Parse columns
-				let columns = self.parse_primary_key_columns()?;
-
-				operations.push(AstAlterTableOperation::CreatePrimaryKey {
-					name,
-					columns,
-				});
-			} else if self.current()?.is_keyword(Keyword::Drop) {
-				self.consume_keyword(Keyword::Drop)?;
-				self.consume_keyword(Keyword::Primary)?;
-				self.consume_keyword(Keyword::Key)?;
-
-				operations.push(AstAlterTableOperation::DropPrimaryKey);
-			} else {
-				unimplemented!("Unsupported ALTER TABLE operation");
-			}
-
-			self.skip_new_line()?;
-
-			// Check for comma separator for multiple operations
-			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
-				continue;
-			}
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-		}
-
-		self.consume_operator(Operator::CloseCurly)?;
-
-		Ok(AstAlter::Table(AstAlterTable {
-			token,
-			table,
-			operations,
-		}))
-	}
-
-	fn parse_alter_view(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
-		let mut segments = self.parse_dot_separated_identifiers()?;
-		let view_name = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-
-		use crate::ast::identifier::MaybeQualifiedViewIdentifier;
-		let view = MaybeQualifiedViewIdentifier::new(view_name).with_namespace(namespace);
-
-		// Parse block of operations
-		self.consume_operator(Operator::OpenCurly)?;
-
-		let mut operations = Vec::new();
-
-		loop {
-			self.skip_new_line()?;
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-
-			// Parse operation
-			if self.current()?.is_keyword(Keyword::Create) {
-				self.consume_keyword(Keyword::Create)?;
-				self.consume_keyword(Keyword::Primary)?;
-				self.consume_keyword(Keyword::Key)?;
-
-				// Check for optional name
-				let name = if !self.current()?.is_operator(Operator::OpenCurly) {
-					Some(self.parse_identifier()?.token.fragment)
-				} else {
-					None
-				};
-
-				// Parse columns
-				let columns = self.parse_primary_key_columns()?;
-
-				operations.push(AstAlterViewOperation::CreatePrimaryKey {
-					name,
-					columns,
-				});
-			} else if self.current()?.is_keyword(Keyword::Drop) {
-				self.consume_keyword(Keyword::Drop)?;
-				self.consume_keyword(Keyword::Primary)?;
-				self.consume_keyword(Keyword::Key)?;
-
-				operations.push(AstAlterViewOperation::DropPrimaryKey);
-			} else {
-				unimplemented!("Unsupported ALTER VIEW operation");
-			}
-
-			self.skip_new_line()?;
-
-			// Check for comma separator for multiple operations
-			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
-				continue;
-			}
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-		}
-
-		self.consume_operator(Operator::CloseCurly)?;
-
-		Ok(AstAlter::View(AstAlterView {
-			token,
-			view,
-			operations,
-		}))
-	}
-
-	fn parse_primary_key_columns(&mut self) -> crate::Result<Vec<AstIndexColumn<'bump>>> {
-		let mut columns = Vec::new();
-
-		self.consume_operator(Operator::OpenCurly)?;
-
-		loop {
-			self.skip_new_line()?;
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-
-			let column = self.parse_column_identifier()?;
-
-			// Check for optional sort direction
-			let sort_direction = if self.current()?.is_operator(Operator::Colon) {
-				self.consume_operator(Operator::Colon)?;
-
-				if self.current()?.is_keyword(Keyword::Asc) {
-					self.consume_keyword(Keyword::Asc)?;
-					SortDirection::Asc
-				} else if self.current()?.is_keyword(Keyword::Desc) {
-					self.consume_keyword(Keyword::Desc)?;
-					SortDirection::Desc
-				} else {
-					SortDirection::Asc
-				}
-			} else {
-				SortDirection::Asc
-			};
-
-			columns.push(AstIndexColumn {
-				column,
-				order: Some(sort_direction),
-			});
-
-			self.skip_new_line()?;
-
-			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
-				continue;
-			}
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-		}
-
-		self.consume_operator(Operator::CloseCurly)?;
-
-		if columns.is_empty() {
-			unimplemented!("Primary key must have at least one column");
-		}
-
-		Ok(columns)
 	}
 
 	fn parse_alter_flow(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
@@ -391,10 +178,7 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::{
-				AstAlter, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
-				AstAlterView, AstAlterViewOperation,
-			},
+			ast::{AstAlter, AstAlterFlowAction, AstAlterSequence},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -464,174 +248,6 @@ pub mod tests {
 				}
 			}
 			_ => panic!("Expected AstAlter::Sequence"),
-		}
-	}
-
-	#[test]
-	fn test_alter_table_create_primary_key() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "ALTER TABLE test.users { create primary key pk_users {id} }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
-
-		match alter {
-			AstAlter::Table(AstAlterTable {
-				table,
-				operations,
-				..
-			}) => {
-				assert!(!table.namespace.is_empty());
-				assert_eq!(table.namespace[0].text(), "test");
-				assert_eq!(table.name.text(), "users");
-				assert_eq!(operations.len(), 1);
-
-				match &operations[0] {
-					AstAlterTableOperation::CreatePrimaryKey {
-						name,
-						columns,
-					} => {
-						assert!(name.is_some());
-						assert_eq!(name.as_ref().unwrap().text(), "pk_users");
-						assert_eq!(columns.len(), 1);
-						assert_eq!(columns[0].column.name.text(), "id");
-					}
-					_ => panic!("Expected CreatePrimaryKey operation"),
-				}
-			}
-			_ => panic!("Expected AstAlter::Table"),
-		}
-	}
-
-	#[test]
-	fn test_alter_table_create_primary_key_no_name() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "ALTER TABLE test.users { create primary key {id, email} }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
-
-		match alter {
-			AstAlter::Table(AstAlterTable {
-				table,
-				operations,
-				..
-			}) => {
-				assert!(!table.namespace.is_empty());
-				assert_eq!(table.namespace[0].text(), "test");
-				assert_eq!(table.name.text(), "users");
-				assert_eq!(operations.len(), 1);
-
-				match &operations[0] {
-					AstAlterTableOperation::CreatePrimaryKey {
-						name,
-						columns,
-					} => {
-						assert!(name.is_none());
-						assert_eq!(columns.len(), 2);
-						assert_eq!(columns[0].column.name.text(), "id");
-						assert_eq!(columns[1].column.name.text(), "email");
-					}
-					_ => panic!("Expected CreatePrimaryKey operation"),
-				}
-			}
-			_ => panic!("Expected AstAlter::Table"),
-		}
-	}
-
-	#[test]
-	fn test_alter_view_create_primary_key() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "ALTER VIEW test.user_view { create primary key pk_view {user_id} }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
-
-		match alter {
-			AstAlter::View(AstAlterView {
-				view,
-				operations,
-				..
-			}) => {
-				assert!(!view.namespace.is_empty());
-				assert_eq!(view.namespace[0].text(), "test");
-				assert_eq!(view.name.text(), "user_view");
-				assert_eq!(operations.len(), 1);
-
-				match &operations[0] {
-					AstAlterViewOperation::CreatePrimaryKey {
-						name,
-						columns,
-					} => {
-						assert!(name.is_some());
-						assert_eq!(name.as_ref().unwrap().text(), "pk_view");
-						assert_eq!(columns.len(), 1);
-						assert_eq!(columns[0].column.name.text(), "user_id");
-					}
-					_ => panic!("Expected CreatePrimaryKey operation"),
-				}
-			}
-			_ => panic!("Expected AstAlter::View"),
-		}
-	}
-
-	#[test]
-	fn test_alter_view_create_primary_key_no_name() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "ALTER VIEW test.user_view { create primary key {user_id, created_at} }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
-
-		match alter {
-			AstAlter::View(AstAlterView {
-				view,
-				operations,
-				..
-			}) => {
-				assert!(!view.namespace.is_empty());
-				assert_eq!(view.namespace[0].text(), "test");
-				assert_eq!(view.name.text(), "user_view");
-				assert_eq!(operations.len(), 1);
-
-				match &operations[0] {
-					AstAlterViewOperation::CreatePrimaryKey {
-						name,
-						columns,
-					} => {
-						assert!(name.is_none());
-						assert_eq!(columns.len(), 2);
-						assert_eq!(columns[0].column.name.text(), "user_id");
-						assert_eq!(columns[1].column.name.text(), "created_at");
-					}
-					_ => panic!("Expected CreatePrimaryKey operation"),
-				}
-			}
-			_ => panic!("Expected AstAlter::View"),
 		}
 	}
 

@@ -88,7 +88,6 @@ impl<'bump> Parser<'bump> {
 					Keyword::Break => Ok(Ast::Break(self.parse_break()?)),
 					Keyword::Continue => Ok(Ast::Continue(self.parse_continue()?)),
 					Keyword::Let => Ok(Ast::Let(self.parse_let()?)),
-					Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
 					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
 					Keyword::Fun => {

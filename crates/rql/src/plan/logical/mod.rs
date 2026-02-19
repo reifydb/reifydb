@@ -22,7 +22,7 @@ use reifydb_catalog::catalog::{
 use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::{
-		catalog::policy::{ColumnPolicyKind, ColumnSaturationPolicy},
+		catalog::policy::ColumnPolicyKind,
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedPrimitive},
 	},
 	sort::{SortDirection, SortKey},
@@ -33,7 +33,7 @@ use tracing::instrument;
 
 use crate::{
 	ast::{
-		ast::{Ast, AstInfix, AstPolicy, AstPolicyKind, AstStatement, AstType, InfixOperator},
+		ast::{Ast, AstInfix, AstStatement, AstType, InfixOperator},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
@@ -44,7 +44,7 @@ use crate::{
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
 	expression::{AliasExpression, Expression, ExpressionCompiler},
-	plan::logical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
+	plan::logical::alter::flow::AlterFlowNode,
 };
 
 pub(crate) struct Compiler<'bump> {
@@ -330,10 +330,10 @@ pub enum LogicalPlan<'bump> {
 	CreateFlow(CreateFlowNode<'bump>),
 	CreateIndex(CreateIndexNode<'bump>),
 	CreateSubscription(CreateSubscriptionNode<'bump>),
+	CreatePrimaryKey(CreatePrimaryKeyNode<'bump>),
+	CreatePolicy(CreatePolicyNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
-	AlterTable(AlterTableNode<'bump>),
-	AlterView(AlterViewNode<'bump>),
 	AlterFlow(AlterFlowNode<'bump>),
 	// Mutate
 	DeleteTable(DeleteTableNode<'bump>),
@@ -490,7 +490,6 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
-	pub primary_key: Option<PrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
@@ -499,7 +498,6 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
-	pub primary_key: Option<PrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
@@ -519,7 +517,6 @@ pub struct CreateTableNode<'bump> {
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
-	pub primary_key: Option<PrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
@@ -528,7 +525,6 @@ pub struct CreateRingBufferNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
-	pub primary_key: Option<PrimaryKeyDef<'bump>>,
 }
 
 #[derive(Debug)]
@@ -746,24 +742,14 @@ pub struct DefineClosureNode<'bump> {
 	pub body: Vec<BumpVec<'bump, LogicalPlan<'bump>>>,
 }
 
-pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
-	use ColumnPolicyKind::*;
+#[derive(Debug)]
+pub struct CreatePrimaryKeyNode<'bump> {
+	pub table: MaybeQualifiedTableIdentifier<'bump>,
+	pub columns: Vec<PrimaryKeyColumn<'bump>>,
+}
 
-	match ast.policy {
-		AstPolicyKind::Saturation => {
-			if ast.value.is_literal_none() {
-				return Saturation(ColumnSaturationPolicy::None);
-			}
-			let ident = ast.value.as_identifier().text();
-			match ident {
-				"error" => Saturation(ColumnSaturationPolicy::Error),
-				// "saturate" => Some(Saturation(Saturate)),
-				// "wrap" => Some(Saturation(Wrap)),
-				// "zero" => Some(Saturation(Zero)),
-				_ => unimplemented!(),
-			}
-		}
-		AstPolicyKind::Default => unimplemented!(),
-		AstPolicyKind::NotNone => unimplemented!(),
-	}
+#[derive(Debug)]
+pub struct CreatePolicyNode<'bump> {
+	pub column: MaybeQualifiedColumnIdentifier<'bump>,
+	pub policies: Vec<ColumnPolicyKind>,
 }

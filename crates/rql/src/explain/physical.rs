@@ -419,11 +419,11 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				render_physical_plan_inner(input, &child_prefix, true, output);
 			});
 		}
-		PhysicalPlan::AlterTable(_) => {
-			write_node_header(output, prefix, is_last, "AlterTable");
+		PhysicalPlan::CreatePrimaryKey(_) => {
+			write_node_header(output, prefix, is_last, "CreatePrimaryKey");
 		}
-		PhysicalPlan::AlterView(_) => {
-			write_node_header(output, prefix, is_last, "AlterView");
+		PhysicalPlan::CreatePolicy(_) => {
+			write_node_header(output, prefix, is_last, "CreatePolicy");
 		}
 		PhysicalPlan::AlterFlow(alter_flow) => {
 			let flow_name = if let Some(ns) = &alter_flow.flow.namespace {

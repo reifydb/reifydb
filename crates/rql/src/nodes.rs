@@ -50,10 +50,10 @@ pub enum PhysicalPlan {
 	CreateDictionary(CreateDictionaryNode),
 	CreateSumType(CreateSumTypeNode),
 	CreateSubscription(CreateSubscriptionNode),
+	CreatePrimaryKey(CreatePrimaryKeyNode),
+	CreatePolicy(CreatePolicyNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
-	AlterTable(AlterTableNode),
-	AlterView(AlterViewNode),
 	AlterFlow(AlterFlowNode),
 	// Mutate
 	Delete(DeleteTableNode),
@@ -120,7 +120,6 @@ pub struct CreateDeferredViewNode {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
-	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
@@ -138,7 +137,6 @@ pub struct CreateTransactionalViewNode {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
-	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
@@ -153,7 +151,6 @@ pub struct CreateTableNode {
 	pub table: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
-	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
@@ -163,7 +160,6 @@ pub struct CreateRingBufferNode {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
-	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
@@ -208,76 +204,6 @@ pub struct AlterSequenceNode {
 	pub value: Expression,
 }
 
-// Alter Table types
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterTableNode {
-	pub table: AlterTableIdentifier,
-	pub operations: Vec<AlterTableOperation>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterTableIdentifier {
-	pub namespace: Option<Fragment>,
-	pub name: Fragment,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AlterTableOperation {
-	CreatePrimaryKey {
-		name: Option<Fragment>,
-		columns: Vec<AlterTableIndexColumn>,
-	},
-	DropPrimaryKey,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterTableIndexColumn {
-	pub column: AlterTableColumnIdentifier,
-	pub order: Option<SortDirection>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterTableColumnIdentifier {
-	pub namespace: Option<Fragment>,
-	pub name: Fragment,
-}
-
-// Alter View types
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewNode {
-	pub view: AlterViewIdentifier,
-	pub operations: Vec<AlterViewOperation>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewIdentifier {
-	pub namespace: Option<Fragment>,
-	pub name: Fragment,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AlterViewOperation {
-	CreatePrimaryKey {
-		name: Option<Fragment>,
-		columns: Vec<AlterViewIndexColumn>,
-	},
-	DropPrimaryKey,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewIndexColumn {
-	pub column: AlterViewColumnIdentifier,
-	pub order: Option<SortDirection>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewColumnIdentifier {
-	pub namespace: Option<Fragment>,
-	pub name: Fragment,
-}
-
 // Alter Flow types
 
 #[derive(Debug, Clone)]
@@ -302,6 +228,23 @@ pub enum AlterFlowAction {
 	},
 	Pause,
 	Resume,
+}
+
+// Create Primary Key node
+#[derive(Debug, Clone)]
+pub struct CreatePrimaryKeyNode {
+	pub namespace: ResolvedNamespace,
+	pub table: Fragment,
+	pub columns: Vec<PrimaryKeyColumn>,
+}
+
+// Create Policy node
+#[derive(Debug, Clone)]
+pub struct CreatePolicyNode {
+	pub namespace: ResolvedNamespace,
+	pub table: Fragment,
+	pub column: Fragment,
+	pub policies: Vec<reifydb_core::interface::catalog::policy::ColumnPolicyKind>,
 }
 
 #[derive(Debug, Clone)]

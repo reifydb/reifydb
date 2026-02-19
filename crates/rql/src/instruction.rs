@@ -8,8 +8,8 @@ use reifydb_type::{
 
 use crate::{
 	nodes::{
-		AlterFlowNode, AlterSequenceNode, AlterTableNode, AlterViewNode, CreateDeferredViewNode,
-		CreateDictionaryNode, CreateFlowNode, CreateNamespaceNode, CreateRingBufferNode,
+		AlterFlowNode, AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateFlowNode,
+		CreateNamespaceNode, CreatePolicyNode, CreatePrimaryKeyNode, CreateRingBufferNode,
 		CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode, CreateTransactionalViewNode,
 		DeleteRingBufferNode, DeleteTableNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
 		InsertTableNode, UpdateRingBufferNode, UpdateTableNode,
@@ -158,9 +158,9 @@ pub enum Instruction {
 	CreateDictionary(CreateDictionaryNode),
 	CreateSumType(CreateSumTypeNode),
 	CreateSubscription(CreateSubscriptionNode),
+	CreatePrimaryKey(CreatePrimaryKeyNode),
+	CreatePolicy(CreatePolicyNode),
 	AlterSequence(AlterSequenceNode),
-	AlterTable(AlterTableNode),
-	AlterView(AlterViewNode),
 	AlterFlow(AlterFlowNode),
 
 	// === DML ===
