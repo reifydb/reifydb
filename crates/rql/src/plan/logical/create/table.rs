@@ -2,10 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::catalog::table::TableColumnToCreate;
-use reifydb_core::{
-	error::diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch, sumtype_not_found},
-	interface::catalog::policy::ColumnPolicyKind,
-};
+use reifydb_core::error::diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch, sumtype_not_found};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	error::diagnostic::ast::unrecognized_type, fragment::Fragment, return_error, value::constraint::TypeConstraint,
@@ -14,7 +11,7 @@ use reifydb_type::{
 use crate::{
 	ast::ast::AstCreateTable,
 	convert_data_type_with_constraints,
-	plan::logical::{Compiler, CreateTableNode, LogicalPlan, convert_policy},
+	plan::logical::{Compiler, CreateTableNode, LogicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -61,11 +58,7 @@ impl<'bump> Compiler<'bump> {
 			};
 			let column_type = constraint.get_type();
 
-			let policies = if let Some(policy_block) = &col.policies {
-				policy_block.policies.iter().map(convert_policy).collect::<Vec<ColumnPolicyKind>>()
-			} else {
-				vec![]
-			};
+			let policies = vec![];
 
 			let name = col.name.to_owned();
 			let ty_fragment = col.ty.name_fragment().to_owned();
@@ -128,27 +121,10 @@ impl<'bump> Compiler<'bump> {
 		// Use the table identifier directly from AST
 		let table = ast.table;
 
-		// Convert AST primary key to logical plan primary key
-		let primary_key = ast.primary_key.map(|pk| {
-			use crate::plan::logical::{PrimaryKeyColumn, PrimaryKeyDef};
-
-			PrimaryKeyDef {
-				columns: pk
-					.columns
-					.into_iter()
-					.map(|col| PrimaryKeyColumn {
-						column: col.column.name,
-						order: col.order,
-					})
-					.collect(),
-			}
-		});
-
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
 			table,
 			if_not_exists: false,
 			columns,
-			primary_key,
 		}))
 	}
 }

@@ -3,5 +3,3 @@
 
 pub mod flow;
 pub mod sequence;
-pub mod table;
-pub mod view;

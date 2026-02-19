@@ -6,6 +6,8 @@ pub mod dictionary;
 pub mod flow;
 pub mod index;
 pub mod namespace;
+pub mod policy;
+pub mod primary_key;
 pub mod ringbuffer;
 pub mod series;
 pub mod subscription;
@@ -38,6 +40,8 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Enum(node) => self.compile_create_sumtype(node),
 			AstCreate::Index(node) => self.compile_create_index(node),
 			AstCreate::Subscription(node) => self.compile_create_subscription(node, tx),
+			AstCreate::PrimaryKey(node) => self.compile_create_primary_key(node, tx),
+			AstCreate::Policy(node) => self.compile_create_policy(node, tx),
 		}
 	}
 }

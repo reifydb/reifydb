@@ -42,28 +42,11 @@ impl<'bump> Compiler<'bump> {
 			BumpVec::new_in(self.bump)
 		};
 
-		// Convert AST primary key to logical plan primary key
-		let primary_key = ast.primary_key.map(|pk| {
-			use crate::plan::logical::{PrimaryKeyColumn, PrimaryKeyDef};
-
-			PrimaryKeyDef {
-				columns: pk
-					.columns
-					.into_iter()
-					.map(|col| PrimaryKeyColumn {
-						column: col.column.name,
-						order: col.order,
-					})
-					.collect(),
-			}
-		});
-
 		Ok(LogicalPlan::CreateDeferredView(CreateDeferredViewNode {
 			view,
 			if_not_exists: false,
 			columns,
 			as_clause: with,
-			primary_key,
 		}))
 	}
 }

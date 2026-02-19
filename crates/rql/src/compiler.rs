@@ -601,12 +601,12 @@ impl InstructionCompiler {
 				self.emit(Instruction::AlterSequence(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::AlterTable(node) => {
-				self.emit(Instruction::AlterTable(node));
+			PhysicalPlan::CreatePrimaryKey(node) => {
+				self.emit(Instruction::CreatePrimaryKey(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::AlterView(node) => {
-				self.emit(Instruction::AlterView(node));
+			PhysicalPlan::CreatePolicy(node) => {
+				self.emit(Instruction::CreatePolicy(node));
 				self.emit(Instruction::Emit);
 			}
 
@@ -620,7 +620,6 @@ impl InstructionCompiler {
 					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
 						node.as_clause,
 					))),
-					primary_key: node.primary_key,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -633,7 +632,6 @@ impl InstructionCompiler {
 					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
 						node.as_clause,
 					))),
-					primary_key: node.primary_key,
 				}));
 				self.emit(Instruction::Emit);
 			}

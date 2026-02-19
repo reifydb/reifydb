@@ -1,11 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-logical 'alter table test.users { create primary key pk_users {id} }'
+logical 'create primary key on test.users { id }'
 ---
-> └── AlterTable
->     ├── Namespace: test
->     ├── Table: users
->     └──Operation: CREATE PRIMARY KEY pk_users
->          └──Column: id
+> └── CreatePrimaryKey
 >

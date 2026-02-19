@@ -779,7 +779,7 @@ impl Vm {
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::AlterTable(node) => {
+				Instruction::CreatePrimaryKey(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
@@ -789,14 +789,14 @@ impl Vm {
 							),
 						)),
 					};
-					let columns = super::instruction::ddl::alter::table::alter_table(
+					let columns = super::instruction::ddl::create::primary_key::create_primary_key(
 						services,
 						txn,
 						node.clone(),
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::AlterView(node) => {
+				Instruction::CreatePolicy(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => return Err(reifydb_type::error::Error(
@@ -806,7 +806,7 @@ impl Vm {
 							),
 						)),
 					};
-					let columns = super::instruction::ddl::alter::view::execute_alter_view(
+					let columns = super::instruction::ddl::create::policy::create_policy(
 						services,
 						txn,
 						node.clone(),

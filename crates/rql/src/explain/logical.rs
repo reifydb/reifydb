@@ -9,14 +9,10 @@ use crate::{
 	ast::parse_str,
 	bump::Bump,
 	plan::logical::{
-		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, CreateIndexNode, DistinctNode, ExtendNode,
-		FilterNode, GeneratorNode, InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
-		MapNode, OrderNode, PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
-		alter::{
-			flow::AlterFlowAction,
-			table::{AlterTableNode, AlterTableOperation},
-			view::{AlterViewNode, AlterViewOperation},
-		},
+		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, CreateIndexNode, CreatePolicyNode,
+		CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode, InlineDataNode,
+		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode, PatchNode,
+		PrimitiveScanNode, TakeNode, VariableSourceNode, alter::flow::AlterFlowAction,
 	},
 };
 
@@ -539,143 +535,15 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				render_logical_plan_inner(step, child_prefix.as_str(), last, output);
 			}
 		}
-		LogicalPlan::AlterTable(AlterTableNode {
-			table,
-			operations,
+		LogicalPlan::CreatePrimaryKey(CreatePrimaryKeyNode {
+			..
 		}) => {
-			output.push_str(&format!("{}{} AlterTable\n", prefix, branch));
-
-			// Show namespace and table
-			let schema_str = table.namespace.first().map(|n| n.text()).unwrap_or("default");
-			output.push_str(&format!("{}├── Namespace: {}\n", child_prefix, schema_str));
-			output.push_str(&format!("{}├── Table: {}\n", child_prefix, table.name.text()));
-
-			// Show operations
-			let ops_count = operations.len();
-			for (i, op) in operations.iter().enumerate() {
-				let is_last_op = i == ops_count - 1;
-				let op_branch = if is_last_op {
-					"└──"
-				} else {
-					"├──"
-				};
-
-				match op {
-					AlterTableOperation::CreatePrimaryKey {
-						name,
-						columns,
-					} => {
-						let pk_name = name
-							.as_ref()
-							.map(|n| format!(" {}", n.text()))
-							.unwrap_or_default();
-						output.push_str(&format!(
-							"{}{}Operation: CREATE PRIMARY KEY{}\n",
-							child_prefix, op_branch, pk_name
-						));
-
-						// Show columns
-						let cols_prefix = format!(
-							"{}{}    ",
-							child_prefix,
-							if is_last_op {
-								" "
-							} else {
-								"│"
-							}
-						);
-						for (j, col) in columns.iter().enumerate() {
-							let col_last = j == columns.len() - 1;
-							let col_branch = if col_last {
-								"└──"
-							} else {
-								"├──"
-							};
-							output.push_str(&format!(
-								"{}{}Column: {}\n",
-								cols_prefix,
-								col_branch,
-								col.column.name.text()
-							));
-						}
-					}
-					AlterTableOperation::DropPrimaryKey => {
-						output.push_str(&format!(
-							"{}{}Operation: DROP PRIMARY KEY\n",
-							child_prefix, op_branch
-						));
-					}
-				}
-			}
+			output.push_str(&format!("{}{} CreatePrimaryKey\n", prefix, branch));
 		}
-		LogicalPlan::AlterView(AlterViewNode {
-			view,
-			operations,
+		LogicalPlan::CreatePolicy(CreatePolicyNode {
+			..
 		}) => {
-			output.push_str(&format!("{}{} AlterView\n", prefix, branch));
-
-			// Show namespace and view
-			let schema_str = view.namespace.first().map(|n| n.text()).unwrap_or("default");
-			output.push_str(&format!("{}├── Namespace: {}\n", child_prefix, schema_str));
-			output.push_str(&format!("{}├── View: {}\n", child_prefix, view.name.text()));
-
-			// Show operations
-			let ops_count = operations.len();
-			for (i, op) in operations.iter().enumerate() {
-				let is_last_op = i == ops_count - 1;
-				let op_branch = if is_last_op {
-					"└──"
-				} else {
-					"├──"
-				};
-
-				match op {
-					AlterViewOperation::CreatePrimaryKey {
-						name,
-						columns,
-					} => {
-						let pk_name = name
-							.as_ref()
-							.map(|n| format!(" {}", n.text()))
-							.unwrap_or_default();
-						output.push_str(&format!(
-							"{}{}Operation: CREATE PRIMARY KEY{}\n",
-							child_prefix, op_branch, pk_name
-						));
-
-						// Show columns
-						let cols_prefix = format!(
-							"{}{}    ",
-							child_prefix,
-							if is_last_op {
-								" "
-							} else {
-								"│"
-							}
-						);
-						for (j, col) in columns.iter().enumerate() {
-							let col_last = j == columns.len() - 1;
-							let col_branch = if col_last {
-								"└──"
-							} else {
-								"├──"
-							};
-							output.push_str(&format!(
-								"{}{}Column: {}\n",
-								cols_prefix,
-								col_branch,
-								col.column.name.text()
-							));
-						}
-					}
-					AlterViewOperation::DropPrimaryKey => {
-						output.push_str(&format!(
-							"{}{}Operation: DROP PRIMARY KEY\n",
-							child_prefix, op_branch
-						));
-					}
-				}
-			}
+			output.push_str(&format!("{}{} CreatePolicy\n", prefix, branch));
 		}
 		LogicalPlan::Window(window) => {
 			output.push_str(&format!("{}{} Window\n", prefix, branch));

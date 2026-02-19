@@ -1,20 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::{
-	primary_key::PrimaryKeyToCreate,
-	table::{TableColumnToCreate, TableToCreate},
-};
-use reifydb_core::{
-	error::diagnostic::query::column_not_found,
-	interface::catalog::{change::CatalogTrackTableChangeOperations, primitive::PrimitiveId},
-	value::column::columns::Columns,
-};
+use reifydb_catalog::catalog::table::{TableColumnToCreate, TableToCreate};
+use reifydb_core::{interface::catalog::change::CatalogTrackTableChangeOperations, value::column::columns::Columns};
 use reifydb_rql::nodes::CreateTableNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
-	return_error,
 	value::{
 		Value,
 		constraint::{Constraint, TypeConstraint},
@@ -59,31 +51,6 @@ pub(crate) fn create_table(
 		},
 	)?;
 	txn.track_table_def_created(table.clone())?;
-
-	// If primary key is specified, create it immediately
-	if let Some(pk_def) = plan.primary_key {
-		// Get the table columns to resolve column IDs
-		let table_columns = services.catalog.list_columns(&mut Transaction::Admin(txn), table.id)?;
-
-		// Resolve column names to IDs
-		let mut column_ids = Vec::new();
-		for pk_column in pk_def.columns {
-			let column_name = pk_column.column.text();
-			let Some(column) = table_columns.iter().find(|col| col.name == column_name) else {
-				return_error!(column_not_found(pk_column.column));
-			};
-			column_ids.push(column.id);
-		}
-
-		// Create primary key
-		services.catalog.create_primary_key(
-			txn,
-			PrimaryKeyToCreate {
-				source: PrimitiveId::Table(table.id),
-				column_ids,
-			},
-		)?;
-	}
 
 	Ok(Columns::single_row([
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
