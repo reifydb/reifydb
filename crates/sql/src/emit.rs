@@ -415,8 +415,8 @@ fn emit_create_index(ci: &CreateIndexStatement) -> Result<String, Error> {
 	let mut col_parts = Vec::new();
 	for col in &ci.columns {
 		match &col.direction {
-			Some(OrderDirection::Desc) => col_parts.push(format!("{} desc", col.name)),
-			Some(OrderDirection::Asc) => col_parts.push(format!("{} asc", col.name)),
+			Some(OrderDirection::Desc) => col_parts.push(format!("{}:desc", col.name)),
+			Some(OrderDirection::Asc) => col_parts.push(format!("{}:asc", col.name)),
 			None => col_parts.push(col.name.clone()),
 		}
 	}
@@ -1213,7 +1213,7 @@ mod tests {
 	fn test_create_index_with_direction() {
 		assert_eq!(
 			transpile("CREATE INDEX idx1 ON t1 (a DESC, b ASC)"),
-			"CREATE INDEX idx1 ON t1 {a desc, b asc}"
+			"CREATE INDEX idx1 ON t1 {a:desc, b:asc}"
 		);
 	}
 

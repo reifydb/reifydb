@@ -1772,7 +1772,7 @@ pub mod tests {
 				FROM raw_events
 				FILTER {event_type = 'purchase'}
 				AGGREGATE BY {user_id}
-				SELECT { user_id, total: SUM(amount) }
+				MAP { user_id, total: SUM(amount) }
 			}
 		"#,
 		)

@@ -83,26 +83,6 @@ pub fn aggregate_multiple_by_without_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Multiple SELECT expressions without braces error
-pub fn select_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
-	Diagnostic {
-		code: "SELECT_001".to_string(),
-		statement: None,
-		message: "Multiple SELECT expressions require curly braces".to_string(),
-		column: None,
-		fragment,
-		label: Some("missing curly braces around expressions".to_string()),
-		help: Some("Wrap multiple SELECT expressions in curly braces, e.g., 'SELECT { name, age, email } FROM users'".to_string()),
-		notes: vec![
-			"When selecting multiple columns or expressions, use curly braces: SELECT { expr1, expr2, ... }".to_string(),
-			"Single expressions can be written without braces: SELECT name FROM users".to_string(),
-			"Curly braces make the query more readable and unambiguous".to_string(),
-		],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
 /// Multiple DISTINCT columns without braces error
 pub fn distinct_multiple_columns_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
@@ -527,11 +507,11 @@ pub fn sort_missing_braces(fragment: Fragment) -> Diagnostic {
 		column: None,
 		fragment,
 		label: Some("missing curly braces".to_string()),
-		help: Some("Wrap SORT columns in curly braces, e.g., 'SORT {name}' or 'SORT {name ASC, age DESC}'"
+		help: Some("Wrap SORT columns in curly braces, e.g., 'SORT {name}' or 'SORT {name:ASC, age:DESC}'"
 			.to_string()),
 		notes: vec![
 			"SORT always requires curly braces: SORT {column}".to_string(),
-			"Multiple columns: SORT {col1 ASC, col2 DESC}".to_string(),
+			"Multiple columns: SORT {col1:ASC, col2:DESC}".to_string(),
 		],
 		cause: None,
 		operator_chain: None,
@@ -551,26 +531,6 @@ pub fn map_missing_braces(fragment: Fragment) -> Diagnostic {
 		notes: vec![
 			"MAP always requires curly braces: MAP {expression}".to_string(),
 			"Multiple expressions: MAP {expr1, expr2}".to_string(),
-		],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-/// SELECT missing braces error
-pub fn select_missing_braces(fragment: Fragment) -> Diagnostic {
-	Diagnostic {
-		code: "SELECT_002".to_string(),
-		statement: None,
-		message: "SELECT requires curly braces around expressions".to_string(),
-		column: None,
-		fragment,
-		label: Some("missing curly braces".to_string()),
-		help: Some("Wrap SELECT expressions in curly braces, e.g., 'SELECT {name}' or 'SELECT {name, age}'"
-			.to_string()),
-		notes: vec![
-			"SELECT always requires curly braces: SELECT {expression}".to_string(),
-			"Multiple expressions: SELECT {expr1, expr2}".to_string(),
 		],
 		cause: None,
 		operator_chain: None,
