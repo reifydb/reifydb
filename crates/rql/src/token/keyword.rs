@@ -45,7 +45,6 @@ macro_rules! keyword {
 
 keyword! {
 Map     => "MAP",
-Select  => "SELECT",
 Extend  => "EXTEND",
 By         => "BY",
 From       => "FROM",
@@ -147,7 +146,6 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	let mut map = HashMap::new();
 	map.insert("MAP", Keyword::Map);
 	map.insert("APPLY", Keyword::Apply);
-	map.insert("SELECT", Keyword::Select);
 	map.insert("EXTEND", Keyword::Extend);
 	map.insert("BY", Keyword::By);
 	map.insert("FROM", Keyword::From);
@@ -327,7 +325,6 @@ pub mod tests {
 	generate_keyword_tests! {
 	test_keyword_map => (Map, "MAP"),
 	test_keyword_apply => (Apply, "APPLY"),
-	test_keyword_select => (Select, "SELECT"),
 	test_keyword_by => (By, "BY"),
 	test_keyword_from => (From, "FROM"),
 	test_keyword_where => (Where, "WHERE"),
@@ -467,7 +464,6 @@ pub mod tests {
 	generate_not_keyword_tests! {
 	test_not_keyword_map => ( "map"),
 	test_not_keyword_apply => ( "apply"),
-	test_not_keyword_select => ( "select"),
 	test_not_keyword_by => ( "by"),
 	test_not_keyword_from => ( "from"),
 	test_not_keyword_where => ( "where"),

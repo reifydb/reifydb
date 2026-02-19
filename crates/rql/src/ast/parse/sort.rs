@@ -56,14 +56,6 @@ impl<'bump> Parser<'bump> {
 					} else {
 						directions.push(None);
 					}
-				}
-				// Space-based syntax: {column ASC}
-				else if self.current()?.is_keyword(Keyword::Asc)
-					|| self.current()?.is_keyword(Keyword::Desc)
-				{
-					let token = self.current()?;
-					self.advance()?;
-					directions.push(Some(token.fragment));
 				} else {
 					directions.push(None);
 				}
@@ -121,7 +113,7 @@ pub mod tests {
 	#[test]
 	fn test_keyword() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "SORT {value ASC}").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "SORT {value: ASC}").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -137,7 +129,7 @@ pub mod tests {
 	#[test]
 	fn test_single_column_asc() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "SORT {name ASC}").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "SORT {name: ASC}").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -153,7 +145,7 @@ pub mod tests {
 	#[test]
 	fn test_single_column_desc() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "SORT {name DESC}").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "SORT {name: DESC}").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -188,7 +180,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_columns_asc_desc() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "SORT {name ASC, age DESC}").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "SORT {name: ASC, age: DESC}").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -227,6 +219,16 @@ pub mod tests {
 		assert!(result.is_err(), "Expected error for SORT without braces");
 		let err = result.unwrap_err();
 		assert_eq!(err.code, "SORT_001");
+	}
+
+	#[test]
+	fn test_space_syntax_rejected() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "SORT {name DESC}").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, tokens);
+		let result = parser.parse();
+
+		assert!(result.is_err(), "Expected error for space-separated sort direction");
 	}
 
 	#[test]

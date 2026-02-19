@@ -59,14 +59,13 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Check if the current token starts a statement (FROM, SELECT, MAP, EXTEND, etc.)
+	/// Check if the current token starts a statement (FROM, MAP, EXTEND, etc.)
 	/// Also checks for variables followed by pipes ($var | ...)
 	fn is_statement(&self) -> crate::Result<bool> {
 		if let Ok(token) = self.current() {
 			Ok(matches!(
 				token.kind,
 				TokenKind::Keyword(Keyword::From)
-					| TokenKind::Keyword(Keyword::Select)
 					| TokenKind::Keyword(Keyword::Map) | TokenKind::Keyword(Keyword::Extend)
 			) || (matches!(token.kind, TokenKind::Variable) && self.has_pipe_ahead()))
 		} else {

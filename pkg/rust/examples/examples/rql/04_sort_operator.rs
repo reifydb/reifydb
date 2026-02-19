@@ -77,13 +77,13 @@ sort {price}"#,
 	info!("\nExample 2: Sort by name (ascending - explicit)");
 	log_query(
 		r#"from store.products
-sort {name asc}"#,
+sort {name:asc}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from store.products
-			sort {name asc}
+			sort {name:asc}
 			"#,
 			Params::None,
 		)
@@ -96,13 +96,13 @@ sort {name asc}"#,
 	info!("\nExample 3: Sort by rating (descending)");
 	log_query(
 		r#"from store.products
-sort {rating desc}"#,
+sort {rating:desc}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from store.products
-			sort {rating desc}
+			sort {rating:desc}
 			"#,
 			Params::None,
 		)
@@ -115,13 +115,13 @@ sort {rating desc}"#,
 	info!("\nExample 4: Sort by category, then by price");
 	log_query(
 		r#"from store.products
-sort { category asc, price asc }"#,
+sort { category:asc, price:asc }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from store.products
-			sort { category asc, price asc }
+			sort { category:asc, price:asc }
 			"#,
 			Params::None,
 		)
@@ -135,14 +135,14 @@ sort { category asc, price asc }"#,
 	log_query(
 		r#"from store.products
 filter category == "Electronics"
-sort {stock desc}"#,
+sort {stock:desc}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from store.products
 			filter category == "Electronics"
-			sort {stock desc}
+			sort {stock:desc}
 			"#,
 			Params::None,
 		)
@@ -160,7 +160,7 @@ sort {stock desc}"#,
   { name: "Carol", score: 78 },
   { name: "Dave", score: 95 }
 ]
-sort {score desc}"#,
+sort {score:desc}"#,
 	);
 	for frame in db
 		.query_as_root(
@@ -171,7 +171,7 @@ sort {score desc}"#,
 				{ name: "Carol", score: 78 },
 				{ name: "Dave", score: 95 }
 			]
-			sort {score desc}
+			sort {score:desc}
 			"#,
 			Params::None,
 		)
@@ -185,14 +185,14 @@ sort {score desc}"#,
 	log_query(
 		r#"from store.products
 map { name, price, rating }
-sort {rating desc}"#,
+sort {rating:desc}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from store.products
 			map { name, price, rating }
-			sort {rating desc}
+			sort {rating:desc}
 			"#,
 			Params::None,
 		)
@@ -205,13 +205,13 @@ sort {rating desc}"#,
 	info!("\nExample 8: Sort by category ascending, then rating descending");
 	log_query(
 		r#"from store.products
-sort { category asc, rating desc }"#,
+sort { category:asc, rating:desc }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from store.products
-			sort { category asc, rating desc }
+			sort { category:asc, rating:desc }
 			"#,
 			Params::None,
 		)
@@ -224,13 +224,13 @@ sort { category asc, rating desc }"#,
 	info!("\nExample 9: Sort by id to show original insertion order");
 	log_query(
 		r#"from store.products
-sort {id asc}"#,
+sort {id:asc}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from store.products
-			sort {id asc}
+			sort {id:asc}
 			"#,
 			Params::None,
 		)

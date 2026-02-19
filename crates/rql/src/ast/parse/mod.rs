@@ -35,7 +35,6 @@ pub mod patch;
 pub mod policy;
 pub mod prefix;
 pub mod primary;
-pub mod select;
 pub mod sort;
 pub mod sub_query;
 pub mod take;

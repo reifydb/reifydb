@@ -84,10 +84,14 @@ impl<'bump> Parser<'bump> {
 
 			let column = self.parse_column_identifier()?;
 
-			let order = if self.consume_if(TokenKind::Keyword(Asc))?.is_some() {
-				Some(SortDirection::Asc)
-			} else if self.consume_if(TokenKind::Keyword(Desc))?.is_some() {
-				Some(SortDirection::Desc)
+			let order = if self.consume_if(TokenKind::Operator(Operator::Colon))?.is_some() {
+				if self.consume_if(TokenKind::Keyword(Asc))?.is_some() {
+					Some(SortDirection::Asc)
+				} else if self.consume_if(TokenKind::Keyword(Desc))?.is_some() {
+					Some(SortDirection::Desc)
+				} else {
+					None
+				}
 			} else {
 				None
 			};
@@ -222,7 +226,7 @@ pub mod tests {
 	#[test]
 	fn test_create_index_with_ordering() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"create index idx_status on test.users {created_at desc, status asc}"#)
+		let tokens = tokenize(&bump, r#"create index idx_status on test.users {created_at:desc, status:asc}"#)
 			.unwrap()
 			.into_iter()
 			.collect();
