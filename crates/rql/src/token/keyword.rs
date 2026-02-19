@@ -140,7 +140,8 @@ Output => "OUTPUT",
 Append => "APPEND",
 Assert => "ASSERT",
 Patch => "PATCH",
-Enum => "ENUM"}
+Enum => "ENUM",
+Match => "MATCH"}
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
 	let mut map = HashMap::new();
@@ -231,6 +232,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("ASSERT", Keyword::Assert);
 	map.insert("PATCH", Keyword::Patch);
 	map.insert("ENUM", Keyword::Enum);
+	map.insert("MATCH", Keyword::Match);
 	map
 });
 
@@ -407,7 +409,8 @@ pub mod tests {
 	test_keyword_append => (Append, "APPEND"),
 	test_keyword_assert => (Assert, "ASSERT"),
 	test_keyword_patch => (Patch, "PATCH"),
-	test_keyword_enum => (Enum, "ENUM")}
+	test_keyword_enum => (Enum, "ENUM"),
+	test_keyword_match => (Match, "MATCH")}
 
 	fn check_no_keyword(repr: &str) {
 		let bump = Bump::new();
@@ -546,5 +549,6 @@ pub mod tests {
 	test_not_keyword_append => ( "append"),
 	test_not_keyword_assert => ( "assert"),
 	test_not_keyword_patch => ( "patch"),
-	test_not_keyword_enum => ( "enum")}
+	test_not_keyword_enum => ( "enum"),
+	test_not_keyword_match => ( "match")}
 }

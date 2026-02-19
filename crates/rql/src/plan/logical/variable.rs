@@ -6,7 +6,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{
 	ast::ast::{
 		Ast, AstBlock, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral, AstLiteralNone,
-		AstLoop, AstReturn, AstWhile, LetValue as AstLetValue,
+		AstLoop, AstMatch, AstMatchArm, AstReturn, AstWhile, LetValue as AstLetValue,
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
 	convert_data_type_with_constraints,
@@ -47,6 +47,15 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
+	/// Produce a MAP { value: none } plan node.
+	fn none_as_map(&self) -> crate::Result<LogicalPlan<'bump>> {
+		let none_literal = Ast::Literal(AstLiteral::None(AstLiteralNone(Token {
+			kind: TokenKind::Literal(Literal::None),
+			fragment: BumpFragment::internal(self.bump, "none"),
+		})));
+		self.compile_scalar_as_map(none_literal)
+	}
+
 	pub(crate) fn compile_if(
 		&self,
 		ast: AstIf<'bump>,
@@ -75,16 +84,199 @@ impl<'bump> Compiler<'bump> {
 		let else_branch = if let Some(else_block) = ast.else_block {
 			Some(BumpBox::new_in(self.compile_block_single(else_block, tx)?, self.bump))
 		} else {
-			let undefined_literal = Ast::Literal(AstLiteral::None(AstLiteralNone(Token {
-				kind: TokenKind::Literal(Literal::None),
-				fragment: BumpFragment::internal(self.bump, "none"),
-			})));
-			Some(BumpBox::new_in(self.compile_scalar_as_map(undefined_literal)?, self.bump))
+			Some(BumpBox::new_in(self.none_as_map()?, self.bump))
 		};
 
 		Ok(LogicalPlan::Conditional(ConditionalNode {
 			condition,
 			then_branch,
+			else_ifs,
+			else_branch,
+		}))
+	}
+
+	pub(crate) fn compile_match(
+		&self,
+		ast: AstMatch<'bump>,
+		_tx: &mut Transaction<'_>,
+	) -> crate::Result<LogicalPlan<'bump>> {
+		use reifydb_type::fragment::Fragment;
+
+		use crate::{
+			expression::{
+				AliasExpression, AndExpression, ColumnExpression, EqExpression, Expression,
+				IdentExpression, IsVariantExpression,
+			},
+			plan::logical::MapNode,
+		};
+
+		let fragment = ast.token.fragment.to_owned();
+
+		// Compile subject expression (if present)
+		let subject = match ast.subject {
+			Some(s) => Some(ExpressionCompiler::compile(BumpBox::into_inner(s))?),
+			None => None,
+		};
+
+		// Extract the subject column name for field rewriting (if subject is a simple column)
+		let subject_col_name = subject.as_ref().and_then(|s| match s {
+			Expression::Column(ColumnExpression(col)) => Some(col.name.text().to_string()),
+			_ => None,
+		});
+
+		// Build list of (condition, LogicalPlan) pairs + optional else
+		let mut branches: Vec<(Expression, LogicalPlan<'bump>)> = Vec::new();
+		let mut else_plan: Option<LogicalPlan<'bump>> = None;
+
+		for arm in ast.arms {
+			match arm {
+				AstMatchArm::Else {
+					result,
+				} => {
+					else_plan = Some(self.compile_scalar_as_map(BumpBox::into_inner(result))?);
+				}
+				AstMatchArm::Value {
+					pattern,
+					guard,
+					result,
+				} => {
+					let subject_expr = subject.clone().expect("Value arm requires a MATCH subject");
+					let pattern_expr = ExpressionCompiler::compile(BumpBox::into_inner(pattern))?;
+
+					let mut condition = Expression::Equal(EqExpression {
+						left: Box::new(subject_expr),
+						right: Box::new(pattern_expr),
+						fragment: fragment.clone(),
+					});
+
+					if let Some(guard) = guard {
+						let guard_expr =
+							ExpressionCompiler::compile(BumpBox::into_inner(guard))?;
+						condition = Expression::And(AndExpression {
+							left: Box::new(condition),
+							right: Box::new(guard_expr),
+							fragment: fragment.clone(),
+						});
+					}
+
+					let result_plan = self.compile_scalar_as_map(BumpBox::into_inner(result))?;
+					branches.push((condition, result_plan));
+				}
+				AstMatchArm::IsVariant {
+					namespace,
+					sumtype_name,
+					variant_name,
+					destructure,
+					guard,
+					result,
+				} => {
+					let subject_expr = subject.clone().expect("IS arm requires a MATCH subject");
+
+					// Build field bindings for rewriting
+					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
+						(Some(destr), Some(col_name)) => {
+							let variant_lower = variant_name.text().to_lowercase();
+							destr.fields
+								.iter()
+								.map(|f| {
+									let field_name = f.text().to_string();
+									let physical = format!(
+										"{}_{}_{}",
+										col_name,
+										variant_lower,
+										field_name.to_lowercase()
+									);
+									(field_name, physical)
+								})
+								.collect()
+						}
+						_ => vec![],
+					};
+
+					let mut condition = Expression::IsVariant(IsVariantExpression {
+						expression: Box::new(subject_expr),
+						namespace: namespace.map(|n| n.to_owned()),
+						sumtype_name: sumtype_name.to_owned(),
+						variant_name: variant_name.to_owned(),
+						tag: None,
+						fragment: fragment.clone(),
+					});
+
+					if let Some(guard) = guard {
+						let mut guard_expr =
+							ExpressionCompiler::compile(BumpBox::into_inner(guard))?;
+						ExpressionCompiler::rewrite_field_refs(&mut guard_expr, &bindings);
+						condition = Expression::And(AndExpression {
+							left: Box::new(condition),
+							right: Box::new(guard_expr),
+							fragment: fragment.clone(),
+						});
+					}
+
+					// Compile result, rewrite field refs, then wrap in MapNode
+					let mut result_expr = ExpressionCompiler::compile(BumpBox::into_inner(result))?;
+					ExpressionCompiler::rewrite_field_refs(&mut result_expr, &bindings);
+
+					let alias_expr = AliasExpression {
+						alias: IdentExpression(Fragment::internal("value")),
+						expression: Box::new(result_expr),
+						fragment: fragment.clone(),
+					};
+					let result_plan = LogicalPlan::Map(MapNode {
+						map: vec![Expression::Alias(alias_expr)],
+					});
+
+					branches.push((condition, result_plan));
+				}
+				AstMatchArm::Condition {
+					condition,
+					guard,
+					result,
+				} => {
+					let mut cond = ExpressionCompiler::compile(BumpBox::into_inner(condition))?;
+
+					if let Some(guard) = guard {
+						let guard_expr =
+							ExpressionCompiler::compile(BumpBox::into_inner(guard))?;
+						cond = Expression::And(AndExpression {
+							left: Box::new(cond),
+							right: Box::new(guard_expr),
+							fragment: fragment.clone(),
+						});
+					}
+
+					let result_plan = self.compile_scalar_as_map(BumpBox::into_inner(result))?;
+					branches.push((cond, result_plan));
+				}
+			}
+		}
+
+		// Assemble into ConditionalNode
+		if branches.is_empty() {
+			return match else_plan {
+				Some(plan) => Ok(plan),
+				None => self.none_as_map(),
+			};
+		}
+
+		let (first_cond, first_then) = branches.remove(0);
+
+		let else_ifs: Vec<ElseIfBranch<'bump>> = branches
+			.into_iter()
+			.map(|(cond, plan)| ElseIfBranch {
+				condition: cond,
+				then_branch: BumpBox::new_in(plan, self.bump),
+			})
+			.collect();
+
+		let else_branch = match else_plan {
+			Some(plan) => Some(BumpBox::new_in(plan, self.bump)),
+			None => Some(BumpBox::new_in(self.none_as_map()?, self.bump)),
+		};
+
+		Ok(LogicalPlan::Conditional(ConditionalNode {
+			condition: first_cond,
+			then_branch: BumpBox::new_in(first_then, self.bump),
 			else_ifs,
 			else_branch,
 		}))
@@ -103,11 +295,7 @@ impl<'bump> Compiler<'bump> {
 			}
 		}
 		// Empty block → none wrapped in MAP
-		let undefined_literal = Ast::Literal(AstLiteral::None(AstLiteralNone(Token {
-			kind: TokenKind::Literal(Literal::None),
-			fragment: BumpFragment::internal(self.bump, "none"),
-		})));
-		self.compile_scalar_as_map(undefined_literal)
+		self.none_as_map()
 	}
 
 	/// Compile all statements in a block into a Vec<BumpVec<LogicalPlan>>

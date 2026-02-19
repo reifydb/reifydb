@@ -87,6 +87,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::Assert(_) => "Assert",
 		Ast::SumTypeConstructor(_) => "SumTypeConstructor",
 		Ast::IsVariant(_) => "IsVariant",
+		Ast::Match(_) => "Match",
 	};
 
 	let branch = if is_last {

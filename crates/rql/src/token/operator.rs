@@ -57,6 +57,7 @@ operator! {
     Percent          => "%",
     Equal            => "=",
     DoubleEqual      => "==",
+    FatArrow         => "=>",
     Bang             => "!",
     BangEqual        => "!=",
     QuestionMark     => "?",
@@ -182,6 +183,9 @@ pub fn scan_operator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 			if cursor.peek_str(2) == "==" {
 				cursor.consume_str("==");
 				Some(Operator::DoubleEqual)
+			} else if cursor.peek_str(2) == "=>" {
+				cursor.consume_str("=>");
+				Some(Operator::FatArrow)
 			} else {
 				None
 			}
@@ -307,6 +311,7 @@ pub mod tests {
 		test_operator_percent => (Percent, "%"),
 		test_operator_equal => (Equal, "="),
 		test_operator_double_equal => (DoubleEqual, "=="),
+		test_operator_fat_arrow => (FatArrow, "=>"),
 		test_operator_bang => (Bang, "!"),
 		test_operator_bang_equal => (BangEqual, "!="),
 		test_operator_question_mark => (QuestionMark, "?"),

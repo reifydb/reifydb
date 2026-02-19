@@ -135,6 +135,7 @@ impl<'bump> Compiler<'bump> {
 			Ast::Update(node) => self.compile_update(node, tx),
 			Ast::Append(node) => self.compile_append(node, tx),
 			Ast::If(node) => self.compile_if(node, tx),
+			Ast::Match(node) => self.compile_match(node, tx),
 			Ast::Loop(node) => self.compile_loop(node, tx),
 			Ast::While(node) => self.compile_while(node, tx),
 			Ast::For(node) => self.compile_for(node, tx),

@@ -119,6 +119,7 @@ pub enum Ast<'bump> {
 	Return(AstReturn<'bump>),
 	SumTypeConstructor(AstSumTypeConstructor<'bump>),
 	IsVariant(AstIsVariant<'bump>),
+	Match(AstMatch<'bump>),
 }
 
 impl<'bump> Default for Ast<'bump> {
@@ -208,6 +209,7 @@ impl<'bump> Ast<'bump> {
 			Ast::Return(node) => &node.token,
 			Ast::SumTypeConstructor(node) => &node.token,
 			Ast::IsVariant(node) => &node.token,
+			Ast::Match(node) => &node.token,
 		}
 	}
 
@@ -698,6 +700,18 @@ impl<'bump> Ast<'bump> {
 			result
 		} else {
 			panic!("not rownum")
+		}
+	}
+
+	pub fn is_match(&self) -> bool {
+		matches!(self, Ast::Match(_))
+	}
+
+	pub fn as_match(&self) -> &AstMatch<'bump> {
+		if let Ast::Match(result) = self {
+			result
+		} else {
+			panic!("not match")
 		}
 	}
 }
@@ -1728,4 +1742,45 @@ pub enum AstAppendSource<'bump> {
 	Statement(AstStatement<'bump>),
 	/// APPEND $x FROM [{...}]
 	Inline(AstList<'bump>),
+}
+
+#[derive(Debug)]
+pub struct AstMatchArmDestructure<'bump> {
+	pub fields: Vec<BumpFragment<'bump>>,
+}
+
+#[derive(Debug)]
+pub enum AstMatchArm<'bump> {
+	/// Value arm: `value_expr [IF guard] => result_expr`
+	Value {
+		pattern: BumpBox<'bump, Ast<'bump>>,
+		guard: Option<BumpBox<'bump, Ast<'bump>>>,
+		result: BumpBox<'bump, Ast<'bump>>,
+	},
+	/// IS variant arm: `IS [ns.]Type::Variant [{ fields }] [IF guard] => result`
+	IsVariant {
+		namespace: Option<BumpFragment<'bump>>,
+		sumtype_name: BumpFragment<'bump>,
+		variant_name: BumpFragment<'bump>,
+		destructure: Option<AstMatchArmDestructure<'bump>>,
+		guard: Option<BumpBox<'bump, Ast<'bump>>>,
+		result: BumpBox<'bump, Ast<'bump>>,
+	},
+	/// Searched condition arm: `condition [IF guard] => result`
+	Condition {
+		condition: BumpBox<'bump, Ast<'bump>>,
+		guard: Option<BumpBox<'bump, Ast<'bump>>>,
+		result: BumpBox<'bump, Ast<'bump>>,
+	},
+	/// ELSE arm: `ELSE => result`
+	Else {
+		result: BumpBox<'bump, Ast<'bump>>,
+	},
+}
+
+#[derive(Debug)]
+pub struct AstMatch<'bump> {
+	pub token: Token<'bump>,
+	pub subject: Option<BumpBox<'bump, Ast<'bump>>>,
+	pub arms: Vec<AstMatchArm<'bump>>,
 }
