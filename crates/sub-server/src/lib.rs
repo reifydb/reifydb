@@ -12,7 +12,7 @@
 //! - **Runtime**: Shared tokio runtime management
 //! - **State**: Application state for request handler
 
-// #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub mod auth;
 pub mod execute;

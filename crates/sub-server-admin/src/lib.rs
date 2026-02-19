@@ -48,7 +48,7 @@
 //! admin.start()?;
 //! ```
 
-// #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub mod assets;
 pub mod config;

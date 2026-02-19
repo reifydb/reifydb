@@ -7,7 +7,7 @@
 //! It defines FFI-safe types and function signatures for operators to interact with
 //! the ReifyDB host system.
 
-// #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub mod callbacks;
 pub mod catalog;
