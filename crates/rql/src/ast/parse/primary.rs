@@ -41,7 +41,13 @@ impl<'bump> Parser<'bump> {
 				}
 				Operator::Asterisk => Ok(Ast::Wildcard(AstWildcard(self.advance()?))),
 				Operator::OpenBracket => Ok(Ast::List(self.parse_list()?)),
-				Operator::OpenParen => Ok(Ast::Tuple(self.parse_tuple()?)),
+				Operator::OpenParen => {
+					if self.is_closure_pattern() {
+						Ok(Ast::Closure(self.parse_closure()?))
+					} else {
+						Ok(Ast::Tuple(self.parse_tuple()?))
+					}
+				}
 				Operator::OpenCurly => Ok(Ast::Inline(self.parse_inline()?)),
 				_ => return_error!(ast::unsupported_token_error(self.advance()?.fragment.to_owned())),
 			},
@@ -85,7 +91,38 @@ impl<'bump> Parser<'bump> {
 					Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
 					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
-					Keyword::Def => Ok(Ast::DefFunction(self.parse_def_function()?)),
+					Keyword::Fun => {
+						// Only parse as function definition if next token is an identifier (the
+						// fun name). Otherwise fall through so `fun()` as a function
+						// call still works.
+						if self.position + 1 < self.tokens.len()
+							&& matches!(
+								self.tokens[self.position + 1].kind,
+								TokenKind::Identifier
+							) {
+							Ok(Ast::DefFunction(self.parse_def_function()?))
+						} else {
+							let first_ident_token = self.consume_keyword_as_ident()?;
+							if !self.is_eof()
+								&& self.current()?.is_operator(Operator::OpenParen)
+							{
+								let open_paren_token = self.advance()?;
+								let arguments =
+									self.parse_tuple_call(open_paren_token)?;
+								use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
+								let function = MaybeQualifiedFunctionIdentifier::new(
+									first_ident_token.fragment,
+								);
+								Ok(Ast::CallFunction(AstCallFunction {
+									token: first_ident_token,
+									function,
+									arguments,
+								}))
+							} else {
+								Ok(Ast::Identifier(self.parse_as_identifier()?))
+							}
+						}
+					}
 					Keyword::Return => Ok(Ast::Return(self.parse_return()?)),
 					Keyword::Rownum => {
 						let token = self.advance()?;

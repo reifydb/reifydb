@@ -126,6 +126,27 @@ pub fn undefined_function(name: Fragment) -> Diagnostic {
 	}
 }
 
+/// Field not found on row variable
+pub fn field_not_found(variable: &str, field: &str, available: &[String]) -> Diagnostic {
+	let help = if available.is_empty() {
+		format!("The variable '{}' has no fields", variable)
+	} else {
+		format!("Available fields: {}", available.join(", "))
+	};
+	Diagnostic {
+		code: "RUNTIME_009".to_string(),
+		statement: None,
+		message: format!("Field '{}' not found on variable '{}'", field, variable),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(help),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 /// APPEND target variable is not a Frame
 pub fn append_target_not_frame(name: &str) -> Diagnostic {
 	Diagnostic {

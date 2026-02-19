@@ -85,6 +85,7 @@ impl Expression {
 			Expression::In(in_expr) => in_expr.fragment.clone(),
 			Expression::SumTypeConstructor(ctor) => ctor.fragment.clone(),
 			Expression::IsVariant(e) => e.fragment.clone(),
+			Expression::FieldAccess(expr) => expr.full_fragment_owned(),
 		}
 	}
 }

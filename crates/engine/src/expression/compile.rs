@@ -20,7 +20,7 @@ use reifydb_type::{
 			xor_can_not_applied_to_number, xor_can_not_applied_to_temporal, xor_can_not_applied_to_text,
 			xor_can_not_applied_to_uuid,
 		},
-		runtime::{variable_is_dataframe, variable_not_found},
+		runtime::{self, variable_is_dataframe, variable_not_found},
 	},
 	fragment::Fragment,
 	return_error,
@@ -147,7 +147,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					Some(Variable::Columns(_))
 					| Some(Variable::ForIterator {
 						..
-					}) => {
+					})
+					| Some(Variable::Closure(_)) => {
 						return_error!(variable_is_dataframe(variable_name));
 					}
 					None => {
@@ -634,6 +635,77 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 						name: fragment.clone(),
 						data: ColumnData::none_typed(Type::Boolean, ctx.row_count),
 					})
+				}
+			})
+		}
+
+		Expression::FieldAccess(e) => {
+			let field_name = e.field.text().to_string();
+			// Extract variable name at compile time if the object is a variable
+			let var_name = match e.object.as_ref() {
+				Expression::Variable(var_expr) => Some(var_expr.name().to_string()),
+				_ => None,
+			};
+			let object = compile_expression(_ctx, &e.object)?;
+			CompiledExpr::new(move |ctx| {
+				if let Some(ref variable_name) = var_name {
+					match ctx.symbol_table.get(variable_name) {
+						Some(Variable::Columns(columns)) => {
+							let col = columns
+								.columns
+								.iter()
+								.find(|c| c.name.text() == field_name);
+							match col {
+								Some(col) => {
+									let value = col.data.get_value(0);
+									let row_count =
+										ctx.take.unwrap_or(ctx.row_count);
+									let mut data = ColumnData::with_capacity(
+										value.get_type(),
+										row_count,
+									);
+									for _ in 0..row_count {
+										data.push_value(value.clone());
+									}
+									Ok(Column {
+										name: Fragment::internal(&field_name),
+										data,
+									})
+								}
+								None => {
+									let available: Vec<String> = columns
+										.columns
+										.iter()
+										.map(|c| c.name.text().to_string())
+										.collect();
+									return_error!(runtime::field_not_found(
+										variable_name,
+										&field_name,
+										&available
+									));
+								}
+							}
+						}
+						Some(Variable::Scalar(_)) | Some(Variable::Closure(_)) => {
+							return_error!(runtime::field_not_found(
+								variable_name,
+								&field_name,
+								&[]
+							));
+						}
+						Some(Variable::ForIterator {
+							..
+						}) => {
+							return_error!(runtime::variable_is_dataframe(variable_name));
+						}
+						None => {
+							return_error!(runtime::variable_not_found(variable_name));
+						}
+					}
+				} else {
+					// For non-variable objects, evaluate the object and try to interpret result
+					let _obj_col = object.execute(ctx)?;
+					return_error!(runtime::field_not_found("<expression>", &field_name, &[]));
 				}
 			})
 		}

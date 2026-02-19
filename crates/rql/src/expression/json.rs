@@ -19,10 +19,10 @@ use serde_json::from_str;
 use super::{
 	AccessPrimitiveExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
 	CastExpression, ColumnExpression, ConstantExpression, DivExpression, ElseIfExpression, EqExpression,
-	Expression, ExtendExpression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression, IfExpression,
-	InExpression, LessThanEqExpression, LessThanExpression, MapExpression, MulExpression, NotEqExpression,
-	OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression,
-	TupleExpression, TypeExpression, VariableExpression, XorExpression,
+	Expression, ExtendExpression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression,
+	IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression, MapExpression,
+	MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator,
+	RemExpression, SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
 };
 
 /// JSON-serializable expression for query builders.
@@ -177,6 +177,10 @@ pub enum JsonExpression {
 	},
 	Type {
 		ty: String,
+	},
+	FieldAccess {
+		object: Box<JsonExpression>,
+		field: String,
 	},
 }
 
@@ -400,6 +404,10 @@ impl From<&Expression> for JsonExpression {
 			},
 			Expression::IsVariant(_) => JsonExpression::Type {
 				ty: "IsVariant".to_string(),
+			},
+			Expression::FieldAccess(e) => JsonExpression::FieldAccess {
+				object: Box::new((&*e.object).into()),
+				field: e.field.text().to_string(),
 			},
 		}
 	}
@@ -733,6 +741,14 @@ impl TryFrom<JsonExpression> for Expression {
 					fragment: internal_fragment(&ty),
 				})
 			}
+			JsonExpression::FieldAccess {
+				object,
+				field,
+			} => Expression::FieldAccess(FieldAccessExpression {
+				object: Box::new((*object).try_into()?),
+				field: internal_fragment(&field),
+				fragment: Fragment::None,
+			}),
 		})
 	}
 }

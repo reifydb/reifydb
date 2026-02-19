@@ -102,6 +102,8 @@ pub enum PhysicalPlan<'bump> {
 	DefineFunction(DefineFunctionNode<'bump>),
 	Return(ReturnNode),
 	CallFunction(CallFunctionNode),
+	// Closures
+	DefineClosure(DefineClosureNode<'bump>),
 	// Query
 	Aggregate(AggregateNode<'bump>),
 	Assert(AssertNode<'bump>),
@@ -339,6 +341,12 @@ pub struct ReturnNode {
 pub struct CallFunctionNode {
 	pub name: Fragment,
 	pub arguments: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct DefineClosureNode<'bump> {
+	pub parameters: Vec<nodes::FunctionParameter>,
+	pub body: Vec<PhysicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
@@ -1609,6 +1617,32 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::CallFunction(CallFunctionNode {
 						name: self.interner.intern_fragment(&call_node.name),
 						arguments: call_node.arguments,
+					}));
+				}
+
+				LogicalPlan::DefineClosure(closure_node) => {
+					let mut parameters = Vec::with_capacity(closure_node.parameters.len());
+					for p in closure_node.parameters {
+						parameters.push(nodes::FunctionParameter {
+							name: self.interner.intern_fragment(&p.name),
+							type_constraint: p.type_constraint,
+						});
+					}
+
+					let mut body = Vec::new();
+					for statement_plans in closure_node.body {
+						for logical_plan in statement_plans {
+							if let Some(physical_plan) =
+								self.compile(rx, once(logical_plan))?
+							{
+								body.push(physical_plan);
+							}
+						}
+					}
+
+					stack.push(PhysicalPlan::DefineClosure(DefineClosureNode {
+						parameters,
+						body,
 					}));
 				}
 

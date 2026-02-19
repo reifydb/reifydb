@@ -985,5 +985,34 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				}
 			}
 		},
+		LogicalPlan::DefineClosure(closure_node) => {
+			let params: Vec<String> = closure_node
+				.parameters
+				.iter()
+				.map(|p| {
+					if let Some(ref tc) = p.type_constraint {
+						format!("${}: {:?}", p.name.text(), tc)
+					} else {
+						format!("${}", p.name.text())
+					}
+				})
+				.collect();
+			output.push_str(&format!("{}{} DefineClosure[{}]\n", prefix, branch, params.join(", ")));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			for (i, stmt) in closure_node.body.iter().enumerate() {
+				for (j, plan) in stmt.iter().enumerate() {
+					let is_last_stmt = i == closure_node.body.len() - 1 && j == stmt.len() - 1;
+					render_logical_plan_inner(plan, &child_prefix, is_last_stmt, output);
+				}
+			}
+		}
 	}
 }

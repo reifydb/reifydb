@@ -117,6 +117,7 @@ pub enum Expression {
 	Extend(ExtendExpression),
 	SumTypeConstructor(SumTypeConstructorExpression),
 	IsVariant(IsVariantExpression),
+	FieldAccess(FieldAccessExpression),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -657,6 +658,7 @@ impl Display for Expression {
 					.join(", ")
 			),
 			Expression::IsVariant(e) => write!(f, "({} IS {})", e.expression, e.variant_name.text()),
+			Expression::FieldAccess(field_access) => write!(f, "{}", field_access),
 		}
 	}
 }
@@ -1430,7 +1432,8 @@ impl ExpressionCompiler {
 			| Expression::Map(_)
 			| Expression::Extend(_)
 			| Expression::SumTypeConstructor(_)
-			| Expression::IsVariant(_) => {}
+			| Expression::IsVariant(_)
+			| Expression::FieldAccess(_) => {}
 		}
 	}
 
@@ -1485,15 +1488,17 @@ impl ExpressionCompiler {
 				let left = Self::compile(BumpBox::into_inner(ast.left))?;
 				let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
-				let Expression::Column(ColumnExpression(column)) = left else {
-					panic!()
+				let func_name = match left {
+					Expression::Column(ColumnExpression(column)) => column.name,
+					Expression::Variable(var) => var.fragment,
+					_ => panic!("unexpected left-hand side in call expression"),
 				};
 				let Expression::Tuple(tuple) = right else {
 					panic!()
 				};
 
 				Ok(Expression::Call(CallExpression {
-					func: IdentExpression(column.name),
+					func: IdentExpression(func_name),
 					args: tuple.expressions,
 					fragment: token.fragment.to_owned(),
 				}))
@@ -1699,14 +1704,17 @@ impl ExpressionCompiler {
 				Self::compile_namespace_right(&namespace, right_ast)
 			}
 
-			operator => {
-				unimplemented!("not implemented: {operator:?}")
-			} /* InfixOperator::AccessPackage(_) => {}
-			   * InfixOperator::Subtract(_) => {}
-			   * InfixOperator::Multiply(_) => {}
-			   * InfixOperator::Divide(_) => {}
-			   * InfixOperator::Rem(_) => {}
-			   * InfixOperator::TypeAscription(_) => {} */
+			InfixOperator::AccessTable(token) => {
+				let left = Self::compile(BumpBox::into_inner(ast.left))?;
+				let right_ast = BumpBox::into_inner(ast.right);
+				let field_name = right_ast.token().fragment.to_owned();
+				let fragment = token.fragment.to_owned();
+				Ok(Expression::FieldAccess(FieldAccessExpression {
+					object: Box::new(left),
+					field: field_name,
+					fragment,
+				}))
+			}
 		}
 	}
 
@@ -1847,4 +1855,23 @@ pub struct IsVariantExpression {
 	pub variant_name: Fragment,
 	pub tag: Option<u8>,
 	pub fragment: Fragment,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldAccessExpression {
+	pub object: Box<Expression>,
+	pub field: Fragment,
+	pub fragment: Fragment,
+}
+
+impl FieldAccessExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
+		Fragment::merge_all([self.object.full_fragment_owned(), self.fragment.clone(), self.field.clone()])
+	}
+}
+
+impl Display for FieldAccessExpression {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		write!(f, "{}.{}", self.object, self.field.text())
+	}
 }

@@ -11,9 +11,9 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `DEF name ($param: type, ...) -> return_type { body }`
+	/// Parse `fun name ($param: type, ...) : return_type { body }`
 	pub(crate) fn parse_def_function(&mut self) -> crate::Result<AstDefFunction<'bump>> {
-		let token = self.consume_keyword(Keyword::Def)?;
+		let token = self.consume_keyword(Keyword::Fun)?;
 		let name = self.parse_identifier()?;
 
 		// Parse parameters: ($a: type, $b: type)
@@ -89,7 +89,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse a type annotation (identifier with optional parameters)
-	fn parse_type_annotation(&mut self) -> crate::Result<AstType<'bump>> {
+	pub(crate) fn parse_type_annotation(&mut self) -> crate::Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
 		// Check for Option(T) syntax
@@ -164,7 +164,7 @@ pub mod tests {
 	#[test]
 	fn test_def_function_no_params() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DEF hello () { MAP { \"message\": \"Hello\" } }")
+		let tokens = tokenize(&bump, "FUN hello () { MAP { \"message\": \"Hello\" } }")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -183,7 +183,7 @@ pub mod tests {
 	#[test]
 	fn test_def_function_with_params() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DEF greet ($name) { MAP { \"message\": $name } }")
+		let tokens = tokenize(&bump, "FUN greet ($name) { MAP { \"message\": $name } }")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -203,7 +203,7 @@ pub mod tests {
 	#[test]
 	fn test_def_function_with_typed_params() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DEF add ($a: int, $b: int) { $a + $b }").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "FUN add ($a: int, $b: int) { $a + $b }").unwrap().into_iter().collect();
 		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -231,7 +231,7 @@ pub mod tests {
 	fn test_def_function_with_return_type() {
 		let bump = Bump::new();
 		let tokens =
-			tokenize(&bump, "DEF add ($a: int, $b: int) : int { $a + $b }").unwrap().into_iter().collect();
+			tokenize(&bump, "FUN add ($a: int, $b: int) : int { $a + $b }").unwrap().into_iter().collect();
 		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -249,7 +249,7 @@ pub mod tests {
 	#[test]
 	fn test_def_function_mixed_typed_params() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DEF example ($x, $y: int) { $x + $y }").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "FUN example ($x, $y: int) { $x + $y }").unwrap().into_iter().collect();
 		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

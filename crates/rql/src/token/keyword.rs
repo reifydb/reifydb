@@ -82,7 +82,7 @@ Break      => "BREAK",
 Continue   => "CONTINUE",
 Return     => "RETURN",
 
-Def        => "DEF",
+Fun        => "FUN",
 Call       => "CALL",
 Apply      => "APPLY",
 Cast       => "CAST",
@@ -141,7 +141,8 @@ Append => "APPEND",
 Assert => "ASSERT",
 Patch => "PATCH",
 Enum => "ENUM",
-Match => "MATCH"}
+Match => "MATCH",
+}
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
 	let mut map = HashMap::new();
@@ -180,7 +181,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("BREAK", Keyword::Break);
 	map.insert("CONTINUE", Keyword::Continue);
 	map.insert("RETURN", Keyword::Return);
-	map.insert("DEF", Keyword::Def);
+	map.insert("FUN", Keyword::Fun);
 	map.insert("CALL", Keyword::Call);
 	map.insert("CAST", Keyword::Cast);
 	map.insert("DESCRIBE", Keyword::Describe);
@@ -358,7 +359,7 @@ pub mod tests {
 	test_keyword_break => (Break, "BREAK"),
 	test_keyword_continue => (Continue, "CONTINUE"),
 	test_keyword_return => (Return, "RETURN"),
-	test_keyword_def => (Def, "DEF"),
+	test_keyword_fun => (Fun, "FUN"),
 	test_keyword_call => (Call, "CALL"),
 	test_keyword_describe => (Describe, "DESCRIBE"),
 	test_keyword_show => (Show, "SHOW"),
@@ -410,7 +411,8 @@ pub mod tests {
 	test_keyword_assert => (Assert, "ASSERT"),
 	test_keyword_patch => (Patch, "PATCH"),
 	test_keyword_enum => (Enum, "ENUM"),
-	test_keyword_match => (Match, "MATCH")}
+	test_keyword_match => (Match, "MATCH"),
+	}
 
 	fn check_no_keyword(repr: &str) {
 		let bump = Bump::new();
@@ -498,7 +500,7 @@ pub mod tests {
 	test_not_keyword_break => ( "break"),
 	test_not_keyword_continue => ( "continue"),
 	test_not_keyword_return => ( "return"),
-	test_not_keyword_def => ( "def"),
+	test_not_keyword_fun => ( "fun"),
 	test_not_keyword_call => ( "call"),
 	test_not_keyword_describe => ( "describe"),
 	test_not_keyword_show => ( "show"),
@@ -550,5 +552,6 @@ pub mod tests {
 	test_not_keyword_assert => ( "assert"),
 	test_not_keyword_patch => ( "patch"),
 	test_not_keyword_enum => ( "enum"),
-	test_not_keyword_match => ( "match")}
+	test_not_keyword_match => ( "match"),
+	}
 }

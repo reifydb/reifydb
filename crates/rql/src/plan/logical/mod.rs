@@ -9,6 +9,7 @@ pub mod mutate;
 pub mod query;
 pub mod resolver;
 pub mod row_predicate;
+pub mod scripting;
 pub mod variable;
 
 use std::fmt::{Display, Formatter};
@@ -42,7 +43,7 @@ use crate::{
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
-	expression::{AliasExpression, Expression},
+	expression::{AliasExpression, Expression, ExpressionCompiler},
 	plan::logical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
 };
 
@@ -157,6 +158,25 @@ impl<'bump> Compiler<'bump> {
 						// This is a variable assignment statement
 						self.compile_infix(infix_node)
 					}
+					// Variable calls ($f(args)) — route through CallFunction for VM execution
+					InfixOperator::Call(_) if matches!(*infix_node.left, Ast::Variable(_)) => {
+						let Ast::Variable(var) = BumpBox::into_inner(infix_node.left) else {
+							unreachable!()
+						};
+						let right = BumpBox::into_inner(infix_node.right);
+						let args_nodes = match right {
+							Ast::Tuple(tuple) => tuple.nodes,
+							other => vec![other],
+						};
+						let mut arguments = Vec::new();
+						for arg in args_nodes {
+							arguments.push(ExpressionCompiler::compile(arg)?);
+						}
+						Ok(LogicalPlan::CallFunction(function::CallFunctionNode {
+							name: var.token.fragment,
+							arguments,
+						}))
+					}
 					// Expression-like operations - wrap in MAP
 					InfixOperator::Add(_)
 					| InfixOperator::Subtract(_)
@@ -224,6 +244,7 @@ impl<'bump> Compiler<'bump> {
 			}
 			Ast::DefFunction(node) => self.compile_def_function(node, tx),
 			Ast::Return(node) => self.compile_return(node),
+			Ast::Closure(node) => self.compile_closure(node, tx),
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
@@ -361,6 +382,8 @@ pub enum LogicalPlan<'bump> {
 	DefineFunction(function::DefineFunctionNode<'bump>),
 	Return(function::ReturnNode),
 	CallFunction(function::CallFunctionNode<'bump>),
+	// Closures
+	DefineClosure(DefineClosureNode<'bump>),
 }
 
 #[derive(Debug)]
@@ -715,6 +738,12 @@ pub enum AppendNode<'bump> {
 pub enum AppendSourcePlan<'bump> {
 	Statement(BumpVec<'bump, LogicalPlan<'bump>>),
 	Inline(InlineDataNode),
+}
+
+#[derive(Debug)]
+pub struct DefineClosureNode<'bump> {
+	pub parameters: Vec<function::FunctionParameter<'bump>>,
+	pub body: Vec<BumpVec<'bump, LogicalPlan<'bump>>>,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

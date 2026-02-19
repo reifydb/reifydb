@@ -65,7 +65,7 @@ impl ScalarFunction for IsType {
 				if target_type == Type::Option(Box::new(Type::Any)) {
 					vtype.is_option()
 				} else {
-					vtype == target_type
+					!vtype.is_option() && vtype.inner_type() == target_type.inner_type()
 				}
 			})
 			.collect();

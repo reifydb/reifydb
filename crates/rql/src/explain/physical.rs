@@ -702,5 +702,19 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				});
 			}
 		},
+		PhysicalPlan::DefineClosure(closure_node) => {
+			let params: Vec<String> = closure_node
+				.parameters
+				.iter()
+				.map(|p| {
+					if let Some(ref tc) = p.type_constraint {
+						format!("${}: {:?}", p.name.text(), tc)
+					} else {
+						format!("${}", p.name.text())
+					}
+				})
+				.collect();
+			write_node_header(output, prefix, is_last, &format!("DefineClosure[{}]", params.join(", ")));
+		}
 	}
 }

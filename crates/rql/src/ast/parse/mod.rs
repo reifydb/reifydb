@@ -9,6 +9,7 @@ pub mod assert;
 pub mod block;
 pub mod call;
 pub mod cast;
+pub mod closure;
 pub mod conditional;
 pub mod create;
 pub mod create_index;

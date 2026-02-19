@@ -184,5 +184,8 @@ fn simplified_name<'a>(expr: &Expression) -> Fragment {
 			e.sumtype_name.text(),
 			e.variant_name.text()
 		)),
+		Expression::FieldAccess(fa) => {
+			Fragment::internal(format!("{}.{}", simplified_name(&fa.object).text(), fa.field.text()))
+		}
 	}
 }

@@ -68,6 +68,10 @@ impl QueryNode for VariableNode {
 
 				Ok(Some(columns.clone()))
 			}
+			Some(Variable::Closure(_)) => {
+				// Closures cannot be used as data sources in queries
+				return_error!(variable_not_found(variable_name));
+			}
 			None => {
 				// Variable not found - return error
 				return_error!(variable_not_found(variable_name));

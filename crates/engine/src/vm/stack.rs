@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use diagnostic::runtime::{variable_is_immutable, variable_not_found};
 use reifydb_core::{internal, value::column::columns::Columns};
-use reifydb_rql::instruction::{CompiledFunctionDef, ScopeType};
+use reifydb_rql::instruction::{CompiledClosureDef, CompiledFunctionDef, ScopeType};
 use reifydb_type::{
 	error,
 	error::{Error, diagnostic},
@@ -52,7 +52,14 @@ impl Default for Stack {
 	}
 }
 
-/// A variable can be either a scalar value, columnar data, or a FOR loop iterator
+/// A closure paired with its captured environment (snapshotted at definition time)
+#[derive(Debug, Clone)]
+pub struct ClosureValue {
+	pub def: CompiledClosureDef,
+	pub captured: HashMap<String, Variable>,
+}
+
+/// A variable can be either a scalar value, columnar data, a FOR loop iterator, or a closure
 #[derive(Debug, Clone)]
 pub enum Variable {
 	/// A scalar value stored as a 1-column, 1-row Columns
@@ -64,6 +71,8 @@ pub enum Variable {
 		columns: Columns,
 		index: usize,
 	},
+	/// A closure (anonymous function with captured environment)
+	Closure(ClosureValue),
 }
 
 impl Variable {

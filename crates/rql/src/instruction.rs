@@ -33,6 +33,17 @@ pub struct CompiledFunctionDef {
 	pub body: Vec<Instruction>,
 }
 
+/// A compiled closure with captured environment
+#[derive(Debug, Clone)]
+pub struct CompiledClosureDef {
+	/// Closure parameters
+	pub parameters: Vec<FunctionParameter>,
+	/// Pre-compiled closure body instructions
+	pub body: Vec<Instruction>,
+	/// Variable names referenced from the enclosing scope (free variables)
+	pub captures: Vec<Fragment>,
+}
+
 /// Different types of scopes for variable management
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScopeType {
@@ -60,6 +71,11 @@ pub enum Instruction {
 	LoadVar(Fragment),
 	StoreVar(Fragment),
 	DeclareVar(Fragment),
+	/// Load a field from a variable (e.g., $row.name)
+	FieldAccess {
+		object: Fragment,
+		field: Fragment,
+	},
 
 	// === Arithmetic (pop 2, push 1) ===
 	Add,
@@ -125,6 +141,9 @@ pub enum Instruction {
 	},
 	ReturnValue,
 	ReturnVoid,
+
+	// === Closures ===
+	DefineClosure(CompiledClosureDef),
 
 	// === Query (volcano model) ===
 	Query(QueryPlan),

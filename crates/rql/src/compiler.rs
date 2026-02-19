@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{fmt::Debug, sync::Arc};
+use std::{collections::HashSet, fmt::Debug, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::util::lru::LruCache;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, error::diagnostic::runtime, value::Value};
+use reifydb_type::{Result, error::diagnostic::runtime, fragment::Fragment, value::Value};
 
 use crate::{
 	ast::parse_str,
 	bump::Bump,
 	expression::{Expression, ParameterExpression, PrefixOperator},
-	instruction::{Addr, CompiledFunctionDef, Instruction, ScopeType},
+	instruction::{Addr, CompiledClosureDef, CompiledFunctionDef, Instruction, ScopeType},
 	nodes,
 	plan::{
 		physical::{self, PhysicalPlan},
@@ -305,6 +305,90 @@ struct LoopContext {
 	scope_depth: usize,
 }
 
+/// Scan compiled closure body instructions for variable references not in the parameter list.
+/// Returns the list of free variable names (as Fragments) that need to be captured.
+fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]) -> Vec<Fragment> {
+	let param_names: HashSet<&str> = params
+		.iter()
+		.map(|p| {
+			let name = p.name.text();
+			if name.starts_with('$') {
+				&name[1..]
+			} else {
+				name
+			}
+		})
+		.collect();
+
+	// First pass: collect locally-declared variables.
+	// These should NOT be propagated upward even if a nested closure captures them,
+	// because they'll be available at runtime in the outer closure's scope.
+	let mut local_vars = HashSet::new();
+	for instr in body {
+		if let Instruction::DeclareVar(name) = instr {
+			let stripped = if name.text().starts_with('$') {
+				&name.text()[1..]
+			} else {
+				name.text()
+			};
+			local_vars.insert(stripped.to_string());
+		}
+	}
+
+	let mut free_vars = Vec::new();
+	let mut seen = HashSet::new();
+
+	for instr in body {
+		match instr {
+			Instruction::LoadVar(name) => {
+				let stripped = if name.text().starts_with('$') {
+					&name.text()[1..]
+				} else {
+					name.text()
+				};
+				if !param_names.contains(stripped)
+					&& !local_vars.contains(stripped) && seen.insert(stripped.to_string())
+				{
+					free_vars.push(name.clone());
+				}
+			}
+			Instruction::FieldAccess {
+				object,
+				..
+			} => {
+				let stripped = if object.text().starts_with('$') {
+					&object.text()[1..]
+				} else {
+					object.text()
+				};
+				if !param_names.contains(stripped)
+					&& !local_vars.contains(stripped) && seen.insert(stripped.to_string())
+				{
+					free_vars.push(object.clone());
+				}
+			}
+			Instruction::DefineClosure(closure_def) => {
+				// Propagate nested closure captures upward.
+				// Inner closures are compiled bottom-up, so their captures are already populated.
+				for cap in &closure_def.captures {
+					let stripped = if cap.text().starts_with('$') {
+						&cap.text()[1..]
+					} else {
+						cap.text()
+					};
+					if !param_names.contains(stripped)
+						&& !local_vars.contains(stripped) && seen.insert(stripped.to_string())
+					{
+						free_vars.push(cap.clone());
+					}
+				}
+			}
+			_ => {}
+		}
+	}
+	free_vars
+}
+
 /// Instruction compiler that transforms PhysicalPlan to Instructions
 struct InstructionCompiler {
 	instructions: Vec<Instruction>,
@@ -559,6 +643,23 @@ impl InstructionCompiler {
 			Expression::Type(type_expr) => {
 				self.emit(Instruction::PushConst(Value::Type(type_expr.ty.clone())));
 			}
+			Expression::FieldAccess(fa) => {
+				// Extract variable name from the object expression
+				match fa.object.as_ref() {
+					Expression::Variable(var) => {
+						self.emit(Instruction::FieldAccess {
+							object: var.fragment.clone(),
+							field: fa.field.clone(),
+						});
+					}
+					_ => {
+						// Fallback: compile object, but field access on non-variables isn't
+						// supported yet
+						self.compile_expression(&fa.object);
+						self.emit(Instruction::PushNone);
+					}
+				}
+			}
 			Expression::Column(_)
 			| Expression::AccessSource(_)
 			| Expression::Alias(_)
@@ -752,9 +853,14 @@ impl InstructionCompiler {
 						self.compile_expression(&expr);
 					}
 					physical::LetValue::Statement(plan) => {
-						let query =
-							materialize_query_plan(crate::bump::BumpBox::into_inner(plan));
-						self.emit(Instruction::Query(query));
+						let inner = crate::bump::BumpBox::into_inner(plan);
+						if matches!(&inner, PhysicalPlan::DefineClosure(_)) {
+							// Closures push their value onto the stack directly
+							self.compile_plan(inner)?;
+						} else {
+							let query = materialize_query_plan(inner);
+							self.emit(Instruction::Query(query));
+						}
 					}
 					physical::LetValue::EmptyFrame => {
 						self.emit(Instruction::PushNone);
@@ -848,6 +954,22 @@ impl InstructionCompiler {
 				} else {
 					self.emit(Instruction::ReturnVoid);
 				}
+			}
+
+			// Closures
+			PhysicalPlan::DefineClosure(node) => {
+				let mut body_compiler = InstructionCompiler::new();
+				for plan in node.body {
+					body_compiler.compile_plan(plan)?;
+				}
+				body_compiler.emit(Instruction::Halt);
+				let captures = scan_free_variables(&body_compiler.instructions, &node.parameters);
+				let compiled_closure = CompiledClosureDef {
+					parameters: node.parameters,
+					body: body_compiler.instructions,
+					captures,
+				};
+				self.emit(Instruction::DefineClosure(compiled_closure));
 			}
 
 			// Query operations — materialize to QueryPlan and emit

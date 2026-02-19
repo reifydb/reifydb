@@ -31,6 +31,15 @@ impl<'bump> Compiler<'bump> {
 				// Detect LET $x = [] → empty Frame
 				if matches!(&inner, Ast::List(list) if list.len() == 0) {
 					LetValue::EmptyFrame
+				} else if matches!(&inner, Ast::Closure(_)) {
+					// Closures require statement-level compilation (not expression-level)
+					let Ast::Closure(closure_node) = inner else {
+						unreachable!()
+					};
+					let closure_plan = self.compile_closure(closure_node, tx)?;
+					let mut plans = BumpVec::new_in(self.bump);
+					plans.push(closure_plan);
+					LetValue::Statement(plans)
 				} else {
 					LetValue::Expression(ExpressionCompiler::compile(inner)?)
 				}

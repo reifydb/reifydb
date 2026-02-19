@@ -120,6 +120,7 @@ pub enum Ast<'bump> {
 	SumTypeConstructor(AstSumTypeConstructor<'bump>),
 	IsVariant(AstIsVariant<'bump>),
 	Match(AstMatch<'bump>),
+	Closure(AstClosure<'bump>),
 }
 
 impl<'bump> Default for Ast<'bump> {
@@ -210,6 +211,7 @@ impl<'bump> Ast<'bump> {
 			Ast::SumTypeConstructor(node) => &node.token,
 			Ast::IsVariant(node) => &node.token,
 			Ast::Match(node) => &node.token,
+			Ast::Closure(node) => &node.token,
 		}
 	}
 
@@ -1782,4 +1784,12 @@ pub struct AstMatch<'bump> {
 	pub token: Token<'bump>,
 	pub subject: Option<BumpBox<'bump, Ast<'bump>>>,
 	pub arms: Vec<AstMatchArm<'bump>>,
+}
+
+/// Closure expression: `($params) { body }`
+#[derive(Debug)]
+pub struct AstClosure<'bump> {
+	pub token: Token<'bump>,
+	pub parameters: Vec<AstFunctionParameter<'bump>>,
+	pub body: AstBlock<'bump>,
 }

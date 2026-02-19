@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
 use reifydb_rql::{
@@ -18,7 +18,7 @@ use reifydb_type::{
 use super::{
 	scalar,
 	services::Services,
-	stack::{ControlFlow, Stack, SymbolTable, Variable},
+	stack::{ClosureValue, ControlFlow, Stack, SymbolTable, Variable},
 	volcano::{
 		compile::compile,
 		query::{QueryContext, QueryNode},
@@ -86,6 +86,7 @@ impl Vm {
 				columns: c,
 				..
 			} => Ok(c),
+			Variable::Closure(_) => Ok(Columns::scalar(Value::none())),
 		}
 	}
 
@@ -126,6 +127,9 @@ impl Vm {
 						Some(Variable::Scalar(c)) => {
 							self.stack.push(Variable::Scalar(c.clone()));
 						}
+						Some(Variable::Closure(c)) => {
+							self.stack.push(Variable::Closure(c.clone()));
+						}
 						Some(Variable::Columns(_)) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_type::error::diagnostic::runtime::variable_is_dataframe(&name),
@@ -158,6 +162,7 @@ impl Vm {
 					let sv = self.stack.pop()?;
 					let variable = match sv {
 						Variable::Scalar(c) => Variable::Scalar(c),
+						Variable::Closure(c) => Variable::Closure(c),
 						Variable::Columns(c)
 						| Variable::ForIterator {
 							columns: c,
@@ -171,6 +176,66 @@ impl Vm {
 						}
 					};
 					self.symbol_table.set(name, variable, true)?;
+				}
+				Instruction::FieldAccess {
+					object,
+					field,
+				} => {
+					let var_name = strip_dollar_prefix(object.text());
+					let field_name = field.text();
+					match self.symbol_table.get(&var_name) {
+						Some(Variable::Columns(columns)) => {
+							let col = columns
+								.columns
+								.iter()
+								.find(|c| c.name.text() == field_name);
+							match col {
+								Some(col) => {
+									let value = col.data.get_value(0);
+									self.stack.push(Variable::scalar(value));
+								}
+								None => {
+									let available: Vec<String> = columns
+										.columns
+										.iter()
+										.map(|c| c.name.text().to_string())
+										.collect();
+									return Err(reifydb_type::error::Error(
+										reifydb_type::error::diagnostic::runtime::field_not_found(
+											&var_name,
+											field_name,
+											&available,
+										),
+									));
+								}
+							}
+						}
+						Some(Variable::Scalar(_)) | Some(Variable::Closure(_)) => {
+							return Err(reifydb_type::error::Error(
+								reifydb_type::error::diagnostic::runtime::field_not_found(
+									&var_name,
+									field_name,
+									&[],
+								),
+							));
+						}
+						Some(Variable::ForIterator {
+							..
+						}) => {
+							return Err(reifydb_type::error::Error(
+								reifydb_type::error::diagnostic::runtime::variable_is_dataframe(
+									&var_name,
+								),
+							));
+						}
+						None => {
+							return Err(reifydb_type::error::Error(
+								reifydb_type::error::diagnostic::runtime::variable_not_found(
+									&var_name,
+								),
+							));
+						}
+					}
 				}
 
 				// === Arithmetic ===
@@ -322,6 +387,10 @@ impl Vm {
 						Variable::Scalar(c) => {
 							result.push(Frame::from(c));
 						}
+						Variable::Closure(_) => {
+							// Closures can't be emitted as result frames
+							result.push(Frame::from(Columns::scalar(Value::none())));
+						}
 					}
 				}
 
@@ -386,7 +455,7 @@ impl Vm {
 							columns: c,
 							..
 						} => c,
-						Variable::Scalar(_) => {
+						Variable::Scalar(_) | Variable::Closure(_) => {
 							return Err(reifydb_type::error::Error(
 								reifydb_core::error::diagnostic::internal::internal_with_context(
 									"ForInit expects Columns on data stack, got Scalar",
@@ -560,6 +629,85 @@ impl Vm {
 						let _ = self.symbol_table.exit_scope();
 
 						self.stack.push(stack_value);
+					} else if let Some(Variable::Closure(closure_val)) =
+						self.symbol_table.get(&strip_dollar_prefix(func_name)).cloned()
+					{
+						// Closure call: execute like a function
+						let saved_ip = self.ip;
+
+						self.symbol_table.enter_scope(ScopeType::Function);
+
+						// Inject captured variables FIRST
+						for (name, var) in &closure_val.captured {
+							self.symbol_table.set(name.clone(), var.clone(), true)?;
+						}
+
+						// Then bind parameters (may shadow captures)
+						for (param, arg) in
+							closure_val.def.parameters.iter().zip(args.into_iter())
+						{
+							let param_name = strip_dollar_prefix(param.name.text());
+							self.symbol_table.set(
+								param_name,
+								Variable::scalar(arg),
+								true,
+							)?;
+						}
+
+						// Execute closure body
+						self.ip = 0;
+						let mut closure_result = Vec::new();
+						self.run(
+							services,
+							tx,
+							&closure_val.def.body,
+							params,
+							&mut closure_result,
+						)?;
+
+						// Check for return value (same logic as functions)
+						let stack_value = match std::mem::replace(
+							&mut self.control_flow,
+							ControlFlow::Normal,
+						) {
+							ControlFlow::Return(c) => Variable::Scalar(
+								c.unwrap_or(Columns::scalar(Value::none())),
+							),
+							_ => {
+								if let Some(frame) = closure_result.last() {
+									if !frame.columns.is_empty()
+										&& frame.columns[0].data.len() > 0
+									{
+										let cols: Vec<Column> =
+											frame.columns
+												.iter()
+												.map(|fc| {
+													let mut data = ColumnData::none_typed(Type::Boolean, 0);
+													for i in 0..fc
+														.data
+														.len()
+													{
+														data.push_value(fc.data.get_value(i));
+													}
+													Column::new(fc.name.as_str(), data)
+												})
+												.collect();
+										Variable::Columns(Columns::new(cols))
+									} else {
+										Variable::scalar(Value::none())
+									}
+								} else {
+									self.stack.pop().ok().unwrap_or(
+										Variable::scalar(Value::none()),
+									)
+								}
+							}
+						};
+
+						self.ip = saved_ip;
+						let _ = self.symbol_table.exit_scope();
+
+						self.stack.push(stack_value);
 					} else {
 						// Built-in function: evaluate via column evaluator
 						let evaluation_context = EvalContext {
@@ -609,6 +757,21 @@ impl Vm {
 				Instruction::ReturnVoid => {
 					self.control_flow = ControlFlow::Return(None);
 					return Ok(());
+				}
+
+				// === Closures ===
+				Instruction::DefineClosure(closure_def) => {
+					let mut captured = HashMap::new();
+					for cap_name in &closure_def.captures {
+						let stripped = strip_dollar_prefix(cap_name.text());
+						if let Some(var) = self.symbol_table.get(&stripped) {
+							captured.insert(stripped, var.clone());
+						}
+					}
+					self.stack.push(Variable::Closure(ClosureValue {
+						def: closure_def.clone(),
+						captured,
+					}));
 				}
 
 				// === DDL ===
