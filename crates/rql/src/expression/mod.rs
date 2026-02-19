@@ -1261,6 +1261,61 @@ impl ExpressionCompiler {
 					Self::rewrite_field_refs(&mut result_expr, &bindings);
 					branches.push((condition, result_expr));
 				}
+				AstMatchArm::Variant {
+					variant_name,
+					destructure,
+					guard,
+					result,
+				} => {
+					let subject_expr =
+						subject.clone().expect("Variant arm requires a MATCH subject");
+
+					// Build field bindings for rewriting
+					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
+						(Some(destr), Some(col_name)) => {
+							let variant_lower = variant_name.text().to_lowercase();
+							destr.fields
+								.iter()
+								.map(|f| {
+									let field_name = f.text().to_string();
+									let physical = format!(
+										"{}_{}_{}",
+										col_name,
+										variant_lower,
+										field_name.to_lowercase()
+									);
+									(field_name, physical)
+								})
+								.collect()
+						}
+						_ => vec![],
+					};
+
+					// condition = subject IS Variant (placeholder sumtype_name = variant_name)
+					let mut condition = Expression::IsVariant(IsVariantExpression {
+						expression: Box::new(subject_expr),
+						namespace: None,
+						sumtype_name: variant_name.to_owned(),
+						variant_name: variant_name.to_owned(),
+						tag: None,
+						fragment: fragment.clone(),
+					});
+
+					// If guard, rewrite field refs in guard, then AND
+					if let Some(guard) = guard {
+						let mut guard_expr = Self::compile(BumpBox::into_inner(guard))?;
+						Self::rewrite_field_refs(&mut guard_expr, &bindings);
+						condition = Expression::And(AndExpression {
+							left: Box::new(condition),
+							right: Box::new(guard_expr),
+							fragment: fragment.clone(),
+						});
+					}
+
+					let mut result_expr = Self::compile(BumpBox::into_inner(result))?;
+					Self::rewrite_field_refs(&mut result_expr, &bindings);
+					branches.push((condition, result_expr));
+				}
 				AstMatchArm::Condition {
 					condition,
 					guard,
