@@ -1701,8 +1701,7 @@ impl ExpressionCompiler {
 
 			operator => {
 				unimplemented!("not implemented: {operator:?}")
-			} /* InfixOperator::Arrow(_) => {}
-			   * InfixOperator::AccessPackage(_) => {}
+			} /* InfixOperator::AccessPackage(_) => {}
 			   * InfixOperator::Subtract(_) => {}
 			   * InfixOperator::Multiply(_) => {}
 			   * InfixOperator::Divide(_) => {}

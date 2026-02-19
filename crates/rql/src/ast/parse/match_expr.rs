@@ -68,7 +68,7 @@ impl<'bump> Parser<'bump> {
 		// ELSE arm
 		if !self.is_eof() && self.current()?.is_keyword(Keyword::Else) {
 			self.advance()?; // consume ELSE
-			self.consume_operator(Operator::FatArrow)?;
+			self.consume_operator(Operator::Arrow)?;
 			let result = BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump());
 			return Ok(AstMatchArm::Else {
 				result,
@@ -92,7 +92,7 @@ impl<'bump> Parser<'bump> {
 		};
 
 		// Consume =>
-		self.consume_operator(Operator::FatArrow)?;
+		self.consume_operator(Operator::Arrow)?;
 
 		// Parse result expression
 		let result = BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump());
@@ -165,7 +165,7 @@ impl<'bump> Parser<'bump> {
 		};
 
 		// Consume =>
-		self.consume_operator(Operator::FatArrow)?;
+		self.consume_operator(Operator::Arrow)?;
 
 		// Parse result expression
 		let result = BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump());

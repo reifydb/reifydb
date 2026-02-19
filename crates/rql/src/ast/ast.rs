@@ -1256,7 +1256,6 @@ impl<'bump> AstLiteral<'bump> {
 pub enum InfixOperator<'bump> {
 	Add(Token<'bump>),
 	As(Token<'bump>),
-	Arrow(Token<'bump>),
 	AccessNamespace(Token<'bump>),
 	AccessTable(Token<'bump>),
 	Assign(Token<'bump>),

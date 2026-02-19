@@ -50,7 +50,7 @@ impl<'bump> Parser<'bump> {
 				Operator::RightAngle => Ok(InfixOperator::GreaterThan(token)),
 				Operator::RightAngleEqual => Ok(InfixOperator::GreaterThanEqual(token)),
 				Operator::Colon => Ok(InfixOperator::TypeAscription(token)),
-				Operator::Arrow => Ok(InfixOperator::Arrow(token)),
+
 				Operator::Dot => Ok(InfixOperator::AccessTable(token)),
 				Operator::DoubleColon => Ok(InfixOperator::AccessNamespace(token)),
 				Operator::As => Ok(InfixOperator::As(token)),

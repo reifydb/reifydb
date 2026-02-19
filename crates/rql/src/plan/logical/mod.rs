@@ -179,9 +179,9 @@ impl<'bump> Compiler<'bump> {
 					| InfixOperator::NotIn(_) => self.compile_scalar_as_map(Ast::Infix(infix_node)),
 
 					// Statement-like operations - compile directly
-					InfixOperator::Arrow(_)
-					| InfixOperator::AccessTable(_)
-					| InfixOperator::AccessNamespace(_) => self.compile_infix(infix_node),
+					InfixOperator::AccessTable(_) | InfixOperator::AccessNamespace(_) => {
+						self.compile_infix(infix_node)
+					}
 				}
 			}
 			Ast::Aggregate(node) => self.compile_aggregate(node),

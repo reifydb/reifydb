@@ -43,7 +43,6 @@ operator! {
     Colon            => ":",
     DoubleColon      => "::",
     ColonEqual       => ":=",
-    Arrow            => "->",
     DoubleDot        => "..",
     Plus             => "+",
     Minus            => "-",
@@ -57,7 +56,7 @@ operator! {
     Percent          => "%",
     Equal            => "=",
     DoubleEqual      => "==",
-    FatArrow         => "=>",
+    Arrow            => "=>",
     Bang             => "!",
     BangEqual        => "!=",
     QuestionMark     => "?",
@@ -147,14 +146,6 @@ pub fn scan_operator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 				None
 			}
 		}
-		'-' => {
-			if cursor.peek_str(2) == "->" {
-				cursor.consume_str("->");
-				Some(Operator::Arrow)
-			} else {
-				None
-			}
-		}
 		'.' => {
 			if cursor.peek_str(2) == ".." {
 				cursor.consume_str("..");
@@ -185,7 +176,7 @@ pub fn scan_operator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 				Some(Operator::DoubleEqual)
 			} else if cursor.peek_str(2) == "=>" {
 				cursor.consume_str("=>");
-				Some(Operator::FatArrow)
+				Some(Operator::Arrow)
 			} else {
 				None
 			}
@@ -297,7 +288,6 @@ pub mod tests {
 		test_operator_colon => (Colon, ":"),
 		test_operator_double_colon => (DoubleColon, "::"),
 		test_operator_colon_equal => (ColonEqual, ":="),
-		test_operator_arrow => (Arrow, "->"),
 		test_operator_double_dot => (DoubleDot, ".."),
 		test_operator_plus => (Plus, "+"),
 		test_operator_minus => (Minus, "-"),
@@ -311,7 +301,7 @@ pub mod tests {
 		test_operator_percent => (Percent, "%"),
 		test_operator_equal => (Equal, "="),
 		test_operator_double_equal => (DoubleEqual, "=="),
-		test_operator_fat_arrow => (FatArrow, "=>"),
+		test_operator_arrow => (Arrow, "=>"),
 		test_operator_bang => (Bang, "!"),
 		test_operator_bang_equal => (BangEqual, "!="),
 		test_operator_question_mark => (QuestionMark, "?"),

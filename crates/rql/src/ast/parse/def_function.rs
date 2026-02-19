@@ -21,8 +21,8 @@ impl<'bump> Parser<'bump> {
 		let parameters = self.parse_function_parameters()?;
 		self.consume_operator(Operator::CloseParen)?;
 
-		// Optional return type: -> type
-		let return_type = if !self.is_eof() && self.current()?.is_operator(Operator::Arrow) {
+		// Optional return type: : type
+		let return_type = if !self.is_eof() && self.current()?.is_operator(Operator::Colon) {
 			self.advance()?;
 			Some(self.parse_type_annotation()?)
 		} else {
@@ -231,7 +231,7 @@ pub mod tests {
 	fn test_def_function_with_return_type() {
 		let bump = Bump::new();
 		let tokens =
-			tokenize(&bump, "DEF add ($a: int, $b: int) -> int { $a + $b }").unwrap().into_iter().collect();
+			tokenize(&bump, "DEF add ($a: int, $b: int) : int { $a + $b }").unwrap().into_iter().collect();
 		let mut result = parse(&bump, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

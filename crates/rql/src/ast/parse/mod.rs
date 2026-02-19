@@ -85,7 +85,7 @@ const fn get_precedence_for_operator(op: Operator) -> Precedence {
 		Plus | Minus => Term,
 		Asterisk | Slash | Percent => Factor,
 		OpenParen => Call,
-		Dot | DoubleColon | Arrow => Primary,
+		Dot | DoubleColon => Primary,
 		Colon => Assignment,
 		Or | Xor => LogicOr,
 		And => LogicAnd,
