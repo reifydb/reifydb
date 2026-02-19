@@ -4,6 +4,7 @@
 
 # Configuration
 TEST_SUITE_DIR ?= ../testsuite
+EXTERNAL_DIR ?= ../external
 TEST_PKG_DIR := ./pkg
 
 # Check if vendor directory exists and set offline flag
@@ -52,6 +53,7 @@ help:
 	@printf "  %-25s %s\n" "test-pkg-rust" "Run test packages (rust)"
 	@printf "  %-25s %s\n" "test-pkg-typescript" "Run test packages (typescript)"
 	@printf "  %-25s %s\n" "test-examples" "Build and run all examples"
+	@printf "  %-25s %s\n" "test-external" "Run external SLT regression tests"
 	@echo ""
 	@echo "  🏎️  Benchmarking"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -145,7 +147,7 @@ push: check
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-workspace test-pkg-rust test-examples test-suite test-pkg-typescript
+test-full: test-workspace test-pkg-rust test-examples test-suite test-external test-pkg-typescript
 	@echo "✅ All tests completed successfully!"
 
 test-dev: test-workspace test-pkg-rust test-examples test-suite-dev
@@ -154,6 +156,7 @@ test-dev: test-workspace test-pkg-rust test-examples test-suite-dev
 # Include testing sub-makefiles
 include mk/test-workspace.mk
 include mk/test-suites.mk
+include mk/test-external.mk
 include mk/test-pkg-rust.mk
 include mk/test-pkg-typescript.mk
 include mk/test-examples.mk
