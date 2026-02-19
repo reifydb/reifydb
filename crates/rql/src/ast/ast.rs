@@ -1708,6 +1708,14 @@ pub enum AstMatchArm<'bump> {
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
+	/// Simplified variant arm (no IS keyword, no type path):
+	///   VariantName [{ field1, field2, ... }] [IF guard] => result
+	Variant {
+		variant_name: BumpFragment<'bump>,
+		destructure: Option<AstMatchArmDestructure<'bump>>,
+		guard: Option<BumpBox<'bump, Ast<'bump>>>,
+		result: BumpBox<'bump, Ast<'bump>>,
+	},
 	/// Searched condition arm: `condition [IF guard] => result`
 	Condition {
 		condition: BumpBox<'bump, Ast<'bump>>,

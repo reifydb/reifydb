@@ -3,7 +3,7 @@
 
 use crate::{
 	ast::{
-		ast::{AstInline, AstInlineKeyedValue},
+		ast::{Ast, AstInline, AstInlineKeyedValue, AstSumTypeConstructor},
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
@@ -31,7 +31,25 @@ impl<'bump> Parser<'bump> {
 
 			let key = self.parse_identifier_with_hyphens()?;
 			self.consume_operator(Colon)?;
-			let value = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
+			let mut value_ast = self.parse_node(Precedence::None)?;
+
+			// Detect simplified struct variant syntax: `Identifier { ... }`
+			if let Ast::Identifier(ref ident) = value_ast {
+				if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+					let token = ident.token;
+					let variant_name = ident.token.fragment;
+					let columns = self.parse_inline()?;
+					value_ast = Ast::SumTypeConstructor(AstSumTypeConstructor {
+						token,
+						namespace: variant_name,
+						sumtype_name: variant_name,
+						variant_name,
+						columns,
+					});
+				}
+			}
+
+			let value = BumpBox::new_in(value_ast, self.bump());
 
 			keyed_values.push(AstInlineKeyedValue {
 				key,

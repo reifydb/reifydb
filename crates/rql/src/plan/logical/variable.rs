@@ -228,6 +228,71 @@ impl<'bump> Compiler<'bump> {
 
 					branches.push((condition, result_plan));
 				}
+				AstMatchArm::Variant {
+					variant_name,
+					destructure,
+					guard,
+					result,
+				} => {
+					let subject_expr =
+						subject.clone().expect("Variant arm requires a MATCH subject");
+
+					// Build field bindings for rewriting
+					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
+						(Some(destr), Some(col_name)) => {
+							let variant_lower = variant_name.text().to_lowercase();
+							destr.fields
+								.iter()
+								.map(|f| {
+									let field_name = f.text().to_string();
+									let physical = format!(
+										"{}_{}_{}",
+										col_name,
+										variant_lower,
+										field_name.to_lowercase()
+									);
+									(field_name, physical)
+								})
+								.collect()
+						}
+						_ => vec![],
+					};
+
+					let mut condition = Expression::IsVariant(IsVariantExpression {
+						expression: Box::new(subject_expr),
+						namespace: None,
+						sumtype_name: variant_name.to_owned(),
+						variant_name: variant_name.to_owned(),
+						tag: None,
+						fragment: fragment.clone(),
+					});
+
+					if let Some(guard) = guard {
+						let mut guard_expr =
+							ExpressionCompiler::compile(BumpBox::into_inner(guard))?;
+						ExpressionCompiler::rewrite_field_refs(&mut guard_expr, &bindings);
+						condition = Expression::And(AndExpression {
+							left: Box::new(condition),
+							right: Box::new(guard_expr),
+							fragment: fragment.clone(),
+						});
+					}
+
+					// Compile result, rewrite field refs, then wrap in MapNode
+					let mut result_expr = ExpressionCompiler::compile(BumpBox::into_inner(result))?;
+					ExpressionCompiler::rewrite_field_refs(&mut result_expr, &bindings);
+
+					let alias_expr = AliasExpression {
+						alias: IdentExpression(Fragment::internal("value")),
+						expression: Box::new(result_expr),
+						fragment: fragment.clone(),
+					};
+					let result_plan = LogicalPlan::Map(MapNode {
+						map: vec![Expression::Alias(alias_expr)],
+					});
+
+					branches.push((condition, result_plan));
+				}
 				AstMatchArm::Condition {
 					condition,
 					guard,

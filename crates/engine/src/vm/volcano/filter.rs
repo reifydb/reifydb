@@ -301,6 +301,20 @@ pub(crate) fn resolve_is_variant_tags(
 		Expression::Prefix(e) => {
 			resolve_is_variant_tags(&mut e.expression, source, catalog, rx)?;
 		}
+		Expression::If(e) => {
+			resolve_is_variant_tags(&mut e.condition, source, catalog, rx)?;
+			resolve_is_variant_tags(&mut e.then_expr, source, catalog, rx)?;
+			for else_if in &mut e.else_ifs {
+				resolve_is_variant_tags(&mut else_if.condition, source, catalog, rx)?;
+				resolve_is_variant_tags(&mut else_if.then_expr, source, catalog, rx)?;
+			}
+			if let Some(else_expr) = &mut e.else_expr {
+				resolve_is_variant_tags(else_expr, source, catalog, rx)?;
+			}
+		}
+		Expression::Alias(e) => {
+			resolve_is_variant_tags(&mut e.expression, source, catalog, rx)?;
+		}
 		_ => {}
 	}
 	Ok(())

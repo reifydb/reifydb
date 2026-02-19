@@ -658,7 +658,23 @@ impl<'bump> Parser<'bump> {
 		let colon_token = self.advance()?; // consume colon
 
 		// Parse the expression
-		let expression = self.parse_node(Precedence::None)?;
+		let mut expression = self.parse_node(Precedence::None)?;
+
+		// Detect simplified struct variant syntax: `Identifier { ... }`
+		if let Ast::Identifier(ref ident) = expression {
+			if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+				let token = ident.token;
+				let variant_name = ident.token.fragment;
+				let columns = self.parse_inline()?;
+				expression = Ast::SumTypeConstructor(AstSumTypeConstructor {
+					token,
+					namespace: variant_name,
+					sumtype_name: variant_name,
+					variant_name,
+					columns,
+				});
+			}
+		}
 
 		// Return as "expression AS key"
 		Ok(Ast::Infix(AstInfix {
