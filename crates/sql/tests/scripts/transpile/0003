@@ -9,11 +9,11 @@ FROM users SORT {name:asc}
 
 transpile 'SELECT * FROM users ORDER BY age DESC'
 ---
-FROM users SORT {age}
+FROM users SORT {age:desc}
 
 transpile 'SELECT * FROM users ORDER BY dept ASC, name DESC'
 ---
-FROM users SORT {dept:asc, name}
+FROM users SORT {dept:asc, name:desc}
 
 transpile 'SELECT * FROM users ORDER BY name'
 ---

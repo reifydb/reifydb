@@ -392,7 +392,7 @@ fn emit_create_table(ct: &CreateTableStatement) -> Result<String, Error> {
 	let mut result = format!("CREATE TABLE{if_ne} {} {{{}}}", table, cols.join(", "));
 
 	if !ct.primary_key.is_empty() {
-		result.push_str(&format!(" WITH {{primary_key: {{{}}}}}", ct.primary_key.join(", ")));
+		result.push_str(&format!("; CREATE PRIMARY KEY ON {} {{{}}}", table, ct.primary_key.join(", ")));
 	}
 
 	Ok(result)
@@ -618,26 +618,31 @@ fn emit_case(
 	when_clauses: &[(Expr, Expr)],
 	else_clause: &Option<Box<Expr>>,
 ) -> Result<String, Error> {
-	let mut arms = Vec::new();
+	let mut parts = Vec::new();
 
-	for (condition, result) in when_clauses {
-		let cond_str = emit_expr(condition)?;
+	for (i, (condition, result)) in when_clauses.iter().enumerate() {
+		let cond_str = if let Some(op) = operand {
+			let op_str = emit_expr(op)?;
+			let val_str = emit_expr(condition)?;
+			format!("{op_str} == {val_str}")
+		} else {
+			emit_expr(condition)?
+		};
 		let result_str = emit_expr(result)?;
-		arms.push(format!("{cond_str} => {result_str}"));
+
+		if i == 0 {
+			parts.push(format!("if {cond_str} {{ {result_str} }}"));
+		} else {
+			parts.push(format!("else if {cond_str} {{ {result_str} }}"));
+		}
 	}
 
 	if let Some(else_expr) = else_clause {
 		let else_str = emit_expr(else_expr)?;
-		arms.push(format!("ELSE => {else_str}"));
+		parts.push(format!("else {{ {else_str} }}"));
 	}
 
-	let body = arms.join(", ");
-	if let Some(op) = operand {
-		let op_str = emit_expr(op)?;
-		Ok(format!("MATCH {op_str} {{ {body} }}"))
-	} else {
-		Ok(format!("MATCH {{ {body} }}"))
-	}
+	Ok(parts.join(" "))
 }
 
 fn format_float(f: f64) -> String {
@@ -857,7 +862,7 @@ fn emit_order_by(items: &[OrderByItem]) -> Result<String, Error> {
 		let e = emit_expr(&item.expr)?;
 		match item.direction {
 			OrderDirection::Asc => parts.push(format!("{e}:asc")),
-			OrderDirection::Desc => parts.push(e),
+			OrderDirection::Desc => parts.push(format!("{e}:desc")),
 		};
 	}
 	Ok(parts.join(", "))
@@ -1059,11 +1064,11 @@ mod tests {
 	fn test_create_table_primary_key() {
 		assert_eq!(
 			transpile("CREATE TABLE t (v1 INT NOT NULL, v2 INT NOT NULL, PRIMARY KEY(v1))"),
-			"CREATE TABLE t {v1: int4, v2: int4} WITH {primary_key: {v1}}"
+			"CREATE TABLE t {v1: int4, v2: int4}; CREATE PRIMARY KEY ON t {v1}"
 		);
 		assert_eq!(
 			transpile("CREATE TABLE t (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY(a, b))"),
-			"CREATE TABLE t {a: int4, b: int4} WITH {primary_key: {a, b}}"
+			"CREATE TABLE t {a: int4, b: int4}; CREATE PRIMARY KEY ON t {a, b}"
 		);
 	}
 
@@ -1082,7 +1087,7 @@ mod tests {
 	fn test_case_when_single() {
 		assert_eq!(
 			transpile("SELECT CASE WHEN x > 0 THEN 'pos' END FROM t"),
-			"FROM t MAP {MATCH { x > 0 => 'pos' }}"
+			"FROM t MAP {if x > 0 { 'pos' }}"
 		);
 	}
 
@@ -1090,7 +1095,7 @@ mod tests {
 	fn test_case_when_multiple() {
 		assert_eq!(
 			transpile("SELECT CASE WHEN x > 0 THEN 'pos' WHEN x < 0 THEN 'neg' END FROM t"),
-			"FROM t MAP {MATCH { x > 0 => 'pos', x < 0 => 'neg' }}"
+			"FROM t MAP {if x > 0 { 'pos' } else if x < 0 { 'neg' }}"
 		);
 	}
 
@@ -1098,7 +1103,7 @@ mod tests {
 	fn test_case_when_else() {
 		assert_eq!(
 			transpile("SELECT CASE WHEN x > 0 THEN 'pos' ELSE 'non-pos' END FROM t"),
-			"FROM t MAP {MATCH { x > 0 => 'pos', ELSE => 'non-pos' }}"
+			"FROM t MAP {if x > 0 { 'pos' } else { 'non-pos' }}"
 		);
 	}
 
@@ -1106,7 +1111,7 @@ mod tests {
 	fn test_case_simple() {
 		assert_eq!(
 			transpile("SELECT CASE x WHEN 1 THEN 'one' WHEN 2 THEN 'two' ELSE 'other' END FROM t"),
-			"FROM t MAP {MATCH x { 1 => 'one', 2 => 'two', ELSE => 'other' }}"
+			"FROM t MAP {if x == 1 { 'one' } else if x == 2 { 'two' } else { 'other' }}"
 		);
 	}
 
@@ -1114,7 +1119,7 @@ mod tests {
 	fn test_case_in_where() {
 		assert_eq!(
 			transpile("SELECT * FROM t WHERE CASE WHEN a > 10 THEN 1 ELSE 0 END = 1"),
-			"FROM t FILTER {MATCH { a > 10 => 1, ELSE => 0 } == 1}"
+			"FROM t FILTER {if a > 10 { 1 } else { 0 } == 1}"
 		);
 	}
 
@@ -1124,7 +1129,7 @@ mod tests {
 			transpile(
 				"SELECT CASE WHEN a > 0 THEN CASE WHEN b > 0 THEN 'pp' ELSE 'pn' END ELSE 'neg' END FROM t"
 			),
-			"FROM t MAP {MATCH { a > 0 => MATCH { b > 0 => 'pp', ELSE => 'pn' }, ELSE => 'neg' }}"
+			"FROM t MAP {if a > 0 { if b > 0 { 'pp' } else { 'pn' } } else { 'neg' }}"
 		);
 	}
 
@@ -1132,7 +1137,7 @@ mod tests {
 	fn test_case_in_select_projection() {
 		assert_eq!(
 			transpile("SELECT id, CASE WHEN active = true THEN 'yes' ELSE 'no' END AS status FROM users"),
-			"FROM users MAP {id, status: MATCH { active == true => 'yes', ELSE => 'no' }}"
+			"FROM users MAP {id, status: if active == true { 'yes' } else { 'no' }}"
 		);
 	}
 
@@ -1140,7 +1145,7 @@ mod tests {
 	fn test_case_with_aggregate() {
 		assert_eq!(
 			transpile("SELECT SUM(CASE WHEN x > 0 THEN 1 ELSE 0 END) FROM t"),
-			"FROM t AGGREGATE {math::sum(MATCH { x > 0 => 1, ELSE => 0 })}"
+			"FROM t AGGREGATE {math::sum(if x > 0 { 1 } else { 0 })}"
 		);
 	}
 
@@ -1266,7 +1271,7 @@ mod tests {
 	fn test_column_primary_key() {
 		assert_eq!(
 			transpile("CREATE TABLE t (id INT PRIMARY KEY, name TEXT)"),
-			"CREATE TABLE t {id: int4, name: Option(utf8)} WITH {primary_key: {id}}"
+			"CREATE TABLE t {id: int4, name: Option(utf8)}; CREATE PRIMARY KEY ON t {id}"
 		);
 	}
 
@@ -1274,7 +1279,7 @@ mod tests {
 	fn test_mixed_primary_key() {
 		assert_eq!(
 			transpile("CREATE TABLE t (id INT PRIMARY KEY, val INT NOT NULL, PRIMARY KEY(id))"),
-			"CREATE TABLE t {id: int4, val: int4} WITH {primary_key: {id}}"
+			"CREATE TABLE t {id: int4, val: int4}; CREATE PRIMARY KEY ON t {id}"
 		);
 	}
 
@@ -1386,7 +1391,10 @@ mod tests {
 
 	#[test]
 	fn test_order_by_ordinal_desc() {
-		assert_eq!(transpile("SELECT a, b FROM t ORDER BY 1, 2 DESC"), "FROM t MAP {a, b} SORT {1:asc, 2}");
+		assert_eq!(
+			transpile("SELECT a, b FROM t ORDER BY 1, 2 DESC"),
+			"FROM t MAP {a, b} SORT {1:asc, 2:desc}"
+		);
 	}
 
 	// IF NOT EXISTS

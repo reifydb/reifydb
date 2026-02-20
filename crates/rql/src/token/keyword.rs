@@ -550,4 +550,19 @@ pub mod tests {
 	test_not_keyword_enum => ( "enum"),
 	test_not_keyword_match => ( "match"),
 	}
+
+	#[test]
+	fn test_select_is_not_keyword() {
+		let bump = Bump::new();
+		for input in ["SELECT rest", "select rest"] {
+			let tokens = tokenize(&bump, input).unwrap();
+			assert!(tokens.len() >= 2);
+			assert_eq!(
+				tokens[0].kind,
+				TokenKind::Identifier,
+				"Input '{}' should produce an identifier, not a keyword",
+				input
+			);
+		}
+	}
 }

@@ -21,8 +21,8 @@ CREATE TABLE t {id: int4, name: Option(utf8)}
 
 transpile 'CREATE TABLE t (v1 INT NOT NULL, v2 INT NOT NULL, PRIMARY KEY(v1))'
 ---
-CREATE TABLE t {v1: int4, v2: int4} WITH {primary_key: {v1}}
+CREATE TABLE t {v1: int4, v2: int4}; CREATE PRIMARY KEY ON t {v1}
 
 transpile 'CREATE TABLE t (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY(a, b))'
 ---
-CREATE TABLE t {a: int4, b: int4} WITH {primary_key: {a, b}}
+CREATE TABLE t {a: int4, b: int4}; CREATE PRIMARY KEY ON t {a, b}
