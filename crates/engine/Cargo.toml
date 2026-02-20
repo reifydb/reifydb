@@ -30,6 +30,7 @@ reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-sdk = { workspace = true }
 reifydb-type = { workspace = true }
+reifydb-wasm = { workspace = true }
 bumpalo = { workspace = true }
 libloading = { workspace = true }
 tracing = { workspace = true }

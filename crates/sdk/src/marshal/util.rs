@@ -7,7 +7,7 @@ use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_core::value::column::data::ColumnData;
 
 /// Convert ColumnData variant to type code
-pub(super) fn column_data_to_type_code(data: &ColumnData) -> ColumnTypeCode {
+pub(crate) fn column_data_to_type_code(data: &ColumnData) -> ColumnTypeCode {
 	match data {
 		ColumnData::Bool(_) => ColumnTypeCode::Bool,
 		ColumnData::Float4(_) => ColumnTypeCode::Float4,

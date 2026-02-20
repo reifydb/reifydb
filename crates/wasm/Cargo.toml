@@ -1,0 +1,18 @@
+[package]
+name = "reifydb-wasm"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WebAssembly interpreter for sandboxed execution in ReifyDB"
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+libm = { workspace = true }
+
+[dev-dependencies]
+wast = { workspace = true }
+wat = { workspace = true }

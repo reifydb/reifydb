@@ -25,6 +25,7 @@ members = [
     "crates/testing",
     "crates/transaction",
     "crates/type",
+    "crates/wasm",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-server-admin",
@@ -77,6 +78,7 @@ default-members = [
     "crates/testing",
     "crates/transaction",
     "crates/type",
+    "crates/wasm",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-server-admin",
@@ -160,6 +162,7 @@ reifydb-store-single = { version = "0.3.0", path = "crates/store-single" }
 reifydb-testing = { version = "0.3.0", path = "crates/testing" }
 reifydb-transaction = { version = "0.3.0", path = "crates/transaction" }
 reifydb-type = { version = "0.3.0", path = "crates/type" }
+reifydb-wasm = { version = "0.3.0", path = "crates/wasm" }
 reifydb-macro = { version = "0.3.0", path = "crates/macro" }
 reifydb-macro-impl = { version = "0.3.0", path = "crates/macro-impl" }
 
@@ -189,6 +192,7 @@ tracing-opentelemetry = { version = "0.32" , features = ["default"]}
 
 libc = { version = "0.2.175" }
 libloading = { version = "0.9" }
+libm = { version = "0.2.8" }
 
 once_cell = { version = "1.21.3" }
 uuid = { version = "1.19", default-features = false, features = ["v4", "v7", "serde", "std", "js"] }
@@ -240,6 +244,10 @@ paste = { version = "1.0" }
 
 # load-testing
 hdrhistogram = { version = "7.5" }
+
+# WASM test dependencies
+wast = "245.0.1"
+wat = "1.245.1"
 
 # WASM dependencies
 wasm-bindgen = "0.2.108"
