@@ -6,8 +6,8 @@ use reifydb_core::sort::SortDirection;
 use crate::{
 	ast::{
 		ast::{
-			AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-			AstCreatePolicy, AstCreatePrimaryKey, AstCreateRingBuffer, AstCreateSeries,
+			AstColumnProperty, AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary,
+			AstCreateNamespace, AstCreatePolicy, AstCreatePrimaryKey, AstCreateRingBuffer, AstCreateSeries,
 			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTransactionalView,
 			AstIndexColumn, AstPolicyEntry, AstPolicyKind, AstPrimaryKeyDef, AstType, AstVariantDef,
 		},
@@ -812,36 +812,112 @@ impl<'bump> Parser<'bump> {
 			AstType::Unconstrained(ty_token.fragment)
 		};
 
-		let auto_increment = if self.current()?.is_keyword(Keyword::Auto) {
-			self.consume_keyword(Keyword::Auto)?;
-			self.consume_keyword(Keyword::Increment)?;
-			true
+		let properties = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+			self.parse_column_properties()?
 		} else {
-			false
-		};
-
-		// Parse optional DICTIONARY clause
-		let dictionary = if self.current()?.is_keyword(Keyword::Dictionary) {
-			self.consume_keyword(Keyword::Dictionary)?;
-			let mut segments = self.parse_dot_separated_identifiers()?;
-			let name = segments.pop().unwrap().into_fragment();
-			let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-			let dict_ident = if namespace.is_empty() {
-				MaybeQualifiedDictionaryIdentifier::new(name)
-			} else {
-				MaybeQualifiedDictionaryIdentifier::new(name).with_namespace(namespace)
-			};
-			Some(dict_ident)
-		} else {
-			None
+			vec![]
 		};
 
 		Ok(AstColumnToCreate {
 			name,
 			ty,
-			auto_increment,
-			dictionary,
+			properties,
 		})
+	}
+
+	fn parse_column_properties(&mut self) -> crate::Result<Vec<AstColumnProperty<'bump>>> {
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut properties = Vec::new();
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			// Property key can be an Identifier or the Dictionary keyword
+			let key_token = {
+				let current = self.current()?;
+				match current.kind {
+					TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+					TokenKind::Keyword(Keyword::Dictionary) => {
+						let token = self.advance()?;
+						Token {
+							kind: TokenKind::Identifier,
+							..token
+						}
+					}
+					_ => {
+						return Err(reifydb_type::error::Error(
+							reifydb_type::error::diagnostic::ast::invalid_column_property_error(
+								current.fragment.to_owned(),
+							),
+						));
+					}
+				}
+			};
+
+			let key = key_token.fragment.text();
+
+			let property = match key {
+				"auto_increment" => AstColumnProperty::AutoIncrement,
+				"dictionary" => {
+					self.consume_operator(Colon)?;
+					let mut segments = self.parse_dot_separated_identifiers()?;
+					let name = segments.pop().unwrap().into_fragment();
+					let namespace: Vec<_> =
+						segments.into_iter().map(|s| s.into_fragment()).collect();
+					let dict_ident = if namespace.is_empty() {
+						MaybeQualifiedDictionaryIdentifier::new(name)
+					} else {
+						MaybeQualifiedDictionaryIdentifier::new(name).with_namespace(namespace)
+					};
+					AstColumnProperty::Dictionary(dict_ident)
+				}
+				"saturation" => {
+					self.consume_operator(Colon)?;
+					let value = BumpBox::new_in(
+						self.parse_node(crate::ast::parse::Precedence::None)?,
+						self.bump(),
+					);
+					AstColumnProperty::Saturation(value)
+				}
+				"default" => {
+					self.consume_operator(Colon)?;
+					let value = BumpBox::new_in(
+						self.parse_node(crate::ast::parse::Precedence::None)?,
+						self.bump(),
+					);
+					AstColumnProperty::Default(value)
+				}
+				_ => {
+					return Err(reifydb_type::error::Error(
+						reifydb_type::error::diagnostic::ast::invalid_column_property_error(
+							key_token.fragment.to_owned(),
+						),
+					));
+				}
+			};
+
+			properties.push(property);
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(properties)
 	}
 
 	fn parse_flow(&mut self, token: Token<'bump>, or_replace: bool) -> crate::Result<AstCreate<'bump>> {
@@ -958,9 +1034,9 @@ pub mod tests {
 	use crate::{
 		ast::{
 			ast::{
-				Ast, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-				AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType,
-				AstCreateTable, AstCreateTransactionalView, AstType,
+				Ast, AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
+				AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
+				AstCreateSumType, AstCreateTable, AstCreateTransactionalView, AstType,
 			},
 			parse::Parser,
 		},
@@ -1333,7 +1409,7 @@ pub mod tests {
 					}
 					_ => panic!("Expected simple type"),
 				}
-				assert_eq!(columns[0].auto_increment, false);
+				assert!(columns[0].properties.is_empty());
 			}
 			_ => unreachable!(),
 		}
@@ -1377,7 +1453,7 @@ pub mod tests {
 						}
 						_ => panic!("Expected simple type"),
 					}
-					assert_eq!(col.auto_increment, false);
+					assert!(col.properties.is_empty());
 				}
 
 				{
@@ -1389,7 +1465,7 @@ pub mod tests {
 						}
 						_ => panic!("Expected simple type"),
 					}
-					assert_eq!(col.auto_increment, false);
+					assert!(col.properties.is_empty());
 				}
 
 				{
@@ -1401,7 +1477,7 @@ pub mod tests {
 						}
 						_ => panic!("Expected simple type"),
 					}
-					assert_eq!(col.auto_increment, false);
+					assert!(col.properties.is_empty());
 				}
 			}
 			_ => unreachable!(),
@@ -1414,7 +1490,7 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-        create table test.users { id: int4 AUTO INCREMENT, name: utf8 }
+        create table test.users { id: int4 with { auto_increment }, name: utf8 }
     "#,
 		)
 		.unwrap()
@@ -1446,7 +1522,8 @@ pub mod tests {
 						}
 						_ => panic!("Expected simple type"),
 					}
-					assert_eq!(col.auto_increment, true);
+					assert_eq!(col.properties.len(), 1);
+					assert!(matches!(col.properties[0], AstColumnProperty::AutoIncrement));
 				}
 
 				{
@@ -1458,7 +1535,7 @@ pub mod tests {
 						}
 						_ => panic!("Expected simple type"),
 					}
-					assert_eq!(col.auto_increment, false);
+					assert!(col.properties.is_empty());
 				}
 			}
 			_ => unreachable!(),
@@ -1502,7 +1579,7 @@ pub mod tests {
 					}
 					_ => panic!("Expected simple type"),
 				}
-				assert_eq!(col.auto_increment, false);
+				assert!(col.properties.is_empty());
 			}
 			_ => unreachable!(),
 		}
@@ -1546,7 +1623,7 @@ pub mod tests {
 						}
 						_ => panic!("Expected simple type"),
 					}
-					assert_eq!(col.auto_increment, false);
+					assert!(col.properties.is_empty());
 				}
 
 				{
@@ -1558,7 +1635,7 @@ pub mod tests {
 						}
 						_ => panic!("Expected simple type"),
 					}
-					assert_eq!(col.auto_increment, false);
+					assert!(col.properties.is_empty());
 				}
 			}
 			_ => unreachable!(),

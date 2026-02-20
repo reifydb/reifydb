@@ -54,6 +54,26 @@ pub fn expected_identifier_error(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+/// Error for invalid column property tokens
+pub fn invalid_column_property_error(fragment: Fragment) -> Diagnostic {
+	let value = fragment.text();
+	let message = format!("Invalid column property: {}", value);
+	let label = Some(format!("found `{}`", value));
+
+	Diagnostic {
+		code: "AST_011".to_string(),
+		statement: None,
+		message,
+		column: None,
+		fragment,
+		label,
+		help: Some("Expected one of: auto_increment, dictionary, saturation, default".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 /// Error for invalid policy tokens
 pub fn invalid_policy_error(fragment: Fragment) -> Diagnostic {
 	let value = fragment.text();

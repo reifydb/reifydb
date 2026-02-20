@@ -7,7 +7,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
-	ast::ast::AstCreateRingBuffer,
+	ast::ast::{AstColumnProperty, AstCreateRingBuffer},
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateRingBufferNode, LogicalPlan},
 };
@@ -28,65 +28,75 @@ impl<'bump> Compiler<'bump> {
 			let constraint = convert_data_type_with_constraints(&col.ty)?;
 			let column_type = constraint.get_type();
 
-			let policies = vec![];
-
 			let name = col.name.to_owned();
 			let ty_fragment = col.ty.name_fragment().to_owned();
 			let fragment = Fragment::merge_all([name.clone(), ty_fragment]);
 
-			// Resolve dictionary if specified
-			let dictionary_id = if let Some(ref dict_ident) = col.dictionary {
-				// Get the dictionary's namespace (uses column's namespace or ring buffer's namespace)
-				let dict_namespace_name = dict_ident
-					.namespace
-					.first()
-					.map(|n| n.text())
-					.unwrap_or(ringbuffer_namespace_name);
-				let dict_name = dict_ident.name.text();
+			let mut auto_increment = false;
+			let mut dictionary_id = None;
+			let policies = vec![];
 
-				// Find the namespace
-				let Some(namespace) = self.catalog.find_namespace_by_name(tx, dict_namespace_name)?
-				else {
-					return_error!(dictionary_not_found(
-						dict_ident.name.to_owned(),
-						dict_namespace_name,
-						dict_name,
-					));
-				};
+			for property in &col.properties {
+				match property {
+					AstColumnProperty::AutoIncrement => auto_increment = true,
+					AstColumnProperty::Dictionary(dict_ident) => {
+						let dict_namespace_name = dict_ident
+							.namespace
+							.first()
+							.map(|n| n.text())
+							.unwrap_or(ringbuffer_namespace_name);
+						let dict_name = dict_ident.name.text();
 
-				// Find the dictionary
-				let Some(dictionary) =
-					self.catalog.find_dictionary_by_name(tx, namespace.id, dict_name)?
-				else {
-					return_error!(dictionary_not_found(
-						dict_ident.name.to_owned(),
-						dict_namespace_name,
-						dict_name,
-					));
-				};
+						let Some(namespace) =
+							self.catalog.find_namespace_by_name(tx, dict_namespace_name)?
+						else {
+							return_error!(dictionary_not_found(
+								dict_ident.name.to_owned(),
+								dict_namespace_name,
+								dict_name,
+							));
+						};
 
-				// Validate type compatibility: column type must match dictionary's value_type
-				if column_type != dictionary.value_type {
-					return_error!(dictionary_type_mismatch(
-						col.name.to_owned(),
-						&column_name,
-						column_type,
-						dict_name,
-						dictionary.value_type,
-					));
+						let Some(dictionary) = self.catalog.find_dictionary_by_name(
+							tx,
+							namespace.id,
+							dict_name,
+						)?
+						else {
+							return_error!(dictionary_not_found(
+								dict_ident.name.to_owned(),
+								dict_namespace_name,
+								dict_name,
+							));
+						};
+
+						if column_type != dictionary.value_type {
+							return_error!(dictionary_type_mismatch(
+								col.name.to_owned(),
+								&column_name,
+								column_type,
+								dict_name,
+								dictionary.value_type,
+							));
+						}
+
+						dictionary_id = Some(dictionary.id);
+					}
+					AstColumnProperty::Saturation(_) => {
+						// TODO: inline saturation policy
+					}
+					AstColumnProperty::Default(_) => {
+						// TODO: inline default policy
+					}
 				}
-
-				Some(dictionary.id)
-			} else {
-				None
-			};
+			}
 
 			columns.push(RingBufferColumnToCreate {
 				name,
 				fragment,
 				constraint,
 				policies,
-				auto_increment: col.auto_increment,
+				auto_increment,
 				dictionary_id,
 			});
 		}
