@@ -88,20 +88,25 @@ impl InlineDataNode {
 						let is_unresolved = ctor.namespace.text() == ctor.variant_name.text()
 							&& ctor.sumtype_name.text() == ctor.variant_name.text();
 
-						let Expression::SumTypeConstructor(ctor) = *alias_expr.expression else {
+						let Expression::SumTypeConstructor(ctor) = *alias_expr.expression
+						else {
 							unreachable!()
 						};
 
 						let sumtype_def = if is_unresolved {
 							// Resolve from column constraint in table schema
 							let tag_col_name = format!("{}_tag", col_name);
-							let source = ctx.source.as_ref().expect("source required for unresolved sumtype");
+							let source = ctx
+								.source
+								.as_ref()
+								.expect("source required for unresolved sumtype");
 							let tag_col = source
 								.columns()
 								.iter()
 								.find(|c| c.name == tag_col_name)
 								.expect("tag column not found");
-							let Some(Constraint::SumType(id)) = tag_col.constraint.constraint()
+							let Some(Constraint::SumType(id)) =
+								tag_col.constraint.constraint()
 							else {
 								panic!("expected SumType constraint on tag column")
 							};
@@ -129,10 +134,17 @@ impl InlineDataNode {
 							.unwrap();
 
 						expanded.push(AliasExpression {
-							alias: IdentExpression(Fragment::internal(format!("{}_tag", col_name))),
-							expression: Box::new(Expression::Constant(ConstantExpression::Number {
-								fragment: Fragment::internal(variant.tag.to_string()),
-							})),
+							alias: IdentExpression(Fragment::internal(format!(
+								"{}_tag",
+								col_name
+							))),
+							expression: Box::new(Expression::Constant(
+								ConstantExpression::Number {
+									fragment: Fragment::internal(
+										variant.tag.to_string(),
+									),
+								},
+							)),
 							fragment: fragment.clone(),
 						});
 
@@ -144,7 +156,9 @@ impl InlineDataNode {
 								field_name.text().to_lowercase()
 							);
 							expanded.push(AliasExpression {
-								alias: IdentExpression(Fragment::internal(phys_col_name)),
+								alias: IdentExpression(Fragment::internal(
+									phys_col_name,
+								)),
 								expression: Box::new(field_expr),
 								fragment: fragment.clone(),
 							});
@@ -162,14 +176,19 @@ impl InlineDataNode {
 								if let Some(Constraint::SumType(id)) =
 									tag_col.constraint.constraint()
 								{
-									let sumtype_def =
-										ctx.services.catalog.get_sumtype(txn, *id)?;
+									let sumtype_def = ctx
+										.services
+										.catalog
+										.get_sumtype(txn, *id)?;
 									let variant_name_lower =
 										col.0.name.text().to_lowercase();
 									let maybe_tag = sumtype_def
 										.variants
 										.iter()
-										.find(|v| v.name.to_lowercase() == variant_name_lower)
+										.find(|v| {
+											v.name.to_lowercase()
+												== variant_name_lower
+										})
 										.map(|v| v.tag);
 									if let Some(tag) = maybe_tag {
 										Some((sumtype_def, tag))
@@ -191,16 +210,20 @@ impl InlineDataNode {
 							// Expand unit variant: tag column
 							expanded.push(AliasExpression {
 								alias: IdentExpression(Fragment::internal(format!(
-									"{}_tag", col_name
+									"{}_tag",
+									col_name
 								))),
 								expression: Box::new(Expression::Constant(
 									ConstantExpression::Number {
-										fragment: Fragment::internal(tag.to_string()),
+										fragment: Fragment::internal(
+											tag.to_string(),
+										),
 									},
 								)),
 								fragment: fragment.clone(),
 							});
-							// None for all variant fields (INSERT fills missing columns with None)
+							// None for all variant fields (INSERT fills missing columns
+							// with None)
 							for v in &sumtype_def.variants {
 								for field in &v.fields {
 									let phys_col_name = format!(

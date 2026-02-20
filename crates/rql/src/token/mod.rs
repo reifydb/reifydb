@@ -274,4 +274,51 @@ pub mod tests {
 		assert_eq!(tokens[2].kind, TokenKind::Literal(Literal::True));
 		assert_eq!(tokens[3].kind, TokenKind::Literal(Literal::False));
 	}
+
+	#[test]
+	fn test_tokenize_inline_comment() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP * FROM users # comment").unwrap();
+		assert_eq!(tokens.len(), 4);
+		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Map));
+		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Asterisk));
+		assert_eq!(tokens[2].kind, TokenKind::Keyword(Keyword::From));
+		assert_eq!(tokens[3].kind, TokenKind::Identifier);
+	}
+
+	#[test]
+	fn test_tokenize_comment_only() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "# just a comment").unwrap();
+		assert_eq!(tokens.len(), 0);
+	}
+
+	#[test]
+	fn test_tokenize_hash_in_string_literal() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "'hello # world'").unwrap();
+		assert_eq!(tokens.len(), 1);
+		assert_eq!(tokens[0].kind, TokenKind::Literal(Literal::Text));
+		assert_eq!(tokens[0].value(), "hello # world");
+	}
+
+	#[test]
+	fn test_tokenize_comment_between_lines() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "MAP *\n# comment\nFROM users").unwrap();
+		assert_eq!(tokens.len(), 4);
+		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Map));
+		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Asterisk));
+		assert_eq!(tokens[2].kind, TokenKind::Keyword(Keyword::From));
+		assert_eq!(tokens[3].kind, TokenKind::Identifier);
+	}
+
+	#[test]
+	fn test_tokenize_empty_comment() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "#\nMAP *").unwrap();
+		assert_eq!(tokens.len(), 2);
+		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Map));
+		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Asterisk));
+	}
 }

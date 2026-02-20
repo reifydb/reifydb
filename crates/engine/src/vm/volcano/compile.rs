@@ -27,6 +27,7 @@ use reifydb_core::interface::{
 	resolved::ResolvedPrimitive,
 };
 use reifydb_rql::{
+	expression::{AliasExpression, ConstantExpression, Expression, IdentExpression},
 	nodes::{
 		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, ExtendNode as RqlExtendNode,
 		FilterNode as RqlFilterNode, GeneratorNode as RqlGeneratorNode, InlineDataNode as RqlInlineDataNode,
@@ -36,9 +37,6 @@ use reifydb_rql::{
 		RowRangeScanNode as RqlRowRangeScanNode, SortNode as RqlSortNode, TakeNode as RqlTakeNode,
 	},
 	query::QueryPlan as RqlQueryPlan,
-};
-use reifydb_rql::expression::{
-	AliasExpression, ConstantExpression, Expression, IdentExpression,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::constraint::Constraint};
@@ -175,22 +173,19 @@ fn expand_patch_sumtype_assignments(
 							v.name.to_lowercase(),
 							field.name.to_lowercase()
 						);
-						let field_expr =
-							if v.name.to_lowercase() == variant_name_lower {
-								if let Some(e) =
-									field_map.get(&field.name.to_lowercase())
-								{
-									(*e).clone()
-								} else {
-									Expression::Constant(ConstantExpression::None {
-										fragment: fragment.clone(),
-									})
-								}
+						let field_expr = if v.name.to_lowercase() == variant_name_lower {
+							if let Some(e) = field_map.get(&field.name.to_lowercase()) {
+								(*e).clone()
 							} else {
 								Expression::Constant(ConstantExpression::None {
 									fragment: fragment.clone(),
 								})
-							};
+							}
+						} else {
+							Expression::Constant(ConstantExpression::None {
+								fragment: fragment.clone(),
+							})
+						};
 						expanded.push(Expression::Alias(AliasExpression {
 							alias: IdentExpression(Fragment::internal(phys_col_name)),
 							expression: Box::new(field_expr),
@@ -209,9 +204,7 @@ fn expand_patch_sumtype_assignments(
 				{
 					// Tag column
 					expanded.push(Expression::Alias(AliasExpression {
-						alias: IdentExpression(Fragment::internal(format!(
-							"{}_tag", col_name
-						))),
+						alias: IdentExpression(Fragment::internal(format!("{}_tag", col_name))),
 						expression: Box::new(Expression::Constant(
 							ConstantExpression::Number {
 								fragment: Fragment::internal(variant.tag.to_string()),
@@ -230,7 +223,9 @@ fn expand_patch_sumtype_assignments(
 								field.name.to_lowercase()
 							);
 							expanded.push(Expression::Alias(AliasExpression {
-								alias: IdentExpression(Fragment::internal(phys_col_name)),
+								alias: IdentExpression(Fragment::internal(
+									phys_col_name,
+								)),
 								expression: Box::new(Expression::Constant(
 									ConstantExpression::None {
 										fragment: fragment.clone(),
@@ -377,7 +372,10 @@ pub(crate) fn compile<'a>(
 			// Expand sumtype constructors and unit variant identifiers in assignments
 			if let Some(source) = extract_resolved_source(&input) {
 				assignments = expand_patch_sumtype_assignments(
-					assignments, &source, &context.services.catalog, rx,
+					assignments,
+					&source,
+					&context.services.catalog,
+					rx,
 				);
 			}
 
