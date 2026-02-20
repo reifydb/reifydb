@@ -145,6 +145,17 @@ impl<'bump> Cursor<'bump> {
 				' ' | '\t' | '\r' | '\n' => {
 					self.consume();
 				}
+				'#' => {
+					// Single-line comment: skip to end of line or EOF
+					self.consume(); // consume '#'
+					while let Some(ch) = self.current_char {
+						if ch == '\n' {
+							self.consume();
+							break;
+						}
+						self.consume();
+					}
+				}
 				_ => {
 					// Fall back to full Unicode whitespace
 					// check for non-ASCII
