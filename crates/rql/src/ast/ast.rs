@@ -977,8 +977,15 @@ impl<'bump> AstType<'bump> {
 pub struct AstColumnToCreate<'bump> {
 	pub name: BumpFragment<'bump>,
 	pub ty: AstType<'bump>,
-	pub auto_increment: bool,
-	pub dictionary: Option<MaybeQualifiedDictionaryIdentifier<'bump>>,
+	pub properties: Vec<AstColumnProperty<'bump>>,
+}
+
+#[derive(Debug)]
+pub enum AstColumnProperty<'bump> {
+	AutoIncrement,
+	Dictionary(MaybeQualifiedDictionaryIdentifier<'bump>),
+	Saturation(BumpBox<'bump, Ast<'bump>>),
+	Default(BumpBox<'bump, Ast<'bump>>),
 }
 
 #[derive(Debug)]
