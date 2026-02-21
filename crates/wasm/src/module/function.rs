@@ -1,25 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::module::{FunctionIndex, FunctionType, GlobalIndex, Instruction, MemoryIndex, ValueType, ValueTypes};
+use crate::module::{
+	FunctionIndex, FunctionType, GlobalIndex, Instruction, MemoryIndex, TableIndex, ValueType, ValueTypes,
+};
 
 // ---------------------------------------------------------------------------
 // Function
 // ---------------------------------------------------------------------------
 
 pub enum Function {
-    Local(FunctionLocal),
-    External(FunctionExternal),
+	Local(FunctionLocal),
+	External(FunctionExternal),
 }
 
 impl Function {
-    pub fn local(ty: FunctionType, locals: ValueTypes, instructions: Box<[Instruction]>) -> Self {
-        Function::Local(FunctionLocal {
-            function_type: ty,
-            locals,
-            instructions,
-        })
-    }
+	pub fn local(ty: FunctionType, locals: ValueTypes, instructions: Box<[Instruction]>) -> Self {
+		Function::Local(FunctionLocal {
+			function_type: ty,
+			locals,
+			instructions,
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -27,9 +29,9 @@ impl Function {
 // ---------------------------------------------------------------------------
 
 pub struct FunctionExternal {
-    pub module: String,
-    pub function_name: String,
-    pub function_type: FunctionType,
+	pub module: String,
+	pub function_name: String,
+	pub function_type: FunctionType,
 }
 
 // ---------------------------------------------------------------------------
@@ -37,31 +39,31 @@ pub struct FunctionExternal {
 // ---------------------------------------------------------------------------
 
 pub struct FunctionLocal {
-    pub function_type: FunctionType,
-    pub locals: ValueTypes,
-    pub instructions: Box<[Instruction]>,
+	pub function_type: FunctionType,
+	pub locals: ValueTypes,
+	pub instructions: Box<[Instruction]>,
 }
 
 impl FunctionLocal {
-    pub fn result_count(&self) -> usize {
-        self.function_type.results.len()
-    }
+	pub fn result_count(&self) -> usize {
+		self.function_type.results.len()
+	}
 
-    pub fn parameter_count(&self) -> usize {
-        self.function_type.params.len()
-    }
+	pub fn parameter_count(&self) -> usize {
+		self.function_type.params.len()
+	}
 
-    pub fn parameters(&self) -> &ValueTypes {
-        &self.function_type.params
-    }
+	pub fn parameters(&self) -> &ValueTypes {
+		&self.function_type.params
+	}
 
-    pub fn locals(&self) -> &[ValueType] {
-        self.locals.as_ref()
-    }
+	pub fn locals(&self) -> &[ValueType] {
+		self.locals.as_ref()
+	}
 
-    pub fn instructions(&self) -> &Box<[Instruction]> {
-        &self.instructions
-    }
+	pub fn instructions(&self) -> &Box<[Instruction]> {
+		&self.instructions
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -70,46 +72,47 @@ impl FunctionLocal {
 
 #[derive(Clone)]
 pub struct Export {
-    pub name: String,
-    pub data: ExportData,
+	pub name: String,
+	pub data: ExportData,
 }
 
 impl Export {
-    pub fn new_function(name: String, addr: FunctionIndex) -> Self {
-        Self {
-            name,
-            data: ExportData::Function(addr),
-        }
-    }
+	pub fn new_function(name: String, addr: FunctionIndex) -> Self {
+		Self {
+			name,
+			data: ExportData::Function(addr),
+		}
+	}
 
-    pub fn new_global(name: String, idx: GlobalIndex) -> Self {
-        Self {
-            name,
-            data: ExportData::Global(idx),
-        }
-    }
+	pub fn new_global(name: String, idx: GlobalIndex) -> Self {
+		Self {
+			name,
+			data: ExportData::Global(idx),
+		}
+	}
 
-    pub fn new_memory(name: String, idx: MemoryIndex) -> Self {
-        Self {
-            name,
-            data: ExportData::Memory(idx),
-        }
-    }
+	pub fn new_memory(name: String, idx: MemoryIndex) -> Self {
+		Self {
+			name,
+			data: ExportData::Memory(idx),
+		}
+	}
 
-    pub fn name(&self) -> &str {
-        self.name.as_ref()
-    }
+	pub fn name(&self) -> &str {
+		self.name.as_ref()
+	}
 
-    pub fn data(&self) -> &ExportData {
-        &self.data
-    }
+	pub fn data(&self) -> &ExportData {
+		&self.data
+	}
 }
 
 #[derive(Clone)]
 pub enum ExportData {
-    Function(FunctionIndex),
-    Global(GlobalIndex),
-    Memory(MemoryIndex),
+	Function(FunctionIndex),
+	Global(GlobalIndex),
+	Memory(MemoryIndex),
+	Table(TableIndex),
 }
 
 // ---------------------------------------------------------------------------

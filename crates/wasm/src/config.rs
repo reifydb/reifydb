@@ -22,7 +22,7 @@ impl Default for WasmConfig {
 			max_memory_pages: 256,
 			max_stack_size: 32768,
 			max_instructions: 10_000_000,
-			max_call_depth: 1000,
+			max_call_depth: 256,
 		}
 	}
 }

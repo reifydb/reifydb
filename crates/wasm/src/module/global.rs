@@ -9,6 +9,6 @@ use crate::module::Value;
 
 #[derive(Clone)]
 pub struct Global {
-    pub mutable: bool,
-    pub value: Value,
+	pub mutable: bool,
+	pub value: Value,
 }

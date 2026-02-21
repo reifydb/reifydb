@@ -13,8 +13,8 @@ use super::{Transform, context::TransformContext};
 /// Each WASM module must export:
 /// - `alloc(size: i32) -> i32` — allocate `size` bytes, return pointer
 /// - `dealloc(ptr: i32, size: i32)` — free memory
-/// - `transform(input_ptr: i32, input_len: i32) -> i32` — pointer to output
-///   (first 4 bytes at output pointer = output length as LE u32)
+/// - `transform(input_ptr: i32, input_len: i32) -> i32` — pointer to output (first 4 bytes at output pointer = output
+///   length as LE u32)
 pub struct WasmTransform {
 	name: String,
 	wasm_bytes: Vec<u8>,
@@ -44,18 +44,19 @@ impl Transform for WasmTransform {
 
 		let mut engine = Engine::default();
 		engine.spawn(source::binary::bytes(&self.wasm_bytes)).map_err(|e| {
-			reifydb_sdk::error::FFIError::Other(format!("WASM transform '{}' failed to load: {:?}", self.name, e))
+			reifydb_sdk::error::FFIError::Other(format!(
+				"WASM transform '{}' failed to load: {:?}",
+				self.name, e
+			))
 		})?;
 
 		// Allocate space in WASM linear memory
-		let alloc_result = engine
-			.invoke("alloc", &[Value::I32(input_bytes.len() as i32)])
-			.map_err(|e| {
-				reifydb_sdk::error::FFIError::Other(format!(
-					"WASM transform '{}' alloc failed: {:?}",
-					self.name, e
-				))
-			})?;
+		let alloc_result = engine.invoke("alloc", &[Value::I32(input_bytes.len() as i32)]).map_err(|e| {
+			reifydb_sdk::error::FFIError::Other(format!(
+				"WASM transform '{}' alloc failed: {:?}",
+				self.name, e
+			))
+		})?;
 
 		let input_ptr = match alloc_result.first() {
 			Some(Value::I32(v)) => *v,
@@ -78,10 +79,7 @@ impl Transform for WasmTransform {
 
 		// Call transform
 		let result = engine
-			.invoke(
-				"transform",
-				&[Value::I32(input_ptr), Value::I32(input_bytes.len() as i32)],
-			)
+			.invoke("transform", &[Value::I32(input_ptr), Value::I32(input_bytes.len() as i32)])
 			.map_err(|e| {
 				reifydb_sdk::error::FFIError::Other(format!(
 					"WASM transform '{}' transform call failed: {:?}",

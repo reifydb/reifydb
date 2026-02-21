@@ -4,8 +4,7 @@
 //! WASM scalar function implementation that executes WebAssembly modules as scalar functions
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::r#type::Type;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, value::r#type::Type};
 use reifydb_wasm::{Engine, SpawnBinary, module::Value, source};
 
 use super::{ScalarFunction, ScalarFunctionContext};
@@ -16,8 +15,8 @@ use crate::error::{ScalarFunctionError, ScalarFunctionResult};
 /// Each WASM module must export:
 /// - `alloc(size: i32) -> i32` — allocate `size` bytes, return pointer
 /// - `dealloc(ptr: i32, size: i32)` — free memory
-/// - `scalar(input_ptr: i32, input_len: i32) -> i32` — pointer to output
-///   (first 4 bytes at output pointer = output length as LE u32)
+/// - `scalar(input_ptr: i32, input_len: i32) -> i32` — pointer to output (first 4 bytes at output pointer = output
+///   length as LE u32)
 ///
 /// Input: the context's `columns` marshalled as flat binary.
 /// Output: flat binary representing a single-column `Columns`, from which
@@ -61,8 +60,7 @@ impl ScalarFunction for WasmScalarFunction {
 		let input_bytes = reifydb_sdk::marshal::wasm::marshal_columns_to_bytes(ctx.columns);
 
 		let mut engine = Engine::default();
-		engine
-			.spawn(source::binary::bytes(&self.wasm_bytes))
+		engine.spawn(source::binary::bytes(&self.wasm_bytes))
 			.map_err(|e| self.err(format!("failed to load: {:?}", e)))?;
 
 		// Allocate space in WASM linear memory
@@ -76,8 +74,7 @@ impl ScalarFunction for WasmScalarFunction {
 		};
 
 		// Write input data
-		engine
-			.write_memory(input_ptr as usize, &input_bytes)
+		engine.write_memory(input_ptr as usize, &input_bytes)
 			.map_err(|e| self.err(format!("write_memory failed: {:?}", e)))?;
 
 		// Call scalar

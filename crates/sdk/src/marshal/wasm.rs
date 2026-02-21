@@ -12,7 +12,7 @@ use std::mem::size_of;
 use postcard::from_bytes;
 use reifydb_abi::data::{
 	column::ColumnTypeCode,
-	wasm::{COLUMNS_WASM_HEADER_SIZE, COLUMN_WASM_SIZE, ColumnWasm, ColumnsWasm},
+	wasm::{COLUMN_WASM_SIZE, COLUMNS_WASM_HEADER_SIZE, ColumnWasm, ColumnsWasm},
 };
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::{
@@ -35,8 +35,8 @@ use reifydb_type::{
 		int::Int,
 		is::IsNumber,
 		row_number::RowNumber,
-		r#type::Type,
 		time::Time,
+		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -97,7 +97,8 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 		};
 
 		// Data + offsets
-		let (data_offset, data_len, offsets_offset, offsets_len) = marshal_column_data_bytes_to_buf(&mut buf, inner_data);
+		let (data_offset, data_len, offsets_offset, offsets_len) =
+			marshal_column_data_bytes_to_buf(&mut buf, inner_data);
 
 		col_descriptors.push(ColumnWasm {
 			name_offset,
@@ -153,10 +154,11 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 		let start = header.row_numbers_offset as usize;
 		let end = start + header.row_numbers_len as usize;
 		let rn_bytes = &bytes[start..end];
-		rn_bytes
-			.chunks_exact(8)
+		rn_bytes.chunks_exact(8)
 			.map(|chunk| {
-				let val = u64::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7]]);
+				let val = u64::from_le_bytes([
+					chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+				]);
 				RowNumber(val)
 			})
 			.collect()
@@ -212,7 +214,10 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 
 		let data = unmarshal_column_data(type_code, data_row_count, data_slice, bitvec, offsets_slice);
 
-		columns.push(Column { name, data });
+		columns.push(Column {
+			name,
+			data,
+		});
 	}
 
 	if row_numbers.is_empty() {
@@ -338,24 +343,39 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnData) -> (u3
 			marshal_raw_bytes_to_buf(buf, &bytes)
 		}
 
-		ColumnData::Utf8 { container, .. } => {
+		ColumnData::Utf8 {
+			container,
+			..
+		} => {
 			let strings: &[String] = &**container;
 			marshal_strings_to_buf(buf, strings)
 		}
-		ColumnData::Blob { container, .. } => {
+		ColumnData::Blob {
+			container,
+			..
+		} => {
 			let blobs: &[Blob] = &**container;
 			marshal_blobs_to_buf(buf, blobs)
 		}
 
-		ColumnData::Int { container, .. } => {
+		ColumnData::Int {
+			container,
+			..
+		} => {
 			let values: &[Int] = &**container;
 			marshal_serialized_to_buf(buf, values)
 		}
-		ColumnData::Uint { container, .. } => {
+		ColumnData::Uint {
+			container,
+			..
+		} => {
 			let values: &[Uint] = &**container;
 			marshal_serialized_to_buf(buf, values)
 		}
-		ColumnData::Decimal { container, .. } => {
+		ColumnData::Decimal {
+			container,
+			..
+		} => {
 			let values: &[reifydb_type::value::decimal::Decimal] = &**container;
 			marshal_serialized_to_buf(buf, values)
 		}
@@ -377,7 +397,10 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnData) -> (u3
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 
-		ColumnData::Option { inner, .. } => marshal_column_data_bytes_to_buf(buf, inner),
+		ColumnData::Option {
+			inner,
+			..
+		} => marshal_column_data_bytes_to_buf(buf, inner),
 	}
 }
 
@@ -567,8 +590,11 @@ fn unmarshal_column_data(
 			}
 		}
 		ColumnTypeCode::Decimal => {
-			let container =
-				unmarshal_serialized::<reifydb_type::value::decimal::Decimal>(data, row_count, offsets_bytes);
+			let container = unmarshal_serialized::<reifydb_type::value::decimal::Decimal>(
+				data,
+				row_count,
+				offsets_bytes,
+			);
 			ColumnData::Decimal {
 				container,
 				precision: Precision::MAX,
@@ -578,7 +604,8 @@ fn unmarshal_column_data(
 		ColumnTypeCode::Any => ColumnData::Any(unmarshal_any(data, row_count, offsets_bytes)),
 		ColumnTypeCode::DictionaryId => {
 			let u128_container = unmarshal_numeric::<u128>(data, row_count);
-			let entries: Vec<DictionaryEntryId> = u128_container.iter().map(|v| DictionaryEntryId::U16(v.unwrap_or_default())).collect();
+			let entries: Vec<DictionaryEntryId> =
+				u128_container.iter().map(|v| DictionaryEntryId::U16(v.unwrap_or_default())).collect();
 			ColumnData::DictionaryId(DictionaryContainer::new(entries))
 		}
 		ColumnTypeCode::Undefined => return ColumnData::none_typed(Type::Any, row_count),
@@ -593,10 +620,7 @@ fn unmarshal_column_data(
 // ============================================================================
 
 fn read_offsets(bytes: &[u8]) -> Vec<u64> {
-	bytes
-		.chunks_exact(size_of::<u64>())
-		.map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap()))
-		.collect()
+	bytes.chunks_exact(size_of::<u64>()).map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap())).collect()
 }
 
 /// Wrap ColumnData in Option if bitvec has any false (null) entries.

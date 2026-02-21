@@ -13,7 +13,11 @@ use super::{registry::Transforms, wasm::WasmTransform};
 /// The transform name is derived from the file stem (e.g. `my_transform.wasm` → `"my_transform"`).
 pub fn load_transforms_from_dir(dir: &Path) -> reifydb_type::Result<Transforms> {
 	let entries = std::fs::read_dir(dir).map_err(|e| {
-		reifydb_sdk::error::FFIError::Other(format!("Failed to read WASM transform directory {}: {}", dir.display(), e))
+		reifydb_sdk::error::FFIError::Other(format!(
+			"Failed to read WASM transform directory {}: {}",
+			dir.display(),
+			e
+		))
 	})?;
 
 	let mut builder = Transforms::builder();
@@ -42,9 +46,8 @@ pub fn load_transforms_from_dir(dir: &Path) -> reifydb_type::Result<Transforms> 
 		})?;
 
 		let name_for_closure = name.clone();
-		builder = builder.register(&name, move || {
-			WasmTransform::new(name_for_closure.clone(), wasm_bytes.clone())
-		});
+		builder = builder
+			.register(&name, move || WasmTransform::new(name_for_closure.clone(), wasm_bytes.clone()));
 	}
 
 	Ok(builder.build())

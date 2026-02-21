@@ -4,12 +4,12 @@
 mod support;
 
 macro_rules! wast_test {
-    ($fn_name:ident, $file:expr) => {
-        #[test]
-        fn $fn_name() {
-            support::run_test("wast", $file);
-        }
-    };
+	($fn_name:ident, $file:expr) => {
+		#[test]
+		fn $fn_name() {
+			support::run_test("wast", $file);
+		}
+	};
 }
 
 wast_test!(br, "br.wast");
@@ -21,7 +21,7 @@ wast_test!(call_indirect_trap, "call_indirect_trap.wast");
 #[test]
 #[ignore]
 fn call_recursive() {
-    support::run_test("wast", "call_recursive.wast");
+	support::run_test("wast", "call_recursive.wast");
 }
 wast_test!(break_multi_value, "break_multi_value.wast");
 wast_test!(float_from_binary, "float_from_binary.wast");
