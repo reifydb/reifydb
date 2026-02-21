@@ -121,7 +121,6 @@ impl_float_to_bool!(from_float4, f32);
 impl_float_to_bool!(from_float8, f64);
 
 fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
-	use reifydb_type::fragment::Fragment;
 	let mut out = ColumnData::with_capacity(Type::Boolean, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {

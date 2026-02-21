@@ -30,7 +30,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::id::NamespaceId;
+	use reifydb_core::interface::catalog::id::{NamespaceId, TableId};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::fragment::Fragment;
@@ -87,7 +87,6 @@ pub mod tests {
 	fn test_delete_nonexistent_table() {
 		let mut txn = create_test_admin_transaction();
 
-		use reifydb_core::interface::catalog::id::TableId;
 		// Deleting a non-existent table should not error
 		let non_existent = TableId(999999);
 		let result = CatalogStore::delete_table(&mut txn, non_existent);

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::r#type::Type;
+use reifydb_type::value::{decimal::Decimal, int::Int, r#type::Type, uint::Uint};
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
@@ -424,7 +424,6 @@ impl ScalarFunction for Max {
 				max_bytes,
 				..
 			} => {
-				use reifydb_type::value::int::Int;
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 
@@ -473,7 +472,6 @@ impl ScalarFunction for Max {
 				max_bytes,
 				..
 			} => {
-				use reifydb_type::value::uint::Uint;
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 
@@ -523,7 +521,6 @@ impl ScalarFunction for Max {
 				scale,
 				..
 			} => {
-				use reifydb_type::value::decimal::Decimal;
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 

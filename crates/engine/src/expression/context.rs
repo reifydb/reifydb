@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::LazyLock;
+
 use reifydb_core::{
 	interface::{
 		catalog::policy::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
@@ -31,7 +33,6 @@ pub struct EvalContext<'a> {
 
 impl<'a> EvalContext<'a> {
 	pub fn testing() -> Self {
-		use std::sync::LazyLock;
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(|| Functions::empty());

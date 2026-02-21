@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	ast::ast::{
@@ -10,10 +11,13 @@ use crate::{
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
 	convert_data_type_with_constraints,
-	expression::ExpressionCompiler,
+	expression::{
+		AliasExpression, AndExpression, ColumnExpression, EqExpression, Expression, ExpressionCompiler,
+		IdentExpression, IsVariantExpression,
+	},
 	plan::logical::{
 		Compiler, ConditionalNode, DeclareNode, ElseIfBranch, ForNode, LetValue, LogicalPlan, LoopNode,
-		WhileNode,
+		MapNode, WhileNode,
 		function::{CallFunctionNode, DefineFunctionNode, FunctionParameter, ReturnNode},
 	},
 	token::token::{Literal, Token, TokenKind},
@@ -109,16 +113,6 @@ impl<'bump> Compiler<'bump> {
 		ast: AstMatch<'bump>,
 		_tx: &mut Transaction<'_>,
 	) -> crate::Result<LogicalPlan<'bump>> {
-		use reifydb_type::fragment::Fragment;
-
-		use crate::{
-			expression::{
-				AliasExpression, AndExpression, ColumnExpression, EqExpression, Expression,
-				IdentExpression, IsVariantExpression,
-			},
-			plan::logical::MapNode,
-		};
-
 		let fragment = ast.token.fragment.to_owned();
 
 		// Compile subject expression (if present)

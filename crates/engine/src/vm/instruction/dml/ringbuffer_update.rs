@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	error::diagnostic::{catalog::ringbuffer_not_found, engine},
@@ -88,7 +88,6 @@ pub(crate) fn update_ringbuffer<'a>(
 
 			let row_count = columns.row_count();
 
-			use std::collections::HashMap;
 			let mut column_map: HashMap<&str, usize> = HashMap::new();
 			for (idx, col) in columns.iter().enumerate() {
 				column_map.insert(col.name().text(), idx);

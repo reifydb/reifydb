@@ -34,6 +34,7 @@ use tracing::{debug, warn};
 
 use crate::{
 	protocol::{Request, RequestPayload},
+	response::{Response, ServerPush},
 	subscription::{
 		handler::handle_subscribe,
 		registry::{PushMessage, SubscriptionRegistry},
@@ -107,7 +108,6 @@ pub async fn handle_connection(
 
 			// Handle push messages from the subscription registry
 			Some(push) = push_rx.recv() => {
-				use crate::response::ServerPush;
 
 				let msg = match push {
 					PushMessage::Change { subscription_id, frame } => {
@@ -242,21 +242,15 @@ async fn process_message(
 	};
 
 	match request.payload {
-		RequestPayload::Auth(auth) => {
-			use crate::response::Response;
-
-			match extract_identity_from_ws_auth(auth.token.as_deref()) {
-				Ok(id) => {
-					*identity = Some(id);
-					Some(Response::auth(&request.id).to_json())
-				}
-				Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
+		RequestPayload::Auth(auth) => match extract_identity_from_ws_auth(auth.token.as_deref()) {
+			Ok(id) => {
+				*identity = Some(id);
+				Some(Response::auth(&request.id).to_json())
 			}
-		}
+			Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
+		},
 
 		RequestPayload::Admin(a) => {
-			use crate::response::Response;
-
 			let id = match identity.as_ref() {
 				Some(id) => id.clone(),
 				None => {
@@ -290,8 +284,6 @@ async fn process_message(
 		}
 
 		RequestPayload::Query(q) => {
-			use crate::response::Response;
-
 			let id = match identity.as_ref() {
 				Some(id) => id.clone(),
 				None => {
@@ -319,8 +311,6 @@ async fn process_message(
 		}
 
 		RequestPayload::Command(c) => {
-			use crate::response::Response;
-
 			let id = match identity.as_ref() {
 				Some(id) => id.clone(),
 				None => {
@@ -368,8 +358,6 @@ async fn process_message(
 		}
 
 		RequestPayload::Unsubscribe(unsub) => {
-			use crate::response::Response;
-
 			let subscription_id = match unsub.subscription_id.parse::<u64>() {
 				Ok(id) => DbSubscriptionId(id),
 				Err(_) => {
@@ -411,8 +399,6 @@ async fn process_message(
 
 /// Convert an ExecuteError to a JSON response string.
 pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
-	use crate::response::Response;
-
 	match e {
 		ExecuteError::Timeout => {
 			Response::internal_error(id, "QUERY_TIMEOUT", "Query execution timed out").to_json()
@@ -440,6 +426,5 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 
 /// Build an error response JSON string.
 pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
-	use crate::response::Response;
 	Response::internal_error(id, code, message).to_json()
 }

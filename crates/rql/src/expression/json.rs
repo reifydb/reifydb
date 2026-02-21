@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, value::r#type::Type};
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 
@@ -755,8 +755,6 @@ impl TryFrom<JsonExpression> for Expression {
 
 // Helper to parse type strings back to Type enum
 fn parse_type(s: &str) -> reifydb_type::Result<reifydb_type::value::r#type::Type> {
-	use reifydb_type::value::r#type::Type;
-
 	// Handle type debug representations
 	let ty = match s.to_lowercase().as_str() {
 		"boolean" => Type::Boolean,

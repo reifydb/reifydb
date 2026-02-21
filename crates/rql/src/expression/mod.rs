@@ -40,8 +40,14 @@ use std::{
 	sync::Arc,
 };
 
+use ast::ast::AstMatchArm;
 use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
-use reifydb_type::{fragment::Fragment, value::r#type::Type};
+use reifydb_type::{
+	err,
+	error::diagnostic::{Diagnostic, ast as diag_ast},
+	fragment::Fragment,
+	value::{row_number::ROW_NUMBER_COLUMN_NAME, r#type::Type},
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -886,8 +892,6 @@ impl ExpressionCompiler {
 			},
 			Ast::Identifier(identifier) => {
 				// Create an unqualified column identifier
-				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
-				use reifydb_type::fragment::Fragment;
 
 				let column = ColumnIdentifier {
 					primitive: ColumnPrimitive::Primitive {
@@ -1013,8 +1017,6 @@ impl ExpressionCompiler {
 			})),
 			Ast::Rownum(_rownum) => {
 				// Compile rownum to a column reference for rownum
-				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
-				use reifydb_type::{fragment::Fragment, value::row_number::ROW_NUMBER_COLUMN_NAME};
 
 				let column = ColumnIdentifier {
 					primitive: ColumnPrimitive::Primitive {
@@ -1150,8 +1152,6 @@ impl ExpressionCompiler {
 
 	/// Compile a MATCH expression by lowering it to an IfExpression.
 	fn compile_match(match_ast: ast::ast::AstMatch<'_>) -> crate::Result<Expression> {
-		use ast::ast::AstMatchArm;
-
 		let fragment = match_ast.token.fragment.to_owned();
 
 		// Compile subject expression (if present)
@@ -1697,7 +1697,6 @@ impl ExpressionCompiler {
 			InfixOperator::Assign(token) => {
 				// Assignment operator (=) is not valid in expression context
 				// Use == for equality comparison
-				use reifydb_type::error::diagnostic::ast as diag_ast;
 				reifydb_type::return_error!(diag_ast::unsupported_token_error(
 					token.fragment.to_owned()
 				))
@@ -1725,9 +1724,6 @@ impl ExpressionCompiler {
 						}))
 					}
 					_ => {
-						use reifydb_type::{
-							err, error::diagnostic::Diagnostic, fragment::Fragment,
-						};
 						return err!(Diagnostic {
 							code: "EXPR_001".to_string(),
 							statement: None,

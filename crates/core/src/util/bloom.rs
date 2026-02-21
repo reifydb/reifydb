@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::hash::{Hash, Hasher};
+use std::{
+	collections::hash_map::DefaultHasher,
+	hash::{Hash, Hasher},
+};
 
 /// A simple bloom filter for fast negative membership checks
 ///
@@ -101,7 +104,6 @@ impl BloomFilter {
 
 	#[inline]
 	fn hash<T: Hash>(&self, item: &T) -> u64 {
-		use std::collections::hash_map::DefaultHasher;
 		let mut hasher = DefaultHasher::new();
 		item.hash(&mut hasher);
 		hasher.finish()

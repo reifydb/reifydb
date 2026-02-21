@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::interface::identifier::ColumnPrimitive;
 use reifydb_type::fragment::Fragment;
 
 use crate::expression::{ConstantExpression, Expression};
@@ -61,8 +62,6 @@ fn simplified_name<'a>(expr: &Expression) -> Fragment {
 			} => Fragment::internal("none"),
 		},
 		Expression::AccessSource(access_expr) => {
-			use reifydb_core::interface::identifier::ColumnPrimitive;
-
 			// Extract primitive name based on the ColumnPrimitive type
 			let primitive_name = match &access_expr.column.primitive {
 				ColumnPrimitive::Primitive {

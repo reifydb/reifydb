@@ -30,7 +30,7 @@ impl ColumnData {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{Value, identity::IdentityId, r#type::Type};
+	use reifydb_type::value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type};
 
 	use crate::value::column::ColumnData;
 
@@ -115,8 +115,6 @@ pub mod tests {
 
 	#[test]
 	fn test_reorder_dictionary_id() {
-		use reifydb_type::value::dictionary::DictionaryEntryId;
-
 		let e1 = DictionaryEntryId::U4(10);
 		let e2 = DictionaryEntryId::U4(20);
 		let e3 = DictionaryEntryId::U4(30);

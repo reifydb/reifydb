@@ -174,6 +174,8 @@ impl FlowTransaction {
 
 #[cfg(test)]
 pub mod tests {
+	use std::collections::Bound;
+
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		common::CommitVersion,
@@ -323,7 +325,6 @@ pub mod tests {
 		txn.state_set(node_id, &make_key("d"), make_value("4")).unwrap();
 
 		// Range query from "b" to "d" (exclusive)
-		use std::collections::Bound;
 		let range = EncodedKeyRange::new(Bound::Included(make_key("b")), Bound::Excluded(make_key("d")));
 		let iter = txn.state_range(node_id, range).unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();

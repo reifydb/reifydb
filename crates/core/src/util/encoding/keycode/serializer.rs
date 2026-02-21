@@ -260,7 +260,6 @@ impl KeySerializer {
 
 	/// Extend with a Value based on its type
 	pub fn extend_value(&mut self, value: &Value) -> &mut Self {
-		use reifydb_type::value::Value;
 		match value {
 			Value::None {
 				..
@@ -362,11 +361,34 @@ impl Default for KeySerializer {
 
 #[cfg(test)]
 pub mod tests {
-	use std::f64;
+	use std::{f64, str::FromStr};
 
-	use reifydb_type::util::hex;
+	use num_bigint::BigInt;
+	use reifydb_type::{
+		util::hex,
+		value::{
+			Value,
+			blob::Blob,
+			date::Date,
+			datetime::DateTime,
+			decimal::Decimal,
+			duration::Duration,
+			identity::IdentityId,
+			int::Int,
+			row_number::RowNumber,
+			time::Time,
+			uint::Uint,
+			uuid::{Uuid4, Uuid7},
+		},
+	};
 
-	use crate::util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer};
+	use crate::{
+		interface::catalog::{
+			id::{IndexId, PrimaryKeyId, TableId},
+			primitive::PrimitiveId,
+		},
+		util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	};
 
 	#[test]
 	fn test_new() {
@@ -822,7 +844,6 @@ pub mod tests {
 
 	#[test]
 	fn test_date() {
-		use reifydb_type::value::date::Date;
 		let mut serializer = KeySerializer::new();
 		let date = Date::from_ymd(2024, 1, 1).unwrap();
 		serializer.extend_date(&date);
@@ -832,7 +853,6 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime() {
-		use reifydb_type::value::datetime::DateTime;
 		let mut serializer = KeySerializer::new();
 		let datetime = DateTime::from_ymd_hms(2024, 1, 1, 12, 0, 0).unwrap();
 		serializer.extend_datetime(&datetime);
@@ -842,7 +862,6 @@ pub mod tests {
 
 	#[test]
 	fn test_time() {
-		use reifydb_type::value::time::Time;
 		let mut serializer = KeySerializer::new();
 		let time = Time::from_hms(12, 30, 45).unwrap();
 		serializer.extend_time(&time);
@@ -852,7 +871,6 @@ pub mod tests {
 
 	#[test]
 	fn test_interval() {
-		use reifydb_type::value::duration::Duration;
 		let mut serializer = KeySerializer::new();
 		let duration = Duration::from_nanoseconds(1000000);
 		serializer.extend_duration(&duration);
@@ -862,7 +880,6 @@ pub mod tests {
 
 	#[test]
 	fn test_row_number() {
-		use reifydb_type::value::row_number::RowNumber;
 		let mut serializer = KeySerializer::new();
 		let row_number = RowNumber(42);
 		serializer.extend_row_number(&row_number);
@@ -872,7 +889,6 @@ pub mod tests {
 
 	#[test]
 	fn test_identity_id() {
-		use reifydb_type::value::identity::IdentityId;
 		let mut serializer = KeySerializer::new();
 		let id = IdentityId::generate();
 		serializer.extend_identity_id(&id);
@@ -882,7 +898,6 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid4() {
-		use reifydb_type::value::uuid::Uuid4;
 		let mut serializer = KeySerializer::new();
 		let uuid = Uuid4::generate();
 		serializer.extend_uuid4(&uuid);
@@ -893,7 +908,6 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid7() {
-		use reifydb_type::value::uuid::Uuid7;
 		let mut serializer = KeySerializer::new();
 		let uuid = Uuid7::generate();
 		serializer.extend_uuid7(&uuid);
@@ -904,7 +918,6 @@ pub mod tests {
 
 	#[test]
 	fn test_blob() {
-		use reifydb_type::value::blob::Blob;
 		let mut serializer = KeySerializer::new();
 		let blob = Blob::from(vec![0x01, 0x02, 0x03]);
 		serializer.extend_blob(&blob);
@@ -915,8 +928,6 @@ pub mod tests {
 
 	#[test]
 	fn test_int() {
-		use num_bigint::BigInt;
-		use reifydb_type::value::int::Int;
 		let mut serializer = KeySerializer::new();
 		let int = Int(BigInt::from(42));
 		serializer.extend_int(&int);
@@ -927,8 +938,6 @@ pub mod tests {
 
 	#[test]
 	fn test_uint() {
-		use num_bigint::BigInt;
-		use reifydb_type::value::uint::Uint;
 		let mut serializer = KeySerializer::new();
 		let uint = Uint(BigInt::from(42));
 		serializer.extend_uint(&uint);
@@ -939,9 +948,6 @@ pub mod tests {
 
 	#[test]
 	fn test_decimal() {
-		use std::str::FromStr;
-
-		use reifydb_type::value::decimal::Decimal;
 		let mut serializer = KeySerializer::new();
 		let decimal = Decimal::from_str("3.14").unwrap();
 		serializer.extend_decimal(&decimal);
@@ -952,8 +958,6 @@ pub mod tests {
 
 	#[test]
 	fn test_extend_value() {
-		use reifydb_type::value::Value;
-
 		// Test undefined
 		let mut serializer = KeySerializer::new();
 		serializer.extend_value(&Value::none());
@@ -989,8 +993,6 @@ pub mod tests {
 
 	#[test]
 	fn test_index_id() {
-		use crate::interface::catalog::id::{IndexId, PrimaryKeyId};
-
 		let mut serializer = KeySerializer::new();
 		serializer.extend_index_id(IndexId::Primary(PrimaryKeyId(123456789)));
 		let result = serializer.finish();
@@ -1011,8 +1013,6 @@ pub mod tests {
 
 	#[test]
 	fn test_primitive_id() {
-		use crate::interface::catalog::{id::TableId, primitive::PrimitiveId};
-
 		let mut serializer = KeySerializer::new();
 		serializer.extend_primitive_id(PrimitiveId::Table(TableId(987654321)));
 		let result = serializer.finish();

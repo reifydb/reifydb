@@ -3,7 +3,7 @@
 
 use num_traits::sign::Signed;
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{container::number::NumberContainer, decimal::Decimal, r#type::Type};
+use reifydb_type::value::{container::number::NumberContainer, decimal::Decimal, int::Int, r#type::Type, uint::Uint};
 
 use crate::{
 	ScalarFunction, ScalarFunctionContext,
@@ -235,7 +235,6 @@ impl ScalarFunction for Abs {
 				container,
 				max_bytes,
 			} => {
-				use reifydb_type::value::int::Int;
 				let mut data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -255,7 +254,6 @@ impl ScalarFunction for Abs {
 				container,
 				max_bytes,
 			} => {
-				use reifydb_type::value::uint::Uint;
 				// Unsigned: abs is identity
 				let mut data = Vec::with_capacity(row_count);
 

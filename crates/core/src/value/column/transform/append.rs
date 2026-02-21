@@ -755,8 +755,6 @@ pub mod tests {
 
 		#[test]
 		fn test_uuid4() {
-			use uuid::Uuid;
-
 			let uuid1 = Uuid4::from(Uuid::new_v4());
 			let uuid2 = Uuid4::from(Uuid::new_v4());
 			let uuid3 = Uuid4::from(Uuid::new_v4());
@@ -863,11 +861,18 @@ pub mod tests {
 		use reifydb_type::{
 			fragment::Fragment,
 			util::bitvec::BitVec,
-			value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64, r#type::Type},
+			value::{
+				Value,
+				constraint::TypeConstraint,
+				dictionary::{DictionaryEntryId, DictionaryId},
+				ordered_f32::OrderedF32,
+				ordered_f64::OrderedF64,
+				r#type::Type,
+			},
 		};
 
 		use crate::{
-			encoded::schema::Schema,
+			encoded::schema::{Schema, SchemaField},
 			value::column::{Column, ColumnData, columns::Columns},
 		};
 
@@ -1658,13 +1663,6 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_dictionary_id() {
-			use reifydb_type::value::{
-				constraint::TypeConstraint,
-				dictionary::{DictionaryEntryId, DictionaryId},
-			};
-
-			use crate::encoded::schema::SchemaField;
-
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
 			let schema = Schema::new(vec![SchemaField::new("status", constraint)]);
 
@@ -1690,13 +1688,6 @@ pub mod tests {
 
 		#[test]
 		fn test_fallback_dictionary_id() {
-			use reifydb_type::value::{
-				constraint::TypeConstraint,
-				dictionary::{DictionaryEntryId, DictionaryId},
-			};
-
-			use crate::encoded::schema::SchemaField;
-
 			let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
 			let schema = Schema::new(vec![
 				SchemaField::new("dict_col", dict_constraint),
@@ -1721,13 +1712,6 @@ pub mod tests {
 
 		#[test]
 		fn test_before_undefined_dictionary_id() {
-			use reifydb_type::value::{
-				constraint::TypeConstraint,
-				dictionary::{DictionaryEntryId, DictionaryId},
-			};
-
-			use crate::encoded::schema::SchemaField;
-
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(2u64), Type::Uint4);
 			let schema = Schema::new(vec![SchemaField::new("tag", constraint)]);
 

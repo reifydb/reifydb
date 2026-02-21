@@ -651,10 +651,6 @@ impl<'bump> Compiler<'bump> {
 					};
 
 					let target = if let Some(table_id) = delete.target {
-						use reifydb_core::interface::resolved::{
-							ResolvedNamespace, ResolvedTable,
-						};
-
 						let namespace_name = if table_id.namespace.is_empty() {
 							"default".to_string()
 						} else {
@@ -717,10 +713,6 @@ impl<'bump> Compiler<'bump> {
 						stack.pop().map(|i| self.bump_box(i))
 					};
 
-					use reifydb_core::interface::resolved::{
-						ResolvedNamespace, ResolvedRingBuffer,
-					};
-
 					let ringbuffer_id = delete.target;
 					let namespace_name = if ringbuffer_id.namespace.is_empty() {
 						"default".to_string()
@@ -771,8 +763,6 @@ impl<'bump> Compiler<'bump> {
 						.compile(rx, once(crate::bump::BumpBox::into_inner(insert.source)))?
 						.expect("Insert source must produce a plan");
 
-					use reifydb_core::interface::resolved::{ResolvedNamespace, ResolvedTable};
-
 					let table = insert.target;
 					let namespace_name = if table.namespace.is_empty() {
 						"default".to_string()
@@ -817,10 +807,6 @@ impl<'bump> Compiler<'bump> {
 					let input = self
 						.compile(rx, once(crate::bump::BumpBox::into_inner(insert_rb.source)))?
 						.expect("Insert source must produce a plan");
-
-					use reifydb_core::interface::resolved::{
-						ResolvedNamespace, ResolvedRingBuffer,
-					};
 
 					let ringbuffer_id = insert_rb.target;
 					let namespace_name = if ringbuffer_id.namespace.is_empty() {
@@ -934,10 +920,6 @@ impl<'bump> Compiler<'bump> {
 					};
 
 					let target = if let Some(table_id) = update.target {
-						use reifydb_core::interface::resolved::{
-							ResolvedNamespace, ResolvedTable,
-						};
-
 						let namespace_name = if table_id.namespace.is_empty() {
 							"default".to_string()
 						} else {
@@ -998,10 +980,6 @@ impl<'bump> Compiler<'bump> {
 						self.bump_box(sub_plan)
 					} else {
 						self.bump_box(stack.pop().expect("UpdateRingBuffer requires input"))
-					};
-
-					use reifydb_core::interface::resolved::{
-						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
 					let ringbuffer_id = update_rb.target;
@@ -1179,101 +1157,88 @@ impl<'bump> Compiler<'bump> {
 					}));
 				}
 
-				LogicalPlan::PrimitiveScan(scan) => {
-					use reifydb_core::interface::resolved::ResolvedPrimitive;
-
-					match &scan.source {
-						ResolvedPrimitive::Table(resolved_table) => {
-							if let Some(index) = &scan.index {
-								stack.push(PhysicalPlan::IndexScan(IndexScanNode {
-									source: resolved_table.clone(),
-									index_name: index
-										.identifier()
-										.text()
-										.to_string(),
-								}));
-							} else {
-								stack.push(PhysicalPlan::TableScan(TableScanNode {
-									source: resolved_table.clone(),
-								}));
-							}
-						}
-						ResolvedPrimitive::View(resolved_view) => {
-							if scan.index.is_some() {
-								unimplemented!("views do not support indexes yet");
-							}
-							stack.push(PhysicalPlan::ViewScan(ViewScanNode {
-								source: resolved_view.clone(),
+				LogicalPlan::PrimitiveScan(scan) => match &scan.source {
+					ResolvedPrimitive::Table(resolved_table) => {
+						if let Some(index) = &scan.index {
+							stack.push(PhysicalPlan::IndexScan(IndexScanNode {
+								source: resolved_table.clone(),
+								index_name: index.identifier().text().to_string(),
 							}));
-						}
-						ResolvedPrimitive::DeferredView(resolved_view) => {
-							if scan.index.is_some() {
-								unimplemented!("views do not support indexes yet");
-							}
-							let view = ResolvedView::new(
-								resolved_view.identifier().clone(),
-								resolved_view.namespace().clone(),
-								resolved_view.def().clone(),
-							);
-							stack.push(PhysicalPlan::ViewScan(ViewScanNode {
-								source: view,
-							}));
-						}
-						ResolvedPrimitive::TransactionalView(resolved_view) => {
-							if scan.index.is_some() {
-								unimplemented!("views do not support indexes yet");
-							}
-							let view = ResolvedView::new(
-								resolved_view.identifier().clone(),
-								resolved_view.namespace().clone(),
-								resolved_view.def().clone(),
-							);
-							stack.push(PhysicalPlan::ViewScan(ViewScanNode {
-								source: view,
-							}));
-						}
-
-						ResolvedPrimitive::TableVirtual(resolved_virtual) => {
-							if scan.index.is_some() {
-								unimplemented!(
-									"virtual tables do not support indexes yet"
-								);
-							}
-							stack.push(PhysicalPlan::TableVirtualScan(
-								TableVirtualScanNode {
-									source: resolved_virtual.clone(),
-									pushdown_context: None,
-								},
-							));
-						}
-						ResolvedPrimitive::RingBuffer(resolved_ringbuffer) => {
-							if scan.index.is_some() {
-								unimplemented!(
-									"ring buffers do not support indexes yet"
-								);
-							}
-							stack.push(PhysicalPlan::RingBufferScan(RingBufferScanNode {
-								source: resolved_ringbuffer.clone(),
-							}));
-						}
-						ResolvedPrimitive::Flow(resolved_flow) => {
-							if scan.index.is_some() {
-								unimplemented!("flows do not support indexes yet");
-							}
-							stack.push(PhysicalPlan::FlowScan(FlowScanNode {
-								source: resolved_flow.clone(),
-							}));
-						}
-						ResolvedPrimitive::Dictionary(resolved_dictionary) => {
-							if scan.index.is_some() {
-								unimplemented!("dictionaries do not support indexes");
-							}
-							stack.push(PhysicalPlan::DictionaryScan(DictionaryScanNode {
-								source: resolved_dictionary.clone(),
+						} else {
+							stack.push(PhysicalPlan::TableScan(TableScanNode {
+								source: resolved_table.clone(),
 							}));
 						}
 					}
-				}
+					ResolvedPrimitive::View(resolved_view) => {
+						if scan.index.is_some() {
+							unimplemented!("views do not support indexes yet");
+						}
+						stack.push(PhysicalPlan::ViewScan(ViewScanNode {
+							source: resolved_view.clone(),
+						}));
+					}
+					ResolvedPrimitive::DeferredView(resolved_view) => {
+						if scan.index.is_some() {
+							unimplemented!("views do not support indexes yet");
+						}
+						let view = ResolvedView::new(
+							resolved_view.identifier().clone(),
+							resolved_view.namespace().clone(),
+							resolved_view.def().clone(),
+						);
+						stack.push(PhysicalPlan::ViewScan(ViewScanNode {
+							source: view,
+						}));
+					}
+					ResolvedPrimitive::TransactionalView(resolved_view) => {
+						if scan.index.is_some() {
+							unimplemented!("views do not support indexes yet");
+						}
+						let view = ResolvedView::new(
+							resolved_view.identifier().clone(),
+							resolved_view.namespace().clone(),
+							resolved_view.def().clone(),
+						);
+						stack.push(PhysicalPlan::ViewScan(ViewScanNode {
+							source: view,
+						}));
+					}
+
+					ResolvedPrimitive::TableVirtual(resolved_virtual) => {
+						if scan.index.is_some() {
+							unimplemented!("virtual tables do not support indexes yet");
+						}
+						stack.push(PhysicalPlan::TableVirtualScan(TableVirtualScanNode {
+							source: resolved_virtual.clone(),
+							pushdown_context: None,
+						}));
+					}
+					ResolvedPrimitive::RingBuffer(resolved_ringbuffer) => {
+						if scan.index.is_some() {
+							unimplemented!("ring buffers do not support indexes yet");
+						}
+						stack.push(PhysicalPlan::RingBufferScan(RingBufferScanNode {
+							source: resolved_ringbuffer.clone(),
+						}));
+					}
+					ResolvedPrimitive::Flow(resolved_flow) => {
+						if scan.index.is_some() {
+							unimplemented!("flows do not support indexes yet");
+						}
+						stack.push(PhysicalPlan::FlowScan(FlowScanNode {
+							source: resolved_flow.clone(),
+						}));
+					}
+					ResolvedPrimitive::Dictionary(resolved_dictionary) => {
+						if scan.index.is_some() {
+							unimplemented!("dictionaries do not support indexes");
+						}
+						stack.push(PhysicalPlan::DictionaryScan(DictionaryScanNode {
+							source: resolved_dictionary.clone(),
+						}));
+					}
+				},
 
 				LogicalPlan::Take(take) => {
 					let input = stack.pop().unwrap(); // FIXME

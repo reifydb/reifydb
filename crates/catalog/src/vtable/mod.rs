@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::params::Params;
 
-use crate::system::SystemCatalog;
+use crate::system::{SystemCatalog, ids::vtable::*};
 
 /// A batch of columnar data returned from virtual table queries
 #[derive(Debug)]
@@ -63,8 +63,6 @@ impl VTableRegistry {
 	/// Find a virtual table by its ID
 	/// Returns None if the virtual table doesn't exist
 	pub fn find_vtable(_rx: &mut Transaction<'_>, id: VTableId) -> crate::Result<Option<Arc<VTableDef>>> {
-		use crate::system::ids::vtable::*;
-
 		Ok(match id {
 			SEQUENCES => Some(SystemCatalog::get_system_sequences_table_def()),
 			NAMESPACES => Some(SystemCatalog::get_system_namespaces_table_def()),

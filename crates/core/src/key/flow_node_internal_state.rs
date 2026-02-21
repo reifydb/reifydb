@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::ops::Bound;
+
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
@@ -126,8 +128,6 @@ impl EncodableKeyRange for FlowNodeInternalStateKeyRange {
 	where
 		Self: Sized,
 	{
-		use std::ops::Bound;
-
 		let start_key = match &range.start {
 			Bound::Included(key) | Bound::Excluded(key) => Self::decode_key(key),
 			Bound::Unbounded => None,

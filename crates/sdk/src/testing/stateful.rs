@@ -284,13 +284,13 @@ impl WindowStatefulTestHelper {
 /// Common test scenarios for stateful operators
 pub mod scenarios {
 	use reifydb_core::interface::change::Change;
+	use reifydb_type::value::row_number::RowNumber;
 
 	use super::*;
 	use crate::testing::builders::TestChangeBuilder;
 
 	/// Create a sequence of inserts for testing counters
 	pub fn counter_inserts(count: usize) -> Vec<Change> {
-		use reifydb_type::value::row_number::RowNumber;
 		(0..count)
 			.map(|i| {
 				TestChangeBuilder::new()
@@ -302,7 +302,6 @@ pub mod scenarios {
 
 	/// Create a sequence of keyed inserts for group-by testing
 	pub fn grouped_inserts(groups: &[(&str, i32)]) -> Change {
-		use reifydb_type::value::row_number::RowNumber;
 		let mut builder = TestChangeBuilder::new();
 		for (i, (key, value)) in groups.iter().enumerate() {
 			builder = builder
@@ -313,7 +312,6 @@ pub mod scenarios {
 
 	/// Create a sequence of updates for testing state changes
 	pub fn state_updates(row_number: i64, old_value: i8, new_value: i8) -> Change {
-		use reifydb_type::value::row_number::RowNumber;
 		TestChangeBuilder::new()
 			.update_row(
 				RowNumber(row_number as u64),
@@ -325,7 +323,6 @@ pub mod scenarios {
 
 	/// Create a windowed sequence of events
 	pub fn windowed_events(window_size: i64, events_per_window: usize, windows: usize) -> Vec<(i64, Change)> {
-		use reifydb_type::value::row_number::RowNumber;
 		let mut result = Vec::new();
 
 		for window in 0..windows {

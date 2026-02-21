@@ -163,6 +163,8 @@ impl Display for Uint {
 
 #[cfg(test)]
 pub mod tests {
+	use std::collections::HashSet;
+
 	use super::*;
 
 	#[test]
@@ -208,8 +210,6 @@ pub mod tests {
 
 	#[test]
 	fn test_uint_hash() {
-		use std::collections::HashSet;
-
 		let a = Uint::from_u64(42);
 		let b = Uint::from_u64(42);
 

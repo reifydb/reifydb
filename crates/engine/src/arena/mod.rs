@@ -563,7 +563,7 @@ mod tests {
 	}
 
 	mod bump_storage {
-		use reifydb_type::value::container::number::NumberContainer;
+		use reifydb_type::value::container::{bool::BoolContainer, number::NumberContainer};
 
 		use super::*;
 
@@ -583,8 +583,6 @@ mod tests {
 
 		#[test]
 		fn test_bool_container_with_bump() {
-			use reifydb_type::value::container::bool::BoolContainer;
-
 			let bump_alloc = bumpalo::Bump::new();
 			let data = BumpBitVec::with_capacity_in(4, &bump_alloc);
 			let mut container: BoolContainer<Bump<'_>> = BoolContainer::from_parts(data);

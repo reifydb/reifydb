@@ -3,7 +3,21 @@
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{blob::Blob, r#type::Type};
+	use std::str::FromStr;
+
+	use reifydb_type::value::{
+		blob::Blob,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		time::Time,
+		r#type::Type,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+	};
 
 	use crate::encoded::schema::Schema;
 
@@ -124,8 +138,6 @@ pub mod tests {
 
 	#[test]
 	fn test_set_temporal_types() {
-		use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
-
 		let schema = Schema::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
 		let mut row = schema.allocate();
 
@@ -164,11 +176,6 @@ pub mod tests {
 
 	#[test]
 	fn test_set_uuid_types() {
-		use reifydb_type::value::{
-			identity::IdentityId,
-			uuid::{Uuid4, Uuid7},
-		};
-
 		let schema = Schema::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 		let mut row = schema.allocate();
 
@@ -201,10 +208,6 @@ pub mod tests {
 
 	#[test]
 	fn test_set_decimal_int_uint() {
-		use std::str::FromStr;
-
-		use reifydb_type::value::{decimal::Decimal, int::Int, uint::Uint};
-
 		let schema = Schema::testing(&[Type::Decimal, Type::Int, Type::Uint]);
 		let mut row = schema.allocate();
 

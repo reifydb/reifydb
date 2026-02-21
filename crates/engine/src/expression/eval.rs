@@ -6,11 +6,12 @@ use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::clock::Clock;
 
-use crate::expression::context::EvalContext;
+use crate::expression::{
+	compile::compile_expression,
+	context::{CompileContext, EvalContext},
+};
 
 pub fn evaluate(ctx: &EvalContext, expr: &Expression, _functions: &Functions, _clock: &Clock) -> crate::Result<Column> {
-	use crate::expression::{compile::compile_expression, context::CompileContext};
-
 	let compile_ctx = CompileContext {
 		functions: ctx.functions,
 		symbol_table: ctx.symbol_table,

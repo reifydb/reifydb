@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::{Catalog, flow::FlowToCreate};
 use reifydb_core::interface::catalog::{
-	flow::FlowStatus,
+	flow::{FlowId, FlowStatus},
 	subscription::{SubscriptionDef, subscription_flow_name, subscription_flow_namespace},
 	view::ViewDef,
 };
@@ -60,8 +60,6 @@ pub(crate) fn create_subscription_flow(
 	subscription: &SubscriptionDef,
 	plan: QueryPlan,
 ) -> crate::Result<()> {
-	use reifydb_core::interface::catalog::flow::FlowId;
-
 	// FlowId == SubscriptionId for subscription flows
 	let flow_id = FlowId(subscription.id.0);
 	let flow_def = catalog.create_flow_with_id(

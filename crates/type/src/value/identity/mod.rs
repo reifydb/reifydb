@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::{fmt, ops::Deref};
+use std::{fmt, ops::Deref, str::FromStr};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
@@ -88,7 +88,6 @@ impl<'de> Deserialize<'de> for IdentityId {
 			where
 				E: serde::de::Error,
 			{
-				use std::str::FromStr;
 				let uuid = uuid::Uuid::from_str(value)
 					.map_err(|e| E::custom(format!("invalid UUID: {}", e)))?;
 

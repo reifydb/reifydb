@@ -6,15 +6,17 @@ use reifydb_core::sort::SortDirection;
 use crate::{
 	ast::{
 		ast::{
-			AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-			AstCreatePolicy, AstCreatePrimaryKey, AstCreateRingBuffer, AstCreateSeries,
+			AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateFlow,
+			AstCreateNamespace, AstCreatePolicy, AstCreatePrimaryKey, AstCreateRingBuffer, AstCreateSeries,
 			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTransactionalView,
 			AstIndexColumn, AstPolicyEntry, AstPolicyKind, AstPrimaryKeyDef, AstType, AstVariantDef,
 		},
 		identifier::{
-			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier,
-			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSumTypeIdentifier,
-			MaybeQualifiedTableIdentifier,
+			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
+			MaybeQualifiedFlowIdentifier, MaybeQualifiedNamespaceIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTransactionalViewIdentifier,
 		},
 		parse::Parser,
 	},
@@ -251,8 +253,6 @@ impl<'bump> Parser<'bump> {
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
-		use crate::ast::identifier::MaybeQualifiedDeferredViewIdentifier;
-
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
 		// Parse optional AS clause
@@ -308,8 +308,6 @@ impl<'bump> Parser<'bump> {
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
-
-		use crate::ast::identifier::MaybeQualifiedTransactionalViewIdentifier;
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
@@ -443,8 +441,6 @@ impl<'bump> Parser<'bump> {
 					.unwrap_or_else(|| reifydb_type::fragment::Fragment::internal("end of input")),
 			))
 		})?;
-
-		use crate::ast::identifier::MaybeQualifiedRingBufferIdentifier;
 
 		let ringbuffer = MaybeQualifiedRingBufferIdentifier::new(name).with_namespace(namespace);
 
@@ -845,8 +841,6 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_flow(&mut self, token: Token<'bump>, or_replace: bool) -> crate::Result<AstCreate<'bump>> {
-		use crate::ast::identifier::MaybeQualifiedFlowIdentifier;
-
 		// Check for IF NOT EXISTS
 		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
@@ -942,7 +936,6 @@ impl<'bump> Parser<'bump> {
 			}
 		};
 
-		use crate::ast::ast::AstCreateFlow;
 		Ok(AstCreate::Flow(AstCreateFlow {
 			token,
 			or_replace,
@@ -1583,8 +1576,6 @@ pub mod tests {
 
 		let result = result.pop().unwrap();
 		let create = result.first_unchecked().as_create();
-
-		use crate::ast::ast::AstCreateRingBuffer;
 
 		match create {
 			AstCreate::RingBuffer(AstCreateRingBuffer {

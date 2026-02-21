@@ -5,7 +5,7 @@ use num_traits::ToPrimitive;
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::{
 	fragment::Fragment,
-	value::{container::number::NumberContainer, decimal::Decimal, r#type::Type},
+	value::{container::number::NumberContainer, decimal::Decimal, int::Int, r#type::Type, uint::Uint},
 };
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
@@ -201,7 +201,6 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 			ColumnData::float8_with_bitvec(result, bitvec)
 		}
 		Type::Int => {
-			use reifydb_type::value::int::Int;
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -217,7 +216,6 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 			ColumnData::int_with_bitvec(result, bitvec)
 		}
 		Type::Uint => {
-			use reifydb_type::value::uint::Uint;
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -233,7 +231,6 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 			ColumnData::uint_with_bitvec(result, bitvec)
 		}
 		Type::Decimal => {
-			use reifydb_type::value::decimal::Decimal;
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -419,26 +416,26 @@ fn get_as_f64(data: &ColumnData, i: usize) -> f64 {
 /// This handles types that the standard Type::promote doesn't handle well,
 /// including Int, Uint, and Decimal.
 fn promote_numeric_types(left: Type, right: Type) -> Type {
-	use Type::*;
-
-	if matches!(left, Float4 | Float8 | Decimal) || matches!(right, Float4 | Float8 | Decimal) {
-		return Decimal;
+	if matches!(left, Type::Float4 | Type::Float8 | Type::Decimal)
+		|| matches!(right, Type::Float4 | Type::Float8 | Type::Decimal)
+	{
+		return Type::Decimal;
 	}
 
 	// If any type is the arbitrary-precision Int or Uint, promote to the largest fixed type
 	// Int -> Int16 (largest signed), Uint -> Uint16 (largest unsigned)
 	// But if mixing signed/unsigned, go to Int16
-	if left == Int || right == Int {
-		return Int16;
+	if left == Type::Int || right == Type::Int {
+		return Type::Int16;
 	}
-	if left == Uint || right == Uint {
+	if left == Type::Uint || right == Type::Uint {
 		// If the other type is signed, go to Int16
-		if matches!(left, Int1 | Int2 | Int4 | Int8 | Int16)
-			|| matches!(right, Int1 | Int2 | Int4 | Int8 | Int16)
+		if matches!(left, Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16)
+			|| matches!(right, Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16)
 		{
-			return Int16;
+			return Type::Int16;
 		}
-		return Uint16;
+		return Type::Uint16;
 	}
 
 	// For standard fixed-size types, use the standard promotion logic
@@ -772,7 +769,6 @@ impl ScalarFunction for Power {
 					..
 				},
 			) => {
-				use reifydb_type::value::int::Int;
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 
@@ -809,7 +805,6 @@ impl ScalarFunction for Power {
 					..
 				},
 			) => {
-				use reifydb_type::value::uint::Uint;
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 

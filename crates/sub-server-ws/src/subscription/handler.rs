@@ -19,6 +19,7 @@ use tracing::{debug, error};
 use crate::{
 	handler::error_to_response,
 	protocol::SubscribeRequest,
+	response::Response,
 	subscription::{PushMessage, SubscriptionRegistry},
 };
 
@@ -113,10 +114,8 @@ pub(crate) async fn handle_subscribe(
 					subscription_id
 				);
 
-				use crate::response::Response;
 				Some(Response::subscribed(request_id, subscription_id.to_string()).to_json())
 			} else {
-				use crate::response::Response;
 				Some(Response::internal_error(
 					request_id,
 					"SUBSCRIPTION_FAILED",

@@ -52,6 +52,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::interface::catalog::id::SubscriptionId;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
@@ -85,7 +86,6 @@ pub mod tests {
 	fn test_delete_nonexistent_subscription() {
 		let mut txn = create_test_admin_transaction();
 
-		use reifydb_core::interface::catalog::id::SubscriptionId;
 		let non_existent = SubscriptionId(999999);
 		let result = CatalogStore::delete_subscription(&mut txn, non_existent);
 		assert!(result.is_ok());

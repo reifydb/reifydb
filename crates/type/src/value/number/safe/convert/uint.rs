@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
+use bigdecimal::BigDecimal as BigDecimalInner;
+
 use super::*;
 
 macro_rules! impl_safe_convert_uint_to_signed {
@@ -113,13 +115,11 @@ impl SafeConvert<Int> for Uint {
 
 impl SafeConvert<Decimal> for Uint {
 	fn checked_convert(self) -> Option<Decimal> {
-		use bigdecimal::BigDecimal as BigDecimalInner;
 		let big_decimal = BigDecimalInner::from(self.0);
 		Some(Decimal::from(big_decimal))
 	}
 
 	fn saturating_convert(self) -> Decimal {
-		use bigdecimal::BigDecimal as BigDecimalInner;
 		let big_decimal = BigDecimalInner::from(self.0);
 		Decimal::from(big_decimal)
 	}

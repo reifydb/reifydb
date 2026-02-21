@@ -31,6 +31,7 @@ use crate::{
 	transaction::operation::{
 		dictionary::DictionaryOperations, ringbuffer::RingBufferOperations, table::TableOperations,
 	},
+	vm::instruction::dml::primary_key,
 };
 
 /// Marker trait for validation mode (sealed)
@@ -157,8 +158,6 @@ fn execute_table_insert<V: ValidationMode>(
 	pending: &PendingTableInsert,
 	type_id: std::any::TypeId,
 ) -> crate::Result<TableInsertResult> {
-	use crate::vm::instruction::dml::primary_key;
-
 	// 1. Look up namespace and table from catalog
 	let namespace = catalog
 		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?

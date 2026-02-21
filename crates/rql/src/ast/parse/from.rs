@@ -5,7 +5,8 @@ use reifydb_type::error::{Error, diagnostic::ast::unexpected_token_error};
 
 use crate::{
 	ast::{
-		ast::{Ast, AstFrom, AstGenerator, AstList},
+		ast::{Ast, AstFrom, AstGenerator, AstList, AstVariable},
+		identifier::UnresolvedPrimitiveIdentifier,
 		parse::Parser,
 	},
 	token::{
@@ -36,8 +37,6 @@ impl<'bump> Parser<'bump> {
 				list: self.parse_static()?,
 			})
 		} else {
-			use crate::ast::{ast::AstVariable, identifier::UnresolvedPrimitiveIdentifier};
-
 			// Check if this is a variable or identifier
 			let current = self.current()?;
 			match current.kind {

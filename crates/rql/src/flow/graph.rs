@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+	cmp::Reverse,
+	collections::{BinaryHeap, HashMap, HashSet, VecDeque},
+};
 
 use reifydb_core::interface::catalog::flow::{FlowEdgeId, FlowNodeId};
 
@@ -84,8 +87,6 @@ impl<NodeData> DirectedGraph<NodeData> {
 	}
 
 	pub fn topological_sort(&self) -> Vec<FlowNodeId> {
-		use std::{cmp::Reverse, collections::BinaryHeap};
-
 		let mut in_degree = HashMap::new();
 		// Use a min-heap (via Reverse) to ensure deterministic ordering by node ID
 		let mut heap: BinaryHeap<Reverse<FlowNodeId>> = BinaryHeap::new();

@@ -8,6 +8,7 @@ use reifydb_type::{
 	return_error,
 	value::{
 		boolean::parse::parse_bool,
+		decimal::parse::parse_decimal,
 		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
 		r#type::Type,
 	},
@@ -313,7 +314,6 @@ impl NumberParser {
 	}
 
 	fn parse_decimal<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
-		use reifydb_type::value::decimal::parse::parse_decimal;
 		match parse_decimal(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::decimal(vec![v; row_count])),
 			Err(err) => return_error!(cast::invalid_number(fragment, Type::Decimal, err.diagnostic())),

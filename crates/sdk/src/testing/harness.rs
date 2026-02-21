@@ -11,7 +11,10 @@ use reifydb_core::{
 	key::EncodableKey,
 	value::column::columns::Columns,
 };
-use reifydb_type::value::{Value, row_number::RowNumber};
+use reifydb_type::{
+	util::cowvec::CowVec,
+	value::{Value, row_number::RowNumber},
+};
 
 use crate::{
 	error::Result,
@@ -206,7 +209,6 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 	where
 		K: EncodableKey,
 	{
-		use reifydb_type::util::cowvec::CowVec;
 		self.initial_state.insert(key.encode(), EncodedValues(CowVec::new(value)));
 		self
 	}

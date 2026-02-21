@@ -10,6 +10,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::{encoded::EncodedValues, key::EncodedKey},
 };
+use reifydb_type::util::cowvec::CowVec;
 
 use crate::operator::context::OperatorContext;
 
@@ -68,7 +69,6 @@ impl TestContext {
 
 	/// Set state value
 	pub fn set_state(&self, key: EncodedKey, value: Vec<u8>) {
-		use reifydb_type::util::cowvec::CowVec;
 		self.state_store.lock().unwrap().insert(key, EncodedValues(CowVec::new(value)));
 	}
 

@@ -4,7 +4,7 @@
 use crate::{
 	ast::{
 		ast::{AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstStatement},
-		identifier::MaybeQualifiedFlowIdentifier,
+		identifier::{MaybeQualifiedFlowIdentifier, MaybeQualifiedSequenceIdentifier},
 		parse::Parser,
 	},
 	token::{
@@ -42,7 +42,6 @@ impl<'bump> Parser<'bump> {
 		let column_token = segments.pop().unwrap();
 		let table_token = segments.pop().unwrap();
 
-		use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
 		let sequence = if segments.is_empty() {
 			MaybeQualifiedSequenceIdentifier::new(table_token.into_fragment())
 		} else {

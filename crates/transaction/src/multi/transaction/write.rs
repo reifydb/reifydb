@@ -219,6 +219,8 @@ impl MultiWriteTransaction {
 	}
 }
 
+use std::cmp::Ordering;
+
 use reifydb_core::interface::store::MultiVersionValues;
 
 use crate::multi::types::Pending;
@@ -252,8 +254,6 @@ where
 	type Item = Result<MultiVersionValues>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		use std::cmp::Ordering;
-
 		loop {
 			// Fetch next storage item if needed
 			if self.next_storage.is_none() {

@@ -5,6 +5,7 @@ use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{
 		blob::Blob,
+		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
@@ -263,7 +264,6 @@ impl ColumnData {
 	impl_number_factory!(uint16, uint16_optional, uint16_with_capacity, uint16_with_bitvec, Uint16, u128, 0);
 
 	pub fn utf8(data: impl IntoIterator<Item = impl Into<String>>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().map(|c| c.into()).collect::<Vec<_>>();
 		ColumnData::Utf8 {
 			container: Utf8Container::from_vec(data),
@@ -272,7 +272,6 @@ impl ColumnData {
 	}
 
 	pub fn utf8_optional(data: impl IntoIterator<Item = Option<String>>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 		let mut has_none = false;
@@ -306,7 +305,6 @@ impl ColumnData {
 	}
 
 	pub fn utf8_with_capacity(capacity: usize) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		ColumnData::Utf8 {
 			container: Utf8Container::with_capacity(capacity),
 			max_bytes: MaxBytes::MAX,
@@ -314,7 +312,6 @@ impl ColumnData {
 	}
 
 	pub fn utf8_with_bitvec(data: impl IntoIterator<Item = impl Into<String>>, bitvec: impl Into<BitVec>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().map(Into::into).collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -355,7 +352,6 @@ impl ColumnData {
 	impl_uuid_factory!(uuid7, uuid7_optional, uuid7_with_capacity, uuid7_with_bitvec, Uuid7, Uuid7);
 
 	pub fn blob(data: impl IntoIterator<Item = Blob>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnData::Blob {
 			container: BlobContainer::from_vec(data),
@@ -364,7 +360,6 @@ impl ColumnData {
 	}
 
 	pub fn blob_optional(data: impl IntoIterator<Item = Option<Blob>>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 		let mut has_none = false;
@@ -398,7 +393,6 @@ impl ColumnData {
 	}
 
 	pub fn blob_with_capacity(capacity: usize) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		ColumnData::Blob {
 			container: BlobContainer::with_capacity(capacity),
 			max_bytes: MaxBytes::MAX,
@@ -406,7 +400,6 @@ impl ColumnData {
 	}
 
 	pub fn blob_with_bitvec(data: impl IntoIterator<Item = Blob>, bitvec: impl Into<BitVec>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -482,7 +475,6 @@ impl ColumnData {
 	}
 
 	pub fn int(data: impl IntoIterator<Item = Int>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnData::Int {
 			container: NumberContainer::from_vec(data),
@@ -491,7 +483,6 @@ impl ColumnData {
 	}
 
 	pub fn int_optional(data: impl IntoIterator<Item = Option<Int>>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 		let mut has_none = false;
@@ -525,7 +516,6 @@ impl ColumnData {
 	}
 
 	pub fn uint(data: impl IntoIterator<Item = Uint>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnData::Uint {
 			container: NumberContainer::from_vec(data),
@@ -534,7 +524,6 @@ impl ColumnData {
 	}
 
 	pub fn uint_optional(data: impl IntoIterator<Item = Option<Uint>>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 		let mut has_none = false;
@@ -568,7 +557,6 @@ impl ColumnData {
 	}
 
 	pub fn int_with_capacity(capacity: usize) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		ColumnData::Int {
 			container: NumberContainer::with_capacity(capacity),
 			max_bytes: MaxBytes::MAX,
@@ -576,7 +564,6 @@ impl ColumnData {
 	}
 
 	pub fn uint_with_capacity(capacity: usize) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		ColumnData::Uint {
 			container: NumberContainer::with_capacity(capacity),
 			max_bytes: MaxBytes::MAX,
@@ -584,7 +571,6 @@ impl ColumnData {
 	}
 
 	pub fn int_with_bitvec(data: impl IntoIterator<Item = Int>, bitvec: impl Into<BitVec>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -603,7 +589,6 @@ impl ColumnData {
 	}
 
 	pub fn uint_with_bitvec(data: impl IntoIterator<Item = Uint>, bitvec: impl Into<BitVec>) -> Self {
-		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -622,7 +607,6 @@ impl ColumnData {
 	}
 
 	pub fn decimal(data: impl IntoIterator<Item = Decimal>) -> Self {
-		use reifydb_type::value::constraint::{precision::Precision, scale::Scale};
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnData::Decimal {
 			container: NumberContainer::from_vec(data),
@@ -632,7 +616,6 @@ impl ColumnData {
 	}
 
 	pub fn decimal_optional(data: impl IntoIterator<Item = Option<Decimal>>) -> Self {
-		use reifydb_type::value::constraint::{precision::Precision, scale::Scale};
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 		let mut has_none = false;
@@ -667,7 +650,6 @@ impl ColumnData {
 	}
 
 	pub fn decimal_with_capacity(capacity: usize) -> Self {
-		use reifydb_type::value::constraint::{precision::Precision, scale::Scale};
 		ColumnData::Decimal {
 			container: NumberContainer::with_capacity(capacity),
 			precision: Precision::MAX,
@@ -676,7 +658,6 @@ impl ColumnData {
 	}
 
 	pub fn decimal_with_bitvec(data: impl IntoIterator<Item = Decimal>, bitvec: impl Into<BitVec>) -> Self {
-		use reifydb_type::value::constraint::{precision::Precision, scale::Scale};
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());

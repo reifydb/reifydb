@@ -6,6 +6,7 @@ use reifydb_type::{error::diagnostic::ast, return_error};
 use crate::{
 	ast::{
 		ast::{Ast, AstCallFunction, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard},
+		identifier::MaybeQualifiedFunctionIdentifier,
 		parse::Parser,
 	},
 	token::{
@@ -107,7 +108,6 @@ impl<'bump> Parser<'bump> {
 								let open_paren_token = self.advance()?;
 								let arguments =
 									self.parse_tuple_call(open_paren_token)?;
-								use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
 								let function = MaybeQualifiedFunctionIdentifier::new(
 									first_ident_token.fragment,
 								);
@@ -137,7 +137,6 @@ impl<'bump> Parser<'bump> {
 							let first_ident_token = self.consume_keyword_as_ident()?;
 							let open_paren_token = self.advance()?;
 							let arguments = self.parse_tuple_call(open_paren_token)?;
-							use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
 							let function = MaybeQualifiedFunctionIdentifier::new(
 								first_ident_token.fragment,
 							);

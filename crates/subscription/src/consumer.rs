@@ -5,6 +5,8 @@
 //!
 //! Provides static methods for reading, converting, and deleting subscription rows.
 
+use std::collections::HashMap;
+
 use reifydb_core::{
 	encoded::key::EncodedKey,
 	error::diagnostic::internal::internal,
@@ -66,7 +68,6 @@ impl SubscriptionConsumer {
 		drop(stream); // Explicitly drop to release the borrow on cmd_txn
 
 		// Build dynamic column structure
-		use std::collections::HashMap;
 		let mut column_data: HashMap<String, ColumnData> = HashMap::new();
 
 		let mut row_numbers = Vec::new();

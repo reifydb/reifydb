@@ -236,6 +236,7 @@ impl Default for BoolContainer<Cow> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
+	use crate::util::bitvec::BitVec;
 
 	#[test]
 	fn test_new() {
@@ -325,7 +326,6 @@ pub mod tests {
 
 	#[test]
 	fn test_filter() {
-		use crate::util::bitvec::BitVec;
 		let mut container = BoolContainer::from_vec(vec![true, false, true, false]);
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 

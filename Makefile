@@ -107,6 +107,7 @@ all: format-check check-code-quality check clean build build-testcontainer test-
 check-code-quality:
 	@echo "🔍 Checking code quality standards..."
 	@./scripts/check-internal-reexports.sh
+	@./scripts/check-toplevel-imports.sh
 
 .PHONY: check
 check:

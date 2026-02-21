@@ -4,6 +4,7 @@
 use crate::{
 	ast::{
 		ast::{AstCall, AstCallFunction},
+		identifier::MaybeQualifiedFunctionIdentifier,
 		parse::Parser,
 	},
 	token::{keyword::Keyword, operator::Operator},
@@ -40,7 +41,6 @@ impl<'bump> Parser<'bump> {
 
 			// Create MaybeQualifiedFunctionIdentifier without
 			// namespaces
-			use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
 			let function = MaybeQualifiedFunctionIdentifier::new(first_ident_token.fragment);
 
 			return Ok(AstCallFunction {
@@ -79,7 +79,6 @@ impl<'bump> Parser<'bump> {
 
 				// Create MaybeQualifiedFunctionIdentifier with
 				// namespaces
-				use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
 				let function = MaybeQualifiedFunctionIdentifier::new(next_ident_token.fragment)
 					.with_namespaces(namespace_fragments);
 

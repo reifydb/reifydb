@@ -247,6 +247,7 @@ impl Default for Utf8Container<Cow> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
+	use crate::util::bitvec::BitVec;
 
 	#[test]
 	fn test_new() {
@@ -341,7 +342,6 @@ pub mod tests {
 
 	#[test]
 	fn test_filter() {
-		use crate::util::bitvec::BitVec;
 		let mut container = Utf8Container::from_vec(vec![
 			"keep".to_string(),
 			"drop".to_string(),

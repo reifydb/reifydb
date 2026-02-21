@@ -21,7 +21,14 @@ use reifydb_type::{
 	value::{constraint::TypeConstraint, dictionary::DictionaryId},
 };
 
-use crate::{CatalogStore, store::sequence::system::SystemSequence};
+use crate::{
+	CatalogStore,
+	store::{
+		column::create::ColumnToCreate,
+		ringbuffer::schema::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
+		sequence::system::SystemSequence,
+	},
+};
 
 #[derive(Debug, Clone)]
 pub struct RingBufferColumnToCreate {
@@ -80,8 +87,6 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &RingBufferToCreate,
 	) -> crate::Result<()> {
-		use crate::store::ringbuffer::schema::ringbuffer;
-
 		let mut row = ringbuffer::SCHEMA.allocate();
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::ID, ringbuffer);
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::NAMESPACE, namespace);
@@ -101,8 +106,6 @@ impl CatalogStore {
 		ringbuffer: RingBufferId,
 		name: &str,
 	) -> crate::Result<()> {
-		use crate::store::ringbuffer::schema::ringbuffer_namespace;
-
 		let mut row = ringbuffer_namespace::SCHEMA.allocate();
 		ringbuffer_namespace::SCHEMA.set_u64(&mut row, ringbuffer_namespace::ID, ringbuffer);
 		ringbuffer_namespace::SCHEMA.set_utf8(&mut row, ringbuffer_namespace::NAME, name);
@@ -117,8 +120,6 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
 	) -> crate::Result<()> {
-		use crate::store::column::create::ColumnToCreate;
-
 		for (idx, col) in to_create.columns.into_iter().enumerate() {
 			CatalogStore::create_column(
 				txn,
@@ -145,8 +146,6 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
 	) -> crate::Result<()> {
-		use crate::store::ringbuffer::schema::ringbuffer_metadata;
-
 		let mut row = ringbuffer_metadata::SCHEMA.allocate();
 		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::ID, ringbuffer_id);
 		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::CAPACITY, capacity);

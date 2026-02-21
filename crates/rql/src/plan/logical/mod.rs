@@ -43,7 +43,7 @@ use crate::{
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
-	expression::{AliasExpression, Expression, ExpressionCompiler},
+	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
 	plan::logical::alter::flow::AlterFlowNode,
 };
 
@@ -257,8 +257,6 @@ impl<'bump> Compiler<'bump> {
 	// Instead of creating synthetic AST nodes (which would require a bump allocator),
 	// this directly compiles the scalar and wraps the result in a MapNode.
 	fn compile_scalar_as_map(&self, scalar_node: Ast<'bump>) -> crate::Result<LogicalPlan<'bump>> {
-		use crate::expression::{AliasExpression, ExpressionCompiler, IdentExpression};
-
 		let fragment = scalar_node.token().fragment.to_owned();
 		let expr = ExpressionCompiler::compile(scalar_node)?;
 		let alias_expr = AliasExpression {

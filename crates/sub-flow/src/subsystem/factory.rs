@@ -7,6 +7,7 @@ use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_transaction::interceptor::builder::StandardInterceptorBuilder;
 use reifydb_type::Result;
 
+use super::FlowSubsystem;
 use crate::builder::FlowBuilder;
 
 /// Configuration function for the flow subsystem
@@ -51,8 +52,6 @@ impl SubsystemFactory for FlowSubsystemFactory {
 	}
 
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		use super::FlowSubsystem;
-
 		let engine = ioc.resolve::<StandardEngine>()?;
 
 		// Extract full config from builder

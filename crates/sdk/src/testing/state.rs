@@ -132,14 +132,13 @@ impl TestStateStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::encoded::{encoded::EncodedValues, schema::Schema};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
 	use super::*;
 	use crate::testing::helpers::encode_key;
 
 	#[test]
 	fn test_state_store_basic_operations() {
-		use reifydb_type::util::cowvec::CowVec;
 		let mut store = TestStateStore::new();
 		let key = encode_key("test_key");
 		let value = EncodedValues(CowVec::new(vec![1, 2, 3, 4]));
@@ -190,7 +189,6 @@ pub mod tests {
 
 	#[test]
 	fn test_state_store_snapshot_and_restore() {
-		use reifydb_type::util::cowvec::CowVec;
 		let mut store = TestStateStore::new();
 		let key1 = encode_key("key1");
 		let key2 = encode_key("key2");

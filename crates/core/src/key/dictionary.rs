@@ -333,6 +333,8 @@ impl EncodableKeyRange for DictionaryEntryIndexKeyRange {
 
 #[cfg(test)]
 pub mod tests {
+	use std::ops::Bound;
+
 	use super::*;
 
 	#[test]
@@ -384,7 +386,6 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_key_full_scan() {
-		use std::ops::Bound;
 		let range = DictionaryKey::full_scan();
 		assert!(matches!(range.start, Bound::Included(_) | Bound::Excluded(_)));
 		assert!(matches!(range.end, Bound::Included(_) | Bound::Excluded(_)));
@@ -392,7 +393,6 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_entry_key_full_scan() {
-		use std::ops::Bound;
 		let range = DictionaryEntryKey::full_scan(DictionaryId(42));
 		assert!(matches!(range.start, Bound::Included(_) | Bound::Excluded(_)));
 		assert!(matches!(range.end, Bound::Included(_) | Bound::Excluded(_)));
@@ -400,7 +400,6 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_entry_index_key_full_scan() {
-		use std::ops::Bound;
 		let range = DictionaryEntryIndexKey::full_scan(DictionaryId(42));
 		assert!(matches!(range.start, Bound::Included(_) | Bound::Excluded(_)));
 		assert!(matches!(range.end, Bound::Included(_) | Bound::Excluded(_)));

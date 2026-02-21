@@ -21,6 +21,8 @@ pub use wasm::{Clock, Instant, MockClock};
 
 #[cfg(test)]
 mod tests {
+	use std::thread;
+
 	use super::*;
 
 	#[test]
@@ -78,8 +80,6 @@ mod tests {
 	#[cfg(reifydb_target = "native")]
 	#[test]
 	fn test_mock_clock_thread_safe() {
-		use std::thread;
-
 		let mock = MockClock::from_millis(1000);
 		let mock_clone = mock.clone();
 

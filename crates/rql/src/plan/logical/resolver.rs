@@ -3,7 +3,11 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{
-	catalog::{view::ViewKind, vtable::VTableDef},
+	catalog::{
+		id::NamespaceId,
+		view::ViewKind,
+		vtable::{VTableDef, VTableId},
+	},
 	resolved::{
 		ResolvedDeferredView, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
 		ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
@@ -55,7 +59,6 @@ pub fn resolve_unresolved_source(
 	// Check if it's a system table (namespace = "system")
 	// TODO: This should use proper system table definitions from the catalog
 	if namespace_str == "system" {
-		use reifydb_core::interface::catalog::{id::NamespaceId, vtable::VTableId};
 		let def = VTableDef {
 			id: VTableId(0),           // Placeholder ID - compile.rs handles actual lookup
 			namespace: NamespaceId(1), // System namespace ID

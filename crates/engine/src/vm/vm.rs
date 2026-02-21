@@ -5,12 +5,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
 use reifydb_rql::{
-	expression::{CallExpression, Expression, IdentExpression},
+	expression::{CallExpression, ConstantExpression, Expression, IdentExpression},
 	instruction::{Instruction, ScopeType},
 	query::QueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
+	fragment::Fragment,
 	params::Params,
 	value::{Value, frame::frame::Frame, r#type::Type},
 };
@@ -1214,8 +1215,6 @@ impl Vm {
 }
 
 fn value_to_expression(value: &Value) -> Expression {
-	use reifydb_rql::expression::ConstantExpression;
-	use reifydb_type::fragment::Fragment;
 	match value {
 		Value::None {
 			..

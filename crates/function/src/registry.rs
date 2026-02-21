@@ -3,7 +3,10 @@
 
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
-use crate::{AggregateFunction, GeneratorFunction, ScalarFunction};
+use crate::{
+	AggregateFunction, GeneratorFunction, ScalarFunction, blob, clock, date, datetime, duration, flow, is, math,
+	meta, series, subscription, text, time,
+};
 
 #[derive(Clone)]
 pub struct Functions(Arc<FunctionsInner>);
@@ -22,10 +25,6 @@ impl Functions {
 	}
 
 	pub fn defaults() -> FunctionsBuilder {
-		use crate::{
-			blob, clock, date, datetime, duration, flow, is, math, meta, series, subscription, text, time,
-		};
-
 		Functions::builder()
 			.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
 			.register_aggregate("math::min", math::aggregate::min::Min::new)

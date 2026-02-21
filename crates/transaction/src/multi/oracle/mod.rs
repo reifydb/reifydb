@@ -403,11 +403,16 @@ where
 
 #[cfg(test)]
 pub mod tests {
-	use std::sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
+	use std::{
+		sync::{
+			Arc, Barrier,
+			atomic::{AtomicU64, Ordering},
+		},
+		thread::sleep,
+		time::Duration,
 	};
 
+	use reifydb_core::encoded::key::EncodedKeyRange;
 	use reifydb_runtime::SharedRuntimeConfig;
 
 	use super::*;
@@ -645,7 +650,6 @@ pub mod tests {
 		// indexed by specific keys)
 		let mut conflicts2 = ConflictManager::new();
 		// Simulate a range read that doesn't return specific keys
-		use reifydb_core::encoded::key::EncodedKeyRange;
 		let range = EncodedKeyRange::parse("a..z");
 		conflicts2.mark_range(range);
 		conflicts2.mark_write(&create_test_key("other_key"));
@@ -844,8 +848,6 @@ pub mod tests {
 	/// the version_lock, guaranteeing versions are registered in order.
 	#[test]
 	fn test_concurrent_commits_dont_skip_watermark_versions() {
-		use std::{sync::Arc, thread::sleep, time::Duration};
-
 		const NUM_CONCURRENT: usize = 100;
 		const ITERATIONS: usize = 10;
 
@@ -920,12 +922,6 @@ pub mod tests {
 	/// Test that verifies versions are registered with watermark in order
 	#[test]
 	fn test_version_begin_ordering() {
-		use std::{
-			sync::{Arc, Barrier},
-			thread::sleep,
-			time::Duration,
-		};
-
 		let oracle = Arc::new(create_test_oracle(0));
 		let barrier = Arc::new(Barrier::new(10));
 

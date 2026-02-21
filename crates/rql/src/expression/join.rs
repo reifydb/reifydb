@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::query::unsupported_source_qualification;
+use reifydb_core::{
+	error::diagnostic::query::unsupported_source_qualification,
+	interface::identifier::{ColumnIdentifier, ColumnPrimitive},
+};
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
-	ast::ast::{Ast, AstInfix, InfixOperator},
+	ast::ast::{Ast, AstInfix, AstPrefixOperator, InfixOperator},
 	bump::BumpBox,
 	expression::{
 		AccessPrimitiveExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
@@ -60,8 +63,6 @@ impl JoinConditionCompiler {
 			}
 			// Handle prefix operators (!, -, +) - need to recursively compile the inner expression
 			Ast::Prefix(prefix) => {
-				use crate::ast::ast::AstPrefixOperator;
-
 				let inner = self.compile(BumpBox::into_inner(prefix.node))?;
 				let (fragment, operator) = match prefix.operator {
 					AstPrefixOperator::Plus(token) => (
@@ -98,8 +99,6 @@ impl JoinConditionCompiler {
 		let Ast::Identifier(right) = BumpBox::into_inner(ast.right) else {
 			unimplemented!("Expected identifier on right side of column qualification");
 		};
-
-		use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
 
 		// Check if this is referencing the join alias
 		if let Some(ref alias) = self.alias {

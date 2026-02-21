@@ -152,6 +152,8 @@ impl Display for Int {
 
 #[cfg(test)]
 pub mod tests {
+	use std::collections::HashSet;
+
 	use super::*;
 
 	#[test]
@@ -197,8 +199,6 @@ pub mod tests {
 
 	#[test]
 	fn test_int_hash() {
-		use std::collections::HashSet;
-
 		let a = Int::from_i64(42);
 		let b = Int::from_i64(42);
 

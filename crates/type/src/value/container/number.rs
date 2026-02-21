@@ -319,6 +319,7 @@ where
 #[cfg(test)]
 pub mod tests {
 	use super::*;
+	use crate::util::bitvec::BitVec;
 
 	#[test]
 	fn test_new_i32() {
@@ -408,7 +409,6 @@ pub mod tests {
 
 	#[test]
 	fn test_filter() {
-		use crate::util::bitvec::BitVec;
 		let mut container = NumberContainer::from_vec(vec![1f32, 2.0, 3.0, 4.0]);
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 

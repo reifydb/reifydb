@@ -364,7 +364,54 @@ This allows external users to write:
 use reifydb::Row;  // Clean public API
 ```
 
-### 4.2 Code Formatting
+### 4.2 Top-Level Import Policy
+
+All `use` statements must be at module level — never inside function bodies, match arms, closures, or other code blocks. This keeps imports visible and predictable at the top of each module.
+
+**Automatic validation:**
+```bash
+./scripts/check-toplevel-imports.sh
+```
+
+This also runs as part of `make check-code-quality`.
+
+#### Why This Policy Matters
+
+1. **Predictable Scope** — All imports are visible at the top of the module
+2. **Easier Review** — Reviewers can see all dependencies at a glance
+3. **Consistent Style** — No mixing of import-at-use-site vs. import-at-top patterns
+4. **Better Tooling** — `rustfmt` groups and sorts top-level imports automatically
+
+#### Examples
+
+**Violation (incorrect):**
+```rust
+fn compute(data: &[u8]) -> Result<()> {
+    use std::io::Write;         // ❌ Inside function body
+    use crate::util::encode;    // ❌ Inside function body
+    // ...
+}
+```
+
+**Correct approach:**
+```rust
+use std::io::Write;             // ✅ Module level
+use crate::util::encode;        // ✅ Module level
+
+fn compute(data: &[u8]) -> Result<()> {
+    // ...
+}
+```
+
+**Also correct — inside a `mod` block:**
+```rust
+mod inner {
+    use super::*;               // ✅ Top of the module
+    // ...
+}
+```
+
+### 4.3 Code Formatting
 
 ReifyDB uses `rustfmt` with a custom configuration (see `rustfmt.toml`).
 
@@ -395,7 +442,7 @@ cargo +nightly fmt --all
 - **IntelliJ/CLion**: Enable rustfmt in Preferences → Languages & Frameworks → Rust → Rustfmt
 - **Vim/Neovim**: Use rust.vim or rust-tools.nvim
 
-### 4.3 Pre-commit Checks
+### 4.4 Pre-commit Checks
 
 The `make check` target validates repository status before pushing:
 

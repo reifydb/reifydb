@@ -135,6 +135,8 @@ impl CdcStorage for MemoryCdcStorage {
 
 #[cfg(test)]
 pub mod tests {
+	use std::thread;
+
 	use reifydb_core::{
 		encoded::{encoded::EncodedValues, key::EncodedKey},
 		interface::cdc::SystemChange,
@@ -169,8 +171,6 @@ pub mod tests {
 
 	#[test]
 	fn test_concurrent_access() {
-		use std::thread;
-
 		let storage = MemoryCdcStorage::new();
 		let mut handles = vec![];
 

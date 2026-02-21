@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use Value::*;
 use reifydb_type::{
 	error,
 	error::diagnostic,
@@ -10,7 +11,6 @@ use reifydb_type::{
 
 /// Convert a Value to the given target type (widening/promotion).
 pub fn convert_to(value: Value, target: ValueType) -> crate::Result<Value> {
-	use Value::*;
 	if value.get_type() == target {
 		return Ok(value);
 	}
@@ -80,7 +80,6 @@ pub fn convert_to(value: Value, target: ValueType) -> crate::Result<Value> {
 
 /// Arithmetic: add two scalar values.
 pub fn scalar_add(left: Value, right: Value) -> crate::Result<Value> {
-	use Value::*;
 	match (&left, &right) {
 		(
 			Value::None {
@@ -121,7 +120,6 @@ pub fn scalar_add(left: Value, right: Value) -> crate::Result<Value> {
 
 /// Arithmetic: subtract two scalar values.
 pub fn scalar_sub(left: Value, right: Value) -> crate::Result<Value> {
-	use Value::*;
 	match (&left, &right) {
 		(
 			Value::None {
@@ -158,7 +156,6 @@ pub fn scalar_sub(left: Value, right: Value) -> crate::Result<Value> {
 
 /// Arithmetic: multiply two scalar values.
 pub fn scalar_mul(left: Value, right: Value) -> crate::Result<Value> {
-	use Value::*;
 	match (&left, &right) {
 		(
 			Value::None {
@@ -196,7 +193,6 @@ pub fn scalar_mul(left: Value, right: Value) -> crate::Result<Value> {
 
 /// Arithmetic: divide two scalar values.
 pub fn scalar_div(left: Value, right: Value) -> crate::Result<Value> {
-	use Value::*;
 	match (&left, &right) {
 		(
 			Value::None {
@@ -242,7 +238,6 @@ pub fn scalar_div(left: Value, right: Value) -> crate::Result<Value> {
 
 /// Arithmetic: remainder of two scalar values.
 pub fn scalar_rem(left: Value, right: Value) -> crate::Result<Value> {
-	use Value::*;
 	match (&left, &right) {
 		(
 			Value::None {
@@ -279,7 +274,6 @@ pub fn scalar_rem(left: Value, right: Value) -> crate::Result<Value> {
 
 /// Unary negate.
 pub fn scalar_negate(value: Value) -> crate::Result<Value> {
-	use Value::*;
 	Ok(match value {
 		Value::None {
 			inner,
@@ -540,7 +534,6 @@ pub fn scalar_and(left: &Value, right: &Value) -> Value {
 
 /// Cast a scalar value to the given target type.
 pub fn scalar_cast(value: Value, target: ValueType) -> crate::Result<Value> {
-	use Value::*;
 	if value.get_type() == target {
 		return Ok(value);
 	}

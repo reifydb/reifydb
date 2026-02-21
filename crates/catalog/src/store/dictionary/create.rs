@@ -18,7 +18,13 @@ use reifydb_type::{
 	value::{dictionary::DictionaryId, r#type::Type},
 };
 
-use crate::{CatalogStore, store::sequence::system::SystemSequence};
+use crate::{
+	CatalogStore,
+	store::{
+		dictionary::schema::{dictionary, dictionary_namespace},
+		sequence::system::SystemSequence,
+	},
+};
 
 #[derive(Debug, Clone)]
 pub struct DictionaryToCreate {
@@ -70,8 +76,6 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &DictionaryToCreate,
 	) -> crate::Result<()> {
-		use crate::store::dictionary::schema::dictionary;
-
 		let mut row = dictionary::SCHEMA.allocate();
 		dictionary::SCHEMA.set_u64(&mut row, dictionary::ID, dictionary);
 		dictionary::SCHEMA.set_u64(&mut row, dictionary::NAMESPACE, namespace);
@@ -90,8 +94,6 @@ impl CatalogStore {
 		dictionary: DictionaryId,
 		name: &str,
 	) -> crate::Result<()> {
-		use crate::store::dictionary::schema::dictionary_namespace;
-
 		let mut row = dictionary_namespace::SCHEMA.allocate();
 		dictionary_namespace::SCHEMA.set_u64(&mut row, dictionary_namespace::ID, dictionary);
 		dictionary_namespace::SCHEMA.set_utf8(&mut row, dictionary_namespace::NAME, name);

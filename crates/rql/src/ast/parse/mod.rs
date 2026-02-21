@@ -950,7 +950,6 @@ pub mod tests {
 
 	#[test]
 	fn test_pipe_operator_simple() {
-		use crate::ast::ast::Ast;
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "from users | sort {name}").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, tokens);
@@ -966,7 +965,6 @@ pub mod tests {
 
 	#[test]
 	fn test_pipe_operator_multiple() {
-		use crate::ast::ast::Ast;
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "from users | filter {age > 18} | sort {name} | take {10}")
 			.unwrap()
@@ -987,7 +985,6 @@ pub mod tests {
 
 	#[test]
 	fn test_pipe_with_system_tables() {
-		use crate::ast::ast::Ast;
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "from system.tables | sort {id}").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, tokens);
@@ -1003,7 +1000,6 @@ pub mod tests {
 
 	#[test]
 	fn test_newline_still_works() {
-		use crate::ast::ast::Ast;
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "from users\nsort {name}").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, tokens);
@@ -1019,7 +1015,6 @@ pub mod tests {
 
 	#[test]
 	fn test_output_prefix_first_statement() {
-		use crate::ast::ast::Ast;
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "OUTPUT FROM users; FROM orders").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, tokens);

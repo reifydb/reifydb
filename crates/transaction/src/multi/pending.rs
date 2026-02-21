@@ -202,7 +202,7 @@ impl PendingWrites {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey};
+	use reifydb_core::{common::CommitVersion, delta::Delta, encoded::key::EncodedKey};
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
@@ -216,7 +216,6 @@ pub mod tests {
 	}
 
 	fn create_test_pending(version: CommitVersion, key: &str, values_data: &str) -> Pending {
-		use reifydb_core::delta::Delta;
 		Pending {
 			delta: Delta::Set {
 				key: create_test_key(key),

@@ -6,6 +6,7 @@ use reifydb_type::{
 	error,
 	error::diagnostic::serde::serde_keycode_error,
 	value::{
+		Value,
 		blob::Blob,
 		date::Date,
 		datetime::DateTime,
@@ -280,8 +281,6 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_value(&mut self) -> reifydb_type::Result<reifydb_type::value::Value> {
-		use reifydb_type::value::Value;
-
 		if self.remaining() < 1 {
 			return Err(error!(serde_keycode_error(format!(
 				"unexpected end of key at position {}: cannot read value type",

@@ -3,14 +3,14 @@
 
 use std::cmp::min;
 
+use Type::*;
+
 use crate::value::r#type::Type;
 
 impl Type {
 	/// Promote two Types to a common supertype, similar to Postgres
 	/// expression evaluation.
 	pub fn promote(left: Type, right: Type) -> Type {
-		use Type::*;
-
 		if matches!(left, Option(_)) || matches!(right, Option(_)) {
 			return left;
 		}

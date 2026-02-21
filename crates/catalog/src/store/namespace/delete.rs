@@ -57,7 +57,6 @@ pub mod tests {
 	fn test_delete_nonexistent_namespace() {
 		let mut txn = create_test_admin_transaction();
 
-		use reifydb_core::interface::catalog::id::NamespaceId;
 		// Deleting a non-existent namespace should not error
 		let non_existent = NamespaceId(999999);
 		let result = CatalogStore::delete_namespace(&mut txn, non_existent);

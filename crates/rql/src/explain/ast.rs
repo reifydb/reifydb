@@ -4,6 +4,7 @@
 use crate::{
 	ast::{
 		ast::{Ast, AstAlter, AstCreate, AstFrom, AstJoin},
+		identifier::UnqualifiedIdentifier,
 		parse::parse,
 	},
 	bump::Bump,
@@ -184,7 +185,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 						kind: TokenKind::Identifier,
 						fragment: source.name.clone(),
 					};
-					use crate::ast::identifier::UnqualifiedIdentifier;
 					owned_children.push(Ast::Identifier(UnqualifiedIdentifier::new(source_token)));
 
 					// If there's an index directive, add it as a child too
@@ -219,7 +219,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 						kind: TokenKind::Variable,
 						fragment: variable.token.fragment.clone(),
 					};
-					use crate::ast::identifier::UnqualifiedIdentifier;
 					owned_children
 						.push(Ast::Identifier(UnqualifiedIdentifier::new(variable_token)));
 				}
@@ -233,7 +232,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 							text: "env",
 						},
 					};
-					use crate::ast::identifier::UnqualifiedIdentifier;
 					owned_children.push(Ast::Identifier(UnqualifiedIdentifier::new(env_token)));
 				}
 			}

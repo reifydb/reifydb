@@ -85,6 +85,8 @@ impl EncodableKey for NamespaceDictionaryKey {
 
 #[cfg(test)]
 pub mod tests {
+	use std::ops::Bound;
+
 	use super::*;
 
 	#[test]
@@ -101,7 +103,6 @@ pub mod tests {
 
 	#[test]
 	fn test_namespace_dictionary_key_full_scan() {
-		use std::ops::Bound;
 		let range = NamespaceDictionaryKey::full_scan(NamespaceId(1025));
 		assert!(matches!(range.start, Bound::Included(_) | Bound::Excluded(_)));
 		assert!(matches!(range.end, Bound::Included(_) | Bound::Excluded(_)));

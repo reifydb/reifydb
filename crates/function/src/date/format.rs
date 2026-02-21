@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
+use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, r#type::Type};
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
 
@@ -39,7 +39,6 @@ fn format_date(year: i32, month: u32, day: u32, day_of_year: u32, fmt: &str) -> 
 
 /// Compute day of year from year/month/day
 fn compute_day_of_year(year: i32, month: u32, day: u32) -> u32 {
-	use reifydb_type::value::date::Date;
 	let mut doy = 0u32;
 	for m in 1..month {
 		doy += Date::days_in_month(year, m);

@@ -5,7 +5,10 @@
 //! These types allow optional qualification as they come directly from user
 //! input
 
-use crate::{bump::BumpFragment, token::token::Token};
+use crate::{
+	bump::BumpFragment,
+	token::token::{Token, TokenKind},
+};
 
 /// Represents a source identifier that hasn't been resolved to a specific type yet
 /// Used in AST parsing before we know whether it's a table, view, or ring buffer
@@ -51,7 +54,6 @@ impl<'bump> UnqualifiedIdentifier<'bump> {
 	}
 
 	pub fn from_fragment(fragment: BumpFragment<'bump>) -> Self {
-		use crate::token::token::TokenKind;
 		Self {
 			token: Token {
 				kind: TokenKind::Identifier,

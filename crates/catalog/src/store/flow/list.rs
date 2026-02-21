@@ -51,9 +51,11 @@ pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowStatus;
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
+	use reifydb_type::fragment::Fragment;
 
 	use crate::{
 		CatalogStore,
+		store::flow::create::FlowToCreate,
 		test_utils::{create_flow, create_namespace},
 	};
 
@@ -111,9 +113,7 @@ pub mod tests {
 		create_flow(&mut txn, "test_namespace", "active_flow");
 
 		// Create a paused flow by directly using CatalogStore
-		use reifydb_type::fragment::Fragment;
 
-		use crate::store::flow::create::FlowToCreate;
 		let namespace =
 			CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_namespace")
 				.unwrap()

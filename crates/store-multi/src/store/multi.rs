@@ -24,7 +24,7 @@ use tracing::instrument;
 
 use super::{
 	StandardMultiStore,
-	router::{classify_key, is_single_version_semantics_key},
+	router::{classify_key, classify_range, is_single_version_semantics_key},
 	version::{VersionedGetResult, get_at_version},
 	worker::{DropMessage, DropRequest},
 };
@@ -739,8 +739,6 @@ impl Iterator for MultiVersionRangeRevIter {
 
 /// Classify a range to determine which table it belongs to.
 fn classify_key_range(range: &EncodedKeyRange) -> EntryKind {
-	use super::router::classify_range;
-
 	classify_range(range).unwrap_or(Multi)
 }
 

@@ -6,6 +6,7 @@ use reifydb_core::{common::IndexType, sort::SortDirection};
 use crate::{
 	ast::{
 		ast::{AstCreate, AstCreateIndex, AstIndexColumn},
+		identifier::MaybeQualifiedIndexIdentifier,
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
@@ -33,7 +34,6 @@ impl<'bump> Parser<'bump> {
 		let table_fragment = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
-		use crate::ast::identifier::MaybeQualifiedIndexIdentifier;
 		let index =
 			MaybeQualifiedIndexIdentifier::new(table_fragment, name_token.fragment).with_schema(namespace);
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::LazyLock;
+
 use reifydb_core::{
 	error::diagnostic::sequence::can_not_alter_not_auto_increment,
 	interface::{evaluate::TargetColumn, resolved::ResolvedPrimitive},
@@ -43,7 +45,6 @@ pub(crate) fn alter_table_sequence<'a>(
 
 	// For catalog operations, use empty params since no
 	// ExecutionContext is available
-	use std::sync::LazyLock;
 
 	static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());

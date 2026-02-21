@@ -11,9 +11,15 @@ use std::{
 	},
 };
 
-use opentelemetry::{global, trace::TracerProvider};
-use opentelemetry_otlp::SpanExporter;
-use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer as SdkTracer};
+use opentelemetry::{KeyValue, global, trace::TracerProvider};
+use opentelemetry_otlp::{SpanExporter, WithExportConfig};
+use opentelemetry_sdk::{
+	Resource,
+	trace::{
+		BatchConfigBuilder, BatchSpanProcessor, RandomIdGenerator, Sampler, SdkTracerProvider,
+		Tracer as SdkTracer,
+	},
+};
 use reifydb_core::{
 	error::diagnostic::subsystem::init_failed,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
@@ -101,13 +107,6 @@ impl OtelSubsystem {
 	/// Build the OTLP tracer provider
 	#[cfg(feature = "otlp")]
 	fn build_otlp_tracer_provider(&self) -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
-		use opentelemetry::KeyValue;
-		use opentelemetry_otlp::WithExportConfig;
-		use opentelemetry_sdk::{
-			Resource,
-			trace::{BatchConfigBuilder, BatchSpanProcessor, RandomIdGenerator, Sampler},
-		};
-
 		// Build resource with service name and version
 		let resource = Resource::builder()
 			.with_service_name(self.config.service_name.clone())

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::ops::Bound::{Excluded, Included, Unbounded};
+use std::{
+	cmp::Ordering,
+	ops::Bound::{Excluded, Included, Unbounded},
+};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -166,8 +169,6 @@ where
 	type Item = reifydb_type::Result<MultiVersionValues>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		use std::cmp::Ordering;
-
 		loop {
 			let next_storage = self.storage_iter.peek();
 
@@ -266,8 +267,6 @@ where
 	type Item = reifydb_type::Result<MultiVersionValues>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		use std::cmp::Ordering;
-
 		loop {
 			let next_storage = self.storage_iter.peek();
 

@@ -3,7 +3,11 @@
 
 use std::fmt::{Display, Formatter};
 
-use reifydb_type::{fragment::Fragment, value::r#type::Type};
+use reifydb_type::{
+	error::diagnostic::function::{arity_mismatch, execution_failed, generator_not_found, invalid_argument_type},
+	fragment::Fragment,
+	value::r#type::Type,
+};
 
 /// Errors that can occur when executing a scalar function
 #[derive(Debug)]
@@ -78,10 +82,6 @@ impl std::error::Error for ScalarFunctionError {}
 
 impl From<ScalarFunctionError> for reifydb_type::error::Error {
 	fn from(err: ScalarFunctionError) -> Self {
-		use reifydb_type::error::diagnostic::function::{
-			arity_mismatch, execution_failed, invalid_argument_type,
-		};
-
 		match err {
 			ScalarFunctionError::ArityMismatch {
 				function,
@@ -176,10 +176,6 @@ impl From<reifydb_type::error::Error> for AggregateFunctionError {
 
 impl From<AggregateFunctionError> for reifydb_type::error::Error {
 	fn from(err: AggregateFunctionError) -> Self {
-		use reifydb_type::error::diagnostic::function::{
-			arity_mismatch, execution_failed, invalid_argument_type,
-		};
-
 		match err {
 			AggregateFunctionError::ArityMismatch {
 				function,
@@ -283,10 +279,6 @@ impl From<reifydb_type::error::Error> for GeneratorFunctionError {
 
 impl From<GeneratorFunctionError> for reifydb_type::error::Error {
 	fn from(err: GeneratorFunctionError) -> Self {
-		use reifydb_type::error::diagnostic::function::{
-			arity_mismatch, execution_failed, generator_not_found, invalid_argument_type,
-		};
-
 		match err {
 			GeneratorFunctionError::ArityMismatch {
 				function,

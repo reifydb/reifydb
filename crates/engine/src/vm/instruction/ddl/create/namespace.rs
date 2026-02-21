@@ -3,7 +3,8 @@
 
 use reifydb_catalog::catalog::namespace::NamespaceToCreate;
 use reifydb_core::{
-	interface::catalog::change::CatalogTrackNamespaceChangeOperations, value::column::columns::Columns,
+	interface::catalog::{change::CatalogTrackNamespaceChangeOperations, id::NamespaceId},
+	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreateNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -16,8 +17,6 @@ pub(crate) fn create_namespace(
 	txn: &mut AdminTransaction,
 	plan: CreateNamespaceNode,
 ) -> crate::Result<Columns> {
-	use reifydb_core::interface::catalog::id::NamespaceId;
-
 	let full_name: String = plan.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join(".");
 
 	// Auto-create parent namespaces (mkdir -p semantics)

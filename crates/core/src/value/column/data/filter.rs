@@ -37,7 +37,7 @@ impl ColumnData {
 pub mod tests {
 	use reifydb_type::{
 		util::bitvec::BitVec,
-		value::{Value, r#type::Type},
+		value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type},
 	};
 
 	use crate::value::column::ColumnData;
@@ -134,8 +134,6 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_identity_id() {
-		use reifydb_type::value::identity::IdentityId;
-
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();
 		let id3 = IdentityId::generate();
@@ -153,8 +151,6 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_dictionary_id() {
-		use reifydb_type::value::dictionary::DictionaryEntryId;
-
 		let e1 = DictionaryEntryId::U4(10);
 		let e2 = DictionaryEntryId::U4(20);
 		let e3 = DictionaryEntryId::U4(30);
@@ -172,8 +168,6 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_dictionary_id_with_undefined() {
-		use reifydb_type::value::dictionary::DictionaryEntryId;
-
 		let e1 = DictionaryEntryId::U4(10);
 		let e2 = DictionaryEntryId::U4(20);
 
