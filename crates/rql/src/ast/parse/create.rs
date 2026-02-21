@@ -7,17 +7,17 @@ use crate::{
 	ast::{
 		ast::{
 			AstColumnProperty, AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary,
-			AstCreateFlow, AstCreateNamespace, AstCreatePolicy, AstCreatePrimaryKey, AstCreateRingBuffer,
-			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable,
+			AstCreateFlow, AstCreateNamespace, AstCreatePolicy, AstCreatePrimaryKey, AstCreateProcedure,
+			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable,
 			AstCreateTransactionalView, AstIndexColumn, AstPolicyEntry, AstPolicyKind, AstPrimaryKeyDef,
-			AstType, AstVariantDef,
+			AstProcedureParam, AstType, AstVariantDef,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
 			MaybeQualifiedFlowIdentifier, MaybeQualifiedNamespaceIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSumTypeIdentifier,
+			MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier,
 		},
 		parse::Parser,
 	},
@@ -117,11 +117,106 @@ impl<'bump> Parser<'bump> {
 			return self.parse_create_policy(token);
 		}
 
+		if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
+			return self.parse_procedure(token);
+		}
+
 		if self.peek_is_index_creation()? {
 			return self.parse_create_index(token);
 		}
 
 		unimplemented!();
+	}
+
+	fn parse_procedure(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+		// Parse dot-separated name: ns.procedure_name
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+
+		let proc_ident = MaybeQualifiedProcedureIdentifier::new(name).with_namespace(namespace);
+
+		// Parse optional parameter block: { param: Type, ... }
+		let params = if self.current()?.is_operator(Operator::OpenCurly) {
+			self.parse_procedure_params()?
+		} else {
+			Vec::new()
+		};
+
+		// Consume AS keyword
+		self.consume_operator(Operator::As)?;
+
+		// Parse body block: { statements... }
+		self.consume_operator(Operator::OpenCurly)?;
+
+		// Track token position for body source reconstruction
+		let body_start_pos = self.position;
+
+		let mut body = Vec::new();
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+			body.push(node);
+
+			// Try to consume separator
+			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
+		}
+
+		// Reconstruct body source from tokens between { and }
+		let body_end_pos = self.position;
+		let body_source = self.reconstruct_source(body_start_pos, body_end_pos);
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstCreate::Procedure(AstCreateProcedure {
+			token,
+			name: proc_ident,
+			params,
+			body,
+			body_source,
+		}))
+	}
+
+	fn parse_procedure_params(&mut self) -> crate::Result<Vec<AstProcedureParam<'bump>>> {
+		let mut params = Vec::new();
+		self.consume_operator(Operator::OpenCurly)?;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let name = self.parse_identifier_with_hyphens()?.into_fragment();
+			self.consume_operator(Colon)?;
+			let param_type = self.parse_type()?;
+
+			params.push(AstProcedureParam {
+				name,
+				param_type,
+			});
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok(params)
 	}
 
 	fn parse_namespace(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {

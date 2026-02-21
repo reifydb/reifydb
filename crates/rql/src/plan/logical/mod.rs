@@ -33,13 +33,13 @@ use tracing::instrument;
 
 use crate::{
 	ast::{
-		ast::{Ast, AstInfix, AstStatement, AstType, InfixOperator},
+		ast::{Ast, AstInfix, AstProcedureParam, AstStatement, AstType, InfixOperator},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
-			MaybeQualifiedIndexIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedIndexIdentifier, MaybeQualifiedProcedureIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
+			MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
@@ -245,6 +245,7 @@ impl<'bump> Compiler<'bump> {
 			Ast::DefFunction(node) => self.compile_def_function(node, tx),
 			Ast::Return(node) => self.compile_return(node),
 			Ast::Closure(node) => self.compile_closure(node, tx),
+			Ast::Call(call_node) => self.compile_call(call_node),
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
@@ -330,6 +331,7 @@ pub enum LogicalPlan<'bump> {
 	CreateSubscription(CreateSubscriptionNode<'bump>),
 	CreatePrimaryKey(CreatePrimaryKeyNode<'bump>),
 	CreatePolicy(CreatePolicyNode<'bump>),
+	CreateProcedure(CreateProcedureNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterFlow(AlterFlowNode<'bump>),
@@ -750,4 +752,11 @@ pub struct CreatePrimaryKeyNode<'bump> {
 pub struct CreatePolicyNode<'bump> {
 	pub column: MaybeQualifiedColumnIdentifier<'bump>,
 	pub policies: Vec<ColumnPolicyKind>,
+}
+
+#[derive(Debug)]
+pub struct CreateProcedureNode<'bump> {
+	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
+	pub params: Vec<AstProcedureParam<'bump>>,
+	pub body_source: String,
 }

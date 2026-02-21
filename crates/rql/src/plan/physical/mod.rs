@@ -73,6 +73,7 @@ pub enum PhysicalPlan<'bump> {
 	CreateSubscription(CreateSubscriptionNode<'bump>),
 	CreatePrimaryKey(nodes::CreatePrimaryKeyNode),
 	CreatePolicy(nodes::CreatePolicyNode),
+	CreateProcedure(nodes::CreateProcedureNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode<'bump>),
@@ -546,6 +547,10 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::CreatePolicy(create) => {
 					stack.push(self.compile_create_policy(rx, create)?);
+				}
+
+				LogicalPlan::CreateProcedure(create) => {
+					stack.push(self.compile_create_procedure(rx, create)?);
 				}
 
 				LogicalPlan::AlterFlow(alter) => {

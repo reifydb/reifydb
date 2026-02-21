@@ -7,7 +7,7 @@
 //! queries in a browser or Node.js environment with in-memory storage.
 
 use reifydb_catalog::schema::SchemaRegistry;
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{engine::StandardEngine, procedure::registry::Procedures};
 use wasm_bindgen::prelude::*;
 
 // Debug helper to log to browser console
@@ -135,6 +135,7 @@ impl WasmDB {
 			Catalog::new(materialized_catalog, SchemaRegistry::new(single)),
 			runtime.clock().clone(),
 			Functions::defaults().build(),
+			Procedures::empty(),
 			reifydb_engine::transform::registry::Transforms::empty(),
 			ioc,
 		);

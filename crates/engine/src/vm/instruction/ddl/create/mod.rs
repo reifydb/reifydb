@@ -20,6 +20,7 @@ pub mod flow;
 pub mod namespace;
 pub mod policy;
 pub mod primary_key;
+pub mod procedure;
 pub mod ringbuffer;
 pub mod subscription;
 pub mod sumtype;

@@ -710,6 +710,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreatePolicy(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateProcedure(node) => {
+				self.emit(Instruction::CreateProcedure(node));
+				self.emit(Instruction::Emit);
+			}
 
 			// DDL — nodes with query subtrees that need materialization
 			PhysicalPlan::CreateDeferredView(node) => {

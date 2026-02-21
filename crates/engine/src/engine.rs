@@ -48,6 +48,7 @@ use tracing::instrument;
 use crate::{
 	bulk_insert::builder::BulkInsertBuilder,
 	interceptor::catalog::MaterializedCatalogInterceptor,
+	procedure::registry::Procedures,
 	transform::registry::Transforms,
 	vm::{Admin, Command, Query, executor::Executor},
 };
@@ -148,6 +149,15 @@ impl StandardEngine {
 			err.with_statement(rql.to_string());
 			err
 		})
+	}
+
+	/// Call a procedure by fully-qualified name.
+	#[instrument(name = "engine::procedure", level = "debug", skip(self, params), fields(name = %name))]
+	pub fn procedure_as(&self, identity: &Identity, name: &str, params: Params) -> Result<Vec<Frame>, Error> {
+		let mut txn = self.begin_command()?;
+		let frames = self.executor.call_procedure(&mut txn, identity, name, &params)?;
+		txn.commit()?;
+		Ok(frames)
 	}
 
 	/// Register a user-defined virtual table.
@@ -286,6 +296,7 @@ impl StandardEngine {
 		catalog: Catalog,
 		clock: Clock,
 		functions: Functions,
+		procedures: Procedures,
 		transforms: Transforms,
 		ioc: IocContainer,
 	) -> Self {
@@ -307,6 +318,7 @@ impl StandardEngine {
 				catalog.clone(),
 				clock,
 				functions,
+				procedures,
 				transforms,
 				flow_operator_store.clone(),
 				stats_reader,

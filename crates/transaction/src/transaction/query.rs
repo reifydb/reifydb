@@ -8,8 +8,9 @@ use reifydb_core::{
 		catalog::{
 			dictionary::DictionaryDef,
 			flow::{FlowDef, FlowId},
-			id::{NamespaceId, RingBufferId, SubscriptionId, TableId, ViewId},
+			id::{NamespaceId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
 			namespace::NamespaceDef,
+			procedure::ProcedureDef,
 			ringbuffer::RingBufferDef,
 			subscription::SubscriptionDef,
 			sumtype::SumTypeDef,
@@ -29,8 +30,9 @@ use crate::{
 	TransactionId,
 	change::{
 		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
-		TransactionalNamespaceChanges, TransactionalRingBufferChanges, TransactionalSubscriptionChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalViewChanges,
+		TransactionalNamespaceChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
+		TransactionalSubscriptionChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
+		TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -200,6 +202,24 @@ impl TransactionalNamespaceChanges for QueryTransaction {
 	}
 
 	fn is_namespace_deleted_by_name(&self, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalProcedureChanges for QueryTransaction {
+	fn find_procedure(&self, _id: ProcedureId) -> Option<&ProcedureDef> {
+		None
+	}
+
+	fn find_procedure_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&ProcedureDef> {
+		None
+	}
+
+	fn is_procedure_deleted(&self, _id: ProcedureId) -> bool {
+		false
+	}
+
+	fn is_procedure_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

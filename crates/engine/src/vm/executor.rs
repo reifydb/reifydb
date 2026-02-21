@@ -4,7 +4,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::FlowOperatorStore};
-use reifydb_core::util::ioc::IocContainer;
+use reifydb_core::{interface::auth::Identity, util::ioc::IocContainer};
 use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::CompilationResult;
@@ -17,6 +17,7 @@ use reifydb_type::{params::Params, value::frame::frame::Frame};
 use tracing::instrument;
 
 use crate::{
+	procedure::registry::Procedures,
 	transform::registry::Transforms,
 	vm::{
 		Admin, Command, Query,
@@ -48,6 +49,7 @@ impl Executor {
 		catalog: Catalog,
 		clock: Clock,
 		functions: Functions,
+		procedures: Procedures,
 		transforms: Transforms,
 		flow_operator_store: FlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
@@ -57,6 +59,7 @@ impl Executor {
 			catalog,
 			clock,
 			functions,
+			procedures,
 			transforms,
 			flow_operator_store,
 			stats_reader,
@@ -167,6 +170,39 @@ impl Executor {
 		let mut final_result = output_results;
 		final_result.append(&mut result);
 		Ok(final_result)
+	}
+
+	/// Call a procedure by fully-qualified name (e.g., "banking.transfer_funds").
+	#[instrument(name = "executor::call_procedure", level = "debug", skip(self, txn, _identity, params), fields(name = %name))]
+	pub fn call_procedure(
+		&self,
+		txn: &mut CommandTransaction,
+		_identity: &Identity,
+		name: &str,
+		params: &Params,
+	) -> crate::Result<Vec<Frame>> {
+		// Compile and execute CALL <name>(<params>)
+		let rql = format!("CALL {}()", name);
+		let mut result = vec![];
+		let mut symbol_table = SymbolTable::new();
+		populate_stack(&mut symbol_table, params)?;
+
+		let compiled = match self.compiler.compile(&mut Transaction::Command(txn), &rql)? {
+			CompilationResult::Ready(compiled) => compiled,
+			CompilationResult::Incremental(_) => {
+				unreachable!("CALL statements should not require incremental compilation")
+			}
+		};
+
+		for compiled in compiled.iter() {
+			result.clear();
+			let mut tx = Transaction::Command(txn);
+			let mut vm = Vm::new(symbol_table);
+			vm.run(&self.0, &mut tx, &compiled.instructions, params, &mut result)?;
+			symbol_table = vm.symbol_table;
+		}
+
+		Ok(result)
 	}
 
 	#[instrument(name = "executor::query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]

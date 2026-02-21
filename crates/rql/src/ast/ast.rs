@@ -12,9 +12,9 @@ use crate::{
 	ast::identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier, MaybeQualifiedFunctionIdentifier,
-		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
-		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
-		UnresolvedPrimitiveIdentifier,
+		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
+		MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
+		MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier, UnresolvedPrimitiveIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
 	token::token::{Literal, Token, TokenKind},
@@ -778,6 +778,7 @@ pub enum AstCreate<'bump> {
 	Index(AstCreateIndex<'bump>),
 	PrimaryKey(AstCreatePrimaryKey<'bump>),
 	Policy(AstCreatePolicy<'bump>),
+	Procedure(AstCreateProcedure<'bump>),
 }
 
 #[derive(Debug)]
@@ -884,6 +885,21 @@ pub struct AstCreateTable<'bump> {
 	pub token: Token<'bump>,
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateProcedure<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedProcedureIdentifier<'bump>,
+	pub params: Vec<AstProcedureParam<'bump>>,
+	pub body: Vec<Ast<'bump>>,
+	pub body_source: String,
+}
+
+#[derive(Debug)]
+pub struct AstProcedureParam<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub param_type: AstType<'bump>,
 }
 
 #[derive(Debug)]
@@ -1061,6 +1077,10 @@ impl<'bump> AstCreate<'bump> {
 				..
 			}) => token,
 			AstCreate::Policy(AstCreatePolicy {
+				token,
+				..
+			}) => token,
+			AstCreate::Procedure(AstCreateProcedure {
 				token,
 				..
 			}) => token,

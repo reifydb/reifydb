@@ -13,6 +13,7 @@ pub mod environment;
 pub mod expression;
 pub mod flow;
 pub(crate) mod interceptor;
+pub mod procedure;
 #[allow(unused)]
 pub mod test_utils;
 pub mod transaction;

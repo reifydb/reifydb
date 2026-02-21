@@ -46,7 +46,7 @@ use reifydb_type::{
 	value::{constraint::TypeConstraint, r#type::Type},
 };
 
-use crate::engine::StandardEngine;
+use crate::{engine::StandardEngine, procedure::registry::Procedures};
 
 pub fn create_test_admin_transaction() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
@@ -185,6 +185,7 @@ pub fn create_test_engine() -> StandardEngine {
 		Catalog::new(materialized_catalog, schema_registry),
 		runtime.clock().clone(),
 		Functions::builder().build(),
+		Procedures::empty(),
 		crate::transform::registry::Transforms::empty(),
 		ioc,
 	);

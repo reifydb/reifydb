@@ -8,6 +8,7 @@ pub mod namespace;
 pub mod operator_retention_policy;
 pub mod primary_key;
 pub mod primitive_retention_policy;
+pub mod procedure;
 pub mod ringbuffer;
 pub mod subscription;
 pub mod sumtype;
@@ -22,10 +23,11 @@ use reifydb_core::{
 	interface::catalog::{
 		dictionary::DictionaryDef,
 		flow::{FlowDef, FlowId, FlowNodeId},
-		id::{NamespaceId, PrimaryKeyId, RingBufferId, SubscriptionId, TableId, ViewId},
+		id::{NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
 		key::PrimaryKeyDef,
 		namespace::NamespaceDef,
 		primitive::PrimitiveId,
+		procedure::ProcedureDef,
 		ringbuffer::RingBufferDef,
 		subscription::SubscriptionDef,
 		sumtype::SumTypeDef,
@@ -45,6 +47,7 @@ pub type MultiVersionFlowDef = MultiVersionContainer<FlowDef>;
 pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
 pub type MultiVersionDictionaryDef = MultiVersionContainer<DictionaryDef>;
+pub type MultiVersionProcedureDef = MultiVersionContainer<ProcedureDef>;
 pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
 pub type MultiVersionSumTypeDef = MultiVersionContainer<SumTypeDef>;
 pub type MultiVersionSubscriptionDef = MultiVersionContainer<SubscriptionDef>;
@@ -73,6 +76,10 @@ pub struct MaterializedCatalogInner {
 	pub(crate) flows: SkipMap<FlowId, MultiVersionFlowDef>,
 	/// Index from (namespace_id, flow_name) to flow ID for fast name lookups
 	pub(crate) flows_by_name: SkipMap<(NamespaceId, String), FlowId>,
+	/// MultiVersion procedure definitions indexed by procedure ID
+	pub(crate) procedures: SkipMap<ProcedureId, MultiVersionProcedureDef>,
+	/// Index from (namespace_id, procedure_name) to procedure ID for fast name lookups
+	pub(crate) procedures_by_name: SkipMap<(NamespaceId, String), ProcedureId>,
 	/// MultiVersion primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
 	/// MultiVersion source retention policies indexed by source ID
@@ -137,6 +144,8 @@ impl MaterializedCatalog {
 		Self(Arc::new(MaterializedCatalogInner {
 			namespaces,
 			namespaces_by_name,
+			procedures: SkipMap::new(),
+			procedures_by_name: SkipMap::new(),
 			tables: SkipMap::new(),
 			tables_by_name: SkipMap::new(),
 			views: SkipMap::new(),

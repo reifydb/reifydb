@@ -6,8 +6,8 @@ use reifydb_type::fragment::Fragment;
 
 use crate::{
 	ast::ast::{
-		Ast, AstBlock, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral, AstLiteralNone,
-		AstLoop, AstMatch, AstMatchArm, AstReturn, AstWhile, LetValue as AstLetValue,
+		Ast, AstBlock, AstCall, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral,
+		AstLiteralNone, AstLoop, AstMatch, AstMatchArm, AstReturn, AstWhile, LetValue as AstLetValue,
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
 	convert_data_type_with_constraints,
@@ -491,6 +491,24 @@ impl<'bump> Compiler<'bump> {
 	/// Compile a function call (potentially user-defined)
 	pub(crate) fn compile_call_function(&self, ast: AstCallFunction<'bump>) -> crate::Result<LogicalPlan<'bump>> {
 		let name = ast.function.name;
+
+		// Compile arguments as expressions
+		let mut arguments = Vec::new();
+		for arg in ast.arguments.nodes {
+			arguments.push(ExpressionCompiler::compile(arg)?);
+		}
+
+		Ok(LogicalPlan::CallFunction(CallFunctionNode {
+			name,
+			arguments,
+		}))
+	}
+
+	/// Compile a CALL statement (e.g., `CALL procedure_name(args)`)
+	/// This compiles to the same CallFunction logical plan node, so the VM
+	/// will resolve it against DEF functions, catalog procedures, or built-in functions.
+	pub(crate) fn compile_call(&self, ast: AstCall<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+		let name = ast.operator.token.fragment;
 
 		// Compile arguments as expressions
 		let mut arguments = Vec::new();

@@ -118,6 +118,22 @@ impl<'bump> Parser<'bump> {
 		self.bump
 	}
 
+	/// Reconstruct source text from a range of tokens by joining their text with spaces.
+	/// Used to capture procedure body source for catalog storage.
+	pub(crate) fn reconstruct_source(&self, start_pos: usize, end_pos: usize) -> String {
+		if start_pos >= end_pos {
+			return String::new();
+		}
+		let mut parts = Vec::new();
+		for i in start_pos..end_pos {
+			let text = self.tokens[i].fragment.text();
+			if !text.is_empty() && text != "\n" && text != "\r\n" {
+				parts.push(text);
+			}
+		}
+		parts.join(" ")
+	}
+
 	fn parse(&mut self) -> crate::Result<Vec<AstStatement<'bump>>> {
 		let mut result = Vec::with_capacity(4);
 		loop {

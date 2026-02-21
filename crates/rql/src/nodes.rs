@@ -8,7 +8,7 @@ use reifydb_catalog::catalog::{
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
 	interface::{
-		catalog::namespace::NamespaceDef,
+		catalog::{namespace::NamespaceDef, procedure::ProcedureParamDef},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
 			ResolvedRingBuffer, ResolvedSequence, ResolvedTable, ResolvedTableVirtual, ResolvedView,
@@ -52,6 +52,7 @@ pub enum PhysicalPlan {
 	CreateSubscription(CreateSubscriptionNode),
 	CreatePrimaryKey(CreatePrimaryKeyNode),
 	CreatePolicy(CreatePolicyNode),
+	CreateProcedure(CreateProcedureNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode),
@@ -236,6 +237,15 @@ pub struct CreatePrimaryKeyNode {
 	pub namespace: ResolvedNamespace,
 	pub table: Fragment,
 	pub columns: Vec<PrimaryKeyColumn>,
+}
+
+// Create Procedure node
+#[derive(Debug, Clone)]
+pub struct CreateProcedureNode {
+	pub namespace: NamespaceDef,
+	pub name: Fragment,
+	pub params: Vec<ProcedureParamDef>,
+	pub body_source: String,
 }
 
 // Create Policy node
