@@ -2,7 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{column::ColumnDef, id::ColumnId, primitive::PrimitiveId},
+	interface::catalog::{
+		column::ColumnDef,
+		id::{ColumnId, NamespaceId},
+		primitive::PrimitiveId,
+	},
 	key::column::ColumnKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -14,6 +18,9 @@ pub struct ColumnInfo {
 	pub column: ColumnDef,
 	pub source_id: PrimitiveId,
 	pub is_view: bool,
+	pub entity_kind: &'static str,
+	pub entity_name: String,
+	pub namespace: NamespaceId,
 }
 
 impl CatalogStore {
@@ -56,6 +63,9 @@ impl CatalogStore {
 					column,
 					source_id: table.id.into(),
 					is_view: false,
+					entity_kind: "table",
+					entity_name: table.name.clone(),
+					namespace: table.namespace,
 				});
 			}
 		}
@@ -69,6 +79,9 @@ impl CatalogStore {
 					column,
 					source_id: view.id.into(),
 					is_view: true,
+					entity_kind: "view",
+					entity_name: view.name.clone(),
+					namespace: view.namespace,
 				});
 			}
 		}
@@ -82,6 +95,9 @@ impl CatalogStore {
 					column,
 					source_id: ringbuffer.id.into(),
 					is_view: false,
+					entity_kind: "ring buffer",
+					entity_name: ringbuffer.name.clone(),
+					namespace: ringbuffer.namespace,
 				});
 			}
 		}

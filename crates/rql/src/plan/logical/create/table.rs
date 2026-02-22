@@ -70,19 +70,25 @@ impl<'bump> Compiler<'bump> {
 				match property {
 					AstColumnProperty::AutoIncrement => auto_increment = true,
 					AstColumnProperty::Dictionary(dict_ident) => {
-						let dict_namespace_name = dict_ident
-							.namespace
-							.first()
-							.map(|n| n.text())
-							.unwrap_or(table_namespace_name);
+						let dict_namespace_name = if dict_ident.namespace.is_empty() {
+							table_namespace_name.to_string()
+						} else {
+							dict_ident
+								.namespace
+								.iter()
+								.map(|n| n.text())
+								.collect::<Vec<_>>()
+								.join(".")
+						};
 						let dict_name = dict_ident.name.text();
 
-						let Some(namespace) =
-							self.catalog.find_namespace_by_name(tx, dict_namespace_name)?
+						let Some(namespace) = self
+							.catalog
+							.find_namespace_by_name(tx, &dict_namespace_name)?
 						else {
 							return_error!(dictionary_not_found(
 								dict_ident.name.to_owned(),
-								dict_namespace_name,
+								&dict_namespace_name,
 								dict_name,
 							));
 						};
@@ -95,7 +101,7 @@ impl<'bump> Compiler<'bump> {
 						else {
 							return_error!(dictionary_not_found(
 								dict_ident.name.to_owned(),
-								dict_namespace_name,
+								&dict_namespace_name,
 								dict_name,
 							));
 						};

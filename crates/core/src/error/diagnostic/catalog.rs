@@ -611,3 +611,59 @@ pub fn subscription_not_found(fragment: Fragment, subscription: &str) -> Diagnos
 		operator_chain: None,
 	}
 }
+
+pub fn dictionary_in_use(fragment: Fragment, namespace: &str, dictionary: &str, dependents: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_032".to_string(),
+		statement: None,
+		message: format!(
+			"cannot drop dictionary `{}.{}` because it is referenced by: {}",
+			namespace, dictionary, dependents
+		),
+		fragment,
+		label: Some("dictionary is in use".to_string()),
+		help: Some("drop or alter the dependent columns first, or use CASCADE to drop them automatically"
+			.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn sumtype_in_use(fragment: Fragment, namespace: &str, name: &str, dependents: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_033".to_string(),
+		statement: None,
+		message: format!(
+			"cannot drop enum `{}.{}` because it is referenced by: {}",
+			namespace, name, dependents
+		),
+		fragment,
+		label: Some("enum is in use".to_string()),
+		help: Some("drop or alter the dependent columns first, or use CASCADE to drop them automatically"
+			.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn namespace_in_use(fragment: Fragment, namespace: &str, dependents: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_034".to_string(),
+		statement: None,
+		message: format!(
+			"cannot drop namespace `{}` because it contains objects referenced from other namespaces: {}",
+			namespace, dependents
+		),
+		fragment,
+		label: Some("namespace contains referenced objects".to_string()),
+		help: Some("drop or alter the dependent columns in other namespaces first".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
