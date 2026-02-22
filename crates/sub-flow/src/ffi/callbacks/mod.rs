@@ -20,10 +20,9 @@ use reifydb_abi::{
 	context::context::ContextFFI,
 	data::buffer::BufferFFI,
 };
+use reifydb_engine::ffi::callbacks::{logging, memory};
 
 pub mod catalog;
-pub mod logging;
-pub mod memory;
 pub mod state;
 pub mod state_iterator;
 pub mod store;

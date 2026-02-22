@@ -34,7 +34,7 @@ pub fn clear_current_arena() {
 
 /// Allocate memory from the current arena or system allocator
 #[unsafe(no_mangle)]
-pub(super) extern "C" fn host_alloc(size: usize) -> *mut u8 {
+pub extern "C" fn host_alloc(size: usize) -> *mut u8 {
 	if size == 0 {
 		return std::ptr::null_mut();
 	}
@@ -56,7 +56,7 @@ pub(super) extern "C" fn host_alloc(size: usize) -> *mut u8 {
 
 /// Free memory (no-op for arena memory, system free otherwise)
 #[unsafe(no_mangle)]
-pub(super) extern "C" fn host_free(ptr: *mut u8, size: usize) {
+pub extern "C" fn host_free(ptr: *mut u8, size: usize) {
 	if ptr.is_null() || size == 0 {
 		return;
 	}
@@ -79,7 +79,7 @@ pub(super) extern "C" fn host_free(ptr: *mut u8, size: usize) {
 
 /// Reallocate memory (allocates new for arena, uses system realloc otherwise)
 #[unsafe(no_mangle)]
-pub(super) extern "C" fn host_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8 {
+pub extern "C" fn host_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8 {
 	// For arena allocations, we can't realloc in place, so alloc new and copy
 	if ptr.is_null() {
 		return host_alloc(new_size);

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::path::PathBuf;
+
 use reifydb_engine::{procedure::registry::ProceduresBuilder, transform::registry::Transforms};
 use reifydb_function::registry::FunctionsBuilder;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
@@ -24,6 +26,8 @@ pub struct EmbeddedBuilder {
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
+	#[cfg(reifydb_target = "native")]
+	procedure_dir: Option<PathBuf>,
 	transforms: Option<Transforms>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
@@ -40,6 +44,8 @@ impl EmbeddedBuilder {
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
 			procedures_configurator: None,
+			#[cfg(reifydb_target = "native")]
+			procedure_dir: None,
 			transforms: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
@@ -69,6 +75,12 @@ impl EmbeddedBuilder {
 		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
 	{
 		self.procedures_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	#[cfg(reifydb_target = "native")]
+	pub fn with_procedure_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+		self.procedure_dir = Some(dir.into());
 		self
 	}
 
@@ -102,6 +114,11 @@ impl EmbeddedBuilder {
 
 		if let Some(configurator) = self.procedures_configurator {
 			builder = builder.with_procedures_configurator(configurator);
+		}
+
+		#[cfg(reifydb_target = "native")]
+		if let Some(dir) = self.procedure_dir {
+			builder = builder.with_procedure_dir(dir);
 		}
 
 		if let Some(transforms) = self.transforms {

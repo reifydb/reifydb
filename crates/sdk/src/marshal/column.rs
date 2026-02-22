@@ -107,7 +107,11 @@ impl Arena {
 			}
 		}
 
-		Columns::with_row_numbers(columns, row_numbers)
+		if row_numbers.is_empty() {
+			Columns::new(columns)
+		} else {
+			Columns::with_row_numbers(columns, row_numbers)
+		}
 	}
 }
 

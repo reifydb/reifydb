@@ -15,7 +15,7 @@ use tracing::{debug, error, info, trace, warn};
 /// - `message`: Message bytes (not null-terminated)
 /// - `message_len`: Length of message in bytes
 #[unsafe(no_mangle)]
-pub(super) extern "C" fn host_log_message(operator_id: u64, level: u32, message: *const u8, message_len: usize) {
+pub extern "C" fn host_log_message(operator_id: u64, level: u32, message: *const u8, message_len: usize) {
 	if message.is_null() {
 		return;
 	}

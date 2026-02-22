@@ -850,7 +850,8 @@ impl Vm {
 									name: func_name.to_string(),
 								},
 								message: format!("Unknown procedure: {}", func_name),
-							}.into());
+							}
+							.into());
 						} else {
 							// Built-in function: evaluate via column evaluator
 							let evaluation_context = EvalContext {

@@ -22,12 +22,10 @@ use reifydb_core::{
 	},
 	interface::catalog::flow::FlowNodeId,
 };
+use reifydb_engine::ffi::callbacks::memory::{host_alloc, host_free};
 use reifydb_type::util::cowvec::CowVec;
 
-use super::{
-	memory::{host_alloc, host_free},
-	state_iterator::{self, StateIteratorHandle},
-};
+use super::state_iterator::{self, StateIteratorHandle};
 use crate::ffi::context::get_transaction_mut;
 
 /// Internal structure for state iterators (stored behind StateIteratorFFI pointer)

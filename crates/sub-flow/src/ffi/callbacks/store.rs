@@ -19,12 +19,10 @@ use reifydb_core::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::MultiVersionBatch,
 };
+use reifydb_engine::ffi::callbacks::memory::{host_alloc, host_free};
 use reifydb_type::util::cowvec::CowVec;
 
-use super::{
-	memory::{host_alloc, host_free},
-	store_iterator::{self, StoreIteratorHandle},
-};
+use super::store_iterator::{self, StoreIteratorHandle};
 use crate::ffi::context::get_transaction_mut;
 
 /// Internal structure for store iterators (stored behind StoreIteratorFFI pointer)

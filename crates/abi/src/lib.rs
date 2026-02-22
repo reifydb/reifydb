@@ -16,4 +16,5 @@ pub mod context;
 pub mod data;
 pub mod flow;
 pub mod operator;
+pub mod procedure;
 pub mod transform;
