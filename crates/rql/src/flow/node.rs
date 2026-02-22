@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
 	interface::catalog::{
 		flow::{FlowEdgeId, FlowId, FlowNodeId},
-		id::{SubscriptionId, TableId, ViewId},
+		id::{RingBufferId, SubscriptionId, TableId, ViewId},
 	},
 	sort::SortKey,
 };
@@ -24,6 +24,9 @@ pub enum FlowNodeType {
 	},
 	SourceFlow {
 		flow: FlowId,
+	},
+	SourceRingBuffer {
+		ringbuffer: RingBufferId,
 	},
 	Filter {
 		conditions: Vec<Expression>,
@@ -92,6 +95,9 @@ impl FlowNodeType {
 			FlowNodeType::SourceFlow {
 				..
 			} => 3,
+			FlowNodeType::SourceRingBuffer {
+				..
+			} => 17,
 			FlowNodeType::Filter {
 				..
 			} => 4,

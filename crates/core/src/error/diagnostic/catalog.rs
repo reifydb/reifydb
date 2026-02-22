@@ -650,6 +650,82 @@ pub fn sumtype_in_use(fragment: Fragment, namespace: &str, name: &str, dependent
 	}
 }
 
+pub fn table_in_use(fragment: Fragment, namespace: &str, table: &str, dependents: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_035".to_string(),
+		statement: None,
+		message: format!(
+			"cannot drop table `{}.{}` because it is referenced by: {}",
+			namespace, table, dependents
+		),
+		fragment,
+		label: Some("table is in use".to_string()),
+		help: Some("drop or alter the dependent flows first, or use CASCADE to drop them automatically"
+			.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn view_in_use(fragment: Fragment, namespace: &str, view: &str, dependents: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_036".to_string(),
+		statement: None,
+		message: format!(
+			"cannot drop view `{}.{}` because it is referenced by: {}",
+			namespace, view, dependents
+		),
+		fragment,
+		label: Some("view is in use".to_string()),
+		help: Some("drop or alter the dependent flows first, or use CASCADE to drop them automatically"
+			.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn flow_in_use(fragment: Fragment, namespace: &str, flow: &str, dependents: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_037".to_string(),
+		statement: None,
+		message: format!(
+			"cannot drop flow `{}.{}` because it is referenced by: {}",
+			namespace, flow, dependents
+		),
+		fragment,
+		label: Some("flow is in use".to_string()),
+		help: Some("drop or alter the dependent flows first, or use CASCADE to drop them automatically"
+			.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn ringbuffer_in_use(fragment: Fragment, namespace: &str, ringbuffer: &str, dependents: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_038".to_string(),
+		statement: None,
+		message: format!(
+			"cannot drop ring buffer `{}.{}` because it is referenced by: {}",
+			namespace, ringbuffer, dependents
+		),
+		fragment,
+		label: Some("ring buffer is in use".to_string()),
+		help: Some("drop or alter the dependent flows first, or use CASCADE to drop them automatically"
+			.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn namespace_in_use(fragment: Fragment, namespace: &str, dependents: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_034".to_string(),

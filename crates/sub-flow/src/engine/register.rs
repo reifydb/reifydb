@@ -16,7 +16,7 @@ use reifydb_rql::flow::{
 		FlowNode,
 		FlowNodeType::{
 			Aggregate, Append, Apply, Distinct, Extend, Filter, Join, Map, SinkSubscription, SinkView,
-			Sort, SourceFlow, SourceInlineData, SourceTable, SourceView, Take, Window,
+			Sort, SourceFlow, SourceInlineData, SourceRingBuffer, SourceTable, SourceView, Take, Window,
 		},
 	},
 };
@@ -105,6 +105,11 @@ impl FlowEngine {
 						source_flow_def,
 					))),
 				);
+			}
+			SourceRingBuffer {
+				..
+			} => {
+				unimplemented!("SourceRingBuffer operator registration not yet implemented")
 			}
 			SinkView {
 				view,

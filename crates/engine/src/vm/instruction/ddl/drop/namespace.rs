@@ -4,14 +4,14 @@
 use std::collections::HashSet;
 
 use reifydb_core::{error::diagnostic::catalog::namespace_in_use, value::column::columns::Columns};
-use reifydb_rql::nodes::DropNamespaceNode;
+use reifydb_rql::{flow::node::FlowNodeType, nodes::DropNamespaceNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	return_error,
 	value::{Value, constraint::Constraint},
 };
 
-use super::dependent::find_column_dependents;
+use super::dependent::{find_column_dependents, find_flow_dependents};
 use crate::vm::services::Services;
 
 pub(crate) fn drop_namespace(
@@ -45,7 +45,9 @@ pub(crate) fn drop_namespace(
 		}
 	}
 
-	// Collect dictionaries and sumtypes from all descendant namespaces
+	let mut dependents = Vec::new();
+
+	// Check for dictionary/sumtype column references from outside descendant namespaces
 	let mut dictionaries = Vec::new();
 	let mut sumtypes = Vec::new();
 	for &ns_id in &descendant_ids {
@@ -58,7 +60,7 @@ pub(crate) fn drop_namespace(
 	if !dictionary_ids.is_empty() || !sumtype_ids.is_empty() {
 		let columns = services.catalog.list_columns_all(&mut Transaction::Admin(txn))?;
 
-		let mut dependents = find_column_dependents(&services.catalog, txn, &columns, |info| {
+		dependents.extend(find_column_dependents(&services.catalog, txn, &columns, |info| {
 			if descendant_ids.contains(&info.namespace) {
 				return None;
 			}
@@ -73,7 +75,7 @@ pub(crate) fn drop_namespace(
 				}
 			}
 			None
-		})?;
+		})?);
 
 		dependents.extend(find_column_dependents(&services.catalog, txn, &columns, |info| {
 			if descendant_ids.contains(&info.namespace) {
@@ -91,15 +93,66 @@ pub(crate) fn drop_namespace(
 			}
 			None
 		})?);
+	}
 
-		if !dependents.is_empty() {
-			let dependents_str = dependents.join(", ");
-			return_error!(namespace_in_use(
-				plan.namespace_name.clone(),
-				plan.namespace_name.text(),
-				&dependents_str,
-			));
-		}
+	// Check for flow references to tables/views/ringbuffers in descendant namespaces from external flows
+	let all_tables = services.catalog.list_tables_all(&mut Transaction::Admin(txn))?;
+	let all_views = services.catalog.list_views_all(&mut Transaction::Admin(txn))?;
+	let all_ringbuffers = services.catalog.list_ringbuffers_all(&mut Transaction::Admin(txn))?;
+	let table_ids: HashSet<_> =
+		all_tables.iter().filter(|t| descendant_ids.contains(&t.namespace)).map(|t| t.id).collect();
+	let view_ids: HashSet<_> =
+		all_views.iter().filter(|v| descendant_ids.contains(&v.namespace)).map(|v| v.id).collect();
+	let ringbuffer_ids: HashSet<_> =
+		all_ringbuffers.iter().filter(|r| descendant_ids.contains(&r.namespace)).map(|r| r.id).collect();
+
+	if !table_ids.is_empty() || !view_ids.is_empty() || !ringbuffer_ids.is_empty() {
+		let nodes = services.catalog.list_flow_nodes_all(&mut Transaction::Admin(txn))?;
+		let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
+
+		// Filter to only nodes belonging to flows OUTSIDE descendant namespaces
+		let external_nodes: Vec<_> = nodes
+			.iter()
+			.filter(|n| {
+				flows.iter()
+					.find(|f| f.id == n.flow)
+					.map(|f| !descendant_ids.contains(&f.namespace))
+					.unwrap_or(false)
+			})
+			.cloned()
+			.collect();
+
+		dependents.extend(find_flow_dependents(
+			&services.catalog,
+			txn,
+			&external_nodes,
+			&flows,
+			|node_type| matches!(node_type, FlowNodeType::SourceTable { table } if table_ids.contains(table)),
+		)?);
+
+		dependents.extend(find_flow_dependents(
+			&services.catalog,
+			txn,
+			&external_nodes,
+			&flows,
+			|node_type| {
+				matches!(node_type, FlowNodeType::SourceView { view } if view_ids.contains(view))
+					|| matches!(node_type, FlowNodeType::SinkView { view } if view_ids.contains(view))
+			},
+		)?);
+
+		dependents.extend(find_flow_dependents(&services.catalog, txn, &external_nodes, &flows, |node_type| {
+			matches!(node_type, FlowNodeType::SourceRingBuffer { ringbuffer } if ringbuffer_ids.contains(ringbuffer))
+		})?);
+	}
+
+	if !dependents.is_empty() {
+		let dependents_str = dependents.join(", ");
+		return_error!(namespace_in_use(
+			plan.namespace_name.clone(),
+			plan.namespace_name.text(),
+			&dependents_str,
+		));
 	}
 
 	services.catalog.drop_namespace(txn, def)?;

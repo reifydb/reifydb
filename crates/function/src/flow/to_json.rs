@@ -30,6 +30,9 @@ pub enum JsonFlowNodeType {
 	SourceFlow {
 		flow: u64,
 	},
+	SourceRingBuffer {
+		ringbuffer: u64,
+	},
 	Filter {
 		conditions: Vec<JsonExpression>,
 	},
@@ -110,6 +113,11 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				flow,
 			} => JsonFlowNodeType::SourceFlow {
 				flow: flow.0,
+			},
+			FlowNodeType::SourceRingBuffer {
+				ringbuffer,
+			} => JsonFlowNodeType::SourceRingBuffer {
+				ringbuffer: ringbuffer.0,
 			},
 			FlowNodeType::Filter {
 				conditions,
