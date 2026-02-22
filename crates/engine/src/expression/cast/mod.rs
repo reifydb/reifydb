@@ -11,8 +11,7 @@ pub mod uuid;
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	err, error::diagnostic::cast, fragment::LazyFragment, storage::DataBitVec, util::bitvec::BitVec,
-	value::r#type::Type,
+	error::TypeError, fragment::LazyFragment, storage::DataBitVec, util::bitvec::BitVec, value::r#type::Type,
 };
 
 use crate::expression::context::EvalContext;
@@ -116,9 +115,12 @@ pub fn cast_column_data(
 		(_, t) if t.is_temporal() => temporal::to_temporal(data, target, lazy_fragment),
 		(_, t) if t.is_uuid() => uuid::to_uuid(data, target, lazy_fragment),
 		(source, t) if source.is_uuid() || t.is_uuid() => uuid::to_uuid(data, target, lazy_fragment),
-		_ => {
-			err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+		_ => Err(TypeError::UnsupportedCast {
+			from: source_type,
+			to: target,
+			fragment: lazy_fragment.fragment(),
 		}
+		.into()),
 	}
 }
 

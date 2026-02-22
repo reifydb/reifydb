@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use reifydb_type::{
-	error::{Error, diagnostic},
+	error::{Diagnostic, Error},
 	params::Params,
 };
 use reqwest::Client as ReqwestClient;
@@ -23,7 +23,7 @@ struct HttpErrorResponse {
 	code: String,
 	error: String,
 	#[serde(default)]
-	diagnostic: Option<diagnostic::Diagnostic>,
+	diagnostic: Option<Diagnostic>,
 }
 
 /// Async HTTP client for ReifyDB
@@ -278,7 +278,7 @@ impl HttpClient {
 	fn parse_error_response(&self, body: &str) -> Error {
 		// Try parsing as HTTP error response format
 		if let Ok(http_err) = serde_json::from_str::<HttpErrorResponse>(body) {
-			let diag = http_err.diagnostic.unwrap_or_else(|| diagnostic::Diagnostic {
+			let diag = http_err.diagnostic.unwrap_or_else(|| Diagnostic {
 				code: http_err.code,
 				message: http_err.error,
 				..Default::default()

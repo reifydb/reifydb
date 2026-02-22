@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
 	interface::catalog::{
 		id::{ColumnId, PrimaryKeyId},
 		primitive::PrimitiveId,
@@ -11,10 +10,11 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	CatalogStore,
+	error::CatalogError,
 	store::{
 		primary_key::schema::{
 			primary_key,
@@ -36,7 +36,10 @@ impl CatalogStore {
 	) -> crate::Result<PrimaryKeyId> {
 		// Validate that primary key has at least one column
 		if to_create.column_ids.is_empty() {
-			return_error!(primary_key_empty(Fragment::None));
+			return Err(CatalogError::PrimaryKeyEmpty {
+				fragment: Fragment::None,
+			}
+			.into());
 		}
 
 		// Get the columns for the table/view and validate all primary
@@ -47,7 +50,11 @@ impl CatalogStore {
 		// Validate that all columns belong to the table/view
 		for column_id in &to_create.column_ids {
 			if !source_column_ids.contains(column_id) {
-				return_error!(primary_key_column_not_found(Fragment::None, column_id.0));
+				return Err(CatalogError::PrimaryKeyColumnNotFound {
+					fragment: Fragment::None,
+					column_id: column_id.0,
+				}
+				.into());
 			}
 		}
 

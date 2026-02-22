@@ -4,13 +4,8 @@
 use std::{any::TypeId, borrow::Cow, num::IntErrorKind, str::FromStr};
 
 use crate::{
-	err,
-	error::{
-		Error,
-		diagnostic::number::{invalid_number_format, nan_not_allowed, number_out_of_range},
-	},
+	error::{Error, TypeError},
 	fragment::Fragment,
-	return_error,
 	value::{
 		int::{Int, parse::parse_int},
 		is::{IsFloat, IsInt, IsUint},
@@ -67,7 +62,7 @@ where
 {
 	// Fragment is already owned, no conversion needed
 	if fragment.text().to_lowercase().contains("nan") {
-		return_error!(nan_not_allowed());
+		return Err(TypeError::NanNotAllowed.into());
 	}
 
 	if TypeId::of::<T>() == TypeId::of::<f32>() {
@@ -201,15 +196,21 @@ where
 	};
 
 	if value.is_empty() {
-		return_error!(invalid_number_format(fragment, T::type_enum()));
+		return Err(TypeError::InvalidNumberFormat {
+			target: T::type_enum(),
+			fragment,
+		}
+		.into());
 	}
 
 	match value.parse::<T>() {
 		Ok(v) => Ok(v),
 		Err(err) => match err.kind() {
-			IntErrorKind::Empty => {
-				err!(invalid_number_format(fragment, T::type_enum()))
+			IntErrorKind::Empty => Err(TypeError::InvalidNumberFormat {
+				target: T::type_enum(),
+				fragment,
 			}
+			.into()),
 			IntErrorKind::InvalidDigit => {
 				if let Ok(f) = value.parse::<f64>() {
 					let truncated = f.trunc();
@@ -235,21 +236,38 @@ where
 					if in_range {
 						Ok(cast_float_to_int::<T>(truncated))
 					} else {
-						err!(number_out_of_range(fragment, type_enum, None))
+						Err(TypeError::NumberOutOfRange {
+							target: type_enum,
+							fragment,
+							descriptor: None,
+						}
+						.into())
 					}
 				} else {
-					err!(invalid_number_format(fragment, T::type_enum()))
+					Err(TypeError::InvalidNumberFormat {
+						target: T::type_enum(),
+						fragment,
+					}
+					.into())
 				}
 			}
-			IntErrorKind::PosOverflow => {
-				err!(number_out_of_range(fragment, T::type_enum(), None))
+			IntErrorKind::PosOverflow => Err(TypeError::NumberOutOfRange {
+				target: T::type_enum(),
+				fragment,
+				descriptor: None,
 			}
-			IntErrorKind::NegOverflow => {
-				err!(number_out_of_range(fragment, T::type_enum(), None))
+			.into()),
+			IntErrorKind::NegOverflow => Err(TypeError::NumberOutOfRange {
+				target: T::type_enum(),
+				fragment,
+				descriptor: None,
 			}
-			IntErrorKind::Zero => {
-				err!(invalid_number_format(fragment, T::type_enum()))
+			.into()),
+			IntErrorKind::Zero => Err(TypeError::InvalidNumberFormat {
+				target: T::type_enum(),
+				fragment,
 			}
+			.into()),
 			&_ => unreachable!("{}", err),
 		},
 	}
@@ -278,26 +296,33 @@ where
 	};
 
 	if value.is_empty() {
-		return_error!(invalid_number_format(fragment, T::type_enum()));
+		return Err(TypeError::InvalidNumberFormat {
+			target: T::type_enum(),
+			fragment,
+		}
+		.into());
 	}
 
 	match value.parse::<T>() {
 		Ok(v) => Ok(v),
 		Err(err) => {
 			match err.kind() {
-				IntErrorKind::Empty => {
-					err!(invalid_number_format(fragment, T::type_enum()))
+				IntErrorKind::Empty => Err(TypeError::InvalidNumberFormat {
+					target: T::type_enum(),
+					fragment,
 				}
+				.into()),
 				IntErrorKind::InvalidDigit => {
 					if let Ok(f) = value.parse::<f64>() {
 						// For unsigned types, reject
 						// negative values
 						if f < 0.0 {
-							return_error!(number_out_of_range(
+							return Err(TypeError::NumberOutOfRange {
+								target: T::type_enum(),
 								fragment,
-								T::type_enum(),
-								None
-							));
+								descriptor: None,
+							}
+							.into());
 						}
 						let truncated = f.trunc();
 						let type_enum = T::type_enum();
@@ -314,25 +339,47 @@ where
 						if in_range {
 							Ok(cast_float_to_int::<T>(truncated))
 						} else {
-							err!(number_out_of_range(fragment, type_enum, None))
+							Err(TypeError::NumberOutOfRange {
+								target: type_enum,
+								fragment,
+								descriptor: None,
+							}
+							.into())
 						}
 					} else {
 						if value.contains("-") {
-							err!(number_out_of_range(fragment, T::type_enum(), None))
+							Err(TypeError::NumberOutOfRange {
+								target: T::type_enum(),
+								fragment,
+								descriptor: None,
+							}
+							.into())
 						} else {
-							err!(invalid_number_format(fragment, T::type_enum()))
+							Err(TypeError::InvalidNumberFormat {
+								target: T::type_enum(),
+								fragment,
+							}
+							.into())
 						}
 					}
 				}
-				IntErrorKind::PosOverflow => {
-					err!(number_out_of_range(fragment, T::type_enum(), None))
+				IntErrorKind::PosOverflow => Err(TypeError::NumberOutOfRange {
+					target: T::type_enum(),
+					fragment,
+					descriptor: None,
 				}
-				IntErrorKind::NegOverflow => {
-					err!(number_out_of_range(fragment, T::type_enum(), None))
+				.into()),
+				IntErrorKind::NegOverflow => Err(TypeError::NumberOutOfRange {
+					target: T::type_enum(),
+					fragment,
+					descriptor: None,
 				}
-				IntErrorKind::Zero => {
-					err!(invalid_number_format(fragment, T::type_enum()))
+				.into()),
+				IntErrorKind::Zero => Err(TypeError::InvalidNumberFormat {
+					target: T::type_enum(),
+					fragment,
 				}
+				.into()),
 				&_ => unreachable!("{}", err),
 			}
 		}
@@ -362,7 +409,11 @@ where
 	};
 
 	if value.is_empty() {
-		return_error!(invalid_number_format(fragment, T::type_enum()));
+		return Err(TypeError::InvalidNumberFormat {
+			target: T::type_enum(),
+			fragment,
+		}
+		.into());
 	}
 
 	match value.parse::<T>() {
@@ -370,17 +421,31 @@ where
 			if TypeId::of::<T>() == TypeId::of::<f32>() {
 				let v_f32 = cast::<f32, T>(v);
 				if v_f32 == f32::INFINITY || v_f32 == f32::NEG_INFINITY {
-					return_error!(number_out_of_range(fragment, T::type_enum(), None));
+					return Err(TypeError::NumberOutOfRange {
+						target: T::type_enum(),
+						fragment,
+						descriptor: None,
+					}
+					.into());
 				}
 			} else if TypeId::of::<T>() == TypeId::of::<f64>() {
 				let v_f64 = cast::<f64, T>(v);
 				if v_f64 == f64::INFINITY || v_f64 == f64::NEG_INFINITY {
-					return_error!(number_out_of_range(fragment, T::type_enum(), None));
+					return Err(TypeError::NumberOutOfRange {
+						target: T::type_enum(),
+						fragment,
+						descriptor: None,
+					}
+					.into());
 				}
 			}
 			Ok(v)
 		}
-		Err(_) => err!(invalid_number_format(fragment, T::type_enum())),
+		Err(_) => Err(TypeError::InvalidNumberFormat {
+			target: T::type_enum(),
+			fragment,
+		}
+		.into()),
 	}
 }
 

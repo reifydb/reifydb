@@ -15,13 +15,13 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	encoded::{encoded::EncodedValues, key::EncodedKey},
-	error::diagnostic::transaction,
 };
-use reifydb_type::{return_error, util::hex};
+use reifydb_type::util::hex;
 use tracing::instrument;
 
 use crate::{
 	TransactionId,
+	error::TransactionError,
 	multi::{
 		conflict::ConflictManager,
 		marker::Marker,
@@ -201,7 +201,7 @@ where
 	))]
 	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		if self.discarded {
-			return_error!(transaction::transaction_rolled_back());
+			return Err(TransactionError::RolledBack.into());
 		}
 
 		self.set_internal(key, values)
@@ -221,7 +221,7 @@ where
 	))]
 	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		if self.discarded {
-			return_error!(transaction::transaction_rolled_back());
+			return Err(TransactionError::RolledBack.into());
 		}
 		self.modify(Pending {
 			delta: Delta::Unset {
@@ -240,7 +240,7 @@ where
 	))]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		if self.discarded {
-			return_error!(transaction::transaction_rolled_back());
+			return Err(TransactionError::RolledBack.into());
 		}
 		self.modify(Pending {
 			delta: Delta::Remove {
@@ -254,7 +254,7 @@ where
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
 	pub fn rollback(&mut self) -> Result<()> {
 		if self.discarded {
-			return_error!(transaction::transaction_rolled_back());
+			return Err(TransactionError::RolledBack.into());
 		}
 
 		self.pending_writes.rollback();
@@ -269,7 +269,7 @@ where
 	))]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<Option<bool>> {
 		if self.discarded {
-			return_error!(transaction::transaction_rolled_back());
+			return Err(TransactionError::RolledBack.into());
 		}
 
 		match self.pending_writes.get(key) {
@@ -297,7 +297,7 @@ where
 	))]
 	pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b EncodedKey) -> Result<Option<Pending>> {
 		if self.discarded {
-			return_error!(transaction::transaction_rolled_back());
+			return Err(TransactionError::RolledBack.into());
 		}
 
 		if let Some(v) = self.pending_writes.get(key) {
@@ -334,7 +334,7 @@ where
 	))]
 	fn set_internal(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		if self.discarded {
-			return_error!(transaction::transaction_rolled_back());
+			return Err(TransactionError::RolledBack.into());
 		}
 
 		self.modify(Pending {
@@ -353,7 +353,7 @@ where
 	))]
 	fn modify(&mut self, pending: Pending) -> Result<()> {
 		if self.discarded {
-			return_error!(transaction::transaction_rolled_back());
+			return Err(TransactionError::RolledBack.into());
 		}
 
 		let pending_writes = &mut self.pending_writes;
@@ -362,7 +362,7 @@ where
 		// Extra encoded for the version in key.
 		let size = self.size + pending_writes.estimate_size(&pending);
 		if cnt >= pending_writes.max_batch_entries() || size >= pending_writes.max_batch_size() {
-			return_error!(transaction::transaction_too_large());
+			return Err(TransactionError::TooLarge.into());
 		}
 
 		self.count = cnt;
@@ -411,7 +411,7 @@ where
 	))]
 	pub(crate) fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>)> {
 		if self.discarded {
-			return_error!(transaction::transaction_rolled_back());
+			return Err(TransactionError::RolledBack.into());
 		}
 
 		let conflict_manager = mem::take(&mut self.conflicts);
@@ -424,7 +424,7 @@ where
 				// Instead, we should return the conflict error
 				// to the user.
 				self.conflicts = conflicts;
-				return_error!(transaction::transaction_conflict())
+				return Err(TransactionError::Conflict.into());
 			}
 			CreateCommitResult::Success(version) => {
 				let pending_writes = mem::take(&mut self.pending_writes);

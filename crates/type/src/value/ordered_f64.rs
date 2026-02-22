@@ -11,10 +11,7 @@ use std::{
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 
-use crate::{
-	err,
-	error::{Error, diagnostic::number::nan_not_allowed},
-};
+use crate::error::{Error, TypeError};
 
 /// A wrapper around f64 that provides total ordering by rejecting NaN values.
 /// This type is sortable and can be used in collections that require Ord,
@@ -132,7 +129,7 @@ impl TryFrom<f64> for OrderedF64 {
 			f
 		};
 		if f.is_nan() {
-			err!(nan_not_allowed())
+			Err(TypeError::NanNotAllowed.into())
 		} else {
 			Ok(OrderedF64(normalized))
 		}

@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{error::diagnostic::ast::unexpected_token_error, return_error};
-
 use crate::{
 	ast::{
 		ast::{AstWindow, AstWindowConfig},
 		parse::{Parser, Precedence},
 	},
+	diagnostic::AstError,
 	token::{
 		keyword::Keyword::{By, Window, With},
 		operator::Operator::{CloseCurly, Colon, OpenCurly},
@@ -26,7 +25,11 @@ impl<'bump> Parser<'bump> {
 		// Parse aggregation expressions in main window block
 		loop {
 			if self.is_eof() {
-				return_error!(unexpected_token_error("}", self.current()?.fragment.to_owned()));
+				return Err(AstError::UnexpectedToken {
+					expected: "}".to_string(),
+					fragment: self.current()?.fragment.to_owned(),
+				}
+				.into());
 			}
 
 			if self.current()?.is_operator(CloseCurly) {
@@ -42,7 +45,11 @@ impl<'bump> Parser<'bump> {
 			} else if self.current()?.is_operator(CloseCurly) {
 				break;
 			} else {
-				return_error!(unexpected_token_error(", or }", self.current()?.fragment.to_owned()));
+				return Err(AstError::UnexpectedToken {
+					expected: ", or }".to_string(),
+					fragment: self.current()?.fragment.to_owned(),
+				}
+				.into());
 			}
 		}
 
@@ -89,7 +96,11 @@ impl<'bump> Parser<'bump> {
 
 		loop {
 			if self.is_eof() {
-				return_error!(unexpected_token_error("}", self.current()?.fragment.to_owned()));
+				return Err(AstError::UnexpectedToken {
+					expected: "}".to_string(),
+					fragment: self.current()?.fragment.to_owned(),
+				}
+				.into());
 			}
 
 			if self.current()?.is_operator(CloseCurly) {
@@ -98,10 +109,11 @@ impl<'bump> Parser<'bump> {
 
 			// Parse configuration parameter (identifier: value)
 			if !self.current()?.is_identifier() {
-				return_error!(unexpected_token_error(
-					"configuration parameter name",
-					self.current()?.fragment.to_owned()
-				));
+				return Err(AstError::UnexpectedToken {
+					expected: "configuration parameter name".to_string(),
+					fragment: self.current()?.fragment.to_owned(),
+				}
+				.into());
 			}
 
 			let key = self.parse_identifier_with_hyphens()?;
@@ -119,7 +131,11 @@ impl<'bump> Parser<'bump> {
 			} else if self.current()?.is_operator(CloseCurly) {
 				break;
 			} else {
-				return_error!(unexpected_token_error(", or }", self.current()?.fragment.to_owned()));
+				return Err(AstError::UnexpectedToken {
+					expected: ", or }".to_string(),
+					fragment: self.current()?.fragment.to_owned(),
+				}
+				.into());
 			}
 		}
 
@@ -135,7 +151,11 @@ impl<'bump> Parser<'bump> {
 
 		loop {
 			if self.is_eof() {
-				return_error!(unexpected_token_error("}", self.current()?.fragment.to_owned()));
+				return Err(AstError::UnexpectedToken {
+					expected: "}".to_string(),
+					fragment: self.current()?.fragment.to_owned(),
+				}
+				.into());
 			}
 
 			if self.current()?.is_operator(CloseCurly) {
@@ -151,7 +171,11 @@ impl<'bump> Parser<'bump> {
 			} else if self.current()?.is_operator(CloseCurly) {
 				break;
 			} else {
-				return_error!(unexpected_token_error(", or }", self.current()?.fragment.to_owned()));
+				return Err(AstError::UnexpectedToken {
+					expected: ", or }".to_string(),
+					fragment: self.current()?.fragment.to_owned(),
+				}
+				.into());
 			}
 		}
 

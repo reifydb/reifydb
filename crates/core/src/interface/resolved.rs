@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_type::{
-	error::diagnostic::number::NumberOfRangeColumnDescriptor,
+	error::NumberOutOfRangeDescriptor,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, r#type::Type},
 };
@@ -879,38 +879,42 @@ impl ResolvedColumn {
 	}
 }
 
-// Helper function to convert ResolvedColumn to NumberOfRangeColumnDescriptor
+// Helper function to convert ResolvedColumn to NumberOutOfRangeDescriptor
 // This is used in evaluation context for error reporting
-pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOfRangeColumnDescriptor<'_> {
+pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOutOfRangeDescriptor {
 	let (namespace, table) = match column.primitive() {
 		ResolvedPrimitive::Table(table) => {
-			(Some(table.namespace().name().as_ref()), Some(table.name().as_ref()))
+			(Some(table.namespace().name().to_string()), Some(table.name().to_string()))
 		}
 		ResolvedPrimitive::TableVirtual(table) => {
-			(Some(table.namespace().name().as_ref()), Some(table.name().as_ref()))
+			(Some(table.namespace().name().to_string()), Some(table.name().to_string()))
 		}
-		ResolvedPrimitive::RingBuffer(rb) => (Some(rb.namespace().name().as_ref()), Some(rb.name().as_ref())),
-		ResolvedPrimitive::View(view) => (Some(view.namespace().name().as_ref()), Some(view.name().as_ref())),
+		ResolvedPrimitive::RingBuffer(rb) => {
+			(Some(rb.namespace().name().to_string()), Some(rb.name().to_string()))
+		}
+		ResolvedPrimitive::View(view) => {
+			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
+		}
 		ResolvedPrimitive::DeferredView(view) => {
-			(Some(view.namespace().name().as_ref()), Some(view.name().as_ref()))
+			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
 		ResolvedPrimitive::TransactionalView(view) => {
-			(Some(view.namespace().name().as_ref()), Some(view.name().as_ref()))
+			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedPrimitive::Flow(flow) => (Some(flow.namespace().name().as_ref()), Some(flow.name().as_ref())),
+		ResolvedPrimitive::Flow(flow) => {
+			(Some(flow.namespace().name().to_string()), Some(flow.name().to_string()))
+		}
 		ResolvedPrimitive::Dictionary(dict) => {
-			(Some(dict.namespace().name().as_ref()), Some(dict.name().as_ref()))
+			(Some(dict.namespace().name().to_string()), Some(dict.name().to_string()))
 		}
 	};
 
-	let mut descriptor = NumberOfRangeColumnDescriptor::new();
-	if let Some(ns) = namespace {
-		descriptor = descriptor.with_namespace(ns);
+	NumberOutOfRangeDescriptor {
+		namespace,
+		table,
+		column: Some(column.name().to_string()),
+		column_type: Some(column.column_type()),
 	}
-	if let Some(tbl) = table {
-		descriptor = descriptor.with_table(tbl);
-	}
-	descriptor.with_column(column.name().as_ref()).with_column_type(column.column_type())
 }
 
 // Placeholder types - these will be defined properly in catalog

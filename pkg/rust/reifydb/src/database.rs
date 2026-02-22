@@ -22,9 +22,7 @@ use reifydb_sub_server_http::subsystem::HttpSubsystem;
 use reifydb_sub_server_ws::subsystem::WsSubsystem;
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
 use reifydb_subscription::cursor::SubscriptionCursor;
-use reifydb_type::{
-	Result, error::diagnostic::Diagnostic, fragment::Fragment, params::Params, value::frame::frame::Frame,
-};
+use reifydb_type::{Result, error::Diagnostic, fragment::Fragment, params::Params, value::frame::frame::Frame};
 use tracing::{debug, error, instrument, warn};
 
 use crate::{

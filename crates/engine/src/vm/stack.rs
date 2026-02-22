@@ -3,14 +3,11 @@
 
 use std::collections::HashMap;
 
-use diagnostic::runtime::{variable_is_immutable, variable_not_found};
 use reifydb_core::{internal, value::column::columns::Columns};
 use reifydb_rql::instruction::{CompiledClosureDef, CompiledFunctionDef, ScopeType};
-use reifydb_type::{
-	error,
-	error::{Error, diagnostic},
-	value::Value,
-};
+use reifydb_type::{error, value::Value};
+
+use crate::error::EngineError;
 
 /// The VM data stack for intermediate results
 #[derive(Debug, Clone)]
@@ -179,7 +176,10 @@ impl SymbolTable {
 		for scope in self.scopes.iter_mut().rev() {
 			if let Some(existing) = scope.variables.get(&name) {
 				if !existing.mutable {
-					return Err(Error(variable_is_immutable(&name)));
+					return Err(EngineError::VariableIsImmutable {
+						name: name.clone(),
+					}
+					.into());
 				}
 				let mutable = existing.mutable;
 				scope.variables.insert(
@@ -193,7 +193,10 @@ impl SymbolTable {
 			}
 		}
 
-		Err(Error(variable_not_found(&name)))
+		Err(EngineError::VariableNotFound {
+			name: name.clone(),
+		}
+		.into())
 	}
 
 	/// Set a variable specifically in the current scope

@@ -2,9 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	error::{Error, diagnostic::temporal},
+	error::{Error, TemporalKind, TypeError},
 	fragment::Fragment,
-	return_error,
 	value::Time,
 };
 
@@ -24,7 +23,12 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 			let offset = hours_len + 1 + minutes_len + 1; // +1 for each colon
 			let second_len = parts[2].len();
 			let sub_frag = fragment.sub_fragment(offset, second_len);
-			return_error!(temporal::invalid_second(sub_frag));
+			return Err(TypeError::Temporal {
+				kind: TemporalKind::InvalidSecond,
+				message: format!("invalid second value '{}'", sub_frag.text()),
+				fragment: sub_frag,
+			}
+			.into());
 		}
 		// If format is wrong, fall through to normal error handling
 	}
@@ -37,26 +41,46 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	let time_fragment_parts: Vec<&str> = time_str.split(':').collect();
 
 	if time_fragment_parts.len() != 3 {
-		return_error!(temporal::invalid_time_format(fragment));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidTimeFormat,
+			message: "invalid time format".into(),
+			fragment,
+		}
+		.into());
 	}
 
 	// Check for empty time parts first (before format validation)
 	let mut offset = 0;
 	if time_fragment_parts[0].trim().is_empty() {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
-		return_error!(temporal::empty_time_component(sub_frag));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::EmptyTimeComponent,
+			message: "empty time component".into(),
+			fragment: sub_frag,
+		}
+		.into());
 	}
 	offset += time_fragment_parts[0].len() + 1; // +1 for the colon
 
 	if time_fragment_parts[1].trim().is_empty() {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[1].len());
-		return_error!(temporal::empty_time_component(sub_frag));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::EmptyTimeComponent,
+			message: "empty time component".into(),
+			fragment: sub_frag,
+		}
+		.into());
 	}
 	offset += time_fragment_parts[1].len() + 1; // +1 for the colon
 
 	if time_fragment_parts[2].trim().is_empty() {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
-		return_error!(temporal::empty_time_component(sub_frag));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::EmptyTimeComponent,
+			message: "empty time component".into(),
+			fragment: sub_frag,
+		}
+		.into());
 	}
 
 	// Validate exactly 2 digits for HH:MM:SS format
@@ -65,14 +89,28 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	// Validate hour part (exactly 2 digits)
 	if time_fragment_parts[0].len() != 2 {
 		let frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
-		return_error!(temporal::invalid_time_component_format(frag, "hour"));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidTimeComponentFormat {
+				component: "hour".to_string(),
+			},
+			message: format!("invalid {} format '{}'", "hour", frag.text()),
+			fragment: frag,
+		}
+		.into());
 	}
 	offset += time_fragment_parts[0].len() + 1; // +1 for the colon
 
 	// Validate minute part (exactly 2 digits)
 	if time_fragment_parts[1].len() != 2 {
 		let frag = fragment.sub_fragment(offset, time_fragment_parts[1].len());
-		return_error!(temporal::invalid_time_component_format(frag, "minute"));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidTimeComponentFormat {
+				component: "minute".to_string(),
+			},
+			message: format!("invalid {} format '{}'", "minute", frag.text()),
+			fragment: frag,
+		}
+		.into());
 	}
 	offset += time_fragment_parts[1].len() + 1; // +1 for the colon
 
@@ -80,20 +118,39 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	let second_base = time_fragment_parts[2].split('.').next().unwrap();
 	if second_base.len() != 2 {
 		let frag = fragment.sub_fragment(offset, second_base.len());
-		return_error!(temporal::invalid_time_component_format(frag, "second"));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidTimeComponentFormat {
+				component: "second".to_string(),
+			},
+			message: format!("invalid {} format '{}'", "second", frag.text()),
+			fragment: frag,
+		}
+		.into());
 	}
 
 	// Reset offset calculation for parsing components
 	offset = 0;
 	let hour = time_fragment_parts[0].trim().parse::<u32>().map_err(|_| {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
-		Error(temporal::invalid_hour(sub_frag))
+		let err: Error = TypeError::Temporal {
+			kind: TemporalKind::InvalidHour,
+			message: format!("invalid hour value '{}'", sub_frag.text()),
+			fragment: sub_frag,
+		}
+		.into();
+		err
 	})?;
 	offset += time_fragment_parts[0].len() + 1;
 
 	let minute = time_fragment_parts[1].trim().parse::<u32>().map_err(|_| {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[1].len());
-		Error(temporal::invalid_minute(sub_frag))
+		let err: Error = TypeError::Temporal {
+			kind: TemporalKind::InvalidMinute,
+			message: format!("invalid minute value '{}'", sub_frag.text()),
+			fragment: sub_frag,
+		}
+		.into();
+		err
 	})?;
 	offset += time_fragment_parts[1].len() + 1;
 
@@ -103,12 +160,23 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 		let second_parts: Vec<&str> = seconds_with_fraction.split('.').collect();
 		if second_parts.len() != 2 {
 			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
-			return_error!(temporal::invalid_fractional_seconds(sub_frag));
+			return Err(TypeError::Temporal {
+				kind: TemporalKind::InvalidFractionalSeconds,
+				message: format!("invalid fractional seconds value '{}'", sub_frag.text()),
+				fragment: sub_frag,
+			}
+			.into());
 		}
 
 		let second = second_parts[0].parse::<u32>().map_err(|_| {
 			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
-			Error(temporal::invalid_second(sub_frag))
+			let err: Error = TypeError::Temporal {
+				kind: TemporalKind::InvalidSecond,
+				message: format!("invalid second value '{}'", sub_frag.text()),
+				fragment: sub_frag,
+			}
+			.into();
+			err
 		})?;
 		let fraction_str = second_parts[1];
 
@@ -121,18 +189,38 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 
 		let nanosecond = padded_fraction.parse::<u32>().map_err(|_| {
 			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
-			Error(temporal::invalid_fractional_seconds(sub_frag))
+			let err: Error = TypeError::Temporal {
+				kind: TemporalKind::InvalidFractionalSeconds,
+				message: format!("invalid fractional seconds value '{}'", sub_frag.text()),
+				fragment: sub_frag,
+			}
+			.into();
+			err
 		})?;
 		(second, nanosecond)
 	} else {
 		let second = seconds_with_fraction.parse::<u32>().map_err(|_| {
 			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
-			Error(temporal::invalid_second(sub_frag))
+			let err: Error = TypeError::Temporal {
+				kind: TemporalKind::InvalidSecond,
+				message: format!("invalid second value '{}'", sub_frag.text()),
+				fragment: sub_frag,
+			}
+			.into();
+			err
 		})?;
 		(second, 0)
 	};
 
-	Time::new(hour, minute, second, nanosecond).ok_or_else(|| Error(temporal::invalid_time_values(fragment)))
+	Time::new(hour, minute, second, nanosecond).ok_or_else(|| {
+		let err: Error = TypeError::Temporal {
+			kind: TemporalKind::InvalidTimeValues,
+			message: "invalid time values".into(),
+			fragment,
+		}
+		.into();
+		err
+	})
 }
 
 #[cfg(test)]

@@ -19,6 +19,7 @@ reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-wasm = { workspace = true }
 reifydb-sdk = { workspace = true }
+thiserror = { workspace = true }
 
 futures-util = { workspace = true }
 indexmap = { workspace = true }

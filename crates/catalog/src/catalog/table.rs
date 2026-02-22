@@ -3,7 +3,6 @@
 
 use reifydb_core::{
 	encoded::schema::Schema,
-	error::diagnostic::catalog::table_not_found,
 	interface::catalog::{
 		change::CatalogTrackTableChangeOperations,
 		column::ColumnDef,
@@ -29,6 +28,7 @@ use tracing::{instrument, warn};
 use crate::{
 	CatalogStore,
 	catalog::Catalog,
+	error::{CatalogError, CatalogObjectKind},
 	store::{
 		primary_key::create::PrimaryKeyToCreate,
 		table::create::{TableColumnToCreate as StoreTableColumnToCreate, TableToCreate as StoreTableToCreate},
@@ -264,8 +264,15 @@ impl Catalog {
 			.map(|ns| ns.name)
 			.unwrap_or_else(|| format!("namespace_{}", namespace));
 
-		self.find_table_by_name(txn, namespace, name.text())?
-			.ok_or_else(|| error!(table_not_found(name.clone(), &namespace_name, name.text())))
+		self.find_table_by_name(txn, namespace, name.text())?.ok_or_else(|| {
+			CatalogError::NotFound {
+				kind: CatalogObjectKind::Table,
+				namespace: namespace_name,
+				name: name.text().to_string(),
+				fragment: name.clone(),
+			}
+			.into()
+		})
 	}
 
 	#[instrument(name = "catalog::table::create", level = "debug", skip(self, txn, to_create))]

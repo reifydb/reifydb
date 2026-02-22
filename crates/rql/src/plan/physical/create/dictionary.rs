@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::catalog::namespace_not_found;
+use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	convert_data_type_with_constraints,
@@ -19,7 +19,6 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateDictionaryNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
-		// Get namespace name from the MaybeQualified type (join all segments for nested namespaces)
 		let namespace_name = if create.dictionary.namespace.is_empty() {
 			"default".to_string()
 		} else {
@@ -32,7 +31,13 @@ impl<'bump> Compiler<'bump> {
 			} else {
 				Fragment::internal("default".to_string())
 			};
-			return_error!(namespace_not_found(ns_fragment, &namespace_name));
+			return Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::Namespace,
+				namespace: namespace_name.to_string(),
+				name: String::new(),
+				fragment: ns_fragment,
+			}
+			.into());
 		};
 
 		let value_type = convert_data_type_with_constraints(&create.value_type)?.get_type();

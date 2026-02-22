@@ -4,11 +4,7 @@
 use ::uuid::Uuid;
 
 use crate::{
-	err,
-	error::{
-		Error,
-		diagnostic::uuid::{invalid_uuid4_format, invalid_uuid7_format},
-	},
+	error::{Error, TypeError},
 	fragment::Fragment,
 	value::uuid::{Uuid4, Uuid7},
 };
@@ -22,7 +18,10 @@ pub fn parse_uuid4(fragment: Fragment) -> Result<Uuid4, Error> {
 			return Ok(Uuid4(uuid));
 		}
 	}
-	err!(invalid_uuid4_format(fragment))
+	Err(TypeError::InvalidUuid4Format {
+		fragment,
+	}
+	.into())
 }
 
 pub fn parse_uuid7(fragment: Fragment) -> Result<Uuid7, Error> {
@@ -34,7 +33,10 @@ pub fn parse_uuid7(fragment: Fragment) -> Result<Uuid7, Error> {
 		}
 	}
 
-	err!(invalid_uuid7_format(fragment))
+	Err(TypeError::InvalidUuid7Format {
+		fragment,
+	}
+	.into())
 }
 
 #[cfg(test)]

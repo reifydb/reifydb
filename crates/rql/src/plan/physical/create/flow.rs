@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use PhysicalPlan::CreateFlow;
-use reifydb_core::error::diagnostic::catalog::namespace_not_found;
+use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_type::fragment::Fragment;
 
 use crate::plan::{
 	logical,
@@ -17,7 +17,6 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateFlowNode<'bump>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
-		// Get namespace name from the MaybeQualified type (join all segments for nested namespaces)
 		let namespace_name = if create.flow.namespace.is_empty() {
 			"default".to_string()
 		} else {
@@ -30,7 +29,13 @@ impl<'bump> Compiler<'bump> {
 			} else {
 				Fragment::internal("default".to_string())
 			};
-			return_error!(namespace_not_found(ns_fragment, &namespace_name));
+			return Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::Namespace,
+				namespace: namespace_name.to_string(),
+				name: String::new(),
+				fragment: ns_fragment,
+			}
+			.into());
 		};
 
 		let physical_plan = self.compile(rx, create.as_clause)?.unwrap();

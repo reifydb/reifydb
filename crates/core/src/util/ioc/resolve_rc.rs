@@ -7,10 +7,8 @@ use std::{
 	rc::Rc,
 };
 
-use reifydb_type::error;
-
 use super::IocContainer;
-use crate::error::diagnostic::internal::internal;
+use crate::internal_error;
 
 /// Single-threaded lazy resolution wrapper using OnceCell
 /// Can be cheaply cloned as it uses Rc internally
@@ -51,19 +49,16 @@ impl<T: Clone> LazyResolveRc<T> {
 			Ok(()) => {
 				// We successfully set it, return a reference
 				self.inner.value.get().ok_or_else(|| {
-					error!(internal(format!(
+					internal_error!(
 						"Failed to get value after setting in OnceCell for type {}",
 						type_name::<T>()
-					)))
+					)
 				})
 			}
 			Err(_) => {
 				// This shouldn't happen in single-threaded
 				// context
-				Err(error!(internal(format!(
-					"Failed to set value in OnceCell for type {}",
-					type_name::<T>()
-				))))
+				Err(internal_error!("Failed to set value in OnceCell for type {}", type_name::<T>()))
 			}
 		}
 	}

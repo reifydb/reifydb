@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::{delete_missing_filter_clause, delete_missing_target};
-use reifydb_type::return_error;
-
 use crate::{
 	ast::{
 		ast::{Ast, AstDelete},
@@ -11,6 +8,7 @@ use crate::{
 		parse::Parser,
 	},
 	bump::BumpBox,
+	error::RqlError,
 	token::{keyword::Keyword, token::TokenKind},
 };
 
@@ -20,7 +18,10 @@ impl<'bump> Parser<'bump> {
 
 		// 1. Parse target (REQUIRED) - namespace.table or just table
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
-			return_error!(delete_missing_target(token.fragment.to_owned()));
+			return Err(RqlError::DeleteMissingTarget {
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
 		}
 
 		let mut segments = self.parse_dot_separated_identifiers()?;
@@ -34,7 +35,10 @@ impl<'bump> Parser<'bump> {
 
 		// 2. Parse FILTER clause - REQUIRED
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Filter) {
-			return_error!(delete_missing_filter_clause(token.fragment.to_owned()));
+			return Err(RqlError::DeleteMissingFilterClause {
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
 		}
 		let filter = self.parse_filter()?;
 

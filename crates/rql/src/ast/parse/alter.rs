@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::error::{AstErrorKind, Error, TypeError};
+
 use crate::{
 	ast::{
 		ast::{AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstStatement},
@@ -157,12 +159,18 @@ impl<'bump> Parser<'bump> {
 			self.consume_keyword(Keyword::Resume)?;
 			AstAlterFlowAction::Resume
 		} else {
-			return Err(reifydb_type::error::Error(
-				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+			let fragment = self.current()?.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "RENAME, SET, PAUSE, or RESUME".to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
 					"RENAME, SET, PAUSE, or RESUME",
-					self.current()?.fragment.to_owned(),
+					fragment.text()
 				),
-			));
+				fragment,
+			}));
 		};
 
 		Ok(AstAlter::Flow(AstAlterFlow {

@@ -3,11 +3,12 @@
 
 use Value::*;
 use reifydb_type::{
-	error,
-	error::diagnostic,
+	error::Error,
 	fragment::Fragment,
 	value::{Value, try_from::TryFromValueCoerce, r#type::Type as ValueType},
 };
+
+use crate::error::CastError;
 
 /// Convert a Value to the given target type (widening/promotion).
 pub fn convert_to(value: Value, target: ValueType) -> crate::Result<Value> {
@@ -24,11 +25,11 @@ pub fn convert_to(value: Value, target: ValueType) -> crate::Result<Value> {
 		// To Float8
 		(_, ValueType::Float8) => {
 			let f = f64::try_from_value_coerce(&value).map_err(|_| {
-				error!(diagnostic::cast::unsupported_cast(
-					Fragment::internal(""),
-					value.get_type(),
-					target.clone(),
-				))
+				Error::from(CastError::UnsupportedCast {
+					fragment: Fragment::internal(""),
+					from_type: value.get_type(),
+					to_type: target.clone(),
+				})
 			})?;
 			Ok(Value::float8(f))
 		}
@@ -74,7 +75,12 @@ pub fn convert_to(value: Value, target: ValueType) -> crate::Result<Value> {
 		(_, ValueType::Utf8) => Ok(Utf8(format!("{}", value))),
 		// To Boolean
 		(_, ValueType::Boolean) => Ok(Boolean(value_is_truthy(&value))),
-		_ => Err(error!(diagnostic::cast::unsupported_cast(Fragment::internal(""), value.get_type(), target,))),
+		_ => Err(CastError::UnsupportedCast {
+			fragment: Fragment::internal(""),
+			from_type: value.get_type(),
+			to_type: target,
+		}
+		.into()),
 	}
 }
 
@@ -290,11 +296,12 @@ pub fn scalar_negate(value: Value) -> crate::Result<Value> {
 		Float4(v) => Value::float8(-(v.value() as f64)),
 		Float8(v) => Value::float8(-v.value()),
 		_ => {
-			return Err(error!(diagnostic::cast::unsupported_cast(
-				Fragment::internal(""),
-				value.get_type(),
-				ValueType::Float8,
-			)));
+			return Err(CastError::UnsupportedCast {
+				fragment: Fragment::internal(""),
+				from_type: value.get_type(),
+				to_type: ValueType::Float8,
+			}
+			.into());
 		}
 	})
 }

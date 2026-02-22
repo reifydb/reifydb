@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::catalog::table_column_policy_already_exists,
 	interface::catalog::{
 		id::ColumnId,
 		policy::{ColumnPolicy, ColumnPolicyKind},
@@ -10,10 +9,10 @@ use reifydb_core::{
 	key::column_policy::ColumnPolicyKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::return_error;
 
 use crate::{
 	CatalogStore,
+	error::CatalogError,
 	store::{column_policy::schema::column_policy, sequence::system::SystemSequence},
 };
 
@@ -29,7 +28,11 @@ impl CatalogStore {
 			if existing_kind == policy_kind {
 				let column = Self::get_column(&mut Transaction::Admin(&mut *txn), column)?;
 
-				return_error!(table_column_policy_already_exists(&policy.to_string(), &column.name));
+				return Err(CatalogError::ColumnPolicyAlreadyExists {
+					policy: policy.to_string(),
+					column: column.name,
+				}
+				.into());
 			}
 		}
 

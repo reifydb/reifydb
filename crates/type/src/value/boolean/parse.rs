@@ -2,13 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	err,
-	error::{
-		Error,
-		diagnostic::boolean::{empty_boolean_value, invalid_boolean_format, invalid_number_boolean},
-	},
+	error::{Error, TypeError},
 	fragment::Fragment,
-	return_error,
 };
 
 pub fn parse_bool(fragment: Fragment) -> Result<bool, Error> {
@@ -16,7 +11,10 @@ pub fn parse_bool(fragment: Fragment) -> Result<bool, Error> {
 	let value = fragment.text().trim();
 
 	if value.is_empty() {
-		return_error!(empty_boolean_value(fragment));
+		return Err(TypeError::EmptyBooleanValue {
+			fragment,
+		}
+		.into());
 	}
 
 	// Fast path: byte-level matching for common cases
@@ -38,9 +36,15 @@ pub fn parse_bool(fragment: Fragment) -> Result<bool, Error> {
 			// Check if the value contains numbers - if so, use
 			// numeric boolean diagnostic
 			if value.as_bytes().iter().any(|&b| b.is_ascii_digit()) {
-				err!(invalid_number_boolean(fragment))
+				Err(TypeError::InvalidNumberBoolean {
+					fragment,
+				}
+				.into())
 			} else {
-				err!(invalid_boolean_format(fragment))
+				Err(TypeError::InvalidBooleanFormat {
+					fragment,
+				}
+				.into())
 			}
 		}
 	}

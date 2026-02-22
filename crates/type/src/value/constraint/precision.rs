@@ -5,10 +5,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	error::{Error, diagnostic::number::decimal_precision_invalid},
-	return_error,
-};
+use crate::error::{Error, TypeError};
 
 /// Precision for a decimal type (minimum 1 total digit)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -28,7 +25,10 @@ impl Precision {
 	/// Create a new Precision value, returning an error if invalid
 	pub fn try_new(precision: u8) -> Result<Self, Error> {
 		if precision == 0 {
-			return_error!(decimal_precision_invalid(precision));
+			return Err(TypeError::DecimalPrecisionInvalid {
+				precision,
+			}
+			.into());
 		}
 		Ok(Self(precision))
 	}

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::ringbuffer::RingBufferColumnToCreate;
-use reifydb_core::error::diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch};
+use reifydb_catalog::{
+	catalog::ringbuffer::RingBufferColumnToCreate,
+	error::{CatalogError, CatalogObjectKind},
+};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	ast::ast::{AstColumnProperty, AstCreateRingBuffer},
@@ -20,7 +22,6 @@ impl<'bump> Compiler<'bump> {
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<RingBufferColumnToCreate> = vec![];
 
-		// Get the ring buffer's namespace for dictionary resolution
 		let ringbuffer_namespace_name = ast.ringbuffer.namespace.first().map(|n| n.text()).unwrap_or("default");
 
 		for col in ast.columns.into_iter() {
@@ -50,11 +51,13 @@ impl<'bump> Compiler<'bump> {
 						let Some(namespace) =
 							self.catalog.find_namespace_by_name(tx, dict_namespace_name)?
 						else {
-							return_error!(dictionary_not_found(
-								dict_ident.name.to_owned(),
-								dict_namespace_name,
-								dict_name,
-							));
+							return Err(CatalogError::NotFound {
+								kind: CatalogObjectKind::Dictionary,
+								namespace: dict_namespace_name.to_string(),
+								name: dict_name.to_string(),
+								fragment: dict_ident.name.to_owned(),
+							}
+							.into());
 						};
 
 						let Some(dictionary) = self.catalog.find_dictionary_by_name(
@@ -63,21 +66,24 @@ impl<'bump> Compiler<'bump> {
 							dict_name,
 						)?
 						else {
-							return_error!(dictionary_not_found(
-								dict_ident.name.to_owned(),
-								dict_namespace_name,
-								dict_name,
-							));
+							return Err(CatalogError::NotFound {
+								kind: CatalogObjectKind::Dictionary,
+								namespace: dict_namespace_name.to_string(),
+								name: dict_name.to_string(),
+								fragment: dict_ident.name.to_owned(),
+							}
+							.into());
 						};
 
 						if column_type != dictionary.value_type {
-							return_error!(dictionary_type_mismatch(
-								col.name.to_owned(),
-								&column_name,
+							return Err(CatalogError::DictionaryTypeMismatch {
+								column: column_name.clone(),
 								column_type,
-								dict_name,
-								dictionary.value_type,
-							));
+								dictionary: dict_name.to_string(),
+								dictionary_value_type: dictionary.value_type,
+								fragment: col.name.to_owned(),
+							}
+							.into());
 						}
 
 						dictionary_id = Some(dictionary.id);
@@ -101,7 +107,6 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		// Use the ring buffer identifier directly from AST
 		let ringbuffer = ast.ringbuffer;
 
 		Ok(LogicalPlan::CreateRingBuffer(CreateRingBufferNode {

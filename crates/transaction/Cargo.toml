@@ -22,6 +22,7 @@ reifydb-store-single = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-runtime = { workspace = true }
 
+thiserror = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 indexmap = { workspace = true }
 tracing = { workspace = true }

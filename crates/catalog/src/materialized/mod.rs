@@ -19,7 +19,6 @@ use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	error::diagnostic::catalog::virtual_table_already_exists,
 	interface::catalog::{
 		dictionary::DictionaryDef,
 		flow::{FlowDef, FlowId, FlowNodeId},
@@ -39,6 +38,8 @@ use reifydb_core::{
 	util::multi::MultiVersionContainer,
 };
 use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
+
+use crate::error::{CatalogError, CatalogObjectKind};
 
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
@@ -181,7 +182,13 @@ impl MaterializedCatalog {
 				.get(&def.namespace)
 				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
 				.unwrap_or_else(|| format!("{}", def.namespace.0));
-			return Err(reifydb_type::error::Error(virtual_table_already_exists(&ns_name, &def.name)));
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::VirtualTable,
+				namespace: ns_name,
+				name: def.name.clone(),
+				fragment: reifydb_type::fragment::Fragment::None,
+			}
+			.into());
 		}
 
 		self.vtable_user.insert(def.id, def.clone());
@@ -203,9 +210,13 @@ impl MaterializedCatalog {
 				.get(&namespace)
 				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
 				.unwrap_or_else(|| format!("{}", namespace.0));
-			Err(reifydb_type::error::Error(
-				reifydb_core::error::diagnostic::catalog::virtual_table_not_found(&ns_name, name),
-			))
+			Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::VirtualTable,
+				namespace: ns_name,
+				name: name.to_string(),
+				fragment: reifydb_type::fragment::Fragment::None,
+			}
+			.into())
 		}
 	}
 

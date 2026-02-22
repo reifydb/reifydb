@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::error::{AstErrorKind, Error, TypeError};
+
 use super::{Parser, Precedence};
 use crate::{
 	ast::ast::{Ast, AstAppend, AstAppendSource, AstFrom, AstStatement, AstVariable},
@@ -26,12 +28,18 @@ impl<'bump> Parser<'bump> {
 		// Parse target variable ($name)
 		let variable_token = self.current()?;
 		if !matches!(variable_token.kind, TokenKind::Variable) {
-			return Err(reifydb_type::error::Error(
-				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+			let fragment = variable_token.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "expected variable name starting with '$'".to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
 					"expected variable name starting with '$'",
-					variable_token.fragment.to_owned(),
+					fragment.text()
 				),
-			));
+				fragment,
+			}));
 		}
 		let var_token = self.advance()?;
 		let target = AstVariable {

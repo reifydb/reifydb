@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{error::diagnostic::number::NumberOfRangeColumnDescriptor, value::r#type::Type};
+use reifydb_type::{error::NumberOutOfRangeDescriptor, value::r#type::Type};
 
 use crate::interface::{
 	catalog::policy::ColumnPolicyKind,
@@ -45,8 +45,8 @@ impl TargetColumn {
 		}
 	}
 
-	/// Convert to NumberOfRangeColumnDescriptor for error reporting
-	pub fn to_number_descriptor(&self) -> Option<NumberOfRangeColumnDescriptor<'_>> {
+	/// Convert to NumberOutOfRangeDescriptor for error reporting
+	pub fn to_number_descriptor(&self) -> Option<NumberOutOfRangeDescriptor> {
 		match self {
 			Self::Resolved(col) => Some(resolved_column_to_number_descriptor(col)),
 			Self::Partial {
@@ -57,10 +57,10 @@ impl TargetColumn {
 			} => {
 				// Only create descriptor if we have at least some name information
 				if source_name.is_some() || column_name.is_some() {
-					Some(NumberOfRangeColumnDescriptor {
+					Some(NumberOutOfRangeDescriptor {
 						namespace: None,
-						table: source_name.as_deref(),
-						column: column_name.as_deref(),
+						table: source_name.clone(),
+						column: column_name.clone(),
 						column_type: Some(column_type.clone()),
 					})
 				} else {

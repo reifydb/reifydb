@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::table::TableColumnToCreate;
-use reifydb_core::error::diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch, sumtype_not_found};
-use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
-	error::diagnostic::ast::unrecognized_type, fragment::Fragment, return_error, value::constraint::TypeConstraint,
+use reifydb_catalog::{
+	catalog::table::TableColumnToCreate,
+	error::{CatalogError, CatalogObjectKind},
 };
+use reifydb_transaction::transaction::Transaction;
+use reifydb_type::{fragment::Fragment, value::constraint::TypeConstraint};
 
 use crate::{
 	ast::ast::{AstColumnProperty, AstCreateTable},
 	convert_data_type_with_constraints,
+	diagnostic::AstError,
 	plan::logical::{Compiler, CreateTableNode, LogicalPlan},
 };
 
@@ -22,7 +23,6 @@ impl<'bump> Compiler<'bump> {
 	) -> crate::Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 
-		// Get the table's namespace for dictionary resolution
 		let table_namespace_name = ast.table.namespace.first().map(|n| n.text()).unwrap_or("default");
 
 		for col in ast.columns.into_iter() {
@@ -44,16 +44,28 @@ impl<'bump> Compiler<'bump> {
 						.transpose()?;
 					match sumtype {
 						Some(def) => TypeConstraint::sumtype(def.id),
-						None => return_error!(sumtype_not_found(
-							Fragment::merge_all([namespace.to_owned(), name.to_owned()]),
-							ns_name,
-							type_name,
-						)),
+						None => {
+							return Err(CatalogError::NotFound {
+								kind: CatalogObjectKind::SumType,
+								namespace: ns_name.to_string(),
+								name: type_name.to_string(),
+								fragment: Fragment::merge_all([
+									namespace.to_owned(),
+									name.to_owned(),
+								]),
+							}
+							.into());
+						}
 					}
 				}
 				_ => match convert_data_type_with_constraints(&col.ty) {
 					Ok(c) => c,
-					Err(_) => return_error!(unrecognized_type(col.ty.name_fragment().to_owned())),
+					Err(_) => {
+						return Err(AstError::UnrecognizedType {
+							fragment: col.ty.name_fragment().to_owned(),
+						}
+						.into());
+					}
 				},
 			};
 			let column_type = constraint.get_type();
@@ -80,11 +92,13 @@ impl<'bump> Compiler<'bump> {
 						let Some(namespace) =
 							self.catalog.find_namespace_by_name(tx, dict_namespace_name)?
 						else {
-							return_error!(dictionary_not_found(
-								dict_ident.name.to_owned(),
-								dict_namespace_name,
-								dict_name,
-							));
+							return Err(CatalogError::NotFound {
+								kind: CatalogObjectKind::Dictionary,
+								namespace: dict_namespace_name.to_string(),
+								name: dict_name.to_string(),
+								fragment: dict_ident.name.to_owned(),
+							}
+							.into());
 						};
 
 						let Some(dictionary) = self.catalog.find_dictionary_by_name(
@@ -93,21 +107,24 @@ impl<'bump> Compiler<'bump> {
 							dict_name,
 						)?
 						else {
-							return_error!(dictionary_not_found(
-								dict_ident.name.to_owned(),
-								dict_namespace_name,
-								dict_name,
-							));
+							return Err(CatalogError::NotFound {
+								kind: CatalogObjectKind::Dictionary,
+								namespace: dict_namespace_name.to_string(),
+								name: dict_name.to_string(),
+								fragment: dict_ident.name.to_owned(),
+							}
+							.into());
 						};
 
 						if column_type != dictionary.value_type {
-							return_error!(dictionary_type_mismatch(
-								col.name.to_owned(),
-								&column_name,
+							return Err(CatalogError::DictionaryTypeMismatch {
+								column: column_name.clone(),
 								column_type,
-								dict_name,
-								dictionary.value_type,
-							));
+								dictionary: dict_name.to_string(),
+								dictionary_value_type: dictionary.value_type,
+								fragment: col.name.to_owned(),
+							}
+							.into());
 						}
 
 						dictionary_id = Some(dictionary.id);
@@ -131,7 +148,6 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		// Use the table identifier directly from AST
 		let table = ast.table;
 
 		Ok(LogicalPlan::CreateTable(CreateTableNode {

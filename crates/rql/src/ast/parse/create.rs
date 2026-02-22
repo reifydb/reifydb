@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::sort::SortDirection;
+use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
 	ast::{
@@ -58,12 +59,18 @@ impl<'bump> Parser<'bump> {
 
 		// CREATE OR REPLACE is only valid for FLOW currently
 		if or_replace {
-			return Err(reifydb_type::error::Error(
-				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+			let fragment = self.current()?.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "FLOW after CREATE OR REPLACE".to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
 					"FLOW after CREATE OR REPLACE",
-					self.current()?.fragment.to_owned(),
+					fragment.text()
 				),
-			));
+				fragment,
+			}));
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Namespace))?).is_some() {
@@ -276,12 +283,18 @@ impl<'bump> Parser<'bump> {
 			// Has column definitions
 			self.parse_columns()?
 		} else {
-			return Err(reifydb_type::error::Error(
-				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+			let fragment = self.current()?.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "'{' or 'AS'".to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
 					"'{' or 'AS'",
-					self.current()?.fragment.to_owned(),
+					fragment.text()
 				),
-			));
+				fragment,
+			}));
 		};
 
 		// Parse optional AS clause
@@ -326,14 +339,23 @@ impl<'bump> Parser<'bump> {
 
 		// Validation: schema-less subscriptions require AS clause
 		if columns.is_empty() && as_clause.is_none() {
-			return Err(reifydb_type::error::Error(
-				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+			let fragment = self
+				.current()
+				.ok()
+				.map(|t| t.fragment.to_owned())
+				.unwrap_or_else(|| reifydb_type::fragment::Fragment::internal("end of input"));
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "AS clause (schema-less CREATE SUBSCRIPTION requires AS clause)"
+						.to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
 					"AS clause (schema-less CREATE SUBSCRIPTION requires AS clause)",
-					self.current().ok().map(|t| t.fragment.to_owned()).unwrap_or_else(|| {
-						reifydb_type::fragment::Fragment::internal("end of input")
-					}),
+					fragment.text()
 				),
-			));
+				fragment,
+			}));
 		}
 
 		Ok(AstCreate::Subscription(AstCreateSubscription {
@@ -497,21 +519,33 @@ impl<'bump> Parser<'bump> {
 					let capacity_token = self.consume(TokenKind::Literal(Literal::Number))?;
 					capacity =
 						Some(capacity_token.fragment.text().parse::<u64>().map_err(|_| {
-							reifydb_type::error::Error(
-								reifydb_type::error::diagnostic::ast::unexpected_token_error(
+							let fragment = capacity_token.fragment.to_owned();
+							Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "valid capacity number".to_string(),
+								},
+								message: format!(
+									"Unexpected token: expected {}, got {}",
 									"valid capacity number",
-									capacity_token.fragment.to_owned(),
+									fragment.text()
 								),
-							)
+								fragment,
+							})
 						})?);
 				}
 				_other => {
-					return Err(reifydb_type::error::Error(
-						reifydb_type::error::diagnostic::ast::unexpected_token_error(
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'capacity'".to_string(),
+						},
+						message: format!(
+							"Unexpected token: expected {}, got {}",
 							"'capacity'",
-							key.fragment.to_owned(),
+							fragment.text()
 						),
-					));
+						fragment,
+					}));
 				}
 			}
 
@@ -529,13 +563,22 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::CloseCurly)?;
 
 		let capacity = capacity.ok_or_else(|| {
-			reifydb_type::error::Error(reifydb_type::error::diagnostic::ast::unexpected_token_error(
-				"'capacity' is required for RINGBUFFER",
-				self.current()
-					.ok()
-					.map(|t| t.fragment.to_owned())
-					.unwrap_or_else(|| reifydb_type::fragment::Fragment::internal("end of input")),
-			))
+			let fragment = self
+				.current()
+				.ok()
+				.map(|t| t.fragment.to_owned())
+				.unwrap_or_else(|| reifydb_type::fragment::Fragment::internal("end of input"));
+			Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "'capacity' is required for RINGBUFFER".to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
+					"'capacity' is required for RINGBUFFER",
+					fragment.text()
+				),
+				fragment,
+			})
 		})?;
 
 		let ringbuffer = MaybeQualifiedRingBufferIdentifier::new(name).with_namespace(namespace);
@@ -602,12 +645,18 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::CloseCurly)?;
 
 		if columns.is_empty() {
-			return Err(reifydb_type::error::Error(
-				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+			let fragment = self.current()?.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "at least one column in primary key".to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
 					"at least one column in primary key",
-					self.current()?.fragment.to_owned(),
+					fragment.text()
 				),
-			));
+				fragment,
+			}));
 		}
 
 		Ok(AstPrimaryKeyDef {
@@ -656,11 +705,12 @@ impl<'bump> Parser<'bump> {
 				"saturation" => AstPolicyKind::Saturation,
 				"default" => AstPolicyKind::Default,
 				_ => {
-					return Err(reifydb_type::error::Error(
-						reifydb_type::error::diagnostic::ast::invalid_policy_error(
-							kind_token.fragment.to_owned(),
-						),
-					));
+					let fragment = kind_token.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::InvalidPolicy,
+						message: format!("Invalid policy token: {}", fragment.text()),
+						fragment,
+					}));
 				}
 			};
 
@@ -943,11 +993,15 @@ impl<'bump> Parser<'bump> {
 						}
 					}
 					_ => {
-						return Err(reifydb_type::error::Error(
-							reifydb_type::error::diagnostic::ast::invalid_column_property_error(
-								current.fragment.to_owned(),
+						let fragment = current.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::InvalidColumnProperty,
+							message: format!(
+								"Invalid column property: {}",
+								fragment.text()
 							),
-						));
+							fragment,
+						}));
 					}
 				}
 			};
@@ -986,11 +1040,12 @@ impl<'bump> Parser<'bump> {
 					AstColumnProperty::Default(value)
 				}
 				_ => {
-					return Err(reifydb_type::error::Error(
-						reifydb_type::error::diagnostic::ast::invalid_column_property_error(
-							key_token.fragment.to_owned(),
-						),
-					));
+					let fragment = key_token.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::InvalidColumnProperty,
+						message: format!("Invalid column property: {}", fragment.text()),
+						fragment,
+					}));
 				}
 			};
 

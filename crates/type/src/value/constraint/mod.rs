@@ -4,10 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	error::{
-		Error,
-		diagnostic::constraint::{none_not_allowed, utf8_exceeds_max_bytes},
-	},
+	error::{ConstraintKind, Error, TypeError},
 	fragment::Fragment,
 	value::{
 		Value,
@@ -192,7 +189,17 @@ impl TypeConstraint {
 			if self.base_type.is_option() {
 				return Ok(());
 			} else {
-				return Err(crate::error!(none_not_allowed(Fragment::None, &self.base_type)));
+				return Err(TypeError::ConstraintViolation {
+					kind: ConstraintKind::NoneNotAllowed {
+						column_type: self.base_type.clone(),
+					},
+					message: format!(
+						"Cannot insert none into non-optional column of type {}. Declare the column as Option({}) to allow none values.",
+						self.base_type, self.base_type
+					),
+					fragment: Fragment::None,
+				}
+				.into());
 			}
 		}
 
@@ -203,11 +210,18 @@ impl TypeConstraint {
 					let byte_len = s.as_bytes().len();
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
-						return Err(crate::error!(utf8_exceeds_max_bytes(
-							Fragment::None,
-							byte_len,
-							max_value
-						)));
+						return Err(TypeError::ConstraintViolation {
+							kind: ConstraintKind::Utf8MaxBytes {
+								actual: byte_len,
+								max: max_value,
+							},
+							message: format!(
+								"UTF8 value exceeds maximum byte length: {} bytes (max: {} bytes)",
+								byte_len, max_value
+							),
+							fragment: Fragment::None,
+						}
+						.into());
 					}
 				}
 			}
@@ -216,13 +230,18 @@ impl TypeConstraint {
 					let byte_len = blob.len();
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
-						return Err(crate::error!(
-							crate::error::diagnostic::constraint::blob_exceeds_max_bytes(
-								Fragment::None,
-								byte_len,
-								max_value
-							)
-						));
+						return Err(TypeError::ConstraintViolation {
+							kind: ConstraintKind::BlobMaxBytes {
+								actual: byte_len,
+								max: max_value,
+							},
+							message: format!(
+								"BLOB value exceeds maximum byte length: {} bytes (max: {} bytes)",
+								byte_len, max_value
+							),
+							fragment: Fragment::None,
+						}
+						.into());
 					}
 				}
 			}
@@ -237,13 +256,18 @@ impl TypeConstraint {
 					let byte_len = (str_len * 415 / 1000) + 1; // Rough estimate
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
-						return Err(crate::error!(
-							crate::error::diagnostic::constraint::int_exceeds_max_bytes(
-								Fragment::None,
-								byte_len,
-								max_value
-							)
-						));
+						return Err(TypeError::ConstraintViolation {
+							kind: ConstraintKind::IntMaxBytes {
+								actual: byte_len,
+								max: max_value,
+							},
+							message: format!(
+								"INT value exceeds maximum byte length: {} bytes (max: {} bytes)",
+								byte_len, max_value
+							),
+							fragment: Fragment::None,
+						}
+						.into());
 					}
 				}
 			}
@@ -258,13 +282,18 @@ impl TypeConstraint {
 					let byte_len = (str_len * 415 / 1000) + 1; // Rough estimate
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
-						return Err(crate::error!(
-							crate::error::diagnostic::constraint::uint_exceeds_max_bytes(
-								Fragment::None,
-								byte_len,
-								max_value
-							)
-						));
+						return Err(TypeError::ConstraintViolation {
+							kind: ConstraintKind::UintMaxBytes {
+								actual: byte_len,
+								max: max_value,
+							},
+							message: format!(
+								"UINT value exceeds maximum byte length: {} bytes (max: {} bytes)",
+								byte_len, max_value
+							),
+							fragment: Fragment::None,
+						}
+						.into());
 					}
 				}
 			}
@@ -293,22 +322,32 @@ impl TypeConstraint {
 					let precision_value: u8 = (*precision).into();
 
 					if decimal_scale > scale_value {
-						return Err(crate::error!(
-							crate::error::diagnostic::constraint::decimal_exceeds_scale(
-								Fragment::None,
-								decimal_scale,
-								scale_value
-							)
-						));
+						return Err(TypeError::ConstraintViolation {
+							kind: ConstraintKind::DecimalScale {
+								actual: decimal_scale,
+								max: scale_value,
+							},
+							message: format!(
+								"DECIMAL value exceeds maximum scale: {} decimal places (max: {} decimal places)",
+								decimal_scale, scale_value
+							),
+							fragment: Fragment::None,
+						}
+						.into());
 					}
 					if decimal_precision > precision_value {
-						return Err(crate::error!(
-							crate::error::diagnostic::constraint::decimal_exceeds_precision(
-								Fragment::None,
-								decimal_precision,
-								precision_value
-							)
-						));
+						return Err(TypeError::ConstraintViolation {
+							kind: ConstraintKind::DecimalPrecision {
+								actual: decimal_precision,
+								max: precision_value,
+							},
+							message: format!(
+								"DECIMAL value exceeds maximum precision: {} digits (max: {} digits)",
+								decimal_precision, precision_value
+							),
+							fragment: Fragment::None,
+						}
+						.into());
 					}
 				}
 			}

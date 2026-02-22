@@ -3,10 +3,8 @@
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	error,
-	error::diagnostic::cast,
+	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
-	return_error,
 	value::{
 		container::number::NumberContainer,
 		decimal::{Decimal, parse::parse_decimal},
@@ -21,7 +19,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::expression::convert::Convert;
+use crate::{error::CastError, expression::convert::Convert};
 
 pub fn to_number(
 	ctx: impl Convert,
@@ -30,8 +28,13 @@ pub fn to_number(
 	lazy_fragment: impl LazyFragment,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
-		let source_type = data.get_type();
-		return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target));
+		let from = data.get_type();
+		return Err(TypeError::UnsupportedCast {
+			from,
+			to: target,
+			fragment: lazy_fragment.fragment(),
+		}
+		.into());
 	}
 
 	if data.get_type().is_number() {
@@ -56,8 +59,13 @@ pub fn to_number(
 		return float_to_integer(data, target, lazy_fragment);
 	}
 
-	let source_type = data.get_type();
-	return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+	let from = data.get_type();
+	return Err(TypeError::UnsupportedCast {
+		from,
+		to: target,
+		fragment: lazy_fragment.fragment(),
+	}
+	.into());
 }
 
 fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
@@ -133,12 +141,13 @@ fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFr
 					out.push::<Decimal>(decimal)
 				},
 				_ => {
-					let source_type = data.get_type();
-					return_error!(cast::unsupported_cast(
-						lazy_fragment.fragment(),
-						source_type,
-						target
-					));
+					let from = data.get_type();
+					return Err(TypeError::UnsupportedCast {
+						from,
+						to: target,
+						fragment: lazy_fragment.fragment(),
+					}
+					.into());
 				}
 			};
 
@@ -154,8 +163,13 @@ fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFr
 			Ok(out)
 		}
 		_ => {
-			let source_type = data.get_type();
-			return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+			let from = data.get_type();
+			Err(TypeError::UnsupportedCast {
+				from,
+				to: target,
+				fragment: lazy_fragment.fragment(),
+			}
+			.into())
 		}
 	}
 }
@@ -179,8 +193,13 @@ fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFra
 				..
 			} => f32_to_decimal_vec(container, target),
 			_ => {
-				let source_type = data.get_type();
-				return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+				let from = data.get_type();
+				Err(TypeError::UnsupportedCast {
+					from,
+					to: target,
+					fragment: lazy_fragment.fragment(),
+				}
+				.into())
 			}
 		},
 		ColumnData::Float8(container) => match &target {
@@ -200,13 +219,23 @@ fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFra
 				..
 			} => f64_to_decimal_vec(container, target),
 			_ => {
-				let source_type = data.get_type();
-				return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+				let from = data.get_type();
+				Err(TypeError::UnsupportedCast {
+					from,
+					to: target,
+					fragment: lazy_fragment.fragment(),
+				}
+				.into())
 			}
 		},
 		_ => {
-			let source_type = data.get_type();
-			return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+			let from = data.get_type();
+			Err(TypeError::UnsupportedCast {
+				from,
+				to: target,
+				fragment: lazy_fragment.fragment(),
+			}
+			.into())
 		}
 	}
 }
@@ -214,22 +243,23 @@ fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFra
 macro_rules! parse_and_push {
 	(parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
 		let result = parse_primitive_int::<$ty>($temp_fragment.clone()).map_err(|mut e| {
-			// Use the base_fragment (column reference) for
-			// the error position
 			e.0.with_fragment($base_fragment.clone());
-
-			error!(cast::invalid_number($base_fragment.clone(), $target_type, e.diagnostic(),))
+			Error::from(CastError::InvalidNumber {
+				fragment: $base_fragment.clone(),
+				target: $target_type,
+				cause: e.diagnostic(),
+			})
 		})?;
 		$out.push::<$ty>(result);
 	}};
 	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
 		let result = parse_primitive_uint::<$ty>($temp_fragment.clone()).map_err(|mut e| {
-			// Use the base_fragment (column
-			// reference) for
-			// the error position
 			e.0.with_fragment($base_fragment.clone());
-
-			error!(cast::invalid_number($base_fragment.clone(), $target_type, e.diagnostic(),))
+			Error::from(CastError::InvalidNumber {
+				fragment: $base_fragment.clone(),
+				target: $target_type,
+				cause: e.diagnostic(),
+			})
 		})?;
 		$out.push::<$ty>(result);
 	}};
@@ -353,11 +383,11 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 							let result = parse_primitive_int(temp_fragment.clone())
 								.map_err(|mut e| {
 									e.0.with_fragment(base_fragment.clone());
-									error!(cast::invalid_number(
-										base_fragment.clone(),
-										Type::Int,
-										e.diagnostic(),
-									))
+									Error::from(CastError::InvalidNumber {
+										fragment: base_fragment.clone(),
+										target: Type::Int,
+										cause: e.diagnostic(),
+									})
 								})?;
 							out.push::<Int>(result);
 						}
@@ -365,11 +395,11 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 							let result = parse_primitive_uint(temp_fragment.clone())
 								.map_err(|mut e| {
 									e.0.with_fragment(base_fragment.clone());
-									error!(cast::invalid_number(
-										base_fragment.clone(),
-										Type::Uint,
-										e.diagnostic(),
-									))
+									Error::from(CastError::InvalidNumber {
+										fragment: base_fragment.clone(),
+										target: Type::Uint,
+										cause: e.diagnostic(),
+									})
 								})?;
 							out.push::<Uint>(result);
 						}
@@ -380,22 +410,23 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 							let result = parse_decimal(temp_fragment.clone()).map_err(
 								|mut e| {
 									e.0.with_fragment(base_fragment.clone());
-									error!(cast::invalid_number(
-										base_fragment.clone(),
-										target_clone,
-										e.diagnostic(),
-									))
+									Error::from(CastError::InvalidNumber {
+										fragment: base_fragment.clone(),
+										target: target_clone,
+										cause: e.diagnostic(),
+									})
 								},
 							)?;
 							out.push::<Decimal>(result);
 						}
 						_ => {
-							let source_type = data.get_type();
-							return_error!(cast::unsupported_cast(
-								base_fragment.clone(),
-								source_type,
-								target
-							));
+							let from = data.get_type();
+							return Err(TypeError::UnsupportedCast {
+								from,
+								to: target,
+								fragment: base_fragment.clone(),
+							}
+							.into());
 						}
 					}
 				} else {
@@ -405,8 +436,13 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 			Ok(out)
 		}
 		_ => {
-			let source_type = data.get_type();
-			return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+			let from = data.get_type();
+			Err(TypeError::UnsupportedCast {
+				from,
+				to: target,
+				fragment: lazy_fragment.fragment(),
+			}
+			.into())
 		}
 	}
 }
@@ -432,44 +468,35 @@ fn text_to_float<'a>(
 				let temp_fragment = Fragment::internal(val);
 
 				match target.clone() {
-					Type::Float4 => {
-						out.push::<f32>(parse_float::<f32>(temp_fragment.clone()).map_err(
-							|mut e| {
-								// Use the base_fragment (column reference) for the
-								// error position
-								e.0.with_fragment(base_fragment.clone());
+					Type::Float4 => out.push::<f32>(
+						parse_float::<f32>(temp_fragment.clone()).map_err(|mut e| {
+							e.0.with_fragment(base_fragment.clone());
+							Error::from(CastError::InvalidNumber {
+								fragment: base_fragment.clone(),
+								target: Type::Float4,
+								cause: e.diagnostic(),
+							})
+						})?,
+					),
 
-								error!(cast::invalid_number(
-									base_fragment.clone(),
-									Type::Float4,
-									e.diagnostic(),
-								))
-							},
-						)?)
-					}
-
-					Type::Float8 => {
-						out.push::<f64>(parse_float::<f64>(temp_fragment).map_err(
-							|mut e| {
-								// Use the base_fragment (column reference) for the
-								// error position
-								e.0.with_fragment(base_fragment.clone());
-
-								error!(cast::invalid_number(
-									base_fragment.clone(),
-									Type::Float8,
-									e.diagnostic(),
-								))
-							},
-						)?)
-					}
+					Type::Float8 => out.push::<f64>(parse_float::<f64>(temp_fragment).map_err(
+						|mut e| {
+							e.0.with_fragment(base_fragment.clone());
+							Error::from(CastError::InvalidNumber {
+								fragment: base_fragment.clone(),
+								target: Type::Float8,
+								cause: e.diagnostic(),
+							})
+						},
+					)?),
 					_ => {
-						let source_type = column_data.get_type();
-						return_error!(cast::unsupported_cast(
-							base_fragment.clone(),
-							source_type,
-							target
-						));
+						let from = column_data.get_type();
+						return Err(TypeError::UnsupportedCast {
+							from,
+							to: target,
+							fragment: base_fragment.clone(),
+						}
+						.into());
 					}
 				}
 			} else {
@@ -478,8 +505,13 @@ fn text_to_float<'a>(
 		}
 		Ok(out)
 	} else {
-		let source_type = column_data.get_type();
-		return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+		let from = column_data.get_type();
+		Err(TypeError::UnsupportedCast {
+			from,
+			to: target,
+			fragment: lazy_fragment.fragment(),
+		}
+		.into())
 	}
 }
 
@@ -502,11 +534,11 @@ fn text_to_decimal<'a>(
 
 				let result = parse_decimal(temp_fragment.clone()).map_err(|mut e| {
 					e.0.with_fragment(base_fragment.clone());
-					error!(cast::invalid_number(
-						base_fragment.clone(),
-						target.clone(),
-						e.diagnostic(),
-					))
+					Error::from(CastError::InvalidNumber {
+						fragment: base_fragment.clone(),
+						target: target.clone(),
+						cause: e.diagnostic(),
+					})
 				})?;
 				out.push::<Decimal>(result);
 			} else {
@@ -515,8 +547,13 @@ fn text_to_decimal<'a>(
 		}
 		Ok(out)
 	} else {
-		let source_type = column_data.get_type();
-		return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+		let from = column_data.get_type();
+		Err(TypeError::UnsupportedCast {
+			from,
+			to: target,
+			fragment: lazy_fragment.fragment(),
+		}
+		.into())
 	}
 }
 
@@ -675,7 +712,12 @@ fn number_to_number(
 	lazy_fragment: impl LazyFragment,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
-		return_error!(cast::unsupported_cast(lazy_fragment.fragment(), data.get_type(), target,));
+		return Err(TypeError::UnsupportedCast {
+			from: data.get_type(),
+			to: target,
+			fragment: lazy_fragment.fragment(),
+		}
+		.into());
 	}
 
 	macro_rules! cast {
@@ -1197,8 +1239,13 @@ fn number_to_number(
 		}
 	}
 
-	let source_type = data.get_type();
-	return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+	let from = data.get_type();
+	Err(TypeError::UnsupportedCast {
+		from,
+		to: target,
+		fragment: lazy_fragment.fragment(),
+	}
+	.into())
 }
 
 pub(crate) fn convert_vec<'a, From, To>(

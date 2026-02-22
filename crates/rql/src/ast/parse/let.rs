@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::error::diagnostic::ast::unexpected_token_error;
+use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
 	ast::{
@@ -18,20 +18,36 @@ impl<'bump> Parser<'bump> {
 
 		// Expect 'let' keyword
 		if !self.current()?.is_keyword(Keyword::Let) {
-			return Err(reifydb_type::error::Error(unexpected_token_error(
-				"expected 'let'",
-				self.current()?.fragment.to_owned(),
-			)));
+			let fragment = self.current()?.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "expected 'let'".to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
+					"expected 'let'",
+					fragment.text()
+				),
+				fragment,
+			}));
 		}
 		self.advance()?; // consume 'let'
 
 		// Parse the variable name (must start with $)
 		let variable_token = self.current()?;
 		if !matches!(variable_token.kind, TokenKind::Variable) {
-			return Err(reifydb_type::error::Error(unexpected_token_error(
-				"expected variable name starting with '$'",
-				variable_token.fragment.to_owned(),
-			)));
+			let fragment = variable_token.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "expected variable name starting with '$'".to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
+					"expected variable name starting with '$'",
+					fragment.text()
+				),
+				fragment,
+			}));
 		}
 
 		let var_token = self.advance()?;

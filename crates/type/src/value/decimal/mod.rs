@@ -16,11 +16,13 @@ use serde::{
 };
 
 use super::{int::Int, uint::Uint};
-use crate::{error, error::Error, fragment::Fragment, value::r#type::Type};
+use crate::{
+	error::{Error, TypeError},
+	fragment::Fragment,
+	value::r#type::Type,
+};
 
 pub mod parse;
-
-use crate::error::diagnostic::number::invalid_number_format;
 
 #[repr(transparent)]
 #[derive(Clone, Debug)]
@@ -110,8 +112,13 @@ impl FromStr for Decimal {
 	type Err = Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let big_decimal = BigDecimalInner::from_str(s)
-			.map_err(|_| error!(invalid_number_format(Fragment::None, Type::Decimal)))?;
+		let big_decimal = BigDecimalInner::from_str(s).map_err(|_| -> Error {
+			TypeError::InvalidNumberFormat {
+				target: Type::Decimal,
+				fragment: Fragment::None,
+			}
+			.into()
+		})?;
 
 		Ok(Self(big_decimal))
 	}

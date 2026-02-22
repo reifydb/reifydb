@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::{err, error::diagnostic::cast, fragment::LazyFragment, value::r#type::Type};
+use reifydb_type::{error::TypeError, fragment::LazyFragment, value::r#type::Type};
 
 use super::cast_column_data;
 use crate::expression::context::EvalContext;
@@ -15,7 +15,14 @@ pub fn from_any(
 ) -> crate::Result<ColumnData> {
 	let any_container = match data {
 		ColumnData::Any(container) => container,
-		_ => return err!(cast::unsupported_cast(lazy_fragment.fragment(), data.get_type(), target)),
+		_ => {
+			return Err(TypeError::UnsupportedCast {
+				from: data.get_type(),
+				to: target,
+				fragment: lazy_fragment.fragment(),
+			}
+			.into());
+		}
 	};
 
 	if any_container.is_empty() {

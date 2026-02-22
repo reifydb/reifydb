@@ -17,6 +17,7 @@ reifydb-catalog = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

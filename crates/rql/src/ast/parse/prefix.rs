@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{error::diagnostic::ast, return_error};
-
 use crate::{
 	ast::{
 		ast::{Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator},
 		parse::{Parser, Precedence},
 	},
 	bump::{BumpBox, BumpFragment},
+	diagnostic::AstError,
 	token::{
 		operator::Operator,
 		token::{Literal::Number, Token, TokenKind},
@@ -55,9 +54,19 @@ impl<'bump> Parser<'bump> {
 				Operator::Minus => Ok(AstPrefixOperator::Negate(token)),
 				Operator::Bang => Ok(AstPrefixOperator::Not(token)),
 				Operator::Not => Ok(AstPrefixOperator::Not(token)),
-				_ => return_error!(ast::unsupported_token_error(token.fragment.to_owned())),
+				_ => {
+					return Err(AstError::UnsupportedToken {
+						fragment: token.fragment.to_owned(),
+					}
+					.into());
+				}
 			},
-			_ => return_error!(ast::unsupported_token_error(token.fragment.to_owned())),
+			_ => {
+				return Err(AstError::UnsupportedToken {
+					fragment: token.fragment.to_owned(),
+				}
+				.into());
+			}
 		}
 	}
 }

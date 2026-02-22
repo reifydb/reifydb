@@ -3,9 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::error::diagnostic::operation::{insert_mixed_row_types, insert_positional_wrong_length};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{err, fragment::Fragment};
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	ast::{
@@ -16,6 +15,7 @@ use crate::{
 		},
 	},
 	bump::BumpBox,
+	error::RqlError,
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
 		Compiler, InlineDataNode, InsertDictionaryNode, InsertRingBufferNode, InsertTableNode, LogicalPlan,
@@ -38,7 +38,10 @@ impl<'bump> Compiler<'bump> {
 			}) if list.nodes.iter().any(|n| matches!(n, Ast::Tuple(_))) => {
 				let has_inlines = list.nodes.iter().any(|n| matches!(n, Ast::Inline(_)));
 				if has_inlines {
-					return err!(insert_mixed_row_types(list.token.fragment.to_owned()));
+					return Err(RqlError::InsertMixedRowTypes {
+						fragment: list.token.fragment.to_owned(),
+					}
+					.into());
 				}
 				self.compile_positional_tuples(&unresolved_target, list.nodes, tx)?
 			}
@@ -60,11 +63,9 @@ impl<'bump> Compiler<'bump> {
 		let name = unresolved_target.name;
 		let namespace = unresolved_target.namespace;
 
-		// Try to find namespace
 		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_name(tx, namespace_name_str)? {
 			ns.id
 		} else {
-			// If namespace doesn't exist, default to table (will error during physical plan)
 			let mut target = MaybeQualifiedTableIdentifier::new(name);
 			if !namespace.is_empty() {
 				target = target.with_namespace(namespace);
@@ -75,7 +76,6 @@ impl<'bump> Compiler<'bump> {
 			}));
 		};
 
-		// Check if it's a ring buffer first
 		if self.catalog.find_ringbuffer_by_name(tx, namespace_id, target_name)?.is_some() {
 			let mut target = MaybeQualifiedRingBufferIdentifier::new(name);
 			if !namespace.is_empty() {
@@ -87,7 +87,6 @@ impl<'bump> Compiler<'bump> {
 			}));
 		}
 
-		// Check if it's a dictionary
 		if self.catalog.find_dictionary_by_name(tx, namespace_id, target_name)?.is_some() {
 			let mut target = MaybeQualifiedDictionaryIdentifier::new(name);
 			if !namespace.is_empty() {
@@ -99,7 +98,6 @@ impl<'bump> Compiler<'bump> {
 			}));
 		}
 
-		// Assume it's a table (will error during physical plan if not found)
 		let mut target = MaybeQualifiedTableIdentifier::new(name);
 		if !namespace.is_empty() {
 			target = target.with_namespace(namespace);
@@ -131,12 +129,13 @@ impl<'bump> Compiler<'bump> {
 			let tuple_len = tuple.nodes.len();
 
 			if tuple_len != column_names.len() {
-				return err!(insert_positional_wrong_length(
-					tuple.token.fragment.to_owned(),
-					column_names.len(),
-					tuple_len,
-					&column_names,
-				));
+				return Err(RqlError::InsertPositionalWrongLength {
+					fragment: tuple.token.fragment.to_owned(),
+					expected: column_names.len(),
+					actual: tuple_len,
+					column_names: column_names.clone(),
+				}
+				.into());
 			}
 
 			let mut alias_fields = Vec::with_capacity(tuple_len);

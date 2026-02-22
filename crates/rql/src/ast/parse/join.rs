@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::common::JoinType;
-use reifydb_type::{error::diagnostic::ast, return_error};
 
 use crate::{
 	ast::{
@@ -10,6 +9,7 @@ use crate::{
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
+	diagnostic::AstError,
 	token::{
 		keyword::Keyword::{Inner, Join, Left, Natural, Using},
 		operator::Operator::{And, As, CloseParen, OpenParen, Or},
@@ -120,7 +120,10 @@ impl<'bump> Parser<'bump> {
 			let first = self.parse_node(Precedence::None)?;
 			// Consume comma separator
 			if !self.current()?.is_separator(Comma) {
-				return_error!(ast::tokenize_error("expected ','".to_string()));
+				return Err(AstError::TokenizeError {
+					message: "expected ','".to_string(),
+				}
+				.into());
 			}
 			self.advance()?;
 			let second = self.parse_node(Precedence::None)?;

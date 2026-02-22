@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::error::{AstErrorKind, Error, TypeError};
+
 use crate::{
 	ast::{
 		ast::{AstDrop, AstDropFlow},
@@ -23,10 +25,18 @@ impl<'bump> Parser<'bump> {
 		}
 
 		// Future: Add other DROP variants here (TABLE, VIEW, etc.)
-		Err(reifydb_type::error::Error(reifydb_type::error::diagnostic::ast::unexpected_token_error(
-			"FLOW, TABLE, VIEW, or other droppable object",
-			self.current()?.fragment.to_owned(),
-		)))
+		let fragment = self.current()?.fragment.to_owned();
+		Err(Error::from(TypeError::Ast {
+			kind: AstErrorKind::UnexpectedToken {
+				expected: "FLOW, TABLE, VIEW, or other droppable object".to_string(),
+			},
+			message: format!(
+				"Unexpected token: expected {}, got {}",
+				"FLOW, TABLE, VIEW, or other droppable object",
+				fragment.text()
+			),
+			fragment,
+		}))
 	}
 
 	fn parse_drop_flow(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {

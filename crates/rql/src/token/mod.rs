@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use ast::tokenize_error;
-use reifydb_type::error::diagnostic::ast;
+use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 pub mod cursor;
 pub mod identifier;
@@ -14,7 +13,6 @@ pub mod token;
 pub mod variable;
 
 use cursor::Cursor;
-use reifydb_type::error::Error;
 use variable::scan_variable;
 
 use crate::{
@@ -116,12 +114,19 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> crate::Result<BumpVec<'b,
 				// Unable to token - report error with
 				// current character
 				let ch = cursor.peek().unwrap_or('?');
-				return Err(Error(tokenize_error(format!(
+				let message = format!(
 					"Unexpected character '{}' at line {}, column {}",
 					ch,
 					cursor.line(),
 					cursor.column()
-				))));
+				);
+				return Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::TokenizeError {
+						message: message.clone(),
+					},
+					message,
+					fragment: reifydb_type::fragment::Fragment::None,
+				}));
 			}
 		}
 	}

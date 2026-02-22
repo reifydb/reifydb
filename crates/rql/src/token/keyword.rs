@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_type::error::diagnostic::ast;
+use reifydb_type::error::{AstErrorKind, TypeError};
 
 use super::{
 	cursor::Cursor,
@@ -36,7 +36,14 @@ macro_rules! keyword {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,
-                    _ => reifydb_type::err!(ast::tokenize_error("not a keyword".to_string()))
+                    _ => {
+                        let message = "not a keyword".to_string();
+                        Err(reifydb_type::error::Error::from(TypeError::Ast {
+                            kind: AstErrorKind::TokenizeError { message: message.clone() },
+                            message,
+                            fragment: reifydb_type::fragment::Fragment::None,
+                        }))
+                    }
                 }
             }
         }

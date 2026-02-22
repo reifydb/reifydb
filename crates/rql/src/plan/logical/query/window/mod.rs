@@ -4,7 +4,6 @@
 use std::time::Duration;
 
 use reifydb_core::common::{WindowSize, WindowSlide, WindowTimeMode, WindowType};
-use reifydb_type::{error::diagnostic::ast::unexpected_token_error, return_error};
 
 use crate::{
 	Result,
@@ -13,6 +12,7 @@ use crate::{
 		AstLiteral::{Number, Text},
 		AstWindow,
 	},
+	diagnostic::AstError,
 	expression::{Expression, ExpressionCompiler},
 	plan::logical::{Compiler, LogicalPlan},
 };
@@ -92,10 +92,11 @@ impl<'bump> Compiler<'bump> {
 				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
 					config.size = Some(WindowSize::Duration(Self::parse_duration(&duration_str)?));
 				} else {
-					return_error!(unexpected_token_error(
-						"duration string",
-						config_item.value.token().fragment.to_owned()
-					));
+					return Err(AstError::UnexpectedToken {
+						expected: "duration string".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
 				}
 			}
 			"count" => {
@@ -103,10 +104,11 @@ impl<'bump> Compiler<'bump> {
 				if let Some(count_val) = Self::extract_literal_number(&config_item.value) {
 					config.size = Some(WindowSize::Count(count_val as u64));
 				} else {
-					return_error!(unexpected_token_error(
-						"number",
-						config_item.value.token().fragment.to_owned()
-					));
+					return Err(AstError::UnexpectedToken {
+						expected: "number".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
 				}
 			}
 			"slide" => {
@@ -116,10 +118,11 @@ impl<'bump> Compiler<'bump> {
 				} else if let Some(count_val) = Self::extract_literal_number(&config_item.value) {
 					config.slide = Some(WindowSlide::Count(count_val as u64));
 				} else {
-					return_error!(unexpected_token_error(
-						"duration string or number",
-						config_item.value.token().fragment.to_owned()
-					));
+					return Err(AstError::UnexpectedToken {
+						expected: "duration string or number".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
 				}
 			}
 			"timestamp_column" => {
@@ -131,69 +134,76 @@ impl<'bump> Compiler<'bump> {
 							Some(WindowType::Time(WindowTimeMode::EventTime(column_name)));
 					}
 				} else {
-					return_error!(unexpected_token_error(
-						"column name string",
-						config_item.value.token().fragment.to_owned()
-					));
+					return Err(AstError::UnexpectedToken {
+						expected: "column name string".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
 				}
 			}
 			"min_events" => {
 				if let Some(min_events_val) = Self::extract_literal_number(&config_item.value) {
 					if min_events_val < 1 {
-						return_error!(unexpected_token_error(
-							"min_events must be >= 1",
-							config_item.value.token().fragment.to_owned()
-						));
+						return Err(AstError::UnexpectedToken {
+							expected: "min_events must be >= 1".to_string(),
+							fragment: config_item.value.token().fragment.to_owned(),
+						}
+						.into());
 					}
 					config.min_events = Some(min_events_val as usize);
 				} else {
-					return_error!(unexpected_token_error(
-						"number",
-						config_item.value.token().fragment.to_owned()
-					));
+					return Err(AstError::UnexpectedToken {
+						expected: "number".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
 				}
 			}
 			"max_window_count" => {
 				if let Some(max_window_count_val) = Self::extract_literal_number(&config_item.value) {
 					if max_window_count_val < 1 {
-						return_error!(unexpected_token_error(
-							"max_window_count must be >= 1",
-							config_item.value.token().fragment.to_owned()
-						));
+						return Err(AstError::UnexpectedToken {
+							expected: "max_window_count must be >= 1".to_string(),
+							fragment: config_item.value.token().fragment.to_owned(),
+						}
+						.into());
 					}
 					config.max_window_count = Some(max_window_count_val as usize);
 				} else {
-					return_error!(unexpected_token_error(
-						"number",
-						config_item.value.token().fragment.to_owned()
-					));
+					return Err(AstError::UnexpectedToken {
+						expected: "number".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
 				}
 			}
 			"max_window_age" => {
 				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
 					config.max_window_age = Some(Self::parse_duration(&duration_str)?);
 				} else {
-					return_error!(unexpected_token_error(
-						"duration string",
-						config_item.value.token().fragment.to_owned()
-					));
+					return Err(AstError::UnexpectedToken {
+						expected: "duration string".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
 				}
 			}
 			"rolling" => {
 				if let Some(rolling_val) = Self::extract_literal_boolean(&config_item.value) {
 					config.is_rolling = rolling_val;
 				} else {
-					return_error!(unexpected_token_error(
-						"boolean value",
-						config_item.value.token().fragment.to_owned()
-					));
+					return Err(AstError::UnexpectedToken {
+						expected: "boolean value".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
 				}
 			}
 			_ => {
-				return_error!(unexpected_token_error(
-					"interval, count, slide, timestamp_column, min_events, max_window_count, max_window_age, or rolling",
-					config_item.key.token.fragment.to_owned()
-				));
+				return Err(AstError::UnexpectedToken {
+					expected: "interval, count, slide, timestamp_column, min_events, max_window_count, max_window_age, or rolling".to_string(),
+					fragment: config_item.key.token.fragment.to_owned(),
+				}.into());
 			}
 		}
 		Ok(())
@@ -206,22 +216,18 @@ impl<'bump> Compiler<'bump> {
 		// Handle milliseconds suffix "ms"
 		if duration_str.ends_with("ms") {
 			let number_part = &duration_str[..duration_str.len() - 2];
-			let number: u64 = number_part.parse().map_err(|_| {
-				reifydb_type::error::Error(reifydb_core::error::diagnostic::internal::internal(
-					"Invalid duration number",
-				))
-			})?;
+			let number: u64 = number_part
+				.parse()
+				.map_err(|_| reifydb_core::internal_error!("Invalid duration number"))?;
 			return Ok(Duration::from_millis(number));
 		}
 
 		// Handle single character suffixes
 		if let Some(suffix) = duration_str.chars().last() {
 			let number_part = &duration_str[..duration_str.len() - 1];
-			let number: u64 = number_part.parse().map_err(|_| {
-				reifydb_type::error::Error(reifydb_core::error::diagnostic::internal::internal(
-					"Invalid duration number",
-				))
-			})?;
+			let number: u64 = number_part
+				.parse()
+				.map_err(|_| reifydb_core::internal_error!("Invalid duration number"))?;
 
 			let duration = match suffix {
 				's' => Duration::from_secs(number),
@@ -229,19 +235,13 @@ impl<'bump> Compiler<'bump> {
 				'h' => Duration::from_secs(number * 3600),
 				'd' => Duration::from_secs(number * 86400),
 				_ => {
-					return Err(reifydb_type::error::Error(
-						reifydb_core::error::diagnostic::internal::internal(
-							"Invalid duration suffix",
-						),
-					));
+					return Err(reifydb_core::internal_error!("Invalid duration suffix"));
 				}
 			};
 
 			Ok(duration)
 		} else {
-			Err(reifydb_type::error::Error(reifydb_core::error::diagnostic::internal::internal(
-				"Invalid duration format",
-			)))
+			Err(reifydb_core::internal_error!("Invalid duration format"))
 		}
 	}
 

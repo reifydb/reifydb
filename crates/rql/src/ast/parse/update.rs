@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::{
-	update_empty_assignments_block, update_missing_assignments_block, update_missing_filter_clause,
-};
-use reifydb_type::return_error;
-
 use crate::{
 	ast::{
 		ast::{Ast, AstUpdate},
@@ -13,6 +8,7 @@ use crate::{
 		parse::Parser,
 	},
 	bump::BumpBox,
+	error::RqlError,
 	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
@@ -22,7 +18,10 @@ impl<'bump> Parser<'bump> {
 
 		// 1. Parse target (REQUIRED) - namespace.table or just table
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
-			return_error!(update_missing_assignments_block(token.fragment.to_owned()));
+			return Err(RqlError::UpdateMissingAssignmentsBlock {
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
 		}
 
 		let mut segments = self.parse_dot_separated_identifiers()?;
@@ -36,16 +35,25 @@ impl<'bump> Parser<'bump> {
 
 		// 2. Parse assignments block { name: 'value', ... } - REQUIRED
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
-			return_error!(update_missing_assignments_block(token.fragment.to_owned()));
+			return Err(RqlError::UpdateMissingAssignmentsBlock {
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
 		}
 		let (assignments, _) = self.parse_expressions(true, false)?;
 		if assignments.is_empty() {
-			return_error!(update_empty_assignments_block(token.fragment.to_owned()));
+			return Err(RqlError::UpdateEmptyAssignmentsBlock {
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
 		}
 
 		// 3. Parse FILTER clause - REQUIRED
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Filter) {
-			return_error!(update_missing_filter_clause(token.fragment.to_owned()));
+			return Err(RqlError::UpdateMissingFilterClause {
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
 		}
 		let filter = self.parse_filter()?;
 

@@ -21,12 +21,11 @@ use opentelemetry_sdk::{
 	},
 };
 use reifydb_core::{
-	error::diagnostic::subsystem::init_failed,
+	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_type::error;
 
 use crate::config::OtelConfig;
 
@@ -169,14 +168,25 @@ impl Subsystem for OtelSubsystem {
 		// Build the tracer provider (needs runtime context for tonic/hyper)
 		#[cfg(not(feature = "otlp"))]
 		{
-			return Err(error!(reifydb_core::error::diagnostic::subsystem::feature_disabled("otlp")));
+			let err: reifydb_type::error::Error = CoreError::SubsystemFeatureDisabled {
+				feature: "otlp".to_string(),
+			}
+			.into();
+			return Err(err);
 		}
 
 		#[cfg(feature = "otlp")]
 		let provider = {
 			// Enter runtime context for tonic/hyper initialization
 			let _guard = self.runtime.handle().enter();
-			self.build_otlp_tracer_provider().map_err(|e| error!(init_failed("OpenTelemetry", e)))?
+			self.build_otlp_tracer_provider().map_err(|e| {
+				let err: reifydb_type::error::Error = CoreError::SubsystemInitFailed {
+					subsystem: "OpenTelemetry".to_string(),
+					reason: e.to_string(),
+				}
+				.into();
+				err
+			})?
 		};
 
 		// Set the global tracer provider

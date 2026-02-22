@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::{aggregate_by_missing_braces, aggregate_missing_braces};
-use reifydb_type::return_error;
-
 use crate::{
 	ast::{
 		ast::AstAggregate,
 		parse::{Parser, Precedence},
 	},
+	error::{OperationKind, RqlError},
 	token::{
 		keyword::Keyword,
 		operator::Operator::{CloseCurly, OpenCurly},
@@ -24,7 +22,11 @@ impl<'bump> Parser<'bump> {
 
 		if !self.current()?.is_keyword(Keyword::By) {
 			if !self.current()?.is_operator(OpenCurly) {
-				return_error!(aggregate_missing_braces(token.fragment.to_owned()));
+				return Err(RqlError::OperatorMissingBraces {
+					kind: OperationKind::Aggregate,
+					fragment: token.fragment.to_owned(),
+				}
+				.into());
 			}
 
 			self.advance()?;
@@ -76,7 +78,11 @@ impl<'bump> Parser<'bump> {
 		let by_token = self.consume_keyword(Keyword::By)?;
 
 		if !self.current()?.is_operator(OpenCurly) {
-			return_error!(aggregate_by_missing_braces(by_token.fragment.to_owned()));
+			return Err(RqlError::OperatorMissingBraces {
+				kind: OperationKind::AggregateBy,
+				fragment: by_token.fragment.to_owned(),
+			}
+			.into());
 		}
 
 		self.advance()?;

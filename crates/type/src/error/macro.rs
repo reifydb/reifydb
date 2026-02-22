@@ -31,8 +31,8 @@ macro_rules! error {
 /// Err(Error(diagnostic_function(args).with_fragment(fragment)))`
 ///
 /// Examples:
-/// - `return_error!(nan_not_allowed())`
-/// - `return_error!(nan_not_allowed(), fragment)`
+/// - `return_error!(TypeError::NanNotAllowed.into_diagnostic())`
+/// - `return_error!(TypeError::NanNotAllowed.into_diagnostic(), fragment)`
 #[macro_export]
 macro_rules! return_error {
 	($diagnostic:expr) => {
@@ -55,8 +55,8 @@ macro_rules! return_error {
 /// `Err(Error(diagnostic_function(args).with_fragment(fragment)))`
 ///
 /// Examples:
-/// - `err!(nan_not_allowed())`
-/// - `err!(nan_not_allowed(), fragment)`
+/// - `err!(TypeError::NanNotAllowed.into_diagnostic())`
+/// - `err!(TypeError::NanNotAllowed.into_diagnostic(), fragment)`
 #[macro_export]
 macro_rules! err {
 	($diagnostic:expr) => {
@@ -74,14 +74,14 @@ pub mod tests {
 	use std::sync::Arc;
 
 	use crate::{
-		error::diagnostic::number::nan_not_allowed,
+		error::{IntoDiagnostic, TypeError},
 		fragment::{Fragment, StatementColumn, StatementLine},
 	};
 
 	#[test]
 	fn test_error_macro() {
 		// Test that error! macro creates correct Error type
-		let err = error!(nan_not_allowed());
+		let err = error!(TypeError::NanNotAllowed.into_diagnostic());
 
 		// Verify it creates the correct Error type
 		assert!(matches!(err, crate::error::Error(_)));
@@ -94,7 +94,7 @@ pub mod tests {
 	#[test]
 	fn test_return_error_macro() {
 		fn test_fn() -> Result<(), crate::error::Error> {
-			return_error!(nan_not_allowed());
+			return_error!(TypeError::NanNotAllowed.into_diagnostic());
 		}
 
 		let result = test_fn();
@@ -109,7 +109,7 @@ pub mod tests {
 	#[test]
 	fn test_err_macro() {
 		// Test that err! macro creates correct Result type with Err
-		let result: Result<(), crate::error::Error> = err!(nan_not_allowed());
+		let result: Result<(), crate::error::Error> = err!(TypeError::NanNotAllowed.into_diagnostic());
 
 		assert!(result.is_err());
 
@@ -130,7 +130,7 @@ pub mod tests {
 
 		// Test that error! macro with fragment creates correct Error
 		// type
-		let err = error!(nan_not_allowed(), fragment.clone());
+		let err = error!(TypeError::NanNotAllowed.into_diagnostic(), fragment.clone());
 
 		// Verify it creates the correct Error type
 		assert!(matches!(err, crate::error::Error(_)));
@@ -158,7 +158,7 @@ pub mod tests {
 				column: StatementColumn(25),
 				text: Arc::from("error location"),
 			};
-			return_error!(nan_not_allowed(), fragment);
+			return_error!(TypeError::NanNotAllowed.into_diagnostic(), fragment);
 		}
 
 		let result = test_fn();
@@ -190,7 +190,8 @@ pub mod tests {
 
 		// Test that err! macro with fragment creates correct Result
 		// type with Err
-		let result: Result<(), crate::error::Error> = err!(nan_not_allowed(), fragment);
+		let result: Result<(), crate::error::Error> =
+			err!(TypeError::NanNotAllowed.into_diagnostic(), fragment);
 
 		assert!(result.is_err());
 
@@ -220,7 +221,7 @@ pub mod tests {
 			text: Arc::from("closure fragment"),
 		};
 
-		let err = error!(nan_not_allowed(), get_fragment());
+		let err = error!(TypeError::NanNotAllowed.into_diagnostic(), get_fragment());
 		let diagnostic = err.diagnostic();
 		let fragment = diagnostic.fragment();
 		assert!(fragment.is_some());

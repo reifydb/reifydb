@@ -6,9 +6,8 @@ use std::{borrow::Cow, str::FromStr};
 use bigdecimal::BigDecimal as BigDecimalInner;
 
 use crate::{
-	error::{Error, diagnostic::number::invalid_number_format},
+	error::{Error, TypeError},
 	fragment::Fragment,
-	return_error,
 	value::{decimal::Decimal, r#type::Type},
 };
 
@@ -30,11 +29,20 @@ pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, Error> {
 	};
 
 	if value.is_empty() {
-		return_error!(invalid_number_format(fragment_owned.clone(), Type::Decimal));
+		return Err(TypeError::InvalidNumberFormat {
+			target: Type::Decimal,
+			fragment: fragment_owned,
+		}
+		.into());
 	}
 
-	let big_decimal = BigDecimalInner::from_str(&value)
-		.map_err(|_| crate::error!(invalid_number_format(fragment_owned, Type::Decimal)))?;
+	let big_decimal = BigDecimalInner::from_str(&value).map_err(|_| -> Error {
+		TypeError::InvalidNumberFormat {
+			target: Type::Decimal,
+			fragment: fragment_owned,
+		}
+		.into()
+	})?;
 
 	Ok(Decimal::new(big_decimal))
 }

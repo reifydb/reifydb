@@ -47,7 +47,6 @@ use std::cmp::PartialOrd;
 
 use Operator::*;
 use Separator::NewLine;
-use reifydb_type::{error::diagnostic::ast, return_error};
 
 use crate::{
 	ast::{
@@ -55,6 +54,7 @@ use crate::{
 		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
 	},
 	bump::{Bump, BumpBox},
+	diagnostic::AstError,
 	token::{
 		keyword::Keyword,
 		operator::Operator,
@@ -187,10 +187,11 @@ impl<'bump> Parser<'bump> {
 					self.current()?.kind,
 					TokenKind::Separator(Separator::Semicolon) | TokenKind::Separator(NewLine)
 				) {
-					return Err(reifydb_type::error::Error(ast::unexpected_token_error(
-						"semicolon or end of statement after DDL command",
-						self.current()?.fragment.to_owned(),
-					)));
+					return Err(AstError::UnexpectedToken {
+						expected: "semicolon or end of statement after DDL command".to_string(),
+						fragment: self.current()?.fragment.to_owned(),
+					}
+					.into());
 				}
 			}
 		}
@@ -357,7 +358,7 @@ impl<'bump> Parser<'bump> {
 
 	pub(crate) fn advance(&mut self) -> crate::Result<Token<'bump>> {
 		if self.position >= self.tokens.len() {
-			return Err(reifydb_type::error::Error(ast::unexpected_eof_error()));
+			return Err(AstError::UnexpectedEof.into());
 		}
 		let token = self.tokens[self.position];
 		self.position += 1;
@@ -409,13 +410,16 @@ impl<'bump> Parser<'bump> {
 				..token
 			})
 		} else {
-			Err(reifydb_type::error::Error(ast::expected_identifier_error(token.fragment.to_owned())))
+			Err(AstError::ExpectedIdentifier {
+				fragment: token.fragment.to_owned(),
+			}
+			.into())
 		}
 	}
 
 	pub(crate) fn current(&self) -> crate::Result<Token<'bump>> {
 		if self.position >= self.tokens.len() {
-			return Err(reifydb_type::error::Error(ast::unexpected_eof_error()));
+			return Err(AstError::UnexpectedEof.into());
 		}
 		Ok(self.tokens[self.position])
 	}
@@ -436,12 +440,16 @@ impl<'bump> Parser<'bump> {
 			// Use specific error for identifier expectations to
 			// match test format
 			if let TokenKind::Identifier = expected {
-				return_error!(ast::expected_identifier_error(got.fragment.to_owned()))
+				return Err(AstError::ExpectedIdentifier {
+					fragment: got.fragment.to_owned(),
+				}
+				.into());
 			} else {
-				return_error!(ast::unexpected_token_error(
-					&format!("{:?}", expected),
-					got.fragment.to_owned()
-				))
+				return Err(AstError::UnexpectedToken {
+					expected: format!("{:?}", expected),
+					fragment: got.fragment.to_owned(),
+				}
+				.into());
 			}
 		}
 	}
@@ -646,7 +654,10 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn try_parse_colon_alias(&mut self) -> crate::Result<Ast<'bump>> {
 		// Check if we have enough tokens from current position
 		if self.position + 1 >= self.tokens.len() {
-			return_error!(ast::unsupported_token_error(self.current()?.fragment.to_owned()));
+			return Err(AstError::UnsupportedToken {
+				fragment: self.current()?.fragment.to_owned(),
+			}
+			.into());
 		}
 
 		// Check if current token is identifier, keyword, or string literal (all can be used as field names)
@@ -655,12 +666,18 @@ impl<'bump> Parser<'bump> {
 			|| matches!(self.tokens[self.position].kind, TokenKind::Literal(Literal::Text));
 
 		if !is_valid_key {
-			return_error!(ast::unsupported_token_error(self.current()?.fragment.to_owned()));
+			return Err(AstError::UnsupportedToken {
+				fragment: self.current()?.fragment.to_owned(),
+			}
+			.into());
 		}
 
 		// Check if next token is colon
 		if !self.tokens[self.position + 1].is_operator(Operator::Colon) {
-			return_error!(ast::unsupported_token_error(self.current()?.fragment.to_owned()));
+			return Err(AstError::UnsupportedToken {
+				fragment: self.current()?.fragment.to_owned(),
+			}
+			.into());
 		}
 
 		// Parse the key (identifier, keyword, or string literal)
@@ -704,17 +721,13 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{
-		err,
-		error::{Error, diagnostic::ast},
-	};
-
 	use crate::{
 		ast::{
 			ast::Ast,
 			parse::{Parser, Precedence, Precedence::Term},
 		},
 		bump::Bump,
+		diagnostic::AstError,
 		token::{
 			operator::Operator::Plus,
 			separator::Separator::Semicolon,
@@ -732,7 +745,7 @@ pub mod tests {
 		let bump = Bump::new();
 		let mut parser = Parser::new(&bump, vec![]);
 		let result = parser.advance();
-		assert_eq!(result, err!(ast::unexpected_eof_error()))
+		assert_eq!(result, Err(AstError::UnexpectedEof.into()))
 	}
 
 	#[test]
@@ -760,7 +773,7 @@ pub mod tests {
 		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, tokens);
 		let err = parser.consume(Identifier).err().unwrap();
-		assert_eq!(err, Error(ast::unexpected_eof_error()))
+		assert_eq!(err, AstError::UnexpectedEof.into())
 	}
 
 	#[test]
@@ -824,7 +837,7 @@ pub mod tests {
 		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
 		let parser = Parser::new(&bump, tokens);
 		let result = parser.current();
-		assert_eq!(result, err!(ast::unexpected_eof_error()))
+		assert_eq!(result, Err(AstError::UnexpectedEof.into()))
 	}
 
 	#[test]
@@ -892,7 +905,7 @@ pub mod tests {
 		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
 		let parser = Parser::new(&bump, tokens);
 		let result = parser.current_expect(Separator(Semicolon));
-		assert_eq!(result, err!(ast::unexpected_eof_error()))
+		assert_eq!(result, Err(AstError::UnexpectedEof.into()))
 	}
 
 	#[test]

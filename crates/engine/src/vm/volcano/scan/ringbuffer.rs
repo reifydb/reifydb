@@ -94,11 +94,11 @@ impl RingBufferScan {
 
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-			reifydb_type::error!(reifydb_core::error::diagnostic::internal::internal(format!(
+			reifydb_core::internal_error!(
 				"Schema with fingerprint {:?} not found for ringbuffer {}",
 				fingerprint,
 				self.ringbuffer.def().name
-			)))
+			)
 		})?;
 
 		self.schema = Some(schema.clone());

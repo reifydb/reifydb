@@ -10,6 +10,7 @@ pub mod arena;
 pub mod bulk_insert;
 pub mod engine;
 pub mod environment;
+pub mod error;
 pub mod expression;
 pub mod flow;
 pub(crate) mod interceptor;

@@ -3,8 +3,7 @@
 
 use num_bigint::Sign;
 use reifydb_type::{
-	error,
-	error::diagnostic::serde::serde_keycode_error,
+	error::{Error, TypeError},
 	value::{
 		Value,
 		blob::Blob,
@@ -53,12 +52,14 @@ impl<'a> KeyDeserializer<'a> {
 
 	fn read_exact(&mut self, count: usize) -> reifydb_type::Result<&'a [u8]> {
 		if self.remaining() < count {
-			return Err(error!(serde_keycode_error(format!(
-				"unexpected end of key at position {}: need {} bytes, have {}",
-				self.position,
-				count,
-				self.remaining()
-			))));
+			return Err(Error::from(TypeError::SerdeKeycode {
+				message: format!(
+					"unexpected end of key at position {}: need {} bytes, have {}",
+					self.position,
+					count,
+					self.remaining()
+				),
+			}));
 		}
 		let start = self.position;
 		self.position += count;
@@ -134,20 +135,24 @@ impl<'a> KeyDeserializer<'a> {
 		let mut result = Vec::new();
 		loop {
 			if self.remaining() < 1 {
-				return Err(error!(serde_keycode_error(format!(
-					"unexpected end of key at position {}: bytes not terminated",
-					self.position
-				))));
+				return Err(Error::from(TypeError::SerdeKeycode {
+					message: format!(
+						"unexpected end of key at position {}: bytes not terminated",
+						self.position
+					),
+				}));
 			}
 			let byte = self.buffer[self.position];
 			self.position += 1;
 
 			if byte == 0xff {
 				if self.remaining() < 1 {
-					return Err(error!(serde_keycode_error(format!(
-						"unexpected end of key at position {}: incomplete escape sequence",
-						self.position
-					))));
+					return Err(Error::from(TypeError::SerdeKeycode {
+						message: format!(
+							"unexpected end of key at position {}: incomplete escape sequence",
+							self.position
+						),
+					}));
 				}
 				let next_byte = self.buffer[self.position];
 				self.position += 1;
@@ -157,11 +162,13 @@ impl<'a> KeyDeserializer<'a> {
 				} else if next_byte == 0xff {
 					break;
 				} else {
-					return Err(error!(serde_keycode_error(format!(
-						"invalid escape sequence at position {}: 0xff 0x{:02x}",
-						self.position - 1,
-						next_byte
-					))));
+					return Err(Error::from(TypeError::SerdeKeycode {
+						message: format!(
+							"invalid escape sequence at position {}: 0xff 0x{:02x}",
+							self.position - 1,
+							next_byte
+						),
+					}));
 				}
 			} else {
 				result.push(byte);
@@ -173,10 +180,9 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_str(&mut self) -> reifydb_type::Result<String> {
 		let bytes = self.read_bytes()?;
 		String::from_utf8(bytes).map_err(|e| {
-			error!(serde_keycode_error(format!(
-				"invalid UTF-8 in key at position {}: {}",
-				self.position, e
-			)))
+			Error::from(TypeError::SerdeKeycode {
+				message: format!("invalid UTF-8 in key at position {}: {}", self.position, e),
+			})
 		})
 	}
 
@@ -193,10 +199,12 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_date(&mut self) -> reifydb_type::Result<Date> {
 		let days = self.read_i32()?;
 		Date::from_days_since_epoch(days).ok_or_else(|| {
-			error!(serde_keycode_error(format!(
-				"invalid date at position {}: {} days since epoch",
-				self.position, days
-			)))
+			Error::from(TypeError::SerdeKeycode {
+				message: format!(
+					"invalid date at position {}: {} days since epoch",
+					self.position, days
+				),
+			})
 		})
 	}
 
@@ -208,10 +216,12 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_time(&mut self) -> reifydb_type::Result<Time> {
 		let nanos = self.read_u64()?;
 		Time::from_nanos_since_midnight(nanos).ok_or_else(|| {
-			error!(serde_keycode_error(format!(
-				"invalid time at position {}: {} nanos since midnight",
-				self.position, nanos
-			)))
+			Error::from(TypeError::SerdeKeycode {
+				message: format!(
+					"invalid time at position {}: {} nanos since midnight",
+					self.position, nanos
+				),
+			})
 		})
 	}
 
@@ -228,7 +238,9 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_identity_id(&mut self) -> reifydb_type::Result<IdentityId> {
 		let bytes = self.read_bytes()?;
 		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
-			error!(serde_keycode_error(format!("invalid IdentityId at position {}: {}", self.position, e)))
+			Error::from(TypeError::SerdeKeycode {
+				message: format!("invalid IdentityId at position {}: {}", self.position, e),
+			})
 		})?;
 		Ok(IdentityId::from(Uuid7::from(uuid)))
 	}
@@ -236,7 +248,9 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_uuid4(&mut self) -> reifydb_type::Result<Uuid4> {
 		let bytes = self.read_bytes()?;
 		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
-			error!(serde_keycode_error(format!("invalid Uuid4 at position {}: {}", self.position, e)))
+			Error::from(TypeError::SerdeKeycode {
+				message: format!("invalid Uuid4 at position {}: {}", self.position, e),
+			})
 		})?;
 		Ok(Uuid4::from(uuid))
 	}
@@ -244,7 +258,9 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_uuid7(&mut self) -> reifydb_type::Result<Uuid7> {
 		let bytes = self.read_bytes()?;
 		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
-			error!(serde_keycode_error(format!("invalid Uuid7 at position {}: {}", self.position, e)))
+			Error::from(TypeError::SerdeKeycode {
+				message: format!("invalid Uuid7 at position {}: {}", self.position, e),
+			})
 		})?;
 		Ok(Uuid7::from(uuid))
 	}
@@ -276,16 +292,20 @@ impl<'a> KeyDeserializer<'a> {
 	pub fn read_decimal(&mut self) -> reifydb_type::Result<Decimal> {
 		let s = self.read_str()?;
 		s.parse::<Decimal>().map_err(|e| {
-			error!(serde_keycode_error(format!("invalid Decimal at position {}: {}", self.position, e)))
+			Error::from(TypeError::SerdeKeycode {
+				message: format!("invalid Decimal at position {}: {}", self.position, e),
+			})
 		})
 	}
 
 	pub fn read_value(&mut self) -> reifydb_type::Result<reifydb_type::value::Value> {
 		if self.remaining() < 1 {
-			return Err(error!(serde_keycode_error(format!(
-				"unexpected end of key at position {}: cannot read value type",
-				self.position
-			))));
+			return Err(Error::from(TypeError::SerdeKeycode {
+				message: format!(
+					"unexpected end of key at position {}: cannot read value type",
+					self.position
+				),
+			}));
 		}
 
 		let type_marker = self.buffer[self.position];
@@ -306,19 +326,17 @@ impl<'a> KeyDeserializer<'a> {
 			0x02 => {
 				let f = self.read_f32()?;
 				Ok(Value::Float4(OrderedF32::try_from(f).map_err(|e| {
-					error!(serde_keycode_error(format!(
-						"invalid f32 at position {}: {}",
-						self.position, e
-					)))
+					Error::from(TypeError::SerdeKeycode {
+						message: format!("invalid f32 at position {}: {}", self.position, e),
+					})
 				})?))
 			}
 			0x03 => {
 				let f = self.read_f64()?;
 				Ok(Value::Float8(OrderedF64::try_from(f).map_err(|e| {
-					error!(serde_keycode_error(format!(
-						"invalid f64 at position {}: {}",
-						self.position, e
-					)))
+					Error::from(TypeError::SerdeKeycode {
+						message: format!("invalid f64 at position {}: {}", self.position, e),
+					})
 				})?))
 			}
 			0x04 => {
@@ -411,11 +429,13 @@ impl<'a> KeyDeserializer<'a> {
 				let d = self.read_decimal()?;
 				Ok(Value::Decimal(d))
 			}
-			_ => Err(error!(serde_keycode_error(format!(
-				"unknown value type marker 0x{:02x} at position {}",
-				type_marker,
-				self.position - 1
-			)))),
+			_ => Err(Error::from(TypeError::SerdeKeycode {
+				message: format!(
+					"unknown value type marker 0x{:02x} at position {}",
+					type_marker,
+					self.position - 1
+				),
+			})),
 		}
 	}
 

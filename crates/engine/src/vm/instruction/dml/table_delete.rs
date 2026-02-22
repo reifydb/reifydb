@@ -3,13 +3,9 @@
 
 use std::{collections::Bound::Included, sync::Arc};
 
+use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{
 	encoded::key::EncodedKeyRange,
-	error::diagnostic::{
-		catalog::{namespace_not_found, table_not_found},
-		engine,
-		internal::internal,
-	},
 	interface::{
 		catalog::id::IndexId,
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
@@ -23,15 +19,18 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::DeleteTableNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error, fragment::Fragment, params::Params, return_error, value::Value};
+use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 use super::primary_key;
-use crate::vm::{
-	services::Services,
-	stack::SymbolTable,
-	volcano::{
-		compile::compile,
-		query::{QueryContext, QueryNode},
+use crate::{
+	error::EngineError,
+	vm::{
+		services::Services,
+		stack::SymbolTable,
+		volcano::{
+			compile::compile,
+			query::{QueryContext, QueryNode},
+		},
 	},
 };
 
@@ -46,12 +45,23 @@ pub(crate) fn delete<'a>(
 		// Namespace and table explicitly specified
 		let namespace_name = target.namespace().name();
 		let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
-			return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
+			return Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::Namespace,
+				namespace: namespace_name.to_string(),
+				name: String::new(),
+				fragment: Fragment::internal(namespace_name),
+			}
+			.into());
 		};
 
 		let Some(table) = services.catalog.find_table_by_name(txn, namespace.id, target.name())? else {
-			let fragment = target.identifier().clone();
-			return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
+			return Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::Table,
+				namespace: namespace_name.to_string(),
+				name: target.name().to_string(),
+				fragment: target.identifier().clone(),
+			}
+			.into());
 		};
 
 		(namespace, table)
@@ -101,7 +111,7 @@ pub(crate) fn delete<'a>(
 		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 			// Get encoded numbers from the Columns structure
 			if columns.row_numbers.is_empty() {
-				return_error!(engine::missing_row_number_column());
+				return Err(EngineError::MissingRowNumberColumn.into());
 			}
 
 			// Extract RowNumber data
@@ -131,10 +141,11 @@ pub(crate) fn delete<'a>(
 				let fingerprint = row_values.fingerprint();
 				let schema =
 					services.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-						error!(reifydb_core::error::diagnostic::internal::internal(format!(
+						reifydb_core::internal_error!(
 							"Schema with fingerprint {:?} not found for table {}",
-							fingerprint, table.name
-						)))
+							fingerprint,
+							table.name
+						)
 					})?;
 				let index_key = primary_key::encode_primary_key(pk_def, &row_values, &table, &schema)?;
 
@@ -171,10 +182,11 @@ pub(crate) fn delete<'a>(
 				let fingerprint = multi.values.fingerprint();
 				let schema =
 					services.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-						error!(internal(format!(
+						reifydb_core::internal_error!(
 							"Schema with fingerprint {:?} not found for table {}",
-							fingerprint, table.name
-						)))
+							fingerprint,
+							table.name
+						)
 					})?;
 				let index_key =
 					primary_key::encode_primary_key(pk_def, &multi.values, &table, &schema)?;

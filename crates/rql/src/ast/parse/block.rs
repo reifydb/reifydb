@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::error::diagnostic::ast::unexpected_token_error;
+use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
 	ast::{ast::AstBlock, parse::Parser},
@@ -21,10 +21,18 @@ impl<'bump> Parser<'bump> {
 			self.skip_new_line()?;
 
 			if self.is_eof() {
-				return Err(reifydb_type::error::Error(unexpected_token_error(
-					"expected '}' to close block",
-					token.fragment.to_owned(),
-				)));
+				let fragment = token.fragment.to_owned();
+				return Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "expected '}' to close block".to_string(),
+					},
+					message: format!(
+						"Unexpected token: expected {}, got {}",
+						"expected '}' to close block",
+						fragment.text()
+					),
+					fragment,
+				}));
 			}
 
 			// Check for closing brace

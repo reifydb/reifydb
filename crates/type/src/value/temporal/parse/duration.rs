@@ -2,9 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	error::{Error, diagnostic::temporal},
+	error::{Error, TemporalKind, TypeError},
 	fragment::Fragment,
-	return_error,
 	value::Duration,
 };
 
@@ -28,12 +27,26 @@ fn validate_component_order(
 
 	if seen.contains(&key) {
 		let frag = fragment.sub_fragment(position, 1);
-		return_error!(temporal::duplicate_duration_component(frag, component));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::DuplicateDurationComponent {
+				component,
+			},
+			message: format!("duplicate duration component '{}'", component),
+			fragment: frag,
+		}
+		.into());
 	}
 
 	if current_order <= *last_order {
 		let frag = fragment.sub_fragment(position, 1);
-		return_error!(temporal::out_of_order_duration_component(frag, component));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::OutOfOrderDurationComponent {
+				component,
+			},
+			message: format!("duration component '{}' is out of order", component),
+			fragment: frag,
+		}
+		.into());
 	}
 
 	seen.insert(key);
@@ -47,7 +60,12 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 	// Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
 	if fragment_value.len() == 1 || !fragment_value.starts_with('P') || fragment_value == "PT" {
-		return_error!(temporal::invalid_duration_format(fragment));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidDurationFormat,
+			message: "invalid duration format".into(),
+			fragment,
+		}
+		.into());
 	}
 
 	let mut chars = fragment_value.chars().skip(1); // Skip 'P'
@@ -76,17 +94,38 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 			'Y' => {
 				if in_time_part {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::invalid_unit_in_context(unit_frag, 'Y', true));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::InvalidUnitInContext {
+							unit: 'Y',
+							in_time_part: true,
+						},
+						message: format!("invalid unit '{}' in {}", 'Y', "time part (after T)"),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 				if current_number.is_empty() {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::incomplete_duration_specification(unit_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::IncompleteDurationSpecification,
+						message: "incomplete duration specification".into(),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 				if current_number.contains('.') {
 					let start = current_position - current_number.len();
 					let dot_pos = start + current_number.find('.').unwrap();
 					let char_frag = fragment.sub_fragment(dot_pos, 1);
-					return_error!(temporal::invalid_duration_character(char_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::InvalidDurationCharacter,
+						message: format!(
+							"invalid character in duration '{}'",
+							char_frag.text()
+						),
+						fragment: char_frag,
+					}
+					.into());
 				}
 
 				validate_component_order(
@@ -101,7 +140,15 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let years: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error(temporal::invalid_duration_component_value(number_frag, 'Y'))
+					let err: Error = TypeError::Temporal {
+						kind: TemporalKind::InvalidDurationComponentValue {
+							unit: 'Y',
+						},
+						message: format!("invalid year value '{}'", number_frag.text()),
+						fragment: number_frag,
+					}
+					.into();
+					err
 				})?;
 				months += years * 12;
 				current_number.clear();
@@ -110,13 +157,26 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 			'M' => {
 				if current_number.is_empty() {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::incomplete_duration_specification(unit_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::IncompleteDurationSpecification,
+						message: "incomplete duration specification".into(),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 				if current_number.contains('.') {
 					let start = current_position - current_number.len();
 					let dot_pos = start + current_number.find('.').unwrap();
 					let char_frag = fragment.sub_fragment(dot_pos, 1);
-					return_error!(temporal::invalid_duration_character(char_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::InvalidDurationCharacter,
+						message: format!(
+							"invalid character in duration '{}'",
+							char_frag.text()
+						),
+						fragment: char_frag,
+					}
+					.into());
 				}
 
 				if in_time_part {
@@ -142,7 +202,15 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let value: i64 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error(temporal::invalid_duration_component_value(number_frag, 'M'))
+					let err: Error = TypeError::Temporal {
+						kind: TemporalKind::InvalidDurationComponentValue {
+							unit: 'M',
+						},
+						message: format!("invalid month/minute value '{}'", number_frag.text()),
+						fragment: number_frag,
+					}
+					.into();
+					err
 				})?;
 				if in_time_part {
 					nanos += value * 60 * 1_000_000_000;
@@ -155,17 +223,38 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 			'W' => {
 				if in_time_part {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::invalid_unit_in_context(unit_frag, 'W', true));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::InvalidUnitInContext {
+							unit: 'W',
+							in_time_part: true,
+						},
+						message: format!("invalid unit '{}' in {}", 'W', "time part (after T)"),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 				if current_number.is_empty() {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::incomplete_duration_specification(unit_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::IncompleteDurationSpecification,
+						message: "incomplete duration specification".into(),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 				if current_number.contains('.') {
 					let start = current_position - current_number.len();
 					let dot_pos = start + current_number.find('.').unwrap();
 					let char_frag = fragment.sub_fragment(dot_pos, 1);
-					return_error!(temporal::invalid_duration_character(char_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::InvalidDurationCharacter,
+						message: format!(
+							"invalid character in duration '{}'",
+							char_frag.text()
+						),
+						fragment: char_frag,
+					}
+					.into());
 				}
 
 				validate_component_order(
@@ -180,7 +269,15 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let weeks: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error(temporal::invalid_duration_component_value(number_frag, 'W'))
+					let err: Error = TypeError::Temporal {
+						kind: TemporalKind::InvalidDurationComponentValue {
+							unit: 'W',
+						},
+						message: format!("invalid week value '{}'", number_frag.text()),
+						fragment: number_frag,
+					}
+					.into();
+					err
 				})?;
 				days += weeks * 7;
 				current_number.clear();
@@ -189,17 +286,38 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 			'D' => {
 				if in_time_part {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::invalid_unit_in_context(unit_frag, 'D', true));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::InvalidUnitInContext {
+							unit: 'D',
+							in_time_part: true,
+						},
+						message: format!("invalid unit '{}' in {}", 'D', "time part (after T)"),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 				if current_number.is_empty() {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::incomplete_duration_specification(unit_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::IncompleteDurationSpecification,
+						message: "incomplete duration specification".into(),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 				if current_number.contains('.') {
 					let start = current_position - current_number.len();
 					let dot_pos = start + current_number.find('.').unwrap();
 					let char_frag = fragment.sub_fragment(dot_pos, 1);
-					return_error!(temporal::invalid_duration_character(char_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::InvalidDurationCharacter,
+						message: format!(
+							"invalid character in duration '{}'",
+							char_frag.text()
+						),
+						fragment: char_frag,
+					}
+					.into());
 				}
 
 				validate_component_order(
@@ -214,7 +332,15 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let day_value: i32 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error(temporal::invalid_duration_component_value(number_frag, 'D'))
+					let err: Error = TypeError::Temporal {
+						kind: TemporalKind::InvalidDurationComponentValue {
+							unit: 'D',
+						},
+						message: format!("invalid day value '{}'", number_frag.text()),
+						fragment: number_frag,
+					}
+					.into();
+					err
 				})?;
 				days += day_value;
 				current_number.clear();
@@ -223,17 +349,41 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 			'H' => {
 				if !in_time_part {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::invalid_unit_in_context(unit_frag, 'H', false));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::InvalidUnitInContext {
+							unit: 'H',
+							in_time_part: false,
+						},
+						message: format!(
+							"invalid unit '{}' in {}",
+							'H', "date part (before T)"
+						),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 				if current_number.is_empty() {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::incomplete_duration_specification(unit_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::IncompleteDurationSpecification,
+						message: "incomplete duration specification".into(),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 				if current_number.contains('.') {
 					let start = current_position - current_number.len();
 					let dot_pos = start + current_number.find('.').unwrap();
 					let char_frag = fragment.sub_fragment(dot_pos, 1);
-					return_error!(temporal::invalid_duration_character(char_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::InvalidDurationCharacter,
+						message: format!(
+							"invalid character in duration '{}'",
+							char_frag.text()
+						),
+						fragment: char_frag,
+					}
+					.into());
 				}
 
 				validate_component_order(
@@ -248,7 +398,15 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 				let hours: i64 = current_number.parse().map_err(|_| {
 					let start = current_position - current_number.len();
 					let number_frag = fragment.sub_fragment(start, current_number.len());
-					Error(temporal::invalid_duration_component_value(number_frag, 'H'))
+					let err: Error = TypeError::Temporal {
+						kind: TemporalKind::InvalidDurationComponentValue {
+							unit: 'H',
+						},
+						message: format!("invalid hour value '{}'", number_frag.text()),
+						fragment: number_frag,
+					}
+					.into();
+					err
 				})?;
 				nanos += hours * 60 * 60 * 1_000_000_000;
 				current_number.clear();
@@ -257,11 +415,27 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 			'S' => {
 				if !in_time_part {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::invalid_unit_in_context(unit_frag, 'S', false));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::InvalidUnitInContext {
+							unit: 'S',
+							in_time_part: false,
+						},
+						message: format!(
+							"invalid unit '{}' in {}",
+							'S', "date part (before T)"
+						),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 				if current_number.is_empty() {
 					let unit_frag = fragment.sub_fragment(current_position, 1);
-					return_error!(temporal::incomplete_duration_specification(unit_frag));
+					return Err(TypeError::Temporal {
+						kind: TemporalKind::IncompleteDurationSpecification,
+						message: "incomplete duration specification".into(),
+						fragment: unit_frag,
+					}
+					.into());
 				}
 
 				validate_component_order(
@@ -277,14 +451,36 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 					let seconds_float: f64 = current_number.parse().map_err(|_| {
 						let start = current_position - current_number.len();
 						let number_frag = fragment.sub_fragment(start, current_number.len());
-						Error(temporal::invalid_duration_component_value(number_frag, 'S'))
+						let err: Error = TypeError::Temporal {
+							kind: TemporalKind::InvalidDurationComponentValue {
+								unit: 'S',
+							},
+							message: format!(
+								"invalid second value '{}'",
+								number_frag.text()
+							),
+							fragment: number_frag,
+						}
+						.into();
+						err
 					})?;
 					nanos += (seconds_float * 1_000_000_000.0) as i64;
 				} else {
 					let seconds: i64 = current_number.parse().map_err(|_| {
 						let start = current_position - current_number.len();
 						let number_frag = fragment.sub_fragment(start, current_number.len());
-						Error(temporal::invalid_duration_component_value(number_frag, 'S'))
+						let err: Error = TypeError::Temporal {
+							kind: TemporalKind::InvalidDurationComponentValue {
+								unit: 'S',
+							},
+							message: format!(
+								"invalid second value '{}'",
+								number_frag.text()
+							),
+							fragment: number_frag,
+						}
+						.into();
+						err
 					})?;
 					nanos += seconds * 1_000_000_000;
 				}
@@ -294,7 +490,12 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 			}
 			_ => {
 				let char_frag = fragment.sub_fragment(current_position, 1);
-				return_error!(temporal::invalid_duration_character(char_frag));
+				return Err(TypeError::Temporal {
+					kind: TemporalKind::InvalidDurationCharacter,
+					message: format!("invalid character in duration '{}'", char_frag.text()),
+					fragment: char_frag,
+				}
+				.into());
 			}
 		}
 	}
@@ -302,7 +503,12 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 	if !current_number.is_empty() {
 		let start = current_position - current_number.len();
 		let number_frag = fragment.sub_fragment(start, current_number.len());
-		return_error!(temporal::incomplete_duration_specification(number_frag));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::IncompleteDurationSpecification,
+			message: "incomplete duration specification".into(),
+			fragment: number_frag,
+		}
+		.into());
 	}
 
 	Ok(Duration::new(months, days, nanos))

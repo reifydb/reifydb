@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 
 use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_type::{
-	error::diagnostic::Diagnostic,
+	error::Diagnostic,
 	fragment::Fragment,
 	return_error,
 	value::{

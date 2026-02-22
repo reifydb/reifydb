@@ -16,13 +16,12 @@ use std::{
 };
 
 use reifydb_core::{
-	error::diagnostic::subsystem::{address_unavailable, bind_failed},
+	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
-use reifydb_type::error;
 use tokio::{net::TcpListener, sync::oneshot};
 
 use crate::routes::router;
@@ -129,9 +128,22 @@ impl Subsystem for HttpSubsystem {
 
 		let addr = self.bind_addr.clone();
 		let runtime = self.runtime.clone();
-		let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| error!(bind_failed(&addr, e)))?;
+		let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| {
+			let err: reifydb_type::error::Error = CoreError::SubsystemBindFailed {
+				addr: addr.clone(),
+				reason: e.to_string(),
+			}
+			.into();
+			err
+		})?;
 
-		let actual_addr = listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
+		let actual_addr = listener.local_addr().map_err(|e| {
+			let err: reifydb_type::error::Error = CoreError::SubsystemAddressUnavailable {
+				reason: e.to_string(),
+			}
+			.into();
+			err
+		})?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("HTTP server bound to {}", actual_addr);
 

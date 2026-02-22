@@ -9,14 +9,13 @@ use reifydb_core::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},
-	error::diagnostic::transaction,
 	event::EventBus,
 	interface::{
 		WithEventBus,
 		store::{MultiVersionBatch, MultiVersionValues},
 	},
 };
-use reifydb_type::{Result, return_error};
+use reifydb_type::Result;
 use tracing::instrument;
 
 use crate::{
@@ -121,10 +120,10 @@ impl CommandTransaction {
 		match self.state {
 			TransactionState::Active => Ok(()),
 			TransactionState::Committed => {
-				return_error!(transaction::transaction_already_committed())
+				return Err(crate::error::TransactionError::AlreadyCommitted.into());
 			}
 			TransactionState::RolledBack => {
-				return_error!(transaction::transaction_already_rolled_back())
+				return Err(crate::error::TransactionError::AlreadyRolledBack.into());
 			}
 		}
 	}

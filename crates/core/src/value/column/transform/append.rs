@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::{
-	return_error,
 	storage::DataBitVec,
 	util::bitvec::BitVec,
 	value::{
@@ -24,14 +23,17 @@ use reifydb_type::{
 
 use crate::{
 	encoded::{encoded::EncodedValues, schema::Schema},
-	error::diagnostic::engine::frame_error,
+	error::CoreError,
 	value::column::{ColumnData, columns::Columns},
 };
 
 impl Columns {
 	pub fn append_columns(&mut self, other: Columns) -> reifydb_type::Result<()> {
 		if self.len() != other.len() {
-			return_error!(frame_error("mismatched column count".to_string()));
+			return Err(CoreError::FrameError {
+				message: "mismatched column count".to_string(),
+			}
+			.into());
 		}
 
 		// Append encoded numbers from the other columns
@@ -42,12 +44,15 @@ impl Columns {
 		let columns = self.columns.make_mut();
 		for (i, (l, r)) in columns.iter_mut().zip(other.columns.into_iter()).enumerate() {
 			if l.name().text() != r.name().text() {
-				return_error!(frame_error(format!(
-					"column name mismatch at index {}: '{}' vs '{}'",
-					i,
-					l.name().text(),
-					r.name().text(),
-				)));
+				return Err(CoreError::FrameError {
+					message: format!(
+						"column name mismatch at index {}: '{}' vs '{}'",
+						i,
+						l.name().text(),
+						r.name().text(),
+					),
+				}
+				.into());
 			}
 			l.extend(r)?;
 		}
@@ -63,22 +68,28 @@ impl Columns {
 		row_numbers: Vec<RowNumber>,
 	) -> reifydb_type::Result<()> {
 		if self.len() != schema.field_count() {
-			return_error!(frame_error(format!(
-				"mismatched column count: expected {}, got {}",
-				self.len(),
-				schema.field_count()
-			)));
+			return Err(CoreError::FrameError {
+				message: format!(
+					"mismatched column count: expected {}, got {}",
+					self.len(),
+					schema.field_count()
+				),
+			}
+			.into());
 		}
 
 		let rows: Vec<EncodedValues> = rows.into_iter().collect();
 
 		// Verify row_numbers length if provided
 		if !row_numbers.is_empty() && row_numbers.len() != rows.len() {
-			return_error!(frame_error(format!(
-				"row_numbers length {} does not match rows length {}",
-				row_numbers.len(),
-				rows.len()
-			)));
+			return Err(CoreError::FrameError {
+				message: format!(
+					"row_numbers length {} does not match rows length {}",
+					row_numbers.len(),
+					rows.len()
+				),
+			}
+			.into());
 		}
 
 		// Append row numbers if provided
@@ -387,12 +398,15 @@ impl Columns {
 					}
 				}
 				(_, v) => {
-					return_error!(frame_error(format!(
-						"type mismatch for column '{}'({}): incompatible with value {}",
-						column.name().text(),
-						column.data().get_type(),
-						v
-					)));
+					return Err(CoreError::FrameError {
+						message: format!(
+							"type mismatch for column '{}'({}): incompatible with value {}",
+							column.name().text(),
+							column.data().get_type(),
+							v
+						),
+					}
+					.into());
 				}
 			}
 		}

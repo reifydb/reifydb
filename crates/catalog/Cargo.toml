@@ -25,6 +25,7 @@ once_cell = {workspace = true}
 serde = { workspace = true }
 tracing = { workspace = true }
 serde_json.workspace = true
+thiserror = { workspace = true }
 
 [dev-dependencies]
 reifydb-engine = { workspace = true, features = ["tokio"] }

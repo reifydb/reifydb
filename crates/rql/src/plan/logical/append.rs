@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{err, error::diagnostic::Diagnostic, fragment::Fragment};
+use reifydb_type::{err, error::Diagnostic, fragment::Fragment};
 
 use crate::{
 	ast::ast::{Ast, AstAppend, AstAppendSource, AstList},

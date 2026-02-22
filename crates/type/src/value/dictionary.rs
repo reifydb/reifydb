@@ -10,7 +10,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 use super::r#type::Type;
-use crate::{error, error::diagnostic::dictionary::dictionary_entry_id_capacity_exceeded};
+use crate::error::TypeError;
 
 /// A dictionary entry ID that can be one of several unsigned integer sizes.
 /// The variant used depends on the dictionary's `id_type` configuration.
@@ -30,41 +30,45 @@ impl DictionaryEntryId {
 		match id_type {
 			Type::Uint1 => {
 				if value > u8::MAX as u128 {
-					return Err(error!(dictionary_entry_id_capacity_exceeded(
-						Type::Uint1,
+					return Err(TypeError::DictionaryCapacityExceeded {
+						id_type: Type::Uint1,
 						value,
-						u8::MAX as u128
-					)));
+						max_value: u8::MAX as u128,
+					}
+					.into());
 				}
 				Ok(Self::U1(value as u8))
 			}
 			Type::Uint2 => {
 				if value > u16::MAX as u128 {
-					return Err(error!(dictionary_entry_id_capacity_exceeded(
-						Type::Uint2,
+					return Err(TypeError::DictionaryCapacityExceeded {
+						id_type: Type::Uint2,
 						value,
-						u16::MAX as u128
-					)));
+						max_value: u16::MAX as u128,
+					}
+					.into());
 				}
 				Ok(Self::U2(value as u16))
 			}
 			Type::Uint4 => {
 				if value > u32::MAX as u128 {
-					return Err(error!(dictionary_entry_id_capacity_exceeded(
-						Type::Uint4,
+					return Err(TypeError::DictionaryCapacityExceeded {
+						id_type: Type::Uint4,
 						value,
-						u32::MAX as u128
-					)));
+						max_value: u32::MAX as u128,
+					}
+					.into());
 				}
 				Ok(Self::U4(value as u32))
 			}
 			Type::Uint8 => {
 				if value > u64::MAX as u128 {
-					return Err(error!(dictionary_entry_id_capacity_exceeded(
-						Type::Uint8,
+					return Err(TypeError::DictionaryCapacityExceeded {
+						id_type: Type::Uint8,
 						value,
-						u64::MAX as u128
-					)));
+						max_value: u64::MAX as u128,
+					}
+					.into());
 				}
 				Ok(Self::U8(value as u64))
 			}

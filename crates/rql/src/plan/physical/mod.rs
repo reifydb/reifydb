@@ -26,7 +26,6 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
-	error::diagnostic::function::internal_error,
 	fragment::Fragment,
 	return_error,
 	value::{constraint::TypeConstraint, r#type::Type},
@@ -35,6 +34,7 @@ use tracing::instrument;
 
 use crate::{
 	bump::{Bump, BumpBox},
+	error::RqlError,
 	expression::{ConstantExpression, Expression, Expression::Constant, VariableExpression},
 	nodes::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
@@ -1398,10 +1398,13 @@ impl<'bump> Compiler<'bump> {
 					)? {
 						self.bump_box(then_plan)
 					} else {
-						return Err(reifydb_type::error::Error(internal_error(
-							"compile_physical".into(),
-							"Failed to compile conditional then branch".to_string(),
-						)));
+						return Err(RqlError::InternalFunctionError {
+							name: "compile_physical".to_string(),
+							fragment: Fragment::internal("compile_physical"),
+							details: "Failed to compile conditional then branch"
+								.to_string(),
+						}
+						.into());
 					};
 
 					let mut else_ifs = Vec::new();
@@ -1413,11 +1416,13 @@ impl<'bump> Compiler<'bump> {
 						)? {
 							self.bump_box(plan)
 						} else {
-							return Err(reifydb_type::error::Error(internal_error(
-								"compile_physical".into(),
-								"Failed to compile conditional else if branch"
+							return Err(RqlError::InternalFunctionError {
+								name: "compile_physical".to_string(),
+								fragment: Fragment::internal("compile_physical"),
+								details: "Failed to compile conditional else if branch"
 									.to_string(),
-							)));
+							}
+							.into());
 						};
 						else_ifs.push(ElseIfBranch {
 							condition,
@@ -1425,21 +1430,23 @@ impl<'bump> Compiler<'bump> {
 						});
 					}
 
-					let else_branch = if let Some(else_logical) = conditional_node.else_branch {
-						if let Some(plan) = self.compile(
-							rx,
-							once(crate::bump::BumpBox::into_inner(else_logical)),
-						)? {
-							Some(self.bump_box(plan))
+					let else_branch =
+						if let Some(else_logical) = conditional_node.else_branch {
+							if let Some(plan) = self.compile(
+								rx,
+								once(crate::bump::BumpBox::into_inner(else_logical)),
+							)? {
+								Some(self.bump_box(plan))
+							} else {
+								return Err(RqlError::InternalFunctionError {
+							name: "compile_physical".to_string(),
+							fragment: Fragment::internal("compile_physical"),
+							details: "Failed to compile conditional else branch".to_string(),
+						}.into());
+							}
 						} else {
-							return Err(reifydb_type::error::Error(internal_error(
-								"compile_physical".into(),
-								"Failed to compile conditional else branch".to_string(),
-							)));
-						}
-					} else {
-						None
-					};
+							None
+						};
 
 					stack.push(PhysicalPlan::Conditional(ConditionalNode {
 						condition: conditional_node.condition,
@@ -1456,10 +1463,12 @@ impl<'bump> Compiler<'bump> {
 					)? {
 						self.bump_box(plan)
 					} else {
-						return Err(reifydb_type::error::Error(internal_error(
-							"compile_physical".into(),
-							"Failed to compile scalarize input".to_string(),
-						)));
+						return Err(RqlError::InternalFunctionError {
+							name: "compile_physical".to_string(),
+							fragment: Fragment::internal("compile_physical"),
+							details: "Failed to compile scalarize input".to_string(),
+						}
+						.into());
 					};
 
 					stack.push(PhysicalPlan::Scalarize(ScalarizeNode {

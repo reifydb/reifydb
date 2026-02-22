@@ -5,9 +5,8 @@ use std::{fmt::Display, sync::Arc};
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	error::diagnostic::{boolean::invalid_number_boolean, cast},
+	error::TypeError,
 	fragment::{Fragment, LazyFragment},
-	return_error,
 	value::{
 		boolean::parse::parse_bool,
 		container::{number::NumberContainer, utf8::Utf8Container},
@@ -35,8 +34,13 @@ pub fn to_boolean(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate:
 			..
 		} => from_utf8(container, lazy_fragment),
 		_ => {
-			let source_type = data.get_type();
-			return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, Type::Boolean))
+			let from = data.get_type();
+			Err(TypeError::UnsupportedCast {
+				from,
+				to: Type::Boolean,
+				fragment: lazy_fragment.fragment(),
+			}
+			.into())
 		}
 	}
 }
@@ -61,7 +65,10 @@ where
 						line: base_fragment.line(),
 						column: base_fragment.column(),
 					};
-					return_error!(invalid_number_boolean(error_fragment));
+					return Err(TypeError::InvalidNumberBoolean {
+						fragment: error_fragment,
+					}
+					.into());
 				}
 			}
 		} else {

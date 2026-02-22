@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::catalog::namespace_not_found,
 	interface::catalog::{change::CatalogTrackNamespaceChangeOperations, id::NamespaceId, namespace::NamespaceDef},
 	internal,
 };
@@ -13,7 +12,12 @@ use reifydb_transaction::{
 use reifydb_type::{error, fragment::Fragment};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, catalog::Catalog, store::namespace::create::NamespaceToCreate as StoreNamespaceToCreate};
+use crate::{
+	CatalogStore,
+	catalog::Catalog,
+	error::{CatalogError, CatalogObjectKind},
+	store::namespace::create::NamespaceToCreate as StoreNamespaceToCreate,
+};
 
 /// Namespace creation specification for the Catalog API.
 #[derive(Debug, Clone)]
@@ -206,8 +210,15 @@ impl Catalog {
 		name: impl Into<Fragment> + Send,
 	) -> crate::Result<NamespaceDef> {
 		let name = name.into();
-		self.find_namespace_by_name(txn, name.text())?
-			.ok_or_else(|| error!(namespace_not_found(name.clone(), name.text())))
+		self.find_namespace_by_name(txn, name.text())?.ok_or_else(|| {
+			CatalogError::NotFound {
+				kind: CatalogObjectKind::Namespace,
+				namespace: name.text().to_string(),
+				name: name.text().to_string(),
+				fragment: name.clone(),
+			}
+			.into()
+		})
 	}
 
 	#[instrument(name = "catalog::namespace::create", level = "debug", skip(self, txn, to_create))]

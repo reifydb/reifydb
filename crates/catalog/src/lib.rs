@@ -13,6 +13,7 @@ use reifydb_core::interface::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 pub mod catalog;
+pub mod error;
 pub mod materialized;
 pub mod schema;
 pub(crate) mod store;

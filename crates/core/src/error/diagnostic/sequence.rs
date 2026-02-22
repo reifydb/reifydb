@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::{
-	error::diagnostic::{Diagnostic, util::value_max},
+	error::{Diagnostic, util::value_max},
 	fragment::Fragment,
 	value::r#type::Type,
 };
