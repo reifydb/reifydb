@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-pub(crate) mod column;
+pub mod column;
 pub(crate) mod column_policy;
 pub(crate) mod dictionary;
 pub(crate) mod flow;

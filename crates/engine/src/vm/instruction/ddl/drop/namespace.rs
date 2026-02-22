@@ -11,6 +11,7 @@ use reifydb_type::{
 	value::{Value, constraint::Constraint},
 };
 
+use super::dependent::find_column_dependents;
 use crate::vm::services::Services;
 
 pub(crate) fn drop_namespace(
@@ -56,54 +57,40 @@ pub(crate) fn drop_namespace(
 
 	if !dictionary_ids.is_empty() || !sumtype_ids.is_empty() {
 		let columns = services.catalog.list_columns_all(&mut Transaction::Admin(txn))?;
-		let mut dependents = Vec::new();
 
-		for info in &columns {
-			// Skip columns in any namespace being dropped (the target + all descendants)
+		let mut dependents = find_column_dependents(&services.catalog, txn, &columns, |info| {
 			if descendant_ids.contains(&info.namespace) {
-				continue;
+				return None;
 			}
-
 			if let Some(dict_id) = info.column.dictionary_id {
 				if dictionary_ids.contains(&dict_id) {
-					let ns = services
-						.catalog
-						.find_namespace(&mut Transaction::Admin(txn), info.namespace)?;
-					let ns_name = ns.map(|n| n.name).unwrap_or_else(|| "?".to_string());
-					let dict_name = dictionaries
+					let name = dictionaries
 						.iter()
 						.find(|d| d.id == dict_id)
 						.map(|d| d.name.as_str())
 						.unwrap_or("?");
-					dependents.push(format!(
-						"column `{}` in {} `{}.{}` references dictionary `{}`",
-						info.column.name,
-						info.entity_kind,
-						ns_name,
-						info.entity_name,
-						dict_name
-					));
+					return Some(format!(" references dictionary `{}`", name));
 				}
 			}
+			None
+		})?;
 
+		dependents.extend(find_column_dependents(&services.catalog, txn, &columns, |info| {
+			if descendant_ids.contains(&info.namespace) {
+				return None;
+			}
 			if let Some(Constraint::SumType(id)) = info.column.constraint.constraint() {
 				if sumtype_ids.contains(id) {
-					let ns = services
-						.catalog
-						.find_namespace(&mut Transaction::Admin(txn), info.namespace)?;
-					let ns_name = ns.map(|n| n.name).unwrap_or_else(|| "?".to_string());
-					let st_name = sumtypes
+					let name = sumtypes
 						.iter()
 						.find(|s| s.id == *id)
 						.map(|s| s.name.as_str())
 						.unwrap_or("?");
-					dependents.push(format!(
-						"column `{}` in {} `{}.{}` references enum `{}`",
-						info.column.name, info.entity_kind, ns_name, info.entity_name, st_name
-					));
+					return Some(format!(" references enum `{}`", name));
 				}
 			}
-		}
+			None
+		})?);
 
 		if !dependents.is_empty() {
 			let dependents_str = dependents.join(", ");

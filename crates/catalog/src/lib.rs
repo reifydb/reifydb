@@ -15,7 +15,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 pub mod catalog;
 pub mod materialized;
 pub mod schema;
-pub(crate) mod store;
+pub mod store;
 pub mod system;
 pub mod test_utils;
 pub mod vtable;

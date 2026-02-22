@@ -9,6 +9,7 @@ use reifydb_type::{
 	value::{Value, constraint::Constraint},
 };
 
+use super::dependent::find_column_dependents;
 use crate::vm::services::Services;
 
 pub(crate) fn drop_sumtype(
@@ -28,21 +29,14 @@ pub(crate) fn drop_sumtype(
 
 	// Check for dependent columns across all entity types
 	let columns = services.catalog.list_columns_all(&mut Transaction::Admin(txn))?;
-	let mut dependents = Vec::new();
-	for info in &columns {
+	let dependents = find_column_dependents(&services.catalog, txn, &columns, |info| {
 		if let Some(Constraint::SumType(id)) = info.column.constraint.constraint() {
 			if *id == sumtype_id {
-				let ns = services
-					.catalog
-					.find_namespace(&mut Transaction::Admin(txn), info.namespace)?;
-				let ns_name = ns.map(|n| n.name).unwrap_or_else(|| "?".to_string());
-				dependents.push(format!(
-					"column `{}` in {} `{}.{}`",
-					info.column.name, info.entity_kind, ns_name, info.entity_name
-				));
+				return Some(String::new());
 			}
 		}
-	}
+		None
+	})?;
 	if !dependents.is_empty() {
 		let dependents_str = dependents.join(", ");
 		return_error!(sumtype_in_use(
