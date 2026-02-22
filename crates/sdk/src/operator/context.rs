@@ -5,10 +5,14 @@
 
 use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId};
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_type::{
+	params::Params,
+	value::{frame::frame::Frame, row_number::RowNumber},
+};
 
 use crate::{
 	catalog::Catalog,
+	error::Result,
 	state::{State, row::RowNumberProvider},
 	store::Store,
 };
@@ -61,5 +65,10 @@ impl OperatorContext {
 	pub fn get_or_create_row_number(&mut self, key: &EncodedKey) -> reifydb_type::Result<(RowNumber, bool)> {
 		let provider = RowNumberProvider::new(self.operator_id());
 		provider.get_or_create_row_number(self, key)
+	}
+
+	/// Execute an RQL statement within the current transaction.
+	pub fn rql(&self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		crate::rql::raw_rql(self, rql, params)
 	}
 }

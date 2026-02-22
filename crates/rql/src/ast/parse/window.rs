@@ -195,7 +195,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -211,7 +211,7 @@ pub mod tests {
 		let bump = Bump::new();
 		let tokens =
 			tokenize(&bump, r#"window { sum(value) } with { count: 100 }"#).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -229,7 +229,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -246,7 +246,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -264,7 +264,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -279,7 +279,7 @@ pub mod tests {
 	fn test_parse_window_multiple_aggregations_and_grouping() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, r#"window { count(*), sum(amount), avg(price) } with { interval: "30m", slide: "5m" } by { customer_id, product_category }"#).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -300,7 +300,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -320,7 +320,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);

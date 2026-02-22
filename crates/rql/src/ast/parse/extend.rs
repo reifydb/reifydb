@@ -37,7 +37,7 @@ pub mod tests {
 	fn test_extend_constant_number() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "EXTEND {1}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -55,7 +55,7 @@ pub mod tests {
 	fn test_extend_colon_syntax() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "EXTEND {total: price * quantity}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -81,7 +81,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -101,7 +101,7 @@ pub mod tests {
 	fn test_extend_without_braces_fails() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "EXTEND 1").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "EXTEND_002");

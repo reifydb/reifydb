@@ -184,7 +184,7 @@ pub mod tests {
 				.unwrap()
 				.into_iter()
 				.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -238,7 +238,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -294,7 +294,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -363,7 +363,7 @@ pub mod tests {
 				.unwrap()
 				.into_iter()
 				.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -423,7 +423,7 @@ pub mod tests {
 				.unwrap()
 				.into_iter()
 				.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -449,7 +449,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -483,7 +483,7 @@ pub mod tests {
 	fn test_natural_join_simple() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "natural join { from orders } as o").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -518,7 +518,7 @@ pub mod tests {
 	fn test_natural_join_with_alias() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "natural join { from orders } as ord").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -540,7 +540,7 @@ pub mod tests {
 	fn test_natural_left_join() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "natural left join { from orders } as o").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -564,7 +564,7 @@ pub mod tests {
 	fn test_natural_inner_join() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "natural inner join { from orders } as o").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -591,7 +591,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -633,7 +633,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

@@ -61,7 +61,7 @@ pub mod tests {
 	fn test_empty_tuple() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "()").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -72,7 +72,7 @@ pub mod tests {
 	fn test_tuple_with_number() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "(9924)").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -89,7 +89,7 @@ pub mod tests {
 	fn test_nested_tuple() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "(1 * ( 2 + 3 ))").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -135,7 +135,7 @@ pub mod tests {
 	fn test_tuple_with_identifier() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "(u)").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = &result[0].first_unchecked().as_tuple();
@@ -152,7 +152,7 @@ pub mod tests {
 	fn test_tuple_with_identifier_and_type() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "(u: Bool)").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -179,7 +179,7 @@ pub mod tests {
 	fn test_tuple_with_multiple_identifiers() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "(u,v)").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -199,7 +199,7 @@ pub mod tests {
 	fn test_tuple_with_identifiers_and_types() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "(u: Bool, v: Text)").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -249,7 +249,7 @@ pub mod tests {
 	fn test_tuple_with_identifiers_and_declaration() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "(u = 1, v = 2)").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -312,7 +312,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();
@@ -362,7 +362,7 @@ pub mod tests {
 	fn test_regression() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "(-1 -2)").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let node = result[0].first_unchecked().as_tuple();

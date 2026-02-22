@@ -73,7 +73,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -98,7 +98,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -121,7 +121,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -145,7 +145,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
@@ -162,7 +162,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}

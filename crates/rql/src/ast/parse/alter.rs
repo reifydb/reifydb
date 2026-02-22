@@ -197,7 +197,7 @@ pub mod tests {
 		let bump = Bump::new();
 		let tokens =
 			tokenize(&bump, "ALTER SEQUENCE test.users.id SET VALUE 1000").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -230,7 +230,7 @@ pub mod tests {
 	fn test_alter_sequence_without_schema() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "ALTER SEQUENCE users.id SET VALUE 500").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -262,7 +262,7 @@ pub mod tests {
 	fn test_alter_flow_rename() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "ALTER FLOW old_flow RENAME TO new_flow").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -292,7 +292,7 @@ pub mod tests {
 		let bump = Bump::new();
 		let tokens =
 			tokenize(&bump, "ALTER FLOW test.old_flow RENAME TO new_flow").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -324,7 +324,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -364,7 +364,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -392,7 +392,7 @@ pub mod tests {
 	fn test_alter_flow_pause() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "ALTER FLOW my_flow PAUSE").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -418,7 +418,7 @@ pub mod tests {
 	fn test_alter_flow_resume() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "ALTER FLOW analytics.my_flow RESUME").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

@@ -13,7 +13,7 @@ pub fn scan_text<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		return None;
 	}
 
-	let _start_pos = cursor.pos();
+	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
@@ -34,6 +34,7 @@ pub fn scan_text<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 					start_line,
 					start_column + 1, /* +1 for opening
 					                   * quote */
+					start_pos,
 				),
 			});
 		}

@@ -85,7 +85,7 @@ pub mod tests {
 	fn test_drop_flow_basic() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DROP FLOW my_flow").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {
@@ -102,7 +102,7 @@ pub mod tests {
 	fn test_drop_flow_if_exists() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DROP FLOW IF EXISTS my_flow").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {
@@ -117,7 +117,7 @@ pub mod tests {
 	fn test_drop_flow_qualified() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DROP FLOW analytics.sales_flow").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {
@@ -132,7 +132,7 @@ pub mod tests {
 	fn test_drop_flow_cascade() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DROP FLOW my_flow CASCADE").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {
@@ -147,7 +147,7 @@ pub mod tests {
 	fn test_drop_flow_restrict() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DROP FLOW my_flow RESTRICT").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {
@@ -162,7 +162,7 @@ pub mod tests {
 	fn test_drop_flow_if_exists_cascade() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DROP FLOW IF EXISTS test.my_flow CASCADE").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
 		match result {

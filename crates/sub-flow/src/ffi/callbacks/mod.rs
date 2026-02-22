@@ -11,9 +11,14 @@
 //! - `logging`: Logging from FFI operators
 //! - `catalog`: Read-only catalog access (namespaces, tables)
 
-use reifydb_abi::callbacks::{
-	catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-	state::StateCallbacks, store::StoreCallbacks,
+use reifydb_abi::{
+	callbacks::{
+		catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
+		rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+	},
+	constants::FFI_ERROR_INTERNAL,
+	context::context::ContextFFI,
+	data::buffer::BufferFFI,
 };
 
 pub mod catalog;
@@ -65,5 +70,20 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			free_namespace: catalog::host_catalog_free_namespace,
 			free_table: catalog::host_catalog_free_table,
 		},
+		rql: RqlCallbacks {
+			rql: host_rql_unsupported,
+		},
 	}
+}
+
+/// Stub: RQL execution is not supported from sub-flow FFI operators.
+extern "C" fn host_rql_unsupported(
+	_ctx: *mut ContextFFI,
+	_rql_ptr: *const u8,
+	_rql_len: usize,
+	_params_ptr: *const u8,
+	_params_len: usize,
+	_result_out: *mut BufferFFI,
+) -> i32 {
+	FFI_ERROR_INTERNAL
 }

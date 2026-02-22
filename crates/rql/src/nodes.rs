@@ -628,4 +628,5 @@ pub struct ReturnNode {
 pub struct CallFunctionNode {
 	pub name: Fragment,
 	pub arguments: Vec<Expression>,
+	pub is_procedure_call: bool,
 }

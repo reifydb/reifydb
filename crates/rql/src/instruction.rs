@@ -138,6 +138,7 @@ pub enum Instruction {
 	Call {
 		name: Fragment,
 		arity: u8,
+		is_procedure_call: bool,
 	},
 	ReturnValue,
 	ReturnVoid,

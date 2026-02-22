@@ -227,6 +227,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 		// The txn_ptr points to the TestContext
 		let ffi_context = Box::new(ContextFFI {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
+			executor_ptr: std::ptr::null(),
 			operator_id: self.node_id.0,
 			callbacks: create_test_callbacks(),
 		});

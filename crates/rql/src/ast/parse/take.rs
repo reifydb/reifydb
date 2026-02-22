@@ -58,7 +58,7 @@ pub mod tests {
 	fn test_take_with_braces() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "TAKE {10}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -71,7 +71,7 @@ pub mod tests {
 	fn test_take_without_braces() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "TAKE 10").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -84,7 +84,7 @@ pub mod tests {
 	fn test_take_zero() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "TAKE 0").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -97,7 +97,7 @@ pub mod tests {
 	fn test_take_negative() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "TAKE -1").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse();
 
 		let error = result.unwrap_err();

@@ -529,6 +529,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Call {
 					name: c.func.0.clone(),
 					arity: arity as u8,
+					is_procedure_call: false,
 				});
 			}
 			Expression::Cast(c) => {
@@ -947,6 +948,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Call {
 					name: node.name,
 					arity: arity as u8,
+					is_procedure_call: node.is_procedure_call,
 				});
 				self.emit(Instruction::Emit);
 			}

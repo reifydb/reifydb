@@ -64,7 +64,7 @@ pub mod tests {
 	fn test_distinct_empty_braces() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DISTINCT {}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -79,7 +79,7 @@ pub mod tests {
 	fn test_distinct_single_column() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DISTINCT {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -95,7 +95,7 @@ pub mod tests {
 	fn test_distinct_multiple_columns() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DISTINCT {name, age}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -112,7 +112,7 @@ pub mod tests {
 	fn test_distinct_bare_at_eof() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DISTINCT").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -127,7 +127,7 @@ pub mod tests {
 	fn test_distinct_bare_followed_by_operator() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "DISTINCT FROM users").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		// Should parse as one statement with two nodes: DISTINCT (bare, 0 columns) then FROM users

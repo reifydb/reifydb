@@ -82,7 +82,7 @@ impl FlowEngine {
 			.map_err(|e| Error(internal!("Failed to serialize operator config: {:?}", e)))?;
 
 		let operator = loader_write
-			.create_operator_by_name(operator, node_id, &config_bytes)
+			.create_operator_by_name(operator, node_id, &config_bytes, self.executor.clone())
 			.map_err(|e| Error(internal!("Failed to create FFI operator: {:?}", e)))?;
 
 		Ok(Box::new(operator))

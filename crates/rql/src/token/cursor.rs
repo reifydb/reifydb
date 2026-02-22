@@ -189,6 +189,7 @@ impl<'bump> Cursor<'bump> {
 	pub fn make_fragment(&self, start_pos: usize, start_line: u32, start_column: u32) -> BumpFragment<'bump> {
 		BumpFragment::Statement {
 			text: &self.input[start_pos..self.pos],
+			offset: start_pos,
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
 		}
@@ -202,9 +203,11 @@ impl<'bump> Cursor<'bump> {
 		text_end: usize,
 		start_line: u32,
 		start_column: u32,
+		token_offset: usize,
 	) -> BumpFragment<'bump> {
 		BumpFragment::Statement {
 			text: &self.input[text_start..text_end],
+			offset: token_offset,
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
 		}

@@ -117,7 +117,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -145,7 +145,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -170,7 +170,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -206,7 +206,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -233,7 +233,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
@@ -250,7 +250,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
@@ -272,7 +272,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -295,7 +295,7 @@ pub mod tests {
 	fn test_insert_positional_single_row() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, r#"INSERT users [(1, "Alice")]"#).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -333,7 +333,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -357,7 +357,7 @@ pub mod tests {
 	fn test_insert_positional_with_namespace() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, r#"INSERT test.users [(1, "Alice")]"#).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

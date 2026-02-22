@@ -267,7 +267,7 @@ pub mod tests {
 	fn test_simple_variant_arm() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "MATCH x { Active => 1, ELSE => 0 }").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let m = result[0].first_unchecked().as_match();
@@ -285,7 +285,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let m = result[0].first_unchecked().as_match();
@@ -312,7 +312,7 @@ pub mod tests {
 		let bump = Bump::new();
 		let tokens =
 			tokenize(&bump, "MATCH x { Active IF y > 0 => 1, ELSE => 0 }").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let m = result[0].first_unchecked().as_match();
@@ -328,7 +328,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let m = result[0].first_unchecked().as_match();
@@ -348,7 +348,7 @@ pub mod tests {
 				.unwrap()
 				.into_iter()
 				.collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let m = result[0].first_unchecked().as_match();

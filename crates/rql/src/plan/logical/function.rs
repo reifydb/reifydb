@@ -44,4 +44,6 @@ pub struct CallFunctionNode<'bump> {
 	pub name: BumpFragment<'bump>,
 	/// Arguments to pass
 	pub arguments: Vec<Expression>,
+	/// Whether this was invoked via CALL (procedure) vs bare function call
+	pub is_procedure_call: bool,
 }

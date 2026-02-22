@@ -501,14 +501,26 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::CallFunction(CallFunctionNode {
 			name,
 			arguments,
+			is_procedure_call: false,
 		}))
 	}
 
-	/// Compile a CALL statement (e.g., `CALL procedure_name(args)`)
+	/// Compile a CALL statement (e.g., `CALL procedure_name(args)` or `CALL ns::proc(args)`)
 	/// This compiles to the same CallFunction logical plan node, so the VM
 	/// will resolve it against DEF functions, catalog procedures, or built-in functions.
 	pub(crate) fn compile_call(&self, ast: AstCall<'bump>) -> crate::Result<LogicalPlan<'bump>> {
-		let name = ast.operator.token.fragment;
+		// Build qualified name: join namespaces with '.' for catalog lookup
+		let name = if ast.function.namespaces.is_empty() {
+			ast.function.name
+		} else {
+			let mut qualified = String::new();
+			for ns in &ast.function.namespaces {
+				qualified.push_str(ns.text());
+				qualified.push('.');
+			}
+			qualified.push_str(ast.function.name.text());
+			BumpFragment::internal(self.bump, &qualified)
+		};
 
 		// Compile arguments as expressions
 		let mut arguments = Vec::new();
@@ -519,6 +531,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::CallFunction(CallFunctionNode {
 			name,
 			arguments,
+			is_procedure_call: true,
 		}))
 	}
 }

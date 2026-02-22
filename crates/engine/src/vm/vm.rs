@@ -563,8 +563,10 @@ impl Vm {
 				Instruction::Call {
 					name,
 					arity,
+					is_procedure_call,
 				} => {
 					let arity = *arity as usize;
+					let is_procedure_call = *is_procedure_call;
 					let func_name = name.text();
 
 					let mut args = Vec::with_capacity(arity);
@@ -829,15 +831,26 @@ impl Vm {
 							// Runtime-registered native procedure (no catalog entry needed)
 							let call_params = Params::Positional(args);
 							let identity = Identity::Anonymous {};
+							let executor = crate::vm::executor::Executor::from_services(
+								services.clone(),
+							);
 							let ctx = crate::procedure::context::ProcedureContext {
 								identity: &identity,
 								params: &call_params,
 								catalog: &services.catalog,
 								functions: &services.functions,
 								clock: &services.clock,
+								executor: &executor,
 							};
 							let columns = proc_impl.call(&ctx, tx)?;
 							self.stack.push(Variable::Columns(columns));
+						} else if is_procedure_call {
+							return Err(TypeError::Runtime {
+								kind: RuntimeErrorKind::UndefinedFunction {
+									name: func_name.to_string(),
+								},
+								message: format!("Unknown procedure: {}", func_name),
+							}.into());
 						} else {
 							// Built-in function: evaluate via column evaluator
 							let evaluation_context = EvalContext {

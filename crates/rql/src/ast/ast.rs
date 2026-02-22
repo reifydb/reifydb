@@ -708,7 +708,7 @@ pub struct AstApply<'bump> {
 #[derive(Debug)]
 pub struct AstCall<'bump> {
 	pub token: Token<'bump>,
-	pub operator: UnqualifiedIdentifier<'bump>,
+	pub function: MaybeQualifiedFunctionIdentifier<'bump>,
 	pub arguments: AstTuple<'bump>,
 }
 
