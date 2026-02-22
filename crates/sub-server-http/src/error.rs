@@ -49,6 +49,8 @@ pub enum AppError {
 	Execute(ExecuteError),
 	/// Request parsing error.
 	BadRequest(String),
+	/// Invalid parameter error.
+	InvalidParams(String),
 	/// Internal server error.
 	Internal(String),
 }
@@ -71,6 +73,7 @@ impl std::fmt::Display for AppError {
 			AppError::Auth(e) => write!(f, "Authentication error: {}", e),
 			AppError::Execute(e) => write!(f, "Execution error: {}", e),
 			AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
+			AppError::InvalidParams(msg) => write!(f, "Invalid params: {}", msg),
 			AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
 		}
 	}
@@ -132,6 +135,10 @@ impl IntoResponse for AppError {
 			}
 			AppError::BadRequest(msg) => {
 				let body = Json(ErrorResponse::new("BAD_REQUEST", msg.clone()));
+				return (StatusCode::BAD_REQUEST, body).into_response();
+			}
+			AppError::InvalidParams(msg) => {
+				let body = Json(ErrorResponse::new("INVALID_PARAMS", msg.clone()));
 				return (StatusCode::BAD_REQUEST, body).into_response();
 			}
 			AppError::Internal(msg) => {
