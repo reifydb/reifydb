@@ -5,7 +5,7 @@ use super::{Diagnostic, IntoDiagnostic, util::value_range};
 use crate::{
 	error::{
 		AstErrorKind, AuthErrorKind, BlobEncodingKind, ConstraintKind, FunctionErrorKind, LogicalOp,
-		NetworkErrorKind, OperandCategory, RuntimeErrorKind, TemporalKind, TypeError,
+		NetworkErrorKind, OperandCategory, ProcedureErrorKind, RuntimeErrorKind, TemporalKind, TypeError,
 	},
 	fragment::Fragment,
 };
@@ -1363,6 +1363,29 @@ impl IntoDiagnostic for TypeError {
 					label: None,
 					help,
 					notes,
+					cause: None,
+					operator_chain: None,
+				}
+			}
+
+			TypeError::Procedure { kind, message, fragment } => {
+				let (code, help, label) = match &kind {
+					ProcedureErrorKind::UndefinedProcedure { .. } => (
+						"PROCEDURE_001",
+						"Check the procedure name and available procedures",
+						"unknown procedure",
+					),
+				};
+
+				Diagnostic {
+					code: code.to_string(),
+					statement: None,
+					message,
+					column: None,
+					fragment,
+					label: Some(label.to_string()),
+					help: Some(help.to_string()),
+					notes: vec![],
 					cause: None,
 					operator_chain: None,
 				}

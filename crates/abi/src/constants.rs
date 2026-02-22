@@ -58,3 +58,14 @@ pub const TRANSFORM_MAGIC: u32 = 230424;
 ///
 /// FFI transform libraries must export this function to be recognized as valid transforms.
 pub type FFITransformMagicFn = extern "C" fn() -> u32;
+
+/// Magic number to identify valid FFI procedure libraries
+///
+/// Libraries must export a `ffi_procedure_magic` symbol that returns this value
+/// to be recognized as valid FFI procedures.
+pub const PROCEDURE_MAGIC: u32 = 19880803;
+
+/// Function signature for the procedure magic number export
+///
+/// FFI procedure libraries must export this function to be recognized as valid procedures.
+pub type FFIProcedureMagicFn = extern "C" fn() -> u32;

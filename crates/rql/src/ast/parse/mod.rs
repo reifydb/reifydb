@@ -93,21 +93,27 @@ const fn get_precedence_for_operator(op: Operator) -> Precedence {
 	}
 }
 
-pub fn parse<'bump>(bump: &'bump Bump, tokens: Vec<Token<'bump>>) -> crate::Result<Vec<AstStatement<'bump>>> {
-	let mut parser = Parser::new(bump, tokens);
+pub fn parse<'bump>(
+	bump: &'bump Bump,
+	source: &'bump str,
+	tokens: Vec<Token<'bump>>,
+) -> crate::Result<Vec<AstStatement<'bump>>> {
+	let mut parser = Parser::new(bump, source, tokens);
 	parser.parse()
 }
 
 pub(crate) struct Parser<'bump> {
 	bump: &'bump Bump,
+	source: &'bump str,
 	tokens: Vec<Token<'bump>>,
 	position: usize,
 }
 
 impl<'bump> Parser<'bump> {
-	fn new(bump: &'bump Bump, tokens: Vec<Token<'bump>>) -> Self {
+	fn new(bump: &'bump Bump, source: &'bump str, tokens: Vec<Token<'bump>>) -> Self {
 		Self {
 			bump,
+			source,
 			tokens,
 			position: 0,
 		}
@@ -116,22 +122,6 @@ impl<'bump> Parser<'bump> {
 	#[inline(always)]
 	pub(crate) fn bump(&self) -> &'bump Bump {
 		self.bump
-	}
-
-	/// Reconstruct source text from a range of tokens by joining their text with spaces.
-	/// Used to capture procedure body source for catalog storage.
-	pub(crate) fn reconstruct_source(&self, start_pos: usize, end_pos: usize) -> String {
-		if start_pos >= end_pos {
-			return String::new();
-		}
-		let mut parts = Vec::new();
-		for i in start_pos..end_pos {
-			let text = self.tokens[i].fragment.text();
-			if !text.is_empty() && text != "\n" && text != "\r\n" {
-				parts.push(text);
-			}
-		}
-		parts.join(" ")
 	}
 
 	fn parse(&mut self) -> crate::Result<Vec<AstStatement<'bump>>> {
@@ -743,7 +733,7 @@ pub mod tests {
 	#[test]
 	fn test_advance_but_eof() {
 		let bump = Bump::new();
-		let mut parser = Parser::new(&bump, vec![]);
+		let mut parser = Parser::new(&bump, "", vec![]);
 		let result = parser.advance();
 		assert_eq!(result, Err(AstError::UnexpectedEof.into()))
 	}
@@ -752,7 +742,7 @@ pub mod tests {
 	fn test_advance() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 + 2").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 
 		let one = parser.advance().unwrap();
 		assert_eq!(one.kind, Literal(Number));
@@ -771,7 +761,7 @@ pub mod tests {
 	fn test_consume_but_eof() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let err = parser.consume(Identifier).err().unwrap();
 		assert_eq!(err, AstError::UnexpectedEof.into())
 	}
@@ -780,7 +770,7 @@ pub mod tests {
 	fn test_consume_but_unexpected_token() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "false").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.consume(Literal(True));
 		assert!(result.is_err());
 
@@ -793,7 +783,7 @@ pub mod tests {
 	fn test_consume() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "true 99").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.consume(Literal(True)).unwrap();
 		assert_eq!(result.kind, Literal(True));
 
@@ -805,7 +795,7 @@ pub mod tests {
 	fn test_consume_if_but_eof() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.consume_if(Literal(True));
 		assert_eq!(result, Ok(None))
 	}
@@ -814,7 +804,7 @@ pub mod tests {
 	fn test_consume_if_but_unexpected_token() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "false").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.consume_if(Literal(True));
 		assert_eq!(result, Ok(None));
 	}
@@ -823,7 +813,7 @@ pub mod tests {
 	fn test_consume_if() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "true 0x99").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.consume_if(Literal(True)).unwrap().unwrap();
 		assert_eq!(result.kind, Literal(True));
 
@@ -835,7 +825,7 @@ pub mod tests {
 	fn test_current_but_eof() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, tokens);
+		let parser = Parser::new(&bump, "", tokens);
 		let result = parser.current();
 		assert_eq!(result, Err(AstError::UnexpectedEof.into()))
 	}
@@ -844,7 +834,7 @@ pub mod tests {
 	fn test_semicolon_statement_separation() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "let $x = 1; FROM users").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let statements = parser.parse().unwrap();
 		assert_eq!(statements.len(), 2, "Should parse two separate statements");
 
@@ -867,7 +857,7 @@ pub mod tests {
 		FROM $user_data
 		"#;
 		let tokens = tokenize(&bump, sql).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let statements = parser.parse().unwrap();
 		assert_eq!(statements.len(), 2, "Should parse two separate statements from multiline input");
 
@@ -888,7 +878,7 @@ pub mod tests {
 	fn test_current() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "true false").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 
 		let true_token = parser.current().unwrap();
 		assert_eq!(true_token.kind, Literal(True));
@@ -903,7 +893,7 @@ pub mod tests {
 	fn test_current_expect_but_eof() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, tokens);
+		let parser = Parser::new(&bump, "", tokens);
 		let result = parser.current_expect(Separator(Semicolon));
 		assert_eq!(result, Err(AstError::UnexpectedEof.into()))
 	}
@@ -912,7 +902,7 @@ pub mod tests {
 	fn test_current_expect() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "true false").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 
 		let result = parser.current_expect(Literal(True));
 		assert!(result.is_ok());
@@ -927,7 +917,7 @@ pub mod tests {
 	fn test_current_expect_but_different() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "true").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, tokens);
+		let parser = Parser::new(&bump, "", tokens);
 
 		let result = parser.current_expect(Literal(False));
 		assert!(result.is_err());
@@ -941,7 +931,7 @@ pub mod tests {
 	fn test_current_precedence_but_eof() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, tokens);
+		let parser = Parser::new(&bump, "", tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Precedence::None))
 	}
@@ -950,7 +940,7 @@ pub mod tests {
 	fn test_current_precedence() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "+").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, tokens);
+		let parser = Parser::new(&bump, "", tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Term))
 	}
@@ -959,7 +949,7 @@ pub mod tests {
 	fn test_between_precedence() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "BETWEEN").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, tokens);
+		let parser = Parser::new(&bump, "", tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Precedence::Comparison))
 	}
@@ -968,7 +958,7 @@ pub mod tests {
 	fn test_parse_between_expression() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "x BETWEEN 1 AND 10").unwrap().into_iter().collect();
-		let result = crate::ast::parse::parse(&bump, tokens).unwrap();
+		let result = crate::ast::parse::parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let between = result[0].first_unchecked().as_between();
@@ -981,7 +971,7 @@ pub mod tests {
 	fn test_pipe_operator_simple() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "from users | sort {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -999,7 +989,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -1016,7 +1006,7 @@ pub mod tests {
 	fn test_pipe_with_system_tables() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "from system.tables | sort {id}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -1031,7 +1021,7 @@ pub mod tests {
 	fn test_newline_still_works() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "from users\nsort {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -1046,7 +1036,7 @@ pub mod tests {
 	fn test_output_prefix_first_statement() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "OUTPUT FROM users; FROM orders").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 2);
@@ -1060,7 +1050,7 @@ pub mod tests {
 	fn test_output_prefix_not_present() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "FROM users; FROM orders").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 2);
@@ -1075,7 +1065,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 3);
@@ -1091,7 +1081,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);

@@ -72,6 +72,11 @@ impl Executor {
 		&self.0
 	}
 
+	/// Construct an Executor from an existing `Arc<Services>`.
+	pub fn from_services(services: Arc<Services>) -> Self {
+		Self(services)
+	}
+
 	#[allow(dead_code)]
 	pub fn testing() -> Self {
 		Self(Services::testing())
@@ -98,6 +103,33 @@ fn populate_stack(stack: &mut SymbolTable, params: &Params) -> crate::Result<()>
 }
 
 impl Executor {
+	/// Execute RQL against an existing open transaction.
+	///
+	/// This is the universal RQL execution interface: it compiles and runs
+	/// arbitrary RQL within whatever transaction variant the caller provides.
+	#[instrument(name = "executor::rql", level = "debug", skip(self, tx, params), fields(rql = %rql))]
+	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
+		let mut result = vec![];
+		let mut symbol_table = SymbolTable::new();
+		populate_stack(&mut symbol_table, &params)?;
+
+		let compiled = match self.compiler.compile(tx, rql)? {
+			CompilationResult::Ready(compiled) => compiled,
+			CompilationResult::Incremental(_) => {
+				unreachable!("incremental compilation not supported in rql()")
+			}
+		};
+
+		for compiled in compiled.iter() {
+			result.clear();
+			let mut vm = Vm::new(symbol_table);
+			vm.run(&self.0, tx, &compiled.instructions, &params, &mut result)?;
+			symbol_table = vm.symbol_table;
+		}
+
+		Ok(result)
+	}
+
 	#[instrument(name = "executor::admin", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
 	pub fn admin(&self, txn: &mut AdminTransaction, cmd: Admin<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];

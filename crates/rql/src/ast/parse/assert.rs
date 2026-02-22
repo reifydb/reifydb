@@ -48,7 +48,7 @@ pub mod tests {
 	fn test_assert_simple() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "ASSERT { 1 + 1 == 2 }").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let assert_node = result[0].first_unchecked().as_assert();
@@ -60,7 +60,7 @@ pub mod tests {
 	fn test_assert_with_message() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, r#"ASSERT { x > 0 } "must be positive""#).unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let assert_node = result[0].first_unchecked().as_assert();
@@ -74,7 +74,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let statement = &result[0];

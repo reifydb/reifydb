@@ -62,7 +62,7 @@ pub mod tests {
 	fn test_apply_counter_no_args() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "APPLY counter {}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -76,7 +76,7 @@ pub mod tests {
 	fn test_apply_with_single_expression() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "APPLY running_sum {value}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -94,7 +94,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -108,7 +108,7 @@ pub mod tests {
 	fn test_apply_without_braces_fails() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "APPLY some_op value").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "APPLY_002");
 	}

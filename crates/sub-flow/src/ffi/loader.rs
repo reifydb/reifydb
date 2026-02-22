@@ -21,6 +21,7 @@ use reifydb_abi::{
 	},
 };
 use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_engine::vm::executor::Executor;
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 use reifydb_type::value::constraint::{FFITypeConstraint, TypeConstraint};
 
@@ -202,6 +203,7 @@ impl FFIOperatorLoader {
 		path: &Path,
 		config: &[u8],
 		operator_id: FlowNodeId,
+		executor: Executor,
 	) -> FFIResult<Option<FFIOperator>> {
 		if !self.load_operator_library(path)? {
 			return Ok(None);
@@ -233,7 +235,7 @@ impl FFIOperatorLoader {
 
 		// Create the FFI operator wrapper
 		// Library stays loaded via global cache and loader reference
-		Ok(Some(FFIOperator::new(descriptor, instance, operator_id)))
+		Ok(Some(FFIOperator::new(descriptor, instance, operator_id, executor)))
 	}
 
 	/// Create an operator instance from an already loaded library by name
@@ -251,6 +253,7 @@ impl FFIOperatorLoader {
 		operator: &str,
 		operator_id: FlowNodeId,
 		config: &[u8],
+		executor: Executor,
 	) -> FFIResult<FFIOperator> {
 		let path = self
 			.operator_paths
@@ -260,7 +263,7 @@ impl FFIOperatorLoader {
 
 		// Load operator from the known path
 		// Since this operator was previously registered, it should always be valid
-		self.load_operator(&path, config, operator_id)?
+		self.load_operator(&path, config, operator_id, executor)?
 			.ok_or_else(|| FFIError::Other(format!("Operator library no longer valid: {}", operator)))
 	}
 

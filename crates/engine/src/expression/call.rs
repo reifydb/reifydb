@@ -407,6 +407,7 @@ fn execute_function_body_for_scalar(
 			Instruction::Call {
 				name,
 				arity,
+				..
 			} => {
 				let arity = *arity as usize;
 				let mut args: Vec<Value> = Vec::with_capacity(arity);

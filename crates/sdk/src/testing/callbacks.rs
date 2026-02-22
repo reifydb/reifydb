@@ -479,7 +479,7 @@ extern "C" fn test_store_iterator_free(_iterator: *mut StoreIteratorFFI) {
 use reifydb_abi::{
 	callbacks::{
 		catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-		state::StateCallbacks, store::StoreCallbacks,
+		rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 	},
 	catalog::{namespace::NamespaceFFI, table::TableFFI},
 	constants::{FFI_END_OF_ITERATION, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
@@ -547,6 +547,21 @@ extern "C" fn test_catalog_free_table(_table: *mut TableFFI) {
 }
 
 // ============================================================================
+// RQL callbacks (stub for testing)
+// ============================================================================
+
+extern "C" fn test_rql(
+	_ctx: *mut ContextFFI,
+	_rql_ptr: *const u8,
+	_rql_len: usize,
+	_params_ptr: *const u8,
+	_params_len: usize,
+	_result_out: *mut BufferFFI,
+) -> i32 {
+	reifydb_abi::constants::FFI_ERROR_INTERNAL
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -586,6 +601,9 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			find_table_by_name: test_catalog_find_table_by_name,
 			free_namespace: test_catalog_free_namespace,
 			free_table: test_catalog_free_table,
+		},
+		rql: RqlCallbacks {
+			rql: test_rql,
 		},
 	}
 }

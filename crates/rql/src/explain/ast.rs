@@ -17,7 +17,7 @@ use crate::{
 pub fn explain_ast(query: &str) -> crate::Result<String> {
 	let bump = Bump::new();
 	let token = tokenize(&bump, query)?;
-	let statements = parse(&bump, token.into_iter().collect())?;
+	let statements = parse(&bump, query, token.into_iter().collect())?;
 
 	let mut result = String::new();
 	for statement in &statements {

@@ -18,6 +18,7 @@ pub enum BumpFragment<'bump> {
 	None,
 	Statement {
 		text: &'bump str,
+		offset: usize,
 		line: StatementLine,
 		column: StatementColumn,
 	},
@@ -30,6 +31,16 @@ impl<'bump> BumpFragment<'bump> {
 	pub fn internal(bump: &'bump Bump, text: &str) -> Self {
 		BumpFragment::Internal {
 			text: bump.alloc_str(text),
+		}
+	}
+
+	pub fn offset(&self) -> usize {
+		match self {
+			BumpFragment::Statement {
+				offset,
+				..
+			} => *offset,
+			_ => 0,
 		}
 	}
 
@@ -71,6 +82,7 @@ impl<'bump> BumpFragment<'bump> {
 			BumpFragment::None => Fragment::None,
 			BumpFragment::Statement {
 				text,
+				offset: _,
 				line,
 				column,
 			} => Fragment::Statement {
@@ -121,6 +133,7 @@ impl FragmentInterner {
 			BumpFragment::None => Fragment::None,
 			BumpFragment::Statement {
 				text,
+				offset: _,
 				line,
 				column,
 			} => Fragment::Statement {

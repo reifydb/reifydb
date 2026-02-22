@@ -30,6 +30,7 @@ pub fn scan_quoted_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> 
 		return None;
 	}
 
+	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 	cursor.consume(); // consume opening backtick
@@ -41,7 +42,13 @@ pub fn scan_quoted_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> 
 			let ident_end = cursor.pos();
 			cursor.consume(); // consume closing backtick
 
-			let fragment = cursor.make_utf8_fragment(ident_start, ident_end, start_line, start_column + 1);
+			let fragment = cursor.make_utf8_fragment(
+				ident_start,
+				ident_end,
+				start_line,
+				start_column + 1,
+				start_pos,
+			);
 
 			return Some(Token {
 				kind: TokenKind::Identifier,

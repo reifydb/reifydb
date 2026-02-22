@@ -134,7 +134,7 @@ pub mod tests {
 	fn test_single_column() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "AGGREGATE {min(age)} BY {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -158,7 +158,7 @@ pub mod tests {
 	fn test_keyword() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "AGGREGATE {min(value)} BY {value}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -183,7 +183,7 @@ pub mod tests {
 		let bump = Bump::new();
 		let tokens =
 			tokenize(&bump, "AGGREGATE { min_age: min(age) } BY {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -214,7 +214,7 @@ pub mod tests {
 	fn test_no_projection_single_column() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "AGGREGATE BY {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -230,7 +230,7 @@ pub mod tests {
 	fn test_no_projection_multiple_columns() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "AGGREGATE BY {name, age}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -252,7 +252,7 @@ pub mod tests {
 			.unwrap()
 			.into_iter()
 			.collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -287,7 +287,7 @@ pub mod tests {
 	fn test_single_projection_with_braces() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "AGGREGATE {min(age)} BY {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -310,7 +310,7 @@ pub mod tests {
 	fn test_single_by_with_braces() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "AGGREGATE BY {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -324,7 +324,7 @@ pub mod tests {
 	fn test_maps_without_braces_fails() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "AGGREGATE min(age) BY {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "AGGREGATE_004")
 	}
@@ -333,7 +333,7 @@ pub mod tests {
 	fn test_by_without_braces_fails() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "AGGREGATE { count(value) } BY name").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "AGGREGATE_005")
 	}
@@ -342,7 +342,7 @@ pub mod tests {
 	fn test_empty_by_clause() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "AGGREGATE { count(value) } BY {}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -364,7 +364,7 @@ pub mod tests {
 	fn test_global_aggregate() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "AGGREGATE { count(value) } ").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();

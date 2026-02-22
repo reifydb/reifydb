@@ -11,6 +11,8 @@ pub mod ffi;
 pub mod flow;
 pub mod marshal;
 pub mod operator;
+pub mod procedure;
+pub mod rql;
 pub mod state;
 pub mod store;
 pub mod testing;

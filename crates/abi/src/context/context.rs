@@ -11,6 +11,8 @@ use crate::callbacks::host::HostCallbacks;
 pub struct ContextFFI {
 	/// Opaque pointer to the host's transaction data
 	pub txn_ptr: *mut c_void,
+	/// Opaque pointer to the host's Executor (for RQL execution)
+	pub executor_ptr: *const c_void,
 	/// Operator ID for this operation
 	pub operator_id: u64,
 	/// Host callbacks for state and other operations

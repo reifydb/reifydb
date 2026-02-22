@@ -350,6 +350,7 @@ pub struct ReturnNode {
 pub struct CallFunctionNode {
 	pub name: Fragment,
 	pub arguments: Vec<Expression>,
+	pub is_procedure_call: bool,
 }
 
 #[derive(Debug)]
@@ -1613,6 +1614,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::CallFunction(CallFunctionNode {
 						name: self.interner.intern_fragment(&call_node.name),
 						arguments: call_node.arguments,
+						is_procedure_call: call_node.is_procedure_call,
 					}));
 				}
 

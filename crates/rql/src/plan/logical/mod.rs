@@ -179,6 +179,7 @@ impl<'bump> Compiler<'bump> {
 						Ok(LogicalPlan::CallFunction(function::CallFunctionNode {
 							name: var.token.fragment,
 							arguments,
+							is_procedure_call: false,
 						}))
 					}
 					// Expression-like operations - wrap in MAP

@@ -86,7 +86,7 @@ pub mod tests {
 	fn test_empty_inline() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "{}").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let inline = result[0].first_unchecked().as_block();
@@ -97,7 +97,7 @@ pub mod tests {
 	fn test_single_keyed_value() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "{id: 1}").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let inline = result[0].first_unchecked().as_block();
@@ -115,7 +115,7 @@ pub mod tests {
 	fn test_keyword() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "{value: 1}").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let inline = result[0].first_unchecked().as_block();
@@ -133,7 +133,7 @@ pub mod tests {
 	fn test_text() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, r#"{text: 'Ada'}"#).unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let inline = result[0].first_unchecked().as_block();
@@ -151,7 +151,7 @@ pub mod tests {
 	fn test_multiple_keyed_values() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, r#"{id: 1, name: 'Ada'}"#).unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let inline = result[0].first_unchecked().as_block();
@@ -176,7 +176,7 @@ pub mod tests {
 	fn test_identifier_value() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "{keyed_value: someVariable}").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let inline = result[0].first_unchecked().as_block();
@@ -204,7 +204,7 @@ pub mod tests {
 		.unwrap()
 		.into_iter()
 		.collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let inline = result[0].first_unchecked().as_block();
@@ -233,7 +233,7 @@ pub mod tests {
 	fn test_trailing_comma() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "{id: 1, name: 'Test'}").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let inline = result[0].first_unchecked().as_block();
@@ -250,7 +250,7 @@ pub mod tests {
 	fn test_comptokenize_values() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "{result: (1 + 2), enabled: !false}").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let inline = result[0].first_unchecked().as_block();
@@ -269,7 +269,7 @@ pub mod tests {
 	fn test_nested_inline() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "{user: {id: 1, name: 'John'}}").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let inline = result[0].first_unchecked().as_block();

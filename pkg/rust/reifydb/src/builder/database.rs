@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{
@@ -65,6 +65,8 @@ pub struct DatabaseBuilder {
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
+	#[cfg(reifydb_target = "native")]
+	procedure_dir: Option<PathBuf>,
 	transforms: Option<Transforms>,
 	multi_store: Option<MultiStore>,
 	single_store: Option<SingleStore>,
@@ -91,6 +93,8 @@ impl DatabaseBuilder {
 			ioc,
 			functions_configurator: None,
 			procedures_configurator: None,
+			#[cfg(reifydb_target = "native")]
+			procedure_dir: None,
 			transforms: None,
 			multi_store: None,
 			single_store: None,
@@ -150,6 +154,12 @@ impl DatabaseBuilder {
 		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
 	{
 		self.procedures_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	#[cfg(reifydb_target = "native")]
+	pub fn with_procedure_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+		self.procedure_dir = Some(dir.into());
 		self
 	}
 
@@ -236,10 +246,22 @@ impl DatabaseBuilder {
 
 		let transforms = self.transforms.unwrap_or_else(Transforms::empty);
 
-		let procedures = if let Some(configurator) = self.procedures_configurator {
-			configurator(Procedures::builder()).build()
-		} else {
-			Procedures::empty()
+		let procedures = {
+			let mut procedures_builder = Procedures::builder();
+
+			#[cfg(reifydb_target = "native")]
+			if let Some(dir) = &self.procedure_dir {
+				procedures_builder = reifydb_engine::procedure::loader::register_procedures_from_dir(
+					dir,
+					procedures_builder,
+				)?;
+			}
+
+			if let Some(configurator) = self.procedures_configurator {
+				configurator(procedures_builder).build()
+			} else {
+				procedures_builder.build()
+			}
 		};
 
 		// Create engine before CDC worker (CDC worker needs engine for cleanup)

@@ -100,7 +100,7 @@ pub mod tests {
 	fn test_single_column() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -116,7 +116,7 @@ pub mod tests {
 	fn test_keyword() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {value: ASC}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -132,7 +132,7 @@ pub mod tests {
 	fn test_single_column_asc() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {name: ASC}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -148,7 +148,7 @@ pub mod tests {
 	fn test_single_column_desc() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {name: DESC}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -164,7 +164,7 @@ pub mod tests {
 	fn test_multiple_columns() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {name, age}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -183,7 +183,7 @@ pub mod tests {
 	fn test_multiple_columns_asc_desc() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {name: ASC, age: DESC}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -202,7 +202,7 @@ pub mod tests {
 	fn test_empty_braces() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -215,7 +215,7 @@ pub mod tests {
 	fn test_without_braces_fails() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT name").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse();
 
 		assert!(result.is_err(), "Expected error for SORT without braces");
@@ -227,7 +227,7 @@ pub mod tests {
 	fn test_space_syntax_rejected() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {name DESC}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse();
 
 		assert!(result.is_err(), "Expected error for space-separated sort direction");
@@ -237,7 +237,7 @@ pub mod tests {
 	fn test_colon_syntax_asc() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {name: asc}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -253,7 +253,7 @@ pub mod tests {
 	fn test_colon_syntax_desc() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {name: desc}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -269,7 +269,7 @@ pub mod tests {
 	fn test_colon_syntax_multiple_columns() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {name: asc, age: desc}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -288,7 +288,7 @@ pub mod tests {
 	fn test_colon_syntax_mixed() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "SORT {name: asc, age}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();

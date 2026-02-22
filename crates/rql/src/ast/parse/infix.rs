@@ -93,7 +93,7 @@ pub mod tests {
 	fn test_as_one() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 as one").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let infix = result[0].first_unchecked().as_infix();
@@ -106,7 +106,7 @@ pub mod tests {
 	fn test_as_a() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 as a").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let infix = result[0].first_unchecked().as_infix();
@@ -119,7 +119,7 @@ pub mod tests {
 	fn test_add() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 + 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -149,7 +149,7 @@ pub mod tests {
 	fn test_cast_infix() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "cast(-1, int1) < cast(1, int16)").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let AstInfix {
@@ -168,7 +168,7 @@ pub mod tests {
 	fn test_subtract() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 - 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -198,7 +198,7 @@ pub mod tests {
 	fn test_subtract_negative() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "-1 -2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let AstInfix {
@@ -221,7 +221,7 @@ pub mod tests {
 	fn test_multiply() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 * 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -251,7 +251,7 @@ pub mod tests {
 	fn test_divide() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 / 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -281,7 +281,7 @@ pub mod tests {
 	fn test_remainder() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 % 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -311,7 +311,7 @@ pub mod tests {
 	fn test_greater_than() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 > 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -341,7 +341,7 @@ pub mod tests {
 	fn test_greater_than_or_equal() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 >= 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -371,7 +371,7 @@ pub mod tests {
 	fn test_less_than() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 < 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -401,7 +401,7 @@ pub mod tests {
 	fn test_less_than_or_equal() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 <= 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -431,7 +431,7 @@ pub mod tests {
 	fn test_equal() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 == 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {
@@ -461,7 +461,7 @@ pub mod tests {
 	fn test_not_equal() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "1 != 2").unwrap().into_iter().collect();
-		let result = parse(&bump, tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Infix(AstInfix {

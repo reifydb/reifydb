@@ -13,7 +13,7 @@ use reifydb_transaction::{
 use reifydb_type::{fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::instrument;
 
-use crate::catalog::Catalog;
+use crate::{catalog::Catalog, store::sequence::system::SystemSequence};
 
 /// Procedure creation specification for the Catalog API.
 #[derive(Debug, Clone)]
@@ -140,8 +140,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: ProcedureToCreate,
 	) -> crate::Result<ProcedureDef> {
-		// Generate a new procedure ID from the current transaction version
-		let id = ProcedureId(txn.version().0 + 1);
+		let id = SystemSequence::next_procedure_id(txn)?;
 
 		let procedure = ProcedureDef {
 			id,

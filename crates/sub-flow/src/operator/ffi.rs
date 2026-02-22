@@ -21,6 +21,7 @@ use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,
 };
+use reifydb_engine::vm::executor::Executor;
 use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
 use reifydb_type::value::row_number::RowNumber;
 use tracing::{Span, error, instrument};
@@ -41,13 +42,20 @@ pub struct FFIOperator {
 	instance: *mut c_void,
 	/// ID for this operator
 	operator_id: FlowNodeId,
+	/// Executor for RQL execution via FFI callbacks
+	executor: Executor,
 	/// Arena for type conversions
 	arena: RefCell<Arena>,
 }
 
 impl FFIOperator {
 	/// Create a new FFI operator
-	pub fn new(descriptor: OperatorDescriptorFFI, instance: *mut c_void, operator_id: FlowNodeId) -> Self {
+	pub fn new(
+		descriptor: OperatorDescriptorFFI,
+		instance: *mut c_void,
+		operator_id: FlowNodeId,
+		executor: Executor,
+	) -> Self {
 		let vtable = descriptor.vtable;
 
 		Self {
@@ -55,6 +63,7 @@ impl FFIOperator {
 			vtable,
 			instance,
 			operator_id,
+			executor,
 			arena: RefCell::new(Arena::new()),
 		}
 	}
@@ -139,7 +148,7 @@ impl Operator for FFIOperator {
 
 		let mut ffi_output = ChangeFFI::empty();
 
-		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
+		let ffi_ctx = new_ffi_context(txn, &self.executor, self.operator_id, create_host_callbacks());
 		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 
 		let result_code = call_vtable(
@@ -174,7 +183,7 @@ impl Operator for FFIOperator {
 
 		let mut ffi_output = ColumnsFFI::empty();
 
-		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
+		let ffi_ctx = new_ffi_context(txn, &self.executor, self.operator_id, create_host_callbacks());
 		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 
 		// Call FFI pull function

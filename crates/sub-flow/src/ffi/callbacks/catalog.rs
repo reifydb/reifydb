@@ -17,9 +17,9 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::id::{NamespaceId, TableId},
 };
+use reifydb_engine::ffi::callbacks::memory::{host_alloc, host_free};
 use reifydb_type::value::constraint::TypeConstraint;
 
-use super::memory::{host_alloc, host_free};
 use crate::ffi::context::get_transaction_mut;
 
 /// Find a namespace by ID at a specific version

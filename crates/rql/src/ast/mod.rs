@@ -12,6 +12,6 @@ pub(crate) mod parse;
 #[instrument(name = "rql::parse", level = "trace", skip(bump, str))]
 pub fn parse_str<'b>(bump: &'b Bump, str: &'b str) -> crate::Result<Vec<AstStatement<'b>>> {
 	let tokens = tokenize(bump, str)?;
-	let statements = parse::parse(bump, tokens.into_iter().collect())?;
+	let statements = parse::parse(bump, str, tokens.into_iter().collect())?;
 	Ok(statements)
 }

@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::{
-	catalog::CatalogCallbacks, log::LogCallbacks, memory::MemoryCallbacks, state::StateCallbacks,
-	store::StoreCallbacks,
+	catalog::CatalogCallbacks, log::LogCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks,
+	state::StateCallbacks, store::StoreCallbacks,
 };
 
 /// Host-provided callbacks for FFI operators
@@ -17,4 +17,5 @@ pub struct HostCallbacks {
 	pub log: LogCallbacks,
 	pub store: StoreCallbacks,
 	pub catalog: CatalogCallbacks,
+	pub rql: RqlCallbacks,
 }

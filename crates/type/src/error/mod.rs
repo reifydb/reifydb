@@ -312,6 +312,13 @@ pub enum AstErrorKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ProcedureErrorKind {
+	UndefinedProcedure {
+		name: String,
+	},
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeErrorKind {
 	VariableNotFound {
 		name: String,
@@ -609,6 +616,13 @@ pub enum TypeError {
 	Runtime {
 		kind: RuntimeErrorKind,
 		message: String,
+	},
+
+	#[error("{message}")]
+	Procedure {
+		kind: ProcedureErrorKind,
+		message: String,
+		fragment: Fragment,
 	},
 }
 

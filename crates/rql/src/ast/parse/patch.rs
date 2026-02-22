@@ -37,7 +37,7 @@ pub mod tests {
 	fn test_patch_colon_syntax() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "PATCH {status: \"active\"}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -53,7 +53,7 @@ pub mod tests {
 	fn test_patch_multiple_assignments() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "PATCH {status: \"active\", score: 100}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -73,7 +73,7 @@ pub mod tests {
 	fn test_patch_without_braces_fails() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "PATCH 1").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, tokens);
+		let mut parser = Parser::new(&bump, "", tokens);
 
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "PATCH_001");
