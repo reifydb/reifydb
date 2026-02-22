@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{
-	error,
-	error::{Error, diagnostic::serde::serde_keycode_error},
-};
+use reifydb_type::error::{Error, TypeError};
 use serde::de::{DeserializeSeed, EnumAccess, IntoDeserializer, SeqAccess, VariantAccess, Visitor};
 
 pub(crate) struct Deserializer<'de> {
@@ -20,10 +17,9 @@ impl<'de> Deserializer<'de> {
 
 	fn take_bytes(&mut self, len: usize) -> reifydb_type::Result<&[u8]> {
 		if self.input.len() < len {
-			return Err(error!(serde_keycode_error(format!(
-				"insufficient bytes, expected {len} bytes for {:x?}",
-				self.input
-			))));
+			return Err(Error::from(TypeError::SerdeKeycode {
+				message: format!("insufficient bytes, expected {len} bytes for {:x?}", self.input),
+			}));
 		}
 		let bytes = &self.input[..len];
 		self.input = &self.input[len..];
@@ -39,14 +35,16 @@ impl<'de> Deserializer<'de> {
 					Some((i, 0xff)) => break i + 1,        // terminator
 					Some((_, 0x00)) => decoded.push(0xff), // escaped 0xff
 					_ => {
-						return Err(error!(serde_keycode_error(
-							"invalid escape sequence".to_string()
-						)));
+						return Err(Error::from(TypeError::SerdeKeycode {
+							message: "invalid escape sequence".to_string(),
+						}));
 					}
 				},
 				Some((_, b)) => decoded.push(*b),
 				None => {
-					return Err(error!(serde_keycode_error("unexpected end of input".to_string())));
+					return Err(Error::from(TypeError::SerdeKeycode {
+						message: "unexpected end of input".to_string(),
+					}));
 				}
 			}
 		};
@@ -67,7 +65,9 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
 			0x01 => false,
 			0x00 => true,
 			b => {
-				return Err(error!(serde_keycode_error(format!("invalid boolean value {b}"))));
+				return Err(Error::from(TypeError::SerdeKeycode {
+					message: format!("invalid boolean value {b}"),
+				}));
 			}
 		})
 	}
@@ -206,7 +206,9 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
 		match self.take_bytes(1)?[0] {
 			0x00 => visitor.visit_none(),
 			0x01 => visitor.visit_some(self),
-			b => Err(error!(serde_keycode_error(format!("invalid option marker byte 0x{:02x}", b)))),
+			b => Err(Error::from(TypeError::SerdeKeycode {
+				message: format!("invalid option marker byte 0x{:02x}", b),
+			})),
 		}
 	}
 

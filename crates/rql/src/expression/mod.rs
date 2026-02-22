@@ -44,7 +44,7 @@ use ast::ast::AstMatchArm;
 use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
 use reifydb_type::{
 	err,
-	error::diagnostic::{Diagnostic, ast as diag_ast},
+	error::Diagnostic,
 	fragment::Fragment,
 	value::{row_number::ROW_NUMBER_COLUMN_NAME, r#type::Type},
 };
@@ -1697,9 +1697,10 @@ impl ExpressionCompiler {
 			InfixOperator::Assign(token) => {
 				// Assignment operator (=) is not valid in expression context
 				// Use == for equality comparison
-				reifydb_type::return_error!(diag_ast::unsupported_token_error(
-					token.fragment.to_owned()
-				))
+				return Err(crate::diagnostic::AstError::UnsupportedToken {
+					fragment: token.fragment.to_owned(),
+				}
+				.into());
 			}
 
 			InfixOperator::TypeAscription(token) => {

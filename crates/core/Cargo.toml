@@ -17,6 +17,7 @@ reifydb-build = { workspace = true }
 dashmap = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 once_cell = { workspace = true }

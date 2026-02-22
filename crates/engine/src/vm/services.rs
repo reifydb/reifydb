@@ -14,7 +14,7 @@ use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
 
-use crate::transform::registry::Transforms;
+use crate::{procedure::registry::Procedures, transform::registry::Transforms};
 
 /// Services is a container for shared resources used throughout the execution engine.
 ///
@@ -25,6 +25,7 @@ pub struct Services {
 	pub clock: Clock,
 	pub compiler: Compiler,
 	pub functions: Functions,
+	pub procedures: Procedures,
 	pub transforms: Transforms,
 	pub flow_operator_store: FlowOperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
@@ -37,6 +38,7 @@ impl Services {
 		catalog: Catalog,
 		clock: Clock,
 		functions: Functions,
+		procedures: Procedures,
 		transforms: Transforms,
 		flow_operator_store: FlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
@@ -47,6 +49,7 @@ impl Services {
 			catalog,
 			clock,
 			functions,
+			procedures,
 			transforms,
 			flow_operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
@@ -79,6 +82,7 @@ impl Services {
 					subscription::inspect::InspectSubscription::new,
 				)
 				.build(),
+			Procedures::empty(),
 			Transforms::empty(),
 			FlowOperatorStore::new(),
 			MetricReader::new(store),

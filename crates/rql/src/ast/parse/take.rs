@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation;
-use reifydb_type::return_error;
-
 use crate::{
 	ast::{
 		ast::{Ast, AstLiteral, AstTake},
 		parse::{Parser, Precedence},
 	},
+	error::RqlError,
 	token::{keyword::Keyword, operator::Operator},
 };
 
@@ -34,9 +32,10 @@ impl<'bump> Parser<'bump> {
 				AstLiteral::Number(number) => {
 					let take_value: i64 = number.value().parse().unwrap();
 					if take_value < 0 {
-						return_error!(operation::take_negative_value(
-							number.0.fragment.to_owned()
-						));
+						return Err(RqlError::TakeNegativeValue {
+							fragment: number.0.fragment.to_owned(),
+						}
+						.into());
 					}
 					Ok(AstTake {
 						token,

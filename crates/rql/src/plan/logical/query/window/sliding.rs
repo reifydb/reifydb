@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	common::{WindowSize, WindowSlide, WindowType},
-	error::diagnostic::operation,
-};
-use reifydb_type::{error::Error, fragment::Fragment, return_error};
+use reifydb_core::common::{WindowSize, WindowSlide, WindowType};
+use reifydb_type::fragment::Fragment;
 
 use super::{WindowConfig, WindowNode};
-use crate::{Result, expression::Expression};
+use crate::{Result, error::RqlError, expression::Expression};
 
 pub fn create_sliding_window(
 	config: WindowConfig,
@@ -17,10 +14,19 @@ pub fn create_sliding_window(
 ) -> Result<WindowNode> {
 	validate_sliding_config(&config)?;
 
-	let window_type =
-		config.window_type.ok_or_else(|| Error(operation::window_missing_type_or_size(Fragment::None)))?;
+	let window_type = config.window_type.ok_or_else(|| -> reifydb_type::error::Error {
+		RqlError::WindowMissingTypeOrSize {
+			fragment: Fragment::None,
+		}
+		.into()
+	})?;
 
-	let size = config.size.ok_or_else(|| Error(operation::window_missing_type_or_size(Fragment::None)))?;
+	let size = config.size.ok_or_else(|| -> reifydb_type::error::Error {
+		RqlError::WindowMissingTypeOrSize {
+			fragment: Fragment::None,
+		}
+		.into()
+	})?;
 
 	let slide = config.slide;
 
@@ -37,55 +43,65 @@ pub fn create_sliding_window(
 }
 
 fn validate_sliding_config(config: &WindowConfig) -> Result<()> {
-	let slide = config
-		.slide
-		.as_ref()
-		.ok_or_else(|| Error(operation::window_missing_slide_parameter(Fragment::None)))?;
+	let slide = config.slide.as_ref().ok_or_else(|| -> reifydb_type::error::Error {
+		RqlError::WindowMissingSlideParameter {
+			fragment: Fragment::None,
+		}
+		.into()
+	})?;
 
 	match (&config.window_type, &config.size) {
 		(Some(WindowType::Time(_)), Some(WindowSize::Duration(window_duration))) => {
 			if let WindowSlide::Duration(slide_duration) = slide {
 				if slide_duration >= window_duration {
-					return_error!(operation::window_slide_too_large(
-						Fragment::None,
-						format!("{:?}", slide_duration),
-						format!("{:?}", window_duration)
-					));
+					return Err(RqlError::WindowSlideTooLarge {
+						fragment: Fragment::None,
+						slide_value: format!("{:?}", slide_duration),
+						window_value: format!("{:?}", window_duration),
+					}
+					.into());
 				}
 			} else {
-				return_error!(operation::window_incompatible_slide_type(
-					Fragment::None,
-					"time-based".to_string(),
-					"count-based".to_string()
-				));
+				return Err(RqlError::WindowIncompatibleSlideType {
+					fragment: Fragment::None,
+					window_type: "time-based".to_string(),
+					slide_type: "count-based".to_string(),
+				}
+				.into());
 			}
 		}
 		(Some(WindowType::Count), Some(WindowSize::Count(window_count))) => {
 			if let WindowSlide::Count(slide_count) = slide {
 				if slide_count >= window_count {
-					return_error!(operation::window_slide_too_large(
-						Fragment::None,
-						slide_count.to_string(),
-						window_count.to_string()
-					));
+					return Err(RqlError::WindowSlideTooLarge {
+						fragment: Fragment::None,
+						slide_value: slide_count.to_string(),
+						window_value: window_count.to_string(),
+					}
+					.into());
 				}
 			} else {
-				return_error!(operation::window_incompatible_slide_type(
-					Fragment::None,
-					"count-based".to_string(),
-					"time-based".to_string()
-				));
+				return Err(RqlError::WindowIncompatibleSlideType {
+					fragment: Fragment::None,
+					window_type: "count-based".to_string(),
+					slide_type: "time-based".to_string(),
+				}
+				.into());
 			}
 		}
 		(Some(window_type), Some(size)) => {
-			return_error!(operation::window_incompatible_type_size(
-				Fragment::None,
-				format!("{:?}", window_type),
-				format!("{:?}", size)
-			));
+			return Err(RqlError::WindowIncompatibleTypeSize {
+				fragment: Fragment::None,
+				window_type: format!("{:?}", window_type),
+				size_type: format!("{:?}", size),
+			}
+			.into());
 		}
 		_ => {
-			return_error!(operation::window_missing_type_or_size(Fragment::None));
+			return Err(RqlError::WindowMissingTypeOrSize {
+				fragment: Fragment::None,
+			}
+			.into());
 		}
 	}
 

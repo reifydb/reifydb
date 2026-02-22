@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::error::{AstErrorKind, Error, TypeError};
+
 use crate::{
 	ast::{
 		ast::{
@@ -50,10 +52,18 @@ impl<'bump> Parser<'bump> {
 			return self.parse_drop_subscription(token);
 		}
 
-		Err(reifydb_type::error::Error(reifydb_type::error::diagnostic::ast::unexpected_token_error(
-			"FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, or SUBSCRIPTION",
-			self.current()?.fragment.to_owned(),
-		)))
+		let fragment = self.current()?.fragment.to_owned();
+		Err(Error::from(TypeError::Ast {
+			kind: AstErrorKind::UnexpectedToken {
+				expected: "FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, or SUBSCRIPTION".to_string(),
+			},
+			message: format!(
+				"Unexpected token: expected {}, got {}",
+				"FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, or SUBSCRIPTION",
+				fragment.text()
+			),
+			fragment,
+		}))
 	}
 
 	/// Parse IF EXISTS clause, returning true if present.

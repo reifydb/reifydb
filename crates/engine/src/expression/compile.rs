@@ -4,31 +4,14 @@
 use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{
-	error,
-	error::diagnostic::{
-		cast,
-		operator::{
-			and_can_not_applied_to_number, and_can_not_applied_to_temporal, and_can_not_applied_to_text,
-			and_can_not_applied_to_uuid, between_cannot_be_applied_to_incompatible_types,
-			equal_cannot_be_applied_to_incompatible_types,
-			greater_than_cannot_be_applied_to_incompatible_types,
-			greater_than_equal_cannot_be_applied_to_incompatible_types,
-			less_than_cannot_be_applied_to_incompatible_types,
-			less_than_equal_cannot_be_applied_to_incompatible_types,
-			not_equal_cannot_be_applied_to_incompatible_types, or_can_not_applied_to_number,
-			or_can_not_applied_to_temporal, or_can_not_applied_to_text, or_can_not_applied_to_uuid,
-			xor_can_not_applied_to_number, xor_can_not_applied_to_temporal, xor_can_not_applied_to_text,
-			xor_can_not_applied_to_uuid,
-		},
-		runtime::{self, variable_is_dataframe, variable_not_found},
-	},
+	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, OperandCategory, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
-	return_error,
 	value::{Value, r#type::Type},
 };
 
 use super::context::CompileContext;
 use crate::{
+	error::CastError,
 	expression::{
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
 		call::call_eval,
@@ -128,7 +111,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let variable_name = expr.name();
 
 				if variable_name == "env" {
-					return_error!(variable_is_dataframe(variable_name));
+					return Err(TypeError::Runtime {
+						kind: RuntimeErrorKind::VariableIsDataframe {
+							name: variable_name.to_string(),
+						},
+						message: format!(
+							"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+							variable_name
+						),
+					}
+					.into());
 				}
 
 				match ctx.symbol_table.get(variable_name) {
@@ -149,10 +141,25 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 						..
 					})
 					| Some(Variable::Closure(_)) => {
-						return_error!(variable_is_dataframe(variable_name));
+						return Err(TypeError::Runtime {
+							kind: RuntimeErrorKind::VariableIsDataframe {
+								name: variable_name.to_string(),
+							},
+							message: format!(
+								"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+								variable_name
+							),
+						}
+						.into());
 					}
 					None => {
-						return_error!(variable_not_found(variable_name));
+						return Err(TypeError::Runtime {
+							kind: RuntimeErrorKind::VariableNotFound {
+								name: variable_name.to_string(),
+							},
+							message: format!("Variable '{}' is not defined", variable_name),
+						}
+						.into());
 					}
 				}
 			})
@@ -235,12 +242,15 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = compare_columns::<Equal>(
-					&l,
-					&r,
-					fragment.clone(),
-					equal_cannot_be_applied_to_incompatible_types,
-				);
+				let result = compare_columns::<Equal>(&l, &r, fragment.clone(), |f, l, r| {
+					TypeError::BinaryOperatorNotApplicable {
+						operator: BinaryOp::Equal,
+						left: l,
+						right: r,
+						fragment: f,
+					}
+					.into_diagnostic()
+				});
 				result
 			})
 		}
@@ -252,12 +262,15 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = compare_columns::<NotEqual>(
-					&l,
-					&r,
-					fragment.clone(),
-					not_equal_cannot_be_applied_to_incompatible_types,
-				);
+				let result = compare_columns::<NotEqual>(&l, &r, fragment.clone(), |f, l, r| {
+					TypeError::BinaryOperatorNotApplicable {
+						operator: BinaryOp::NotEqual,
+						left: l,
+						right: r,
+						fragment: f,
+					}
+					.into_diagnostic()
+				});
 				result
 			})
 		}
@@ -269,12 +282,15 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = compare_columns::<GreaterThan>(
-					&l,
-					&r,
-					fragment.clone(),
-					greater_than_cannot_be_applied_to_incompatible_types,
-				);
+				let result = compare_columns::<GreaterThan>(&l, &r, fragment.clone(), |f, l, r| {
+					TypeError::BinaryOperatorNotApplicable {
+						operator: BinaryOp::GreaterThan,
+						left: l,
+						right: r,
+						fragment: f,
+					}
+					.into_diagnostic()
+				});
 				result
 			})
 		}
@@ -286,12 +302,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = compare_columns::<GreaterThanEqual>(
-					&l,
-					&r,
-					fragment.clone(),
-					greater_than_equal_cannot_be_applied_to_incompatible_types,
-				);
+				let result =
+					compare_columns::<GreaterThanEqual>(&l, &r, fragment.clone(), |f, l, r| {
+						TypeError::BinaryOperatorNotApplicable {
+							operator: BinaryOp::GreaterThanEqual,
+							left: l,
+							right: r,
+							fragment: f,
+						}
+						.into_diagnostic()
+					});
 				result
 			})
 		}
@@ -303,12 +323,15 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = compare_columns::<LessThan>(
-					&l,
-					&r,
-					fragment.clone(),
-					less_than_cannot_be_applied_to_incompatible_types,
-				);
+				let result = compare_columns::<LessThan>(&l, &r, fragment.clone(), |f, l, r| {
+					TypeError::BinaryOperatorNotApplicable {
+						operator: BinaryOp::LessThan,
+						left: l,
+						right: r,
+						fragment: f,
+					}
+					.into_diagnostic()
+				});
 				result
 			})
 		}
@@ -320,12 +343,15 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = compare_columns::<LessThanEqual>(
-					&l,
-					&r,
-					fragment.clone(),
-					less_than_equal_cannot_be_applied_to_incompatible_types,
-				);
+				let result = compare_columns::<LessThanEqual>(&l, &r, fragment.clone(), |f, l, r| {
+					TypeError::BinaryOperatorNotApplicable {
+						operator: BinaryOp::LessThanEqual,
+						left: l,
+						right: r,
+						fragment: f,
+					}
+					.into_diagnostic()
+				});
 				result
 			})
 		}
@@ -415,23 +441,41 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					&value_col,
 					&lower_col,
 					fragment.clone(),
-					greater_than_equal_cannot_be_applied_to_incompatible_types,
+					|f, l, r| {
+						TypeError::BinaryOperatorNotApplicable {
+							operator: BinaryOp::GreaterThanEqual,
+							left: l,
+							right: r,
+							fragment: f,
+						}
+						.into_diagnostic()
+					},
 				)?;
 				let le_result = compare_columns::<LessThanEqual>(
 					&value_col,
 					&upper_col,
 					fragment.clone(),
-					less_than_equal_cannot_be_applied_to_incompatible_types,
+					|f, l, r| {
+						TypeError::BinaryOperatorNotApplicable {
+							operator: BinaryOp::LessThanEqual,
+							left: l,
+							right: r,
+							fragment: f,
+						}
+						.into_diagnostic()
+					},
 				)?;
 
 				if !matches!(ge_result.data(), ColumnData::Bool(_))
 					|| !matches!(le_result.data(), ColumnData::Bool(_))
 				{
-					return_error!(between_cannot_be_applied_to_incompatible_types(
-						fragment.clone(),
-						value_col.get_type(),
-						lower_col.get_type(),
-					))
+					return Err(TypeError::BinaryOperatorNotApplicable {
+						operator: BinaryOp::Between,
+						left: value_col.get_type(),
+						right: lower_col.get_type(),
+						fragment: fragment.clone(),
+					}
+					.into());
 				}
 
 				match (ge_result.data(), le_result.data()) {
@@ -492,7 +536,15 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					&value_col,
 					&first_col,
 					fragment.clone(),
-					equal_cannot_be_applied_to_incompatible_types,
+					|f, l, r| {
+						TypeError::BinaryOperatorNotApplicable {
+							operator: BinaryOp::Equal,
+							left: l,
+							right: r,
+							fragment: f,
+						}
+						.into_diagnostic()
+					},
 				)?;
 
 				for list_expr in list.iter().skip(1) {
@@ -501,7 +553,15 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 						&value_col,
 						&list_col,
 						fragment.clone(),
-						equal_cannot_be_applied_to_incompatible_types,
+						|f, l, r| {
+							TypeError::BinaryOperatorNotApplicable {
+								operator: BinaryOp::Equal,
+								left: l,
+								right: r,
+								fragment: f,
+							}
+							.into_diagnostic()
+						},
 					)?;
 					result = or_columns(result, eq_result, fragment.clone())?;
 				}
@@ -543,11 +603,11 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 							inner_fragment.clone()
 						})
 						.map_err(|e| {
-							error!(cast::invalid_number(
-								frag,
-								target_type.clone(),
-								e.diagnostic()
-							))
+							Error::from(CastError::InvalidNumber {
+								fragment: frag,
+								target: target_type.clone(),
+								cause: e.diagnostic(),
+							})
 						})?;
 					Ok(Column {
 						name: column.name_owned(),
@@ -678,34 +738,78 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 										.iter()
 										.map(|c| c.name.text().to_string())
 										.collect();
-									return_error!(runtime::field_not_found(
-										variable_name,
-										&field_name,
-										&available
-									));
+									return Err(TypeError::Runtime {
+										kind: RuntimeErrorKind::FieldNotFound {
+											variable: variable_name
+												.to_string(),
+											field: field_name.to_string(),
+											available,
+										},
+										message: format!(
+											"Field '{}' not found on variable '{}'",
+											field_name, variable_name
+										),
+									}
+									.into());
 								}
 							}
 						}
 						Some(Variable::Scalar(_)) | Some(Variable::Closure(_)) => {
-							return_error!(runtime::field_not_found(
-								variable_name,
-								&field_name,
-								&[]
-							));
+							return Err(TypeError::Runtime {
+								kind: RuntimeErrorKind::FieldNotFound {
+									variable: variable_name.to_string(),
+									field: field_name.to_string(),
+									available: vec![],
+								},
+								message: format!(
+									"Field '{}' not found on variable '{}'",
+									field_name, variable_name
+								),
+							}
+							.into());
 						}
 						Some(Variable::ForIterator {
 							..
 						}) => {
-							return_error!(runtime::variable_is_dataframe(variable_name));
+							return Err(TypeError::Runtime {
+								kind: RuntimeErrorKind::VariableIsDataframe {
+									name: variable_name.to_string(),
+								},
+								message: format!(
+									"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+									variable_name
+								),
+							}
+							.into());
 						}
 						None => {
-							return_error!(runtime::variable_not_found(variable_name));
+							return Err(TypeError::Runtime {
+								kind: RuntimeErrorKind::VariableNotFound {
+									name: variable_name.to_string(),
+								},
+								message: format!(
+									"Variable '{}' is not defined",
+									variable_name
+								),
+							}
+							.into());
 						}
 					}
 				} else {
 					// For non-variable objects, evaluate the object and try to interpret result
 					let _obj_col = object.execute(ctx)?;
-					return_error!(runtime::field_not_found("<expression>", &field_name, &[]));
+					return Err(TypeError::Runtime {
+						kind: RuntimeErrorKind::FieldNotFound {
+							variable: "<expression>".to_string(),
+							field: field_name.to_string(),
+							available: vec![],
+						},
+						message: format!(
+							"Field '{}' not found on variable '<expression>'",
+							field_name
+						),
+					}
+					.into());
 				}
 			})
 		}
@@ -736,13 +840,33 @@ fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> crate::Res
 			}
 			(l, r) => {
 				if l.is_number() || r.is_number() {
-					return_error!(and_can_not_applied_to_number(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::And,
+						operand_category: OperandCategory::Number,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else if l.is_text() || r.is_text() {
-					return_error!(and_can_not_applied_to_text(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::And,
+						operand_category: OperandCategory::Text,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else if l.is_temporal() || r.is_temporal() {
-					return_error!(and_can_not_applied_to_temporal(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::And,
+						operand_category: OperandCategory::Temporal,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else if l.is_uuid() || r.is_uuid() {
-					return_error!(and_can_not_applied_to_uuid(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::And,
+						operand_category: OperandCategory::Uuid,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else {
 					unimplemented!("{} and {}", l.get_type(), r.get_type());
 				}
@@ -769,13 +893,33 @@ fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> crate::Resu
 			}
 			(l, r) => {
 				if l.is_number() || r.is_number() {
-					return_error!(or_can_not_applied_to_number(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::Or,
+						operand_category: OperandCategory::Number,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else if l.is_text() || r.is_text() {
-					return_error!(or_can_not_applied_to_text(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::Or,
+						operand_category: OperandCategory::Text,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else if l.is_temporal() || r.is_temporal() {
-					return_error!(or_can_not_applied_to_temporal(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::Or,
+						operand_category: OperandCategory::Temporal,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else if l.is_uuid() || r.is_uuid() {
-					return_error!(or_can_not_applied_to_uuid(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::Or,
+						operand_category: OperandCategory::Uuid,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else {
 					unimplemented!("{} or {}", l.get_type(), r.get_type());
 				}
@@ -802,13 +946,33 @@ fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> crate::Res
 			}
 			(l, r) => {
 				if l.is_number() || r.is_number() {
-					return_error!(xor_can_not_applied_to_number(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::Xor,
+						operand_category: OperandCategory::Number,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else if l.is_text() || r.is_text() {
-					return_error!(xor_can_not_applied_to_text(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::Xor,
+						operand_category: OperandCategory::Text,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else if l.is_temporal() || r.is_temporal() {
-					return_error!(xor_can_not_applied_to_temporal(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::Xor,
+						operand_category: OperandCategory::Temporal,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else if l.is_uuid() || r.is_uuid() {
-					return_error!(xor_can_not_applied_to_uuid(fragment.clone()));
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::Xor,
+						operand_category: OperandCategory::Uuid,
+						fragment: fragment.clone(),
+					}
+					.into());
 				} else {
 					unimplemented!("{} xor {}", l.get_type(), r.get_type());
 				}

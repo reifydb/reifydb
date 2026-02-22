@@ -6,10 +6,8 @@ use std::{
 	sync::{Arc, OnceLock},
 };
 
-use reifydb_type::error;
-
 use super::IocContainer;
-use crate::error::diagnostic::internal::internal;
+use crate::internal_error;
 
 /// Thread-safe lazy resolution wrapper using OnceLock
 /// Can be cheaply cloned as it uses Arc internally
@@ -50,20 +48,20 @@ impl<T: Clone> LazyResolveArc<T> {
 			Ok(()) => {
 				// We successfully set it, return a reference
 				self.inner.value.get().ok_or_else(|| {
-					error!(internal(format!(
+					internal_error!(
 						"Failed to get value after setting in OnceLock for type {}",
 						type_name::<T>()
-					)))
+					)
 				})
 			}
 			Err(_) => {
 				// Someone else set it in the meantime, use
 				// their value
 				self.inner.value.get().ok_or_else(|| {
-					error!(internal(format!(
+					internal_error!(
 						"Failed to get value from OnceLock for type {}",
 						type_name::<T>()
-					)))
+					)
 				})
 			}
 		}

@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_core::value::column::{columns::Columns, data::ColumnData, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::diagnostic::assert::assertion_failed, return_error};
 use tracing::instrument;
 
 use crate::{
+	error::EngineError,
 	expression::{context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -77,21 +77,26 @@ impl QueryNode for AssertNode {
 							let valid = container.is_defined(i);
 							let value = container.data().get(i);
 							if !valid || !value {
-								return_error!(assertion_failed(
-									frag.clone(),
-									self.message.clone(),
-									Some(frag.text().to_string()),
-								));
+								return Err(EngineError::AssertionFailed {
+									fragment: frag.clone(),
+									message: self
+										.message
+										.clone()
+										.unwrap_or_default(),
+									expression: Some(frag.text().to_string()),
+								}
+								.into());
 							}
 						}
 					}
 					_ => {
-						return_error!(assertion_failed(
-							frag.clone(),
-							Some("assert expression must evaluate to a boolean"
-								.to_string()),
-							Some(frag.text().to_string()),
-						));
+						return Err(EngineError::AssertionFailed {
+							fragment: frag.clone(),
+							message: "assert expression must evaluate to a boolean"
+								.to_string(),
+							expression: Some(frag.text().to_string()),
+						}
+						.into());
 					}
 				}
 			}
@@ -170,19 +175,21 @@ impl QueryNode for AssertWithoutInputNode {
 					let valid = container.is_defined(0);
 					let value = container.data().get(0);
 					if !valid || !value {
-						return_error!(assertion_failed(
-							frag.clone(),
-							self.message.clone(),
-							Some(frag.text().to_string()),
-						));
+						return Err(EngineError::AssertionFailed {
+							fragment: frag.clone(),
+							message: self.message.clone().unwrap_or_default(),
+							expression: Some(frag.text().to_string()),
+						}
+						.into());
 					}
 				}
 				_ => {
-					return_error!(assertion_failed(
-						frag.clone(),
-						Some("assert expression must evaluate to a boolean".to_string()),
-						Some(frag.text().to_string()),
-					));
+					return Err(EngineError::AssertionFailed {
+						fragment: frag.clone(),
+						message: "assert expression must evaluate to a boolean".to_string(),
+						expression: Some(frag.text().to_string()),
+					}
+					.into());
 				}
 			}
 		}

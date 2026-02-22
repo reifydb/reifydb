@@ -3,8 +3,7 @@
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	err, error,
-	error::diagnostic::cast,
+	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
 		container::utf8::Utf8Container,
@@ -19,6 +18,8 @@ use reifydb_type::{
 	},
 };
 
+use crate::error::CastError;
+
 pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	if let ColumnData::Utf8 {
 		container,
@@ -32,12 +33,22 @@ pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 			Type::Duration => to_duration(container, lazy_fragment),
 			_ => {
 				let source_type = data.get_type();
-				err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+				Err(TypeError::UnsupportedCast {
+					from: source_type,
+					to: target,
+					fragment: lazy_fragment.fragment(),
+				}
+				.into())
 			}
 		}
 	} else {
 		let source_type = data.get_type();
-		err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+		Err(TypeError::UnsupportedCast {
+			from: source_type,
+			to: target,
+			fragment: lazy_fragment.fragment(),
+		}
+		.into())
 	}
 }
 
@@ -102,8 +113,11 @@ macro_rules! impl_to_temporal {
 							}
 						}
 
-						// Wrap in cast error with the original fragment for the outer error
-						error!(cast::invalid_temporal(proper_fragment, $target_type, e.0))
+						Error::from(CastError::InvalidTemporal {
+							fragment: e.0.fragment.clone(),
+							target: $target_type,
+							cause: e.diagnostic(),
+						})
 					})?;
 
 					out.push::<$type>(parsed);

@@ -819,9 +819,9 @@ pub fn to_json_pretty(expr: &Expression) -> String {
 /// Deserialize an Expression from a JSON string.
 pub fn from_json(json: &str) -> reifydb_type::Result<Expression> {
 	let json_expr: JsonExpression = from_str(json).map_err(|e| {
-		reifydb_type::error::Error(reifydb_type::error::diagnostic::serde::serde_deserialize_error(
-			e.to_string(),
-		))
+		reifydb_type::error::Error::from(reifydb_type::error::TypeError::SerdeDeserialize {
+			message: e.to_string(),
+		})
 	})?;
 	json_expr.try_into()
 }

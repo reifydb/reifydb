@@ -135,14 +135,7 @@ impl ColumnStore for StandardColumnStore {
 		if let Some(backend) = self.select_write_tier(version) {
 			backend.insert(version, columns)
 		} else {
-			reifydb_type::err!(reifydb_core::error::diagnostic::internal::internal_with_context(
-				"No available backend for column storage",
-				file!(),
-				line!(),
-				column!(),
-				module_path!(),
-				module_path!()
-			))
+			reifydb_core::internal_err!("No available backend for column storage")
 		}
 	}
 

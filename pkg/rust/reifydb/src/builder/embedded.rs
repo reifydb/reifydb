@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_engine::transform::registry::Transforms;
+use reifydb_engine::{procedure::registry::ProceduresBuilder, transform::registry::Transforms};
 use reifydb_function::registry::FunctionsBuilder;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
@@ -23,6 +23,7 @@ pub struct EmbeddedBuilder {
 	interceptors: StandardInterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
+	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
 	transforms: Option<Transforms>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
@@ -38,6 +39,7 @@ impl EmbeddedBuilder {
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
+			procedures_configurator: None,
 			transforms: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
@@ -59,6 +61,14 @@ impl EmbeddedBuilder {
 		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
 	{
 		self.functions_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_procedures<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+	{
+		self.procedures_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -88,6 +98,10 @@ impl EmbeddedBuilder {
 
 		if let Some(configurator) = self.functions_configurator {
 			builder = builder.with_functions_configurator(configurator);
+		}
+
+		if let Some(configurator) = self.procedures_configurator {
+			builder = builder.with_procedures_configurator(configurator);
 		}
 
 		if let Some(transforms) = self.transforms {

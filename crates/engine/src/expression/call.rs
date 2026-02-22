@@ -10,8 +10,6 @@ use reifydb_rql::{
 };
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{
-	error,
-	error::diagnostic::function,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, r#type::Type},
@@ -19,6 +17,7 @@ use reifydb_type::{
 
 use super::eval::evaluate;
 use crate::{
+	error::EngineError,
 	expression::context::EvalContext,
 	vm::{
 		scalar,
@@ -73,8 +72,13 @@ pub(crate) fn call_eval(
 	}
 
 	// Fall back to built-in scalar function handling
-	let functor =
-		functions.get_scalar(function_name).ok_or(error!(function::unknown_function(call.func.0.clone())))?;
+	let functor = functions.get_scalar(function_name).ok_or_else(|| -> reifydb_type::error::Error {
+		EngineError::UnknownFunction {
+			name: call.func.0.text().to_string(),
+			fragment: call.func.0.clone(),
+		}
+		.into()
+	})?;
 
 	let row_count = ctx.row_count;
 

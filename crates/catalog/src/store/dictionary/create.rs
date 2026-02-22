@@ -3,7 +3,6 @@
 
 use reifydb_core::{
 	encoded::encoded::EncodedValues,
-	error::diagnostic::catalog::dictionary_already_exists,
 	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
 	key::{
 		dictionary::{DictionaryKey, DictionarySequenceKey},
@@ -13,13 +12,13 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
-	return_error,
 	util::cowvec::CowVec,
 	value::{dictionary::DictionaryId, r#type::Type},
 };
 
 use crate::{
 	CatalogStore,
+	error::{CatalogError, CatalogObjectKind},
 	store::{
 		dictionary::schema::{dictionary, dictionary_namespace},
 		sequence::system::SystemSequence,
@@ -48,11 +47,13 @@ impl CatalogStore {
 			to_create.name.text(),
 		)? {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return_error!(dictionary_already_exists(
-				to_create.name.clone(),
-				&namespace.name,
-				&dictionary.name
-			));
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::Dictionary,
+				namespace: namespace.name,
+				name: dictionary.name,
+				fragment: to_create.name.clone(),
+			}
+			.into());
 		}
 
 		// Allocate new dictionary ID

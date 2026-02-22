@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	error::diagnostic::transaction::key_out_of_scope,
-	interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionValues},
-};
+use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionValues};
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
-use reifydb_type::{error, util::hex};
+use reifydb_type::util::hex;
 
 use super::*;
+use crate::error::TransactionError;
 
 /// Holds both the Arc and the guard to keep the lock alive
 #[allow(dead_code)]
@@ -56,7 +54,10 @@ impl<'a> SingleReadTransaction<'a> {
 		if self.keys.iter().any(|k| k == key) {
 			Ok(())
 		} else {
-			Err(error!(key_out_of_scope(hex::encode(&key))))
+			Err(TransactionError::KeyOutOfScope {
+				key: hex::encode(&key),
+			}
+			.into())
 		}
 	}
 

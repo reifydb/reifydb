@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
+use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
 /// General frame processing error
 pub fn frame_error(message: String) -> Diagnostic {

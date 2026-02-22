@@ -4,17 +4,14 @@
 use std::mem::take;
 
 use indexmap::IndexMap;
-use reifydb_core::{
-	error::diagnostic::transaction::key_out_of_scope,
-	interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionValues},
+use reifydb_core::interface::store::{
+	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionValues,
 };
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockWriteGuard};
-use reifydb_type::{
-	error,
-	util::{cowvec::CowVec, hex},
-};
+use reifydb_type::util::{cowvec::CowVec, hex};
 
 use super::*;
+use crate::error::TransactionError;
 
 /// Holds both the Arc and the guard to keep the lock alive
 #[allow(dead_code)]
@@ -79,7 +76,10 @@ impl<'a> SingleWriteTransaction<'a> {
 		if self.keys.iter().any(|k| k == key) {
 			Ok(())
 		} else {
-			Err(error!(key_out_of_scope(hex::encode(&key))))
+			Err(TransactionError::KeyOutOfScope {
+				key: hex::encode(&key),
+			}
+			.into())
 		}
 	}
 

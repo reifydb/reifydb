@@ -10,7 +10,7 @@ use number::NumberParser;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_rql::expression::ConstantExpression;
 use reifydb_type::{
-	error::diagnostic::cast,
+	error::TypeError,
 	return_error,
 	value::{
 		boolean::parse::parse_bool,
@@ -141,7 +141,12 @@ pub(crate) fn constant_value_of(
 					..
 				} => Type::Option(Box::new(Type::Any)),
 			};
-			return_error!(cast::unsupported_cast(expr.full_fragment_owned(), source_type, target));
+			return Err(TypeError::UnsupportedCast {
+				from: source_type,
+				to: target,
+				fragment: expr.full_fragment_owned(),
+			}
+			.into());
 		}
 	})
 }

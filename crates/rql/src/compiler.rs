@@ -7,11 +7,12 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::util::lru::LruCache;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, error::diagnostic::runtime, fragment::Fragment, value::Value};
+use reifydb_type::{Result, fragment::Fragment, value::Value};
 
 use crate::{
 	ast::parse_str,
 	bump::Bump,
+	error::RqlError,
 	expression::{Expression, ParameterExpression, PrefixOperator},
 	instruction::{Addr, CompiledClosureDef, CompiledFunctionDef, Instruction, ScopeType},
 	nodes,
@@ -708,6 +709,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::CreatePolicy(node) => {
 				self.emit(Instruction::CreatePolicy(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateProcedure(node) => {
+				self.emit(Instruction::CreateProcedure(node));
 				self.emit(Instruction::Emit);
 			}
 
@@ -1418,10 +1423,7 @@ impl InstructionCompiler {
 	}
 
 	fn compile_break(&mut self) -> Result<()> {
-		let loop_ctx = self
-			.loop_stack
-			.last_mut()
-			.ok_or_else(|| reifydb_type::error!(runtime::break_outside_loop()))?;
+		let loop_ctx = self.loop_stack.last_mut().ok_or(RqlError::BreakOutsideLoop)?;
 		let exit_scopes = self.scope_depth - loop_ctx.scope_depth;
 		let idx = self.emit(Instruction::Break {
 			exit_scopes,
@@ -1432,8 +1434,7 @@ impl InstructionCompiler {
 	}
 
 	fn compile_continue(&mut self) -> Result<()> {
-		let loop_ctx =
-			self.loop_stack.last().ok_or_else(|| reifydb_type::error!(runtime::continue_outside_loop()))?;
+		let loop_ctx = self.loop_stack.last().ok_or(RqlError::ContinueOutsideLoop)?;
 		let exit_scopes = self.scope_depth - loop_ctx.scope_depth;
 		let continue_addr = loop_ctx.continue_addr;
 		self.emit(Instruction::Continue {

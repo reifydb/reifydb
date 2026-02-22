@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_runtime::clock::Clock;
-use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
+use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
 /// Creates a detailed internal error diagnostic with source location and
 /// context

@@ -16,6 +16,7 @@ use reifydb_type::{error::Error, value::uuid::Uuid7};
 
 pub mod change;
 pub mod delta;
+pub mod error;
 pub mod interceptor;
 pub mod multi;
 pub mod single;

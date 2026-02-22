@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use indexmap::IndexMap;
-use reifydb_type::{error, value::Value};
+use reifydb_type::{error::Error, value::Value};
 
 use crate::{
-	error::diagnostic::engine::frame_error,
+	error::CoreError,
 	value::column::{ColumnData, columns::Columns},
 };
 
@@ -19,10 +19,13 @@ impl Columns {
 		let mut key_columns: Vec<&ColumnData> = Vec::with_capacity(keys.len());
 
 		for &key in keys {
-			let column = self
-				.iter()
-				.find(|c| c.name() == key)
-				.ok_or_else(|| error!(frame_error(format!("Column '{}' not found", key))))?;
+			let column = self.iter().find(|c| c.name() == key).ok_or_else(|| {
+				let err: Error = CoreError::FrameError {
+					message: format!("Column '{}' not found", key),
+				}
+				.into();
+				err
+			})?;
 			key_columns.push(&column.data());
 		}
 

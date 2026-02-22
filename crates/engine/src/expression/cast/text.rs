@@ -5,8 +5,7 @@ use std::fmt::Display;
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	err,
-	error::{Error, diagnostic::cast},
+	error::TypeError,
 	fragment::LazyFragment,
 	value::{
 		container::{
@@ -17,6 +16,8 @@ use reifydb_type::{
 		r#type::Type,
 	},
 };
+
+use crate::error::CastError;
 
 pub fn to_text(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
@@ -44,8 +45,13 @@ pub fn to_text(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Re
 		ColumnData::Uuid4(container) => from_uuid(container),
 		ColumnData::Uuid7(container) => from_uuid(container),
 		_ => {
-			let source_type = data.get_type();
-			err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, Type::Utf8))
+			let from = data.get_type();
+			Err(TypeError::UnsupportedCast {
+				from,
+				to: Type::Utf8,
+				fragment: lazy_fragment.fragment(),
+			}
+			.into())
 		}
 	}
 }
@@ -58,10 +64,11 @@ pub fn from_blob(container: &BlobContainer, lazy_fragment: impl LazyFragment) ->
 			match container[idx].to_utf8() {
 				Ok(s) => out.push(s),
 				Err(e) => {
-					return Err(Error(cast::invalid_blob_to_utf8(
-						lazy_fragment.fragment(),
-						e.diagnostic(),
-					)));
+					return Err(CastError::InvalidBlobToUtf8 {
+						fragment: lazy_fragment.fragment(),
+						cause: e.diagnostic(),
+					}
+					.into());
 				}
 			}
 		} else {

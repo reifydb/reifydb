@@ -9,7 +9,8 @@ use reifydb_core::{
 };
 use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
-use super::{coerce::coerce_columns, error::BulkInsertError};
+use super::coerce::coerce_columns;
+use crate::error::EngineError;
 
 /// Validate and coerce all rows for a table in columnar batch mode.
 ///
@@ -105,11 +106,11 @@ fn collect_rows_to_columns(
 			}
 			Params::Positional(vals) => {
 				if vals.len() > num_cols {
-					return Err(BulkInsertError::too_many_values(
-						Fragment::None,
-						num_cols,
-						vals.len(),
-					)
+					return Err(EngineError::BulkInsertTooManyValues {
+						fragment: Fragment::None,
+						expected: num_cols,
+						actual: vals.len(),
+					}
 					.into());
 				}
 				for col_idx in 0..num_cols {
@@ -129,11 +130,11 @@ fn collect_rows_to_columns(
 		if let Params::Named(map) = params {
 			for name in map.keys() {
 				if !columns.iter().any(|c| &c.name == name) {
-					return Err(BulkInsertError::column_not_found(
-						Fragment::None,
-						source_name,
-						name,
-					)
+					return Err(EngineError::BulkInsertColumnNotFound {
+						fragment: Fragment::None,
+						table_name: source_name.to_string(),
+						column: name.to_string(),
+					}
 					.into());
 				}
 			}

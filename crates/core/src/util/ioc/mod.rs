@@ -10,9 +10,7 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
-use reifydb_type::error;
-
-use crate::error::diagnostic::internal::internal;
+use crate::internal_error;
 
 struct BoxedValue {
 	value: Box<dyn Any + Send + Sync>,
@@ -62,9 +60,7 @@ impl IocContainer {
 			.unwrap()
 			.get(&TypeId::of::<T>())
 			.and_then(|boxed| boxed.value::<T>())
-			.ok_or_else(|| {
-				error!(internal(format!("Type {} not registered in IoC container", type_name::<T>())))
-			})
+			.ok_or_else(|| internal_error!("Type {} not registered in IoC container", type_name::<T>()))
 	}
 }
 

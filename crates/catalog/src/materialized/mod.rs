@@ -8,6 +8,7 @@ pub mod namespace;
 pub mod operator_retention_policy;
 pub mod primary_key;
 pub mod primitive_retention_policy;
+pub mod procedure;
 pub mod ringbuffer;
 pub mod subscription;
 pub mod sumtype;
@@ -18,14 +19,14 @@ use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	error::diagnostic::catalog::virtual_table_already_exists,
 	interface::catalog::{
 		dictionary::DictionaryDef,
 		flow::{FlowDef, FlowId, FlowNodeId},
-		id::{NamespaceId, PrimaryKeyId, RingBufferId, SubscriptionId, TableId, ViewId},
+		id::{NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
 		key::PrimaryKeyDef,
 		namespace::NamespaceDef,
 		primitive::PrimitiveId,
+		procedure::ProcedureDef,
 		ringbuffer::RingBufferDef,
 		subscription::SubscriptionDef,
 		sumtype::SumTypeDef,
@@ -38,6 +39,8 @@ use reifydb_core::{
 };
 use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 
+use crate::error::{CatalogError, CatalogObjectKind};
+
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
 pub type MultiVersionViewDef = MultiVersionContainer<ViewDef>;
@@ -45,6 +48,7 @@ pub type MultiVersionFlowDef = MultiVersionContainer<FlowDef>;
 pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
 pub type MultiVersionDictionaryDef = MultiVersionContainer<DictionaryDef>;
+pub type MultiVersionProcedureDef = MultiVersionContainer<ProcedureDef>;
 pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
 pub type MultiVersionSumTypeDef = MultiVersionContainer<SumTypeDef>;
 pub type MultiVersionSubscriptionDef = MultiVersionContainer<SubscriptionDef>;
@@ -73,6 +77,10 @@ pub struct MaterializedCatalogInner {
 	pub(crate) flows: SkipMap<FlowId, MultiVersionFlowDef>,
 	/// Index from (namespace_id, flow_name) to flow ID for fast name lookups
 	pub(crate) flows_by_name: SkipMap<(NamespaceId, String), FlowId>,
+	/// MultiVersion procedure definitions indexed by procedure ID
+	pub(crate) procedures: SkipMap<ProcedureId, MultiVersionProcedureDef>,
+	/// Index from (namespace_id, procedure_name) to procedure ID for fast name lookups
+	pub(crate) procedures_by_name: SkipMap<(NamespaceId, String), ProcedureId>,
 	/// MultiVersion primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
 	/// MultiVersion source retention policies indexed by source ID
@@ -137,6 +145,8 @@ impl MaterializedCatalog {
 		Self(Arc::new(MaterializedCatalogInner {
 			namespaces,
 			namespaces_by_name,
+			procedures: SkipMap::new(),
+			procedures_by_name: SkipMap::new(),
 			tables: SkipMap::new(),
 			tables_by_name: SkipMap::new(),
 			views: SkipMap::new(),
@@ -172,7 +182,13 @@ impl MaterializedCatalog {
 				.get(&def.namespace)
 				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
 				.unwrap_or_else(|| format!("{}", def.namespace.0));
-			return Err(reifydb_type::error::Error(virtual_table_already_exists(&ns_name, &def.name)));
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::VirtualTable,
+				namespace: ns_name,
+				name: def.name.clone(),
+				fragment: reifydb_type::fragment::Fragment::None,
+			}
+			.into());
 		}
 
 		self.vtable_user.insert(def.id, def.clone());
@@ -194,9 +210,13 @@ impl MaterializedCatalog {
 				.get(&namespace)
 				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
 				.unwrap_or_else(|| format!("{}", namespace.0));
-			Err(reifydb_type::error::Error(
-				reifydb_core::error::diagnostic::catalog::virtual_table_not_found(&ns_name, name),
-			))
+			Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::VirtualTable,
+				namespace: ns_name,
+				name: name.to_string(),
+				fragment: reifydb_type::fragment::Fragment::None,
+			}
+			.into())
 		}
 	}
 

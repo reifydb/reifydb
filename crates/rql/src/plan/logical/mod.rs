@@ -29,21 +29,23 @@ use reifydb_core::{
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
-use reifydb_type::{error::diagnostic::ast::unsupported_ast_node, fragment::Fragment, return_error};
+use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
 use crate::{
 	ast::{
-		ast::{Ast, AstInfix, AstStatement, AstType, InfixOperator},
+		ast::{Ast, AstInfix, AstProcedureParam, AstStatement, AstType, InfixOperator},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
-			MaybeQualifiedIndexIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
+			MaybeQualifiedIndexIdentifier, MaybeQualifiedProcedureIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
+			MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
+	diagnostic::AstError,
 	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
 	plan::logical::alter::flow::AlterFlowNode,
 };
@@ -220,10 +222,11 @@ impl<'bump> Compiler<'bump> {
 			Ast::Apply(node) => self.compile_apply(node),
 			Ast::Window(node) => self.compile_window(node),
 			Ast::Identifier(ref id) => {
-				return_error!(unsupported_ast_node(
-					id.token.fragment.to_owned(),
-					"standalone identifier"
-				))
+				return Err(AstError::UnsupportedAstNode {
+					node_type: "standalone identifier".to_string(),
+					fragment: id.token.fragment.to_owned(),
+				}
+				.into());
 			}
 			// Auto-wrap scalar expressions into MAP constructs
 			Ast::Literal(_) | Ast::Variable(_) => self.compile_scalar_as_map(node),
@@ -239,18 +242,24 @@ impl<'bump> Compiler<'bump> {
 			}
 			Ast::Block(_) => {
 				// Blocks are handled by their parent constructs (IF, LOOP, etc.)
-				return_error!(unsupported_ast_node(
-					node.token().fragment.to_owned(),
-					"standalone block"
-				))
+				return Err(AstError::UnsupportedAstNode {
+					node_type: "standalone block".to_string(),
+					fragment: node.token().fragment.to_owned(),
+				}
+				.into());
 			}
 			Ast::DefFunction(node) => self.compile_def_function(node, tx),
 			Ast::Return(node) => self.compile_return(node),
 			Ast::Closure(node) => self.compile_closure(node, tx),
+			Ast::Call(call_node) => self.compile_call(call_node),
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
-				return_error!(unsupported_ast_node(node.token().fragment.to_owned(), &node_type))
+				return Err(AstError::UnsupportedAstNode {
+					node_type: node_type.to_string(),
+					fragment: node.token().fragment.to_owned(),
+				}
+				.into());
 			}
 		}
 	}
@@ -280,10 +289,11 @@ impl<'bump> Compiler<'bump> {
 				let variable = match BumpBox::into_inner(node.left) {
 					crate::ast::ast::Ast::Variable(var) => var,
 					_ => {
-						return_error!(unsupported_ast_node(
-							node.token.fragment.to_owned(),
-							"assignment to non-variable"
-						))
+						return Err(AstError::UnsupportedAstNode {
+							node_type: "assignment to non-variable".to_string(),
+							fragment: node.token.fragment.to_owned(),
+						}
+						.into());
 					}
 				};
 
@@ -308,10 +318,11 @@ impl<'bump> Compiler<'bump> {
 			}
 			_ => {
 				// Other infix operations are not supported as standalone statements
-				return_error!(unsupported_ast_node(
-					node.token.fragment.to_owned(),
-					"infix operation as statement"
-				))
+				return Err(AstError::UnsupportedAstNode {
+					node_type: "infix operation as statement".to_string(),
+					fragment: node.token.fragment.to_owned(),
+				}
+				.into());
 			}
 		}
 	}
@@ -332,6 +343,7 @@ pub enum LogicalPlan<'bump> {
 	CreateSubscription(CreateSubscriptionNode<'bump>),
 	CreatePrimaryKey(CreatePrimaryKeyNode<'bump>),
 	CreatePolicy(CreatePolicyNode<'bump>),
+	CreateProcedure(CreateProcedureNode<'bump>),
 	// Drop
 	DropNamespace(DropNamespaceNode<'bump>),
 	DropTable(DropTableNode<'bump>),
@@ -761,6 +773,13 @@ pub struct CreatePrimaryKeyNode<'bump> {
 pub struct CreatePolicyNode<'bump> {
 	pub column: MaybeQualifiedColumnIdentifier<'bump>,
 	pub policies: Vec<ColumnPolicyKind>,
+}
+
+#[derive(Debug)]
+pub struct CreateProcedureNode<'bump> {
+	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
+	pub params: Vec<AstProcedureParam<'bump>>,
+	pub body_source: String,
 }
 
 // === Drop nodes ===

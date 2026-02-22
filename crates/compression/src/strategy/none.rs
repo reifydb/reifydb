@@ -5,10 +5,7 @@ use reifydb_core::value::column::{
 	compressed::{CompressedColumn, CompressionType},
 	data::ColumnData,
 };
-use reifydb_type::{
-	error,
-	error::{diagnostic, diagnostic::serde::serde_serialize_error},
-};
+use reifydb_type::error::TypeError;
 
 use crate::ColumnCompressor;
 
@@ -16,7 +13,12 @@ pub struct NoneCompressor {}
 
 impl ColumnCompressor for NoneCompressor {
 	fn compress(&self, data: &ColumnData) -> reifydb_type::Result<CompressedColumn> {
-		let serialized = postcard::to_stdvec(data).map_err(|e| error!(serde_serialize_error(e.to_string())))?;
+		let serialized = postcard::to_stdvec(data).map_err(|e| -> reifydb_type::error::Error {
+			TypeError::SerdeSerialize {
+				message: e.to_string(),
+			}
+			.into()
+		})?;
 
 		let uncompressed_size = serialized.len();
 
@@ -32,8 +34,13 @@ impl ColumnCompressor for NoneCompressor {
 	fn decompress(&self, compressed: &CompressedColumn) -> reifydb_type::Result<ColumnData> {
 		assert_eq!(compressed.compression, CompressionType::None);
 
-		let result: ColumnData = postcard::from_bytes(&compressed.data)
-			.map_err(|e| error!(diagnostic::serde::serde_deserialize_error(e.to_string())))?;
+		let result: ColumnData =
+			postcard::from_bytes(&compressed.data).map_err(|e| -> reifydb_type::error::Error {
+				TypeError::SerdeDeserialize {
+					message: e.to_string(),
+				}
+				.into()
+			})?;
 
 		Ok(result)
 	}

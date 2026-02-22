@@ -2,15 +2,18 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::catalog::sumtype_already_exists,
 	interface::catalog::{id::NamespaceId, sumtype::SumTypeDef},
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_type::fragment::Fragment;
 
 use super::schema::{sumtype as sumtype_schema, sumtype_namespace};
-use crate::{CatalogStore, store::sequence::system::SystemSequence};
+use crate::{
+	CatalogStore,
+	error::{CatalogError, CatalogObjectKind},
+	store::sequence::system::SystemSequence,
+};
 
 #[derive(Debug, Clone)]
 pub struct SumTypeToCreate {
@@ -32,11 +35,13 @@ impl CatalogStore {
 			to_create.name.text(),
 		)? {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return_error!(sumtype_already_exists(
-				to_create.name.clone(),
-				&namespace.name,
-				to_create.name.text()
-			));
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::SumType,
+				namespace: namespace.name,
+				name: to_create.name.text().to_string(),
+				fragment: to_create.name.clone(),
+			}
+			.into());
 		}
 
 		let sumtype_id = SystemSequence::next_sumtype_id(txn)?;

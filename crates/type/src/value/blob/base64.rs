@@ -3,7 +3,7 @@
 
 use super::Blob;
 use crate::{
-	error::{Error, diagnostic::blob},
+	error::{BlobEncodingKind, Error, TypeError},
 	fragment::Fragment,
 	util::base64::engine::general_purpose,
 };
@@ -19,7 +19,12 @@ impl Blob {
 				// Try without padding
 				match general_purpose::STANDARD_NO_PAD.decode(b64_str) {
 					Ok(bytes) => Ok(Blob::new(bytes)),
-					Err(_) => Err(Error(blob::invalid_base64_string(fragment))),
+					Err(_) => Err(TypeError::BlobEncoding {
+						kind: BlobEncodingKind::InvalidBase64,
+						message: format!("Invalid base64 string: '{}'", fragment.text()),
+						fragment,
+					}
+					.into()),
 				}
 			}
 		}
@@ -30,7 +35,12 @@ impl Blob {
 		let b64url_str = fragment.text();
 		match general_purpose::URL_SAFE_NO_PAD.decode(b64url_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
-			Err(_) => Err(Error(blob::invalid_base64url_string(fragment))),
+			Err(_) => Err(TypeError::BlobEncoding {
+				kind: BlobEncodingKind::InvalidBase64Url,
+				message: format!("Invalid base64url string: '{}'", fragment.text()),
+				fragment,
+			}
+			.into()),
 		}
 	}
 

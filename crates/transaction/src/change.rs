@@ -5,8 +5,9 @@ use OperationType::Delete;
 use reifydb_core::interface::catalog::{
 	dictionary::DictionaryDef,
 	flow::{FlowDef, FlowId},
-	id::{NamespaceId, RingBufferId, SubscriptionId, TableId, ViewId},
+	id::{NamespaceId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
 	namespace::NamespaceDef,
+	procedure::ProcedureDef,
 	ringbuffer::RingBufferDef,
 	subscription::SubscriptionDef,
 	sumtype::SumTypeDef,
@@ -21,6 +22,7 @@ pub trait TransactionalChanges:
 	TransactionalDictionaryChanges
 	+ TransactionalFlowChanges
 	+ TransactionalNamespaceChanges
+	+ TransactionalProcedureChanges
 	+ TransactionalRingBufferChanges
 	+ TransactionalSubscriptionChanges
 	+ TransactionalSumTypeChanges
@@ -67,6 +69,16 @@ pub trait TransactionalTableChanges {
 	fn is_table_deleted(&self, id: TableId) -> bool;
 
 	fn is_table_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
+pub trait TransactionalProcedureChanges {
+	fn find_procedure(&self, id: ProcedureId) -> Option<&ProcedureDef>;
+
+	fn find_procedure_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&ProcedureDef>;
+
+	fn is_procedure_deleted(&self, id: ProcedureId) -> bool;
+
+	fn is_procedure_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
 pub trait TransactionalRingBufferChanges {
@@ -117,6 +129,8 @@ pub struct TransactionalDefChanges {
 	pub flow_def: Vec<Change<FlowDef>>,
 	/// All namespace definition changes in order (no coalescing)
 	pub namespace_def: Vec<Change<NamespaceDef>>,
+	/// All procedure definition changes in order (no coalescing)
+	pub procedure_def: Vec<Change<ProcedureDef>>,
 	/// All ring buffer definition changes in order (no coalescing)
 	pub ringbuffer_def: Vec<Change<RingBufferDef>>,
 	/// All subscription definition changes in order (no coalescing)
@@ -171,6 +185,21 @@ impl TransactionalDefChanges {
 		let op = change.op;
 		self.namespace_def.push(change);
 		self.log.push(Operation::Namespace {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_procedure_def_change(&mut self, change: Change<ProcedureDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|p| p.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.procedure_def.push(change);
+		self.log.push(Operation::Procedure {
 			id,
 			op,
 		});
@@ -287,6 +316,10 @@ pub enum Operation {
 		id: NamespaceId,
 		op: OperationType,
 	},
+	Procedure {
+		id: ProcedureId,
+		op: OperationType,
+	},
 	RingBuffer {
 		id: RingBufferId,
 		op: OperationType,
@@ -316,6 +349,7 @@ impl TransactionalDefChanges {
 			dictionary_def: Vec::new(),
 			flow_def: Vec::new(),
 			namespace_def: Vec::new(),
+			procedure_def: Vec::new(),
 			ringbuffer_def: Vec::new(),
 			sumtype_def: Vec::new(),
 			subscription_def: Vec::new(),
@@ -401,6 +435,7 @@ impl TransactionalDefChanges {
 		self.dictionary_def.clear();
 		self.flow_def.clear();
 		self.namespace_def.clear();
+		self.procedure_def.clear();
 		self.ringbuffer_def.clear();
 		self.sumtype_def.clear();
 		self.subscription_def.clear();

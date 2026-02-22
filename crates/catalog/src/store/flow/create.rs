@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::catalog::flow_already_exists,
 	interface::catalog::{
 		flow::{FlowDef, FlowId, FlowStatus},
 		id::NamespaceId,
@@ -10,10 +9,11 @@ use reifydb_core::{
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	CatalogStore,
+	error::{CatalogError, CatalogObjectKind},
 	store::{
 		flow::schema::{flow, flow_namespace},
 		sequence::flow::next_flow_id,
@@ -38,11 +38,13 @@ impl CatalogStore {
 			to_create.name.text(),
 		)? {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return_error!(flow_already_exists(
-				to_create.name.clone(),
-				&namespace.name,
-				to_create.name.text()
-			));
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::Flow,
+				namespace: namespace.name,
+				name: to_create.name.text().to_string(),
+				fragment: to_create.name.clone(),
+			}
+			.into());
 		}
 
 		let flow_id = next_flow_id(txn)?;

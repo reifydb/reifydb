@@ -3,9 +3,8 @@
 
 use super::{date::parse_date, time::parse_time};
 use crate::{
-	error::{Error, diagnostic::temporal},
+	error::{Error, TemporalKind, TypeError},
 	fragment::Fragment,
-	return_error,
 	value::DateTime,
 };
 
@@ -13,7 +12,12 @@ pub fn parse_datetime(fragment: Fragment) -> Result<DateTime, Error> {
 	let fragment = fragment;
 	let parts: Vec<&str> = fragment.text().split('T').collect();
 	if parts.len() != 2 {
-		return_error!(temporal::invalid_datetime_format(fragment));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidDateTimeFormat,
+			message: "invalid datetime format".into(),
+			fragment,
+		}
+		.into());
 	}
 
 	// Create sub-fragments for the date and time parts with proper position

@@ -3,10 +3,9 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+use reifydb_core::internal_error;
 use reifydb_type::{
 	Result,
-	error::diagnostic::ast::unrecognized_type,
-	return_error,
 	value::{
 		constraint::{Constraint, TypeConstraint},
 		r#type::Type,
@@ -16,11 +15,13 @@ use reifydb_type::{
 use crate::{
 	ast::ast::{AstLiteral, AstType},
 	bump::BumpFragment,
+	diagnostic::AstError,
 };
 
 pub mod ast;
 pub mod bump;
 pub mod compiler;
+pub mod diagnostic;
 pub mod error;
 pub mod explain;
 pub mod expression;
@@ -60,7 +61,12 @@ pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<Type> {
 		"int" => Type::Int,
 		"uint" => Type::Uint,
 		"decimal" => Type::Decimal,
-		_ => return_error!(unrecognized_type(ast.to_owned())),
+		_ => {
+			return Err(AstError::UnrecognizedType {
+				fragment: ast.to_owned(),
+			}
+			.into());
+		}
 	})
 }
 
@@ -117,18 +123,16 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 			name,
 			..
 		} => {
-			return_error!(unrecognized_type(name.to_owned()))
+			return Err(AstError::UnrecognizedType {
+				fragment: name.to_owned(),
+			}
+			.into());
 		}
 	}
 }
 
 fn parse_number_literal(s: &str) -> Result<usize> {
-	s.parse::<usize>().map_err(|_| {
-		reifydb_type::error!(reifydb_core::error::diagnostic::internal::internal(format!(
-			"Invalid number literal: {}",
-			s
-		)))
-	})
+	s.parse::<usize>().map_err(|_| internal_error!("Invalid number literal: {}", s))
 }
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};

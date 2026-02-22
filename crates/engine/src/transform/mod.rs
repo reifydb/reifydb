@@ -7,6 +7,8 @@ pub mod ffi;
 #[cfg(reifydb_target = "native")]
 pub mod loader;
 pub mod registry;
+pub mod wasm;
+pub mod wasm_loader;
 
 use reifydb_core::value::column::columns::Columns;
 

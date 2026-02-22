@@ -7,9 +7,10 @@ use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_function::{GeneratorContext, GeneratorFunction};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error, error::diagnostic::function::generator_not_found, fragment::Fragment, params::Params};
+use reifydb_type::{fragment::Fragment, params::Params};
 
 use crate::{
+	error::EngineError,
 	expression::{context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -38,11 +39,15 @@ impl QueryNode for GeneratorNode {
 	fn initialize<'a>(&mut self, _txn: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 
-		let generator = ctx
-			.services
-			.functions
-			.get_generator(self.function_name.text())
-			.ok_or_else(|| error!(generator_not_found(self.function_name.clone())))?;
+		let generator = ctx.services.functions.get_generator(self.function_name.text()).ok_or_else(
+			|| -> reifydb_type::error::Error {
+				EngineError::GeneratorNotFound {
+					name: self.function_name.text().to_string(),
+					fragment: self.function_name.clone(),
+				}
+				.into()
+			},
+		)?;
 
 		self.exhausted = false;
 		self.generator = Some(generator);

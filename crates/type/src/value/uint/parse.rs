@@ -6,13 +6,8 @@ use std::borrow::Cow;
 use num_bigint::BigInt;
 
 use crate::{
-	err,
-	error::{
-		Error,
-		diagnostic::number::{invalid_number_format, number_out_of_range},
-	},
+	error::{Error, TypeError},
 	fragment::Fragment,
-	return_error,
 	value::{r#type::Type, uint::Uint},
 };
 
@@ -36,7 +31,11 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 	};
 
 	if value.is_empty() {
-		return_error!(invalid_number_format(fragment, Type::Uint));
+		return Err(TypeError::InvalidNumberFormat {
+			target: Type::Uint,
+			fragment,
+		}
+		.into());
 	}
 
 	// Check for negative sign early, but allow -0.0 case to be handled by
@@ -45,7 +44,12 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 		// Quick check for other obvious negative values
 		if let Ok(bigint) = value.parse::<BigInt>() {
 			if bigint.sign() == num_bigint::Sign::Minus {
-				return_error!(number_out_of_range(fragment, Type::Uint, None));
+				return Err(TypeError::NumberOutOfRange {
+					target: Type::Uint,
+					fragment,
+					descriptor: None,
+				}
+				.into());
 			}
 		}
 		// For non-BigInt parseable values, let float parsing handle it
@@ -57,7 +61,12 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 			// Double check that the BigInt is non-negative (should
 			// be guaranteed by the prefix check)
 			if v.sign() == num_bigint::Sign::Minus {
-				return_error!(number_out_of_range(fragment, Type::Uint, None));
+				return Err(TypeError::NumberOutOfRange {
+					target: Type::Uint,
+					fragment,
+					descriptor: None,
+				}
+				.into());
 			}
 			Ok(Uint::from(v))
 		}
@@ -66,13 +75,23 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 			// scientific notation and truncation
 			if let Ok(f) = value.parse::<f64>() {
 				if f.is_infinite() {
-					err!(number_out_of_range(fragment, Type::Uint, None))
+					Err(TypeError::NumberOutOfRange {
+						target: Type::Uint,
+						fragment,
+						descriptor: None,
+					}
+					.into())
 				} else {
 					let truncated = f.trunc();
 					// Handle negative zero and other
 					// negative values
 					if truncated < 0.0 && truncated != -0.0 {
-						return_error!(number_out_of_range(fragment, Type::Uint, None));
+						return Err(TypeError::NumberOutOfRange {
+							target: Type::Uint,
+							fragment,
+							descriptor: None,
+						}
+						.into());
 					}
 					// Convert the truncated float to
 					// BigInt, treating -0.0 as 0.0
@@ -84,16 +103,29 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 					if let Ok(bigint) = format!("{:.0}", abs_truncated).parse::<BigInt>() {
 						Ok(Uint::from(bigint))
 					} else {
-						err!(invalid_number_format(fragment, Type::Uint))
+						Err(TypeError::InvalidNumberFormat {
+							target: Type::Uint,
+							fragment,
+						}
+						.into())
 					}
 				}
 			} else {
 				// Check if it contains a minus sign to provide
 				// better error message
 				if value.contains('-') {
-					err!(number_out_of_range(fragment, Type::Uint, None))
+					Err(TypeError::NumberOutOfRange {
+						target: Type::Uint,
+						fragment,
+						descriptor: None,
+					}
+					.into())
 				} else {
-					err!(invalid_number_format(fragment, Type::Uint))
+					Err(TypeError::InvalidNumberFormat {
+						target: Type::Uint,
+						fragment,
+					}
+					.into())
 				}
 			}
 		}

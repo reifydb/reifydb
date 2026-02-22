@@ -7,9 +7,9 @@
 
 use std::{ops::Bound, sync::Arc};
 
-use reifydb_core::error::diagnostic::internal::internal;
+use reifydb_core::internal_error;
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_type::{Result, error, util::cowvec::CowVec};
+use reifydb_type::{Result, util::cowvec::CowVec};
 use rusqlite::{Connection, Error::QueryReturnedNoRows, params};
 use tracing::instrument;
 
@@ -93,7 +93,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 			Ok(None) => Ok(None),
 			Err(QueryReturnedNoRows) => Ok(None),
 			Err(e) if e.to_string().contains("no such table") => Ok(None),
-			Err(e) => Err(error!(internal(format!("Failed to get: {}", e)))),
+			Err(e) => Err(internal_error!("Failed to get: {}", e)),
 		}
 	}
 
@@ -111,7 +111,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 			Ok(has_value) => Ok(has_value),
 			Err(QueryReturnedNoRows) => Ok(false),
 			Err(e) if e.to_string().contains("no such table") => Ok(false),
-			Err(e) => Err(error!(internal(format!("Failed to check contains: {}", e)))),
+			Err(e) => Err(internal_error!("Failed to check contains: {}", e)),
 		}
 	}
 
@@ -124,7 +124,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		let conn = self.inner.conn.lock();
 		let tx = conn
 			.unchecked_transaction()
-			.map_err(|e| error!(internal(format!("Failed to start transaction: {}", e))))?;
+			.map_err(|e| internal_error!("Failed to start transaction: {}", e))?;
 
 		let result = insert_entries_in_tx(&tx, TABLE_NAME, &entries);
 		if let Err(e) = result {
@@ -139,15 +139,15 @@ impl TierStorage for SqlitePrimitiveStorage {
 					),
 					[],
 				)
-				.map_err(|e| error!(internal(format!("Failed to create table: {}", e))))?;
+				.map_err(|e| internal_error!("Failed to create table: {}", e))?;
 				insert_entries_in_tx(&tx, TABLE_NAME, &entries)
-					.map_err(|e| error!(internal(format!("Failed to insert entries: {}", e))))?;
+					.map_err(|e| internal_error!("Failed to insert entries: {}", e))?;
 			} else {
-				return Err(error!(internal(format!("Failed to insert entries: {}", e))));
+				return Err(internal_error!("Failed to insert entries: {}", e));
 			}
 		}
 
-		tx.commit().map_err(|e| error!(internal(format!("Failed to commit transaction: {}", e))))
+		tx.commit().map_err(|e| internal_error!("Failed to commit transaction: {}", e))
 	}
 
 	#[instrument(name = "store::single::sqlite::range_next", level = "trace", skip(self, cursor))]
@@ -181,7 +181,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 				cursor.exhausted = true;
 				return Ok(RangeBatch::empty());
 			}
-			Err(e) => return Err(error!(internal(format!("Failed to prepare query: {}", e)))),
+			Err(e) => return Err(internal_error!("Failed to prepare query: {}", e)),
 		};
 
 		let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
@@ -195,7 +195,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 					value: value.map(CowVec::new),
 				})
 			})
-			.map_err(|e| error!(internal(format!("Failed to query range: {}", e))))?
+			.map_err(|e| internal_error!("Failed to query range: {}", e))?
 			.filter_map(|r| r.ok())
 			.collect();
 
@@ -253,7 +253,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 				cursor.exhausted = true;
 				return Ok(RangeBatch::empty());
 			}
-			Err(e) => return Err(error!(internal(format!("Failed to prepare query: {}", e)))),
+			Err(e) => return Err(internal_error!("Failed to prepare query: {}", e)),
 		};
 
 		let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
@@ -267,7 +267,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 					value: value.map(CowVec::new),
 				})
 			})
-			.map_err(|e| error!(internal(format!("Failed to query range: {}", e))))?
+			.map_err(|e| internal_error!("Failed to query range: {}", e))?
 			.filter_map(|r| r.ok())
 			.collect();
 
@@ -309,7 +309,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 			[],
 		)
 		.map(|_| ())
-		.map_err(|e| error!(internal(format!("Failed to ensure table: {}", e))))
+		.map_err(|e| internal_error!("Failed to ensure table: {}", e))
 	}
 
 	#[instrument(name = "store::single::sqlite::clear_table", level = "debug", skip(self))]
@@ -321,7 +321,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		match result {
 			Ok(_) => Ok(()),
 			Err(e) if e.to_string().contains("no such table") => Ok(()),
-			Err(e) => Err(error!(internal(format!("Failed to clear table: {}", e)))),
+			Err(e) => Err(internal_error!("Failed to clear table: {}", e)),
 		}
 	}
 }

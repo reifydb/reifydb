@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::catalog::ringbuffer_already_exists,
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{NamespaceId, RingBufferId},
@@ -17,12 +16,12 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
-	return_error,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId},
 };
 
 use crate::{
 	CatalogStore,
+	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
 		ringbuffer::schema::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
@@ -61,11 +60,13 @@ impl CatalogStore {
 			to_create.name.text(),
 		)? {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return_error!(ringbuffer_already_exists(
-				to_create.name.clone(),
-				&namespace.name,
-				&ringbuffer.name
-			));
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::RingBuffer,
+				namespace: namespace.name,
+				name: ringbuffer.name,
+				fragment: to_create.name.clone(),
+			}
+			.into());
 		}
 
 		let ringbuffer_id = SystemSequence::next_ringbuffer_id(txn)?;

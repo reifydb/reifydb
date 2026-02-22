@@ -6,3 +6,4 @@
 pub mod buffer;
 pub mod column;
 pub mod layout;
+pub mod wasm;

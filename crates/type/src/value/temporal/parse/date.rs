@@ -2,9 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	error::{Error, diagnostic::temporal},
+	error::{Error, TemporalKind, TypeError},
 	fragment::Fragment,
-	return_error,
 	value::Date,
 };
 
@@ -14,7 +13,12 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 	let parts: Vec<&str> = value.split('-').collect();
 
 	if parts.len() != 3 {
-		return_error!(temporal::invalid_date_format(fragment));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidDateFormat,
+			message: "invalid date format".into(),
+			fragment,
+		}
+		.into());
 	}
 
 	// Check for empty parts and calculate positions
@@ -25,19 +29,34 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 	let mut offset = 0;
 	if year_str.is_empty() {
 		let year_frag = fragment.sub_fragment(offset, parts[0].len());
-		return_error!(temporal::empty_date_component(year_frag));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::EmptyDateComponent,
+			message: "empty date component".into(),
+			fragment: year_frag,
+		}
+		.into());
 	}
 	offset += parts[0].len() + 1; // +1 for dash
 
 	if month_str.is_empty() {
 		let month_frag = fragment.sub_fragment(offset, parts[1].len());
-		return_error!(temporal::empty_date_component(month_frag));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::EmptyDateComponent,
+			message: "empty date component".into(),
+			fragment: month_frag,
+		}
+		.into());
 	}
 	offset += parts[1].len() + 1; // +1 for dash
 
 	if day_str.is_empty() {
 		let day_frag = fragment.sub_fragment(offset, parts[2].len());
-		return_error!(temporal::empty_date_component(day_frag));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::EmptyDateComponent,
+			message: "empty date component".into(),
+			fragment: day_frag,
+		}
+		.into());
 	}
 
 	// Reset offset for further validation
@@ -45,37 +64,78 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 
 	if year_str.len() != 4 {
 		let year_frag = fragment.sub_fragment(offset, parts[0].len());
-		return_error!(temporal::invalid_year(year_frag));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidYear,
+			message: format!("invalid year value '{}'", year_frag.text()),
+			fragment: year_frag,
+		}
+		.into());
 	}
 
 	let year = year_str.parse::<i32>().map_err(|_| {
 		let year_frag = fragment.sub_fragment(offset, parts[0].len());
-		Error(temporal::invalid_year(year_frag))
+		let err: Error = TypeError::Temporal {
+			kind: TemporalKind::InvalidYear,
+			message: format!("invalid year value '{}'", year_frag.text()),
+			fragment: year_frag,
+		}
+		.into();
+		err
 	})?;
 	offset += parts[0].len() + 1; // +1 for dash
 
 	if month_str.len() != 2 {
 		let month_frag = fragment.sub_fragment(offset, parts[1].len());
-		return_error!(temporal::invalid_month(month_frag));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidMonth,
+			message: format!("invalid month value '{}'", month_frag.text()),
+			fragment: month_frag,
+		}
+		.into());
 	}
 
 	let month = month_str.parse::<u32>().map_err(|_| {
 		let month_frag = fragment.sub_fragment(offset, parts[1].len());
-		Error(temporal::invalid_month(month_frag))
+		let err: Error = TypeError::Temporal {
+			kind: TemporalKind::InvalidMonth,
+			message: format!("invalid month value '{}'", month_frag.text()),
+			fragment: month_frag,
+		}
+		.into();
+		err
 	})?;
 	offset += parts[1].len() + 1; // +1 for dash
 
 	if day_str.len() != 2 {
 		let day_frag = fragment.sub_fragment(offset, parts[2].len());
-		return_error!(temporal::invalid_day(day_frag));
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidDay,
+			message: format!("invalid day value '{}'", day_frag.text()),
+			fragment: day_frag,
+		}
+		.into());
 	}
 
 	let day = day_str.parse::<u32>().map_err(|_| {
 		let day_frag = fragment.sub_fragment(offset, parts[2].len());
-		Error(temporal::invalid_day(day_frag))
+		let err: Error = TypeError::Temporal {
+			kind: TemporalKind::InvalidDay,
+			message: format!("invalid day value '{}'", day_frag.text()),
+			fragment: day_frag,
+		}
+		.into();
+		err
 	})?;
 
-	Date::new(year, month, day).ok_or_else(|| Error(temporal::invalid_date_values(fragment)))
+	Date::new(year, month, day).ok_or_else(|| {
+		let err: Error = TypeError::Temporal {
+			kind: TemporalKind::InvalidDateValues,
+			message: "invalid date values".into(),
+			fragment,
+		}
+		.into();
+		err
+	})
 }
 
 #[cfg(test)]

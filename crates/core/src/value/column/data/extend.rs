@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{return_error, storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_type::{storage::DataBitVec, util::bitvec::BitVec};
 
 use crate::{
-	error::diagnostic::internal::internal,
+	return_internal_error,
 	value::column::{ColumnData, data::with_container},
 };
 
@@ -117,7 +117,7 @@ impl ColumnData {
 					**l_inner = new_inner;
 				} else {
 					// Type mismatch with both having defined values
-					return_error!(internal("column type mismatch in Option extend".to_string()));
+					return_internal_error!("column type mismatch in Option extend");
 				}
 				DataBitVec::extend_from(l_bitvec, &r_bitvec);
 			}
@@ -183,7 +183,7 @@ impl ColumnData {
 
 			// Type mismatch
 			(_, _) => {
-				return_error!(internal("column type mismatch".to_string()));
+				return_internal_error!("column type mismatch");
 			}
 		}
 

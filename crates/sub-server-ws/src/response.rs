@@ -8,7 +8,7 @@
 //! with the client implementation.
 
 use reifydb_sub_server::response::ResponseFrame;
-use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
+use reifydb_type::{error::Diagnostic, fragment::Fragment};
 use serde::Serialize;
 
 /// WebSocket response envelope (matches client's `Response`)

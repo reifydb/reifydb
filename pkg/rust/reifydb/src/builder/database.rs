@@ -26,7 +26,12 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{EngineVersion, engine::StandardEngine, transform::registry::Transforms};
+use reifydb_engine::{
+	EngineVersion,
+	engine::StandardEngine,
+	procedure::registry::{Procedures, ProceduresBuilder},
+	transform::registry::Transforms,
+};
 use reifydb_function::registry::{Functions, FunctionsBuilder};
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
@@ -59,6 +64,7 @@ pub struct DatabaseBuilder {
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
+	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
 	transforms: Option<Transforms>,
 	multi_store: Option<MultiStore>,
 	single_store: Option<SingleStore>,
@@ -84,6 +90,7 @@ impl DatabaseBuilder {
 			factories: Vec::new(),
 			ioc,
 			functions_configurator: None,
+			procedures_configurator: None,
 			transforms: None,
 			multi_store: None,
 			single_store: None,
@@ -135,6 +142,14 @@ impl DatabaseBuilder {
 		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
 	{
 		self.functions_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_procedures_configurator<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+	{
+		self.procedures_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -221,6 +236,12 @@ impl DatabaseBuilder {
 
 		let transforms = self.transforms.unwrap_or_else(Transforms::empty);
 
+		let procedures = if let Some(configurator) = self.procedures_configurator {
+			configurator(Procedures::builder()).build()
+		} else {
+			Procedures::empty()
+		};
+
 		// Create engine before CDC worker (CDC worker needs engine for cleanup)
 		let engine = StandardEngine::new(
 			multi.clone(),
@@ -230,6 +251,7 @@ impl DatabaseBuilder {
 			Catalog::new(catalog, schema_registry),
 			runtime.clock().clone(),
 			functions,
+			procedures,
 			transforms,
 			self.ioc.clone(),
 		);

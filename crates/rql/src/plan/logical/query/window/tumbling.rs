@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	common::{WindowSize, WindowType},
-	error::diagnostic::operation,
-};
-use reifydb_type::{error::Error, fragment::Fragment, return_error};
+use reifydb_core::common::{WindowSize, WindowType};
+use reifydb_type::fragment::Fragment;
 
 use super::{WindowConfig, WindowNode};
-use crate::{Result, expression::Expression};
+use crate::{Result, error::RqlError, expression::Expression};
 
 pub fn create_tumbling_window(
 	config: WindowConfig,
@@ -17,12 +14,20 @@ pub fn create_tumbling_window(
 ) -> Result<WindowNode> {
 	validate_tumbling_config(&config)?;
 
-	let window_type =
-		config.window_type.ok_or_else(|| Error(operation::window_missing_type_or_size(Fragment::None)))?;
+	let window_type = config.window_type.ok_or_else(|| -> reifydb_type::error::Error {
+		RqlError::WindowMissingTypeOrSize {
+			fragment: Fragment::None,
+		}
+		.into()
+	})?;
 
-	let size = config.size.ok_or_else(|| Error(operation::window_missing_type_or_size(Fragment::None)))?;
+	let size = config.size.ok_or_else(|| -> reifydb_type::error::Error {
+		RqlError::WindowMissingTypeOrSize {
+			fragment: Fragment::None,
+		}
+		.into()
+	})?;
 
-	// For tumbling windows, slide should always be None
 	let slide = None;
 
 	Ok(WindowNode {
@@ -39,22 +44,28 @@ pub fn create_tumbling_window(
 
 fn validate_tumbling_config(config: &WindowConfig) -> Result<()> {
 	if config.slide.is_some() {
-		return_error!(operation::window_tumbling_with_slide(Fragment::None));
+		return Err(RqlError::WindowTumblingWithSlide {
+			fragment: Fragment::None,
+		}
+		.into());
 	}
 
-	// Validate that window type and size are compatible
 	match (&config.window_type, &config.size) {
 		(Some(WindowType::Time(_)), Some(WindowSize::Duration(_))) => {}
 		(Some(WindowType::Count), Some(WindowSize::Count(_))) => {}
 		(Some(window_type), Some(size)) => {
-			return_error!(operation::window_incompatible_type_size(
-				Fragment::None,
-				format!("{:?}", window_type),
-				format!("{:?}", size)
-			));
+			return Err(RqlError::WindowIncompatibleTypeSize {
+				fragment: Fragment::None,
+				window_type: format!("{:?}", window_type),
+				size_type: format!("{:?}", size),
+			}
+			.into());
 		}
 		_ => {
-			return_error!(operation::window_missing_type_or_size(Fragment::None));
+			return Err(RqlError::WindowMissingTypeOrSize {
+				fragment: Fragment::None,
+			}
+			.into());
 		}
 	}
 

@@ -3,10 +3,15 @@
 
 use std::marker::PhantomData;
 
-use reifydb_catalog::catalog::Catalog;
+use reifydb_catalog::{
+	catalog::Catalog,
+	error::{CatalogError, CatalogObjectKind},
+};
 use reifydb_core::{
 	encoded::schema::Schema,
+	error::CoreError,
 	interface::{auth::Identity, catalog::id::IndexId},
+	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
@@ -17,7 +22,6 @@ use reifydb_type::{
 
 use super::{
 	BulkInsertResult, RingBufferInsertResult, TableInsertResult,
-	error::BulkInsertError,
 	validation::{
 		reorder_rows_trusted, reorder_rows_trusted_rb, validate_and_coerce_rows, validate_and_coerce_rows_rb,
 	},
@@ -161,11 +165,21 @@ fn execute_table_insert<V: ValidationMode>(
 	// 1. Look up namespace and table from catalog
 	let namespace = catalog
 		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
-		.ok_or_else(|| BulkInsertError::namespace_not_found(Fragment::None, &pending.namespace))?;
+		.ok_or_else(|| CatalogError::NotFound {
+			kind: CatalogObjectKind::Namespace,
+			namespace: pending.namespace.to_string(),
+			name: String::new(),
+			fragment: Fragment::None,
+		})?;
 
 	let table = catalog
 		.find_table_by_name(&mut Transaction::Command(txn), namespace.id, &pending.table)?
-		.ok_or_else(|| BulkInsertError::table_not_found(Fragment::None, &pending.namespace, &pending.table))?;
+		.ok_or_else(|| CatalogError::NotFound {
+			kind: CatalogObjectKind::Table,
+			namespace: pending.namespace.to_string(),
+			name: pending.table.to_string(),
+			fragment: Fragment::None,
+		})?;
 
 	// 2. Get or create schema with proper field names and constraints
 	let schema = crate::vm::instruction::dml::schema::get_or_create_table_schema(
@@ -198,7 +212,7 @@ fn execute_table_insert<V: ValidationMode>(
 				let dictionary = catalog
 					.find_dictionary(&mut Transaction::Command(txn), dict_id)?
 					.ok_or_else(|| {
-						reifydb_core::internal_error!(
+						internal_error!(
 							"Dictionary {:?} not found for column {}",
 							dict_id,
 							col.name
@@ -249,13 +263,12 @@ fn execute_table_insert<V: ValidationMode>(
 			// Check for primary key violation
 			if txn.contains_key(&index_entry_key.encode())? {
 				let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
-				reifydb_type::return_error!(
-					reifydb_core::error::diagnostic::index::primary_key_violation(
-						Fragment::None,
-						table.name.clone(),
-						key_columns,
-					)
-				);
+				return Err(CoreError::PrimaryKeyViolation {
+					fragment: Fragment::None,
+					table_name: table.name.clone(),
+					key_columns,
+				}
+				.into());
 			}
 
 			// Store the index entry
@@ -282,17 +295,29 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 ) -> crate::Result<RingBufferInsertResult> {
 	let namespace = catalog
 		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
-		.ok_or_else(|| BulkInsertError::namespace_not_found(Fragment::None, &pending.namespace))?;
+		.ok_or_else(|| CatalogError::NotFound {
+			kind: CatalogObjectKind::Namespace,
+			namespace: pending.namespace.to_string(),
+			name: String::new(),
+			fragment: Fragment::None,
+		})?;
 
 	let ringbuffer = catalog
 		.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id, &pending.ringbuffer)?
-		.ok_or_else(|| {
-			BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
+		.ok_or_else(|| CatalogError::NotFound {
+			kind: CatalogObjectKind::RingBuffer,
+			namespace: pending.namespace.to_string(),
+			name: pending.ringbuffer.to_string(),
+			fragment: Fragment::None,
 		})?;
 
-	let mut metadata =
-		catalog.find_ringbuffer_metadata(&mut Transaction::Command(txn), ringbuffer.id)?.ok_or_else(|| {
-			BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
+	let mut metadata = catalog
+		.find_ringbuffer_metadata(&mut Transaction::Command(txn), ringbuffer.id)?
+		.ok_or_else(|| CatalogError::NotFound {
+			kind: CatalogObjectKind::RingBuffer,
+			namespace: pending.namespace.to_string(),
+			name: pending.ringbuffer.to_string(),
+			fragment: Fragment::None,
 		})?;
 
 	// Get or create schema with proper field names and constraints
@@ -320,7 +345,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 				let dictionary = catalog
 					.find_dictionary(&mut Transaction::Command(txn), dict_id)?
 					.ok_or_else(|| {
-						reifydb_core::internal_error!(
+						internal_error!(
 							"Dictionary {:?} not found for column {}",
 							dict_id,
 							col.name

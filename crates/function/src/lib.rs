@@ -26,6 +26,7 @@ pub mod series;
 pub mod subscription;
 pub mod text;
 pub mod time;
+pub mod wasm;
 
 use error::{AggregateFunctionResult, GeneratorFunctionResult, ScalarFunctionResult};
 use reifydb_catalog::catalog::Catalog;

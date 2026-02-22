@@ -2,14 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
 	interface::catalog::{policy::ColumnPolicyKind, primitive::PrimitiveId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
-	return_error,
 	value::{
 		blob::Blob,
 		constraint::{Constraint, TypeConstraint},
@@ -49,6 +47,7 @@ use reifydb_core::interface::catalog::column::{ColumnDef, ColumnIndex};
 
 use crate::{
 	CatalogStore,
+	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::schema::{
 			column,
@@ -83,12 +82,14 @@ impl CatalogStore {
 		if let Some(column) =
 			Self::find_column_by_name(&mut Transaction::Admin(&mut *txn), source, &column_to_create.column)?
 		{
-			return_error!(table_column_already_exists(
-				Fragment::None,
-				&column_to_create.namespace_name,
-				&column_to_create.primitive_name,
-				&column.name,
-			));
+			return Err(CatalogError::ColumnAlreadyExists {
+				kind: CatalogObjectKind::Table,
+				namespace: column_to_create.namespace_name.clone(),
+				name: column_to_create.primitive_name.clone(),
+				column: column.name,
+				fragment: Fragment::None,
+			}
+			.into());
 		}
 
 		// Validate auto_increment is only used with integer types
@@ -103,11 +104,12 @@ impl CatalogStore {
 			);
 
 			if !is_integer_type {
-				return_error!(auto_increment_invalid_type(
-					column_to_create.fragment.unwrap_or_else(|| Fragment::None),
-					&column_to_create.column,
-					base_type,
-				));
+				return Err(CatalogError::AutoIncrementInvalidType {
+					column: column_to_create.column.clone(),
+					ty: base_type,
+					fragment: column_to_create.fragment.unwrap_or_else(|| Fragment::None),
+				}
+				.into());
 			}
 		}
 

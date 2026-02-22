@@ -2,20 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::engine::frame_error,
+	error::CoreError,
 	value::column::{Column, data::ColumnData},
 };
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{
-	err,
-	error::diagnostic::{
-		operator,
-		operator::{
-			not_can_not_applied_to_number, not_can_not_applied_to_temporal, not_can_not_applied_to_uuid,
-		},
-	},
+	error::{LogicalOp, OperandCategory, TypeError},
 	value::{decimal::Decimal, int::Int, uint::Uint},
 };
 
@@ -56,7 +50,10 @@ pub(crate) fn prefix_eval(
 				let new_data = ColumnData::bool(result);
 				Ok(column.with_new_data(new_data))
 			}
-			_ => err!(frame_error("Cannot apply arithmetic prefix operator to bool".to_string())),
+			_ => Err(CoreError::FrameError {
+				message: "Cannot apply arithmetic prefix operator to bool".to_string(),
+			}
+			.into()),
 		},
 
 		ColumnData::Float4(container) => {
@@ -67,9 +64,12 @@ pub(crate) fn prefix_eval(
 						PrefixOperator::Minus(_) => -*val,
 						PrefixOperator::Plus(_) => *val,
 						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
+							return Err(TypeError::LogicalOperatorNotApplicable {
+								operator: LogicalOp::Not,
+								operand_category: OperandCategory::Number,
+								fragment: prefix.full_fragment_owned(),
+							}
+							.into());
 						}
 					});
 				} else {
@@ -88,9 +88,12 @@ pub(crate) fn prefix_eval(
 						PrefixOperator::Minus(_) => -*val,
 						PrefixOperator::Plus(_) => *val,
 						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
+							return Err(TypeError::LogicalOperatorNotApplicable {
+								operator: LogicalOp::Not,
+								operand_category: OperandCategory::Number,
+								fragment: prefix.full_fragment_owned(),
+							}
+							.into());
 						}
 					});
 				} else {
@@ -109,9 +112,12 @@ pub(crate) fn prefix_eval(
 						PrefixOperator::Minus(_) => -*val,
 						PrefixOperator::Plus(_) => *val,
 						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
+							return Err(TypeError::LogicalOperatorNotApplicable {
+								operator: LogicalOp::Not,
+								operand_category: OperandCategory::Number,
+								fragment: prefix.full_fragment_owned(),
+							}
+							.into());
 						}
 					});
 				} else {
@@ -130,9 +136,12 @@ pub(crate) fn prefix_eval(
 						PrefixOperator::Minus(_) => -*val,
 						PrefixOperator::Plus(_) => *val,
 						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
+							return Err(TypeError::LogicalOperatorNotApplicable {
+								operator: LogicalOp::Not,
+								operand_category: OperandCategory::Number,
+								fragment: prefix.full_fragment_owned(),
+							}
+							.into());
 						}
 					});
 				} else {
@@ -151,9 +160,12 @@ pub(crate) fn prefix_eval(
 						PrefixOperator::Minus(_) => -*val,
 						PrefixOperator::Plus(_) => *val,
 						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
+							return Err(TypeError::LogicalOperatorNotApplicable {
+								operator: LogicalOp::Not,
+								operand_category: OperandCategory::Number,
+								fragment: prefix.full_fragment_owned(),
+							}
+							.into());
 						}
 					});
 				} else {
@@ -172,9 +184,12 @@ pub(crate) fn prefix_eval(
 						PrefixOperator::Minus(_) => -*val,
 						PrefixOperator::Plus(_) => *val,
 						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
+							return Err(TypeError::LogicalOperatorNotApplicable {
+								operator: LogicalOp::Not,
+								operand_category: OperandCategory::Number,
+								fragment: prefix.full_fragment_owned(),
+							}
+							.into());
 						}
 					});
 				} else {
@@ -193,9 +208,12 @@ pub(crate) fn prefix_eval(
 						PrefixOperator::Minus(_) => -*val,
 						PrefixOperator::Plus(_) => *val,
 						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
+							return Err(TypeError::LogicalOperatorNotApplicable {
+								operator: LogicalOp::Not,
+								operand_category: OperandCategory::Number,
+								fragment: prefix.full_fragment_owned(),
+							}
+							.into());
 						}
 					});
 				} else {
@@ -210,10 +228,16 @@ pub(crate) fn prefix_eval(
 			container: _,
 			..
 		} => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(operator::not_can_not_applied_to_text(prefix.full_fragment_owned()))
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Text,
+				fragment: prefix.full_fragment_owned(),
 			}
-			_ => err!(frame_error("Cannot apply arithmetic prefix operator to text".to_string())),
+			.into()),
+			_ => Err(CoreError::FrameError {
+				message: "Cannot apply arithmetic prefix operator to text".to_string(),
+			}
+			.into()),
 		},
 
 		ColumnData::Uint1(container) => {
@@ -224,9 +248,12 @@ pub(crate) fn prefix_eval(
 					PrefixOperator::Minus(_) => -signed,
 					PrefixOperator::Plus(_) => signed,
 					PrefixOperator::Not(_) => {
-						return err!(not_can_not_applied_to_number(
-							prefix.full_fragment_owned()
-						));
+						return Err(TypeError::LogicalOperatorNotApplicable {
+							operator: LogicalOp::Not,
+							operand_category: OperandCategory::Number,
+							fragment: prefix.full_fragment_owned(),
+						}
+						.into());
 					}
 				});
 			}
@@ -242,9 +269,12 @@ pub(crate) fn prefix_eval(
 					PrefixOperator::Minus(_) => -signed,
 					PrefixOperator::Plus(_) => signed,
 					PrefixOperator::Not(_) => {
-						return err!(not_can_not_applied_to_number(
-							prefix.full_fragment_owned()
-						));
+						return Err(TypeError::LogicalOperatorNotApplicable {
+							operator: LogicalOp::Not,
+							operand_category: OperandCategory::Number,
+							fragment: prefix.full_fragment_owned(),
+						}
+						.into());
 					}
 				});
 			}
@@ -260,9 +290,12 @@ pub(crate) fn prefix_eval(
 					PrefixOperator::Minus(_) => -signed,
 					PrefixOperator::Plus(_) => signed,
 					PrefixOperator::Not(_) => {
-						return err!(not_can_not_applied_to_number(
-							prefix.full_fragment_owned()
-						));
+						return Err(TypeError::LogicalOperatorNotApplicable {
+							operator: LogicalOp::Not,
+							operand_category: OperandCategory::Number,
+							fragment: prefix.full_fragment_owned(),
+						}
+						.into());
 					}
 				});
 			}
@@ -278,9 +311,12 @@ pub(crate) fn prefix_eval(
 					PrefixOperator::Minus(_) => -signed,
 					PrefixOperator::Plus(_) => signed,
 					PrefixOperator::Not(_) => {
-						return err!(not_can_not_applied_to_number(
-							prefix.full_fragment_owned()
-						));
+						return Err(TypeError::LogicalOperatorNotApplicable {
+							operator: LogicalOp::Not,
+							operand_category: OperandCategory::Number,
+							fragment: prefix.full_fragment_owned(),
+						}
+						.into());
 					}
 				});
 			}
@@ -295,9 +331,12 @@ pub(crate) fn prefix_eval(
 					PrefixOperator::Minus(_) => -signed,
 					PrefixOperator::Plus(_) => signed,
 					PrefixOperator::Not(_) => {
-						return err!(not_can_not_applied_to_number(
-							prefix.full_fragment_owned()
-						));
+						return Err(TypeError::LogicalOperatorNotApplicable {
+							operator: LogicalOp::Not,
+							operand_category: OperandCategory::Number,
+							fragment: prefix.full_fragment_owned(),
+						}
+						.into());
 					}
 				});
 			}
@@ -305,55 +344,80 @@ pub(crate) fn prefix_eval(
 			Ok(column.with_new_data(new_data))
 		}
 		ColumnData::Date(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Temporal,
+				fragment: prefix.full_fragment_owned(),
 			}
+			.into()),
 			_ => unimplemented!(),
 		},
 		ColumnData::DateTime(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Temporal,
+				fragment: prefix.full_fragment_owned(),
 			}
+			.into()),
 			_ => unimplemented!(),
 		},
 		ColumnData::Time(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Temporal,
+				fragment: prefix.full_fragment_owned(),
 			}
+			.into()),
 			_ => unimplemented!(),
 		},
 		ColumnData::Duration(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Temporal,
+				fragment: prefix.full_fragment_owned(),
 			}
+			.into()),
 			_ => unimplemented!(),
 		},
 		ColumnData::IdentityId(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Uuid,
+				fragment: prefix.full_fragment_owned(),
 			}
+			.into()),
 			_ => unimplemented!(),
 		},
 		ColumnData::Uuid4(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Uuid,
+				fragment: prefix.full_fragment_owned(),
 			}
+			.into()),
 			_ => unimplemented!(),
 		},
 		ColumnData::Uuid7(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Uuid,
+				fragment: prefix.full_fragment_owned(),
 			}
+			.into()),
 			_ => unimplemented!(),
 		},
 		ColumnData::Blob {
 			container: _,
 			..
 		} => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(frame_error("Cannot apply NOT operator to BLOB".to_string()))
+			PrefixOperator::Not(_) => Err(CoreError::FrameError {
+				message: "Cannot apply NOT operator to BLOB".to_string(),
 			}
-			_ => err!(frame_error("Cannot apply arithmetic prefix operator to BLOB".to_string())),
+			.into()),
+			_ => Err(CoreError::FrameError {
+				message: "Cannot apply arithmetic prefix operator to BLOB".to_string(),
+			}
+			.into()),
 		},
 		ColumnData::Int {
 			container,
@@ -366,9 +430,12 @@ pub(crate) fn prefix_eval(
 						PrefixOperator::Minus(_) => Int(-val.0.clone()),
 						PrefixOperator::Plus(_) => val.clone(),
 						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
+							return Err(TypeError::LogicalOperatorNotApplicable {
+								operator: LogicalOp::Not,
+								operand_category: OperandCategory::Number,
+								fragment: prefix.full_fragment_owned(),
+							}
+							.into());
 						}
 					});
 				} else {
@@ -407,9 +474,12 @@ pub(crate) fn prefix_eval(
 				let new_data = ColumnData::uint(result);
 				Ok(column.with_new_data(new_data))
 			}
-			PrefixOperator::Not(_) => {
-				err!(not_can_not_applied_to_number(prefix.full_fragment_owned()))
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: OperandCategory::Number,
+				fragment: prefix.full_fragment_owned(),
 			}
+			.into()),
 		},
 		ColumnData::Decimal {
 			container,
@@ -422,9 +492,12 @@ pub(crate) fn prefix_eval(
 						PrefixOperator::Minus(_) => val.clone().negate(),
 						PrefixOperator::Plus(_) => val.clone(),
 						PrefixOperator::Not(_) => {
-							return err!(not_can_not_applied_to_number(
-								prefix.full_fragment_owned()
-							));
+							return Err(TypeError::LogicalOperatorNotApplicable {
+								operator: LogicalOp::Not,
+								operand_category: OperandCategory::Number,
+								fragment: prefix.full_fragment_owned(),
+							}
+							.into());
 						}
 					});
 				} else {
@@ -435,18 +508,24 @@ pub(crate) fn prefix_eval(
 			Ok(column.with_new_data(new_data))
 		}
 		ColumnData::DictionaryId(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(frame_error("Cannot apply NOT operator to DictionaryId type".to_string()))
+			PrefixOperator::Not(_) => Err(CoreError::FrameError {
+				message: "Cannot apply NOT operator to DictionaryId type".to_string(),
 			}
-			_ => err!(frame_error(
-				"Cannot apply arithmetic prefix operator to DictionaryId type".to_string()
-			)),
+			.into()),
+			_ => Err(CoreError::FrameError {
+				message: "Cannot apply arithmetic prefix operator to DictionaryId type".to_string(),
+			}
+			.into()),
 		},
 		ColumnData::Any(_) => match prefix.operator {
-			PrefixOperator::Not(_) => {
-				err!(frame_error("Cannot apply NOT operator to Any type".to_string()))
+			PrefixOperator::Not(_) => Err(CoreError::FrameError {
+				message: "Cannot apply NOT operator to Any type".to_string(),
 			}
-			_ => err!(frame_error("Cannot apply arithmetic prefix operator to Any type".to_string())),
+			.into()),
+			_ => Err(CoreError::FrameError {
+				message: "Cannot apply arithmetic prefix operator to Any type".to_string(),
+			}
+			.into()),
 		},
 		ColumnData::Option {
 			..

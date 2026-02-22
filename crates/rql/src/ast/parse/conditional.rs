@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::error::diagnostic::ast::unexpected_token_error;
+use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
 	ast::{
@@ -18,10 +18,18 @@ impl<'bump> Parser<'bump> {
 
 		// Consume 'if' keyword
 		if !self.current()?.is_keyword(Keyword::If) {
-			return Err(reifydb_type::error::Error(unexpected_token_error(
-				"expected 'if'",
-				self.current()?.fragment.to_owned(),
-			)));
+			let fragment = self.current()?.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "expected 'if'".to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
+					"expected 'if'",
+					fragment.text()
+				),
+				fragment,
+			}));
 		}
 		self.advance()?; // consume 'if'
 

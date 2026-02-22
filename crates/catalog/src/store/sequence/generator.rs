@@ -4,13 +4,13 @@
 use once_cell::sync::Lazy;
 use reifydb_core::{
 	encoded::{key::EncodedKey, schema::Schema},
-	error::diagnostic::sequence::sequence_exhausted,
+	error::CoreError,
 };
 use reifydb_transaction::{
 	single::write::SingleWriteTransaction,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_type::{Result as TxResult, return_error, value::r#type::Type};
+use reifydb_type::{Result as TxResult, value::r#type::Type};
 
 /// Trait abstracting over write-capable transaction types (CommandTransaction, AdminTransaction).
 /// Both types share the same write API but have no common trait in the transaction crate.
@@ -102,7 +102,10 @@ macro_rules! impl_generator {
 							let next_value = current_value.saturating_add(incr);
 
 							if current_value == next_value {
-								return_error!(sequence_exhausted($type_enum));
+								return Err(CoreError::SequenceExhausted {
+									value_type: $type_enum,
+								}
+								.into());
 							}
 
 							SCHEMA.$setter(&mut row, 0, next_value);
@@ -126,7 +129,10 @@ macro_rules! impl_generator {
 								let last = first.saturating_add(incr.saturating_sub(1));
 
 								if first == last && incr > 1 {
-									return_error!(sequence_exhausted($type_enum));
+									return Err(CoreError::SequenceExhausted {
+										value_type: $type_enum,
+									}
+									.into());
 								}
 
 								let mut new_row = SCHEMA.allocate();
@@ -159,11 +165,9 @@ macro_rules! impl_generator {
 
 			#[cfg(test)]
 			mod tests {
-				use reifydb_core::{
-					encoded::key::EncodedKey, error::diagnostic::sequence::sequence_exhausted,
-				};
+				use reifydb_core::{encoded::key::EncodedKey, error::CoreError};
 				use reifydb_engine::test_utils::create_test_admin_transaction;
-				use reifydb_type::value::r#type::Type;
+				use reifydb_type::{error::IntoDiagnostic, value::r#type::Type};
 
 				use super::{SCHEMA, $generator};
 
@@ -201,7 +205,13 @@ macro_rules! impl_generator {
 
 					let err = $generator::next(&mut txn, &EncodedKey::new("sequence"), None)
 						.unwrap_err();
-					assert_eq!(err.diagnostic(), sequence_exhausted($type_enum));
+					assert_eq!(
+						err.diagnostic(),
+						CoreError::SequenceExhausted {
+							value_type: $type_enum
+						}
+						.into_diagnostic()
+					);
 				}
 
 				#[test]
@@ -347,7 +357,13 @@ macro_rules! impl_generator {
 						batch_size,
 					)
 					.unwrap_err();
-					assert_eq!(err.diagnostic(), sequence_exhausted($type_enum));
+					assert_eq!(
+						err.diagnostic(),
+						CoreError::SequenceExhausted {
+							value_type: $type_enum
+						}
+						.into_diagnostic()
+					);
 				}
 
 				#[test]

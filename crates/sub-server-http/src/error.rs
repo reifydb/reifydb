@@ -12,7 +12,7 @@ use axum::{
 	response::{IntoResponse, Response},
 };
 use reifydb_sub_server::{auth::AuthError, execute::ExecuteError};
-use reifydb_type::error::diagnostic::Diagnostic;
+use reifydb_type::error::Diagnostic;
 use serde::Serialize;
 
 /// JSON error response body.

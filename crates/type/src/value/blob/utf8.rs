@@ -3,7 +3,7 @@
 
 use super::Blob;
 use crate::{
-	error::{Error, diagnostic::blob},
+	error::{BlobEncodingKind, Error, TypeError},
 	fragment::Fragment,
 };
 
@@ -17,7 +17,14 @@ impl Blob {
 	pub fn to_utf8(&self) -> Result<String, Error> {
 		match std::str::from_utf8(self.as_bytes()) {
 			Ok(s) => Ok(s.to_string()),
-			Err(e) => Err(Error(blob::invalid_utf8_sequence(e))),
+			Err(e) => Err(TypeError::BlobEncoding {
+				kind: BlobEncodingKind::InvalidUtf8Sequence {
+					error: e.to_string(),
+				},
+				message: format!("Invalid UTF-8 sequence in BLOB: {}", e),
+				fragment: Fragment::internal(e.to_string()),
+			}
+			.into()),
 		}
 	}
 

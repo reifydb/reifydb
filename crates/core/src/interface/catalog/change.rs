@@ -7,8 +7,8 @@
 //! during a transaction, allowing for proper transactional semantics and rollback.
 
 use crate::interface::catalog::{
-	dictionary::DictionaryDef, flow::FlowDef, namespace::NamespaceDef, ringbuffer::RingBufferDef,
-	subscription::SubscriptionDef, sumtype::SumTypeDef, table::TableDef, view::ViewDef,
+	dictionary::DictionaryDef, flow::FlowDef, namespace::NamespaceDef, procedure::ProcedureDef,
+	ringbuffer::RingBufferDef, subscription::SubscriptionDef, sumtype::SumTypeDef, table::TableDef, view::ViewDef,
 };
 
 /// Trait for tracking table definition changes during a transaction.
@@ -89,11 +89,21 @@ pub trait CatalogTrackSumTypeChangeOperations {
 	fn track_sumtype_def_deleted(&mut self, sumtype: SumTypeDef) -> reifydb_type::Result<()>;
 }
 
+/// Trait for tracking procedure definition changes during a transaction.
+pub trait CatalogTrackProcedureChangeOperations {
+	fn track_procedure_def_created(&mut self, procedure: ProcedureDef) -> reifydb_type::Result<()>;
+
+	fn track_procedure_def_updated(&mut self, pre: ProcedureDef, post: ProcedureDef) -> reifydb_type::Result<()>;
+
+	fn track_procedure_def_deleted(&mut self, procedure: ProcedureDef) -> reifydb_type::Result<()>;
+}
+
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackDictionaryChangeOperations
 	+ CatalogTrackFlowChangeOperations
 	+ CatalogTrackNamespaceChangeOperations
+	+ CatalogTrackProcedureChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
 	+ CatalogTrackSubscriptionChangeOperations
 	+ CatalogTrackSumTypeChangeOperations

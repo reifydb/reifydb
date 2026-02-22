@@ -45,7 +45,7 @@ pub type CdcResult<T> = Result<T, CdcError>;
 
 /// CDC-specific diagnostics.
 pub mod diagnostic {
-	use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
+	use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
 	/// CDC storage operation failed
 	pub fn storage_error(msg: impl Into<String>) -> Diagnostic {

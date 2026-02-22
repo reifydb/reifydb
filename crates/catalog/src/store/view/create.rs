@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::catalog::view_already_exists,
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{NamespaceId, ViewId},
@@ -14,10 +13,11 @@ use reifydb_core::{
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, return_error, value::constraint::TypeConstraint};
+use reifydb_type::{fragment::Fragment, value::constraint::TypeConstraint};
 
 use crate::{
 	CatalogStore,
+	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
 		sequence::system::SystemSequence,
@@ -57,13 +57,19 @@ impl CatalogStore {
 	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> crate::Result<ViewDef> {
 		let namespace_id = to_create.namespace;
 
-		if let Some(table) = CatalogStore::find_view_by_name(
+		if let Some(view) = CatalogStore::find_view_by_name(
 			&mut Transaction::Admin(&mut *txn),
 			namespace_id,
 			to_create.name.text(),
 		)? {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return_error!(view_already_exists(to_create.name.clone(), &namespace.name, &table.name));
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::View,
+				namespace: namespace.name,
+				name: view.name,
+				fragment: to_create.name.clone(),
+			}
+			.into());
 		}
 
 		let view_id = SystemSequence::next_view_id(txn)?;

@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::extend_missing_braces;
-use reifydb_type::return_error;
-
 use crate::{
 	ast::{ast::AstExtend, parse::Parser},
+	error::{OperationKind, RqlError},
 	token::keyword::Keyword,
 };
 
@@ -16,7 +14,11 @@ impl<'bump> Parser<'bump> {
 		let (nodes, has_braces) = self.parse_expressions(true, false)?;
 
 		if !has_braces {
-			return_error!(extend_missing_braces(token.fragment.to_owned()));
+			return Err(RqlError::OperatorMissingBraces {
+				kind: OperationKind::Extend,
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
 		}
 
 		Ok(AstExtend {

@@ -416,3 +416,26 @@ impl<'bump> MaybeQualifiedFunctionIdentifier<'bump> {
 		self
 	}
 }
+
+/// Maybe-qualified procedure identifier
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedProcedureIdentifier<'bump> {
+	/// Namespace chain (may be empty or partial)
+	pub namespace: Vec<BumpFragment<'bump>>,
+	/// Procedure name
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedProcedureIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}

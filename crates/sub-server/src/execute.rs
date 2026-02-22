@@ -13,7 +13,7 @@ use reifydb_core::interface::auth::Identity;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_type::{
-	error::{Error, diagnostic::Diagnostic},
+	error::{Diagnostic, Error},
 	params::Params,
 	value::frame::frame::Frame,
 };

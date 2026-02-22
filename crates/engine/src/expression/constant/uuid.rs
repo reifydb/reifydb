@@ -3,14 +3,15 @@
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	error::diagnostic::cast,
+	error::TypeError,
 	fragment::Fragment,
-	return_error,
 	value::{
 		r#type::Type,
 		uuid::parse::{parse_uuid4, parse_uuid7},
 	},
 };
+
+use crate::error::CastError;
 
 pub(crate) struct UuidParser;
 
@@ -26,7 +27,14 @@ impl UuidParser {
 		match target {
 			Type::Uuid4 => Self::parse_uuid4(fragment, row_count),
 			Type::Uuid7 => Self::parse_uuid7(fragment, row_count),
-			_ => return_error!(cast::unsupported_cast(fragment, Type::Utf8, target)),
+			_ => {
+				return Err(TypeError::UnsupportedCast {
+					from: Type::Utf8,
+					to: target,
+					fragment,
+				}
+				.into());
+			}
 		}
 	}
 
@@ -35,7 +43,12 @@ impl UuidParser {
 		match parse_uuid4(fragment.clone()) {
 			Ok(uuid) => Ok(ColumnData::uuid4(vec![uuid; row_count])),
 			Err(err) => {
-				return_error!(cast::invalid_uuid(fragment, Type::Uuid4, err.diagnostic()))
+				return Err(CastError::InvalidUuid {
+					fragment,
+					target: Type::Uuid4,
+					cause: err.diagnostic(),
+				}
+				.into());
 			}
 		}
 	}
@@ -45,7 +58,12 @@ impl UuidParser {
 		match parse_uuid7(fragment.clone()) {
 			Ok(uuid) => Ok(ColumnData::uuid7(vec![uuid; row_count])),
 			Err(err) => {
-				return_error!(cast::invalid_uuid(fragment, Type::Uuid7, err.diagnostic()))
+				return Err(CastError::InvalidUuid {
+					fragment,
+					target: Type::Uuid7,
+					cause: err.diagnostic(),
+				}
+				.into());
 			}
 		}
 	}

@@ -3,9 +3,8 @@
 
 use reifydb_core::interface::catalog::policy::ColumnSaturationPolicy;
 use reifydb_type::{
-	error::{Error, diagnostic::number::number_out_of_range},
+	error::TypeError,
 	fragment::LazyFragment,
-	return_error,
 	value::{
 		is::IsNumber,
 		number::{
@@ -35,22 +34,24 @@ impl EvalContext<'_> {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return_error!(number_out_of_range(
-						fragment.fragment(),
-						<L as Promote<R>>::Output::get_type(),
-						descriptor.as_ref(),
-					));
+					return Err(TypeError::NumberOutOfRange {
+						target: <L as Promote<R>>::Output::get_type(),
+						fragment: fragment.fragment(),
+						descriptor,
+					}
+					.into());
 				};
 
 				lp.checked_add(&rp)
 					.ok_or_else(|| {
 						let descriptor =
 							self.target.as_ref().and_then(|c| c.to_number_descriptor());
-						Error(number_out_of_range(
-							fragment.fragment(),
-							<L as Promote<R>>::Output::get_type(),
-							descriptor.as_ref(),
-						))
+						TypeError::NumberOutOfRange {
+							target: <L as Promote<R>>::Output::get_type(),
+							fragment: fragment.fragment(),
+							descriptor,
+						}
+						.into()
 					})
 					.map(Some)
 			}
@@ -85,22 +86,24 @@ impl EvalContext<'_> {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return_error!(number_out_of_range(
-						fragment.fragment(),
-						<L as Promote<R>>::Output::get_type(),
-						descriptor.as_ref(),
-					));
+					return Err(TypeError::NumberOutOfRange {
+						target: <L as Promote<R>>::Output::get_type(),
+						fragment: fragment.fragment(),
+						descriptor,
+					}
+					.into());
 				};
 
 				lp.checked_sub(&rp)
 					.ok_or_else(|| {
 						let descriptor =
 							self.target.as_ref().and_then(|c| c.to_number_descriptor());
-						Error(number_out_of_range(
-							fragment.fragment(),
-							<L as Promote<R>>::Output::get_type(),
-							descriptor.as_ref(),
-						))
+						TypeError::NumberOutOfRange {
+							target: <L as Promote<R>>::Output::get_type(),
+							fragment: fragment.fragment(),
+							descriptor,
+						}
+						.into()
 					})
 					.map(Some)
 			}
@@ -135,22 +138,24 @@ impl EvalContext<'_> {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return_error!(number_out_of_range(
-						fragment.fragment(),
-						<L as Promote<R>>::Output::get_type(),
-						descriptor.as_ref(),
-					));
+					return Err(TypeError::NumberOutOfRange {
+						target: <L as Promote<R>>::Output::get_type(),
+						fragment: fragment.fragment(),
+						descriptor,
+					}
+					.into());
 				};
 
 				lp.checked_mul(&rp)
 					.ok_or_else(|| {
 						let descriptor =
 							self.target.as_ref().and_then(|c| c.to_number_descriptor());
-						Error(number_out_of_range(
-							fragment.fragment(),
-							<L as Promote<R>>::Output::get_type(),
-							descriptor.as_ref(),
-						))
+						TypeError::NumberOutOfRange {
+							target: <L as Promote<R>>::Output::get_type(),
+							fragment: fragment.fragment(),
+							descriptor,
+						}
+						.into()
 					})
 					.map(Some)
 			}
@@ -185,22 +190,24 @@ impl EvalContext<'_> {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return_error!(number_out_of_range(
-						fragment.fragment(),
-						<L as Promote<R>>::Output::get_type(),
-						descriptor.as_ref(),
-					));
+					return Err(TypeError::NumberOutOfRange {
+						target: <L as Promote<R>>::Output::get_type(),
+						fragment: fragment.fragment(),
+						descriptor,
+					}
+					.into());
 				};
 
 				lp.checked_div(&rp)
 					.ok_or_else(|| {
 						let descriptor =
 							self.target.as_ref().and_then(|c| c.to_number_descriptor());
-						Error(number_out_of_range(
-							fragment.fragment(),
-							<L as Promote<R>>::Output::get_type(),
-							descriptor.as_ref(),
-						))
+						TypeError::NumberOutOfRange {
+							target: <L as Promote<R>>::Output::get_type(),
+							fragment: fragment.fragment(),
+							descriptor,
+						}
+						.into()
 					})
 					.map(Some)
 			}
@@ -235,22 +242,24 @@ impl EvalContext<'_> {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
 					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return_error!(number_out_of_range(
-						fragment.fragment(),
-						<L as Promote<R>>::Output::get_type(),
-						descriptor.as_ref(),
-					));
+					return Err(TypeError::NumberOutOfRange {
+						target: <L as Promote<R>>::Output::get_type(),
+						fragment: fragment.fragment(),
+						descriptor,
+					}
+					.into());
 				};
 
 				lp.checked_rem(&rp)
 					.ok_or_else(|| {
 						let descriptor =
 							self.target.as_ref().and_then(|c| c.to_number_descriptor());
-						Error(number_out_of_range(
-							fragment.fragment(),
-							<L as Promote<R>>::Output::get_type(),
-							descriptor.as_ref(),
-						))
+						TypeError::NumberOutOfRange {
+							target: <L as Promote<R>>::Output::get_type(),
+							fragment: fragment.fragment(),
+							descriptor,
+						}
+						.into()
 					})
 					.map(Some)
 			}

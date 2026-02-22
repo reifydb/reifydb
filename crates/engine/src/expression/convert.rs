@@ -3,8 +3,7 @@
 
 use reifydb_core::interface::catalog::policy::ColumnSaturationPolicy;
 use reifydb_type::{
-	error,
-	error::diagnostic::number::{integer_precision_loss, number_out_of_range},
+	error::TypeError,
 	fragment::Fragment,
 	value::{number::safe::convert::SafeConvert, r#type::get::GetType},
 };
@@ -40,19 +39,21 @@ impl Convert for &EvalContext<'_> {
 				.checked_convert()
 				.ok_or_else(|| {
 					if From::get_type().is_integer() && To::get_type().is_floating_point() {
-						return error!(integer_precision_loss(
-							fragment.clone(),
-							From::get_type(),
-							To::get_type(),
-						));
+						return TypeError::IntegerPrecisionLoss {
+							source_type: From::get_type(),
+							target: To::get_type(),
+							fragment: fragment.clone(),
+						}
+						.into();
 					};
 
 					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return error!(number_out_of_range(
-						fragment.clone(),
-						To::get_type(),
-						descriptor.as_ref(),
-					));
+					TypeError::NumberOutOfRange {
+						target: To::get_type(),
+						fragment: fragment.clone(),
+						descriptor,
+					}
+					.into()
 				})
 				.map(Some),
 			ColumnSaturationPolicy::None => match from.checked_convert() {

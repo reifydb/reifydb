@@ -12,6 +12,7 @@ use reifydb_core::{
 			flow::FlowId,
 			id::{NamespaceId, RingBufferId, TableId, ViewId},
 			namespace::NamespaceDef,
+			procedure::ProcedureParamDef,
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
@@ -56,6 +57,7 @@ pub enum PhysicalPlan {
 	CreateSubscription(CreateSubscriptionNode),
 	CreatePrimaryKey(CreatePrimaryKeyNode),
 	CreatePolicy(CreatePolicyNode),
+	CreateProcedure(CreateProcedureNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode),
@@ -240,6 +242,15 @@ pub struct CreatePrimaryKeyNode {
 	pub namespace: ResolvedNamespace,
 	pub table: Fragment,
 	pub columns: Vec<PrimaryKeyColumn>,
+}
+
+// Create Procedure node
+#[derive(Debug, Clone)]
+pub struct CreateProcedureNode {
+	pub namespace: NamespaceDef,
+	pub name: Fragment,
+	pub params: Vec<ProcedureParamDef>,
+	pub body_source: String,
 }
 
 // Create Policy node

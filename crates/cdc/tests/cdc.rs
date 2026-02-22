@@ -26,7 +26,7 @@ use reifydb_core::{
 use reifydb_engine::{engine::StandardEngine, test_utils::create_test_engine};
 use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
 use reifydb_type::{
-	error::{Error, diagnostic::Diagnostic},
+	error::{Diagnostic, Error},
 	fragment::Fragment,
 	util::cowvec::CowVec,
 	value::row_number::RowNumber,

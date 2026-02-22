@@ -3,7 +3,7 @@
 
 use super::Blob;
 use crate::{
-	error::{Error, diagnostic::blob},
+	error::{BlobEncodingKind, Error, TypeError},
 	fragment::Fragment,
 	util::hex::{decode, encode},
 };
@@ -20,7 +20,12 @@ impl Blob {
 
 		match decode(clean_hex) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
-			Err(_) => Err(Error(blob::invalid_hex_string(fragment))),
+			Err(_) => Err(TypeError::BlobEncoding {
+				kind: BlobEncodingKind::InvalidHex,
+				message: format!("Invalid hexadecimal string: '{}'", fragment.text()),
+				fragment,
+			}
+			.into()),
 		}
 	}
 

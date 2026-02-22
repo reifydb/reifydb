@@ -3,9 +3,8 @@
 
 use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
 use reifydb_type::{
-	error::diagnostic::operator::div_cannot_be_applied_to_incompatible_types,
+	error::{BinaryOp, TypeError},
 	fragment::LazyFragment,
-	return_error,
 	value::{
 		container::number::NumberContainer,
 		is::IsNumber,
@@ -29,11 +28,12 @@ pub(crate) fn div_columns(
 			&left.data(), &right.data();
 			fixed: div_numeric, arb: div_numeric_clone (ctx, target, fragment);
 
-			_ => return_error!(div_cannot_be_applied_to_incompatible_types(
-				fragment.fragment(),
-				left.get_type(),
-				right.get_type(),
-			)),
+			_ => return Err(TypeError::BinaryOperatorNotApplicable {
+				operator: BinaryOp::Div,
+				left: left.get_type(),
+				right: right.get_type(),
+				fragment: fragment.fragment(),
+			}.into()),
 		)
 	})
 }

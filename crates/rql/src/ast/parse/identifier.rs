@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::error::{Error, diagnostic::ast::unexpected_token_error};
-
 use crate::{
 	ast::{
 		identifier::{MaybeQualifiedColumnIdentifier, UnqualifiedIdentifier},
 		parse::Parser,
 	},
 	bump::BumpFragment,
+	diagnostic::AstError,
 	token::{
 		operator::Operator,
 		token::{Literal, Token, TokenKind},
@@ -55,10 +54,11 @@ impl<'bump> Parser<'bump> {
 
 		// Reject identifiers that start with a number
 		if matches!(first_token.kind, TokenKind::Literal(Literal::Number)) {
-			return Err(Error(unexpected_token_error(
-				"identifier (identifiers cannot start with digits)",
-				first_token.fragment.to_owned(),
-			)));
+			return Err(AstError::UnexpectedToken {
+				expected: "identifier (identifiers cannot start with digits)".to_string(),
+				fragment: first_token.fragment.to_owned(),
+			}
+			.into());
 		}
 		let mut parts = vec![first_token.fragment.text().to_string()];
 		let start_line = first_token.fragment.line();
@@ -111,10 +111,11 @@ impl<'bump> Parser<'bump> {
 
 		// Validate: no consecutive hyphens
 		if combined_text.contains("--") {
-			return Err(Error(unexpected_token_error(
-				"identifier without consecutive hyphens",
-				first_fragment.to_owned(),
-			)));
+			return Err(AstError::UnexpectedToken {
+				expected: "identifier without consecutive hyphens".to_string(),
+				fragment: first_fragment.to_owned(),
+			}
+			.into());
 		}
 
 		// Create Fragment with combined text

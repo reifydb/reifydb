@@ -8,6 +8,7 @@ pub mod index;
 pub mod namespace;
 pub mod policy;
 pub mod primary_key;
+pub mod procedure;
 pub mod ringbuffer;
 pub mod series;
 pub mod subscription;
@@ -42,6 +43,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Subscription(node) => self.compile_create_subscription(node, tx),
 			AstCreate::PrimaryKey(node) => self.compile_create_primary_key(node, tx),
 			AstCreate::Policy(node) => self.compile_create_policy(node, tx),
+			AstCreate::Procedure(node) => self.compile_create_procedure(node),
 		}
 	}
 }

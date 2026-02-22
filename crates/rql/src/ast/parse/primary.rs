@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{error::diagnostic::ast, return_error};
-
 use crate::{
 	ast::{
 		ast::{Ast, AstCallFunction, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard},
 		identifier::MaybeQualifiedFunctionIdentifier,
 		parse::Parser,
 	},
+	diagnostic::AstError,
 	token::{
 		keyword::Keyword,
 		operator::Operator,
@@ -50,7 +49,12 @@ impl<'bump> Parser<'bump> {
 					}
 				}
 				Operator::OpenCurly => Ok(Ast::Inline(self.parse_inline()?)),
-				_ => return_error!(ast::unsupported_token_error(self.advance()?.fragment.to_owned())),
+				_ => {
+					return Err(AstError::UnsupportedToken {
+						fragment: self.advance()?.fragment.to_owned(),
+					}
+					.into());
+				}
 			},
 			TokenKind::Keyword(keyword) => {
 				// Keywords that can start statements at the top
@@ -191,9 +195,10 @@ impl<'bump> Parser<'bump> {
 							}))
 						}
 					} else {
-						return_error!(ast::unsupported_token_error(
-							self.advance()?.fragment.to_owned()
-						))
+						return Err(AstError::UnsupportedToken {
+							fragment: self.advance()?.fragment.to_owned(),
+						}
+						.into());
 					}
 				}
 			},

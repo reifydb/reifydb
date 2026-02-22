@@ -433,6 +433,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreatePolicy(_) => {
 			write_node_header(output, prefix, is_last, "CreatePolicy");
 		}
+		PhysicalPlan::CreateProcedure(_) => {
+			write_node_header(output, prefix, is_last, "CreateProcedure");
+		}
 		PhysicalPlan::AlterFlow(alter_flow) => {
 			let flow_name = if let Some(ns) = &alter_flow.flow.namespace {
 				format!("{}.{}", ns.text(), alter_flow.flow.name.text())

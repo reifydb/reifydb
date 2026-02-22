@@ -3,8 +3,7 @@
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	err,
-	error::diagnostic::cast,
+	error::TypeError,
 	fragment::{Fragment, LazyFragment},
 	value::{blob::Blob, r#type::Type},
 };
@@ -27,8 +26,13 @@ pub fn to_blob(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Re
 			Ok(out)
 		}
 		_ => {
-			let source_type = data.get_type();
-			err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, Type::Blob))
+			let from = data.get_type();
+			Err(TypeError::UnsupportedCast {
+				from,
+				to: Type::Blob,
+				fragment: lazy_fragment.fragment(),
+			}
+			.into())
 		}
 	}
 }

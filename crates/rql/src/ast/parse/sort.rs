@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::error::diagnostic::operation::sort_missing_braces;
-use reifydb_type::return_error;
-
 use crate::{
 	ast::{ast::AstSort, parse::Parser},
+	error::{OperationKind, RqlError},
 	token::{
 		keyword::Keyword,
 		operator::Operator::{CloseCurly, Colon, OpenCurly},
@@ -19,7 +17,11 @@ impl<'bump> Parser<'bump> {
 
 		// Always require opening curly brace
 		if self.is_eof() || !self.current()?.is_operator(OpenCurly) {
-			return_error!(sort_missing_braces(token.fragment.to_owned()));
+			return Err(RqlError::OperatorMissingBraces {
+				kind: OperationKind::Sort,
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
 		}
 		self.advance()?; // consume opening brace
 

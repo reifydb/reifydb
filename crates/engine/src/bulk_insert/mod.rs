@@ -25,7 +25,6 @@
 
 pub mod builder;
 pub mod coerce;
-pub mod error;
 pub mod primitive;
 pub mod validation;
 

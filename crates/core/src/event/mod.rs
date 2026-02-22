@@ -19,6 +19,7 @@ pub mod lifecycle;
 #[macro_use]
 pub mod r#macro;
 pub mod metric;
+pub mod procedure;
 pub mod store;
 pub mod transaction;
 

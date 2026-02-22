@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::error::{Error, diagnostic::ast::unexpected_token_error};
-
 use crate::{
 	ast::{
 		ast::{Ast, AstFrom, AstGenerator, AstList, AstVariable},
 		identifier::UnresolvedPrimitiveIdentifier,
 		parse::Parser,
 	},
+	diagnostic::AstError,
 	token::{
 		keyword::Keyword,
 		operator::{
@@ -60,10 +59,11 @@ impl<'bump> Parser<'bump> {
 				}
 				TokenKind::Identifier | TokenKind::Keyword(_) => {}
 				_ => {
-					return Err(Error(unexpected_token_error(
-						"expected identifier or variable",
-						current.fragment.to_owned(),
-					)));
+					return Err(AstError::UnexpectedToken {
+						expected: "expected identifier or variable".to_string(),
+						fragment: current.fragment.to_owned(),
+					}
+					.into());
 				}
 			}
 
@@ -182,10 +182,11 @@ impl<'bump> Parser<'bump> {
 			} else if current.is_operator(OpenCurly) {
 				nodes.push(Ast::Inline(self.parse_inline()?));
 			} else {
-				return Err(Error(unexpected_token_error(
-					"expected '{' or '(' in inline data",
-					current.fragment.to_owned(),
-				)));
+				return Err(AstError::UnexpectedToken {
+					expected: "expected '{' or '(' in inline data".to_string(),
+					fragment: current.fragment.to_owned(),
+				}
+				.into());
 			}
 
 			self.consume_if(TokenKind::Separator(Separator::Comma))?;

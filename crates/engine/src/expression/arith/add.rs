@@ -3,9 +3,8 @@
 
 use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
 use reifydb_type::{
-	error::diagnostic::operator::add_cannot_be_applied_to_incompatible_types,
+	error::{BinaryOp, TypeError},
 	fragment::{Fragment, LazyFragment},
-	return_error,
 	value::{
 		container::{number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container},
 		is::IsNumber,
@@ -74,11 +73,12 @@ pub(crate) fn add_columns(
 				},
 			) if can_promote_to_string(l) => concat_string_with_other(r, l, false, target, fragment.fragment()),
 
-			_ => return_error!(add_cannot_be_applied_to_incompatible_types(
-				fragment.fragment(),
-				left.get_type(),
-				right.get_type(),
-			)),
+			_ => return Err(TypeError::BinaryOperatorNotApplicable {
+				operator: BinaryOp::Add,
+				left: left.get_type(),
+				right: right.get_type(),
+				fragment: fragment.fragment(),
+			}.into()),
 		)
 	})
 }

@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_type::error::diagnostic::ast;
+use reifydb_type::error::{AstErrorKind, TypeError};
 
 use super::{
 	cursor::Cursor,
@@ -36,7 +36,14 @@ macro_rules! keyword {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,
-                    _ => reifydb_type::err!(ast::tokenize_error("not a keyword".to_string()))
+                    _ => {
+                        let message = "not a keyword".to_string();
+                        Err(reifydb_type::error::Error::from(TypeError::Ast {
+                            kind: AstErrorKind::TokenizeError { message: message.clone() },
+                            message,
+                            fragment: reifydb_type::fragment::Fragment::None,
+                        }))
+                    }
                 }
             }
         }
@@ -141,6 +148,7 @@ Assert => "ASSERT",
 Patch => "PATCH",
 Enum => "ENUM",
 Match => "MATCH",
+Procedure => "PROCEDURE",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -232,6 +240,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("PATCH", Keyword::Patch);
 	map.insert("ENUM", Keyword::Enum);
 	map.insert("MATCH", Keyword::Match);
+	map.insert("PROCEDURE", Keyword::Procedure);
 	map
 });
 
@@ -409,6 +418,7 @@ pub mod tests {
 	test_keyword_patch => (Patch, "PATCH"),
 	test_keyword_enum => (Enum, "ENUM"),
 	test_keyword_match => (Match, "MATCH"),
+	test_keyword_procedure => (Procedure, "PROCEDURE"),
 	}
 
 	fn check_no_keyword(repr: &str) {
@@ -549,6 +559,7 @@ pub mod tests {
 	test_not_keyword_patch => ( "patch"),
 	test_not_keyword_enum => ( "enum"),
 	test_not_keyword_match => ( "match"),
+	test_not_keyword_procedure => ( "procedure"),
 	}
 
 	#[test]

@@ -6,11 +6,14 @@ use std::sync::Arc;
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::VariableExpression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::diagnostic::runtime::variable_not_found, fragment::Fragment, return_error};
+use reifydb_type::fragment::Fragment;
 
-use crate::vm::{
-	stack::Variable,
-	volcano::query::{QueryContext, QueryNode},
+use crate::{
+	error::EngineError,
+	vm::{
+		stack::Variable,
+		volcano::query::{QueryContext, QueryNode},
+	},
 };
 
 pub(crate) struct VariableNode {
@@ -70,11 +73,17 @@ impl QueryNode for VariableNode {
 			}
 			Some(Variable::Closure(_)) => {
 				// Closures cannot be used as data sources in queries
-				return_error!(variable_not_found(variable_name));
+				return Err(EngineError::VariableNotFound {
+					name: variable_name.to_string(),
+				}
+				.into());
 			}
 			None => {
 				// Variable not found - return error
-				return_error!(variable_not_found(variable_name));
+				return Err(EngineError::VariableNotFound {
+					name: variable_name.to_string(),
+				}
+				.into());
 			}
 		}
 	}

@@ -6,13 +6,8 @@ use std::borrow::Cow;
 use num_bigint::BigInt;
 
 use crate::{
-	err,
-	error::{
-		Error,
-		diagnostic::number::{invalid_number_format, number_out_of_range},
-	},
+	error::{Error, TypeError},
 	fragment::Fragment,
-	return_error,
 	value::{int::Int, r#type::Type},
 };
 
@@ -35,7 +30,11 @@ pub fn parse_int(fragment: Fragment) -> Result<Int, Error> {
 	};
 
 	if value.is_empty() {
-		return_error!(invalid_number_format(fragment, Type::Int));
+		return Err(TypeError::InvalidNumberFormat {
+			target: Type::Int,
+			fragment,
+		}
+		.into());
 	}
 
 	// Try parsing as BigInt first
@@ -46,18 +45,31 @@ pub fn parse_int(fragment: Fragment) -> Result<Int, Error> {
 			// scientific notation and truncation
 			if let Ok(f) = value.parse::<f64>() {
 				if f.is_infinite() {
-					err!(number_out_of_range(fragment, Type::Int, None))
+					Err(TypeError::NumberOutOfRange {
+						target: Type::Int,
+						fragment,
+						descriptor: None,
+					}
+					.into())
 				} else {
 					let truncated = f.trunc();
 					// Convert the truncated float to BigInt
 					if let Ok(bigint) = format!("{:.0}", truncated).parse::<BigInt>() {
 						Ok(Int::from(bigint))
 					} else {
-						err!(invalid_number_format(fragment, Type::Int))
+						Err(TypeError::InvalidNumberFormat {
+							target: Type::Int,
+							fragment,
+						}
+						.into())
 					}
 				}
 			} else {
-				err!(invalid_number_format(fragment, Type::Int))
+				Err(TypeError::InvalidNumberFormat {
+					target: Type::Int,
+					fragment,
+				}
+				.into())
 			}
 		}
 	}

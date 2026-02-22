@@ -2,15 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	error::diagnostic::catalog::namespace_already_exists,
 	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
 	key::namespace::NamespaceKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	CatalogStore,
+	error::{CatalogError, CatalogObjectKind},
 	store::{
 		namespace::schema::namespace::{ID, NAME, PARENT_ID, SCHEMA},
 		sequence::system::SystemSequence,
@@ -32,10 +32,13 @@ impl CatalogStore {
 		if let Some(namespace) =
 			Self::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), &to_create.name)?
 		{
-			return_error!(namespace_already_exists(
-				to_create.namespace_fragment.unwrap_or_else(|| Fragment::None),
-				&namespace.name
-			));
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::Namespace,
+				namespace: namespace.name.clone(),
+				name: namespace.name.clone(),
+				fragment: to_create.namespace_fragment.unwrap_or_else(|| Fragment::None),
+			}
+			.into());
 		}
 
 		let namespace_id = SystemSequence::next_namespace_id(txn)?;

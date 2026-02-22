@@ -3,14 +3,20 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
+use reifydb_core::{
+	interface::auth::Identity,
+	internal_error,
+	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+};
 use reifydb_rql::{
+	compiler::CompilationResult,
 	expression::{CallExpression, ConstantExpression, Expression, IdentExpression},
 	instruction::{Instruction, ScopeType},
 	query::QueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
+	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
 	value::{Value, frame::frame::Frame, r#type::Type},
@@ -65,16 +71,7 @@ impl Vm {
 		match self.stack.pop()? {
 			Variable::Scalar(c) => Ok(c.scalar_value()),
 			Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => Ok(c.scalar_value()),
-			_ => Err(reifydb_type::error::Error(
-				reifydb_core::error::diagnostic::internal::internal_with_context(
-					"Expected scalar value on stack",
-					file!(),
-					line!(),
-					column!(),
-					module_path!(),
-					module_path!(),
-				),
-			)),
+			_ => Err(internal_error!("Expected scalar value on stack")),
 		}
 	}
 
@@ -104,7 +101,6 @@ impl Vm {
 				Instruction::Halt => return Ok(()),
 				Instruction::Nop => {}
 
-				// === Stack ===
 				Instruction::PushConst(value) => {
 					self.stack.push(Variable::scalar(value.clone()));
 				}
@@ -121,7 +117,6 @@ impl Vm {
 					self.stack.push(cloned);
 				}
 
-				// === Variables ===
 				Instruction::LoadVar(fragment) => {
 					let name = strip_dollar_prefix(fragment.text());
 					match self.symbol_table.get(&name) {
@@ -132,24 +127,32 @@ impl Vm {
 							self.stack.push(Variable::Closure(c.clone()));
 						}
 						Some(Variable::Columns(_)) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_type::error::diagnostic::runtime::variable_is_dataframe(&name),
-							));
+							return Err(TypeError::Runtime {
+								kind: RuntimeErrorKind::VariableIsDataframe {
+									name: name.to_string(),
+								},
+								message: format!(
+									"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+									name
+								),
+							}
+							.into());
 						}
 						Some(Variable::ForIterator {
 							..
 						}) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_core::error::diagnostic::internal::internal_with_context(
-									"Cannot load a FOR iterator as a value",
-									file!(), line!(), column!(), module_path!(), module_path!(),
-								),
+							return Err(internal_error!(
+								"Cannot load a FOR iterator as a value"
 							));
 						}
 						None => {
-							return Err(reifydb_type::error::Error(
-								reifydb_type::error::diagnostic::runtime::variable_not_found(&name),
-							));
+							return Err(TypeError::Runtime {
+								kind: RuntimeErrorKind::VariableNotFound {
+									name: name.to_string(),
+								},
+								message: format!("Variable '{}' is not defined", name),
+							}
+							.into());
 						}
 					}
 				}
@@ -201,45 +204,64 @@ impl Vm {
 										.iter()
 										.map(|c| c.name.text().to_string())
 										.collect();
-									return Err(reifydb_type::error::Error(
-										reifydb_type::error::diagnostic::runtime::field_not_found(
-											&var_name,
-											field_name,
-											&available,
+									return Err(TypeError::Runtime {
+										kind: RuntimeErrorKind::FieldNotFound {
+											variable: var_name.to_string(),
+											field: field_name.to_string(),
+											available: available.clone(),
+										},
+										message: format!(
+											"Field '{}' not found on variable '{}'",
+											field_name, var_name
 										),
-									));
+									}
+									.into());
 								}
 							}
 						}
 						Some(Variable::Scalar(_)) | Some(Variable::Closure(_)) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_type::error::diagnostic::runtime::field_not_found(
-									&var_name,
-									field_name,
-									&[],
+							return Err(TypeError::Runtime {
+								kind: RuntimeErrorKind::FieldNotFound {
+									variable: var_name.to_string(),
+									field: field_name.to_string(),
+									available: vec![],
+								},
+								message: format!(
+									"Field '{}' not found on variable '{}'",
+									field_name, var_name
 								),
-							));
+							}
+							.into());
 						}
 						Some(Variable::ForIterator {
 							..
 						}) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_type::error::diagnostic::runtime::variable_is_dataframe(
-									&var_name,
+							return Err(TypeError::Runtime {
+								kind: RuntimeErrorKind::VariableIsDataframe {
+									name: var_name.to_string(),
+								},
+								message: format!(
+									"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+									var_name
 								),
-							));
+							}
+							.into());
 						}
 						None => {
-							return Err(reifydb_type::error::Error(
-								reifydb_type::error::diagnostic::runtime::variable_not_found(
-									&var_name,
+							return Err(TypeError::Runtime {
+								kind: RuntimeErrorKind::VariableNotFound {
+									name: var_name.to_string(),
+								},
+								message: format!(
+									"Variable '{}' is not defined",
+									var_name
 								),
-							));
+							}
+							.into());
 						}
 					}
 				}
 
-				// === Arithmetic ===
 				Instruction::Add => {
 					let right = self.pop_value()?;
 					let left = self.pop_value()?;
@@ -266,7 +288,6 @@ impl Vm {
 					self.stack.push(Variable::scalar(scalar::scalar_rem(left, right)?));
 				}
 
-				// === Unary ===
 				Instruction::Negate => {
 					let value = self.pop_value()?;
 					self.stack.push(Variable::scalar(scalar::scalar_negate(value)?));
@@ -276,7 +297,6 @@ impl Vm {
 					self.stack.push(Variable::scalar(scalar::scalar_not(&value)));
 				}
 
-				// === Comparison ===
 				Instruction::CmpEq => {
 					let right = self.pop_value()?;
 					let left = self.pop_value()?;
@@ -308,7 +328,6 @@ impl Vm {
 					self.stack.push(Variable::scalar(scalar::scalar_ge(&left, &right)));
 				}
 
-				// === Logic ===
 				Instruction::LogicAnd => {
 					let right = self.pop_value()?;
 					let left = self.pop_value()?;
@@ -325,7 +344,6 @@ impl Vm {
 					self.stack.push(Variable::scalar(scalar::scalar_xor(&left, &right)));
 				}
 
-				// === Compound ===
 				Instruction::Between => {
 					let upper = self.pop_value()?;
 					let lower = self.pop_value()?;
@@ -371,7 +389,6 @@ impl Vm {
 					self.stack.push(Variable::scalar(scalar::scalar_cast(value, target.clone())?));
 				}
 
-				// === Control flow ===
 				Instruction::Emit => {
 					let Some(value) = self.stack.pop().ok() else {
 						self.ip += 1;
@@ -389,7 +406,6 @@ impl Vm {
 							result.push(Frame::from(c));
 						}
 						Variable::Closure(_) => {
-							// Closures can't be emitted as result frames
 							result.push(Frame::from(Columns::scalar(Value::none())));
 						}
 					}
@@ -398,9 +414,16 @@ impl Vm {
 				Instruction::Jump(addr) => {
 					self.iteration_count += 1;
 					if self.iteration_count > MAX_ITERATIONS {
-						return Err(reifydb_type::error::Error(
-							reifydb_type::error::diagnostic::runtime::max_iterations_exceeded(MAX_ITERATIONS),
-						));
+						return Err(TypeError::Runtime {
+							kind: RuntimeErrorKind::MaxIterationsExceeded {
+								limit: MAX_ITERATIONS,
+							},
+							message: format!(
+								"Loop exceeded maximum iteration limit of {}",
+								MAX_ITERATIONS
+							),
+						}
+						.into());
 					}
 					self.ip = *addr;
 					continue;
@@ -446,7 +469,6 @@ impl Vm {
 					continue;
 				}
 
-				// === Loops ===
 				Instruction::ForInit {
 					variable_name,
 				} => {
@@ -457,11 +479,8 @@ impl Vm {
 							..
 						} => c,
 						Variable::Scalar(_) | Variable::Closure(_) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_core::error::diagnostic::internal::internal_with_context(
-									"ForInit expects Columns on data stack, got Scalar",
-									file!(), line!(), column!(), module_path!(), module_path!(),
-								),
+							return Err(internal_error!(
+								"ForInit expects Columns on data stack, got Scalar"
 							));
 						}
 					};
@@ -536,7 +555,6 @@ impl Vm {
 					)?;
 				}
 
-				// === Functions ===
 				Instruction::DefineFunction(node) => {
 					let func_name = node.name.text().to_string();
 					self.symbol_table.define_function(func_name, node.clone());
@@ -549,7 +567,6 @@ impl Vm {
 					let arity = *arity as usize;
 					let func_name = name.text();
 
-					// Pop arity args (right-to-left on stack), reverse to restore order
 					let mut args = Vec::with_capacity(arity);
 					for _ in 0..arity {
 						args.push(self.pop_value()?);
@@ -559,13 +576,10 @@ impl Vm {
 					if let Some(func_def) = self.symbol_table.get_function(func_name) {
 						let func_def = func_def.clone();
 
-						// Save IP
 						let saved_ip = self.ip;
 
-						// Enter function scope
 						self.symbol_table.enter_scope(ScopeType::Function);
 
-						// Bind params
 						for (param, arg) in func_def.parameters.iter().zip(args.into_iter()) {
 							let param_name = strip_dollar_prefix(param.name.text());
 							self.symbol_table.set(
@@ -575,12 +589,10 @@ impl Vm {
 							)?;
 						}
 
-						// Execute body recursively
 						self.ip = 0;
 						let mut func_result = Vec::new();
 						self.run(services, tx, &func_def.body, params, &mut func_result)?;
 
-						// Check for return value
 						let stack_value = match std::mem::replace(
 							&mut self.control_flow,
 							ControlFlow::Normal,
@@ -589,14 +601,10 @@ impl Vm {
 								c.unwrap_or(Columns::scalar(Value::none())),
 							),
 							_ => {
-								// If no explicit return, check if function body emitted
-								// a result via Emit
 								if let Some(frame) = func_result.last() {
 									if !frame.columns.is_empty()
 										&& frame.columns[0].data.len() > 0
 									{
-										// Convert Frame back to Columns to
-										// preserve column names
 										let cols: Vec<Column> =
 											frame.columns
 												.iter()
@@ -616,8 +624,6 @@ impl Vm {
 										Variable::scalar(Value::none())
 									}
 								} else {
-									// Check if anything was left on the stack by
-									// the function body
 									self.stack.pop().ok().unwrap_or(
 										Variable::scalar(Value::none()),
 									)
@@ -625,7 +631,6 @@ impl Vm {
 							}
 						};
 
-						// Restore IP and exit scope
 						self.ip = saved_ip;
 						let _ = self.symbol_table.exit_scope();
 
@@ -633,17 +638,14 @@ impl Vm {
 					} else if let Some(Variable::Closure(closure_val)) =
 						self.symbol_table.get(&strip_dollar_prefix(func_name)).cloned()
 					{
-						// Closure call: execute like a function
 						let saved_ip = self.ip;
 
 						self.symbol_table.enter_scope(ScopeType::Function);
 
-						// Inject captured variables FIRST
 						for (name, var) in &closure_val.captured {
 							self.symbol_table.set(name.clone(), var.clone(), true)?;
 						}
 
-						// Then bind parameters (may shadow captures)
 						for (param, arg) in
 							closure_val.def.parameters.iter().zip(args.into_iter())
 						{
@@ -655,7 +657,6 @@ impl Vm {
 							)?;
 						}
 
-						// Execute closure body
 						self.ip = 0;
 						let mut closure_result = Vec::new();
 						self.run(
@@ -666,7 +667,6 @@ impl Vm {
 							&mut closure_result,
 						)?;
 
-						// Check for return value (same logic as functions)
 						let stack_value = match std::mem::replace(
 							&mut self.control_flow,
 							ControlFlow::Normal,
@@ -710,43 +710,173 @@ impl Vm {
 
 						self.stack.push(stack_value);
 					} else {
-						// Built-in function: evaluate via column evaluator
-						let evaluation_context = EvalContext {
-							target: None,
-							columns: Columns::empty(),
-							row_count: 1,
-							take: None,
-							params,
-							symbol_table: &self.symbol_table,
-							is_aggregate_context: false,
-							functions: &services.functions,
-							clock: &services.clock,
-							arena: None,
+						// Check catalog for stored procedures before falling back to built-in
+						// functions
+						let proc_def = {
+							let mut tx_tmp = tx.reborrow();
+							services.catalog.find_procedure_by_qualified_name(
+								&mut tx_tmp,
+								func_name,
+							)?
 						};
 
-						let mut arg_exprs = Vec::with_capacity(arity);
-						for arg in &args {
-							arg_exprs.push(value_to_expression(arg));
-						}
+						if let Some(proc_def) = proc_def {
+							// Catalog-stored RQL procedure
+							let source = proc_def.body.clone();
+							let compiled = services.compiler.compile(tx, &source)?;
+							match compiled {
+								CompilationResult::Ready(compiled_list) => {
+									// Save IP
+									let saved_ip = self.ip;
 
-						let proper_call = Expression::Call(CallExpression {
-							func: IdentExpression(name.clone()),
-							args: arg_exprs,
-							fragment: name.clone(),
-						});
+									// Enter function scope
+									self.symbol_table
+										.enter_scope(ScopeType::Function);
 
-						let result_column = evaluate(
-							&evaluation_context,
-							&proper_call,
-							&services.functions,
-							&services.clock,
-						)?;
-						let value = if result_column.data.len() > 0 {
-							result_column.data.get_value(0)
+									// Bind procedure params to call
+									// args
+									for (param_def, arg) in proc_def
+										.params
+										.iter()
+										.zip(args.into_iter())
+									{
+										self.symbol_table.set(
+											param_def.name.clone(),
+											Variable::scalar(arg),
+											true,
+										)?;
+									}
+
+									// Execute compiled instructions
+									let mut proc_result = Vec::new();
+									for compiled in compiled_list.iter() {
+										self.ip = 0;
+										self.run(
+											services,
+											tx,
+											&compiled.instructions,
+											params,
+											&mut proc_result,
+										)?;
+										if !self.control_flow.is_normal() {
+											break;
+										}
+									}
+
+									// Collect result (same pattern
+									// as DEF functions)
+									let stack_value = match std::mem::replace(
+										&mut self.control_flow,
+										ControlFlow::Normal,
+									) {
+										ControlFlow::Return(c) => {
+											Variable::Scalar(c.unwrap_or(
+												Columns::scalar(
+													Value::none(),
+												),
+											))
+										}
+										_ => {
+											if let Some(frame) =
+												proc_result.last()
+											{
+												if !frame
+													.columns
+													.is_empty() && frame
+													.columns[0]
+													.data
+													.len()
+													> 0
+												{
+													let cols: Vec<Column> =
+														frame.columns
+															.iter()
+															.map(|fc| {
+																let mut data = ColumnData::none_typed(Type::Boolean, 0);
+																for i in 0..fc.data.len() {
+																	data.push_value(fc.data.get_value(i));
+																}
+																Column::new(fc.name.as_str(), data)
+															})
+															.collect();
+													Variable::Columns(Columns::new(cols))
+												} else {
+													Variable::scalar(Value::none())
+												}
+											} else {
+												self.stack.pop().ok().unwrap_or(
+													Variable::scalar(Value::none()),
+												)
+											}
+										}
+									};
+
+									// Restore IP and exit scope
+									self.ip = saved_ip;
+									let _ = self.symbol_table.exit_scope();
+
+									self.stack.push(stack_value);
+								}
+								CompilationResult::Incremental(_) => {
+									return Err(internal_error!(
+										"Procedure body should not require incremental compilation"
+									));
+								}
+							}
+						} else if let Some(proc_impl) =
+							services.procedures.get_procedure(func_name)
+						{
+							// Runtime-registered native procedure (no catalog entry needed)
+							let call_params = Params::Positional(args);
+							let identity = Identity::Anonymous {};
+							let ctx = crate::procedure::context::ProcedureContext {
+								identity: &identity,
+								params: &call_params,
+								catalog: &services.catalog,
+								functions: &services.functions,
+								clock: &services.clock,
+							};
+							let columns = proc_impl.call(&ctx, tx)?;
+							self.stack.push(Variable::Columns(columns));
 						} else {
-							Value::none()
-						};
-						self.stack.push(Variable::scalar(value));
+							// Built-in function: evaluate via column evaluator
+							let evaluation_context = EvalContext {
+								target: None,
+								columns: Columns::empty(),
+								row_count: 1,
+								take: None,
+								params,
+								symbol_table: &self.symbol_table,
+								is_aggregate_context: false,
+								functions: &services.functions,
+								clock: &services.clock,
+								arena: None,
+							};
+
+							let mut arg_exprs = Vec::with_capacity(arity);
+							for arg in &args {
+								arg_exprs.push(value_to_expression(arg));
+							}
+
+							let proper_call = Expression::Call(CallExpression {
+								func: IdentExpression(name.clone()),
+								args: arg_exprs,
+								fragment: name.clone(),
+							});
+
+							let result_column = evaluate(
+								&evaluation_context,
+								&proper_call,
+								&services.functions,
+								&services.clock,
+							)?;
+							let value = if result_column.data.len() > 0 {
+								result_column.data.get_value(0)
+							} else {
+								Value::none()
+							};
+							self.stack.push(Variable::scalar(value));
+						}
 					}
 				}
 
@@ -760,7 +890,6 @@ impl Vm {
 					return Ok(());
 				}
 
-				// === Closures ===
 				Instruction::DefineClosure(closure_def) => {
 					let mut captured = HashMap::new();
 					for cap_name in &closure_def.captures {
@@ -775,16 +904,14 @@ impl Vm {
 					}));
 				}
 
-				// === DDL ===
 				Instruction::CreateNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::create::namespace::create_namespace(
 						services,
@@ -796,12 +923,11 @@ impl Vm {
 				Instruction::CreateTable(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::create::table::create_table(
 						services,
@@ -813,12 +939,11 @@ impl Vm {
 				Instruction::CreateRingBuffer(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::create::ringbuffer::create_ringbuffer(
 						services,
@@ -830,12 +955,11 @@ impl Vm {
 				Instruction::CreateFlow(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::create::flow::create_flow(
 						services,
@@ -847,12 +971,11 @@ impl Vm {
 				Instruction::CreateDeferredView(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::create::deferred::create_deferred_view(
 						services,
@@ -864,12 +987,11 @@ impl Vm {
 				Instruction::CreateTransactionalView(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::create::transactional::create_transactional_view(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
@@ -877,12 +999,11 @@ impl Vm {
 				Instruction::CreateDictionary(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::create::dictionary::create_dictionary(
 						services,
@@ -894,12 +1015,11 @@ impl Vm {
 				Instruction::CreateSumType(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::create::sumtype::create_sumtype(
 						services,
@@ -911,12 +1031,11 @@ impl Vm {
 				Instruction::CreateSubscription(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns =
 						super::instruction::ddl::create::subscription::create_subscription(
@@ -929,12 +1048,11 @@ impl Vm {
 				Instruction::AlterSequence(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::alter::sequence::alter_table_sequence(
 						services,
@@ -946,12 +1064,11 @@ impl Vm {
 				Instruction::CreatePrimaryKey(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::create::primary_key::create_primary_key(
 						services,
@@ -963,14 +1080,29 @@ impl Vm {
 				Instruction::CreatePolicy(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::create::policy::create_policy(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateProcedure(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = super::instruction::ddl::create::procedure::create_procedure(
 						services,
 						txn,
 						node.clone(),
@@ -980,12 +1112,11 @@ impl Vm {
 				Instruction::AlterFlow(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
 					};
 					let columns = super::instruction::ddl::alter::flow::execute_alter_flow(
 						services,
@@ -1137,11 +1268,8 @@ impl Vm {
 				Instruction::Delete(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_core::error::diagnostic::internal::internal_with_context(
-									"Mutation operations cannot be executed in a query transaction",
-									file!(), line!(), column!(), module_path!(), module_path!(),
-								),
+							return Err(internal_error!(
+								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
 						_ => {}
@@ -1158,11 +1286,8 @@ impl Vm {
 				Instruction::DeleteRingBuffer(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_core::error::diagnostic::internal::internal_with_context(
-									"Mutation operations cannot be executed in a query transaction",
-									file!(), line!(), column!(), module_path!(), module_path!(),
-								),
+							return Err(internal_error!(
+								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
 						_ => {}
@@ -1179,11 +1304,8 @@ impl Vm {
 				Instruction::InsertTable(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_core::error::diagnostic::internal::internal_with_context(
-									"Mutation operations cannot be executed in a query transaction",
-									file!(), line!(), column!(), module_path!(), module_path!(),
-								),
+							return Err(internal_error!(
+								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
 						_ => {}
@@ -1200,11 +1322,8 @@ impl Vm {
 				Instruction::InsertRingBuffer(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_core::error::diagnostic::internal::internal_with_context(
-									"Mutation operations cannot be executed in a query transaction",
-									file!(), line!(), column!(), module_path!(), module_path!(),
-								),
+							return Err(internal_error!(
+								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
 						_ => {}
@@ -1221,11 +1340,8 @@ impl Vm {
 				Instruction::InsertDictionary(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_core::error::diagnostic::internal::internal_with_context(
-									"Mutation operations cannot be executed in a query transaction",
-									file!(), line!(), column!(), module_path!(), module_path!(),
-								),
+							return Err(internal_error!(
+								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
 						_ => {}
@@ -1242,11 +1358,8 @@ impl Vm {
 				Instruction::Update(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_core::error::diagnostic::internal::internal_with_context(
-									"Mutation operations cannot be executed in a query transaction",
-									file!(), line!(), column!(), module_path!(), module_path!(),
-								),
+							return Err(internal_error!(
+								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
 						_ => {}
@@ -1263,11 +1376,8 @@ impl Vm {
 				Instruction::UpdateRingBuffer(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_type::error::Error(
-								reifydb_core::error::diagnostic::internal::internal_with_context(
-									"Mutation operations cannot be executed in a query transaction",
-									file!(), line!(), column!(), module_path!(), module_path!(),
-								),
+							return Err(internal_error!(
+								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
 						_ => {}
@@ -1282,7 +1392,6 @@ impl Vm {
 					self.stack.push(Variable::Columns(columns));
 				}
 
-				// === Query ===
 				Instruction::Query(plan) => {
 					let mut std_txn = tx.reborrow();
 					if let Some(columns) = run_query_plan(
@@ -1296,7 +1405,6 @@ impl Vm {
 					}
 				}
 
-				// === Append ===
 				Instruction::Append {
 					target,
 				} => {
@@ -1304,11 +1412,8 @@ impl Vm {
 					let columns = match self.stack.pop()? {
 						Variable::Columns(cols) => cols,
 						_ => {
-							return Err(reifydb_type::error::Error(
-								reifydb_core::error::diagnostic::internal::internal_with_context(
-									"APPEND requires columns/frame data on stack",
-									file!(), line!(), column!(), module_path!(), module_path!(),
-								),
+							return Err(internal_error!(
+								"APPEND requires columns/frame data on stack"
 							));
 						}
 					};
@@ -1325,7 +1430,6 @@ impl Vm {
 								.reassign(clean_name, Variable::Columns(existing))?;
 						}
 						None => {
-							// Auto-create the Columns variable
 							self.symbol_table.set(
 								clean_name,
 								Variable::Columns(columns),
@@ -1333,9 +1437,16 @@ impl Vm {
 							)?;
 						}
 						_ => {
-							return Err(reifydb_type::error::Error(
-								reifydb_type::error::diagnostic::runtime::append_target_not_frame(&clean_name),
-							));
+							return Err(TypeError::Runtime {
+								kind: RuntimeErrorKind::AppendTargetNotFrame {
+									name: clean_name.to_string(),
+								},
+								message: format!(
+									"Cannot APPEND to variable '{}' because it is not a Frame",
+									clean_name
+								),
+							}
+							.into());
 						}
 					}
 				}
@@ -1343,7 +1454,6 @@ impl Vm {
 
 			self.ip += 1;
 
-			// Propagate non-normal control flow
 			if !self.control_flow.is_normal() {
 				return Ok(());
 			}
@@ -1375,7 +1485,6 @@ fn value_to_expression(value: &Value) -> Expression {
 	}
 }
 
-/// Run a query plan and return the result columns.
 fn run_query_plan(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,

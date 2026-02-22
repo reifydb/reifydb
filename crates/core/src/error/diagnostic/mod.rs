@@ -7,6 +7,7 @@
 //! transactions, etc. Type-level diagnostics remain in reifydb-type.
 
 pub mod catalog;
+pub mod core_error;
 pub mod engine;
 pub mod flow;
 pub mod index;
