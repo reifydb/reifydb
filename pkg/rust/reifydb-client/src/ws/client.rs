@@ -10,6 +10,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use crate::{
 	AdminRequest, AuthRequest, ChangePayload, CommandRequest, QueryRequest, Request, RequestPayload, Response,
 	ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest,
+	params_to_wire,
 	session::{
 		AdminResult, CommandResult, QueryResult, parse_admin_response, parse_command_response,
 		parse_query_response,
@@ -198,7 +199,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Admin(AdminRequest {
 				statements: vec![rql.to_string()],
-				params,
+				params: params.map(params_to_wire).flatten(),
 			}),
 		};
 
@@ -213,7 +214,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Admin(AdminRequest {
 				statements: statements.into_iter().map(String::from).collect(),
-				params,
+				params: params.map(params_to_wire).flatten(),
 			}),
 		};
 
@@ -232,7 +233,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Command(CommandRequest {
 				statements: vec![rql.to_string()],
-				params,
+				params: params.map(params_to_wire).flatten(),
 			}),
 		};
 
@@ -251,7 +252,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Query(QueryRequest {
 				statements: vec![rql.to_string()],
-				params,
+				params: params.map(params_to_wire).flatten(),
 			}),
 		};
 
@@ -270,7 +271,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Command(CommandRequest {
 				statements: statements.into_iter().map(String::from).collect(),
-				params,
+				params: params.map(params_to_wire).flatten(),
 			}),
 		};
 
@@ -285,7 +286,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Query(QueryRequest {
 				statements: statements.into_iter().map(String::from).collect(),
-				params,
+				params: params.map(params_to_wire).flatten(),
 			}),
 		};
 

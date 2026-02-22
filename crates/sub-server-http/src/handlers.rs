@@ -20,6 +20,7 @@ use reifydb_sub_server::{
 	response::{ResponseFrame, convert_frames},
 	state::AppState,
 };
+use reifydb_sub_server::wire::WireParams;
 use reifydb_type::params::Params;
 use serde::{Deserialize, Serialize};
 
@@ -32,7 +33,7 @@ pub struct StatementRequest {
 	pub statements: Vec<String>,
 	/// Optional query parameters.
 	#[serde(default)]
-	pub params: Option<Params>,
+	pub params: Option<WireParams>,
 }
 
 /// Response body for query and command endpoints.
@@ -103,7 +104,10 @@ pub async fn handle_query(
 	let query = request.statements.join("; ");
 
 	// Get params or default
-	let params = request.params.unwrap_or(Params::None);
+	let params = match request.params {
+		None => Params::None,
+		Some(wp) => wp.into_params().map_err(|e| AppError::InvalidParams(e))?,
+	};
 
 	// Execute with timeout
 	let frames = execute_query(
@@ -140,7 +144,10 @@ pub async fn handle_admin(
 	let identity = extract_identity(&headers)?;
 
 	// Get params or default
-	let params = request.params.unwrap_or(Params::None);
+	let params = match request.params {
+		None => Params::None,
+		Some(wp) => wp.into_params().map_err(|e| AppError::InvalidParams(e))?,
+	};
 
 	// Execute with timeout
 	let frames = execute_admin(
@@ -193,7 +200,10 @@ pub async fn handle_command(
 	let identity = extract_identity(&headers)?;
 
 	// Get params or default
-	let params = request.params.unwrap_or(Params::None);
+	let params = match request.params {
+		None => Params::None,
+		Some(wp) => wp.into_params().map_err(|e| AppError::InvalidParams(e))?,
+	};
 
 	// Execute with timeout
 	let frames = execute_command(

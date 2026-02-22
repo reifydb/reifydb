@@ -262,7 +262,13 @@ async fn process_message(
 				}
 			};
 
-			let params = a.params.unwrap_or(Params::None);
+			let params = match a.params {
+				None => Params::None,
+				Some(wp) => match wp.into_params() {
+					Ok(p) => p,
+					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
+				},
+			};
 			let timeout = state.query_timeout();
 
 			match execute_admin(
@@ -295,7 +301,13 @@ async fn process_message(
 				}
 			};
 
-			let params = q.params.unwrap_or(Params::None);
+			let params = match q.params {
+				None => Params::None,
+				Some(wp) => match wp.into_params() {
+					Ok(p) => p,
+					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
+				},
+			};
 			let query = q.statements.join("; ");
 			let timeout = state.query_timeout();
 
@@ -322,7 +334,13 @@ async fn process_message(
 				}
 			};
 
-			let params = c.params.unwrap_or(Params::None);
+			let params = match c.params {
+				None => Params::None,
+				Some(wp) => match wp.into_params() {
+					Ok(p) => p,
+					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
+				},
+			};
 			let timeout = state.query_timeout();
 
 			match execute_command(

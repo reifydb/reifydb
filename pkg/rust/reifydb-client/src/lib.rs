@@ -36,6 +36,82 @@ pub use session::{AdminResult, CommandResult, QueryResult};
 pub use ws::WsClient;
 
 // ============================================================================
+// Wire format types for WebSocket protocol
+// ============================================================================
+
+/// Wire format for a single typed value: `{"type": "Int2", "value": "1234"}`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WireValue {
+	#[serde(rename = "type")]
+	pub type_name: String,
+	pub value: String,
+}
+
+/// Wire format for query parameters.
+///
+/// Either positional or named:
+/// - Positional: `[{"type":"Int2","value":"1234"}, ...]`
+/// - Named: `{"key": {"type":"Int2","value":"1234"}, ...}`
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum WireParams {
+	Positional(Vec<WireValue>),
+	Named(std::collections::HashMap<String, WireValue>),
+}
+
+fn value_to_wire(value: Value) -> WireValue {
+	let (type_name, value_str): (&str, String) = match &value {
+		Value::None { .. } => ("None", "\u{27EA}none\u{27EB}".to_string()),
+		Value::Boolean(b) => ("Boolean", b.to_string()),
+		Value::Float4(f) => ("Float4", f.to_string()),
+		Value::Float8(f) => ("Float8", f.to_string()),
+		Value::Int1(i) => ("Int1", i.to_string()),
+		Value::Int2(i) => ("Int2", i.to_string()),
+		Value::Int4(i) => ("Int4", i.to_string()),
+		Value::Int8(i) => ("Int8", i.to_string()),
+		Value::Int16(i) => ("Int16", i.to_string()),
+		Value::Utf8(s) => ("Utf8", s.clone()),
+		Value::Uint1(u) => ("Uint1", u.to_string()),
+		Value::Uint2(u) => ("Uint2", u.to_string()),
+		Value::Uint4(u) => ("Uint4", u.to_string()),
+		Value::Uint8(u) => ("Uint8", u.to_string()),
+		Value::Uint16(u) => ("Uint16", u.to_string()),
+		Value::Uuid4(u) => ("Uuid4", u.to_string()),
+		Value::Uuid7(u) => ("Uuid7", u.to_string()),
+		Value::Date(d) => ("Date", d.to_string()),
+		Value::DateTime(dt) => ("DateTime", dt.to_string()),
+		Value::Time(t) => ("Time", t.to_string()),
+		Value::Duration(d) => ("Duration", d.to_string()),
+		Value::Blob(b) => ("Blob", b.to_hex()),
+		Value::IdentityId(id) => ("IdentityId", id.to_string()),
+		Value::Int(i) => ("Int", i.to_string()),
+		Value::Uint(u) => ("Uint", u.to_string()),
+		Value::Decimal(d) => ("Decimal", d.to_string()),
+		Value::Any(v) => return value_to_wire(*v.clone()),
+		Value::DictionaryId(id) => ("DictionaryId", id.to_string()),
+		Value::Type(t) => ("Type", t.to_string()),
+	};
+	WireValue {
+		type_name: type_name.to_string(),
+		value: value_str,
+	}
+}
+
+pub fn params_to_wire(params: Params) -> Option<WireParams> {
+	match params {
+		Params::None => None,
+		Params::Positional(values) => {
+			Some(WireParams::Positional(values.into_iter().map(value_to_wire).collect()))
+		}
+		Params::Named(map) => {
+			Some(WireParams::Named(
+				map.into_iter().map(|(k, v)| (k, value_to_wire(v))).collect(),
+			))
+		}
+	}
+}
+
+// ============================================================================
 // Request Types (matching server)
 // ============================================================================
 
@@ -60,7 +136,7 @@ pub enum RequestPayload {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminRequest {
 	pub statements: Vec<String>,
-	pub params: Option<Params>,
+	pub params: Option<WireParams>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,13 +147,13 @@ pub struct AuthRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandRequest {
 	pub statements: Vec<String>,
-	pub params: Option<Params>,
+	pub params: Option<WireParams>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryRequest {
 	pub statements: Vec<String>,
-	pub params: Option<Params>,
+	pub params: Option<WireParams>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

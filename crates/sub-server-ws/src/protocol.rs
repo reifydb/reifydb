@@ -5,7 +5,7 @@
 //!
 //! These types define the JSON message format for WebSocket client-server communication.
 
-use reifydb_type::params::Params;
+use reifydb_sub_server::wire::WireParams;
 use serde::{Deserialize, Serialize};
 
 /// A WebSocket request message.
@@ -44,7 +44,7 @@ pub struct AdminRequest {
 	/// RQL statements to execute.
 	pub statements: Vec<String>,
 	/// Optional parameters for the statements.
-	pub params: Option<Params>,
+	pub params: Option<WireParams>,
 }
 
 /// Authentication request payload.
@@ -60,7 +60,7 @@ pub struct CommandRequest {
 	/// RQL statements to execute.
 	pub statements: Vec<String>,
 	/// Optional parameters for the statements.
-	pub params: Option<Params>,
+	pub params: Option<WireParams>,
 }
 
 /// Query (read) request payload.
@@ -69,7 +69,7 @@ pub struct QueryRequest {
 	/// RQL query statements to execute.
 	pub statements: Vec<String>,
 	/// Optional parameters for the queries.
-	pub params: Option<Params>,
+	pub params: Option<WireParams>,
 }
 
 /// Subscribe request payload.

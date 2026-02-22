@@ -10,7 +10,7 @@ use reqwest::Client as ReqwestClient;
 
 use crate::{
 	AdminRequest, AdminResponse, CommandRequest, CommandResponse, ErrResponse, QueryRequest, QueryResponse,
-	Response, ResponsePayload,
+	Response, ResponsePayload, params_to_wire,
 	session::{
 		AdminResult, CommandResult, QueryResult, parse_admin_response, parse_command_response,
 		parse_query_response,
@@ -97,7 +97,7 @@ impl HttpClient {
 	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = AdminRequest {
 			statements: vec![rql.to_string()],
-			params,
+			params: params.map(params_to_wire).flatten(),
 		};
 
 		let response = self.send_admin(&request).await?;
@@ -112,7 +112,7 @@ impl HttpClient {
 	pub async fn admin_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = AdminRequest {
 			statements: statements.into_iter().map(String::from).collect(),
-			params,
+			params: params.map(params_to_wire).flatten(),
 		};
 
 		let response = self.send_admin(&request).await?;
@@ -145,7 +145,7 @@ impl HttpClient {
 	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let request = CommandRequest {
 			statements: vec![rql.to_string()],
-			params,
+			params: params.map(params_to_wire).flatten(),
 		};
 
 		let response = self.send_command(&request).await?;
@@ -181,7 +181,7 @@ impl HttpClient {
 	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = QueryRequest {
 			statements: vec![rql.to_string()],
-			params,
+			params: params.map(params_to_wire).flatten(),
 		};
 
 		let response = self.send_query(&request).await?;
@@ -200,7 +200,7 @@ impl HttpClient {
 	) -> Result<CommandResult, Error> {
 		let request = CommandRequest {
 			statements: statements.into_iter().map(String::from).collect(),
-			params,
+			params: params.map(params_to_wire).flatten(),
 		};
 
 		let response = self.send_command(&request).await?;
@@ -215,7 +215,7 @@ impl HttpClient {
 	pub async fn query_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = QueryRequest {
 			statements: statements.into_iter().map(String::from).collect(),
-			params,
+			params: params.map(params_to_wire).flatten(),
 		};
 
 		let response = self.send_query(&request).await?;
