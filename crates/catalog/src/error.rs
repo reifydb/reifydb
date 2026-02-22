@@ -133,6 +133,15 @@ pub enum CatalogError {
 		fragment: Fragment,
 		name: String,
 	},
+
+	#[error("cannot drop {kind} because it is in use")]
+	InUse {
+		kind: CatalogObjectKind,
+		namespace: String,
+		name: Option<String>,
+		dependents: String,
+		fragment: Fragment,
+	},
 }
 
 impl IntoDiagnostic for CatalogError {
@@ -617,6 +626,83 @@ impl IntoDiagnostic for CatalogError {
 				cause: None,
 				operator_chain: None,
 			},
+
+			CatalogError::InUse {
+				kind,
+				namespace,
+				name,
+				dependents,
+				fragment,
+			} => {
+				let (code, label, help) = match kind {
+					CatalogObjectKind::Dictionary => (
+						"CA_032",
+						"dictionary is in use",
+						"drop or alter the dependent columns first, or use CASCADE to automatically drop all dependents",
+					),
+					CatalogObjectKind::SumType => (
+						"CA_033",
+						"enum is in use",
+						"drop or alter the dependent columns first, or use CASCADE to automatically drop all dependents",
+					),
+					CatalogObjectKind::Namespace => (
+						"CA_034",
+						"namespace contains referenced objects",
+						"drop or alter the dependent columns in other namespaces first",
+					),
+					CatalogObjectKind::Table => (
+						"CA_035",
+						"table is in use",
+						"drop or alter the dependent flows first, or use CASCADE to automatically drop all dependents",
+					),
+					CatalogObjectKind::View => (
+						"CA_036",
+						"view is in use",
+						"drop or alter the dependent flows first, or use CASCADE to automatically drop all dependents",
+					),
+					CatalogObjectKind::Flow => (
+						"CA_037",
+						"flow is in use",
+						"drop or alter the dependent flows first, or use CASCADE to automatically drop all dependents",
+					),
+					CatalogObjectKind::RingBuffer => (
+						"CA_038",
+						"ring buffer is in use",
+						"drop or alter the dependent flows first, or use CASCADE to automatically drop all dependents",
+					),
+					_ => (
+						"CA_032",
+						"object is in use",
+						"drop or alter the dependents first, or use CASCADE to automatically drop all dependents",
+					),
+				};
+				let message = if matches!(kind, CatalogObjectKind::Namespace) {
+					format!(
+						"cannot drop namespace '{}' because it contains objects referenced from other namespaces: {}",
+						namespace, dependents
+					)
+				} else {
+					format!(
+						"cannot drop {} '{}.{}' because it is referenced by: {}",
+						kind,
+						namespace,
+						name.as_deref().unwrap_or(""),
+						dependents
+					)
+				};
+				Diagnostic {
+					code: code.to_string(),
+					statement: None,
+					message,
+					fragment,
+					label: Some(label.to_string()),
+					help: Some(help.to_string()),
+					column: None,
+					notes: vec![],
+					cause: None,
+					operator_chain: None,
+				}
+			}
 		}
 	}
 }

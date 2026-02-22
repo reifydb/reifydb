@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{error::diagnostic::catalog::dictionary_in_use, value::column::columns::Columns};
+use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
+use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::nodes::DropDictionaryNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{return_error, value::Value};
+use reifydb_type::value::Value;
 
 use super::dependent::find_column_dependents;
 use crate::vm::services::Services;
@@ -31,12 +32,14 @@ pub(crate) fn drop_dictionary(
 	})?;
 	if !dependents.is_empty() {
 		let dependents_str = dependents.join(", ");
-		return_error!(dictionary_in_use(
-			plan.dictionary_name.clone(),
-			plan.namespace_name.text(),
-			plan.dictionary_name.text(),
-			&dependents_str,
-		));
+		return Err(CatalogError::InUse {
+			kind: CatalogObjectKind::Dictionary,
+			namespace: plan.namespace_name.text().to_string(),
+			name: Some(plan.dictionary_name.text().to_string()),
+			dependents: dependents_str,
+			fragment: plan.dictionary_name.clone(),
+		}
+		.into());
 	}
 
 	services.catalog.drop_dictionary(txn, def)?;

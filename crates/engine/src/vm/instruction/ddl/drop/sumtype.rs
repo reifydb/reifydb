@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{error::diagnostic::catalog::sumtype_in_use, value::column::columns::Columns};
+use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
+use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::nodes::DropSumTypeNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
-	return_error,
-	value::{Value, constraint::Constraint},
-};
+use reifydb_type::value::{Value, constraint::Constraint};
 
 use super::dependent::find_column_dependents;
 use crate::vm::services::Services;
@@ -39,12 +37,14 @@ pub(crate) fn drop_sumtype(
 	})?;
 	if !dependents.is_empty() {
 		let dependents_str = dependents.join(", ");
-		return_error!(sumtype_in_use(
-			plan.sumtype_name.clone(),
-			plan.namespace_name.text(),
-			plan.sumtype_name.text(),
-			&dependents_str,
-		));
+		return Err(CatalogError::InUse {
+			kind: CatalogObjectKind::SumType,
+			namespace: plan.namespace_name.text().to_string(),
+			name: Some(plan.sumtype_name.text().to_string()),
+			dependents: dependents_str,
+			fragment: plan.sumtype_name.clone(),
+		}
+		.into());
 	}
 
 	services.catalog.drop_sumtype(txn, def)?;

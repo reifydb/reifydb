@@ -55,7 +55,8 @@ impl<'bump> Parser<'bump> {
 		let fragment = self.current()?.fragment.to_owned();
 		Err(Error::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
-				expected: "FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, or SUBSCRIPTION".to_string(),
+				expected: "FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, or SUBSCRIPTION"
+					.to_string(),
 			},
 			message: format!(
 				"Unexpected token: expected {}, got {}",

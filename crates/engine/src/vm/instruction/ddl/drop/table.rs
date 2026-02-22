@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{error::diagnostic::catalog::table_in_use, value::column::columns::Columns};
+use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
+use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::{flow::node::FlowNodeType, nodes::DropTableNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{return_error, value::Value};
+use reifydb_type::value::Value;
 
 use super::dependent::find_flow_dependents;
 use crate::vm::services::Services;
@@ -36,12 +37,14 @@ pub(crate) fn drop_table(
 	)?;
 	if !dependents.is_empty() {
 		let dependents_str = dependents.join(", ");
-		return_error!(table_in_use(
-			plan.table_name.clone(),
-			plan.namespace_name.text(),
-			plan.table_name.text(),
-			&dependents_str,
-		));
+		return Err(CatalogError::InUse {
+			kind: CatalogObjectKind::Table,
+			namespace: plan.namespace_name.text().to_string(),
+			name: Some(plan.table_name.text().to_string()),
+			dependents: dependents_str,
+			fragment: plan.table_name.clone(),
+		}
+		.into());
 	}
 
 	services.catalog.drop_table(txn, def)?;

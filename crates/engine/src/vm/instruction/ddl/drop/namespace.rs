@@ -3,13 +3,11 @@
 
 use std::collections::HashSet;
 
-use reifydb_core::{error::diagnostic::catalog::namespace_in_use, value::column::columns::Columns};
+use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
+use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::{flow::node::FlowNodeType, nodes::DropNamespaceNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
-	return_error,
-	value::{Value, constraint::Constraint},
-};
+use reifydb_type::value::{Value, constraint::Constraint};
 
 use super::dependent::{find_column_dependents, find_flow_dependents};
 use crate::vm::services::Services;
@@ -148,11 +146,14 @@ pub(crate) fn drop_namespace(
 
 	if !dependents.is_empty() {
 		let dependents_str = dependents.join(", ");
-		return_error!(namespace_in_use(
-			plan.namespace_name.clone(),
-			plan.namespace_name.text(),
-			&dependents_str,
-		));
+		return Err(CatalogError::InUse {
+			kind: CatalogObjectKind::Namespace,
+			namespace: plan.namespace_name.text().to_string(),
+			name: None,
+			dependents: dependents_str,
+			fragment: plan.namespace_name.clone(),
+		}
+		.into());
 	}
 
 	services.catalog.drop_namespace(txn, def)?;
