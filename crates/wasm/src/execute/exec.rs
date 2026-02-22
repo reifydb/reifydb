@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{cell::RefCell, mem, rc::Rc, sync::Arc};
 
 use crate::{
 	config::WasmConfig,
@@ -12,15 +12,15 @@ use crate::{
 		state::State,
 	},
 	module::{
-		ExportData, Function, FunctionExternal, FunctionIndex, FunctionLocal, FunctionTypeIndex, GlobalIndex,
-		LocalIndex, MemoryArgument, MemoryReader, MemoryWriter, TableIndex, Trap, TrapNotFound, TrapType,
-		Value, ValueType,
+		FunctionIndex, FunctionTypeIndex, GlobalIndex, LocalIndex, TableIndex, Trap, TrapNotFound, TrapType,
+		function::{ExportData, Function, FunctionExternal, FunctionLocal},
+		global::Global,
+		memory::{Memory, MemoryReader, MemoryWriter},
+		table::Table,
+		types::{FunctionType, MemoryArgument, ValueType},
+		value::Value,
 	},
 };
-
-// ---------------------------------------------------------------------------
-// HostFunction
-// ---------------------------------------------------------------------------
 
 pub type HostFn = Arc<dyn Fn(&mut Exec) -> Result<()> + Send + Sync>;
 
@@ -51,9 +51,13 @@ impl HostFunctionRegistry {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Exec
-// ---------------------------------------------------------------------------
+pub struct ImportedModuleContext {
+	pub functions: Box<[Arc<Function>]>,
+	pub function_types: Box<[FunctionType]>,
+	pub tables: Vec<Rc<RefCell<Table>>>,
+	pub memories: Vec<Rc<RefCell<Memory>>>,
+	pub globals: Vec<Rc<RefCell<Global>>>,
+}
 
 pub struct Exec {
 	pub(crate) state: State,
@@ -62,7 +66,7 @@ pub struct Exec {
 	pub(crate) fuel: u64,
 	pub(crate) call_depth: u32,
 	pub(crate) host_functions: HostFunctionRegistry,
-	pub(crate) imported_functions: Vec<(String, String, Arc<Function>)>,
+	pub(crate) imported_functions: Vec<(String, String, Arc<Function>, Option<Rc<ImportedModuleContext>>)>,
 }
 
 impl Exec {
@@ -142,7 +146,7 @@ impl Exec {
 			self.stack.push(arg.clone())?;
 		}
 
-		let function = self.state.function(idx as FunctionIndex).unwrap();
+		let function = self.state.function(idx as FunctionIndex)?;
 		match &*function {
 			Function::Local(func_inst) => {
 				let result_count = func_inst.result_count();
@@ -211,22 +215,59 @@ impl Exec {
 		let imported = self
 			.imported_functions
 			.iter()
-			.find(|(m, n, _)| m == &f.module && n == &f.function_name)
-			.map(|(_, _, func)| func.clone());
+			.find(|(m, n, _, _)| m == &f.module && n == &f.function_name)
+			.map(|(_, _, func, ctx)| (func.clone(), ctx.clone()));
 
-		if let Some(func) = imported {
+		if let Some((func, context)) = imported {
 			match &*func {
 				Function::Local(local) => {
-					let previous_frame = self.push_frame(local)?;
-					for instruction in local.instructions() {
-						self.consume_fuel()?;
-						match instruction.execute(self)? {
-							ExecStatus::Continue => {}
-							ExecStatus::Break(_) | ExecStatus::Return => break,
+					// Swap full module context if we have one from the source module
+					let saved = context.as_ref().map(|ctx| {
+						let saved_funcs =
+							mem::replace(&mut self.state.functions, ctx.functions.clone());
+						let saved_types = mem::replace(
+							&mut self.state.function_types,
+							ctx.function_types.clone(),
+						);
+						let saved_tables =
+							mem::replace(&mut self.state.tables, ctx.tables.clone());
+						let saved_memories =
+							mem::replace(&mut self.state.memories, ctx.memories.clone());
+						let saved_globals =
+							mem::replace(&mut self.state.global.data, ctx.globals.clone());
+						(saved_funcs, saved_types, saved_tables, saved_memories, saved_globals)
+					});
+
+					let result = (|| -> Result<()> {
+						let previous_frame = self.push_frame(local)?;
+						for instruction in local.instructions() {
+							self.consume_fuel()?;
+							match instruction.execute(self)? {
+								ExecStatus::Continue => {}
+								ExecStatus::Break(_) | ExecStatus::Return => break,
+							}
 						}
+						self.restore_frame(previous_frame);
+						Ok(())
+					})();
+
+					// Always restore original module context, even on error
+					if let Some((
+						saved_funcs,
+						saved_types,
+						saved_tables,
+						saved_memories,
+						saved_globals,
+					)) = saved
+					{
+						self.state.functions = saved_funcs;
+						self.state.function_types = saved_types;
+						self.state.tables = saved_tables;
+						self.state.memories = saved_memories;
+						self.state.global.data = saved_globals;
 					}
-					self.restore_frame(previous_frame);
-					return Ok(());
+
+					return result;
 				}
 				Function::External(ef) => {
 					return self.call_external(ef);
@@ -241,17 +282,30 @@ impl Exec {
 		let expected = self.state.function_type(type_idx)?;
 		let element_idx = self.stack.pop::<u32>()?;
 
-		let table_value = self
-			.state
-			.table_at(table_idx, element_idx as TableIndex)
-			.map_err(|_| Trap::UndefinedElement)?;
+		// Get the table value and check for a resolved func_ref
+		let (table_value, resolved_func) = {
+			let table_rc = self.state.table_rc(table_idx).map_err(|_| Trap::UndefinedElement)?;
+			let table = table_rc.borrow();
+			let elem = table.elements.get(element_idx as usize).ok_or(Trap::UndefinedElement)?;
+			let val = match elem {
+				Some(value) => value.clone(),
+				None => Value::RefNull(ValueType::RefFunc),
+			};
+			let func_ref = table.func_refs.get(element_idx as usize).and_then(|r| r.clone());
+			(val, func_ref)
+		};
 
 		match table_value {
 			Value::RefNull(_) => {
 				return Err(Trap::UninitializedElement);
 			}
 			Value::RefFunc(function_idx) => {
-				let function = self.state.function(function_idx)?;
+				// Use resolved func_ref if available (cross-module), otherwise module-local
+				let function = if let Some(func) = resolved_func {
+					func
+				} else {
+					self.state.function(function_idx)?
+				};
 
 				match &*function {
 					Function::Local(local) => {
@@ -276,6 +330,15 @@ impl Exec {
 						self.restore_frame(previous_frame);
 					}
 					Function::External(f) => {
+						let actual = &f.function_type;
+						if expected.params != actual.params
+							|| expected.results != actual.results
+						{
+							return Err(Trap::Type(TrapType::MismatchIndirectCallType(
+								expected,
+								actual.clone(),
+							)));
+						}
 						self.call_external(f)?;
 					}
 				}
@@ -326,7 +389,8 @@ impl Exec {
 		T: StackAccess,
 		R: MemoryReader + Into<T>,
 	{
-		let memory = self.state.memory(0)?;
+		let mem_rc = self.state.memory_rc(0)?;
+		let memory = mem_rc.borrow();
 		let idx = self.stack.pop::<u32>()?.saturating_add(mem.offset);
 
 		let value: R = memory.read(idx as usize)?;
@@ -337,14 +401,16 @@ impl Exec {
 	where
 		W: MemoryWriter,
 	{
-		let memory = self.state.memory_mut(0)?;
+		let mem_rc = self.state.memory_rc(0)?;
+		let mut memory = mem_rc.borrow_mut();
 		let idx = self.stack.pop::<u32>()? + mem.offset;
 		memory.write(idx as usize, value)
 	}
 
 	pub fn memory_grow(&mut self, pages: u32) -> Result<u32> {
 		let max_pages = self.config.max_memory_pages;
-		let memory = self.state.memory_mut(0)?;
+		let mem_rc = self.state.memory_rc(0)?;
+		let mut memory = mem_rc.borrow_mut();
 		memory.grow_checked(pages, max_pages)
 	}
 
@@ -453,13 +519,7 @@ impl Exec {
 			}
 		}
 
-		let arity = func.result_count();
-
 		let frame = CallFrame {
-			ip: -1,
-			sp: self.stack.pointer(),
-			instructions: func.instructions().clone(),
-			arity,
 			locals: locals.into(),
 		};
 

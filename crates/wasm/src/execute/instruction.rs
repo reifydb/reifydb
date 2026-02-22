@@ -12,14 +12,11 @@ use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Sub};
 use crate::{
 	execute::exec::Exec,
 	module::{
-		BranchingDepth, Instruction, PAGE_SIZE, Trap, TrapDivisionByZero, TrapNotImplemented, TrapOutOfRange,
-		TrapOverflow, Value, ValueType,
+		BranchingDepth, PAGE_SIZE, Trap, TrapDivisionByZero, TrapNotImplemented, TrapOutOfRange, TrapOverflow,
+		types::{Instruction, ValueType},
+		value::Value,
 	},
 };
-
-// ---------------------------------------------------------------------------
-// ExecStatus / ExecResult / ExecInstruction trait
-// ---------------------------------------------------------------------------
 
 pub enum ExecStatus {
 	Break(BranchingDepth),
@@ -93,8 +90,8 @@ impl ExecInstruction for Instruction {
 
 			Instruction::Loop {
 				param_types,
-				result_types,
 				body,
+				..
 			} => {
 				let stack_pointer = exec.stack.pointer();
 				loop {
@@ -257,7 +254,8 @@ impl ExecInstruction for Instruction {
 			}
 
 			Instruction::MemorySize(_) => {
-				let memory = exec.state.memory(0)?;
+				let mem_rc = exec.state.memory_rc(0)?;
+				let memory = mem_rc.borrow();
 				let pages = (memory.len() / PAGE_SIZE as usize) as i32;
 				exec.stack.push(pages)?;
 			}
@@ -296,11 +294,19 @@ impl ExecInstruction for Instruction {
 			Instruction::TableSet(table_idx) => {
 				let value: Value = exec.stack.pop()?;
 				let idx: i32 = exec.stack.pop()?;
-				let table = exec.state.table_mut(*table_idx)?;
+				let table_rc = exec.state.table_rc(*table_idx)?;
+				let mut table = table_rc.borrow_mut();
 				if idx as usize >= table.elements.len() {
 					return Err(Trap::OutOfRange(TrapOutOfRange::Table(*table_idx)));
 				}
+				// Resolve func_ref if setting a RefFunc value
+				let func_ref = if let Value::RefFunc(func_idx) = &value {
+					exec.state.functions.get(*func_idx).cloned()
+				} else {
+					None
+				};
 				table.elements[idx as usize] = Some(value);
+				table.func_refs[idx as usize] = func_ref;
 			}
 
 			Instruction::TableGrow(table_idx) => {
@@ -505,14 +511,6 @@ impl ExecInstruction for Instruction {
 	}
 }
 
-// ===========================================================================
-// Numeric extensions (ported from numeric.rs)
-// ===========================================================================
-
-// ---------------------------------------------------------------------------
-// IntegerExtension
-// ---------------------------------------------------------------------------
-
 pub(crate) trait IntegerExtension
 where
 	Self: Sized,
@@ -589,10 +587,6 @@ impl IntegerExtension for u64 {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// FloatExtension
-// ---------------------------------------------------------------------------
-
 pub(crate) trait FloatExtension
 where
 	Self: Sized,
@@ -601,13 +595,9 @@ where
 	fn ceil(self) -> Self;
 	fn copysign(self, other: Self) -> Self;
 	fn floor(self) -> Self;
-	fn is_nan(self) -> bool;
 	fn max(self, other: Self) -> Self;
 	fn min(self, other: Self) -> Self;
 	fn nearest(self) -> Self;
-	fn round(self) -> Self;
-	fn signum(self) -> Self;
-	fn sqrt(self) -> Self;
 	fn nan(self) -> Self;
 	fn trunc(self) -> Self;
 }
@@ -662,28 +652,12 @@ impl FloatExtension for f32 {
 		}
 	}
 
-	fn round(self) -> Self {
-		libm::roundf(self)
-	}
-
-	fn signum(self) -> Self {
-		libm::copysignf(1.0, self)
-	}
-
 	fn trunc(self) -> Self {
 		libm::truncf(self)
 	}
 
-	fn sqrt(self) -> Self {
-		libm::sqrtf(self)
-	}
-
 	fn nan(self) -> Self {
 		Self::from_bits(self.to_bits() | 1 << <f32>::MANTISSA_DIGITS - 2)
-	}
-
-	fn is_nan(self) -> bool {
-		self.is_nan()
 	}
 }
 
@@ -737,34 +711,14 @@ impl FloatExtension for f64 {
 		}
 	}
 
-	fn round(self) -> Self {
-		libm::round(self)
-	}
-
-	fn signum(self) -> Self {
-		libm::copysign(1.0, self)
-	}
-
 	fn trunc(self) -> Self {
 		libm::trunc(self)
-	}
-
-	fn sqrt(self) -> Self {
-		libm::sqrt(self)
 	}
 
 	fn nan(self) -> Self {
 		Self::from_bits(self.to_bits() | 1 << <f64>::MANTISSA_DIGITS - 2)
 	}
-
-	fn is_nan(self) -> bool {
-		self.is_nan()
-	}
 }
-
-// ---------------------------------------------------------------------------
-// Float-to-integer conversions (trapping)
-// ---------------------------------------------------------------------------
 
 macro_rules! float_to_int {
 	($name:ident, $float:ty, $int:ty) => {
@@ -809,10 +763,6 @@ float_to_int!(f64_to_u64, f64, u64);
 float_to_int!(f64_to_i32, f64, i32);
 float_to_int!(f64_to_i64, f64, i64);
 
-// ---------------------------------------------------------------------------
-// Float-to-integer conversions (saturating)
-// ---------------------------------------------------------------------------
-
 macro_rules! float_to_int_sat {
 	($name:ident, $float:ty, $int:ty) => {
 		pub fn $name(f: $float) -> $int {
@@ -839,10 +789,6 @@ float_to_int_sat!(f32_to_i32_sat, f32, i32);
 float_to_int_sat!(f32_to_i64_sat, f32, i64);
 float_to_int_sat!(f64_to_i32_sat, f64, i32);
 float_to_int_sat!(f64_to_i64_sat, f64, i64);
-
-// ===========================================================================
-// Tests
-// ===========================================================================
 
 #[cfg(test)]
 mod tests {

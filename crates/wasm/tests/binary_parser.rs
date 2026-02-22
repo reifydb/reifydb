@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_wasm::parse::{
-	WasmData, WasmDataMode, WasmElement, WasmElementMode, WasmExport, WasmExportDescriptor, WasmFunc,
-	WasmFunctionBody, WasmImport, WasmImportDescriptor, WasmInstruction, WasmMemory, WasmMemoryArgument,
-	WasmParser, WasmResizableLimit, WasmResultType, WasmTable, WasmValueType,
+	WasmData, WasmDataMode, WasmElement, WasmElementInit, WasmElementMode, WasmExport, WasmExportDescriptor,
+	WasmFunc, WasmFunctionBody, WasmImport, WasmImportDescriptor, WasmInstruction, WasmMemory, WasmMemoryArgument,
+	WasmResizableLimit, WasmResultType, WasmTable, WasmValueType, binary::WasmParser,
 };
 
 fn wasm(content: &str) -> Box<[u8]> {
@@ -508,7 +508,11 @@ fn parse_element() {
 				table: 0,
 				offset: Box::new([WasmInstruction::I32Const(23)])
 			},
-			init: Box::new([1, 2, 3]),
+			init: Box::new([
+				WasmElementInit::FuncRef(1),
+				WasmElementInit::FuncRef(2),
+				WasmElementInit::FuncRef(3)
+			]),
 		}]
 	);
 }

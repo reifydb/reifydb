@@ -6,19 +6,9 @@ pub mod spec;
 pub mod text;
 pub mod validate;
 
-pub use binary::WasmParser;
-
 use crate::util::{byte_reader, leb128::Leb128Error};
 
-// ---------------------------------------------------------------------------
-// Result type alias
-// ---------------------------------------------------------------------------
-
 pub type Result<T> = core::result::Result<T, WasmParseError>;
-
-// ---------------------------------------------------------------------------
-// WasmParseError
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, PartialEq)]
 pub enum WasmParseError {
@@ -108,10 +98,6 @@ impl From<Leb128Error> for WasmParseError {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// WasmModule
-// ---------------------------------------------------------------------------
-
 /// Represents a complete WebAssembly module, containing all standard sections.
 #[derive(Debug, PartialEq)]
 pub struct WasmModule {
@@ -158,10 +144,6 @@ pub struct WasmModule {
 	pub data: Box<[WasmData]>,
 }
 
-// ---------------------------------------------------------------------------
-// WasmCustom
-// ---------------------------------------------------------------------------
-
 /// Represents a custom section in the Wasm module, containing arbitrary data.
 #[derive(Debug, PartialEq)]
 pub struct WasmCustom {
@@ -172,10 +154,6 @@ pub struct WasmCustom {
 	pub data: Box<[u8]>,
 }
 
-// ---------------------------------------------------------------------------
-// WasmFunc
-// ---------------------------------------------------------------------------
-
 /// Represents a function signature, defining the parameter and return types.
 #[derive(Debug, Default, PartialEq)]
 pub struct WasmFunc {
@@ -185,10 +163,6 @@ pub struct WasmFunc {
 	/// A boxed slice of result types.
 	pub results: Box<[WasmValueType]>,
 }
-
-// ---------------------------------------------------------------------------
-// WasmImport
-// ---------------------------------------------------------------------------
 
 /// Represents an import, specifying a module, name, and description of the imported item.
 #[derive(Debug, PartialEq)]
@@ -202,10 +176,6 @@ pub struct WasmImport {
 	/// A description of the imported item (function, table, memory, or global).
 	pub desc: WasmImportDescriptor,
 }
-
-// ---------------------------------------------------------------------------
-// WasmImportDescriptor
-// ---------------------------------------------------------------------------
 
 /// Describes the types of an import (function, table, memory, or global).
 #[derive(Debug, PartialEq)]
@@ -223,10 +193,6 @@ pub enum WasmImportDescriptor {
 	Global(WasmGlobalType),
 }
 
-// ---------------------------------------------------------------------------
-// WasmTable
-// ---------------------------------------------------------------------------
-
 /// Represents the types of a table, specifying the types of elements and limits on the table size.
 #[derive(Debug, PartialEq)]
 pub struct WasmTable {
@@ -237,20 +203,12 @@ pub struct WasmTable {
 	pub limits: WasmResizableLimit,
 }
 
-// ---------------------------------------------------------------------------
-// WasmMemory
-// ---------------------------------------------------------------------------
-
 /// Represents the types of a memory, specifying the limits on its size.
 #[derive(Debug, PartialEq)]
 pub struct WasmMemory {
 	/// The limits on the memory's size.
 	pub limits: WasmResizableLimit,
 }
-
-// ---------------------------------------------------------------------------
-// WasmExport
-// ---------------------------------------------------------------------------
 
 /// Represents an export, specifying the name and description of what is being exported.
 #[derive(Debug, PartialEq)]
@@ -261,10 +219,6 @@ pub struct WasmExport {
 	/// A description of the exported item (function, table, memory, or global).
 	pub desc: WasmExportDescriptor,
 }
-
-// ---------------------------------------------------------------------------
-// WasmExportDescriptor
-// ---------------------------------------------------------------------------
 
 /// Describes the types of an export (function, table, memory, or global).
 #[derive(Debug, PartialEq)]
@@ -282,16 +236,23 @@ pub enum WasmExportDescriptor {
 	Global(u32),
 }
 
-// ---------------------------------------------------------------------------
-// WasmElement
-// ---------------------------------------------------------------------------
+/// Represents an initializer expression for an element segment entry.
+#[derive(Debug, PartialEq, Clone)]
+pub enum WasmElementInit {
+	/// A direct function reference: ref.func $idx
+	FuncRef(u32),
+	/// A global.get expression: global.get $idx
+	GlobalGet(u32),
+	/// A null reference: ref.null
+	RefNull,
+}
 
 /// Represents an element in the element section, which is used to initialize tables.
 #[derive(Debug, PartialEq)]
 pub struct WasmElement {
 	pub mode: WasmElementMode,
-	/// The list of function indices to place in the table.
-	pub init: Box<[u32]>,
+	/// The list of element initializers to place in the table.
+	pub init: Box<[WasmElementInit]>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -309,10 +270,6 @@ pub enum WasmElementMode {
 	Declarative,
 }
 
-// ---------------------------------------------------------------------------
-// WasmFunctionBody
-// ---------------------------------------------------------------------------
-
 /// Represents a function body in the code section, including local variable declarations and code.
 #[derive(Debug, PartialEq)]
 pub struct WasmFunctionBody {
@@ -322,10 +279,6 @@ pub struct WasmFunctionBody {
 	/// The instructions (opcodes) that make up the function body.
 	pub code: Box<[WasmInstruction]>,
 }
-
-// ---------------------------------------------------------------------------
-// WasmData
-// ---------------------------------------------------------------------------
 
 /// Represents a data segment in the data section, which initializes a portion of memory.
 #[derive(Debug, PartialEq)]
@@ -351,10 +304,6 @@ pub enum WasmDataMode {
 	Passive,
 }
 
-// ---------------------------------------------------------------------------
-// WasmResizableLimit
-// ---------------------------------------------------------------------------
-
 /// Represents the limits on a resizable item (table or memory).
 #[derive(Debug, PartialEq)]
 pub struct WasmResizableLimit {
@@ -364,10 +313,6 @@ pub struct WasmResizableLimit {
 	/// The maximum size of the table or memory (optional).
 	pub max: Option<u32>,
 }
-
-// ---------------------------------------------------------------------------
-// WasmGlobal
-// ---------------------------------------------------------------------------
 
 /// Global type descriptor (used in imports where there is no init expression).
 #[derive(Debug, PartialEq)]
@@ -385,10 +330,6 @@ pub struct WasmGlobal {
 	/// The initialization value of the global, which could be a constant or another global's value.
 	pub init: WasmGlobalInit,
 }
-
-// ---------------------------------------------------------------------------
-// WasmGlobalInit
-// ---------------------------------------------------------------------------
 
 /// Represents an initialization value for a WebAssembly global.
 #[derive(Debug, PartialEq)]
@@ -408,10 +349,6 @@ pub enum WasmGlobalInit {
 	/// Initialize with a reference to a function, specified by its index.
 	FuncRef(u32),
 }
-
-// ---------------------------------------------------------------------------
-// WasmValueType
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum WasmValueType {
@@ -438,10 +375,6 @@ impl TryFrom<u8> for WasmValueType {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// WasmValue
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, PartialEq)]
 pub enum WasmValue {
 	I32(i32),
@@ -452,10 +385,6 @@ pub enum WasmValue {
 	RefExtern(u32),
 	RefNull(u32),
 }
-
-// ---------------------------------------------------------------------------
-// WasmMemoryArgument
-// ---------------------------------------------------------------------------
 
 /// Represents a memory argument (`WasmMemoryArgument`) in WebAssembly instructions.
 ///
@@ -475,20 +404,12 @@ pub struct WasmMemoryArgument {
 	pub align: u32,
 }
 
-// ---------------------------------------------------------------------------
-// WasmResultType
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum WasmResultType {
 	None,
 	FromValue(WasmValueType),
 	FromType(u32),
 }
-
-// ---------------------------------------------------------------------------
-// WasmInstruction
-// ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum WasmInstruction {
@@ -719,10 +640,6 @@ pub enum WasmInstruction {
 	RefIsNull,
 	RefFunc(u32),
 }
-
-// ---------------------------------------------------------------------------
-// Opcode
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, PartialEq)]
 pub enum Opcode {

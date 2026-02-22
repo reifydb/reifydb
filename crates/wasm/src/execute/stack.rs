@@ -11,11 +11,10 @@ use std::{fmt, mem};
 
 use crate::{
 	execute::Result,
-	module::{ExternalIndex, Instruction, Trap, TrapOverflow, TrapType, TrapUnderflow, Value, ValueType},
+	module::{
+		Trap, TrapOverflow, TrapType, TrapUnderflow, function::ExternalIndex, types::ValueType, value::Value,
+	},
 };
-
-pub type InstructionPointer = isize;
-pub type Arity = usize;
 
 pub type BytesPointer = usize;
 pub type TypePointer = usize;
@@ -27,23 +26,12 @@ pub struct StackPointer {
 }
 
 pub struct CallFrame {
-	pub(crate) ip: InstructionPointer,
-	pub(crate) sp: StackPointer,
-	pub(crate) instructions: Box<[Instruction]>,
-	pub(crate) arity: Arity,
 	pub(crate) locals: Box<[Value]>,
 }
 
 impl Default for CallFrame {
 	fn default() -> Self {
 		Self {
-			ip: 0,
-			sp: StackPointer {
-				bp: 0,
-				tp: 0,
-			},
-			instructions: Box::new([]),
-			arity: 0,
 			locals: Box::new([]),
 		}
 	}

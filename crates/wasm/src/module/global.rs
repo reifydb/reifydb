@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::module::Value;
-
-// ---------------------------------------------------------------------------
-// Global
-// ---------------------------------------------------------------------------
+use crate::module::value::Value;
 
 #[derive(Clone)]
 pub struct Global {

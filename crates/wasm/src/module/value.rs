@@ -3,11 +3,7 @@
 
 use std::fmt::{Display, Formatter};
 
-use crate::module::{ExternalIndex, FunctionIndex, ValueType};
-
-// ---------------------------------------------------------------------------
-// Value
-// ---------------------------------------------------------------------------
+use crate::module::{FunctionIndex, function::ExternalIndex, types::ValueType};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {

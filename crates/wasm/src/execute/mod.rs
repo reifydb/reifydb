@@ -6,9 +6,6 @@ pub mod instruction;
 pub mod stack;
 pub mod state;
 
-pub use exec::{Exec, HostFunctionRegistry};
-pub use instruction::{ExecInstruction, ExecResult, ExecStatus};
-pub use stack::{Stack, StackAccess};
-pub use state::State;
+use crate::module::Trap;
 
-pub type Result<T> = std::result::Result<T, crate::module::Trap>;
+pub type Result<T> = std::result::Result<T, Trap>;

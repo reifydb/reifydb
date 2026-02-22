@@ -2,12 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::module::{
-	FunctionIndex, FunctionType, GlobalIndex, Instruction, MemoryIndex, TableIndex, ValueType, ValueTypes,
+	FunctionIndex, GlobalIndex, MemoryIndex, TableIndex,
+	types::{FunctionType, Instruction, ValueType, ValueTypes},
 };
-
-// ---------------------------------------------------------------------------
-// Function
-// ---------------------------------------------------------------------------
 
 pub enum Function {
 	Local(FunctionLocal),
@@ -24,19 +21,11 @@ impl Function {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// FunctionExternal
-// ---------------------------------------------------------------------------
-
 pub struct FunctionExternal {
 	pub module: String,
 	pub function_name: String,
 	pub function_type: FunctionType,
 }
-
-// ---------------------------------------------------------------------------
-// FunctionLocal
-// ---------------------------------------------------------------------------
 
 pub struct FunctionLocal {
 	pub function_type: FunctionType,
@@ -65,10 +54,6 @@ impl FunctionLocal {
 		&self.instructions
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Export
-// ---------------------------------------------------------------------------
 
 #[derive(Clone)]
 pub struct Export {
@@ -114,10 +99,6 @@ pub enum ExportData {
 	Memory(MemoryIndex),
 	Table(TableIndex),
 }
-
-// ---------------------------------------------------------------------------
-// ExternalIndex
-// ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExternalIndex(pub u32);

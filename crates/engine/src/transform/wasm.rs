@@ -4,7 +4,7 @@
 //! WASM transform implementation that executes WebAssembly modules as columnar transforms
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_wasm::{Engine, SpawnBinary, module::Value, source};
+use reifydb_wasm::{Engine, SpawnBinary, module::value::Value, source};
 
 use super::{Transform, context::TransformContext};
 

@@ -6,10 +6,6 @@ use crate::module::{
 	memory::MemoryOffset,
 };
 
-// ---------------------------------------------------------------------------
-// MemoryArgument
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct MemoryArgument {
 	/// The alignment of the memory access, expressed as a power of two.
@@ -23,10 +19,6 @@ pub struct MemoryArgument {
 	/// This is an immediate constant value added to the base address specified by the instruction.
 	pub offset: MemoryOffset,
 }
-
-// ---------------------------------------------------------------------------
-// FunctionType
-// ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionType {
@@ -42,10 +34,6 @@ impl FunctionType {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// ValueType
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValueType {
@@ -84,10 +72,6 @@ impl ValueType {
 }
 
 pub type ValueTypes = Box<[ValueType]>;
-
-// ---------------------------------------------------------------------------
-// Instruction (compiled form)
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {

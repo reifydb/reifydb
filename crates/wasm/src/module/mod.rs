@@ -3,13 +3,7 @@
 
 #![forbid(unsafe_code)]
 
-pub use function::*;
-pub use global::*;
-pub use memory::*;
-pub use module::*;
-pub use table::*;
-pub use types::*;
-pub use value::*;
+use types::{FunctionType, Instruction, ValueType};
 
 pub mod function;
 pub mod global;
@@ -18,10 +12,6 @@ pub mod module;
 pub mod table;
 pub mod types;
 pub mod value;
-
-// ---------------------------------------------------------------------------
-// Index type aliases
-// ---------------------------------------------------------------------------
 
 pub type BranchingDepth = usize;
 pub type FunctionIndex = usize;
@@ -32,15 +22,7 @@ pub type MemoryIndex = usize;
 pub type TableIndex = usize;
 pub type TableElementIndex = usize;
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 pub const PAGE_SIZE: u32 = 65536; // 64KiB
-
-// ---------------------------------------------------------------------------
-// Error / Trap types
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, PartialEq)]
 pub enum Error {

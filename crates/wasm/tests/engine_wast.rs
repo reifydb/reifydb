@@ -7,7 +7,12 @@ macro_rules! wast_test {
 	($fn_name:ident, $file:expr) => {
 		#[test]
 		fn $fn_name() {
-			support::run_test("wast", $file);
+			std::thread::Builder::new()
+				.stack_size(64 * 1024 * 1024)
+				.spawn(|| support::run_test("wast", $file))
+				.expect("failed to spawn test thread")
+				.join()
+				.unwrap_or_else(|e| std::panic::resume_unwind(e));
 		}
 	};
 }
@@ -16,13 +21,7 @@ wast_test!(br, "br.wast");
 wast_test!(br_table_extern_ref, "br_table_extern_ref.wast");
 wast_test!(call_indirect, "call_indirect.wast");
 wast_test!(call_indirect_trap, "call_indirect_trap.wast");
-// Ignored: infinite recursion overflows host stack before engine call-depth limit triggers.
-// TODO: fix call-depth tracking to trap before host stack overflow.
-#[test]
-#[ignore]
-fn call_recursive() {
-	support::run_test("wast", "call_recursive.wast");
-}
+wast_test!(call_recursive, "call_recursive.wast");
 wast_test!(break_multi_value, "break_multi_value.wast");
 wast_test!(float_from_binary, "float_from_binary.wast");
 wast_test!(i32_load_8s, "i32_load_8s.wast");

@@ -7,7 +7,12 @@ macro_rules! spec_test {
 	($fn_name:ident, $file:expr) => {
 		#[test]
 		fn $fn_name() {
-			support::run_test("spec", $file);
+			std::thread::Builder::new()
+				.stack_size(64 * 1024 * 1024)
+				.spawn(|| support::run_test("spec", $file))
+				.expect("failed to spawn test thread")
+				.join()
+				.unwrap_or_else(|e| std::panic::resume_unwind(e));
 		}
 	};
 }
@@ -29,7 +34,7 @@ spec_test!(r#const, "const.wast");
 spec_test!(conversions, "conversions.wast");
 spec_test!(custom, "custom.wast");
 spec_test!(data, "data.wast");
-// spec_test!(elem, "elem.wast");
+spec_test!(elem, "elem.wast");
 spec_test!(endianness, "endianness.wast");
 spec_test!(exports, "exports.wast");
 spec_test!(f32, "f32.wast");
@@ -56,7 +61,7 @@ spec_test!(int_exprs, "int_exprs.wast");
 spec_test!(int_literals, "int_literals.wast");
 spec_test!(labels, "labels.wast");
 spec_test!(left_to_right, "left_to_right.wast");
-// spec_test!(linking, "linking.wast");
+spec_test!(linking, "linking.wast");
 spec_test!(load, "load.wast");
 spec_test!(local_get, "local_get.wast");
 spec_test!(local_set, "local_set.wast");

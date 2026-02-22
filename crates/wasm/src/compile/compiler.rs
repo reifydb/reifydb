@@ -6,12 +6,20 @@ use std::sync::Arc;
 use crate::{
 	HostMemory, HostTable,
 	module::{
-		DataSegment, ElementSegment, Export, ExportData, Function, FunctionExternal, FunctionIndex,
-		FunctionType, Global, GlobalIndex, Instruction, Memory, MemoryArgument, MemoryIndex, Module, ModuleId,
-		PAGE_SIZE, Table, TableLimit, Value, ValueType,
+		FunctionIndex, GlobalIndex, MemoryIndex, PAGE_SIZE,
+		function::{Export, ExportData, Function, FunctionExternal},
+		global::Global,
+		memory::Memory,
+		module::{
+			ActiveDataInfo, ActiveElementInfo, ActiveElementInit, DataSegment, ElementSegment, Module,
+			ModuleId,
+		},
+		table::{Table, TableLimit},
+		types::{FunctionType, Instruction, MemoryArgument, ValueType},
+		value::Value,
 	},
 	parse::{
-		WasmDataMode, WasmElementMode, WasmExportDescriptor, WasmFunc, WasmGlobalInit, WasmGlobalType,
+		WasmDataMode, WasmElementInit, WasmElementMode, WasmExportDescriptor, WasmFunc, WasmGlobalInit,
 		WasmImportDescriptor, WasmInstruction, WasmMemoryArgument, WasmModule, WasmResultType, WasmValueType,
 	},
 };
@@ -68,16 +76,18 @@ impl Compiler {
 		host_memories: &[(String, String, HostMemory)],
 		host_tables: &[(String, String, HostTable)],
 	) -> Result<Module, CompilationError> {
-		let func_type_addrs = match wasm.functions {
-			ref addr => addr.clone(),
-			_ => Box::default(),
-		};
+		let func_type_addrs = wasm.functions.clone();
 
 		let mut functions: Vec<Arc<Function>> = vec![];
 		let mut memories: Vec<Memory> = vec![];
 		let mut tables: Vec<Table> = vec![];
 		let mut function_types: Vec<FunctionType> = vec![];
 		let mut globals: Vec<Global> = vec![];
+		let mut function_imports: Vec<(String, String)> = vec![];
+		let mut table_imports: Vec<(String, String)> = vec![];
+		let mut memory_imports: Vec<(String, String)> = vec![];
+		let mut global_imports: Vec<(String, String)> = vec![];
+		let mut active_elements_info: Vec<ActiveElementInfo> = vec![];
 
 		for function_type in &wasm.types {
 			function_types.push(FunctionType {
@@ -86,185 +96,176 @@ impl Compiler {
 			})
 		}
 
-		if let ref import_section = wasm.imports {
-			for import in import_section {
-				let module_name = import.module.clone();
-				let field = import.name.clone();
-				match &import.desc {
-					WasmImportDescriptor::Function(type_idx) => {
-						let ref func_types = wasm.types else {
-							panic!("not found type_section")
-						};
+		let ref import_section = wasm.imports;
+		for import in import_section {
+			let module_name = import.module.clone();
+			let field = import.name.clone();
+			match &import.desc {
+				WasmImportDescriptor::Function(type_idx) => {
+					let ref func_types = wasm.types;
 
-						let Some(func_type) = func_types.get(*type_idx as usize) else {
-							panic!("not found func types in type_section")
-						};
+					let Some(func_type) = func_types.get(*type_idx as usize) else {
+						panic!("not found func types in type_section")
+					};
 
-						let func = Function::External(FunctionExternal {
-							module: std::str::from_utf8(&*module_name).unwrap().to_string(),
-							function_name: std::str::from_utf8(&*field)
-								.unwrap()
-								.to_string(),
-							function_type: FunctionType {
-								params: func_type
-									.params
-									.iter()
-									.map(|p| convert_value_type(p))
-									.collect(),
-								results: func_type
-									.results
-									.iter()
-									.map(|p| convert_value_type(p))
-									.collect(),
-							},
-						});
-						functions.push(Arc::new(func));
-					}
-					WasmImportDescriptor::Table(table) => {
-						let mod_name = std::str::from_utf8(&*module_name).unwrap_or("");
-						let field_name = std::str::from_utf8(&*field).unwrap_or("");
-						let min = host_tables
-							.iter()
-							.find(|(m, n, _)| m == mod_name && n == field_name)
-							.map(|(_, _, t)| t.min.max(table.limits.min))
-							.unwrap_or(table.limits.min);
-						let max = host_tables
-							.iter()
-							.find(|(m, n, _)| m == mod_name && n == field_name)
-							.and_then(|(_, _, t)| t.max)
-							.or(table.limits.max);
-						tables.push(Table {
-							elements: vec![None; min as usize],
-							limit: TableLimit {
-								min,
-								max,
-							},
-						});
-					}
-					WasmImportDescriptor::Memory(mem) => {
-						let mod_name = std::str::from_utf8(&*module_name).unwrap_or("");
-						let field_name = std::str::from_utf8(&*field).unwrap_or("");
-						let min_pages = host_memories
-							.iter()
-							.find(|(m, n, _)| m == mod_name && n == field_name)
-							.map(|(_, _, m)| m.min_pages.max(mem.limits.min))
-							.unwrap_or(mem.limits.min);
-						let max = host_memories
-							.iter()
-							.find(|(m, n, _)| m == mod_name && n == field_name)
-							.and_then(|(_, _, m)| m.max_pages)
-							.or(mem.limits.max);
-						let min = min_pages * PAGE_SIZE;
-						memories.push(Memory {
-							data: vec![0; min as usize],
+					let mod_str = std::str::from_utf8(&*module_name).unwrap().to_string();
+					let field_str = std::str::from_utf8(&*field).unwrap().to_string();
+					function_imports.push((mod_str.clone(), field_str.clone()));
+
+					let func = Function::External(FunctionExternal {
+						module: mod_str,
+						function_name: field_str,
+						function_type: FunctionType {
+							params: func_type
+								.params
+								.iter()
+								.map(|p| convert_value_type(p))
+								.collect(),
+							results: func_type
+								.results
+								.iter()
+								.map(|p| convert_value_type(p))
+								.collect(),
+						},
+					});
+					functions.push(Arc::new(func));
+				}
+				WasmImportDescriptor::Table(table) => {
+					let mod_name = std::str::from_utf8(&*module_name).unwrap_or("");
+					let field_name = std::str::from_utf8(&*field).unwrap_or("");
+					table_imports.push((mod_name.to_string(), field_name.to_string()));
+					let min = host_tables
+						.iter()
+						.find(|(m, n, _)| m == mod_name && n == field_name)
+						.map(|(_, _, t)| t.min.max(table.limits.min))
+						.unwrap_or(table.limits.min);
+					let max = host_tables
+						.iter()
+						.find(|(m, n, _)| m == mod_name && n == field_name)
+						.and_then(|(_, _, t)| t.max)
+						.or(table.limits.max);
+					tables.push(Table {
+						elements: vec![None; min as usize],
+						func_refs: vec![None; min as usize],
+						limit: TableLimit {
+							min,
 							max,
+						},
+					});
+				}
+				WasmImportDescriptor::Memory(mem) => {
+					let mod_name = std::str::from_utf8(&*module_name).unwrap_or("");
+					let field_name = std::str::from_utf8(&*field).unwrap_or("");
+					memory_imports.push((mod_name.to_string(), field_name.to_string()));
+					let min_pages = host_memories
+						.iter()
+						.find(|(m, n, _)| m == mod_name && n == field_name)
+						.map(|(_, _, m)| m.min_pages.max(mem.limits.min))
+						.unwrap_or(mem.limits.min);
+					let max = host_memories
+						.iter()
+						.find(|(m, n, _)| m == mod_name && n == field_name)
+						.and_then(|(_, _, m)| m.max_pages)
+						.or(mem.limits.max);
+					let min = min_pages * PAGE_SIZE;
+					memories.push(Memory {
+						data: vec![0; min as usize],
+						max,
+					});
+				}
+				WasmImportDescriptor::Global(global) => {
+					let mod_name = std::str::from_utf8(&*module_name).unwrap_or("");
+					let field_name = std::str::from_utf8(&*field).unwrap_or("");
+					global_imports.push((mod_name.to_string(), field_name.to_string()));
+					let value = host_globals
+						.iter()
+						.find(|(m, n, _)| m == mod_name && n == field_name)
+						.map(|(_, _, v)| v.clone())
+						.unwrap_or_else(|| match &global.value_type {
+							WasmValueType::I32 => Value::I32(0),
+							WasmValueType::I64 => Value::I64(0),
+							WasmValueType::F32 => Value::F32(0.0),
+							WasmValueType::F64 => Value::F64(0.0),
+							WasmValueType::FuncRef => Value::RefNull(ValueType::RefFunc),
+							WasmValueType::ExternRef => {
+								Value::RefNull(ValueType::RefExtern)
+							}
 						});
-					}
-					WasmImportDescriptor::Global(global) => {
-						let mod_name = std::str::from_utf8(&*module_name).unwrap_or("");
-						let field_name = std::str::from_utf8(&*field).unwrap_or("");
-						let value = host_globals
-							.iter()
-							.find(|(m, n, _)| m == mod_name && n == field_name)
-							.map(|(_, _, v)| v.clone())
-							.unwrap_or_else(|| match &global.value_type {
-								WasmValueType::I32 => Value::I32(0),
-								WasmValueType::I64 => Value::I64(0),
-								WasmValueType::F32 => Value::F32(0.0),
-								WasmValueType::F64 => Value::F64(0.0),
-								WasmValueType::FuncRef => {
-									Value::RefNull(ValueType::RefFunc)
-								}
-								WasmValueType::ExternRef => {
-									Value::RefNull(ValueType::RefExtern)
-								}
-							});
-						globals.push(Global {
-							mutable: global.mutable,
-							value,
-						});
-					}
-				};
-			}
+					globals.push(Global {
+						mutable: global.mutable,
+						value,
+					});
+				}
+			};
 		}
 
-		if let ref code_section = wasm.codes {
-			for (func_body, type_idx) in code_section.iter().zip(func_type_addrs.into_iter()) {
-				let ref func_types = wasm.types else {
-					panic!("not found type_section")
-				};
+		let ref code_section = wasm.codes;
+		for (func_body, type_idx) in code_section.iter().zip(func_type_addrs.into_iter()) {
+			let ref func_types = wasm.types;
 
-				let Some(func_type) = func_types.get(type_idx as usize) else {
-					panic!("not found func types in type_section")
-				};
+			let Some(func_type) = func_types.get(type_idx as usize) else {
+				panic!("not found func types in type_section")
+			};
 
-				let mut locals: Vec<ValueType> = Vec::with_capacity(func_body.locals.len());
-				for local in func_body.locals.iter() {
-					for _ in 0..local.0 {
-						locals.push(convert_value_type(&local.1));
-					}
+			let mut locals: Vec<ValueType> = Vec::with_capacity(func_body.locals.len());
+			for local in func_body.locals.iter() {
+				for _ in 0..local.0 {
+					locals.push(convert_value_type(&local.1));
 				}
-
-				functions.push(Arc::new(Function::local(
-					FunctionType::new(
-						func_type
-							.params
-							.iter()
-							.map(|p| convert_value_type(p))
-							.collect::<Vec<_>>()
-							.into(),
-						func_type
-							.results
-							.iter()
-							.map(|r| convert_value_type(r))
-							.collect::<Vec<_>>()
-							.into(),
-					),
-					locals.into(),
-					func_body
-						.code
-						.iter()
-						.map(|instruction| convert_instruction(instruction, &wasm))
-						.collect(),
-				)))
 			}
+
+			functions.push(Arc::new(Function::local(
+				FunctionType::new(
+					func_type
+						.params
+						.iter()
+						.map(|p| convert_value_type(p))
+						.collect::<Vec<_>>()
+						.into(),
+					func_type
+						.results
+						.iter()
+						.map(|r| convert_value_type(r))
+						.collect::<Vec<_>>()
+						.into(),
+				),
+				locals.into(),
+				func_body
+					.code
+					.iter()
+					.map(|instruction| convert_instruction(instruction, &wasm))
+					.collect(),
+			)))
 		}
 
 		let mut exports = Vec::with_capacity(wasm.exports.len());
-		if let ref sections = wasm.exports {
-			for export in sections {
-				let name = std::str::from_utf8(&*export.name).unwrap().to_string();
-				let export_inst = Export {
-					name: name.clone(),
-					data: match export.desc {
-						WasmExportDescriptor::Func(v) => {
-							ExportData::Function(v as FunctionIndex)
-						}
-						WasmExportDescriptor::Table(idx) => ExportData::Table(idx as usize),
-						WasmExportDescriptor::Memory(idx) => {
-							ExportData::Memory(idx as MemoryIndex)
-						}
-						WasmExportDescriptor::Global(idx) => {
-							ExportData::Global(idx as GlobalIndex)
-						}
-					},
-				};
-				exports.push(export_inst);
-			}
-		};
+		let ref sections = wasm.exports;
+		for export in sections {
+			let name = std::str::from_utf8(&*export.name).unwrap().to_string();
+			let export_inst = Export {
+				name: name.clone(),
+				data: match export.desc {
+					WasmExportDescriptor::Func(v) => ExportData::Function(v as FunctionIndex),
+					WasmExportDescriptor::Table(idx) => ExportData::Table(idx as usize),
+					WasmExportDescriptor::Memory(idx) => ExportData::Memory(idx as MemoryIndex),
+					WasmExportDescriptor::Global(idx) => ExportData::Global(idx as GlobalIndex),
+				},
+			};
+			exports.push(export_inst);
+		}
 
-		if let ref sections = wasm.memories {
-			for memory in sections {
-				let min = memory.limits.min * PAGE_SIZE;
-				let memory = Memory {
-					data: vec![0; min as usize],
-					max: memory.limits.max,
-				};
-				memories.push(memory);
-			}
+		let ref sections = wasm.memories;
+		for memory in sections {
+			let min = memory.limits.min * PAGE_SIZE;
+			let memory = Memory {
+				data: vec![0; min as usize],
+				max: memory.limits.max,
+			};
+			memories.push(memory);
 		}
 
 		let mut data_segments: Vec<DataSegment> = Vec::with_capacity(wasm.data.len());
+		let mut active_data_info: Vec<ActiveDataInfo> = vec![];
 
 		for data in &wasm.data {
 			match &data.mode {
@@ -272,21 +273,20 @@ impl Compiler {
 					index,
 					offset,
 				} => {
-					let mem = memories.get_mut(*index as usize).unwrap();
+					let mem_idx = *index as usize;
 					let offset = *offset as usize;
 					let init = &data.data;
-					if offset.checked_add(init.len()).map_or(true, |end| end > mem.data.len()) {
-						return Err(CompilationError::OutOfBoundsMemoryAccess);
-					}
-					mem.data[offset..offset + init.len()].copy_from_slice(init);
-					// Keep the data available for memory.init
+					// Record for instantiation-time application
+					active_data_info.push(ActiveDataInfo {
+						mem_idx,
+						offset,
+						data: init.clone(),
+					});
 					data_segments.push(DataSegment {
 						data: Some(init.clone()),
 					});
 				}
 				WasmDataMode::Passive => {
-					// Passive data segments are not copied into memory at init time.
-					// They are only used by memory.init.
 					data_segments.push(DataSegment {
 						data: Some(data.data.clone()),
 					});
@@ -297,6 +297,7 @@ impl Compiler {
 		for table in &wasm.tables {
 			tables.push(Table {
 				elements: vec![None; table.limits.min as usize],
+				func_refs: vec![None; table.limits.min as usize],
 				limit: TableLimit {
 					min: table.limits.min,
 					max: table.limits.max,
@@ -312,8 +313,6 @@ impl Compiler {
 					table: table_idx,
 					offset,
 				} => {
-					let table = tables.get_mut(*table_idx as usize).unwrap();
-
 					let offset = match offset[offset.len() - 1] {
 						WasmInstruction::I32Const(i) => i as usize,
 						WasmInstruction::GlobalGet(idx) => match globals.get(idx as usize) {
@@ -328,25 +327,46 @@ impl Compiler {
 						_ => return Err(CompilationError::OutOfBoundsTableAccess),
 					};
 
-					if offset
-						.checked_add(element.init.len())
-						.map_or(true, |end| end > table.elements.len())
-					{
-						return Err(CompilationError::OutOfBoundsTableAccess);
-					}
+					// Record for instantiation-time application (no bounds check here)
+					let inits: Vec<ActiveElementInit> = element
+						.init
+						.iter()
+						.map(|elem_init| match elem_init {
+							WasmElementInit::FuncRef(idx) => {
+								ActiveElementInit::FuncRef(*idx as FunctionIndex)
+							}
+							WasmElementInit::GlobalGet(idx) => {
+								ActiveElementInit::GlobalGet(*idx as usize)
+							}
+							WasmElementInit::RefNull => ActiveElementInit::RefNull,
+						})
+						.collect();
 
-					for i in 0..element.init.len() {
-						table.elements[offset + i] =
-							Some(Value::RefFunc(element.init[i] as FunctionIndex));
-					}
+					active_elements_info.push(ActiveElementInfo {
+						table_idx: *table_idx as usize,
+						offset,
+						inits,
+					});
 					// Active segments are dropped after initialization per spec
 					element_segments.push(ElementSegment {
 						elements: None,
 					});
 				}
 				WasmElementMode::Passive => {
-					let elems: Box<[Option<usize>]> =
-						element.init.iter().map(|idx| Some(*idx as usize)).collect();
+					let elems: Box<[Option<usize>]> = element
+						.init
+						.iter()
+						.map(|init| match init {
+							WasmElementInit::FuncRef(idx) => Some(*idx as usize),
+							WasmElementInit::GlobalGet(idx) => globals
+								.get(*idx as usize)
+								.and_then(|g| match &g.value {
+									Value::RefFunc(func_idx) => Some(*func_idx),
+									_ => None,
+								}),
+							WasmElementInit::RefNull => None,
+						})
+						.collect();
 					element_segments.push(ElementSegment {
 						elements: Some(elems),
 					});
@@ -391,16 +411,14 @@ impl Compiler {
 			data_segments.into(),
 			element_segments.into(),
 			wasm.start_function.map(|idx| idx as FunctionIndex),
+			function_imports,
+			table_imports,
+			memory_imports,
+			global_imports,
+			active_elements_info,
+			active_data_info,
 		))
 	}
-}
-
-fn convert_instructions(module: &WasmModule, instructions: &Box<[WasmInstruction]>) -> Box<[Instruction]> {
-	let mut result = Vec::with_capacity(instructions.len());
-
-	instructions.iter().for_each(|i| result.push(convert_instruction(i, module)));
-
-	result.into_boxed_slice()
 }
 
 fn convert_result_types(module: &WasmModule, result_type: &WasmResultType) -> Box<[ValueType]> {

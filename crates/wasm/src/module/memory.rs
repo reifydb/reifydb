@@ -6,19 +6,11 @@ use crate::module::{MemoryIndex, PAGE_SIZE, Trap, TrapOutOfRange};
 pub type MemoryOffset = u32;
 pub type MemoryFlags = u32;
 
-// ---------------------------------------------------------------------------
-// Memory
-// ---------------------------------------------------------------------------
-
 #[derive(Clone)]
 pub struct Memory {
 	pub data: Vec<u8>,
 	pub max: Option<u32>,
 }
-
-// ---------------------------------------------------------------------------
-// MemoryReader trait + implementations
-// ---------------------------------------------------------------------------
 
 pub trait MemoryReader {
 	fn read(memory: &Memory, idx: MemoryIndex) -> Result<Self, Trap>
@@ -192,10 +184,6 @@ impl MemoryReader for f64 {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// MemoryWriter trait + macro + implementations
-// ---------------------------------------------------------------------------
-
 pub trait MemoryWriter {
 	fn write(memory: &mut Memory, idx: MemoryIndex, value: Self) -> Result<(), Trap>;
 }
@@ -225,10 +213,6 @@ memory_writer!(i64);
 memory_writer!(u64);
 memory_writer!(f32);
 memory_writer!(f64);
-
-// ---------------------------------------------------------------------------
-// Memory impl
-// ---------------------------------------------------------------------------
 
 impl Memory {
 	pub fn read<R>(&self, idx: MemoryIndex) -> Result<R, Trap>
@@ -283,14 +267,10 @@ impl Memory {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
 	mod i8 {
-		use crate::module::{Memory, Trap, TrapOutOfRange};
+		use crate::module::{Trap, TrapOutOfRange, memory::Memory};
 
 		#[test]
 		fn read() {
@@ -339,7 +319,7 @@ mod tests {
 	}
 
 	mod u8 {
-		use crate::module::{Memory, Trap, TrapOutOfRange};
+		use crate::module::{Trap, TrapOutOfRange, memory::Memory};
 
 		#[test]
 		fn read() {
@@ -388,7 +368,7 @@ mod tests {
 	}
 
 	mod i16 {
-		use crate::module::{Memory, Trap, TrapOutOfRange};
+		use crate::module::{Trap, TrapOutOfRange, memory::Memory};
 
 		#[test]
 		fn read() {
@@ -440,7 +420,7 @@ mod tests {
 	}
 
 	mod u16 {
-		use crate::module::{Memory, Trap, TrapOutOfRange};
+		use crate::module::{Trap, TrapOutOfRange, memory::Memory};
 
 		#[test]
 		fn read() {
@@ -492,7 +472,7 @@ mod tests {
 	}
 
 	mod i32 {
-		use crate::module::{Memory, Trap, TrapOutOfRange};
+		use crate::module::{Trap, TrapOutOfRange, memory::Memory};
 
 		#[test]
 		fn read() {
@@ -544,7 +524,7 @@ mod tests {
 	}
 
 	mod u32 {
-		use crate::module::{Memory, Trap, TrapOutOfRange};
+		use crate::module::{Trap, TrapOutOfRange, memory::Memory};
 
 		#[test]
 		fn read() {
@@ -596,7 +576,7 @@ mod tests {
 	}
 
 	mod i64 {
-		use crate::module::{Memory, Trap, TrapOutOfRange};
+		use crate::module::{Trap, TrapOutOfRange, memory::Memory};
 
 		#[test]
 		fn read() {
@@ -648,7 +628,7 @@ mod tests {
 	}
 
 	mod u64 {
-		use crate::module::{Memory, Trap, TrapOutOfRange};
+		use crate::module::{Trap, TrapOutOfRange, memory::Memory};
 
 		#[test]
 		fn read() {
@@ -700,7 +680,7 @@ mod tests {
 	}
 
 	mod f32 {
-		use crate::module::{Memory, Trap, TrapOutOfRange};
+		use crate::module::{Trap, TrapOutOfRange, memory::Memory};
 
 		#[test]
 		fn read() {
@@ -752,7 +732,7 @@ mod tests {
 	}
 
 	mod f64 {
-		use crate::module::{Memory, Trap, TrapOutOfRange};
+		use crate::module::{Trap, TrapOutOfRange, memory::Memory};
 
 		#[test]
 		fn read() {

@@ -3,10 +3,10 @@
 
 use crate::{
 	parse::{
-		Opcode, Result, WasmCustom, WasmData, WasmDataMode, WasmElement, WasmElementMode, WasmExport,
-		WasmExportDescriptor, WasmFunc, WasmFunctionBody, WasmGlobal, WasmGlobalInit, WasmGlobalType,
-		WasmImport, WasmImportDescriptor, WasmInstruction, WasmMemory, WasmMemoryArgument, WasmModule,
-		WasmParseError,
+		Opcode, Result, WasmCustom, WasmData, WasmDataMode, WasmElement, WasmElementInit, WasmElementMode,
+		WasmExport, WasmExportDescriptor, WasmFunc, WasmFunctionBody, WasmGlobal, WasmGlobalInit,
+		WasmGlobalType, WasmImport, WasmImportDescriptor, WasmInstruction, WasmMemory, WasmMemoryArgument,
+		WasmModule, WasmParseError,
 		WasmParseError::{
 			InvalidExportDescriptor, InvalidMagicNumber, InvalidSectionCode, InvalidValueType,
 			UnsupportedVersion,
@@ -15,10 +15,6 @@ use crate::{
 	},
 	util::byte_reader::ByteReader,
 };
-
-// ---------------------------------------------------------------------------
-// SectionCode
-// ---------------------------------------------------------------------------
 
 enum SectionCode {
 	Custom = 0x00,
@@ -56,10 +52,6 @@ impl SectionCode {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// WasmParser - main public API
-// ---------------------------------------------------------------------------
 
 /// The `WasmParser` struct is responsible for decoding a WebAssembly (WASM) binary module
 /// from a byte stream. It utilizes a `ByteReader` to sequentially read and interpret
@@ -173,10 +165,6 @@ impl WasmParser {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Type section
-// ---------------------------------------------------------------------------
-
 fn parse_types_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmFunc]>> {
 	let mut result: Vec<WasmFunc> = vec![];
 	let expected_reader_pos = reader.pos() + size as usize;
@@ -199,10 +187,6 @@ fn parse_types_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmFunc]>
 	Ok(result.into())
 }
 
-// ---------------------------------------------------------------------------
-// Function section
-// ---------------------------------------------------------------------------
-
 fn parse_functions_section(size: u32, reader: &ByteReader) -> Result<Box<[u32]>> {
 	let mut result = vec![];
 	let expected_reader_pos = reader.pos() + size as usize;
@@ -216,10 +200,6 @@ fn parse_functions_section(size: u32, reader: &ByteReader) -> Result<Box<[u32]>>
 	debug_assert_eq!(reader.pos(), expected_reader_pos);
 	Ok(result.into())
 }
-
-// ---------------------------------------------------------------------------
-// Export section
-// ---------------------------------------------------------------------------
 
 fn parse_export_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmExport]>> {
 	let expected_reader_position = reader.pos() + size as usize;
@@ -246,10 +226,6 @@ fn parse_export_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmExpor
 	debug_assert_eq!(reader.pos(), expected_reader_position);
 	Ok(result.into())
 }
-
-// ---------------------------------------------------------------------------
-// Import section
-// ---------------------------------------------------------------------------
 
 fn parse_import_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmImport]>> {
 	let expected_reader_pos = reader.pos() + size as usize;
@@ -282,10 +258,6 @@ fn parse_import_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmImpor
 	Ok(result.into())
 }
 
-// ---------------------------------------------------------------------------
-// Memory section
-// ---------------------------------------------------------------------------
-
 fn parse_memory_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmMemory]>> {
 	let expected_reader_pos = reader.pos() + size as usize;
 	let count = reader.read_leb128_u32()?;
@@ -309,10 +281,6 @@ fn parse_memory(reader: &ByteReader) -> Result<WasmMemory> {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Table section
-// ---------------------------------------------------------------------------
-
 fn parse_table_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmTable]>> {
 	let expected_reader_pos = reader.pos() + size as usize;
 	let count = reader.read_leb128_u32()?;
@@ -334,10 +302,6 @@ fn parse_table(reader: &ByteReader) -> Result<WasmTable> {
 		limits,
 	})
 }
-
-// ---------------------------------------------------------------------------
-// Global section
-// ---------------------------------------------------------------------------
 
 fn parse_global_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmGlobal]>> {
 	let expected_reader_pos = reader.pos() + size as usize;
@@ -394,10 +358,6 @@ fn parse_global_init(reader: &ByteReader) -> Result<WasmGlobalInit> {
 	result
 }
 
-// ---------------------------------------------------------------------------
-// Element section
-// ---------------------------------------------------------------------------
-
 fn parse_element_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmElement]>> {
 	let expected_reader_position = reader.pos() + size as usize;
 	let count = reader.read_leb128_u32()?;
@@ -421,7 +381,7 @@ fn parse_element(reader: &ByteReader) -> Result<WasmElement> {
 			let func_count = reader.read_leb128_u32()?;
 			let mut init = Vec::with_capacity(func_count as usize);
 			for _ in 0..func_count {
-				init.push(reader.read_leb128_u32()?);
+				init.push(WasmElementInit::FuncRef(reader.read_leb128_u32()?));
 			}
 			Ok(WasmElement {
 				mode: WasmElementMode::Active {
@@ -437,7 +397,7 @@ fn parse_element(reader: &ByteReader) -> Result<WasmElement> {
 			let func_count = reader.read_leb128_u32()?;
 			let mut init = Vec::with_capacity(func_count as usize);
 			for _ in 0..func_count {
-				init.push(reader.read_leb128_u32()?);
+				init.push(WasmElementInit::FuncRef(reader.read_leb128_u32()?));
 			}
 			Ok(WasmElement {
 				mode: WasmElementMode::Passive,
@@ -452,7 +412,7 @@ fn parse_element(reader: &ByteReader) -> Result<WasmElement> {
 			let func_count = reader.read_leb128_u32()?;
 			let mut init = Vec::with_capacity(func_count as usize);
 			for _ in 0..func_count {
-				init.push(reader.read_leb128_u32()?);
+				init.push(WasmElementInit::FuncRef(reader.read_leb128_u32()?));
 			}
 			Ok(WasmElement {
 				mode: WasmElementMode::Active {
@@ -468,7 +428,7 @@ fn parse_element(reader: &ByteReader) -> Result<WasmElement> {
 			let func_count = reader.read_leb128_u32()?;
 			let mut init = Vec::with_capacity(func_count as usize);
 			for _ in 0..func_count {
-				init.push(reader.read_leb128_u32()?);
+				init.push(WasmElementInit::FuncRef(reader.read_leb128_u32()?));
 			}
 			Ok(WasmElement {
 				mode: WasmElementMode::Declarative,
@@ -482,8 +442,7 @@ fn parse_element(reader: &ByteReader) -> Result<WasmElement> {
 			let mut init = Vec::with_capacity(count as usize);
 			for _ in 0..count {
 				let expr = parse_instructions(reader)?;
-				// Extract function index from ref.func expression
-				init.push(extract_func_idx_from_expr(&expr));
+				init.push(extract_element_init(&expr));
 			}
 			Ok(WasmElement {
 				mode: WasmElementMode::Active {
@@ -500,7 +459,7 @@ fn parse_element(reader: &ByteReader) -> Result<WasmElement> {
 			let mut init = Vec::with_capacity(count as usize);
 			for _ in 0..count {
 				let expr = parse_instructions(reader)?;
-				init.push(extract_func_idx_from_expr(&expr));
+				init.push(extract_element_init(&expr));
 			}
 			Ok(WasmElement {
 				mode: WasmElementMode::Passive,
@@ -516,7 +475,7 @@ fn parse_element(reader: &ByteReader) -> Result<WasmElement> {
 			let mut init = Vec::with_capacity(count as usize);
 			for _ in 0..count {
 				let expr = parse_instructions(reader)?;
-				init.push(extract_func_idx_from_expr(&expr));
+				init.push(extract_element_init(&expr));
 			}
 			Ok(WasmElement {
 				mode: WasmElementMode::Active {
@@ -533,7 +492,7 @@ fn parse_element(reader: &ByteReader) -> Result<WasmElement> {
 			let mut init = Vec::with_capacity(count as usize);
 			for _ in 0..count {
 				let expr = parse_instructions(reader)?;
-				init.push(extract_func_idx_from_expr(&expr));
+				init.push(extract_element_init(&expr));
 			}
 			Ok(WasmElement {
 				mode: WasmElementMode::Declarative,
@@ -544,22 +503,18 @@ fn parse_element(reader: &ByteReader) -> Result<WasmElement> {
 	}
 }
 
-/// Extract a function index from an element init expression.
-/// Handles ref.func $idx and ref.null patterns.
-fn extract_func_idx_from_expr(expr: &[WasmInstruction]) -> u32 {
+/// Extract an element initializer from an init expression.
+/// Handles ref.func, global.get, and ref.null patterns.
+fn extract_element_init(expr: &[WasmInstruction]) -> WasmElementInit {
 	for instr in expr {
 		match instr {
-			WasmInstruction::RefFunc(idx) => return *idx,
+			WasmInstruction::RefFunc(idx) => return WasmElementInit::FuncRef(*idx),
+			WasmInstruction::GlobalGet(idx) => return WasmElementInit::GlobalGet(*idx),
 			_ => {}
 		}
 	}
-	// ref.null or other expressions — use sentinel value
-	u32::MAX
+	WasmElementInit::RefNull
 }
-
-// ---------------------------------------------------------------------------
-// Code section
-// ---------------------------------------------------------------------------
 
 fn parse_code_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmFunctionBody]>> {
 	let mut result = vec![];
@@ -596,10 +551,6 @@ fn parse_function_body(size: u32, reader: &ByteReader) -> Result<WasmFunctionBod
 		code: code.into(),
 	})
 }
-
-// ---------------------------------------------------------------------------
-// Data section
-// ---------------------------------------------------------------------------
 
 fn parse_data_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmData]>> {
 	let expected_reader_pos = reader.pos() + size as usize;
@@ -674,10 +625,6 @@ fn parse_data_expr(reader: &ByteReader) -> Result<u32> {
 	Ok(offset)
 }
 
-// ---------------------------------------------------------------------------
-// Custom section
-// ---------------------------------------------------------------------------
-
 fn parse_custom_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmCustom]>> {
 	let _ = reader.pos() + size as usize;
 
@@ -688,10 +635,6 @@ fn parse_custom_section(size: u32, reader: &ByteReader) -> Result<Box<[WasmCusto
 
 	Ok(result.into())
 }
-
-// ---------------------------------------------------------------------------
-// Instruction parsing
-// ---------------------------------------------------------------------------
 
 fn parse_instructions(reader: &ByteReader) -> Result<Box<[WasmInstruction]>> {
 	let mut result = vec![];
@@ -1131,10 +1074,6 @@ fn parse_instruction_of(opcode: Opcode, reader: &ByteReader) -> Result<WasmInstr
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Block / Loop parsing
-// ---------------------------------------------------------------------------
-
 fn parse_block(reader: &ByteReader) -> Result<WasmInstruction> {
 	parse_block_or_loop(Opcode::Block, reader)
 }
@@ -1178,10 +1117,6 @@ fn parse_result_type(reader: &ByteReader) -> Result<WasmResultType> {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Value type helpers
-// ---------------------------------------------------------------------------
-
 fn parse_value_types(size: u32, reader: &ByteReader) -> Result<Box<[WasmValueType]>> {
 	let mut result = vec![];
 	for _ in 0..size {
@@ -1198,10 +1133,6 @@ fn parse_value_type(reader: &ByteReader) -> Result<WasmValueType> {
 fn value_type_from_u8(value: u8) -> Result<WasmValueType> {
 	value.try_into().map_err(|value| InvalidValueType(value))
 }
-
-// ---------------------------------------------------------------------------
-// Limit helpers
-// ---------------------------------------------------------------------------
 
 fn parse_limits(reader: &ByteReader) -> Result<WasmResizableLimit> {
 	let flags = reader.read_leb128_u32()?;
@@ -1220,19 +1151,11 @@ fn parse_limits(reader: &ByteReader) -> Result<WasmResizableLimit> {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Name helpers
-// ---------------------------------------------------------------------------
-
 fn parse_name(reader: &ByteReader) -> Result<Box<[u8]>> {
 	let size = reader.read_leb128_u32()?;
 	let name = reader.read_range(size as usize)?;
 	Ok(name)
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

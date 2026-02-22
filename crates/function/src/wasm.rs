@@ -5,7 +5,7 @@
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
-use reifydb_wasm::{Engine, SpawnBinary, module::Value, source};
+use reifydb_wasm::{Engine, SpawnBinary, module::value::Value, source};
 
 use super::{ScalarFunction, ScalarFunctionContext};
 use crate::error::{ScalarFunctionError, ScalarFunctionResult};

@@ -17,16 +17,31 @@ pub mod module;
 pub mod parse;
 pub mod util;
 
-use compile::Compiler;
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+
+use compile::compiler::{CompilationError, Compiler};
 use config::WasmConfig;
-use execute::{Exec, State, exec::HostFunctionRegistry};
-use module::{Module, ModuleId, Trap, Value};
+use execute::{
+	Result as ExecResult,
+	exec::{Exec, HostFunctionRegistry, ImportedModuleContext},
+	state::State,
+};
+use module::{
+	PAGE_SIZE, Trap, TrapNotFound, TrapOutOfRange,
+	function::{ExportData, Function},
+	global::Global,
+	memory::Memory,
+	module::{ActiveElementInit, Module, ModuleId},
+	table::Table,
+	value::Value,
+};
+use parse::{WasmParseError, binary::WasmParser};
 
 /// Errors that can occur in the WASM environment.
 #[derive(Debug, PartialEq)]
 pub enum EnvironmentError {
 	LoadError(LoadError),
-	Trapped(module::Trap),
+	Trapped(Trap),
 }
 
 impl std::fmt::Display for EnvironmentError {
@@ -44,14 +59,14 @@ impl From<LoadError> for EnvironmentError {
 	}
 }
 
-impl From<module::Trap> for EnvironmentError {
+impl From<Trap> for EnvironmentError {
 	fn from(value: Trap) -> Self {
 		EnvironmentError::Trapped(value)
 	}
 }
 
-impl From<parse::WasmParseError> for EnvironmentError {
-	fn from(value: parse::WasmParseError) -> Self {
+impl From<WasmParseError> for EnvironmentError {
+	fn from(value: WasmParseError) -> Self {
 		EnvironmentError::LoadError(value.into())
 	}
 }
@@ -62,6 +77,7 @@ pub enum LoadError {
 	CompilationFailed(String),
 	NotFound(String),
 	WasmParsingFailed(String),
+	Unlinkable(String),
 }
 
 impl std::fmt::Display for LoadError {
@@ -70,18 +86,19 @@ impl std::fmt::Display for LoadError {
 			LoadError::CompilationFailed(e) => write!(f, "{}", e),
 			LoadError::NotFound(e) => write!(f, "{}", e),
 			LoadError::WasmParsingFailed(e) => write!(f, "{}", e),
+			LoadError::Unlinkable(e) => write!(f, "{}", e),
 		}
 	}
 }
 
-impl From<compile::CompilationError> for LoadError {
-	fn from(value: compile::CompilationError) -> Self {
+impl From<CompilationError> for LoadError {
+	fn from(value: CompilationError) -> Self {
 		LoadError::CompilationFailed(value.to_string())
 	}
 }
 
-impl From<parse::WasmParseError> for LoadError {
-	fn from(value: parse::WasmParseError) -> Self {
+impl From<WasmParseError> for LoadError {
+	fn from(value: WasmParseError) -> Self {
 		LoadError::WasmParsingFailed(value.to_string())
 	}
 }
@@ -165,17 +182,18 @@ impl Instance {
 		&mut self,
 		module: impl Into<String>,
 		name: impl Into<String>,
-		f: impl Fn(&mut Exec) -> execute::Result<()> + Send + Sync + 'static,
+		f: impl Fn(&mut Exec) -> ExecResult<()> + Send + Sync + 'static,
 	) {
 		self.exec.register_host_function(module, name, f);
 	}
 
 	/// Write bytes into WASM linear memory at the given offset.
 	pub fn write_memory(&mut self, offset: usize, data: &[u8]) -> Result<(), Trap> {
-		let memory = self.exec.state.memory_mut(0)?;
+		let mem_rc = self.exec.state.memory_rc(0)?;
+		let mut memory = mem_rc.borrow_mut();
 		let end = offset + data.len();
 		if end > memory.len() {
-			return Err(Trap::OutOfRange(module::TrapOutOfRange::Memory(end)));
+			return Err(Trap::OutOfRange(TrapOutOfRange::Memory(end)));
 		}
 		memory.data[offset..end].copy_from_slice(data);
 		Ok(())
@@ -183,10 +201,11 @@ impl Instance {
 
 	/// Read bytes from WASM linear memory at the given offset.
 	pub fn read_memory(&self, offset: usize, len: usize) -> Result<Vec<u8>, Trap> {
-		let memory = self.exec.state.memory(0)?;
+		let mem_rc = self.exec.state.memory_rc(0)?;
+		let memory = mem_rc.borrow();
 		let end = offset + len;
 		if end > memory.len() {
-			return Err(Trap::OutOfRange(module::TrapOutOfRange::Memory(end)));
+			return Err(Trap::OutOfRange(TrapOutOfRange::Memory(end)));
 		}
 		Ok(memory.data[offset..end].to_vec())
 	}
@@ -204,6 +223,14 @@ pub struct HostTable {
 	pub max: Option<u32>,
 }
 
+struct RegisteredModule {
+	functions: Vec<(String, Arc<Function>)>,
+	tables: Vec<(String, Rc<RefCell<Table>>)>,
+	memories: Vec<(String, Rc<RefCell<Memory>>)>,
+	globals: Vec<(String, Rc<RefCell<Global>>)>,
+	context: Rc<ImportedModuleContext>,
+}
+
 /// The main WASM engine that manages modules and instances.
 pub struct Engine {
 	compiler: Compiler,
@@ -212,7 +239,7 @@ pub struct Engine {
 	host_globals: Vec<(String, String, Value)>,
 	host_memories: Vec<(String, String, HostMemory)>,
 	host_tables: Vec<(String, String, HostTable)>,
-	registered_functions: Vec<(String, String, std::sync::Arc<module::Function>)>,
+	registered_modules: HashMap<String, RegisteredModule>,
 	modules: Vec<Module>,
 	instances: Vec<Instance>,
 }
@@ -226,7 +253,7 @@ impl Default for Engine {
 			host_globals: vec![],
 			host_memories: vec![],
 			host_tables: vec![],
-			registered_functions: vec![],
+			registered_modules: HashMap::new(),
 			modules: vec![],
 			instances: vec![],
 		}
@@ -242,7 +269,7 @@ impl Engine {
 			host_globals: vec![],
 			host_memories: vec![],
 			host_tables: vec![],
-			registered_functions: vec![],
+			registered_modules: HashMap::new(),
 			modules: vec![],
 			instances: vec![],
 		}
@@ -290,7 +317,7 @@ impl Engine {
 		&mut self,
 		module: impl Into<String>,
 		name: impl Into<String>,
-		f: impl Fn(&mut Exec) -> execute::Result<()> + Send + Sync + 'static,
+		f: impl Fn(&mut Exec) -> ExecResult<()> + Send + Sync + 'static,
 	) {
 		self.host_functions.register(module, name, f);
 	}
@@ -307,6 +334,7 @@ impl Engine {
 		name: impl Into<String>,
 		args: impl AsRef<[Value]>,
 	) -> Result<Box<[Value]>, Trap> {
+		let name = name.into();
 		let instance = self.instances.get_mut(instance_idx).unwrap();
 		instance.invoke(name, args)
 	}
@@ -315,8 +343,8 @@ impl Engine {
 		let instance = self.instances.get_mut(instance_idx).unwrap();
 		let export = instance.exec.state.export(name)?;
 		match export.data {
-			module::ExportData::Global(idx) => instance.exec.state.global.get(idx),
-			_ => Err(Trap::NotFound(module::TrapNotFound::ExportedFunction(name.to_string()))),
+			ExportData::Global(idx) => instance.exec.state.global.get(idx),
+			_ => Err(Trap::NotFound(TrapNotFound::ExportedFunction(name.to_string()))),
 		}
 	}
 
@@ -344,13 +372,61 @@ impl Engine {
 		let instance = self.instances.get_mut(len - 1).unwrap();
 		let export = instance.exec.state.export(name)?;
 		match export.data {
-			module::ExportData::Global(idx) => instance.exec.state.global.get(idx),
-			_ => Err(Trap::NotFound(module::TrapNotFound::ExportedFunction(name.to_string()))),
+			ExportData::Global(idx) => instance.exec.state.global.get(idx),
+			_ => Err(Trap::NotFound(TrapNotFound::ExportedFunction(name.to_string()))),
+		}
+	}
+
+	fn build_registered_module(instance: &Instance) -> RegisteredModule {
+		let state = &instance.exec.state;
+		let mut functions = Vec::new();
+		let mut tables = Vec::new();
+		let mut memories = Vec::new();
+		let mut globals = Vec::new();
+
+		for export in state.exports.iter() {
+			match &export.data {
+				ExportData::Function(func_idx) => {
+					if let Ok(func) = state.function(*func_idx) {
+						functions.push((export.name.clone(), func));
+					}
+				}
+				ExportData::Table(idx) => {
+					if let Some(table_rc) = state.tables.get(*idx) {
+						tables.push((export.name.clone(), Rc::clone(table_rc)));
+					}
+				}
+				ExportData::Memory(idx) => {
+					if let Some(mem_rc) = state.memories.get(*idx) {
+						memories.push((export.name.clone(), Rc::clone(mem_rc)));
+					}
+				}
+				ExportData::Global(idx) => {
+					if let Some(global_rc) = state.global.data.get(*idx) {
+						globals.push((export.name.clone(), Rc::clone(global_rc)));
+					}
+				}
+			}
+		}
+
+		let context = Rc::new(ImportedModuleContext {
+			functions: state.functions.clone(),
+			function_types: state.function_types.clone(),
+			tables: state.tables.iter().map(|t| Rc::clone(t)).collect(),
+			memories: state.memories.iter().map(|m| Rc::clone(m)).collect(),
+			globals: state.global.data.iter().map(|g| Rc::clone(g)).collect(),
+		});
+
+		RegisteredModule {
+			functions,
+			tables,
+			memories,
+			globals,
+			context,
 		}
 	}
 
 	/// Register the last instance's exports under the given module name.
-	/// This makes the exported functions available for import by subsequent modules.
 	pub fn register_module(&mut self, name: impl Into<String>) {
 		let name = name.into();
 		let len = self.instances.len();
@@ -358,51 +434,227 @@ impl Engine {
 			return;
 		}
 		let instance = &self.instances[len - 1];
-		let state = &instance.exec.state;
-
-		for export in state.exports.iter() {
-			match &export.data {
-				module::ExportData::Function(func_idx) => {
-					if let Ok(func) = state.function(*func_idx) {
-						self.registered_functions.push((
-							name.clone(),
-							export.name.clone(),
-							func,
-						));
-					}
-				}
-				_ => {} // TODO: support global/memory/table exports
-			}
-		}
+		let reg = Self::build_registered_module(instance);
+		self.registered_modules.insert(name, reg);
 	}
 
 	/// Register a specific instance's exports under the given module name.
 	pub fn register_module_at(&mut self, instance_idx: usize, name: impl Into<String>) {
 		let name = name.into();
 		let instance = &self.instances[instance_idx];
-		let state = &instance.exec.state;
-
-		for export in state.exports.iter() {
-			match &export.data {
-				module::ExportData::Function(func_idx) => {
-					if let Ok(func) = state.function(*func_idx) {
-						self.registered_functions.push((
-							name.clone(),
-							export.name.clone(),
-							func,
-						));
-					}
-				}
-				_ => {} // TODO: support global/memory/table exports
-			}
-		}
+		let reg = Self::build_registered_module(instance);
+		self.registered_modules.insert(name, reg);
 	}
 
 	pub fn instantiate(&mut self, id: ModuleId) -> Result<&mut Instance, EnvironmentError> {
 		let module = self.modules.get(id as usize).unwrap();
 		let start_function = module.start_function;
+		let active_elements = module.active_elements.clone();
+		let active_data = module.active_data.clone();
 
-		let store = State::new(module).unwrap();
+		// Check for unknown imports before any resource linking or segment application
+		for (mod_name, field_name) in &module.function_imports {
+			let has_host =
+				self.host_functions.functions.iter().any(|(m, n, _)| m == mod_name && n == field_name);
+			let has_registered = self
+				.registered_modules
+				.get(mod_name)
+				.map_or(false, |reg| reg.functions.iter().any(|(n, _)| n == field_name));
+			if !has_host && !has_registered {
+				return Err(EnvironmentError::LoadError(LoadError::Unlinkable(format!(
+					"unknown import: {}.{}",
+					mod_name, field_name
+				))));
+			}
+		}
+		for (mod_name, field_name) in &module.table_imports {
+			let has_host = self.host_tables.iter().any(|(m, n, _)| m == mod_name && n == field_name);
+			let has_registered = self
+				.registered_modules
+				.get(mod_name)
+				.map_or(false, |reg| reg.tables.iter().any(|(n, _)| n == field_name));
+			if !has_host && !has_registered {
+				return Err(EnvironmentError::LoadError(LoadError::Unlinkable(format!(
+					"unknown import: {}.{}",
+					mod_name, field_name
+				))));
+			}
+		}
+		for (mod_name, field_name) in &module.memory_imports {
+			let has_host = self.host_memories.iter().any(|(m, n, _)| m == mod_name && n == field_name);
+			let has_registered = self
+				.registered_modules
+				.get(mod_name)
+				.map_or(false, |reg| reg.memories.iter().any(|(n, _)| n == field_name));
+			if !has_host && !has_registered {
+				return Err(EnvironmentError::LoadError(LoadError::Unlinkable(format!(
+					"unknown import: {}.{}",
+					mod_name, field_name
+				))));
+			}
+		}
+		for (mod_name, field_name) in &module.global_imports {
+			let has_host = self.host_globals.iter().any(|(m, n, _)| m == mod_name && n == field_name);
+			let has_registered = self
+				.registered_modules
+				.get(mod_name)
+				.map_or(false, |reg| reg.globals.iter().any(|(n, _)| n == field_name));
+			if !has_host && !has_registered {
+				return Err(EnvironmentError::LoadError(LoadError::Unlinkable(format!(
+					"unknown import: {}.{}",
+					mod_name, field_name
+				))));
+			}
+		}
+
+		let mut store = State::new(module).unwrap();
+
+		// Link shared resources from registered modules
+		for (i, (mod_name, field_name)) in module.table_imports.iter().enumerate() {
+			if let Some(reg) = self.registered_modules.get(mod_name) {
+				if let Some((_, table_rc)) = reg.tables.iter().find(|(n, _)| n == field_name) {
+					if i < store.tables.len() {
+						store.tables[i] = Rc::clone(table_rc);
+					}
+				}
+			}
+		}
+
+		for (i, (mod_name, field_name)) in module.memory_imports.iter().enumerate() {
+			if let Some(reg) = self.registered_modules.get(mod_name) {
+				if let Some((_, mem_rc)) = reg.memories.iter().find(|(n, _)| n == field_name) {
+					if i < store.memories.len() {
+						store.memories[i] = Rc::clone(mem_rc);
+					}
+				}
+			}
+		}
+
+		for (i, (mod_name, field_name)) in module.global_imports.iter().enumerate() {
+			if let Some(reg) = self.registered_modules.get(mod_name) {
+				if let Some((_, global_rc)) = reg.globals.iter().find(|(n, _)| n == field_name) {
+					if i < store.global.data.len() {
+						store.global.data[i] = Rc::clone(global_rc);
+					}
+				}
+			}
+		}
+
+		// Apply active element segments to (possibly shared) tables.
+		// Process each segment in order; on OOB, trap but keep earlier changes.
+		let mut segment_trap: Option<Trap> = None;
+		for elem_info in &active_elements {
+			if let Some(table_rc) = store.tables.get(elem_info.table_idx) {
+				let table_len = table_rc.borrow().elements.len();
+				// Bounds check: if offset + length > table size, trap
+				if elem_info
+					.offset
+					.checked_add(elem_info.inits.len())
+					.map_or(true, |end| end > table_len)
+				{
+					segment_trap =
+						Some(Trap::OutOfRange(TrapOutOfRange::Table(elem_info.table_idx)));
+					break;
+				}
+				let mut table = table_rc.borrow_mut();
+				if table.func_refs.len() < table_len {
+					table.func_refs.resize(table_len, None);
+				}
+				for (i, init) in elem_info.inits.iter().enumerate() {
+					let pos = elem_info.offset + i;
+					match init {
+						ActiveElementInit::FuncRef(func_idx) => {
+							table.elements[pos] = Some(Value::RefFunc(*func_idx));
+							if let Some(func) = store.functions.get(*func_idx) {
+								let resolved = match func.as_ref() {
+									Function::External(ext) => {
+										self.registered_modules
+											.get(&ext.module)
+											.and_then(|reg| {
+												reg.functions
+													.iter()
+													.find(|(n, _)| n == &ext.function_name)
+													.map(|(_, f)| f.clone())
+											})
+									}
+									_ => None,
+								};
+								table.func_refs[pos] =
+									Some(resolved.unwrap_or(func.clone()));
+							}
+						}
+						ActiveElementInit::GlobalGet(global_idx) => {
+							let global_val = store.global.get(*global_idx).ok();
+							match global_val {
+								Some(Value::RefFunc(func_idx)) => {
+									table.elements[pos] =
+										Some(Value::RefFunc(func_idx));
+									let mut resolved = false;
+									if let Some((mod_name, _)) =
+										module.global_imports.get(*global_idx)
+									{
+										if let Some(reg) = self
+											.registered_modules
+											.get(mod_name)
+										{
+											if let Some(func) = reg
+												.context
+												.functions
+												.get(func_idx)
+											{
+												table.func_refs[pos] =
+													Some(func
+														.clone(
+														));
+												resolved = true;
+											}
+										}
+									}
+									if !resolved {
+										if let Some(func) =
+											store.functions.get(func_idx)
+										{
+											table.func_refs[pos] =
+												Some(func.clone());
+										}
+									}
+								}
+								Some(Value::RefNull(_)) | None => {
+									table.elements[pos] = None;
+									table.func_refs[pos] = None;
+								}
+								_ => {}
+							}
+						}
+						ActiveElementInit::RefNull => {
+							table.elements[pos] = None;
+							table.func_refs[pos] = None;
+						}
+					}
+				}
+			}
+		}
+
+		// Apply active data segments to (possibly shared) memories.
+		// Process each segment in order; on OOB, trap but keep earlier changes.
+		for data_info in &active_data {
+			if let Some(mem_rc) = store.memories.get(data_info.mem_idx) {
+				let mem_len = mem_rc.borrow().data.len();
+				if data_info.offset.checked_add(data_info.data.len()).map_or(true, |end| end > mem_len)
+				{
+					if segment_trap.is_none() {
+						segment_trap = Some(Trap::OutOfRange(TrapOutOfRange::Memory(
+							data_info.mem_idx,
+						)));
+					}
+					break;
+				}
+				let mut mem = mem_rc.borrow_mut();
+				mem.data[data_info.offset..data_info.offset + data_info.data.len()]
+					.copy_from_slice(&data_info.data);
+			}
+		}
+
 		let mut exec = Exec::with_config(store, self.config.clone());
 
 		// Copy registered host functions to the instance
@@ -410,21 +662,38 @@ impl Engine {
 			exec.host_functions.functions.push((module.clone(), name.clone(), f.clone()));
 		}
 
-		// Copy registered module functions to the instance
-		for (module, name, f) in &self.registered_functions {
-			exec.imported_functions.push((module.clone(), name.clone(), f.clone()));
+		// Copy registered module functions to the instance (with context for function resolution)
+		for (mod_name, reg) in &self.registered_modules {
+			for (export_name, func) in &reg.functions {
+				exec.imported_functions.push((
+					mod_name.clone(),
+					export_name.clone(),
+					func.clone(),
+					Some(reg.context.clone()),
+				));
+			}
 		}
 
 		let mut instance = Instance {
 			exec,
 		};
 
-		// Call the start function if one is defined
-		if let Some(start_idx) = start_function {
-			instance.exec.call(&start_idx)?;
+		// If any segment had an OOB trap, return it (but keep all changes applied before the trap)
+		if let Some(trap) = segment_trap {
+			self.instances.push(instance);
+			return Err(EnvironmentError::Trapped(trap));
 		}
 
-		self.instances.push(instance);
+		// Call the start function if one is defined
+		if let Some(start_idx) = start_function {
+			let result = instance.exec.call(&start_idx);
+			// Push instance BEFORE checking the result, so changes from partial
+			// start function execution persist (data/elem segments already applied)
+			self.instances.push(instance);
+			result?;
+		} else {
+			self.instances.push(instance);
+		}
 
 		let len = self.instances.len();
 		Ok(&mut self.instances[len - 1])
@@ -438,14 +707,72 @@ pub trait LoadBinary<SOURCE> {
 
 impl<T: AsRef<[u8]>> LoadBinary<source::binary::Bytes<T>> for Engine {
 	fn load(&mut self, source: source::binary::Bytes<T>) -> Result<ModuleId, LoadError> {
-		let wasm = parse::WasmParser::parse(source.as_ref())?;
+		let wasm = WasmParser::parse(source.as_ref())?;
 		let module_id = self.modules.len() as ModuleId;
+
+		// Augment host resources with registered module exports so the compiler
+		// creates correctly-sized placeholder resources for imported tables/memories/globals.
+		let mut all_globals: Vec<(String, String, Value)> = self.host_globals.clone();
+		let mut all_memories: Vec<(String, String, HostMemory)> = Vec::new();
+		let mut all_tables: Vec<(String, String, HostTable)> = Vec::new();
+
+		for (m, n, hm) in &self.host_memories {
+			all_memories.push((
+				m.clone(),
+				n.clone(),
+				HostMemory {
+					min_pages: hm.min_pages,
+					max_pages: hm.max_pages,
+				},
+			));
+		}
+		for (m, n, ht) in &self.host_tables {
+			all_tables.push((
+				m.clone(),
+				n.clone(),
+				HostTable {
+					min: ht.min,
+					max: ht.max,
+				},
+			));
+		}
+
+		for (mod_name, reg) in &self.registered_modules {
+			for (export_name, table_rc) in &reg.tables {
+				let table = table_rc.borrow();
+				all_tables.push((
+					mod_name.clone(),
+					export_name.clone(),
+					HostTable {
+						min: table.elements.len() as u32,
+						max: table.limit.max,
+					},
+				));
+			}
+			for (export_name, mem_rc) in &reg.memories {
+				let mem = mem_rc.borrow();
+				let pages = (mem.data.len() as u32) / PAGE_SIZE;
+				all_memories.push((
+					mod_name.clone(),
+					export_name.clone(),
+					HostMemory {
+						min_pages: pages,
+						max_pages: mem.max,
+					},
+				));
+			}
+			for (export_name, global_rc) in &reg.globals {
+				let global = global_rc.borrow();
+				all_globals.push((mod_name.clone(), export_name.clone(), global.value.clone()));
+			}
+		}
+
 		let module = self.compiler.compile_with_imports(
 			module_id,
 			wasm,
-			&self.host_globals,
-			&self.host_memories,
-			&self.host_tables,
+			&all_globals,
+			&all_memories,
+			&all_tables,
 		)?;
 
 		self.modules.push(module);
