@@ -3,6 +3,7 @@
 
 pub mod alter;
 pub mod create;
+pub mod drop;
 
 use std::iter::once;
 
@@ -73,6 +74,15 @@ pub enum PhysicalPlan<'bump> {
 	CreateSubscription(CreateSubscriptionNode<'bump>),
 	CreatePrimaryKey(nodes::CreatePrimaryKeyNode),
 	CreatePolicy(nodes::CreatePolicyNode),
+	// Drop
+	DropNamespace(nodes::DropNamespaceNode),
+	DropTable(nodes::DropTableNode),
+	DropView(nodes::DropViewNode),
+	DropRingBuffer(nodes::DropRingBufferNode),
+	DropDictionary(nodes::DropDictionaryNode),
+	DropSumType(nodes::DropSumTypeNode),
+	DropFlow(nodes::DropFlowNode),
+	DropSubscription(nodes::DropSubscriptionNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode<'bump>),
@@ -550,6 +560,32 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::AlterFlow(alter) => {
 					stack.push(self.compile_alter_flow(rx, alter)?);
+				}
+
+				// Drop
+				LogicalPlan::DropNamespace(drop) => {
+					stack.push(self.compile_drop_namespace(rx, drop)?);
+				}
+				LogicalPlan::DropTable(drop) => {
+					stack.push(self.compile_drop_table(rx, drop)?);
+				}
+				LogicalPlan::DropView(drop) => {
+					stack.push(self.compile_drop_view(rx, drop)?);
+				}
+				LogicalPlan::DropRingBuffer(drop) => {
+					stack.push(self.compile_drop_ringbuffer(rx, drop)?);
+				}
+				LogicalPlan::DropDictionary(drop) => {
+					stack.push(self.compile_drop_dictionary(rx, drop)?);
+				}
+				LogicalPlan::DropSumType(drop) => {
+					stack.push(self.compile_drop_sumtype(rx, drop)?);
+				}
+				LogicalPlan::DropFlow(drop) => {
+					stack.push(self.compile_drop_flow(rx, drop)?);
+				}
+				LogicalPlan::DropSubscription(drop) => {
+					stack.push(self.compile_drop_subscription(rx, drop)?);
 				}
 
 				LogicalPlan::Assert(assert_node) => {

@@ -711,6 +711,40 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
+			// DDL (Drop) — leaf instructions
+			PhysicalPlan::DropNamespace(node) => {
+				self.emit(Instruction::DropNamespace(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropTable(node) => {
+				self.emit(Instruction::DropTable(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropView(node) => {
+				self.emit(Instruction::DropView(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropRingBuffer(node) => {
+				self.emit(Instruction::DropRingBuffer(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropDictionary(node) => {
+				self.emit(Instruction::DropDictionary(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropSumType(node) => {
+				self.emit(Instruction::DropSumType(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropFlow(node) => {
+				self.emit(Instruction::DropFlow(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropSubscription(node) => {
+				self.emit(Instruction::DropSubscription(node));
+				self.emit(Instruction::Emit);
+			}
+
 			// DDL — nodes with query subtrees that need materialization
 			PhysicalPlan::CreateDeferredView(node) => {
 				self.emit(Instruction::CreateDeferredView(nodes::CreateDeferredViewNode {

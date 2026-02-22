@@ -4,7 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
-use reifydb_catalog::{delete_flow_by_name, delete_subscription};
+use reifydb_catalog::{drop_flow_by_name, drop_subscription};
 use reifydb_core::{
 	error::diagnostic::internal::internal,
 	interface::{
@@ -199,10 +199,10 @@ fn cleanup_subscription_from_db_sync(
 	// Delete the associated flow (named after the subscription ID)
 	let flow_name = subscription_flow_name(subscription_id);
 	let namespace_id = subscription_flow_namespace();
-	delete_flow_by_name(&mut txn, namespace_id, &flow_name)?;
+	drop_flow_by_name(&mut txn, namespace_id, &flow_name)?;
 
-	// Delete the subscription (metadata, columns, rows)
-	delete_subscription(&mut txn, subscription_id)?;
+	// Drop the subscription (metadata, columns, rows)
+	drop_subscription(&mut txn, subscription_id)?;
 
 	txn.commit()?;
 	Ok(())

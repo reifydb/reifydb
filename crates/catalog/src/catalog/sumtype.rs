@@ -199,6 +199,13 @@ impl Catalog {
 		Ok(def)
 	}
 
+	#[instrument(name = "catalog::sumtype::drop", level = "debug", skip(self, txn))]
+	pub fn drop_sumtype(&self, txn: &mut AdminTransaction, sumtype: SumTypeDef) -> crate::Result<()> {
+		CatalogStore::drop_sumtype(txn, sumtype.id)?;
+		txn.track_sumtype_def_deleted(sumtype)?;
+		Ok(())
+	}
+
 	#[instrument(name = "catalog::sumtype::list", level = "debug", skip(self, txn))]
 	pub fn list_sumtypes(
 		&self,

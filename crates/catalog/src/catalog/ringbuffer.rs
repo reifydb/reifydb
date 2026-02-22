@@ -141,6 +141,13 @@ impl Catalog {
 		Ok(ringbuffer)
 	}
 
+	#[instrument(name = "catalog::ringbuffer::drop", level = "debug", skip(self, txn))]
+	pub fn drop_ringbuffer(&self, txn: &mut AdminTransaction, ringbuffer: RingBufferDef) -> crate::Result<()> {
+		CatalogStore::drop_ringbuffer(txn, ringbuffer.id)?;
+		txn.track_ringbuffer_def_deleted(ringbuffer)?;
+		Ok(())
+	}
+
 	#[instrument(name = "catalog::ringbuffer::list_all", level = "debug", skip(self, txn))]
 	pub fn list_ringbuffers_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<RingBufferDef>> {
 		CatalogStore::list_ringbuffers_all(txn)

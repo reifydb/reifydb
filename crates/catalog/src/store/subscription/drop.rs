@@ -13,10 +13,7 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn delete_subscription(
-		txn: &mut AdminTransaction,
-		subscription: SubscriptionId,
-	) -> crate::Result<()> {
+	pub(crate) fn drop_subscription(txn: &mut AdminTransaction, subscription: SubscriptionId) -> crate::Result<()> {
 		// Step 1: Delete subscription columns
 		let col_range = SubscriptionColumnKey::subscription_range(subscription);
 		let mut col_stream = txn.range(col_range, 1000)?;
@@ -59,7 +56,7 @@ pub mod tests {
 	use crate::{CatalogStore, store::subscription::create::SubscriptionToCreate};
 
 	#[test]
-	fn test_delete_subscription() {
+	fn test_drop_subscription() {
 		let mut txn = create_test_admin_transaction();
 
 		let created = CatalogStore::create_subscription(
@@ -75,7 +72,7 @@ pub mod tests {
 		assert!(found.is_some());
 
 		// Delete it
-		CatalogStore::delete_subscription(&mut txn, created.id).unwrap();
+		CatalogStore::drop_subscription(&mut txn, created.id).unwrap();
 
 		// Verify it's gone
 		let found = CatalogStore::find_subscription(&mut Transaction::Admin(&mut txn), created.id).unwrap();
@@ -83,11 +80,11 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_delete_nonexistent_subscription() {
+	fn test_drop_nonexistent_subscription() {
 		let mut txn = create_test_admin_transaction();
 
 		let non_existent = SubscriptionId(999999);
-		let result = CatalogStore::delete_subscription(&mut txn, non_existent);
+		let result = CatalogStore::drop_subscription(&mut txn, non_existent);
 		assert!(result.is_ok());
 	}
 }

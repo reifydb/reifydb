@@ -220,9 +220,9 @@ impl Catalog {
 		Ok(flow)
 	}
 
-	#[instrument(name = "catalog::flow::delete", level = "debug", skip(self, txn))]
-	pub fn delete_flow(&self, txn: &mut AdminTransaction, flow: FlowDef) -> crate::Result<()> {
-		CatalogStore::delete_flow(txn, flow.id)?;
+	#[instrument(name = "catalog::flow::drop", level = "debug", skip(self, txn))]
+	pub fn drop_flow(&self, txn: &mut AdminTransaction, flow: FlowDef) -> crate::Result<()> {
+		CatalogStore::drop_flow(txn, flow.id)?;
 		txn.track_flow_def_deleted(flow)?;
 		Ok(())
 	}

@@ -222,6 +222,13 @@ impl Catalog {
 		Ok(dictionary)
 	}
 
+	#[instrument(name = "catalog::dictionary::drop", level = "debug", skip(self, txn))]
+	pub fn drop_dictionary(&self, txn: &mut AdminTransaction, dictionary: DictionaryDef) -> crate::Result<()> {
+		CatalogStore::drop_dictionary(txn, dictionary.id)?;
+		txn.track_dictionary_def_deleted(dictionary)?;
+		Ok(())
+	}
+
 	#[instrument(name = "catalog::dictionary::list", level = "debug", skip(self, txn))]
 	pub fn list_dictionaries(
 		&self,

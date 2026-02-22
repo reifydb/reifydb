@@ -13,9 +13,9 @@ impl Catalog {
 		CatalogStore::create_flow_node(txn, node_def)
 	}
 
-	#[instrument(name = "catalog::flow_node::delete", level = "debug", skip(self, txn))]
-	pub fn delete_flow_node(&self, txn: &mut AdminTransaction, node_id: FlowNodeId) -> crate::Result<()> {
-		CatalogStore::delete_flow_node(txn, node_id)
+	#[instrument(name = "catalog::flow_node::drop", level = "debug", skip(self, txn))]
+	pub fn drop_flow_node(&self, txn: &mut AdminTransaction, node_id: FlowNodeId) -> crate::Result<()> {
+		CatalogStore::drop_flow_node(txn, node_id)
 	}
 
 	#[instrument(name = "catalog::flow_node::find", level = "trace", skip(self, txn))]

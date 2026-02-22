@@ -9,7 +9,7 @@ use reifydb_core::interface::{
 use crate::store::namespace::schema::namespace;
 
 pub mod create;
-pub mod delete;
+pub mod drop;
 pub mod find;
 pub mod get;
 pub mod list;

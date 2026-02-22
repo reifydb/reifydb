@@ -12,8 +12,9 @@ use crate::{
 	ast::identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier, MaybeQualifiedFunctionIdentifier,
-		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
-		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
+		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedRingBufferIdentifier,
+		MaybeQualifiedSequenceIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+		MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier, UnqualifiedIdentifier,
 		UnresolvedPrimitiveIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
@@ -789,7 +790,13 @@ pub enum AstAlter<'bump> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstDrop<'bump> {
 	Flow(AstDropFlow<'bump>),
-	// Future: Table, View, Namespace, etc.
+	Table(AstDropTable<'bump>),
+	View(AstDropView<'bump>),
+	RingBuffer(AstDropRingBuffer<'bump>),
+	Namespace(AstDropNamespace<'bump>),
+	Dictionary(AstDropDictionary<'bump>),
+	Enum(AstDropSumType<'bump>),
+	Subscription(AstDropSubscription<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -798,6 +805,62 @@ pub struct AstDropFlow<'bump> {
 	pub if_exists: bool,
 	pub flow: MaybeQualifiedFlowIdentifier<'bump>,
 	pub cascade: bool, // CASCADE or RESTRICT (false = RESTRICT)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropTable<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub table: MaybeQualifiedTableIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropView<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub view: MaybeQualifiedViewIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropRingBuffer<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropNamespace<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub namespace: MaybeQualifiedNamespaceIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropDictionary<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub dictionary: MaybeQualifiedDictionaryIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropSumType<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub sumtype: MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropSubscription<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub identifier: BumpFragment<'bump>,
+	pub cascade: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1087,6 +1150,34 @@ impl<'bump> AstDrop<'bump> {
 	pub fn token(&self) -> &Token<'bump> {
 		match self {
 			AstDrop::Flow(AstDropFlow {
+				token,
+				..
+			}) => token,
+			AstDrop::Table(AstDropTable {
+				token,
+				..
+			}) => token,
+			AstDrop::View(AstDropView {
+				token,
+				..
+			}) => token,
+			AstDrop::RingBuffer(AstDropRingBuffer {
+				token,
+				..
+			}) => token,
+			AstDrop::Namespace(AstDropNamespace {
+				token,
+				..
+			}) => token,
+			AstDrop::Dictionary(AstDropDictionary {
+				token,
+				..
+			}) => token,
+			AstDrop::Enum(AstDropSumType {
+				token,
+				..
+			}) => token,
+			AstDrop::Subscription(AstDropSubscription {
 				token,
 				..
 			}) => token,

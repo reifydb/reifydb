@@ -4,6 +4,7 @@
 pub mod alter;
 pub mod append;
 pub mod create;
+pub mod drop;
 pub mod function;
 pub mod mutate;
 pub mod query;
@@ -39,7 +40,7 @@ use crate::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
 			MaybeQualifiedIndexIdentifier, MaybeQualifiedRingBufferIdentifier,
 			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
@@ -130,6 +131,7 @@ impl<'bump> Compiler<'bump> {
 	pub fn compile_single(&self, node: Ast<'bump>, tx: &mut Transaction<'_>) -> crate::Result<LogicalPlan<'bump>> {
 		match node {
 			Ast::Create(node) => self.compile_create(node, tx),
+			Ast::Drop(node) => self.compile_drop(node),
 			Ast::Alter(node) => self.compile_alter(node, tx),
 			Ast::Delete(node) => self.compile_delete(node, tx),
 			Ast::Insert(node) => self.compile_insert(node, tx),
@@ -330,6 +332,15 @@ pub enum LogicalPlan<'bump> {
 	CreateSubscription(CreateSubscriptionNode<'bump>),
 	CreatePrimaryKey(CreatePrimaryKeyNode<'bump>),
 	CreatePolicy(CreatePolicyNode<'bump>),
+	// Drop
+	DropNamespace(DropNamespaceNode<'bump>),
+	DropTable(DropTableNode<'bump>),
+	DropView(DropViewNode<'bump>),
+	DropRingBuffer(DropRingBufferNode<'bump>),
+	DropDictionary(DropDictionaryNode<'bump>),
+	DropSumType(DropSumTypeNode<'bump>),
+	DropFlow(DropFlowNode<'bump>),
+	DropSubscription(DropSubscriptionNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterFlow(AlterFlowNode<'bump>),
@@ -750,4 +761,62 @@ pub struct CreatePrimaryKeyNode<'bump> {
 pub struct CreatePolicyNode<'bump> {
 	pub column: MaybeQualifiedColumnIdentifier<'bump>,
 	pub policies: Vec<ColumnPolicyKind>,
+}
+
+// === Drop nodes ===
+
+#[derive(Debug)]
+pub struct DropNamespaceNode<'bump> {
+	pub segments: Vec<BumpFragment<'bump>>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropTableNode<'bump> {
+	pub table: MaybeQualifiedTableIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropViewNode<'bump> {
+	pub view: MaybeQualifiedViewIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropRingBufferNode<'bump> {
+	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropDictionaryNode<'bump> {
+	pub dictionary: MaybeQualifiedDictionaryIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropSumTypeNode<'bump> {
+	pub sumtype: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropFlowNode<'bump> {
+	pub flow: MaybeQualifiedFlowIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropSubscriptionNode<'bump> {
+	pub identifier: BumpFragment<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
 }

@@ -247,6 +247,13 @@ impl Catalog {
 		Ok(view)
 	}
 
+	#[instrument(name = "catalog::view::drop", level = "debug", skip(self, txn))]
+	pub fn drop_view(&self, txn: &mut AdminTransaction, view: ViewDef) -> crate::Result<()> {
+		CatalogStore::drop_view(txn, view.id)?;
+		txn.track_view_def_deleted(view)?;
+		Ok(())
+	}
+
 	#[instrument(name = "catalog::view::list_all", level = "debug", skip(self, txn))]
 	pub fn list_views_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<ViewDef>> {
 		CatalogStore::list_views_all(txn)

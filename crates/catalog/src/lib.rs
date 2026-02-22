@@ -32,20 +32,20 @@ pub fn find_subscription(txn: &mut Transaction<'_>, id: SubscriptionId) -> Resul
 	CatalogStore::find_subscription(txn, id)
 }
 
-/// Delete a subscription and all its associated data (columns, rows, metadata).
+/// Drop a subscription and all its associated data (columns, rows, metadata).
 ///
 /// This is a low-level function that performs complete cleanup of a subscription.
 /// Use this when cleaning up subscriptions after a WebSocket connection closes.
-pub fn delete_subscription(txn: &mut AdminTransaction, id: SubscriptionId) -> Result<()> {
-	CatalogStore::delete_subscription(txn, id)
+pub fn drop_subscription(txn: &mut AdminTransaction, id: SubscriptionId) -> Result<()> {
+	CatalogStore::drop_subscription(txn, id)
 }
 
-/// Delete a flow by its name within a namespace.
+/// Drop a flow by its name within a namespace.
 ///
 /// This is useful for cleaning up flows associated with subscriptions,
 /// where the flow name is derived from the subscription ID.
-pub fn delete_flow_by_name(txn: &mut AdminTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
-	CatalogStore::delete_flow_by_name(txn, namespace, name)
+pub fn drop_flow_by_name(txn: &mut AdminTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
+	CatalogStore::drop_flow_by_name(txn, namespace, name)
 }
 
 pub struct CatalogVersion;

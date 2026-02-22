@@ -13,9 +13,9 @@ impl Catalog {
 		CatalogStore::create_flow_edge(txn, edge_def)
 	}
 
-	#[instrument(name = "catalog::flow_edge::delete", level = "debug", skip(self, txn))]
-	pub fn delete_flow_edge(&self, txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
-		CatalogStore::delete_flow_edge(txn, edge_id)
+	#[instrument(name = "catalog::flow_edge::drop", level = "debug", skip(self, txn))]
+	pub fn drop_flow_edge(&self, txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
+		CatalogStore::drop_flow_edge(txn, edge_id)
 	}
 
 	#[instrument(name = "catalog::flow_edge::find", level = "trace", skip(self, txn))]

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod create;
-pub mod delete;
+pub mod drop;
 pub mod find;
 pub mod get;
 pub mod get_pk_id;

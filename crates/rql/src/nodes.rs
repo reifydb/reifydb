@@ -8,7 +8,11 @@ use reifydb_catalog::catalog::{
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
 	interface::{
-		catalog::namespace::NamespaceDef,
+		catalog::{
+			flow::FlowId,
+			id::{NamespaceId, RingBufferId, TableId, ViewId},
+			namespace::NamespaceDef,
+		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
 			ResolvedRingBuffer, ResolvedSequence, ResolvedTable, ResolvedTableVirtual, ResolvedView,
@@ -18,7 +22,7 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, r#type::Type},
+	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId, r#type::Type},
 };
 
 use crate::{
@@ -618,4 +622,75 @@ pub struct ReturnNode {
 pub struct CallFunctionNode {
 	pub name: Fragment,
 	pub arguments: Vec<Expression>,
+}
+
+// === Drop nodes ===
+
+#[derive(Debug, Clone)]
+pub struct DropNamespaceNode {
+	pub namespace_name: Fragment,
+	pub namespace_id: Option<NamespaceId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropTableNode {
+	pub namespace_name: Fragment,
+	pub table_name: Fragment,
+	pub table_id: Option<TableId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropViewNode {
+	pub namespace_name: Fragment,
+	pub view_name: Fragment,
+	pub view_id: Option<ViewId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropRingBufferNode {
+	pub namespace_name: Fragment,
+	pub ringbuffer_name: Fragment,
+	pub ringbuffer_id: Option<RingBufferId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropDictionaryNode {
+	pub namespace_name: Fragment,
+	pub dictionary_name: Fragment,
+	pub dictionary_id: Option<DictionaryId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropSumTypeNode {
+	pub namespace_name: Fragment,
+	pub sumtype_name: Fragment,
+	pub sumtype_id: Option<SumTypeId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropFlowNode {
+	pub namespace_name: Fragment,
+	pub flow_name: Fragment,
+	pub flow_id: Option<FlowId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropSubscriptionNode {
+	pub subscription_name: Fragment,
+	pub if_exists: bool,
+	pub cascade: bool,
 }

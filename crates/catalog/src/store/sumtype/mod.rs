@@ -14,6 +14,7 @@ use tracing::warn;
 use self::schema::sumtype;
 
 pub mod create;
+pub mod drop;
 pub mod find;
 pub mod get;
 pub mod list;

@@ -8,7 +8,7 @@ use reifydb_type::{
 
 use crate::{
 	nodes::{
-		AlterFlowNode, AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateFlowNode,
+		self, AlterFlowNode, AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateFlowNode,
 		CreateNamespaceNode, CreatePolicyNode, CreatePrimaryKeyNode, CreateRingBufferNode,
 		CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode, CreateTransactionalViewNode,
 		DeleteRingBufferNode, DeleteTableNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
@@ -162,6 +162,16 @@ pub enum Instruction {
 	CreatePolicy(CreatePolicyNode),
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode),
+
+	// === DDL (Drop) ===
+	DropNamespace(nodes::DropNamespaceNode),
+	DropTable(nodes::DropTableNode),
+	DropView(nodes::DropViewNode),
+	DropRingBuffer(nodes::DropRingBufferNode),
+	DropDictionary(nodes::DropDictionaryNode),
+	DropSumType(nodes::DropSumTypeNode),
+	DropFlow(nodes::DropFlowNode),
+	DropSubscription(nodes::DropSubscriptionNode),
 
 	// === DML ===
 	Delete(DeleteTableNode),

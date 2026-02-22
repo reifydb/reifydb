@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub(crate) fn delete_flow_edge(txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
+	pub(crate) fn drop_flow_edge(txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
 		// First, get the edge to find the flow ID for index deletion
 		let edge = CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut *txn), edge_id)?;
 
@@ -38,7 +38,7 @@ pub mod tests {
 	};
 
 	#[test]
-	fn test_delete_flow_edge() {
+	fn test_drop_flow_edge() {
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
@@ -51,14 +51,14 @@ pub mod tests {
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_some());
 
 		// Delete edge
-		CatalogStore::delete_flow_edge(&mut txn, edge.id).unwrap();
+		CatalogStore::drop_flow_edge(&mut txn, edge.id).unwrap();
 
 		// Edge should no longer exist
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_none());
 	}
 
 	#[test]
-	fn test_delete_edge_removes_from_index() {
+	fn test_drop_edge_removes_from_index() {
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
@@ -72,7 +72,7 @@ pub mod tests {
 		assert_eq!(edges.len(), 1);
 
 		// Delete edge
-		CatalogStore::delete_flow_edge(&mut txn, edge.id).unwrap();
+		CatalogStore::drop_flow_edge(&mut txn, edge.id).unwrap();
 
 		// Edge should be removed from flow index
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
@@ -80,15 +80,15 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_delete_nonexistent_edge() {
+	fn test_drop_nonexistent_edge() {
 		let mut txn = create_test_admin_transaction();
 
 		// Deleting a non-existent edge should succeed silently
-		CatalogStore::delete_flow_edge(&mut txn, FlowEdgeId(999)).unwrap();
+		CatalogStore::drop_flow_edge(&mut txn, FlowEdgeId(999)).unwrap();
 	}
 
 	#[test]
-	fn test_delete_one_edge_keeps_others() {
+	fn test_drop_one_edge_keeps_others() {
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
@@ -101,7 +101,7 @@ pub mod tests {
 		let edge2 = create_flow_edge(&mut txn, flow.id, node2.id, node3.id);
 
 		// Delete first edge
-		CatalogStore::delete_flow_edge(&mut txn, edge1.id).unwrap();
+		CatalogStore::drop_flow_edge(&mut txn, edge1.id).unwrap();
 
 		// First edge should be gone, second should remain
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap().is_none());

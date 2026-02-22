@@ -161,13 +161,13 @@ impl Catalog {
 		Ok(subscription)
 	}
 
-	#[instrument(name = "catalog::subscription::delete", level = "debug", skip(self, txn))]
-	pub fn delete_subscription(
+	#[instrument(name = "catalog::subscription::drop", level = "debug", skip(self, txn))]
+	pub fn drop_subscription(
 		&self,
 		txn: &mut AdminTransaction,
 		subscription: SubscriptionDef,
 	) -> crate::Result<()> {
-		CatalogStore::delete_subscription(txn, subscription.id)?;
+		CatalogStore::drop_subscription(txn, subscription.id)?;
 		txn.track_subscription_def_deleted(subscription)?;
 		Ok(())
 	}

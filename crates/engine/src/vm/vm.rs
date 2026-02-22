@@ -995,6 +995,144 @@ impl Vm {
 					self.stack.push(Variable::Columns(columns));
 				}
 
+				// === DDL (Drop) ===
+				Instruction::DropNamespace(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => return Err(reifydb_type::error::Error(
+							reifydb_core::error::diagnostic::internal::internal_with_context(
+								"DDL operations require an admin transaction",
+								file!(), line!(), column!(), module_path!(), module_path!(),
+							),
+						)),
+					};
+					let columns = super::instruction::ddl::drop::namespace::drop_namespace(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropTable(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => return Err(reifydb_type::error::Error(
+							reifydb_core::error::diagnostic::internal::internal_with_context(
+								"DDL operations require an admin transaction",
+								file!(), line!(), column!(), module_path!(), module_path!(),
+							),
+						)),
+					};
+					let columns = super::instruction::ddl::drop::table::drop_table(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropView(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => return Err(reifydb_type::error::Error(
+							reifydb_core::error::diagnostic::internal::internal_with_context(
+								"DDL operations require an admin transaction",
+								file!(), line!(), column!(), module_path!(), module_path!(),
+							),
+						)),
+					};
+					let columns = super::instruction::ddl::drop::view::drop_view(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropRingBuffer(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => return Err(reifydb_type::error::Error(
+							reifydb_core::error::diagnostic::internal::internal_with_context(
+								"DDL operations require an admin transaction",
+								file!(), line!(), column!(), module_path!(), module_path!(),
+							),
+						)),
+					};
+					let columns = super::instruction::ddl::drop::ringbuffer::drop_ringbuffer(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropDictionary(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => return Err(reifydb_type::error::Error(
+							reifydb_core::error::diagnostic::internal::internal_with_context(
+								"DDL operations require an admin transaction",
+								file!(), line!(), column!(), module_path!(), module_path!(),
+							),
+						)),
+					};
+					let columns = super::instruction::ddl::drop::dictionary::drop_dictionary(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropSumType(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => return Err(reifydb_type::error::Error(
+							reifydb_core::error::diagnostic::internal::internal_with_context(
+								"DDL operations require an admin transaction",
+								file!(), line!(), column!(), module_path!(), module_path!(),
+							),
+						)),
+					};
+					let columns = super::instruction::ddl::drop::sumtype::drop_sumtype(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropFlow(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => return Err(reifydb_type::error::Error(
+							reifydb_core::error::diagnostic::internal::internal_with_context(
+								"DDL operations require an admin transaction",
+								file!(), line!(), column!(), module_path!(), module_path!(),
+							),
+						)),
+					};
+					let columns = super::instruction::ddl::drop::flow::drop_flow(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropSubscription(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => return Err(reifydb_type::error::Error(
+							reifydb_core::error::diagnostic::internal::internal_with_context(
+								"DDL operations require an admin transaction",
+								file!(), line!(), column!(), module_path!(), module_path!(),
+							),
+						)),
+					};
+					let columns = super::instruction::ddl::drop::subscription::drop_subscription(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+
 				// === DML ===
 				Instruction::Delete(node) => {
 					match tx {

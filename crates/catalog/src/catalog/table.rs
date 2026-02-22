@@ -309,9 +309,9 @@ impl Catalog {
 		Ok(table)
 	}
 
-	#[instrument(name = "catalog::table::delete", level = "debug", skip(self, txn))]
-	pub fn delete_table(&self, txn: &mut AdminTransaction, table: TableDef) -> crate::Result<()> {
-		CatalogStore::delete_table(txn, table.id)?;
+	#[instrument(name = "catalog::table::drop", level = "debug", skip(self, txn))]
+	pub fn drop_table(&self, txn: &mut AdminTransaction, table: TableDef) -> crate::Result<()> {
+		CatalogStore::drop_table(txn, table.id)?;
 		txn.track_table_def_deleted(table)?;
 		Ok(())
 	}

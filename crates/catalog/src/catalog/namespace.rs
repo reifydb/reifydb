@@ -221,9 +221,9 @@ impl Catalog {
 		Ok(namespace)
 	}
 
-	#[instrument(name = "catalog::namespace::delete", level = "debug", skip(self, txn))]
-	pub fn delete_namespace(&self, txn: &mut AdminTransaction, namespace: NamespaceDef) -> crate::Result<()> {
-		CatalogStore::delete_namespace(txn, namespace.id)?;
+	#[instrument(name = "catalog::namespace::drop", level = "debug", skip(self, txn))]
+	pub fn drop_namespace(&self, txn: &mut AdminTransaction, namespace: NamespaceDef) -> crate::Result<()> {
+		CatalogStore::drop_namespace(txn, namespace.id)?;
 		txn.track_namespace_def_deleted(namespace)?;
 		Ok(())
 	}
