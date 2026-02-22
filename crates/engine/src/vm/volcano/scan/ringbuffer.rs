@@ -9,6 +9,7 @@ use reifydb_core::{
 		catalog::{dictionary::DictionaryDef, ringbuffer::RingBufferMetadata},
 		resolved::ResolvedRingBuffer,
 	},
+	internal_error,
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
@@ -94,7 +95,7 @@ impl RingBufferScan {
 
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-			reifydb_core::internal_error!(
+			internal_error!(
 				"Schema with fingerprint {:?} not found for ringbuffer {}",
 				fingerprint,
 				self.ringbuffer.def().name

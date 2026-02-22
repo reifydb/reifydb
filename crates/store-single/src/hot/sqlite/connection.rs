@@ -3,6 +3,7 @@
 
 //! SQLite connection utilities.
 
+use reifydb_core::internal_error;
 use reifydb_type::Result;
 use rusqlite::Connection;
 
@@ -23,15 +24,12 @@ pub(super) fn connect(path: &DbPath, flags: rusqlite::OpenFlags) -> Result<Conne
 				let uri_flags = flags | rusqlite::OpenFlags::SQLITE_OPEN_URI;
 				let path_string = path_str.to_string();
 				Connection::open_with_flags(path_string, uri_flags).map_err(|e| {
-					reifydb_core::internal_error!(
-						"{}",
-						connection_failed(path_str.to_string(), e.to_string())
-					)
+					internal_error!("{}", connection_failed(path_str.to_string(), e.to_string()))
 				})
 			} else {
 				let path_clone = path.clone();
 				Connection::open_with_flags(path_clone, flags).map_err(|e| {
-					reifydb_core::internal_error!(
+					internal_error!(
 						"{}",
 						connection_failed(path.display().to_string(), e.to_string())
 					)
@@ -41,19 +39,13 @@ pub(super) fn connect(path: &DbPath, flags: rusqlite::OpenFlags) -> Result<Conne
 		DbPath::Tmpfs(path) => {
 			let path_clone = path.clone();
 			Connection::open_with_flags(path_clone, flags).map_err(|e| {
-				reifydb_core::internal_error!(
-					"{}",
-					connection_failed(path.display().to_string(), e.to_string())
-				)
+				internal_error!("{}", connection_failed(path.display().to_string(), e.to_string()))
 			})
 		}
 		DbPath::Memory(path) => {
 			let path_clone = path.clone();
 			Connection::open_with_flags(path_clone, flags).map_err(|e| {
-				reifydb_core::internal_error!(
-					"{}",
-					connection_failed(path.display().to_string(), e.to_string())
-				)
+				internal_error!("{}", connection_failed(path.display().to_string(), e.to_string()))
 			})
 		}
 	}

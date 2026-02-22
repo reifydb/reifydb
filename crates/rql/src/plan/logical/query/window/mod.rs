@@ -3,7 +3,10 @@
 
 use std::time::Duration;
 
-use reifydb_core::common::{WindowSize, WindowSlide, WindowTimeMode, WindowType};
+use reifydb_core::{
+	common::{WindowSize, WindowSlide, WindowTimeMode, WindowType},
+	internal_error,
+};
 
 use crate::{
 	Result,
@@ -216,18 +219,16 @@ impl<'bump> Compiler<'bump> {
 		// Handle milliseconds suffix "ms"
 		if duration_str.ends_with("ms") {
 			let number_part = &duration_str[..duration_str.len() - 2];
-			let number: u64 = number_part
-				.parse()
-				.map_err(|_| reifydb_core::internal_error!("Invalid duration number"))?;
+			let number: u64 =
+				number_part.parse().map_err(|_| internal_error!("Invalid duration number"))?;
 			return Ok(Duration::from_millis(number));
 		}
 
 		// Handle single character suffixes
 		if let Some(suffix) = duration_str.chars().last() {
 			let number_part = &duration_str[..duration_str.len() - 1];
-			let number: u64 = number_part
-				.parse()
-				.map_err(|_| reifydb_core::internal_error!("Invalid duration number"))?;
+			let number: u64 =
+				number_part.parse().map_err(|_| internal_error!("Invalid duration number"))?;
 
 			let duration = match suffix {
 				's' => Duration::from_secs(number),
@@ -235,13 +236,13 @@ impl<'bump> Compiler<'bump> {
 				'h' => Duration::from_secs(number * 3600),
 				'd' => Duration::from_secs(number * 86400),
 				_ => {
-					return Err(reifydb_core::internal_error!("Invalid duration suffix"));
+					return Err(internal_error!("Invalid duration suffix"));
 				}
 			};
 
 			Ok(duration)
 		} else {
-			Err(reifydb_core::internal_error!("Invalid duration format"))
+			Err(internal_error!("Invalid duration format"))
 		}
 	}
 

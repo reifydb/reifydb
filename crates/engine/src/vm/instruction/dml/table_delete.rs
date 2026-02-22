@@ -10,6 +10,7 @@ use reifydb_core::{
 		catalog::id::IndexId,
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
+	internal_error,
 	key::{
 		EncodableKey, EncodableKeyRange,
 		index_entry::IndexEntryKey,
@@ -141,7 +142,7 @@ pub(crate) fn delete<'a>(
 				let fingerprint = row_values.fingerprint();
 				let schema =
 					services.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-						reifydb_core::internal_error!(
+						internal_error!(
 							"Schema with fingerprint {:?} not found for table {}",
 							fingerprint,
 							table.name
@@ -182,7 +183,7 @@ pub(crate) fn delete<'a>(
 				let fingerprint = multi.values.fingerprint();
 				let schema =
 					services.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-						reifydb_core::internal_error!(
+						internal_error!(
 							"Schema with fingerprint {:?} not found for table {}",
 							fingerprint,
 							table.name

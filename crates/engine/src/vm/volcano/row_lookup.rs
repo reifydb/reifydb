@@ -13,6 +13,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, schema::Schema},
 	interface::{catalog::primitive::PrimitiveId, resolved::ResolvedPrimitive},
+	internal_error,
 	key::row::RowKey,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
@@ -57,9 +58,10 @@ impl<'a> RowPointLookupNode {
 		let fingerprint = first_row.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RowPointLookupNode context not set");
-		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-			reifydb_core::internal_error!("Schema with fingerprint {:?} not found", fingerprint)
-		})?;
+		let schema =
+			stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+				internal_error!("Schema with fingerprint {:?} not found", fingerprint)
+			})?;
 
 		self.schema = Some(schema.clone());
 
@@ -141,9 +143,10 @@ impl<'a> RowListLookupNode {
 		let fingerprint = first_row.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RowListLookupNode context not set");
-		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-			reifydb_core::internal_error!("Schema with fingerprint {:?} not found", fingerprint)
-		})?;
+		let schema =
+			stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+				internal_error!("Schema with fingerprint {:?} not found", fingerprint)
+			})?;
 
 		self.schema = Some(schema.clone());
 
@@ -243,9 +246,10 @@ impl<'a> RowRangeScanNode {
 		let fingerprint = first_row.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RowRangeScanNode context not set");
-		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-			reifydb_core::internal_error!("Schema with fingerprint {:?} not found", fingerprint)
-		})?;
+		let schema =
+			stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+				internal_error!("Schema with fingerprint {:?} not found", fingerprint)
+			})?;
 
 		self.schema = Some(schema.clone());
 

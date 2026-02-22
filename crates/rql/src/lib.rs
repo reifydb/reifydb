@@ -3,6 +3,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+use reifydb_core::internal_error;
 use reifydb_type::{
 	Result,
 	value::{
@@ -131,7 +132,7 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 }
 
 fn parse_number_literal(s: &str) -> Result<usize> {
-	s.parse::<usize>().map_err(|_| reifydb_core::internal_error!("Invalid number literal: {}", s))
+	s.parse::<usize>().map_err(|_| internal_error!("Invalid number literal: {}", s))
 }
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};

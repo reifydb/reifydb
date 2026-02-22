@@ -11,6 +11,7 @@ use reifydb_core::{
 	encoded::schema::Schema,
 	error::CoreError,
 	interface::{auth::Identity, catalog::id::IndexId},
+	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
@@ -211,7 +212,7 @@ fn execute_table_insert<V: ValidationMode>(
 				let dictionary = catalog
 					.find_dictionary(&mut Transaction::Command(txn), dict_id)?
 					.ok_or_else(|| {
-						reifydb_core::internal_error!(
+						internal_error!(
 							"Dictionary {:?} not found for column {}",
 							dict_id,
 							col.name
@@ -344,7 +345,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 				let dictionary = catalog
 					.find_dictionary(&mut Transaction::Command(txn), dict_id)?
 					.ok_or_else(|| {
-						reifydb_core::internal_error!(
+						internal_error!(
 							"Dictionary {:?} not found for column {}",
 							dict_id,
 							col.name

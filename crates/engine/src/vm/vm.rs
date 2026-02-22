@@ -4,8 +4,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	error::diagnostic::internal::internal_with_context,
 	interface::auth::Identity,
+	internal_error,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::{
@@ -71,7 +71,7 @@ impl Vm {
 		match self.stack.pop()? {
 			Variable::Scalar(c) => Ok(c.scalar_value()),
 			Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => Ok(c.scalar_value()),
-			_ => Err(reifydb_core::internal_error!("Expected scalar value on stack")),
+			_ => Err(internal_error!("Expected scalar value on stack")),
 		}
 	}
 
@@ -141,7 +141,7 @@ impl Vm {
 						Some(Variable::ForIterator {
 							..
 						}) => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"Cannot load a FOR iterator as a value"
 							));
 						}
@@ -479,7 +479,7 @@ impl Vm {
 							..
 						} => c,
 						Variable::Scalar(_) | Variable::Closure(_) => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"ForInit expects Columns on data stack, got Scalar"
 							));
 						}
@@ -818,7 +818,7 @@ impl Vm {
 									self.stack.push(stack_value);
 								}
 								CompilationResult::Incremental(_) => {
-									return Err(reifydb_core::internal_error!(
+									return Err(internal_error!(
 										"Procedure body should not require incremental compilation"
 									));
 								}
@@ -908,7 +908,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -924,7 +924,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -940,7 +940,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -956,7 +956,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -972,7 +972,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -988,7 +988,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -1000,7 +1000,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -1016,7 +1016,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -1032,7 +1032,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -1049,7 +1049,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -1065,7 +1065,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -1081,7 +1081,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -1097,7 +1097,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -1113,7 +1113,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
@@ -1129,7 +1129,7 @@ impl Vm {
 				Instruction::Delete(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
@@ -1147,7 +1147,7 @@ impl Vm {
 				Instruction::DeleteRingBuffer(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
@@ -1165,7 +1165,7 @@ impl Vm {
 				Instruction::InsertTable(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
@@ -1183,7 +1183,7 @@ impl Vm {
 				Instruction::InsertRingBuffer(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
@@ -1201,7 +1201,7 @@ impl Vm {
 				Instruction::InsertDictionary(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
@@ -1219,7 +1219,7 @@ impl Vm {
 				Instruction::Update(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
@@ -1237,7 +1237,7 @@ impl Vm {
 				Instruction::UpdateRingBuffer(node) => {
 					match tx {
 						Transaction::Query(_) => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"Mutation operations cannot be executed in a query transaction"
 							));
 						}
@@ -1273,7 +1273,7 @@ impl Vm {
 					let columns = match self.stack.pop()? {
 						Variable::Columns(cols) => cols,
 						_ => {
-							return Err(reifydb_core::internal_error!(
+							return Err(internal_error!(
 								"APPEND requires columns/frame data on stack"
 							));
 						}
