@@ -12,6 +12,7 @@ pub(crate) mod sumtype {
 	pub(crate) const NAMESPACE: usize = 1;
 	pub(crate) const NAME: usize = 2;
 	pub(crate) const VARIANTS_JSON: usize = 3;
+	pub(crate) const KIND: usize = 4;
 
 	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
 		Schema::new(vec![
@@ -19,6 +20,7 @@ pub(crate) mod sumtype {
 			SchemaField::unconstrained("namespace", Type::Uint8),
 			SchemaField::unconstrained("name", Type::Utf8),
 			SchemaField::unconstrained("variants_json", Type::Utf8),
+			SchemaField::unconstrained("kind", Type::Uint1),
 		])
 	});
 }

@@ -3,7 +3,9 @@
 
 pub mod deferred;
 pub mod dictionary;
+pub mod event;
 pub mod flow;
+pub mod handler;
 pub mod index;
 pub mod namespace;
 pub mod policy;
@@ -44,6 +46,8 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::PrimaryKey(node) => self.compile_create_primary_key(node, tx),
 			AstCreate::Policy(node) => self.compile_create_policy(node, tx),
 			AstCreate::Procedure(node) => self.compile_create_procedure(node),
+			AstCreate::Event(node) => self.compile_create_event(node),
+			AstCreate::Handler(node) => self.compile_create_handler(node),
 		}
 	}
 }

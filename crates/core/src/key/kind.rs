@@ -53,6 +53,9 @@ pub enum KeyKind {
 	SchemaField = 0x2B,
 	SumType = 0x2C,
 	NamespaceSumType = 0x2D,
+	Handler = 0x2E,
+	NamespaceHandler = 0x2F,
+	VariantHandler = 0x30,
 }
 
 impl From<KeyKind> for u8 {
@@ -110,6 +113,9 @@ impl TryFrom<u8> for KeyKind {
 			0x2B => Ok(Self::SchemaField),
 			0x2C => Ok(Self::SumType),
 			0x2D => Ok(Self::NamespaceSumType),
+			0x2E => Ok(Self::Handler),
+			0x2F => Ok(Self::NamespaceHandler),
+			0x30 => Ok(Self::VariantHandler),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

@@ -46,7 +46,7 @@ impl<'bump> Compiler<'bump> {
 						Some(def) => TypeConstraint::sumtype(def.id),
 						None => {
 							return Err(CatalogError::NotFound {
-								kind: CatalogObjectKind::SumType,
+								kind: CatalogObjectKind::Enum,
 								namespace: ns_name.to_string(),
 								name: type_name.to_string(),
 								fragment: Fragment::merge_all([

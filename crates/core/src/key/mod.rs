@@ -10,12 +10,14 @@ use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey, Dic
 use flow::FlowKey;
 use flow_node_internal_state::FlowNodeInternalStateKey;
 use flow_node_state::FlowNodeStateKey;
+use handler::HandlerKey;
 use index::IndexKey;
 use index_entry::IndexEntryKey;
 use kind::KeyKind;
 use namespace::NamespaceKey;
 use namespace_dictionary::NamespaceDictionaryKey;
 use namespace_flow::NamespaceFlowKey;
+use namespace_handler::NamespaceHandlerKey;
 use namespace_ringbuffer::NamespaceRingBufferKey;
 use namespace_sumtype::NamespaceSumTypeKey;
 use namespace_table::NamespaceTableKey;
@@ -53,12 +55,14 @@ pub mod flow_node;
 pub mod flow_node_internal_state;
 pub mod flow_node_state;
 pub mod flow_version;
+pub mod handler;
 pub mod index;
 pub mod index_entry;
 pub mod kind;
 pub mod namespace;
 pub mod namespace_dictionary;
 pub mod namespace_flow;
+pub mod namespace_handler;
 pub mod namespace_ringbuffer;
 pub mod namespace_sumtype;
 pub mod namespace_table;
@@ -77,6 +81,7 @@ pub mod system_sequence;
 pub mod system_version;
 pub mod table;
 pub mod transaction_version;
+pub mod variant_handler;
 pub mod view;
 #[derive(Debug)]
 pub enum Key {
@@ -114,6 +119,8 @@ pub enum Key {
 	NamespaceDictionary(NamespaceDictionaryKey),
 	SumType(SumTypeKey),
 	NamespaceSumType(NamespaceSumTypeKey),
+	Handler(HandlerKey),
+	NamespaceHandler(NamespaceHandlerKey),
 	Subscription(SubscriptionKey),
 	SubscriptionColumn(SubscriptionColumnKey),
 	SubscriptionRow(SubscriptionRowKey),
@@ -156,6 +163,8 @@ impl Key {
 			Key::NamespaceDictionary(key) => key.encode(),
 			Key::SumType(key) => key.encode(),
 			Key::NamespaceSumType(key) => key.encode(),
+			Key::Handler(key) => key.encode(),
+			Key::NamespaceHandler(key) => key.encode(),
 			Key::Subscription(key) => key.encode(),
 			Key::SubscriptionColumn(key) => key.encode(),
 			Key::SubscriptionRow(key) => key.encode(),
@@ -262,6 +271,12 @@ impl Key {
 			}
 			KeyKind::SumType => SumTypeKey::decode(&key).map(Self::SumType),
 			KeyKind::NamespaceSumType => NamespaceSumTypeKey::decode(&key).map(Self::NamespaceSumType),
+			KeyKind::Handler => HandlerKey::decode(&key).map(Self::Handler),
+			KeyKind::NamespaceHandler => NamespaceHandlerKey::decode(&key).map(Self::NamespaceHandler),
+			KeyKind::VariantHandler => {
+				// VariantHandler keys used directly via EncodableKey trait
+				None
+			}
 			KeyKind::Metric => {
 				// Storage tracker keys are used for internal persistence, not through Key enum
 				None

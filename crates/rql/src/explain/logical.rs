@@ -556,6 +556,15 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::CreateProcedure(_) => {
 			output.push_str(&format!("{}{} CreateProcedure\n", prefix, branch));
 		}
+		LogicalPlan::CreateEvent(_) => {
+			output.push_str(&format!("{}{} CreateEvent\n", prefix, branch));
+		}
+		LogicalPlan::CreateHandler(_) => {
+			output.push_str(&format!("{}{} CreateHandler\n", prefix, branch));
+		}
+		LogicalPlan::Dispatch(_) => {
+			output.push_str(&format!("{}{} Dispatch\n", prefix, branch));
+		}
 		LogicalPlan::Window(window) => {
 			output.push_str(&format!("{}{} Window\n", prefix, branch));
 			let child_prefix = format!(

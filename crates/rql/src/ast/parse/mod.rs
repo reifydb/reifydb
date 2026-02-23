@@ -16,6 +16,7 @@ pub mod create_index;
 pub mod def_function;
 pub mod delete;
 pub mod describe;
+pub mod dispatch;
 pub mod distinct;
 pub mod drop;
 pub mod extend;

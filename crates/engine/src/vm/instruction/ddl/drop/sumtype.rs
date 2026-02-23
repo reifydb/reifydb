@@ -38,7 +38,7 @@ pub(crate) fn drop_sumtype(
 	if !dependents.is_empty() {
 		let dependents_str = dependents.join(", ");
 		return Err(CatalogError::InUse {
-			kind: CatalogObjectKind::SumType,
+			kind: CatalogObjectKind::Enum,
 			namespace: plan.namespace_name.text().to_string(),
 			name: Some(plan.sumtype_name.text().to_string()),
 			dependents: dependents_str,

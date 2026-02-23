@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::encoded::EncodedValues,
 	interface::catalog::{
 		id::NamespaceId,
-		sumtype::{SumTypeDef, VariantDef},
+		sumtype::{SumTypeDef, SumTypeKind, VariantDef},
 	},
 };
 use reifydb_type::value::sumtype::SumTypeId;
@@ -29,11 +29,17 @@ pub(crate) fn sumtype_def_from_row(row: &EncodedValues) -> SumTypeDef {
 		warn!("Failed to deserialize sumtype variants for {:?}: {}", id, e);
 		vec![]
 	});
+	let kind = if sumtype::SCHEMA.get_u8(row, sumtype::KIND) != 0 {
+		SumTypeKind::Event
+	} else {
+		SumTypeKind::Enum
+	};
 
 	SumTypeDef {
 		id,
 		namespace,
 		name,
 		variants,
+		kind,
 	}
 }

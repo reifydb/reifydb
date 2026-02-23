@@ -8,7 +8,8 @@ use reifydb_core::{
 		catalog::{
 			dictionary::DictionaryDef,
 			flow::{FlowDef, FlowId},
-			id::{NamespaceId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
+			handler::HandlerDef,
+			id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
 			namespace::NamespaceDef,
 			procedure::ProcedureDef,
 			ringbuffer::RingBufferDef,
@@ -30,9 +31,9 @@ use crate::{
 	TransactionId,
 	change::{
 		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
-		TransactionalNamespaceChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
-		TransactionalSubscriptionChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
-		TransactionalViewChanges,
+		TransactionalHandlerChanges, TransactionalNamespaceChanges, TransactionalProcedureChanges,
+		TransactionalRingBufferChanges, TransactionalSubscriptionChanges, TransactionalSumTypeChanges,
+		TransactionalTableChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -302,6 +303,20 @@ impl TransactionalSubscriptionChanges for QueryTransaction {
 	}
 
 	fn is_subscription_deleted(&self, _id: SubscriptionId) -> bool {
+		false
+	}
+}
+
+impl TransactionalHandlerChanges for QueryTransaction {
+	fn find_handler_by_id(&self, _id: HandlerId) -> Option<&HandlerDef> {
+		None
+	}
+
+	fn find_handler_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&HandlerDef> {
+		None
+	}
+
+	fn is_handler_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

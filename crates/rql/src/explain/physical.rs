@@ -436,6 +436,15 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreateProcedure(_) => {
 			write_node_header(output, prefix, is_last, "CreateProcedure");
 		}
+		PhysicalPlan::CreateEvent(_) => {
+			write_node_header(output, prefix, is_last, "CreateEvent");
+		}
+		PhysicalPlan::CreateHandler(_) => {
+			write_node_header(output, prefix, is_last, "CreateHandler");
+		}
+		PhysicalPlan::Dispatch(_) => {
+			write_node_header(output, prefix, is_last, "Dispatch");
+		}
 		PhysicalPlan::AlterFlow(alter_flow) => {
 			let flow_name = if let Some(ns) = &alter_flow.flow.namespace {
 				format!("{}.{}", ns.text(), alter_flow.flow.name.text())

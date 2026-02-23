@@ -16,7 +16,9 @@ use crate::flow::compiler::{compile_flow, compile_subscription_flow};
 #[allow(dead_code)] // FIXME
 pub mod deferred;
 pub mod dictionary;
+pub mod event;
 pub mod flow;
+pub mod handler;
 pub mod namespace;
 pub mod policy;
 pub mod primary_key;

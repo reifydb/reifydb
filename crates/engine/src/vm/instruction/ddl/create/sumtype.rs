@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::sumtype::SumTypeToCreate;
 use reifydb_core::{
-	interface::catalog::sumtype::{FieldDef, VariantDef},
+	interface::catalog::sumtype::{FieldDef, SumTypeKind, VariantDef},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreateSumTypeNode;
@@ -53,6 +53,7 @@ pub(crate) fn create_sumtype(
 			name: plan.name.clone(),
 			namespace: plan.namespace.id,
 			variants: variant_defs,
+			kind: SumTypeKind::Enum,
 		},
 	)?;
 

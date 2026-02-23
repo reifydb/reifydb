@@ -62,6 +62,8 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::interface::catalog::sumtype::SumTypeKind;
+
 	use super::*;
 
 	fn create_test_sumtype(id: SumTypeId, namespace: NamespaceId, name: &str) -> SumTypeDef {
@@ -70,6 +72,7 @@ pub mod tests {
 			namespace,
 			name: name.to_string(),
 			variants: vec![],
+			kind: SumTypeKind::Enum,
 		}
 	}
 

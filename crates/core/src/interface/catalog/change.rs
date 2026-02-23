@@ -7,8 +7,9 @@
 //! during a transaction, allowing for proper transactional semantics and rollback.
 
 use crate::interface::catalog::{
-	dictionary::DictionaryDef, flow::FlowDef, namespace::NamespaceDef, procedure::ProcedureDef,
-	ringbuffer::RingBufferDef, subscription::SubscriptionDef, sumtype::SumTypeDef, table::TableDef, view::ViewDef,
+	dictionary::DictionaryDef, flow::FlowDef, handler::HandlerDef, namespace::NamespaceDef,
+	procedure::ProcedureDef, ringbuffer::RingBufferDef, subscription::SubscriptionDef, sumtype::SumTypeDef,
+	table::TableDef, view::ViewDef,
 };
 
 /// Trait for tracking table definition changes during a transaction.
@@ -98,10 +99,18 @@ pub trait CatalogTrackProcedureChangeOperations {
 	fn track_procedure_def_deleted(&mut self, procedure: ProcedureDef) -> reifydb_type::Result<()>;
 }
 
+/// Trait for tracking handler definition changes during a transaction.
+pub trait CatalogTrackHandlerChangeOperations {
+	fn track_handler_def_created(&mut self, handler: HandlerDef) -> reifydb_type::Result<()>;
+
+	fn track_handler_def_deleted(&mut self, handler: HandlerDef) -> reifydb_type::Result<()>;
+}
+
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackDictionaryChangeOperations
 	+ CatalogTrackFlowChangeOperations
+	+ CatalogTrackHandlerChangeOperations
 	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackProcedureChangeOperations
 	+ CatalogTrackRingBufferChangeOperations

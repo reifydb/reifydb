@@ -8,11 +8,11 @@ use reifydb_type::{
 
 use crate::{
 	nodes::{
-		self, AlterFlowNode, AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateFlowNode,
-		CreateNamespaceNode, CreatePolicyNode, CreatePrimaryKeyNode, CreateProcedureNode, CreateRingBufferNode,
-		CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode, CreateTransactionalViewNode,
-		DeleteRingBufferNode, DeleteTableNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
-		InsertTableNode, UpdateRingBufferNode, UpdateTableNode,
+		self, AlterFlowNode, AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateEventNode,
+		CreateFlowNode, CreateHandlerNode, CreateNamespaceNode, CreatePolicyNode, CreatePrimaryKeyNode,
+		CreateProcedureNode, CreateRingBufferNode, CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode,
+		CreateTransactionalViewNode, DeleteRingBufferNode, DeleteTableNode, DispatchNode, FunctionParameter,
+		InsertDictionaryNode, InsertRingBufferNode, InsertTableNode, UpdateRingBufferNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -162,6 +162,9 @@ pub enum Instruction {
 	CreatePrimaryKey(CreatePrimaryKeyNode),
 	CreatePolicy(CreatePolicyNode),
 	CreateProcedure(CreateProcedureNode),
+	CreateEvent(CreateEventNode),
+	CreateHandler(CreateHandlerNode),
+	Dispatch(DispatchNode),
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode),
 

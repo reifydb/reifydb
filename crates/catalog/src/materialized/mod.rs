@@ -3,6 +3,7 @@
 
 pub mod dictionary;
 pub mod flow;
+pub mod handler;
 pub mod load;
 pub mod namespace;
 pub mod operator_retention_policy;
@@ -22,7 +23,11 @@ use reifydb_core::{
 	interface::catalog::{
 		dictionary::DictionaryDef,
 		flow::{FlowDef, FlowId, FlowNodeId},
-		id::{NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
+		handler::HandlerDef,
+		id::{
+			HandlerId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId, SubscriptionId, TableId,
+			ViewId,
+		},
 		key::PrimaryKeyDef,
 		namespace::NamespaceDef,
 		primitive::PrimitiveId,
@@ -48,6 +53,7 @@ pub type MultiVersionFlowDef = MultiVersionContainer<FlowDef>;
 pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
 pub type MultiVersionDictionaryDef = MultiVersionContainer<DictionaryDef>;
+pub type MultiVersionHandlerDef = MultiVersionContainer<HandlerDef>;
 pub type MultiVersionProcedureDef = MultiVersionContainer<ProcedureDef>;
 pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
 pub type MultiVersionSumTypeDef = MultiVersionContainer<SumTypeDef>;
@@ -102,6 +108,12 @@ pub struct MaterializedCatalogInner {
 	/// MultiVersion subscription definitions indexed by subscription ID
 	/// Note: Subscriptions do NOT have names - they are identified only by ID
 	pub(crate) subscriptions: SkipMap<SubscriptionId, MultiVersionSubscriptionDef>,
+	/// MultiVersion handler definitions indexed by handler ID
+	pub(crate) handlers: SkipMap<HandlerId, MultiVersionHandlerDef>,
+	/// Index from (namespace_id, handler_name) to handler ID for fast name lookups
+	pub(crate) handlers_by_name: SkipMap<(NamespaceId, String), HandlerId>,
+	/// Index from (sumtype_id, variant_tag) to Vec<HandlerId> for dispatch hot-path
+	pub(crate) handlers_by_variant: SkipMap<(SumTypeId, u8), Vec<HandlerId>>,
 	/// User-defined virtual table definitions indexed by ID
 	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTableDef>>,
 	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
@@ -163,6 +175,9 @@ impl MaterializedCatalog {
 			ringbuffers: SkipMap::new(),
 			ringbuffers_by_name: SkipMap::new(),
 			subscriptions: SkipMap::new(),
+			handlers: SkipMap::new(),
+			handlers_by_name: SkipMap::new(),
+			handlers_by_variant: SkipMap::new(),
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 		}))

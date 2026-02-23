@@ -109,10 +109,13 @@ pub mod tests {
 			KeyKind::Schema => {}
 			KeyKind::SumType => {}
 			KeyKind::NamespaceSumType => {}
-			KeyKind::SchemaField => {} /* When adding a new variant, add it here.
-			                            * The compiler will error if you forget.
-			                            * Then add a test and update should_exclude_from_cdc() if
-			                            * needed. */
+			KeyKind::SchemaField => {}
+			KeyKind::Handler => {}
+			KeyKind::NamespaceHandler => {}
+			KeyKind::VariantHandler => {} /* When adding a new variant, add it here.
+			                               * The compiler will error if you forget.
+			                               * Then add a test and update should_exclude_from_cdc() if
+			                               * needed. */
 		}
 	}
 
@@ -325,5 +328,20 @@ pub mod tests {
 	#[test]
 	fn test_include_namespace_dictionary() {
 		assert!(!should_exclude_from_cdc(KeyKind::NamespaceDictionary));
+	}
+
+	#[test]
+	fn test_include_handler() {
+		assert!(!should_exclude_from_cdc(KeyKind::Handler));
+	}
+
+	#[test]
+	fn test_include_namespace_handler() {
+		assert!(!should_exclude_from_cdc(KeyKind::NamespaceHandler));
+	}
+
+	#[test]
+	fn test_include_variant_handler() {
+		assert!(!should_exclude_from_cdc(KeyKind::VariantHandler));
 	}
 }

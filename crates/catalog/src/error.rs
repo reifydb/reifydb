@@ -17,8 +17,10 @@ pub enum CatalogObjectKind {
 	Flow,
 	RingBuffer,
 	Dictionary,
-	SumType,
+	Enum,
+	Event,
 	VirtualTable,
+	Handler,
 }
 
 impl Display for CatalogObjectKind {
@@ -30,8 +32,10 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Flow => f.write_str("flow"),
 			CatalogObjectKind::RingBuffer => f.write_str("ring buffer"),
 			CatalogObjectKind::Dictionary => f.write_str("dictionary"),
-			CatalogObjectKind::SumType => f.write_str("enum"),
+			CatalogObjectKind::Enum => f.write_str("enum"),
+			CatalogObjectKind::Event => f.write_str("event"),
 			CatalogObjectKind::VirtualTable => f.write_str("virtual table"),
+			CatalogObjectKind::Handler => f.write_str("handler"),
 		}
 	}
 }
@@ -184,15 +188,25 @@ impl IntoDiagnostic for CatalogError {
 						"dictionary",
 						"choose a different name, drop the existing dictionary or create dictionary in a different namespace",
 					),
-					CatalogObjectKind::SumType => (
+					CatalogObjectKind::Enum => (
 						"CA_003",
 						"enum",
 						"choose a different name or drop the existing enum first",
+					),
+					CatalogObjectKind::Event => (
+						"CA_003",
+						"event",
+						"choose a different name or drop the existing event first",
 					),
 					CatalogObjectKind::VirtualTable => (
 						"CA_022",
 						"virtual table",
 						"choose a different name or unregister the existing virtual table first",
+					),
+					CatalogObjectKind::Handler => (
+						"CA_003",
+						"handler",
+						"choose a different name or drop the existing handler first",
 					),
 				};
 				let message = if matches!(kind, CatalogObjectKind::Namespace) {
@@ -251,15 +265,25 @@ impl IntoDiagnostic for CatalogError {
 						"dictionary",
 						"ensure the dictionary exists or create it first using `CREATE DICTIONARY`".to_string(),
 					),
-					CatalogObjectKind::SumType => (
+					CatalogObjectKind::Enum => (
 						"CA_002",
 						"type",
 						format!("create the enum first with `CREATE ENUM {}.{} {{ ... }}`", namespace, name),
+					),
+					CatalogObjectKind::Event => (
+						"CA_002",
+						"event",
+						format!("create the event first with `CREATE EVENT {}.{} {{ ... }}`", namespace, name),
 					),
 					CatalogObjectKind::VirtualTable => (
 						"CA_023",
 						"virtual table",
 						"ensure the virtual table is registered before using it".to_string(),
+					),
+					CatalogObjectKind::Handler => (
+						"CA_004",
+						"handler",
+						"ensure the handler exists or create it first using `CREATE HANDLER`".to_string(),
 					),
 				};
 				let message = if matches!(kind, CatalogObjectKind::Namespace) {
@@ -269,7 +293,8 @@ impl IntoDiagnostic for CatalogError {
 				};
 				let label_str = match kind {
 					CatalogObjectKind::Namespace => "unknown namespace reference".to_string(),
-					CatalogObjectKind::SumType => "unknown type".to_string(),
+					CatalogObjectKind::Enum => "unknown type".to_string(),
+					CatalogObjectKind::Event => "unknown event reference".to_string(),
 					_ => format!("unknown {} reference", kind_str),
 				};
 				Diagnostic {
@@ -640,10 +665,15 @@ impl IntoDiagnostic for CatalogError {
 						"dictionary is in use",
 						"drop or alter the dependent columns first, or use CASCADE to automatically drop all dependents",
 					),
-					CatalogObjectKind::SumType => (
+					CatalogObjectKind::Enum => (
 						"CA_033",
 						"enum is in use",
 						"drop or alter the dependent columns first, or use CASCADE to automatically drop all dependents",
+					),
+					CatalogObjectKind::Event => (
+						"CA_033",
+						"event is in use",
+						"drop or alter the dependent handlers first, or use CASCADE to automatically drop all dependents",
 					),
 					CatalogObjectKind::Namespace => (
 						"CA_034",

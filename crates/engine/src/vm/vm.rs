@@ -34,6 +34,10 @@ use super::{
 use crate::{
 	arena::QueryArena,
 	expression::{context::EvalContext, eval::evaluate},
+	vm::instruction::{
+		ddl::create::{event::create_event, handler::create_handler},
+		dml::dispatch::dispatch,
+	},
 };
 
 const MAX_ITERATIONS: usize = 10_000;
@@ -47,11 +51,12 @@ fn strip_dollar_prefix(name: &str) -> String {
 }
 
 pub struct Vm {
-	ip: usize,
+	pub(crate) ip: usize,
 	iteration_count: usize,
 	stack: Stack,
 	pub symbol_table: SymbolTable,
 	pub control_flow: ControlFlow,
+	pub(crate) dispatch_depth: u8,
 }
 
 impl Vm {
@@ -62,6 +67,7 @@ impl Vm {
 			stack: Stack::new(),
 			symbol_table,
 			control_flow: ControlFlow::Normal,
+			dispatch_depth: 0,
 		}
 	}
 
@@ -1122,6 +1128,45 @@ impl Vm {
 						txn,
 						node.clone(),
 					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateEvent(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_event(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateHandler(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_handler(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::Dispatch(node) => {
+					match tx {
+						Transaction::Query(_) => {
+							return Err(internal_error!(
+								"DISPATCH requires a command or admin transaction"
+							));
+						}
+						_ => {}
+					}
+					let depth = self.dispatch_depth;
+					self.dispatch_depth += 1;
+					let columns = dispatch(self, services, tx, node.clone(), params, depth)?;
+					self.dispatch_depth -= 1;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::AlterFlow(node) => {

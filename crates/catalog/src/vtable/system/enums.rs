@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::{sumtype::SumTypeKind, vtable::VTableDef},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -42,7 +42,10 @@ impl VTable for Enums {
 			return Ok(None);
 		}
 
-		let sumtypes = CatalogStore::list_all_sumtypes(txn)?;
+		let sumtypes: Vec<_> = CatalogStore::list_all_sumtypes(txn)?
+			.into_iter()
+			.filter(|st| st.kind == SumTypeKind::Enum)
+			.collect();
 
 		let mut ids = ColumnData::uint8_with_capacity(sumtypes.len());
 		let mut namespaces = ColumnData::uint8_with_capacity(sumtypes.len());

@@ -8,10 +8,11 @@ use crate::{
 	ast::{
 		ast::{
 			AstColumnProperty, AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary,
-			AstCreateFlow, AstCreateNamespace, AstCreatePolicy, AstCreatePrimaryKey, AstCreateProcedure,
-			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable,
-			AstCreateTransactionalView, AstIndexColumn, AstPolicyEntry, AstPolicyKind, AstPrimaryKeyDef,
-			AstProcedureParam, AstType, AstVariantDef,
+			AstCreateEvent, AstCreateFlow, AstCreateHandler, AstCreateNamespace, AstCreatePolicy,
+			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRingBuffer, AstCreateSeries,
+			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTransactionalView,
+			AstIndexColumn, AstPolicyEntry, AstPolicyKind, AstPrimaryKeyDef, AstProcedureParam, AstType,
+			AstVariantDef,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -126,6 +127,14 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
 			return self.parse_procedure(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Event))?).is_some() {
+			return self.parse_event(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Handler))?).is_some() {
+			return self.parse_handler(token);
 		}
 
 		if self.peek_is_index_creation()? {
@@ -1072,6 +1081,119 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::CloseCurly)?;
 
 		Ok(properties)
+	}
+
+	pub(crate) fn parse_event(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name_frag = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let sumtype_ident = if namespace.is_empty() {
+			MaybeQualifiedSumTypeIdentifier::new(name_frag)
+		} else {
+			MaybeQualifiedSumTypeIdentifier::new(name_frag).with_namespace(namespace)
+		};
+
+		self.consume_operator(Operator::OpenCurly)?;
+		let mut variants = Vec::new();
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let variant_name = self.parse_identifier_with_hyphens()?.into_fragment();
+
+			let columns = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+				self.parse_columns()?
+			} else {
+				Vec::new()
+			};
+
+			variants.push(AstVariantDef {
+				name: variant_name,
+				columns,
+			});
+
+			self.skip_new_line()?;
+			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+				self.skip_new_line()?;
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstCreate::Event(AstCreateEvent {
+			token,
+			name: sumtype_ident,
+			variants,
+		}))
+	}
+
+	pub(crate) fn parse_handler(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+		// Parse handler name: ns.handler_name
+		let mut segments = self.parse_dot_separated_identifiers()?;
+		let name_frag = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let handler_name = MaybeQualifiedTableIdentifier::new(name_frag).with_namespace(namespace);
+
+		// ON event_type::VariantName AS alias
+		self.consume_keyword(Keyword::On)?;
+
+		let mut event_segments = self.parse_dot_separated_identifiers()?;
+		let event_name_frag = event_segments.pop().unwrap().into_fragment();
+		let event_namespace: Vec<_> = event_segments.into_iter().map(|s| s.into_fragment()).collect();
+		let on_event = if event_namespace.is_empty() {
+			MaybeQualifiedSumTypeIdentifier::new(event_name_frag)
+		} else {
+			MaybeQualifiedSumTypeIdentifier::new(event_name_frag).with_namespace(event_namespace)
+		};
+
+		self.consume_operator(Operator::DoubleColon)?;
+		let on_variant = self.parse_identifier_with_hyphens()?.into_fragment();
+
+		// Body: { statements... }
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let body_start_pos = self.position;
+		let mut body = Vec::new();
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+			body.push(node);
+
+			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
+		}
+
+		let body_end_pos = self.position;
+		let body_source = if body_start_pos < body_end_pos {
+			let start = self.tokens[body_start_pos].fragment.offset();
+			let end = self.tokens[body_end_pos - 1].fragment.offset()
+				+ self.tokens[body_end_pos - 1].fragment.text().len();
+			self.source[start..end].trim().to_string()
+		} else {
+			String::new()
+		};
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstCreate::Handler(AstCreateHandler {
+			token,
+			name: handler_name,
+			on_event,
+			on_variant,
+			body,
+			body_source,
+		}))
 	}
 
 	fn parse_flow(&mut self, token: Token<'bump>, or_replace: bool) -> crate::Result<AstCreate<'bump>> {

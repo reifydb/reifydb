@@ -4,6 +4,7 @@
 pub mod alter;
 pub mod create;
 pub mod drop;
+pub mod mutate;
 
 use std::iter::once;
 
@@ -75,6 +76,9 @@ pub enum PhysicalPlan<'bump> {
 	CreatePrimaryKey(nodes::CreatePrimaryKeyNode),
 	CreatePolicy(nodes::CreatePolicyNode),
 	CreateProcedure(nodes::CreateProcedureNode),
+	CreateEvent(nodes::CreateEventNode),
+	CreateHandler(nodes::CreateHandlerNode),
+	Dispatch(nodes::DispatchNode),
 	// Drop
 	DropNamespace(nodes::DropNamespaceNode),
 	DropTable(nodes::DropTableNode),
@@ -562,6 +566,18 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::CreateProcedure(create) => {
 					stack.push(self.compile_create_procedure(rx, create)?);
+				}
+
+				LogicalPlan::CreateEvent(create) => {
+					stack.push(self.compile_create_event(rx, create)?);
+				}
+
+				LogicalPlan::CreateHandler(create) => {
+					stack.push(self.compile_create_handler(rx, create)?);
+				}
+
+				LogicalPlan::Dispatch(dispatch) => {
+					stack.push(self.compile_dispatch(rx, dispatch)?);
 				}
 
 				LogicalPlan::AlterFlow(alter) => {

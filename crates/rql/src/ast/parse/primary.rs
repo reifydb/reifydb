@@ -86,6 +86,7 @@ impl<'bump> Parser<'bump> {
 					Keyword::Call => Ok(Ast::Call(self.parse_call()?)),
 					Keyword::If => Ok(Ast::If(self.parse_if()?)),
 					Keyword::Match => Ok(Ast::Match(self.parse_match()?)),
+					Keyword::Dispatch => Ok(Ast::Dispatch(self.parse_dispatch()?)),
 					Keyword::Loop => Ok(Ast::Loop(self.parse_loop()?)),
 					Keyword::While => Ok(Ast::While(self.parse_while()?)),
 					Keyword::For => Ok(Ast::For(self.parse_for()?)),

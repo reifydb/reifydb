@@ -253,6 +253,7 @@ impl<'bump> Compiler<'bump> {
 			Ast::Return(node) => self.compile_return(node),
 			Ast::Closure(node) => self.compile_closure(node, tx),
 			Ast::Call(call_node) => self.compile_call(call_node),
+			Ast::Dispatch(node) => self.compile_dispatch(node, tx),
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
@@ -345,6 +346,9 @@ pub enum LogicalPlan<'bump> {
 	CreatePrimaryKey(CreatePrimaryKeyNode<'bump>),
 	CreatePolicy(CreatePolicyNode<'bump>),
 	CreateProcedure(CreateProcedureNode<'bump>),
+	CreateEvent(CreateEventNode<'bump>),
+	CreateHandler(CreateHandlerNode<'bump>),
+	Dispatch(DispatchNode<'bump>),
 	// Drop
 	DropNamespace(DropNamespaceNode<'bump>),
 	DropTable(DropTableNode<'bump>),
@@ -839,4 +843,25 @@ pub struct DropSubscriptionNode<'bump> {
 	pub identifier: BumpFragment<'bump>,
 	pub if_exists: bool,
 	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateEventNode<'bump> {
+	pub name: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub variants: Vec<crate::ast::ast::AstVariantDef<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct CreateHandlerNode<'bump> {
+	pub name: crate::ast::identifier::MaybeQualifiedTableIdentifier<'bump>,
+	pub on_event: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub on_variant: BumpFragment<'bump>,
+	pub body_source: String,
+}
+
+#[derive(Debug)]
+pub struct DispatchNode<'bump> {
+	pub on_event: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub variant: BumpFragment<'bump>,
+	pub fields: Vec<(BumpFragment<'bump>, Expression)>,
 }

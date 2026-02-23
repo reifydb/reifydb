@@ -7,6 +7,7 @@ pub(crate) mod dictionary;
 pub(crate) mod flow;
 pub(crate) mod flow_edge;
 pub(crate) mod flow_node;
+pub(crate) mod handler;
 pub(crate) mod namespace;
 #[allow(dead_code)]
 pub(crate) mod primary_key;

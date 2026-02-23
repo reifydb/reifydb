@@ -149,6 +149,9 @@ Patch => "PATCH",
 Enum => "ENUM",
 Match => "MATCH",
 Procedure => "PROCEDURE",
+Event => "EVENT",
+Handler => "HANDLER",
+Dispatch => "DISPATCH",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -241,6 +244,9 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("ENUM", Keyword::Enum);
 	map.insert("MATCH", Keyword::Match);
 	map.insert("PROCEDURE", Keyword::Procedure);
+	map.insert("EVENT", Keyword::Event);
+	map.insert("HANDLER", Keyword::Handler);
+	map.insert("DISPATCH", Keyword::Dispatch);
 	map
 });
 

@@ -5,7 +5,8 @@ use once_cell::sync::Lazy;
 use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::catalog::id::{
-		ColumnId, ColumnPolicyId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId, TableId, ViewId,
+		ColumnId, ColumnPolicyId, HandlerId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId, TableId,
+		ViewId,
 	},
 	key::system_sequence::SystemSequenceKey,
 };
@@ -15,7 +16,7 @@ use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 use crate::{
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, NAMESPACE, PRIMARY_KEY, PROCEDURE, SOURCE,
+		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, NAMESPACE, PRIMARY_KEY, PROCEDURE, SOURCE,
 	},
 };
 
@@ -36,6 +37,8 @@ pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceK
 static PRIMARY_KEY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(PRIMARY_KEY));
 
 static PROCEDURE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(PROCEDURE));
+
+static HANDLER_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(HANDLER));
 
 pub(crate) struct SystemSequence {}
 
@@ -78,5 +81,9 @@ impl SystemSequence {
 
 	pub(crate) fn next_procedure_id(txn: &mut AdminTransaction) -> crate::Result<ProcedureId> {
 		GeneratorU64::next(txn, &PROCEDURE_KEY, None).map(ProcedureId)
+	}
+
+	pub(crate) fn next_handler_id(txn: &mut AdminTransaction) -> crate::Result<HandlerId> {
+		GeneratorU64::next(txn, &HANDLER_KEY, None).map(HandlerId)
 	}
 }

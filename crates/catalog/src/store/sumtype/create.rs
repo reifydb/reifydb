@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::NamespaceId, sumtype::SumTypeDef},
+	interface::catalog::{
+		id::NamespaceId,
+		sumtype::{SumTypeDef, SumTypeKind},
+	},
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -36,7 +39,10 @@ impl CatalogStore {
 		)? {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return Err(CatalogError::AlreadyExists {
-				kind: CatalogObjectKind::SumType,
+				kind: match to_create.def.kind {
+					SumTypeKind::Event => CatalogObjectKind::Event,
+					SumTypeKind::Enum => CatalogObjectKind::Enum,
+				},
 				namespace: namespace.name,
 				name: to_create.name.text().to_string(),
 				fragment: to_create.name.clone(),
@@ -54,6 +60,7 @@ impl CatalogStore {
 		sumtype_schema::SCHEMA.set_u64(&mut row, sumtype_schema::NAMESPACE, namespace_id);
 		sumtype_schema::SCHEMA.set_utf8(&mut row, sumtype_schema::NAME, to_create.name.text());
 		sumtype_schema::SCHEMA.set_utf8(&mut row, sumtype_schema::VARIANTS_JSON, &variants_json);
+		sumtype_schema::SCHEMA.set_u8(&mut row, sumtype_schema::KIND, to_create.def.kind as u8);
 
 		txn.set(&SumTypeKey::encoded(sumtype_id), row)?;
 
@@ -69,7 +76,10 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{interface::catalog::sumtype::VariantDef, key::namespace_sumtype::NamespaceSumTypeKey};
+	use reifydb_core::{
+		interface::catalog::sumtype::{SumTypeKind, VariantDef},
+		key::namespace_sumtype::NamespaceSumTypeKey,
+	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
 
@@ -102,6 +112,7 @@ pub mod tests {
 				namespace: test_namespace.id,
 				name: "Status".to_string(),
 				variants: variants.clone(),
+				kind: SumTypeKind::Enum,
 			},
 		};
 
@@ -130,6 +141,7 @@ pub mod tests {
 					name: "Up".to_string(),
 					fields: vec![],
 				}],
+				kind: SumTypeKind::Enum,
 			},
 		};
 
@@ -138,6 +150,30 @@ pub mod tests {
 
 		let err = CatalogStore::create_sumtype(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
+	}
+
+	#[test]
+	fn test_create_event() {
+		let mut txn = create_test_admin_transaction();
+		let test_namespace = ensure_test_namespace(&mut txn);
+
+		let to_create = SumTypeToCreate {
+			name: Fragment::internal("UserCreated"),
+			namespace: test_namespace.id,
+			def: SumTypeDef {
+				id: SumTypeId(0),
+				namespace: test_namespace.id,
+				name: "UserCreated".to_string(),
+				variants: vec![],
+				kind: SumTypeKind::Event,
+			},
+		};
+
+		let result = CatalogStore::create_sumtype(&mut txn, to_create).unwrap();
+		assert!(result.id.0 > 0);
+		assert_eq!(result.namespace, test_namespace.id);
+		assert_eq!(result.name, "UserCreated");
+		assert_eq!(result.kind, SumTypeKind::Event);
 	}
 
 	#[test]
@@ -153,6 +189,7 @@ pub mod tests {
 				namespace: test_namespace.id,
 				name: "Color".to_string(),
 				variants: vec![],
+				kind: SumTypeKind::Enum,
 			},
 		};
 		CatalogStore::create_sumtype(&mut txn, to_create1).unwrap();
@@ -165,6 +202,7 @@ pub mod tests {
 				namespace: test_namespace.id,
 				name: "Shape".to_string(),
 				variants: vec![],
+				kind: SumTypeKind::Enum,
 			},
 		};
 		CatalogStore::create_sumtype(&mut txn, to_create2).unwrap();

@@ -5,6 +5,7 @@ pub mod change;
 pub mod column;
 pub mod dictionary;
 pub mod flow;
+pub mod handler;
 pub mod id;
 pub mod key;
 pub mod layout;

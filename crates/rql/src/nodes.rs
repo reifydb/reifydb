@@ -58,6 +58,9 @@ pub enum PhysicalPlan {
 	CreatePrimaryKey(CreatePrimaryKeyNode),
 	CreatePolicy(CreatePolicyNode),
 	CreateProcedure(CreateProcedureNode),
+	CreateEvent(CreateEventNode),
+	CreateHandler(CreateHandlerNode),
+	Dispatch(DispatchNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode),
@@ -251,6 +254,33 @@ pub struct CreateProcedureNode {
 	pub name: Fragment,
 	pub params: Vec<ProcedureParamDef>,
 	pub body_source: String,
+}
+
+/// Physical node for CREATE EVENT
+#[derive(Debug, Clone)]
+pub struct CreateEventNode {
+	pub namespace: NamespaceDef,
+	pub name: Fragment,
+	pub variants: Vec<CreateSumTypeVariant>,
+}
+
+/// Physical node for CREATE HANDLER
+#[derive(Debug, Clone)]
+pub struct CreateHandlerNode {
+	pub namespace: NamespaceDef,
+	pub name: Fragment,
+	pub on_sumtype_id: SumTypeId,
+	pub on_variant_tag: u8,
+	pub body_source: String,
+}
+
+/// Physical node for DISPATCH
+#[derive(Debug, Clone)]
+pub struct DispatchNode {
+	pub namespace: NamespaceDef,
+	pub on_sumtype_id: SumTypeId,
+	pub variant_name: String,
+	pub fields: Vec<(String, Expression)>,
 }
 
 // Create Policy node

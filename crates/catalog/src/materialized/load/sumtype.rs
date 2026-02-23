@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			id::NamespaceId,
-			sumtype::{SumTypeDef, VariantDef},
+			sumtype::{SumTypeDef, SumTypeKind, VariantDef},
 		},
 		store::MultiVersionValues,
 	},
@@ -16,7 +16,7 @@ use reifydb_type::value::sumtype::SumTypeId;
 use tracing::warn;
 
 use super::MaterializedCatalog;
-use crate::store::sumtype::schema::sumtype::{ID, NAME, NAMESPACE, SCHEMA, VARIANTS_JSON};
+use crate::store::sumtype::schema::sumtype::{ID, KIND, NAME, NAMESPACE, SCHEMA, VARIANTS_JSON};
 
 pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let range = SumTypeKey::full_scan();
@@ -43,10 +43,17 @@ fn convert_sumtype(multi: MultiVersionValues) -> SumTypeDef {
 		vec![]
 	});
 
+	let kind = if SCHEMA.get_u8(&row, KIND) != 0 {
+		SumTypeKind::Event
+	} else {
+		SumTypeKind::Enum
+	};
+
 	SumTypeDef {
 		id,
 		namespace,
 		name,
 		variants,
+		kind,
 	}
 }

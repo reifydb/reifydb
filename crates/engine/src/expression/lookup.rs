@@ -20,7 +20,7 @@ use reifydb_type::value::{
 	uuid::{Uuid4, Uuid7},
 };
 
-use crate::expression::context::EvalContext;
+use crate::{expression::context::EvalContext, vm::stack::Variable};
 
 macro_rules! extract_typed_column {
 	($col:expr, $take:expr, $variant:ident($x:ident) => $transform:expr, $default:expr, $constructor:ident) => {{
@@ -58,6 +58,12 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> cra
 
 	if let Some(col) = ctx.columns.iter().find(|c| c.name() == name) {
 		return extract_column_data(col, ctx);
+	}
+
+	if let Some(Variable::Scalar(scalar_cols)) = ctx.symbol_table.get(name) {
+		if let Some(col) = scalar_cols.columns.first() {
+			return extract_column_data(col, ctx);
+		}
 	}
 
 	Ok(Column::new(name.to_string(), ColumnData::none_typed(Type::Boolean, ctx.row_count)))

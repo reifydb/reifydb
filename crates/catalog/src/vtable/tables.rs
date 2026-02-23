@@ -17,13 +17,13 @@ use super::{
 	system::{
 		cdc_consumers::CdcConsumers, column_policies::ColumnPolicies, columns::ColumnsTable,
 		dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, enums::Enums,
-		flow_edges::FlowEdges, flow_lags::FlowLags, flow_node_storage_stats::FlowNodeStorageStats,
-		flow_node_types::FlowNodeTypes, flow_nodes::FlowNodes, flow_operator_inputs::FlowOperatorInputs,
-		flow_operator_outputs::FlowOperatorOutputs, flow_operators::FlowOperators,
-		flow_storage_stats::FlowStorageStats, flows::Flows, index_storage_stats::IndexStorageStats,
-		namespaces::Namespaces, operator_retention_policies::OperatorRetentionPolicies,
-		primary_key_columns::PrimaryKeyColumns, primary_keys::PrimaryKeys,
-		primitive_retention_policies::PrimitiveRetentionPolicies,
+		events::Events, flow_edges::FlowEdges, flow_lags::FlowLags,
+		flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes, flow_nodes::FlowNodes,
+		flow_operator_inputs::FlowOperatorInputs, flow_operator_outputs::FlowOperatorOutputs,
+		flow_operators::FlowOperators, flow_storage_stats::FlowStorageStats, flows::Flows, handlers::Handlers,
+		index_storage_stats::IndexStorageStats, namespaces::Namespaces,
+		operator_retention_policies::OperatorRetentionPolicies, primary_key_columns::PrimaryKeyColumns,
+		primary_keys::PrimaryKeys, primitive_retention_policies::PrimitiveRetentionPolicies,
 		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers,
 		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences,
 		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, types::Types,
@@ -75,6 +75,8 @@ pub enum VTables {
 	Schemas(Schemas),
 	SchemaFields(SchemaFields),
 	Enums(Enums),
+	Events(Events),
+	Handlers(Handlers),
 
 	/// User-defined virtual table (callback-based)
 	UserDefined {
@@ -124,6 +126,8 @@ impl VTables {
 			Self::Schemas(t) => &t.definition,
 			Self::SchemaFields(t) => &t.definition,
 			Self::Enums(t) => &t.definition,
+			Self::Events(t) => &t.definition,
+			Self::Handlers(t) => &t.definition,
 			Self::UserDefined {
 				def,
 				..
@@ -168,6 +172,8 @@ impl VTables {
 			Self::Schemas(t) => t.initialize(txn, ctx),
 			Self::SchemaFields(t) => t.initialize(txn, ctx),
 			Self::Enums(t) => t.initialize(txn, ctx),
+			Self::Events(t) => t.initialize(txn, ctx),
+			Self::Handlers(t) => t.initialize(txn, ctx),
 			Self::UserDefined {
 				params: stored_params,
 				exhausted,
@@ -226,6 +232,8 @@ impl VTables {
 			Self::Schemas(t) => t.next(txn),
 			Self::SchemaFields(t) => t.next(txn),
 			Self::Enums(t) => t.next(txn),
+			Self::Events(t) => t.next(txn),
+			Self::Handlers(t) => t.next(txn),
 			Self::UserDefined {
 				data_fn,
 				params: stored_params,

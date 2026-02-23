@@ -120,6 +120,7 @@ pub enum Ast<'bump> {
 	IsVariant(AstIsVariant<'bump>),
 	Match(AstMatch<'bump>),
 	Closure(AstClosure<'bump>),
+	Dispatch(AstDispatch<'bump>),
 }
 
 impl<'bump> Default for Ast<'bump> {
@@ -209,6 +210,7 @@ impl<'bump> Ast<'bump> {
 			Ast::IsVariant(node) => &node.token,
 			Ast::Match(node) => &node.token,
 			Ast::Closure(node) => &node.token,
+			Ast::Dispatch(node) => &node.token,
 		}
 	}
 
@@ -224,6 +226,17 @@ impl<'bump> Ast<'bump> {
 	/// Returns true if this AST node is a DDL statement (CREATE, ALTER, DROP).
 	pub fn is_ddl(&self) -> bool {
 		matches!(self, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_))
+	}
+
+	pub fn is_dispatch(&self) -> bool {
+		matches!(self, Ast::Dispatch(_))
+	}
+	pub fn as_dispatch(&self) -> &AstDispatch<'bump> {
+		if let Ast::Dispatch(result) = self {
+			result
+		} else {
+			panic!("not dispatch")
+		}
 	}
 
 	pub fn is_assert(&self) -> bool {
@@ -780,6 +793,8 @@ pub enum AstCreate<'bump> {
 	PrimaryKey(AstCreatePrimaryKey<'bump>),
 	Policy(AstCreatePolicy<'bump>),
 	Procedure(AstCreateProcedure<'bump>),
+	Event(AstCreateEvent<'bump>),
+	Handler(AstCreateHandler<'bump>),
 }
 
 #[derive(Debug)]
@@ -1144,6 +1159,14 @@ impl<'bump> AstCreate<'bump> {
 				..
 			}) => token,
 			AstCreate::Procedure(AstCreateProcedure {
+				token,
+				..
+			}) => token,
+			AstCreate::Event(AstCreateEvent {
+				token,
+				..
+			}) => token,
+			AstCreate::Handler(AstCreateHandler {
 				token,
 				..
 			}) => token,
@@ -1861,4 +1884,32 @@ pub struct AstClosure<'bump> {
 	pub token: Token<'bump>,
 	pub parameters: Vec<AstFunctionParameter<'bump>>,
 	pub body: AstBlock<'bump>,
+}
+
+/// CREATE EVENT — declares a typed event type (a sum type with is_event: true)
+#[derive(Debug)]
+pub struct AstCreateEvent<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub variants: Vec<AstVariantDef<'bump>>,
+}
+
+/// CREATE HANDLER — registers a computation handler for a specific event variant
+#[derive(Debug)]
+pub struct AstCreateHandler<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedTableIdentifier<'bump>,
+	pub on_event: MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub on_variant: BumpFragment<'bump>,
+	pub body: Vec<Ast<'bump>>,
+	pub body_source: String,
+}
+
+/// DISPATCH — fires all handlers registered for the specified event variant
+#[derive(Debug)]
+pub struct AstDispatch<'bump> {
+	pub token: Token<'bump>,
+	pub on_event: MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub variant: BumpFragment<'bump>,
+	pub fields: Vec<(BumpFragment<'bump>, BumpBox<'bump, Ast<'bump>>)>,
 }

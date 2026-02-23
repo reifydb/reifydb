@@ -716,6 +716,18 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateProcedure(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateEvent(node) => {
+				self.emit(Instruction::CreateEvent(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateHandler(node) => {
+				self.emit(Instruction::CreateHandler(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::Dispatch(node) => {
+				self.emit(Instruction::Dispatch(node));
+				self.emit(Instruction::Emit);
+			}
 
 			// DDL (Drop) — leaf instructions
 			PhysicalPlan::DropNamespace(node) => {

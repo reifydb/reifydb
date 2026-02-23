@@ -5,7 +5,8 @@ use OperationType::Delete;
 use reifydb_core::interface::catalog::{
 	dictionary::DictionaryDef,
 	flow::{FlowDef, FlowId},
-	id::{NamespaceId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
+	handler::HandlerDef,
+	id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
 	namespace::NamespaceDef,
 	procedure::ProcedureDef,
 	ringbuffer::RingBufferDef,
@@ -21,6 +22,7 @@ use crate::TransactionId;
 pub trait TransactionalChanges:
 	TransactionalDictionaryChanges
 	+ TransactionalFlowChanges
+	+ TransactionalHandlerChanges
 	+ TransactionalNamespaceChanges
 	+ TransactionalProcedureChanges
 	+ TransactionalRingBufferChanges
@@ -119,6 +121,14 @@ pub trait TransactionalSubscriptionChanges {
 	fn is_subscription_deleted(&self, id: SubscriptionId) -> bool;
 }
 
+pub trait TransactionalHandlerChanges {
+	fn find_handler_by_id(&self, id: HandlerId) -> Option<&HandlerDef>;
+
+	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&HandlerDef>;
+
+	fn is_handler_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct TransactionalDefChanges {
 	/// Transaction ID this change set belongs to
@@ -127,6 +137,8 @@ pub struct TransactionalDefChanges {
 	pub dictionary_def: Vec<Change<DictionaryDef>>,
 	/// All flow definition changes in order (no coalescing)
 	pub flow_def: Vec<Change<FlowDef>>,
+	/// All handler definition changes in order (no coalescing)
+	pub handler_def: Vec<Change<HandlerDef>>,
 	/// All namespace definition changes in order (no coalescing)
 	pub namespace_def: Vec<Change<NamespaceDef>>,
 	/// All procedure definition changes in order (no coalescing)
@@ -185,6 +197,21 @@ impl TransactionalDefChanges {
 		let op = change.op;
 		self.namespace_def.push(change);
 		self.log.push(Operation::Namespace {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_handler_def_change(&mut self, change: Change<HandlerDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|h| h.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.handler_def.push(change);
+		self.log.push(Operation::Handler {
 			id,
 			op,
 		});
@@ -312,6 +339,10 @@ pub enum Operation {
 		id: FlowId,
 		op: OperationType,
 	},
+	Handler {
+		id: HandlerId,
+		op: OperationType,
+	},
 	Namespace {
 		id: NamespaceId,
 		op: OperationType,
@@ -348,6 +379,7 @@ impl TransactionalDefChanges {
 			txn_id,
 			dictionary_def: Vec::new(),
 			flow_def: Vec::new(),
+			handler_def: Vec::new(),
 			namespace_def: Vec::new(),
 			procedure_def: Vec::new(),
 			ringbuffer_def: Vec::new(),
@@ -434,6 +466,7 @@ impl TransactionalDefChanges {
 	pub fn clear(&mut self) {
 		self.dictionary_def.clear();
 		self.flow_def.clear();
+		self.handler_def.clear();
 		self.namespace_def.clear();
 		self.procedure_def.clear();
 		self.ringbuffer_def.clear();

@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackSumTypeChangeOperations,
 	id::NamespaceId,
-	sumtype::{SumTypeDef, VariantDef},
+	sumtype::{SumTypeDef, SumTypeKind, VariantDef},
 };
 use reifydb_transaction::{
 	change::TransactionalSumTypeChanges,
@@ -20,6 +20,7 @@ pub struct SumTypeToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub variants: Vec<VariantDef>,
+	pub kind: SumTypeKind,
 }
 
 impl From<SumTypeToCreate> for StoreSumTypeToCreate {
@@ -32,6 +33,7 @@ impl From<SumTypeToCreate> for StoreSumTypeToCreate {
 				namespace: to_create.namespace,
 				name: to_create.name.text().to_string(),
 				variants: to_create.variants,
+				kind: to_create.kind,
 			},
 		}
 	}

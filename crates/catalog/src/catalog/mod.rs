@@ -15,6 +15,7 @@ pub mod dictionary;
 pub mod flow;
 pub mod flow_edge;
 pub mod flow_node;
+pub mod handler;
 pub mod namespace;
 pub mod primary_key;
 pub mod primitive;

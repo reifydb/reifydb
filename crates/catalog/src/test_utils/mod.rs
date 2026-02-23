@@ -4,11 +4,12 @@
 use reifydb_core::interface::catalog::{
 	column::ColumnIndex,
 	flow::{FlowDef, FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId, FlowStatus},
+	handler::HandlerDef,
 	id::{RingBufferId, TableId},
 	namespace::NamespaceDef,
 	policy::ColumnPolicyKind,
 	ringbuffer::RingBufferDef,
-	sumtype::{SumTypeDef, VariantDef},
+	sumtype::{SumTypeDef, SumTypeKind, VariantDef},
 	table::TableDef,
 	view::ViewDef,
 };
@@ -23,6 +24,7 @@ use crate::{
 	store::{
 		column::create::ColumnToCreate,
 		flow::create::FlowToCreate,
+		handler::create::HandlerToCreate,
 		namespace::create::NamespaceToCreate,
 		ringbuffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
 		table::create::{TableColumnToCreate, TableToCreate},
@@ -282,7 +284,57 @@ pub fn create_sumtype(
 				namespace: namespace_def.id,
 				name: name.to_string(),
 				variants,
+				kind: SumTypeKind::Enum,
 			},
+		},
+	)
+	.unwrap()
+}
+
+pub fn create_event(txn: &mut AdminTransaction, namespace: &str, name: &str, variants: Vec<VariantDef>) -> SumTypeDef {
+	use crate::store::sumtype::create::SumTypeToCreate;
+
+	let namespace_def = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
+		.unwrap()
+		.expect("Namespace not found");
+
+	CatalogStore::create_sumtype(
+		txn,
+		SumTypeToCreate {
+			name: Fragment::internal(name),
+			namespace: namespace_def.id,
+			def: SumTypeDef {
+				id: SumTypeId(0),
+				namespace: namespace_def.id,
+				name: name.to_string(),
+				variants,
+				kind: SumTypeKind::Event,
+			},
+		},
+	)
+	.unwrap()
+}
+
+pub fn create_handler(
+	txn: &mut AdminTransaction,
+	namespace: &str,
+	name: &str,
+	on_sumtype_id: SumTypeId,
+	on_variant_tag: u8,
+	body_source: &str,
+) -> HandlerDef {
+	let namespace_def = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
+		.unwrap()
+		.expect("Namespace not found");
+
+	CatalogStore::create_handler(
+		txn,
+		HandlerToCreate {
+			name: Fragment::internal(name),
+			namespace: namespace_def.id,
+			on_sumtype_id,
+			on_variant_tag,
+			body_source: body_source.to_string(),
 		},
 	)
 	.unwrap()

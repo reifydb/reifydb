@@ -10,6 +10,7 @@ pub mod column_policies;
 pub mod columns;
 pub mod dictionaries;
 pub mod enums;
+pub mod events;
 pub mod flow_edges;
 pub mod flow_lags;
 pub mod flow_node_types;
@@ -18,6 +19,7 @@ pub mod flow_operator_inputs;
 pub mod flow_operator_outputs;
 pub mod flow_operators;
 pub mod flows;
+pub mod handlers;
 pub mod namespaces;
 pub mod operator_retention_policies;
 pub mod primary_key_columns;
@@ -45,6 +47,7 @@ use column_policies::column_policies;
 use columns::columns;
 use dictionaries::dictionaries;
 use enums::enums;
+use events::events;
 use flow_edges::flow_edges;
 use flow_lags::flow_lags;
 use flow_node_types::flow_node_types;
@@ -53,6 +56,7 @@ use flow_operator_inputs::flow_operator_inputs;
 use flow_operator_outputs::flow_operator_outputs;
 use flow_operators::flow_operators;
 use flows::flows;
+use handlers::handlers;
 use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
 use primary_key_columns::primary_key_columns;
@@ -188,6 +192,28 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(3);
 
 			pub const ALL: [ColumnId; 3] = [ID, NAMESPACE_ID, NAME];
+		}
+
+		pub mod events {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+
+			pub const ALL: [ColumnId; 3] = [ID, NAMESPACE_ID, NAME];
+		}
+
+		pub mod handlers {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const ON_SUMTYPE_ID: ColumnId = ColumnId(4);
+			pub const ON_VARIANT_TAG: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, ON_SUMTYPE_ID, ON_VARIANT_TAG];
 		}
 
 		pub mod dictionaries {
@@ -399,9 +425,20 @@ pub mod ids {
 		pub const FLOW_EDGE: SequenceId = SequenceId(7);
 		pub const PRIMARY_KEY: SequenceId = SequenceId(8);
 		pub const PROCEDURE: SequenceId = SequenceId(9);
+		pub const HANDLER: SequenceId = SequenceId(10);
 
-		pub const ALL: [SequenceId; 9] =
-			[NAMESPACE, SOURCE, COLUMN, COLUMN_POLICY, FLOW, FLOW_NODE, FLOW_EDGE, PRIMARY_KEY, PROCEDURE];
+		pub const ALL: [SequenceId; 10] = [
+			NAMESPACE,
+			SOURCE,
+			COLUMN,
+			COLUMN_POLICY,
+			FLOW,
+			FLOW_NODE,
+			FLOW_EDGE,
+			PRIMARY_KEY,
+			PROCEDURE,
+			HANDLER,
+		];
 	}
 
 	pub mod vtable {
@@ -441,8 +478,10 @@ pub mod ids {
 		pub const SCHEMAS: VTableId = VTableId(32);
 		pub const SCHEMA_FIELDS: VTableId = VTableId(33);
 		pub const ENUMS: VTableId = VTableId(34);
+		pub const EVENTS: VTableId = VTableId(35);
+		pub const HANDLERS: VTableId = VTableId(36);
 
-		pub const ALL: [VTableId; 34] = [
+		pub const ALL: [VTableId; 36] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -477,6 +516,8 @@ pub mod ids {
 			SCHEMAS,
 			SCHEMA_FIELDS,
 			ENUMS,
+			EVENTS,
+			HANDLERS,
 		];
 	}
 }
@@ -671,5 +712,15 @@ impl SystemCatalog {
 	/// Get the enums virtual table definition
 	pub fn get_system_enums_table_def() -> Arc<VTableDef> {
 		enums()
+	}
+
+	/// Get the events virtual table definition
+	pub fn get_system_events_table_def() -> Arc<VTableDef> {
+		events()
+	}
+
+	/// Get the handlers virtual table definition
+	pub fn get_system_handlers_table_def() -> Arc<VTableDef> {
+		handlers()
 	}
 }
