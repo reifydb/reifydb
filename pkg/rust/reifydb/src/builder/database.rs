@@ -67,6 +67,7 @@ pub struct DatabaseBuilder {
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
+	wasm_procedure_dir: Option<PathBuf>,
 	transforms: Option<Transforms>,
 	multi_store: Option<MultiStore>,
 	single_store: Option<SingleStore>,
@@ -95,6 +96,7 @@ impl DatabaseBuilder {
 			procedures_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
+			wasm_procedure_dir: None,
 			transforms: None,
 			multi_store: None,
 			single_store: None,
@@ -160,6 +162,11 @@ impl DatabaseBuilder {
 	#[cfg(reifydb_target = "native")]
 	pub fn with_procedure_dir(mut self, dir: impl Into<PathBuf>) -> Self {
 		self.procedure_dir = Some(dir.into());
+		self
+	}
+
+	pub fn with_wasm_procedure_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+		self.wasm_procedure_dir = Some(dir.into());
 		self
 	}
 
@@ -255,6 +262,14 @@ impl DatabaseBuilder {
 					dir,
 					procedures_builder,
 				)?;
+			}
+
+			if let Some(dir) = &self.wasm_procedure_dir {
+				procedures_builder =
+					reifydb_engine::procedure::wasm_loader::register_wasm_procedures_from_dir(
+						dir,
+						procedures_builder,
+					)?;
 			}
 
 			if let Some(configurator) = self.procedures_configurator {

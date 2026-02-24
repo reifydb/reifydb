@@ -28,6 +28,7 @@ pub struct EmbeddedBuilder {
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
+	wasm_procedure_dir: Option<PathBuf>,
 	transforms: Option<Transforms>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
@@ -46,6 +47,7 @@ impl EmbeddedBuilder {
 			procedures_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
+			wasm_procedure_dir: None,
 			transforms: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
@@ -84,6 +86,11 @@ impl EmbeddedBuilder {
 		self
 	}
 
+	pub fn with_wasm_procedure_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+		self.wasm_procedure_dir = Some(dir.into());
+		self
+	}
+
 	pub fn with_transforms(mut self, transforms: Transforms) -> Self {
 		self.transforms = Some(transforms);
 		self
@@ -119,6 +126,10 @@ impl EmbeddedBuilder {
 		#[cfg(reifydb_target = "native")]
 		if let Some(dir) = self.procedure_dir {
 			builder = builder.with_procedure_dir(dir);
+		}
+
+		if let Some(dir) = self.wasm_procedure_dir {
+			builder = builder.with_wasm_procedure_dir(dir);
 		}
 
 		if let Some(transforms) = self.transforms {
