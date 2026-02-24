@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use super::{factory::StandardInterceptorFactory, interceptors::Interceptors};
+use super::{factory::InterceptorFactory, interceptors::Interceptors};
 
 /// Builder for configuring interceptors using factory functions
 /// This allows building a Send+Sync factory that creates non-Send/Sync
 /// interceptors
-pub struct StandardInterceptorBuilder {
-	factory: StandardInterceptorFactory,
+pub struct InterceptorBuilder {
+	factory: InterceptorFactory,
 }
 
-impl Default for StandardInterceptorBuilder {
+impl Default for InterceptorBuilder {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl StandardInterceptorBuilder {
+impl InterceptorBuilder {
 	pub fn new() -> Self {
 		Self {
-			factory: StandardInterceptorFactory::default(),
+			factory: InterceptorFactory::default(),
 		}
 	}
 	pub fn add_factory<F>(mut self, factory: F) -> Self
@@ -30,7 +30,7 @@ impl StandardInterceptorBuilder {
 		self
 	}
 
-	pub fn build(self) -> StandardInterceptorFactory {
+	pub fn build(self) -> InterceptorFactory {
 		self.factory
 	}
 }

@@ -35,7 +35,7 @@ pub struct Change {
 	pub origin: ChangeOrigin,
 	/// The list of diffs (changes)
 	pub diffs: Vec<Diff>,
-	/// Version of this change
+	/// Version of this change.
 	pub version: CommitVersion,
 }
 

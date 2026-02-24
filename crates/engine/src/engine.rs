@@ -32,7 +32,7 @@ use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
 use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
 use reifydb_transaction::{
-	interceptor::factory::InterceptorFactory,
+	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
@@ -65,23 +65,13 @@ impl WithEventBus for StandardEngine {
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
 	pub fn begin_command(&self) -> crate::Result<CommandTransaction> {
-		let mut interceptors = self.interceptors.create();
-
-		interceptors
-			.post_commit
-			.add(Arc::new(MaterializedCatalogInterceptor::new(self.catalog.materialized.clone())));
-
+		let interceptors = self.interceptors.create();
 		CommandTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
 	}
 
 	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
 	pub fn begin_admin(&self) -> crate::Result<AdminTransaction> {
-		let mut interceptors = self.interceptors.create();
-
-		interceptors
-			.post_commit
-			.add(Arc::new(MaterializedCatalogInterceptor::new(self.catalog.materialized.clone())));
-
+		let interceptors = self.interceptors.create();
 		AdminTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
 	}
 
@@ -282,7 +272,7 @@ pub struct Inner {
 	single: SingleTransaction,
 	event_bus: EventBus,
 	executor: Executor,
-	interceptors: Box<dyn InterceptorFactory>,
+	interceptors: InterceptorFactory,
 	catalog: Catalog,
 	flow_operator_store: FlowOperatorStore,
 }
@@ -292,7 +282,7 @@ impl StandardEngine {
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		event_bus: EventBus,
-		interceptors: Box<dyn InterceptorFactory>,
+		interceptors: InterceptorFactory,
 		catalog: Catalog,
 		clock: Clock,
 		functions: Functions,
@@ -309,6 +299,14 @@ impl StandardEngine {
 			.resolve::<reifydb_store_single::SingleStore>()
 			.expect("SingleStore must be registered in IocContainer for metrics");
 		let stats_reader = MetricReader::new(metrics_store);
+
+		// Register MaterializedCatalogInterceptor as a factory function.
+		let materialized = catalog.materialized.clone();
+		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
+			interceptors
+				.post_commit
+				.add(Arc::new(MaterializedCatalogInterceptor::new(materialized.clone())));
+		}));
 
 		Self(Arc::new(Inner {
 			multi,
@@ -333,6 +331,14 @@ impl StandardEngine {
 	/// Create a new set of interceptors from the factory.
 	pub fn create_interceptors(&self) -> reifydb_transaction::interceptor::interceptors::Interceptors {
 		self.interceptors.create()
+	}
+
+	/// Register an additional interceptor factory function.
+	///
+	/// The function will be called on every `create()` to augment the base interceptors.
+	/// This is thread-safe and can be called after the engine is constructed (e.g. by subsystems).
+	pub fn add_interceptor_factory(&self, factory: Arc<dyn Fn(&mut Interceptors) + Send + Sync>) {
+		self.interceptors.add_late(factory);
 	}
 
 	/// Begin a query transaction at a specific version.

@@ -11,7 +11,7 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 use reifydb_sub_flow::builder::FlowBuilder;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingBuilder;
-use reifydb_transaction::interceptor::builder::StandardInterceptorBuilder;
+use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::{
@@ -22,7 +22,7 @@ use crate::{
 pub struct EmbeddedBuilder {
 	storage_factory: StorageFactory,
 	runtime_config: Option<SharedRuntimeConfig>,
-	interceptors: StandardInterceptorBuilder,
+	interceptors: InterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
@@ -40,7 +40,7 @@ impl EmbeddedBuilder {
 		Self {
 			storage_factory,
 			runtime_config: None,
-			interceptors: StandardInterceptorBuilder::new(),
+			interceptors: InterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
 			procedures_configurator: None,
@@ -169,7 +169,7 @@ impl WithSubsystem for EmbeddedBuilder {
 }
 
 impl WithInterceptorBuilder for EmbeddedBuilder {
-	fn interceptor_builder_mut(&mut self) -> &mut StandardInterceptorBuilder {
+	fn interceptor_builder_mut(&mut self) -> &mut InterceptorBuilder {
 		&mut self.interceptors
 	}
 }

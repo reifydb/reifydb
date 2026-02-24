@@ -36,7 +36,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
-	interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
+	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::{admin::AdminTransaction, command::CommandTransaction},
@@ -181,7 +181,7 @@ pub fn create_test_engine() -> StandardEngine {
 		multi,
 		single,
 		eventbus.clone(),
-		Box::new(StandardInterceptorFactory::default()),
+		InterceptorFactory::default(),
 		Catalog::new(materialized_catalog, schema_registry),
 		runtime.clock().clone(),
 		Functions::builder().build(),

@@ -1,7 +1,7 @@
 //  SPDX-License-Identifier: AGPL-3.0-or-later
 //  Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::constraint::TypeConstraint;
+use reifydb_type::value::constraint::{Constraint, TypeConstraint};
 
 use crate::{
 	encoded::schema::{Schema, SchemaField},
@@ -15,8 +15,21 @@ impl From<&Vec<ColumnDef>> for Schema {
 }
 impl From<&[ColumnDef]> for Schema {
 	fn from(value: &[ColumnDef]) -> Self {
-		let fields =
-			value.iter().map(|col| SchemaField::new(col.name.clone(), col.constraint.clone())).collect();
+		let fields = value
+			.iter()
+			.map(|col| {
+				// For dictionary columns, the constraint carries Dictionary info with id_type.
+				// Convert to TypeConstraint::dictionary() so the schema uses DictionaryId as base_type,
+				// matching the schema used to encode the data.
+				let constraint = match col.constraint.constraint() {
+					Some(Constraint::Dictionary(dict_id, id_type)) => {
+						TypeConstraint::dictionary(*dict_id, id_type.clone())
+					}
+					_ => col.constraint.clone(),
+				};
+				SchemaField::new(col.name.clone(), constraint)
+			})
+			.collect();
 		Schema::new(fields)
 	}
 }

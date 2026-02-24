@@ -30,7 +30,10 @@ use filter::FilterOperator;
 use join::operator::JoinOperator;
 use map::MapOperator;
 use reifydb_core::interface::change::Change;
-use scan::{flow::PrimitiveFlowOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator};
+use scan::{
+	flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator, table::PrimitiveTableOperator,
+	view::PrimitiveViewOperator,
+};
 use sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator};
 use sort::SortOperator;
 use take::TakeOperator;
@@ -50,6 +53,7 @@ pub enum Operators {
 	SourceTable(PrimitiveTableOperator),
 	SourceView(PrimitiveViewOperator),
 	SourceFlow(PrimitiveFlowOperator),
+	SourceRingBuffer(PrimitiveRingBufferOperator),
 	Filter(FilterOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),
@@ -82,6 +86,7 @@ impl Operators {
 			Operators::SourceTable(op) => op.apply(txn, change),
 			Operators::SourceView(op) => op.apply(txn, change),
 			Operators::SourceFlow(op) => op.apply(txn, change),
+			Operators::SourceRingBuffer(op) => op.apply(txn, change),
 		}
 	}
 
@@ -102,6 +107,7 @@ impl Operators {
 			Operators::SourceTable(op) => op.pull(txn, rows),
 			Operators::SourceView(op) => op.pull(txn, rows),
 			Operators::SourceFlow(op) => op.pull(txn, rows),
+			Operators::SourceRingBuffer(op) => op.pull(txn, rows),
 		}
 	}
 }

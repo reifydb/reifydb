@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use pending::{Pending, PendingWrites};
+use pending::{Pending, PendingWrite};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::CommitVersion;
 use reifydb_transaction::{
@@ -73,126 +73,67 @@ pub mod write;
 /// │  FlowTransaction│
 /// └────────┬────────┘
 ///          │
+///          ├──► pending (flow-generated writes)
+///          │
+///          ├──► variant
+///          │    ├─ Deferred: skip
+///          │    └─ Transactional { base_pending }: check base_pending
+///          │
 ///          ├──► primitive_query (at CDC version)
-///          │    - Source tables
-///          │    - Source views
-///          │    - Regular data
+///          │    - Source tables / views / regular data
 ///          │
 ///          └──► state_query (at latest version)
-///               - FlowNodeState
-///               - FlowNodeInternalState
-///               - Stateful operator state
+///               - FlowNodeState / FlowNodeInternalState
 /// ```
 ///
-/// # Why Dual Versions Matter
+/// # Construction
 ///
-/// ## Example: Join Operator
-/// ```ignore
-/// // CDC event arrives at version 100
-/// let mut flow_txn = FlowTransaction::new(&parent, CommitVersion(100));
-///
-/// // Join operator processes the event:
-/// // 1. Reads source table at version 100 (snapshot)
-/// let source_row = flow_txn.get(&source_key)?;
-///
-/// // 2. Reads join state at LATEST version (e.g., 150)
-/// //    This state contains results from ALL previous CDC events
-/// let join_state = flow_txn.state_get(node_id, &state_key)?;
-///
-/// // Without dual versions, join state would be stale at version 100
-/// ```
-///
-/// ## Example: Distinct Operator
-/// ```ignore
-/// // Maintains a set of seen values across ALL CDC events
-/// let seen = flow_txn.state_get(node_id, &value_key)?;
-///
-/// // If read at CDC version, would "forget" values seen in later events
-/// // Dual-version ensures we see ALL distinct values accumulated so far
-/// ```
-///
-/// # Current Usage Pattern
-///
-/// FlowTransaction is used in worker threads to process CDC batches:
-///
-/// ```ignore
-/// // In flow worker thread
-/// let primitive_query = engine.multi().begin_query_at_version(batch.version)?;
-/// let state_query = engine.multi().begin_query_at_version(state_version)?;
-///
-/// let mut txn = FlowTransaction {
-///     version: batch.version,
-///     pending: PendingWrites::new(),
-///     primitive_query,
-///     state_query,
-///     catalog: catalog.clone(),
-/// };
-///
-/// for change in batch.changes {
-///     flow_engine.process(&mut txn, change, flow_id)?;
-/// }
-///
-/// // Extract pending writes to merge into parent transaction
-/// let pending = txn.pending;
-/// ```
+/// Use named constructors to enforce correct initialization:
+/// - [`FlowTransaction::deferred`] — CDC path (no base pending)
+/// - [`FlowTransaction::transactional`] — inline pre-commit path (with base pending)
 ///
 /// # Write Path
 ///
 /// All writes (`set`, `remove`) go to the local `pending` buffer:
 /// - Reads check pending buffer first, then delegate to query transactions
-/// - Pending writes are extracted and applied to parent transaction by caller
+/// - Pending writes are extracted via [`FlowTransaction::take_pending`]
 ///
 /// # Thread Safety
 ///
 /// FlowTransaction is Send because all fields are either Copy, owned, or
-pub struct FlowTransaction {
-	/// CDC event version for snapshot isolation.
-	///
-	/// This is the version at which the CDC event was generated, NOT the parent transaction version.
-	/// Source data reads see the database state as of this CDC version.
-	/// This guarantees proper snapshot isolation - the flow processes data as it existed when
-	/// the CDC event was created, regardless of concurrent modifications.
-	pub(crate) version: CommitVersion,
+pub enum FlowTransaction {
+	/// CDC-driven async flow processing.
+	/// Reads only from committed storage + flow pending writes.
+	Deferred {
+		version: CommitVersion,
+		pending: Pending,
+		primitive_query: MultiReadTransaction,
+		state_query: MultiReadTransaction,
+		catalog: Catalog,
+		interceptors: Interceptors,
+	},
 
-	/// Local write buffer for pending changes.
-	///
-	/// Stores all `set()` and `remove()` operations made by this transaction.
-	/// Returned to caller for application to parent transaction.
-	pub(crate) pending: PendingWrites,
-
-	/// Read-only query transaction for accessing storage primitive data at CDC snapshot version.
-	///
-	/// Provides snapshot reads at `version`. Used for reading storage primitives tables/views
-	/// to ensure consistent view of the data being processed by the flow.
-	pub(crate) primitive_query: MultiReadTransaction,
-
-	/// Read-only query transaction for accessing flow state at latest version.
-	///
-	/// Reads at the latest committed version. Used for reading flow state
-	/// (join tables, distinct values, counters) that must be visible across
-	/// all CDC versions to maintain continuity.
-	pub(crate) state_query: MultiReadTransaction,
-
-	/// Catalog for metadata access (cloned from parent, Arc-based so cheap)
-	pub(crate) catalog: Catalog,
-
-	/// Interceptors for view data operations
-	pub(crate) interceptors: Interceptors,
+	/// Inline flow processing within a committing transaction.
+	/// Can additionally read uncommitted writes from the parent transaction.
+	Transactional {
+		version: CommitVersion,
+		pending: Pending,
+		/// Read-only snapshot of the committing transaction's KV writes.
+		base_pending: Pending,
+		primitive_query: MultiReadTransaction,
+		state_query: MultiReadTransaction,
+		catalog: Catalog,
+		interceptors: Interceptors,
+	},
 }
 
 impl FlowTransaction {
-	/// Create a new FlowTransaction from a parent transaction at a specific CDC version.
+	/// Create a deferred (CDC) FlowTransaction from a parent transaction.
 	///
-	/// Creates dual query transactions:
-	/// - `primitive_query`: Reads at the specified CDC version (snapshot isolation)
-	/// - `state_query`: Reads at the latest version (state continuity)
-	///
-	/// # Parameters
-	/// * `parent` - The parent command transaction to derive from
-	/// * `version` - The CDC event version for snapshot isolation (NOT parent.version())
-	/// * `catalog` - The catalog for metadata access
-	#[instrument(name = "flow::transaction::new", level = "debug", skip(parent, catalog, interceptors), fields(version = version.0))]
-	pub fn new(
+	/// Used by the async worker path. Reads only from committed storage +
+	/// flow-generated pending writes — no base pending from a parent transaction.
+	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(parent, catalog, interceptors), fields(version = version.0))]
+	pub fn deferred(
 		parent: &AdminTransaction,
 		version: CommitVersion,
 		catalog: Catalog,
@@ -202,9 +143,9 @@ impl FlowTransaction {
 		primitive_query.read_as_of_version_inclusive(version);
 
 		let state_query = parent.multi.begin_query().unwrap();
-		Self {
+		Self::Deferred {
 			version,
-			pending: PendingWrites::new(),
+			pending: Pending::new(),
 			primitive_query,
 			state_query,
 			catalog,
@@ -212,192 +153,263 @@ impl FlowTransaction {
 		}
 	}
 
+	/// Create a deferred (CDC) FlowTransaction from pre-built parts.
+	///
+	/// Used by the worker actor which creates its own query transactions.
+	pub fn deferred_from_parts(
+		version: CommitVersion,
+		pending: Pending,
+		primitive_query: MultiReadTransaction,
+		state_query: MultiReadTransaction,
+		catalog: Catalog,
+		interceptors: Interceptors,
+	) -> Self {
+		Self::Deferred {
+			version,
+			pending,
+			primitive_query,
+			state_query,
+			catalog,
+			interceptors,
+		}
+	}
+
+	/// Create a transactional (inline) FlowTransaction.
+	///
+	/// Used by the pre-commit interceptor path. `base_pending` is a read-only
+	/// snapshot of the committing transaction's KV writes so that flow operators
+	/// can see uncommitted row data.
+	pub fn transactional(
+		version: CommitVersion,
+		pending: Pending,
+		base_pending: Pending,
+		primitive_query: MultiReadTransaction,
+		state_query: MultiReadTransaction,
+		catalog: Catalog,
+		interceptors: Interceptors,
+	) -> Self {
+		Self::Transactional {
+			version,
+			pending,
+			base_pending,
+			primitive_query,
+			state_query,
+			catalog,
+			interceptors,
+		}
+	}
+
+	/// Get the transaction version.
+	pub fn version(&self) -> CommitVersion {
+		match self {
+			Self::Deferred {
+				version,
+				..
+			} => *version,
+			Self::Transactional {
+				version,
+				..
+			} => *version,
+		}
+	}
+
+	/// Extract pending writes, replacing them with an empty buffer.
+	pub fn take_pending(&mut self) -> Pending {
+		match self {
+			Self::Deferred {
+				pending,
+				..
+			} => std::mem::take(pending),
+			Self::Transactional {
+				pending,
+				..
+			} => std::mem::take(pending),
+		}
+	}
+
+	/// Get a reference to the pending writes.
+	#[cfg(test)]
+	pub fn pending(&self) -> &Pending {
+		match self {
+			Self::Deferred {
+				pending,
+				..
+			} => pending,
+			Self::Transactional {
+				pending,
+				..
+			} => pending,
+		}
+	}
+
+	/// Drain all generated view changes, returning them.
+	pub fn take_view_changes(&mut self) -> pending::ViewChanges {
+		match self {
+			Self::Deferred {
+				pending,
+				..
+			} => pending.take_view_changes(),
+			Self::Transactional {
+				pending,
+				..
+			} => pending.take_view_changes(),
+		}
+	}
+
+	/// Append a view change (used by `SinkViewOperator`).
+	pub fn push_view_change(&mut self, change: reifydb_core::interface::change::Change) {
+		match self {
+			Self::Deferred {
+				pending,
+				..
+			} => pending.push_view_change(change),
+			Self::Transactional {
+				pending,
+				..
+			} => pending.push_view_change(change),
+		}
+	}
+
 	/// Update the transaction to read at a new version
 	pub fn update_version(&mut self, new_version: CommitVersion) {
-		self.version = new_version;
-		self.primitive_query.read_as_of_version_inclusive(new_version);
+		match self {
+			Self::Deferred {
+				version,
+				primitive_query,
+				..
+			} => {
+				*version = new_version;
+				primitive_query.read_as_of_version_inclusive(new_version);
+			}
+			Self::Transactional {
+				version,
+				primitive_query,
+				..
+			} => {
+				*version = new_version;
+				primitive_query.read_as_of_version_inclusive(new_version);
+			}
+		}
 	}
 
 	/// Get access to the catalog for reading metadata
 	pub(crate) fn catalog(&self) -> &Catalog {
-		&self.catalog
+		match self {
+			Self::Deferred {
+				catalog,
+				..
+			} => catalog,
+			Self::Transactional {
+				catalog,
+				..
+			} => catalog,
+		}
 	}
 }
 
+macro_rules! interceptor_method {
+	($method:ident, $field:ident, $trait_name:ident) => {
+		fn $method(&mut self) -> &mut Chain<dyn $trait_name + Send + Sync> {
+			match self {
+				Self::Deferred {
+					interceptors,
+					..
+				} => &mut interceptors.$field,
+				Self::Transactional {
+					interceptors,
+					..
+				} => &mut interceptors.$field,
+			}
+		}
+	};
+}
+
 impl WithInterceptors for FlowTransaction {
-	fn table_pre_insert_interceptors(&mut self) -> &mut Chain<dyn TablePreInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.table_pre_insert
-	}
+	interceptor_method!(table_pre_insert_interceptors, table_pre_insert, TablePreInsertInterceptor);
+	interceptor_method!(table_post_insert_interceptors, table_post_insert, TablePostInsertInterceptor);
+	interceptor_method!(table_pre_update_interceptors, table_pre_update, TablePreUpdateInterceptor);
+	interceptor_method!(table_post_update_interceptors, table_post_update, TablePostUpdateInterceptor);
+	interceptor_method!(table_pre_delete_interceptors, table_pre_delete, TablePreDeleteInterceptor);
+	interceptor_method!(table_post_delete_interceptors, table_post_delete, TablePostDeleteInterceptor);
 
-	fn table_post_insert_interceptors(&mut self) -> &mut Chain<dyn TablePostInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.table_post_insert
-	}
+	interceptor_method!(ringbuffer_pre_insert_interceptors, ringbuffer_pre_insert, RingBufferPreInsertInterceptor);
+	interceptor_method!(
+		ringbuffer_post_insert_interceptors,
+		ringbuffer_post_insert,
+		RingBufferPostInsertInterceptor
+	);
+	interceptor_method!(ringbuffer_pre_update_interceptors, ringbuffer_pre_update, RingBufferPreUpdateInterceptor);
+	interceptor_method!(
+		ringbuffer_post_update_interceptors,
+		ringbuffer_post_update,
+		RingBufferPostUpdateInterceptor
+	);
+	interceptor_method!(ringbuffer_pre_delete_interceptors, ringbuffer_pre_delete, RingBufferPreDeleteInterceptor);
+	interceptor_method!(
+		ringbuffer_post_delete_interceptors,
+		ringbuffer_post_delete,
+		RingBufferPostDeleteInterceptor
+	);
 
-	fn table_pre_update_interceptors(&mut self) -> &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.table_pre_update
-	}
+	interceptor_method!(pre_commit_interceptors, pre_commit, PreCommitInterceptor);
+	interceptor_method!(post_commit_interceptors, post_commit, PostCommitInterceptor);
 
-	fn table_post_update_interceptors(&mut self) -> &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.table_post_update
-	}
+	interceptor_method!(
+		namespace_def_post_create_interceptors,
+		namespace_def_post_create,
+		NamespaceDefPostCreateInterceptor
+	);
+	interceptor_method!(
+		namespace_def_pre_update_interceptors,
+		namespace_def_pre_update,
+		NamespaceDefPreUpdateInterceptor
+	);
+	interceptor_method!(
+		namespace_def_post_update_interceptors,
+		namespace_def_post_update,
+		NamespaceDefPostUpdateInterceptor
+	);
+	interceptor_method!(
+		namespace_def_pre_delete_interceptors,
+		namespace_def_pre_delete,
+		NamespaceDefPreDeleteInterceptor
+	);
 
-	fn table_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.table_pre_delete
-	}
+	interceptor_method!(table_def_post_create_interceptors, table_def_post_create, TableDefPostCreateInterceptor);
+	interceptor_method!(table_def_pre_update_interceptors, table_def_pre_update, TableDefPreUpdateInterceptor);
+	interceptor_method!(table_def_post_update_interceptors, table_def_post_update, TableDefPostUpdateInterceptor);
+	interceptor_method!(table_def_pre_delete_interceptors, table_def_pre_delete, TableDefPreDeleteInterceptor);
 
-	fn table_post_delete_interceptors(&mut self) -> &mut Chain<dyn TablePostDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.table_post_delete
-	}
+	interceptor_method!(view_pre_insert_interceptors, view_pre_insert, ViewPreInsertInterceptor);
+	interceptor_method!(view_post_insert_interceptors, view_post_insert, ViewPostInsertInterceptor);
+	interceptor_method!(view_pre_update_interceptors, view_pre_update, ViewPreUpdateInterceptor);
+	interceptor_method!(view_post_update_interceptors, view_post_update, ViewPostUpdateInterceptor);
+	interceptor_method!(view_pre_delete_interceptors, view_pre_delete, ViewPreDeleteInterceptor);
+	interceptor_method!(view_post_delete_interceptors, view_post_delete, ViewPostDeleteInterceptor);
 
-	fn ringbuffer_pre_insert_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferPreInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_pre_insert
-	}
+	interceptor_method!(view_def_post_create_interceptors, view_def_post_create, ViewDefPostCreateInterceptor);
+	interceptor_method!(view_def_pre_update_interceptors, view_def_pre_update, ViewDefPreUpdateInterceptor);
+	interceptor_method!(view_def_post_update_interceptors, view_def_post_update, ViewDefPostUpdateInterceptor);
+	interceptor_method!(view_def_pre_delete_interceptors, view_def_pre_delete, ViewDefPreDeleteInterceptor);
 
-	fn ringbuffer_post_insert_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferPostInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_post_insert
-	}
-
-	fn ringbuffer_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_pre_update
-	}
-
-	fn ringbuffer_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_post_update
-	}
-
-	fn ringbuffer_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_pre_delete
-	}
-
-	fn ringbuffer_post_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferPostDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_post_delete
-	}
-
-	fn pre_commit_interceptors(&mut self) -> &mut Chain<dyn PreCommitInterceptor + Send + Sync> {
-		&mut self.interceptors.pre_commit
-	}
-
-	fn post_commit_interceptors(&mut self) -> &mut Chain<dyn PostCommitInterceptor + Send + Sync> {
-		&mut self.interceptors.post_commit
-	}
-
-	fn namespace_def_post_create_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPostCreateInterceptor + Send + Sync> {
-		&mut self.interceptors.namespace_def_post_create
-	}
-
-	fn namespace_def_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.namespace_def_pre_update
-	}
-
-	fn namespace_def_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.namespace_def_post_update
-	}
-
-	fn namespace_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.namespace_def_pre_delete
-	}
-
-	fn table_def_post_create_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn TableDefPostCreateInterceptor + Send + Sync> {
-		&mut self.interceptors.table_def_post_create
-	}
-
-	fn table_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn TableDefPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.table_def_pre_update
-	}
-
-	fn table_def_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn TableDefPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.table_def_post_update
-	}
-
-	fn table_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TableDefPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.table_def_pre_delete
-	}
-
-	fn view_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPreInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.view_pre_insert
-	}
-
-	fn view_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPostInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.view_post_insert
-	}
-
-	fn view_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.view_pre_update
-	}
-
-	fn view_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.view_post_update
-	}
-
-	fn view_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.view_pre_delete
-	}
-
-	fn view_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPostDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.view_post_delete
-	}
-
-	fn view_def_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostCreateInterceptor + Send + Sync> {
-		&mut self.interceptors.view_def_post_create
-	}
-
-	fn view_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewDefPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.view_def_pre_update
-	}
-
-	fn view_def_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.view_def_post_update
-	}
-
-	fn view_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewDefPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.view_def_pre_delete
-	}
-
-	fn ringbuffer_def_post_create_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPostCreateInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_def_post_create
-	}
-
-	fn ringbuffer_def_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_def_pre_update
-	}
-
-	fn ringbuffer_def_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_def_post_update
-	}
-
-	fn ringbuffer_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_def_pre_delete
-	}
+	interceptor_method!(
+		ringbuffer_def_post_create_interceptors,
+		ringbuffer_def_post_create,
+		RingBufferDefPostCreateInterceptor
+	);
+	interceptor_method!(
+		ringbuffer_def_pre_update_interceptors,
+		ringbuffer_def_pre_update,
+		RingBufferDefPreUpdateInterceptor
+	);
+	interceptor_method!(
+		ringbuffer_def_post_update_interceptors,
+		ringbuffer_def_post_update,
+		RingBufferDefPostUpdateInterceptor
+	);
+	interceptor_method!(
+		ringbuffer_def_pre_delete_interceptors,
+		ringbuffer_def_pre_delete,
+		RingBufferDefPreDeleteInterceptor
+	);
 }

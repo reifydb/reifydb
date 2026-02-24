@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{
+	common::CommitVersion,
+	encoded::{encoded::EncodedValues, key::EncodedKey},
+	interface::change::Change,
+};
 
 use crate::{
 	TransactionId,
@@ -13,12 +17,38 @@ use crate::{
 // PRE COMMIT
 // ============================================================================
 
-/// Context for pre-commit interceptors
-pub struct PreCommitContext {}
+/// Context for pre-commit interceptors.
+///
+/// `flow_changes` carries the table-level changes accumulated during the transaction
+/// (input for transactional flow interceptors).
+/// `pending_writes` is populated by interceptors with view writes to be merged
+/// back into the transaction before it commits.
+pub struct PreCommitContext {
+	/// Table changes accumulated during this transaction (input to flow interceptors).
+	pub flow_changes: Vec<Change>,
+	/// View writes produced by flow interceptors to merge back into the transaction.
+	/// `Some(value)` = set the key, `None` = remove the key.
+	pub pending_writes: Vec<(EncodedKey, Option<EncodedValues>)>,
+	/// Snapshot of the committing transaction's pending KV writes (read-only base for flow processing).
+	/// `Some(value)` = set the key, `None` = remove the key.
+	pub transaction_writes: Vec<(EncodedKey, Option<EncodedValues>)>,
+}
 
 impl PreCommitContext {
 	pub fn new() -> Self {
-		Self {}
+		Self {
+			flow_changes: Vec::new(),
+			pending_writes: Vec::new(),
+			transaction_writes: Vec::new(),
+		}
+	}
+
+	pub fn new_with_flow_changes(flow_changes: Vec<Change>) -> Self {
+		Self {
+			flow_changes,
+			pending_writes: Vec::new(),
+			transaction_writes: Vec::new(),
+		}
 	}
 }
 
@@ -33,9 +63,9 @@ pub trait PreCommitInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn PreCommitInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: PreCommitContext) -> reifydb_type::Result<()> {
+	pub fn execute(&self, ctx: &mut PreCommitContext) -> reifydb_type::Result<()> {
 		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx)?;
+			interceptor.intercept(ctx)?;
 		}
 		Ok(())
 	}

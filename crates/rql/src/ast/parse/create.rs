@@ -78,6 +78,11 @@ impl<'bump> Parser<'bump> {
 			return self.parse_namespace(token);
 		}
 
+		// CREATE VIEW (transactional — synchronous inline execution)
+		if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
+			return self.parse_transactional_view(token);
+		}
+
 		if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 				return self.parse_deferred_view(token);

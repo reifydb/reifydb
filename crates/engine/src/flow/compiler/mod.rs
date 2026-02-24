@@ -33,8 +33,8 @@ use crate::flow::compiler::{
 		sort::SortCompiler, take::TakeCompiler, window::WindowCompiler,
 	},
 	primitive::{
-		flow_scan::FlowScanCompiler, inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
-		view_scan::ViewScanCompiler,
+		flow_scan::FlowScanCompiler, inline_data::InlineDataCompiler, ringbuffer_scan::RingBufferScanCompiler,
+		table_scan::TableScanCompiler, view_scan::ViewScanCompiler,
 	},
 };
 
@@ -223,10 +223,7 @@ impl FlowCompiler {
 				// TODO: Implement VirtualScanCompiler
 				unimplemented!("VirtualScan compilation not yet implemented")
 			}
-			QueryPlan::RingBufferScan(_scan) => {
-				// TODO: Implement RingBufferScanCompiler for flow
-				unimplemented!("RingBufferScan compilation not yet implemented for flow")
-			}
+			QueryPlan::RingBufferScan(scan) => RingBufferScanCompiler::from(scan).compile(self, txn),
 			QueryPlan::Generator(_generator) => {
 				// TODO: Implement GeneratorCompiler for flow
 				unimplemented!("Generator compilation not yet implemented for flow")

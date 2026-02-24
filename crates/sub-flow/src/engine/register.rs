@@ -7,6 +7,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
 		primitive::PrimitiveId,
+		view::ViewKind,
 	},
 	internal,
 };
@@ -15,8 +16,9 @@ use reifydb_rql::flow::{
 	node::{
 		FlowNode,
 		FlowNodeType::{
-			Aggregate, Append, Apply, Distinct, Extend, Filter, Join, Map, SinkSubscription, SinkView,
-			Sort, SourceFlow, SourceInlineData, SourceRingBuffer, SourceTable, SourceView, Take, Window,
+			self, Aggregate, Append, Apply, Distinct, Extend, Filter, Join, Map, SinkSubscription,
+			SinkView, Sort, SourceFlow, SourceInlineData, SourceRingBuffer, SourceTable, SourceView, Take,
+			Window,
 		},
 	},
 };
@@ -36,7 +38,10 @@ use crate::{
 		filter::FilterOperator,
 		join::operator::JoinOperator,
 		map::MapOperator,
-		scan::{flow::PrimitiveFlowOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator},
+		scan::{
+			flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
+			table::PrimitiveTableOperator, view::PrimitiveViewOperator,
+		},
 		sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator},
 		sort::SortOperator,
 		take::TakeOperator,
@@ -87,6 +92,57 @@ impl FlowEngine {
 			} => {
 				let view = self.catalog.get_view(&mut Transaction::Command(&mut *txn), view)?;
 				self.add_source(flow.id, node.id, PrimitiveId::view(view.id));
+
+				// For transactional views, also register the underlying table/ringbuffer
+				// sources so the deferred coordinator routes changes correctly. A transactional
+				// view is computed on-the-fly; its changes are never published to CDC. By
+				// registering the view's upstream primitives, the deferred flow is triggered
+				// when the underlying data changes.
+				if view.kind == ViewKind::Transactional {
+					let mut additional_sources = Vec::new();
+					if let Some(view_flow) = self.catalog.find_flow_by_name(
+						&mut Transaction::Command(&mut *txn),
+						view.namespace,
+						&view.name,
+					)? {
+						let flow_nodes = self.catalog.list_flow_nodes_by_flow(
+							&mut Transaction::Command(&mut *txn),
+							view_flow.id,
+						)?;
+						for flow_node in &flow_nodes {
+							// SourceTable = 1, SourceRingBuffer = 17
+							if flow_node.node_type == 1 || flow_node.node_type == 17 {
+								if let Ok(nt) = postcard::from_bytes::<FlowNodeType>(
+									&flow_node.data,
+								) {
+									match nt {
+										SourceTable {
+											table: t,
+										} => {
+											additional_sources.push(
+												PrimitiveId::table(t),
+											);
+										}
+										SourceRingBuffer {
+											ringbuffer: rb,
+										} => {
+											additional_sources.push(
+												PrimitiveId::ringbuffer(
+													rb,
+												),
+											);
+										}
+										_ => {}
+									}
+								}
+							}
+						}
+					}
+					for source in additional_sources {
+						self.add_source(flow.id, node.id, source);
+					}
+				}
+
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))),
@@ -107,9 +163,18 @@ impl FlowEngine {
 				);
 			}
 			SourceRingBuffer {
-				..
+				ringbuffer,
 			} => {
-				unimplemented!("SourceRingBuffer operator registration not yet implemented")
+				let rb = self
+					.catalog
+					.get_ringbuffer(&mut Transaction::Command(&mut *txn), ringbuffer)?;
+				self.add_source(flow.id, node.id, PrimitiveId::ringbuffer(rb.id));
+				self.operators.insert(
+					node.id,
+					Arc::new(Operators::SourceRingBuffer(PrimitiveRingBufferOperator::new(
+						node.id, rb,
+					))),
+				);
 			}
 			SinkView {
 				view,

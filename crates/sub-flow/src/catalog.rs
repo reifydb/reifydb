@@ -6,7 +6,7 @@
 //! Caches source metadata (columns, types, dictionaries) to avoid redundant catalog lookups
 //! during CDC processing. The cache is invalidated when schema changes are observed via CDC.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::flow::FlowId;
@@ -17,14 +17,15 @@ use reifydb_type::Result;
 
 pub struct FlowCatalog {
 	catalog: Catalog,
-	flows: RwLock<HashMap<FlowId, FlowDag>>,
+	/// Shared across all clones so the dispatcher and coordinator see the same cache.
+	flows: Arc<RwLock<HashMap<FlowId, FlowDag>>>,
 }
 
 impl FlowCatalog {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
 			catalog,
-			flows: RwLock::new(HashMap::new()),
+			flows: Arc::new(RwLock::new(HashMap::new())),
 		}
 	}
 
@@ -49,6 +50,11 @@ impl FlowCatalog {
 		Ok((cached_flow, is_new))
 	}
 
+	/// Remove a flow from the cache so it can be rediscovered as new.
+	pub fn remove(&self, flow_id: FlowId) {
+		self.flows.write().remove(&flow_id);
+	}
+
 	/// Get all registered flow IDs
 	pub fn get_flow_ids(&self) -> Vec<FlowId> {
 		self.flows.read().keys().copied().collect()
@@ -59,7 +65,7 @@ impl Clone for FlowCatalog {
 	fn clone(&self) -> Self {
 		Self {
 			catalog: self.catalog.clone(),
-			flows: RwLock::new(HashMap::new()),
+			flows: self.flows.clone(),
 		}
 	}
 }

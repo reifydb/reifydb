@@ -7,7 +7,10 @@ use reifydb_core::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},
-	interface::store::{MultiVersionBatch, MultiVersionValues},
+	interface::{
+		change::Change,
+		store::{MultiVersionBatch, MultiVersionValues},
+	},
 };
 use reifydb_type::Result;
 
@@ -268,6 +271,15 @@ impl<'a> Transaction<'a> {
 		match self {
 			Transaction::Command(txn) => txn.track_row_change(change),
 			Transaction::Admin(txn) => txn.track_row_change(change),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+		}
+	}
+
+	/// Track a flow change for transactional view pre-commit processing. Panics on Query transactions.
+	pub fn track_flow_change(&mut self, change: Change) {
+		match self {
+			Transaction::Command(txn) => txn.track_flow_change(change),
+			Transaction::Admin(txn) => txn.track_flow_change(change),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}

@@ -40,13 +40,15 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, error::Error};
 use tracing::{Span, debug, info, instrument};
 
-use crate::{
-	catalog::FlowCatalog,
+use super::{
 	instruction::{FlowInstruction, WorkerBatch},
 	pool::{PoolMsg, PoolResponse},
 	state::FlowStates,
 	tracker::PrimitiveVersionTracker,
-	transaction::pending::{Pending, PendingWrites},
+};
+use crate::{
+	catalog::FlowCatalog,
+	transaction::pending::{Pending, PendingWrite},
 };
 
 pub(crate) struct FlowConsumeRef {
@@ -97,7 +99,7 @@ pub enum CoordinatorMsg {
 struct ConsumeContext {
 	state_version: CommitVersion,
 	current_version: CommitVersion,
-	combined_pending: PendingWrites,
+	combined: Pending,
 	checkpoints: Vec<(FlowId, CommitVersion)>,
 	consumer_key: EncodedKey,
 	original_reply: Box<dyn FnOnce(Result<()>) + Send>,
@@ -269,7 +271,7 @@ impl CoordinatorActor {
 		let consume_ctx = ConsumeContext {
 			state_version,
 			current_version,
-			combined_pending: PendingWrites::new(),
+			combined: Pending::new(),
 			checkpoints: Vec::new(),
 			consumer_key,
 			original_reply: reply,
@@ -294,6 +296,18 @@ impl CoordinatorActor {
 					Ok((flow, is_new)) => {
 						if is_new {
 							new_flows.push(flow);
+						} else {
+							// Flow was already cached (e.g. by the dispatcher for
+							// transactional views). Add it to the analyzer so the
+							// dependency graph includes its source/sink info — this
+							// lets filter_cdc_for_flow resolve transitive dependencies
+							// through transactional views.
+							state.analyzer.add(flow);
+							// Remove from FlowCatalog so the lag provider doesn't
+							// include this non-deferred flow in its calculations.
+							// Transactional flows have no CDC checkpoint and would
+							// report perpetual lag, blocking `await` indefinitely.
+							self.catalog.remove(flow_id);
 						}
 					}
 					Err(e) => {
@@ -361,7 +375,10 @@ impl CoordinatorActor {
 			} => {
 				// Check if registration succeeded
 				match response {
-					PoolResponse::RegisterSuccess | PoolResponse::Success(_) => {}
+					PoolResponse::RegisterSuccess
+					| PoolResponse::Success {
+						..
+					} => {}
 					PoolResponse::Error(e) => {
 						(consume_ctx.original_reply)(coordinator_error(e));
 						return;
@@ -417,8 +434,10 @@ impl CoordinatorActor {
 				ctx: mut consume_ctx,
 			} => {
 				match response {
-					PoolResponse::Success(pending) => {
-						consume_ctx.combined_pending = pending;
+					PoolResponse::Success {
+						pending,
+					} => {
+						consume_ctx.combined = pending;
 					}
 					PoolResponse::RegisterSuccess => {
 						// unexpected but not an error
@@ -445,18 +464,19 @@ impl CoordinatorActor {
 			} => {
 				// Collect result from previous backfill worker submission
 				match response {
-					PoolResponse::Success(pending) => {
+					PoolResponse::Success {
+						mut pending,
+					} => {
+						consume_ctx.combined.extend_view_changes(pending.take_view_changes());
 						for (key, value) in pending.iter_sorted() {
 							match value {
-								Pending::Set(v) => {
+								PendingWrite::Set(v) => {
 									consume_ctx
-										.combined_pending
+										.combined
 										.insert(key.clone(), v.clone());
 								}
-								Pending::Remove => {
-									consume_ctx
-										.combined_pending
-										.remove(key.clone());
+								PendingWrite::Remove => {
+									consume_ctx.combined.remove(key.clone());
 								}
 							}
 						}
@@ -686,7 +706,7 @@ impl CoordinatorActor {
 	}
 
 	/// Complete the consume operation: commit writes and checkpoints directly.
-	fn finish_consume(&self, state: &mut CoordinatorState, consume_ctx: ConsumeContext) {
+	fn finish_consume(&self, state: &mut CoordinatorState, mut consume_ctx: ConsumeContext) {
 		Span::current().record("elapsed_us", consume_ctx.consume_start.elapsed().as_micros() as u64);
 
 		state.phase = Phase::Idle;
@@ -700,11 +720,11 @@ impl CoordinatorActor {
 			}
 		};
 
-		// Apply PendingWrites directly to the transaction
-		for (key, pending) in consume_ctx.combined_pending.iter_sorted() {
-			let result = match pending {
-				Pending::Set(value) => transaction.set(key, value.clone()),
-				Pending::Remove => transaction.remove(key),
+		// Apply pending writes directly to the transaction
+		for (key, pw) in consume_ctx.combined.iter_sorted() {
+			let result = match pw {
+				PendingWrite::Set(value) => transaction.set(key, value.clone()),
+				PendingWrite::Remove => transaction.remove(key),
 			};
 			if let Err(e) = result {
 				let _ = transaction.rollback();
@@ -731,6 +751,12 @@ impl CoordinatorActor {
 				(consume_ctx.original_reply)(coordinator_error(e));
 				return;
 			}
+		}
+
+		// Track view changes so that transactional flows sourcing those views
+		// are triggered by the TransactionalFlowPreCommitInterceptor in the same commit.
+		for change in consume_ctx.combined.take_view_changes() {
+			transaction.track_flow_change(change);
 		}
 
 		// Commit the transaction
@@ -763,9 +789,36 @@ impl CoordinatorActor {
 		}
 
 		// Add view sources
+		let mut view_sources = Vec::new();
 		for (view_id, flow_ids) in &dependency_graph.source_views {
 			if flow_ids.contains(&flow_id) {
 				flow_sources.insert(PrimitiveId::View(*view_id));
+				view_sources.push(*view_id);
+			}
+		}
+
+		// Add ringbuffer sources
+		for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
+			if flow_ids.contains(&flow_id) {
+				flow_sources.insert(PrimitiveId::RingBuffer(*rb_id));
+			}
+		}
+
+		// Resolve transitive dependencies through views: if this flow depends on
+		// a view that is produced by another flow (e.g. a transactional view),
+		// also consider that producer flow's primitive sources as triggers.
+		for view_id in view_sources {
+			if let Some(producer_flow_id) = dependency_graph.sink_views.get(&view_id) {
+				for (table_id, flow_ids) in &dependency_graph.source_tables {
+					if flow_ids.contains(producer_flow_id) {
+						flow_sources.insert(PrimitiveId::Table(*table_id));
+					}
+				}
+				for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
+					if flow_ids.contains(producer_flow_id) {
+						flow_sources.insert(PrimitiveId::RingBuffer(*rb_id));
+					}
+				}
 			}
 		}
 

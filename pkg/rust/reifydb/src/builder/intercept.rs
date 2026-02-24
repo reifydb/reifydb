@@ -22,7 +22,7 @@
 use std::sync::Arc;
 
 use reifydb_transaction::interceptor::{
-	builder::StandardInterceptorBuilder,
+	builder::InterceptorBuilder,
 	filter::InterceptFilter,
 	filtered::{
 		FilteredNamespaceDefPostCreateInterceptor, FilteredNamespaceDefPostUpdateInterceptor,
@@ -76,7 +76,7 @@ use reifydb_transaction::interceptor::{
 /// Trait for builders that support interceptor registration.
 pub trait WithInterceptorBuilder: Sized {
 	/// Get mutable access to the interceptor builder.
-	fn interceptor_builder_mut(&mut self) -> &mut StandardInterceptorBuilder;
+	fn interceptor_builder_mut(&mut self) -> &mut InterceptorBuilder;
 
 	/// Start building interceptors.
 	fn intercept(self) -> InterceptBuilder<Self> {

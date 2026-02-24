@@ -28,7 +28,7 @@ use reifydb_type::{
 
 use super::primary_key;
 use crate::{
-	transaction::operation::dictionary::DictionaryOperations,
+	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
 		instruction::dml::coerce::coerce_value_to_column_type,
 		services::Services,
@@ -189,7 +189,7 @@ pub(crate) fn update_table<'a>(
 					)?;
 				}
 
-				txn.set(&row_key, row)?;
+				txn.update_table(table.clone(), row_number, row)?;
 
 				updated_count += 1;
 			}

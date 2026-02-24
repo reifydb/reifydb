@@ -177,7 +177,8 @@ pub mod tests {
 	#[test]
 	fn test_first_row_number() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("first");
@@ -190,7 +191,8 @@ pub mod tests {
 	#[test]
 	fn test_duplicate_key_same_row_number() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("duplicate");
@@ -212,7 +214,8 @@ pub mod tests {
 	#[test]
 	fn test_sequential_row_numbers() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create multiple unique keys
@@ -228,7 +231,8 @@ pub mod tests {
 	#[test]
 	fn test_mixed_new_and_existing() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create some keys
@@ -265,7 +269,8 @@ pub mod tests {
 	#[test]
 	fn test_multiple_providers_isolated() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let provider1 = RowNumberProvider::new(FlowNodeId(1));
 		let provider2 = RowNumberProvider::new(FlowNodeId(2));
 
@@ -291,7 +296,8 @@ pub mod tests {
 	#[test]
 	fn test_counter_persistence() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create some encoded numbers
@@ -313,7 +319,8 @@ pub mod tests {
 	#[test]
 	fn test_large_row_numbers() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create many encoded numbers
@@ -340,7 +347,8 @@ pub mod tests {
 	#[test]
 	fn test_mixed_existing_and_new_keys() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create 3 initial keys to establish existing row numbers

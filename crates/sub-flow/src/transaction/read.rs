@@ -16,48 +16,127 @@ use reifydb_core::{
 	key::{Key, kind::KeyKind},
 };
 
-use super::{FlowTransaction, Pending};
+use super::{FlowTransaction, PendingWrite};
 
 impl FlowTransaction {
-	/// Get a value by key, checking pending writes first, then querying multi-version store
+	/// Get a value by key, checking pending writes first, then (if transactional) base_pending, then querying
+	/// multi-version store
 	pub fn get(&mut self, key: &EncodedKey) -> reifydb_type::Result<Option<EncodedValues>> {
-		if self.pending.is_removed(key) {
-			return Ok(None);
-		}
+		match self {
+			Self::Deferred {
+				pending,
+				primitive_query,
+				state_query,
+				..
+			} => {
+				// 1. Check flow-generated pending writes
+				if pending.is_removed(key) {
+					return Ok(None);
+				}
+				if let Some(value) = pending.get(key) {
+					return Ok(Some(value.clone()));
+				}
 
-		if let Some(value) = self.pending.get(key) {
-			return Ok(Some(value.clone()));
-		}
+				// 2. Fall through to committed storage
+				let query = if Self::is_flow_state_key(key) {
+					state_query
+				} else {
+					primitive_query
+				};
+				match query.get(key)? {
+					Some(multi) => Ok(Some(multi.values().clone())),
+					None => Ok(None),
+				}
+			}
+			Self::Transactional {
+				pending,
+				base_pending,
+				primitive_query,
+				state_query,
+				..
+			} => {
+				// 1. Check flow-generated pending writes
+				if pending.is_removed(key) {
+					return Ok(None);
+				}
+				if let Some(value) = pending.get(key) {
+					return Ok(Some(value.clone()));
+				}
 
-		let query = if Self::is_flow_state_key(key) {
-			&mut self.state_query
-		} else {
-			&mut self.primitive_query
-		};
+				// 2. Check transaction's base writes (uncommitted row data)
+				if base_pending.is_removed(key) {
+					return Ok(None);
+				}
+				if let Some(value) = base_pending.get(key) {
+					return Ok(Some(value.clone()));
+				}
 
-		match query.get(key)? {
-			Some(multi) => Ok(Some(multi.values().clone())),
-			None => Ok(None),
+				// 3. Fall through to committed storage
+				let query = if Self::is_flow_state_key(key) {
+					state_query
+				} else {
+					primitive_query
+				};
+				match query.get(key)? {
+					Some(multi) => Ok(Some(multi.values().clone())),
+					None => Ok(None),
+				}
+			}
 		}
 	}
 
 	/// Check if a key exists
 	pub fn contains_key(&mut self, key: &EncodedKey) -> reifydb_type::Result<bool> {
-		if self.pending.is_removed(key) {
-			return Ok(false);
+		match self {
+			Self::Deferred {
+				pending,
+				primitive_query,
+				state_query,
+				..
+			} => {
+				if pending.is_removed(key) {
+					return Ok(false);
+				}
+				if pending.get(key).is_some() {
+					return Ok(true);
+				}
+
+				let query = if Self::is_flow_state_key(key) {
+					state_query
+				} else {
+					primitive_query
+				};
+				query.contains_key(key)
+			}
+			Self::Transactional {
+				pending,
+				base_pending,
+				primitive_query,
+				state_query,
+				..
+			} => {
+				if pending.is_removed(key) {
+					return Ok(false);
+				}
+				if pending.get(key).is_some() {
+					return Ok(true);
+				}
+
+				if base_pending.is_removed(key) {
+					return Ok(false);
+				}
+				if base_pending.get(key).is_some() {
+					return Ok(true);
+				}
+
+				let query = if Self::is_flow_state_key(key) {
+					state_query
+				} else {
+					primitive_query
+				};
+				query.contains_key(key)
+			}
 		}
-
-		if self.pending.get(key).is_some() {
-			return Ok(true);
-		}
-
-		let query = if Self::is_flow_state_key(key) {
-			&mut self.state_query
-		} else {
-			&mut self.primitive_query
-		};
-
-		query.contains_key(key)
 	}
 
 	/// Prefix scan
@@ -92,28 +171,69 @@ impl FlowTransaction {
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = reifydb_type::Result<MultiVersionValues>> + Send + '_> {
-		// Collect pending writes in range as owned data
-		let pending: Vec<(EncodedKey, Pending)> = self
-			.pending
-			.range((range.start.as_ref(), range.end.as_ref()))
-			.map(|(k, v)| (k.clone(), v.clone()))
-			.collect();
+		match self {
+			Self::Deferred {
+				pending,
+				version,
+				primitive_query,
+				state_query,
+				..
+			} => {
+				let merged: std::collections::BTreeMap<EncodedKey, PendingWrite> = pending
+					.range((range.start.as_ref(), range.end.as_ref()))
+					.map(|(k, v)| (k.clone(), v.clone()))
+					.collect();
+				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
-		let query = match range.start.as_ref() {
-			Included(start) | Excluded(start) => {
-				if Self::is_flow_state_key(start) {
-					&self.state_query
-				} else {
-					&self.primitive_query
-				}
+				let query = match range.start.as_ref() {
+					Included(start) | Excluded(start) => {
+						if Self::is_flow_state_key(start) {
+							&*state_query
+						} else {
+							&*primitive_query
+						}
+					}
+					Unbounded => &*primitive_query,
+				};
+
+				let storage_iter = query.range(range, batch_size);
+				let v = *version;
+				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 			}
-			Unbounded => &self.primitive_query,
-		};
+			Self::Transactional {
+				pending,
+				base_pending,
+				version,
+				primitive_query,
+				state_query,
+				..
+			} => {
+				// Collect base layer entries in range, then let flow pending shadow base for same keys
+				let mut merged: std::collections::BTreeMap<EncodedKey, PendingWrite> = base_pending
+					.range((range.start.as_ref(), range.end.as_ref()))
+					.map(|(k, v)| (k.clone(), v.clone()))
+					.collect();
+				for (k, v) in pending.range((range.start.as_ref(), range.end.as_ref())) {
+					merged.insert(k.clone(), v.clone());
+				}
+				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
-		let storage_iter = query.range(range, batch_size);
-		let version = self.version;
+				let query = match range.start.as_ref() {
+					Included(start) | Excluded(start) => {
+						if Self::is_flow_state_key(start) {
+							&*state_query
+						} else {
+							&*primitive_query
+						}
+					}
+					Unbounded => &*primitive_query,
+				};
 
-		Box::new(flow_merge_pending_iterator(pending, storage_iter, version))
+				let storage_iter = query.range(range, batch_size);
+				let v = *version;
+				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
+			}
+		}
 	}
 
 	/// Create an iterator for reverse range queries.
@@ -126,29 +246,68 @@ impl FlowTransaction {
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = reifydb_type::Result<MultiVersionValues>> + Send + '_> {
-		// Collect pending writes in range as owned data (reversed)
-		let pending: Vec<(EncodedKey, Pending)> = self
-			.pending
-			.range((range.start.as_ref(), range.end.as_ref()))
-			.rev()
-			.map(|(k, v)| (k.clone(), v.clone()))
-			.collect();
+		match self {
+			Self::Deferred {
+				pending,
+				version,
+				primitive_query,
+				state_query,
+				..
+			} => {
+				let merged: std::collections::BTreeMap<EncodedKey, PendingWrite> = pending
+					.range((range.start.as_ref(), range.end.as_ref()))
+					.map(|(k, v)| (k.clone(), v.clone()))
+					.collect();
+				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
-		let query = match range.start.as_ref() {
-			Included(start) | Excluded(start) => {
-				if Self::is_flow_state_key(start) {
-					&self.state_query
-				} else {
-					&self.primitive_query
-				}
+				let query = match range.start.as_ref() {
+					Included(start) | Excluded(start) => {
+						if Self::is_flow_state_key(start) {
+							&*state_query
+						} else {
+							&*primitive_query
+						}
+					}
+					Unbounded => &*primitive_query,
+				};
+
+				let storage_iter = query.range_rev(range, batch_size);
+				let v = *version;
+				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 			}
-			Unbounded => &self.primitive_query,
-		};
+			Self::Transactional {
+				pending,
+				base_pending,
+				version,
+				primitive_query,
+				state_query,
+				..
+			} => {
+				let mut merged: std::collections::BTreeMap<EncodedKey, PendingWrite> = base_pending
+					.range((range.start.as_ref(), range.end.as_ref()))
+					.map(|(k, v)| (k.clone(), v.clone()))
+					.collect();
+				for (k, v) in pending.range((range.start.as_ref(), range.end.as_ref())) {
+					merged.insert(k.clone(), v.clone());
+				}
+				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
-		let storage_iter = query.range_rev(range, batch_size);
-		let version = self.version;
+				let query = match range.start.as_ref() {
+					Included(start) | Excluded(start) => {
+						if Self::is_flow_state_key(start) {
+							&*state_query
+						} else {
+							&*primitive_query
+						}
+					}
+					Unbounded => &*primitive_query,
+				};
 
-		Box::new(flow_merge_pending_iterator_rev(pending, storage_iter, version))
+				let storage_iter = query.range_rev(range, batch_size);
+				let v = *version;
+				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
+			}
+		}
 	}
 }
 
@@ -158,7 +317,7 @@ where
 	I: Iterator<Item = reifydb_type::Result<MultiVersionValues>>,
 {
 	storage_iter: std::iter::Peekable<I>,
-	pending_iter: std::iter::Peekable<std::vec::IntoIter<(EncodedKey, Pending)>>,
+	pending_iter: std::iter::Peekable<std::vec::IntoIter<(EncodedKey, PendingWrite)>>,
 	version: CommitVersion,
 }
 
@@ -187,26 +346,26 @@ where
 					if matches!(cmp, Ordering::Less) {
 						// Pending key comes first
 						let (key, value) = self.pending_iter.next().unwrap();
-						if let Pending::Set(values) = value {
+						if let PendingWrite::Set(values) = value {
 							return Some(Ok(MultiVersionValues {
 								key,
 								values,
 								version: self.version,
 							}));
 						}
-						// Pending::Remove = skip (tombstone), continue loop
+						// PendingWrite::Remove = skip (tombstone), continue loop
 					} else if matches!(cmp, Ordering::Equal) {
 						// Same key - pending shadows storage
 						let (key, value) = self.pending_iter.next().unwrap();
 						self.storage_iter.next(); // Consume storage entry
-						if let Pending::Set(values) = value {
+						if let PendingWrite::Set(values) = value {
 							return Some(Ok(MultiVersionValues {
 								key,
 								values,
 								version: self.version,
 							}));
 						}
-						// Pending::Remove = skip (tombstone), continue loop
+						// PendingWrite::Remove = skip (tombstone), continue loop
 					} else {
 						// Storage key comes first
 						return Some(self.storage_iter.next().unwrap().map_err(|e| e.into()));
@@ -215,14 +374,14 @@ where
 				(Some(_), None) => {
 					// Only pending left
 					let (key, value) = self.pending_iter.next().unwrap();
-					if let Pending::Set(values) = value {
+					if let PendingWrite::Set(values) = value {
 						return Some(Ok(MultiVersionValues {
 							key,
 							values,
 							version: self.version,
 						}));
 					}
-					// Pending::Remove = skip (tombstone), continue loop
+					// PendingWrite::Remove = skip (tombstone), continue loop
 				}
 				(None, Some(_)) => {
 					// Only storage left
@@ -236,7 +395,7 @@ where
 
 /// Create an iterator that merges pending writes with storage data (forward order).
 fn flow_merge_pending_iterator<I>(
-	pending: Vec<(EncodedKey, Pending)>,
+	pending: Vec<(EncodedKey, PendingWrite)>,
 	storage_iter: I,
 	version: CommitVersion,
 ) -> FlowMergePendingIterator<I>
@@ -256,7 +415,7 @@ where
 	I: Iterator<Item = reifydb_type::Result<MultiVersionValues>>,
 {
 	storage_iter: std::iter::Peekable<I>,
-	pending_iter: std::iter::Peekable<std::vec::IntoIter<(EncodedKey, Pending)>>,
+	pending_iter: std::iter::Peekable<std::vec::IntoIter<(EncodedKey, PendingWrite)>>,
 	version: CommitVersion,
 }
 
@@ -285,26 +444,26 @@ where
 					if matches!(cmp, Ordering::Greater) {
 						// Reverse: Pending key is larger (comes first in reverse)
 						let (key, value) = self.pending_iter.next().unwrap();
-						if let Pending::Set(values) = value {
+						if let PendingWrite::Set(values) = value {
 							return Some(Ok(MultiVersionValues {
 								key,
 								values,
 								version: self.version,
 							}));
 						}
-						// Pending::Remove = skip (tombstone), continue loop
+						// PendingWrite::Remove = skip (tombstone), continue loop
 					} else if matches!(cmp, Ordering::Equal) {
 						// Same key - pending shadows storage
 						let (key, value) = self.pending_iter.next().unwrap();
 						self.storage_iter.next(); // Consume storage entry
-						if let Pending::Set(values) = value {
+						if let PendingWrite::Set(values) = value {
 							return Some(Ok(MultiVersionValues {
 								key,
 								values,
 								version: self.version,
 							}));
 						}
-						// Pending::Remove = skip (tombstone), continue loop
+						// PendingWrite::Remove = skip (tombstone), continue loop
 					} else {
 						// Storage key comes first in reverse order
 						return Some(self.storage_iter.next().unwrap().map_err(|e| e.into()));
@@ -313,14 +472,14 @@ where
 				(Some(_), None) => {
 					// Only pending left
 					let (key, value) = self.pending_iter.next().unwrap();
-					if let Pending::Set(values) = value {
+					if let PendingWrite::Set(values) = value {
 						return Some(Ok(MultiVersionValues {
 							key,
 							values,
 							version: self.version,
 						}));
 					}
-					// Pending::Remove = skip (tombstone), continue loop
+					// PendingWrite::Remove = skip (tombstone), continue loop
 				}
 				(None, Some(_)) => {
 					// Only storage left
@@ -334,7 +493,7 @@ where
 
 /// Create an iterator that merges pending writes with storage data (reverse order).
 fn flow_merge_pending_iterator_rev<I>(
-	pending: Vec<(EncodedKey, Pending)>,
+	pending: Vec<(EncodedKey, PendingWrite)>,
 	storage_iter: I,
 	version: CommitVersion,
 ) -> FlowMergePendingIteratorRev<I>
@@ -373,7 +532,8 @@ pub mod tests {
 	#[test]
 	fn test_get_from_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -404,7 +564,7 @@ pub mod tests {
 		let version = parent.version();
 
 		// Create FlowTransaction - should see committed value
-		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(&parent, version, Catalog::testing(), Interceptors::new());
 
 		// Should get value from query transaction
 		let result = txn.get(&key).unwrap();
@@ -419,7 +579,7 @@ pub mod tests {
 		parent.set(&key, make_value("old")).unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(&parent, version, Catalog::testing(), Interceptors::new());
 
 		// Override with new value in pending
 		let new_value = make_value("new");
@@ -438,7 +598,7 @@ pub mod tests {
 		parent.set(&key, make_value("value1")).unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(&parent, version, Catalog::testing(), Interceptors::new());
 
 		// Remove in pending
 		txn.remove(&key).unwrap();
@@ -451,7 +611,8 @@ pub mod tests {
 	#[test]
 	fn test_get_nonexistent_key() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let result = txn.get(&make_key("missing")).unwrap();
 		assert_eq!(result, None);
@@ -460,7 +621,8 @@ pub mod tests {
 	#[test]
 	fn test_contains_key_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -484,7 +646,7 @@ pub mod tests {
 		// Create new command transaction
 		let parent = engine.begin_admin().unwrap();
 		let version = parent.version();
-		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(&parent, version, Catalog::testing(), Interceptors::new());
 
 		assert!(txn.contains_key(&key).unwrap());
 	}
@@ -497,7 +659,7 @@ pub mod tests {
 		parent.set(&key, make_value("value1")).unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::new(&parent, version, Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(&parent, version, Catalog::testing(), Interceptors::new());
 		txn.remove(&key).unwrap();
 
 		assert!(!txn.contains_key(&key).unwrap());
@@ -506,7 +668,8 @@ pub mod tests {
 	#[test]
 	fn test_contains_key_nonexistent() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		assert!(!txn.contains_key(&make_key("missing")).unwrap());
 	}
@@ -514,7 +677,8 @@ pub mod tests {
 	#[test]
 	fn test_scan_empty() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let mut iter = txn.range(EncodedKeyRange::all(), 1024);
 		assert!(iter.next().is_none());
@@ -523,7 +687,8 @@ pub mod tests {
 	#[test]
 	fn test_scan_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("b"), make_value("2")).unwrap();
 		txn.set(&make_key("a"), make_value("1")).unwrap();
@@ -541,7 +706,8 @@ pub mod tests {
 	#[test]
 	fn test_scan_filters_removes() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.remove(&make_key("b")).unwrap();
@@ -558,7 +724,8 @@ pub mod tests {
 	#[test]
 	fn test_range_empty() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let range = EncodedKeyRange::start_end(Some(make_key("a")), Some(make_key("z")));
 		let mut iter = txn.range(range, 1024);
@@ -568,7 +735,8 @@ pub mod tests {
 	#[test]
 	fn test_range_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.set(&make_key("b"), make_value("2")).unwrap();
@@ -587,7 +755,8 @@ pub mod tests {
 	#[test]
 	fn test_prefix_empty() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let prefix = make_key("test_");
 		let iter = txn.prefix(&prefix).unwrap();
@@ -597,7 +766,8 @@ pub mod tests {
 	#[test]
 	fn test_prefix_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("test_a"), make_value("1")).unwrap();
 		txn.set(&make_key("test_b"), make_value("2")).unwrap();

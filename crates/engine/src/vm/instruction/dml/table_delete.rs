@@ -25,6 +25,7 @@ use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 use super::primary_key;
 use crate::{
 	error::EngineError,
+	transaction::operation::table::TableOperations,
 	vm::{
 		services::Services,
 		stack::SymbolTable,
@@ -155,8 +156,7 @@ pub(crate) fn delete<'a>(
 				)?;
 			}
 
-			// Now remove the row
-			txn.unset(&row_key, row_values)?;
+			txn.remove_from_table(table.clone(), row_number)?;
 			deleted_count += 1;
 		}
 	} else {
@@ -176,10 +176,7 @@ pub(crate) fn delete<'a>(
 			.collect::<Result<Vec<_>, _>>()?;
 
 		for multi in rows {
-			// Remove primary key index entry if table has
-			// one
 			if let Some(ref pk_def) = pk_def {
-				// Load schema from the row data
 				let fingerprint = multi.values.fingerprint();
 				let schema =
 					services.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(|| {
@@ -197,8 +194,8 @@ pub(crate) fn delete<'a>(
 				)?;
 			}
 
-			// Remove the row
-			txn.unset(&multi.key, multi.values.clone())?;
+			let row_key = RowKey::decode(&multi.key).expect("valid RowKey encoding");
+			txn.remove_from_table(table.clone(), row_key.row)?;
 			deleted_count += 1;
 		}
 	}

@@ -7,7 +7,7 @@ use reifydb_core::{
 	encoded::schema::Schema,
 	interface::{
 		catalog::{flow::FlowNodeId, primitive::PrimitiveId},
-		change::{Change, Diff},
+		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
 	key::row::RowKey,
@@ -63,6 +63,15 @@ impl Operator for SinkViewOperator {
 						txn.set(&key, encoded.clone())?;
 						ViewInterceptor::post_insert(txn, &view_def, row_number, &encoded)?;
 					}
+					// Emit view change for downstream transactional flows
+					let version = txn.version();
+					txn.push_view_change(Change {
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id)),
+						version,
+						diffs: vec![Diff::Insert {
+							post: coerced,
+						}],
+					});
 				}
 				Diff::Update {
 					pre,
@@ -110,6 +119,16 @@ impl Operator for SinkViewOperator {
 							&pre_encoded,
 						)?;
 					}
+					// Emit view change for downstream transactional flows
+					let version = txn.version();
+					txn.push_view_change(Change {
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id)),
+						version,
+						diffs: vec![Diff::Update {
+							pre: coerced_pre,
+							post: coerced_post,
+						}],
+					});
 				}
 				Diff::Remove {
 					pre,
@@ -127,6 +146,15 @@ impl Operator for SinkViewOperator {
 						txn.remove(&key)?;
 						ViewInterceptor::post_delete(txn, &view_def, row_number, &encoded)?;
 					}
+					// Emit view change for downstream transactional flows
+					let version = txn.version();
+					txn.push_view_change(Change {
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id)),
+						version,
+						diffs: vec![Diff::Remove {
+							pre: coerced,
+						}],
+					});
 				}
 			}
 		}

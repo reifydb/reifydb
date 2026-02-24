@@ -13,7 +13,8 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{catalog::FlowCatalog, tracker::PrimitiveVersionTracker};
+use super::tracker::PrimitiveVersionTracker;
+use crate::catalog::FlowCatalog;
 
 /// Provides flow lag data for virtual table queries.
 ///

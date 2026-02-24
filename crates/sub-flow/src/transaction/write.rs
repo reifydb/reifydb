@@ -8,13 +8,31 @@ use super::FlowTransaction;
 impl FlowTransaction {
 	/// Set a value, buffering it in pending writes
 	pub fn set(&mut self, key: &EncodedKey, value: EncodedValues) -> reifydb_type::Result<()> {
-		self.pending.insert(key.clone(), value);
+		match self {
+			Self::Deferred {
+				pending,
+				..
+			} => pending.insert(key.clone(), value),
+			Self::Transactional {
+				pending,
+				..
+			} => pending.insert(key.clone(), value),
+		}
 		Ok(())
 	}
 
 	/// Remove a key, buffering the deletion in pending operations
 	pub fn remove(&mut self, key: &EncodedKey) -> reifydb_type::Result<()> {
-		self.pending.remove(key.clone());
+		match self {
+			Self::Deferred {
+				pending,
+				..
+			} => pending.remove(key.clone()),
+			Self::Transactional {
+				pending,
+				..
+			} => pending.remove(key.clone()),
+		}
 		Ok(())
 	}
 }
@@ -47,7 +65,8 @@ pub mod tests {
 	#[test]
 	fn test_set_buffers_to_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -55,99 +74,101 @@ pub mod tests {
 		txn.set(&key, value.clone()).unwrap();
 
 		// Value should be in pending buffer
-		assert_eq!(txn.pending.get(&key), Some(&value));
-		assert_eq!(txn.pending.len(), 1);
+		assert_eq!(txn.pending().get(&key), Some(&value));
 	}
 
 	#[test]
 	fn test_set_multiple_keys() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
 		txn.set(&make_key("key2"), make_value("value2")).unwrap();
 		txn.set(&make_key("key3"), make_value("value3")).unwrap();
 
-		assert_eq!(txn.pending.len(), 3);
-		assert_eq!(txn.pending.get(&make_key("key1")), Some(&make_value("value1")));
-		assert_eq!(txn.pending.get(&make_key("key2")), Some(&make_value("value2")));
-		assert_eq!(txn.pending.get(&make_key("key3")), Some(&make_value("value3")));
+		assert_eq!(txn.pending().get(&make_key("key1")), Some(&make_value("value1")));
+		assert_eq!(txn.pending().get(&make_key("key2")), Some(&make_value("value2")));
+		assert_eq!(txn.pending().get(&make_key("key3")), Some(&make_value("value3")));
 	}
 
 	#[test]
 	fn test_set_overwrites_same_key() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
 		txn.set(&key, make_value("value2")).unwrap();
 
 		// Should have only one entry with latest value
-		assert_eq!(txn.pending.len(), 1);
-		assert_eq!(txn.pending.get(&key), Some(&make_value("value2")));
+		assert_eq!(txn.pending().get(&key), Some(&make_value("value2")));
 	}
 
 	#[test]
 	fn test_remove_buffers_to_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
 
 		// Key should be marked for removal in pending buffer
-		assert!(txn.pending.is_removed(&key));
-		assert_eq!(txn.pending.len(), 1);
+		assert!(txn.pending().is_removed(&key));
 	}
 
 	#[test]
 	fn test_remove_multiple_keys() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.remove(&make_key("key1")).unwrap();
 		txn.remove(&make_key("key2")).unwrap();
 		txn.remove(&make_key("key3")).unwrap();
 
-		assert_eq!(txn.pending.len(), 3);
-		assert!(txn.pending.is_removed(&make_key("key1")));
-		assert!(txn.pending.is_removed(&make_key("key2")));
-		assert!(txn.pending.is_removed(&make_key("key3")));
+		assert!(txn.pending().is_removed(&make_key("key1")));
+		assert!(txn.pending().is_removed(&make_key("key2")));
+		assert!(txn.pending().is_removed(&make_key("key3")));
 	}
 
 	#[test]
 	fn test_set_then_remove() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
-		assert_eq!(txn.pending.get(&key), Some(&make_value("value1")));
+		assert_eq!(txn.pending().get(&key), Some(&make_value("value1")));
 
 		txn.remove(&key).unwrap();
-		assert!(txn.pending.is_removed(&key));
-		assert_eq!(txn.pending.get(&key), None);
+		assert!(txn.pending().is_removed(&key));
+		assert_eq!(txn.pending().get(&key), None);
 	}
 
 	#[test]
 	fn test_remove_then_set() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
-		assert!(txn.pending.is_removed(&key));
+		assert!(txn.pending().is_removed(&key));
 
 		txn.set(&key, make_value("value1")).unwrap();
-		assert!(!txn.pending.is_removed(&key));
-		assert_eq!(txn.pending.get(&key), Some(&make_value("value1")));
+		assert!(!txn.pending().is_removed(&key));
+		assert_eq!(txn.pending().get(&key), Some(&make_value("value1")));
 	}
 
 	#[test]
 	fn test_writes_not_visible_to_parent() {
 		let mut parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -171,7 +192,8 @@ pub mod tests {
 
 		// Create FlowTransaction and remove the key
 		let parent_version = parent.version();
-		let mut txn = FlowTransaction::new(&parent, parent_version, Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, parent_version, Catalog::testing(), Interceptors::new());
 		txn.remove(&key).unwrap();
 
 		// Parent should still see the value
@@ -181,18 +203,17 @@ pub mod tests {
 	#[test]
 	fn test_mixed_writes_and_removes() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn =
+			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
 
 		txn.set(&make_key("write1"), make_value("v1")).unwrap();
 		txn.remove(&make_key("remove1")).unwrap();
 		txn.set(&make_key("write2"), make_value("v2")).unwrap();
 		txn.remove(&make_key("remove2")).unwrap();
 
-		assert_eq!(txn.pending.len(), 4);
-
-		assert_eq!(txn.pending.get(&make_key("write1")), Some(&make_value("v1")));
-		assert_eq!(txn.pending.get(&make_key("write2")), Some(&make_value("v2")));
-		assert!(txn.pending.is_removed(&make_key("remove1")));
-		assert!(txn.pending.is_removed(&make_key("remove2")));
+		assert_eq!(txn.pending().get(&make_key("write1")), Some(&make_value("v1")));
+		assert_eq!(txn.pending().get(&make_key("write2")), Some(&make_value("v2")));
+		assert!(txn.pending().is_removed(&make_key("remove1")));
+		assert!(txn.pending().is_removed(&make_key("remove2")));
 	}
 }

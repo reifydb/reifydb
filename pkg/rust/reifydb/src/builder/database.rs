@@ -50,7 +50,7 @@ use reifydb_sub_tracing::builder::TracingBuilder;
 use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
 	TransactionVersion,
-	interceptor::builder::StandardInterceptorBuilder,
+	interceptor::builder::InterceptorBuilder,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::{Transaction, query::QueryTransaction},
@@ -60,7 +60,7 @@ use tracing::debug;
 use crate::{database::Database, health::HealthMonitor, subsystem::Subsystems, system::tasks::create_system_tasks};
 
 pub struct DatabaseBuilder {
-	interceptors: StandardInterceptorBuilder,
+	interceptors: InterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
@@ -88,7 +88,7 @@ impl DatabaseBuilder {
 			.register(single);
 
 		Self {
-			interceptors: StandardInterceptorBuilder::new(),
+			interceptors: InterceptorBuilder::new(),
 			factories: Vec::new(),
 			ioc,
 			functions_configurator: None,
@@ -136,7 +136,7 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn with_interceptor_builder(mut self, builder: StandardInterceptorBuilder) -> Self {
+	pub fn with_interceptor_builder(mut self, builder: InterceptorBuilder) -> Self {
 		self.interceptors = builder;
 		self
 	}
@@ -269,7 +269,7 @@ impl DatabaseBuilder {
 			multi.clone(),
 			single.clone(),
 			eventbus.clone(),
-			Box::new(self.interceptors.build()),
+			self.interceptors.build(),
 			Catalog::new(catalog, schema_registry),
 			runtime.clock().clone(),
 			functions,

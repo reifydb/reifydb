@@ -4,7 +4,7 @@
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_transaction::interceptor::builder::StandardInterceptorBuilder;
+use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_type::Result;
 
 use super::FlowSubsystem;
@@ -42,11 +42,7 @@ impl Default for FlowSubsystemFactory {
 }
 
 impl SubsystemFactory for FlowSubsystemFactory {
-	fn provide_interceptors(
-		&self,
-		builder: StandardInterceptorBuilder,
-		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder {
+	fn provide_interceptors(&self, builder: InterceptorBuilder, _ioc: &IocContainer) -> InterceptorBuilder {
 		// Independent flow consumer doesn't need interceptors
 		builder
 	}

@@ -12,6 +12,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		WithEventBus,
+		change::Change,
 		store::{MultiVersionBatch, MultiVersionValues},
 	},
 };
@@ -83,6 +84,9 @@ pub struct AdminTransaction {
 	// Track row changes for post-commit events
 	pub(crate) row_changes: Vec<RowChange>,
 	pub(crate) interceptors: Interceptors,
+
+	// Track table changes for transactional flow pre-commit processing
+	pub(crate) pending_flow_changes: Vec<Change>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -112,6 +116,7 @@ impl AdminTransaction {
 			interceptors,
 			changes: TransactionalDefChanges::new(txn_id),
 			row_changes: Vec::new(),
+			pending_flow_changes: Vec::new(),
 		})
 	}
 
@@ -141,9 +146,34 @@ impl AdminTransaction {
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 
-		self.interceptors.pre_commit.execute(PreCommitContext::new())?;
+		let transaction_writes: Vec<(EncodedKey, Option<EncodedValues>)> = self
+			.pending_writes()
+			.iter()
+			.map(|(key, pending)| match &pending.delta {
+				reifydb_core::delta::Delta::Set {
+					values,
+					..
+				} => (key.clone(), Some(values.clone())),
+				_ => (key.clone(), None),
+			})
+			.collect();
+
+		let mut ctx = PreCommitContext {
+			flow_changes: take(&mut self.pending_flow_changes),
+			pending_writes: Vec::new(),
+			transaction_writes,
+		};
+		self.interceptors.pre_commit.execute(&mut ctx)?;
 
 		if let Some(mut multi) = self.cmd.take() {
+			// Apply pending view writes produced by pre-commit interceptors
+			for (key, value) in &ctx.pending_writes {
+				match value {
+					Some(v) => multi.set(key, v.clone())?,
+					None => multi.remove(key)?,
+				}
+			}
+
 			let id = multi.tm.id();
 			self.state = TransactionState::Committed;
 
@@ -277,6 +307,11 @@ impl AdminTransaction {
 	/// Track a row change for post-commit event emission
 	pub fn track_row_change(&mut self, change: RowChange) {
 		self.row_changes.push(change);
+	}
+
+	/// Track a flow change for transactional view pre-commit processing
+	pub fn track_flow_change(&mut self, change: Change) {
+		self.pending_flow_changes.push(change);
 	}
 
 	/// Get the transaction version

@@ -3,7 +3,7 @@
 
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_transaction::interceptor::builder::StandardInterceptorBuilder;
+use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 use crate::builder::TracingBuilder;
 
@@ -41,11 +41,7 @@ impl Default for TracingSubsystemFactory {
 }
 
 impl SubsystemFactory for TracingSubsystemFactory {
-	fn provide_interceptors(
-		&self,
-		builder: StandardInterceptorBuilder,
-		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder {
+	fn provide_interceptors(&self, builder: InterceptorBuilder, _ioc: &IocContainer) -> InterceptorBuilder {
 		// Tracing subsystem doesn't need any special interceptors
 		builder
 	}

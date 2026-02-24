@@ -81,10 +81,7 @@ impl CatalogStore {
 
 		// Reconstruct constraint from stored blob
 		let constraint_bytes = SCHEMA.get_blob(&row, CONSTRAINT);
-		let constraint = match decode_constraint(constraint_bytes.as_bytes()) {
-			Some(c) => TypeConstraint::with_constraint(base_type, c),
-			None => TypeConstraint::unconstrained(base_type),
-		};
+		let decoded_constraint = decode_constraint(constraint_bytes.as_bytes());
 
 		// Read dictionary_id (0 means no dictionary)
 		let dict_id_raw = SCHEMA.get_u64(&row, DICTIONARY_ID);
@@ -92,6 +89,32 @@ impl CatalogStore {
 			None
 		} else {
 			Some(DictionaryId(dict_id_raw))
+		};
+
+		// Reconstruct constraint, enriching with dictionary info when needed
+		let constraint = match (&decoded_constraint, dictionary_id) {
+			// Constraint blob already has dictionary info
+			(Some(c @ Constraint::Dictionary(..)), _) => {
+				TypeConstraint::with_constraint(base_type, c.clone())
+			}
+			// Dictionary column without dictionary in constraint blob (legacy data) - look up dictionary
+			(_, Some(dict_id)) => {
+				if let Some(dict) = Self::find_dictionary(rx, dict_id)? {
+					TypeConstraint::with_constraint(
+						base_type,
+						Constraint::Dictionary(dict_id, dict.id_type),
+					)
+				} else {
+					match decoded_constraint {
+						Some(c) => TypeConstraint::with_constraint(base_type, c),
+						None => TypeConstraint::unconstrained(base_type),
+					}
+				}
+			}
+			// Non-dictionary column with constraint
+			(Some(c), None) => TypeConstraint::with_constraint(base_type, c.clone()),
+			// Non-dictionary column without constraint
+			(None, None) => TypeConstraint::unconstrained(base_type),
 		};
 
 		let policies = Self::list_column_policies(rx, id)?;

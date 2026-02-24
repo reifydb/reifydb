@@ -8,7 +8,7 @@
 //! - [`FlowMsg`]: Messages the actor can receive (Process, Register)
 //! - [`FlowResponse`]: Response sent back through callbacks
 
-use std::{mem::take, sync::Mutex};
+use std::sync::Mutex;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_engine::engine::StandardEngine;
@@ -20,10 +20,10 @@ use reifydb_runtime::actor::{
 };
 use tracing::{Span, error, instrument};
 
+use super::instruction::WorkerBatch;
 use crate::{
-	FlowEngine,
-	instruction::WorkerBatch,
-	transaction::{FlowTransaction, pending::PendingWrites},
+	engine::FlowEngine,
+	transaction::{FlowTransaction, pending::Pending},
 };
 
 /// Messages for the flow actor
@@ -42,8 +42,10 @@ pub enum FlowMsg {
 
 /// Response from the flow actor
 pub enum FlowResponse {
-	/// Operation succeeded with pending writes
-	Success(PendingWrites),
+	/// Operation succeeded with pending writes and view changes
+	Success {
+		pending: Pending,
+	},
 	/// Operation failed with error message
 	Error(String),
 }
@@ -93,7 +95,9 @@ impl Actor for FlowWorkerActor {
 			} => {
 				let result = self.process_request(&mut state.flow_engine, batch);
 				let resp = match result {
-					Ok(pending) => FlowResponse::Success(pending),
+					Ok(pending) => FlowResponse::Success {
+						pending,
+					},
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
 				(reply)(resp);
@@ -108,7 +112,9 @@ impl Actor for FlowWorkerActor {
 					.and_then(|mut txn| state.flow_engine.register(&mut txn, flow));
 
 				let resp = match result {
-					Ok(_) => FlowResponse::Success(PendingWrites::new()),
+					Ok(_) => FlowResponse::Success {
+						pending: Pending::new(),
+					},
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
 				(reply)(resp);
@@ -127,15 +133,11 @@ impl FlowWorkerActor {
 		instructions = batch.instructions.len(),
 		total_changes = tracing::field::Empty
 	))]
-	fn process_request(
-		&self,
-		flow_engine: &mut FlowEngine,
-		batch: WorkerBatch,
-	) -> reifydb_type::Result<PendingWrites> {
+	fn process_request(&self, flow_engine: &mut FlowEngine, batch: WorkerBatch) -> reifydb_type::Result<Pending> {
 		let total_changes: usize = batch.instructions.iter().map(|i| i.changes.len()).sum();
 		Span::current().record("total_changes", total_changes);
 
-		let mut pending = PendingWrites::new();
+		let mut pending = Pending::new();
 		let interceptors = self.engine.create_interceptors();
 
 		for instruction in batch.instructions {
@@ -150,14 +152,14 @@ impl FlowWorkerActor {
 			let primitive_query = self.engine.multi().begin_query_at_version(primitive_version)?;
 			let state_query = self.engine.multi().begin_query_at_version(batch.state_version)?;
 
-			let mut txn = FlowTransaction {
-				version: primitive_version,
+			let mut txn = FlowTransaction::deferred_from_parts(
+				primitive_version,
 				pending,
 				primitive_query,
 				state_query,
-				catalog: self.catalog.clone(),
-				interceptors: interceptors.clone(),
-			};
+				self.catalog.clone(),
+				interceptors.clone(),
+			);
 
 			for change in &instruction.changes {
 				if let Err(e) = flow_engine.process(&mut txn, change.clone(), flow_id) {
@@ -165,7 +167,7 @@ impl FlowWorkerActor {
 				}
 			}
 
-			pending = take(&mut txn.pending);
+			pending = txn.take_pending();
 		}
 
 		Ok(pending)

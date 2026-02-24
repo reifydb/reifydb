@@ -4,7 +4,7 @@
 use std::any::Any;
 
 use reifydb_core::{interface::version::HasVersion, util::ioc::IocContainer};
-use reifydb_transaction::interceptor::builder::StandardInterceptorBuilder;
+use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 /// Uniform interface that all subsystems must implement
 ///
@@ -46,11 +46,7 @@ pub trait Subsystem: Any + HasVersion {
 
 /// Factory trait for creating subsystems with IoC support
 pub trait SubsystemFactory: Send {
-	fn provide_interceptors(
-		&self,
-		builder: StandardInterceptorBuilder,
-		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder {
+	fn provide_interceptors(&self, builder: InterceptorBuilder, _ioc: &IocContainer) -> InterceptorBuilder {
 		builder
 	}
 

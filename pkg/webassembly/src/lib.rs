@@ -63,7 +63,7 @@ impl WasmDB {
 		use reifydb_core::{event::EventBus, util::ioc::IocContainer};
 		use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 		use reifydb_transaction::{
-			interceptor::factory::StandardInterceptorFactory, multi::transaction::MultiTransaction,
+			interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
 			single::SingleTransaction,
 		};
 
@@ -131,7 +131,7 @@ impl WasmDB {
 			multi,
 			single.clone(),
 			eventbus,
-			Box::new(StandardInterceptorFactory::default()),
+			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, SchemaRegistry::new(single)),
 			runtime.clock().clone(),
 			Functions::defaults().build(),

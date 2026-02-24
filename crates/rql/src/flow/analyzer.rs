@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use reifydb_core::interface::catalog::{
 	flow::{FlowId, FlowNodeId},
-	id::{TableId, ViewId},
+	id::{RingBufferId, TableId, ViewId},
 };
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +18,7 @@ use crate::flow::{flow::FlowDag, node::FlowNodeType};
 pub enum PrimitiveReference {
 	Table(TableId),
 	View(ViewId),
+	RingBuffer(RingBufferId),
 }
 
 /// Represents a reference to a data sink
@@ -52,6 +53,7 @@ pub struct FlowDependencyGraph {
 	pub dependencies: Vec<FlowDependency>,
 	pub source_tables: HashMap<TableId, Vec<FlowId>>,
 	pub source_views: HashMap<ViewId, Vec<FlowId>>,
+	pub source_ringbuffers: HashMap<RingBufferId, Vec<FlowId>>,
 	pub sink_views: HashMap<ViewId, FlowId>,
 }
 
@@ -69,6 +71,7 @@ impl FlowGraphAnalyzer {
 				dependencies: Vec::new(),
 				source_tables: HashMap::new(),
 				source_views: HashMap::new(),
+				source_ringbuffers: HashMap::new(),
 				sink_views: HashMap::new(),
 			},
 		}
@@ -114,6 +117,11 @@ impl FlowGraphAnalyzer {
 					} => {
 						sources.push(PrimitiveReference::View(*view));
 					}
+					FlowNodeType::SourceRingBuffer {
+						ringbuffer,
+					} => {
+						sources.push(PrimitiveReference::RingBuffer(*ringbuffer));
+					}
 					_ => {}
 				}
 			}
@@ -148,6 +156,7 @@ impl FlowGraphAnalyzer {
 		let mut flow_summaries = Vec::new();
 		let mut source_tables: HashMap<TableId, Vec<FlowId>> = HashMap::new();
 		let mut source_views: HashMap<ViewId, Vec<FlowId>> = HashMap::new();
+		let mut source_ringbuffers: HashMap<RingBufferId, Vec<FlowId>> = HashMap::new();
 		let mut sink_views: HashMap<ViewId, FlowId> = HashMap::new();
 
 		// First pass: analyze all stored flows and build lookup maps
@@ -162,6 +171,9 @@ impl FlowGraphAnalyzer {
 					}
 					PrimitiveReference::View(view_id) => {
 						source_views.entry(*view_id).or_default().push(flow.id());
+					}
+					PrimitiveReference::RingBuffer(rb_id) => {
+						source_ringbuffers.entry(*rb_id).or_default().push(flow.id());
 					}
 				}
 			}
@@ -186,6 +198,7 @@ impl FlowGraphAnalyzer {
 			dependencies,
 			source_tables,
 			source_views,
+			source_ringbuffers,
 			sink_views,
 		}
 	}
@@ -264,6 +277,7 @@ impl FlowGraphAnalyzer {
 			dependencies: Vec::new(),
 			source_tables: HashMap::new(),
 			source_views: HashMap::new(),
+			source_ringbuffers: HashMap::new(),
 			sink_views: HashMap::new(),
 		};
 	}

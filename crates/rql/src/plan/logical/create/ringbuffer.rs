@@ -6,7 +6,10 @@ use reifydb_catalog::{
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{
+	fragment::Fragment,
+	value::constraint::{Constraint, TypeConstraint},
+};
 
 use crate::{
 	ast::ast::{AstColumnProperty, AstCreateRingBuffer},
@@ -26,7 +29,7 @@ impl<'bump> Compiler<'bump> {
 
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.text().to_string();
-			let constraint = convert_data_type_with_constraints(&col.ty)?;
+			let mut constraint = convert_data_type_with_constraints(&col.ty)?;
 			let column_type = constraint.get_type();
 
 			let name = col.name.to_owned();
@@ -87,6 +90,12 @@ impl<'bump> Compiler<'bump> {
 						}
 
 						dictionary_id = Some(dictionary.id);
+						// Embed dictionary constraint so the TypeConstraint carries id_type
+						// info
+						constraint = TypeConstraint::with_constraint(
+							constraint.get_type(),
+							Constraint::Dictionary(dictionary.id, dictionary.id_type),
+						);
 					}
 					AstColumnProperty::Saturation(_) => {
 						// TODO: inline saturation policy

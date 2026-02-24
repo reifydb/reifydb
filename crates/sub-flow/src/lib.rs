@@ -5,20 +5,14 @@
 
 pub mod builder;
 pub(crate) mod catalog;
-pub(crate) mod coordinator;
+pub(crate) mod deferred;
 pub mod engine;
 #[cfg(reifydb_target = "native")]
 pub mod ffi;
-pub(crate) mod instruction;
-pub(crate) mod lag;
 #[allow(dead_code)]
 pub mod operator;
-pub(crate) mod pool;
-pub(crate) mod state;
 pub mod subsystem;
-pub(crate) mod tracker;
-pub mod transaction;
-pub(crate) mod worker;
+pub(crate) mod transaction;
+pub(crate) mod transactional;
 
-use engine::*;
-use operator::Operator;
+pub(crate) use operator::Operator;

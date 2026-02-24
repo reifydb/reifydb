@@ -13,7 +13,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionBatch, MultiVersionValues},
 };
 
-use super::Pending;
+use super::PendingWrite;
 
 /// Iterator that merges pending writes with committed range query results
 ///
@@ -24,15 +24,15 @@ use super::Pending;
 /// The merge algorithm:
 /// - Compares keys at each step
 /// - Prefers pending writes when keys are equal (overlay semantics)
-/// - Filters out removed keys (Pending::Remove)
+/// - Filters out removed keys (PendingWrite::Remove)
 /// - Maintains sorted order
 pub struct FlowRangeIter<'a> {
 	/// Iterator over committed results from query transaction
 	committed: Box<dyn Iterator<Item = MultiVersionValues> + Send + 'a>,
 	/// Range iterator over pending writes in sorted order
-	pending: BTreeMapRange<'a, EncodedKey, Pending>,
+	pending: BTreeMapRange<'a, EncodedKey, PendingWrite>,
 	/// Pre-fetched next pending item for lookahead comparison
-	next_pending: Option<(&'a EncodedKey, &'a Pending)>,
+	next_pending: Option<(&'a EncodedKey, &'a PendingWrite)>,
 	/// Pre-fetched next committed item for lookahead comparison
 	next_committed: Option<MultiVersionValues>,
 	/// Fixed version for pending writes (CDC version)
@@ -42,7 +42,7 @@ pub struct FlowRangeIter<'a> {
 impl<'a> FlowRangeIter<'a> {
 	/// Create a new merge iterator for range queries
 	pub fn new(
-		pending: BTreeMapRange<'a, EncodedKey, Pending>,
+		pending: BTreeMapRange<'a, EncodedKey, PendingWrite>,
 		committed: Box<dyn Iterator<Item = MultiVersionValues> + Send + 'a>,
 		version: CommitVersion,
 	) -> Self {
@@ -86,14 +86,14 @@ impl<'a> Iterator for FlowRangeIter<'a> {
 							self.advance_pending();
 
 							match value {
-								Pending::Set(values) => {
+								PendingWrite::Set(values) => {
 									return Some(MultiVersionValues {
 										key: key.clone(),
 										values: values.clone(),
 										version: self.version,
 									});
 								}
-								Pending::Remove => continue, // Skip removed keys
+								PendingWrite::Remove => continue, // Skip removed keys
 							}
 						}
 						// Keys are equal - prefer pending, skip committed
@@ -103,14 +103,14 @@ impl<'a> Iterator for FlowRangeIter<'a> {
 							self.advance_committed(); // Skip the duplicate committed entry
 
 							match value {
-								Pending::Set(values) => {
+								PendingWrite::Set(values) => {
 									return Some(MultiVersionValues {
 										key: key.clone(),
 										values: values.clone(),
 										version: self.version,
 									});
 								}
-								Pending::Remove => continue, // Skip removed keys
+								PendingWrite::Remove => continue, // Skip removed keys
 							}
 						}
 						// Committed has smaller key - yield committed
@@ -127,14 +127,14 @@ impl<'a> Iterator for FlowRangeIter<'a> {
 					self.advance_pending();
 
 					match value {
-						Pending::Set(values) => {
+						PendingWrite::Set(values) => {
 							return Some(MultiVersionValues {
 								key: key.clone(),
 								values: values.clone(),
 								version: self.version,
 							});
 						}
-						Pending::Remove => continue, // Skip removed keys
+						PendingWrite::Remove => continue, // Skip removed keys
 					}
 				}
 				// Only committed items left
@@ -156,7 +156,7 @@ impl<'a> Iterator for FlowRangeIter<'a> {
 /// materializing all items into a single batch. The `has_more` field is always false because
 /// pending writes are finite and fully materialized.
 pub fn collect_batch(
-	pending: BTreeMapRange<'_, EncodedKey, Pending>,
+	pending: BTreeMapRange<'_, EncodedKey, PendingWrite>,
 	committed_batch: MultiVersionBatch,
 	version: CommitVersion,
 ) -> MultiVersionBatch {
@@ -203,7 +203,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_range_both_iterators() {
-		let pending: BTreeMap<EncodedKey, Pending> = BTreeMap::new();
+		let pending: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
 		let committed: Vec<MultiVersionValues> = vec![];
 
 		let mut iter = FlowRangeIter::new(pending.range(..), Box::new(committed.into_iter()), CommitVersion(1));
@@ -214,10 +214,10 @@ pub mod tests {
 	#[test]
 	fn test_range_only_pending() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("a"), Pending::Set(make_value("1")));
-		pending.insert(make_key("b"), Pending::Set(make_value("2")));
-		pending.insert(make_key("c"), Pending::Set(make_value("3")));
-		pending.insert(make_key("d"), Pending::Set(make_value("4")));
+		pending.insert(make_key("a"), PendingWrite::Set(make_value("1")));
+		pending.insert(make_key("b"), PendingWrite::Set(make_value("2")));
+		pending.insert(make_key("c"), PendingWrite::Set(make_value("3")));
+		pending.insert(make_key("d"), PendingWrite::Set(make_value("4")));
 
 		let committed: Vec<MultiVersionValues> = vec![];
 
@@ -236,7 +236,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_only_committed() {
-		let pending: BTreeMap<EncodedKey, Pending> = BTreeMap::new();
+		let pending: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
 		let committed =
 			vec![make_committed("a", "1", 5), make_committed("b", "2", 6), make_committed("c", "3", 7)];
 
@@ -252,9 +252,9 @@ pub mod tests {
 	#[test]
 	fn test_range_filters_removes() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("a"), Pending::Set(make_value("1")));
-		pending.insert(make_key("b"), Pending::Remove);
-		pending.insert(make_key("c"), Pending::Set(make_value("3")));
+		pending.insert(make_key("a"), PendingWrite::Set(make_value("1")));
+		pending.insert(make_key("b"), PendingWrite::Remove);
+		pending.insert(make_key("c"), PendingWrite::Set(make_value("3")));
 
 		let committed: Vec<MultiVersionValues> = vec![];
 
@@ -269,7 +269,7 @@ pub mod tests {
 	#[test]
 	fn test_range_pending_shadows_committed() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("b"), Pending::Set(make_value("new")));
+		pending.insert(make_key("b"), PendingWrite::Set(make_value("new")));
 
 		let committed =
 			vec![make_committed("a", "1", 5), make_committed("b", "old", 6), make_committed("c", "3", 7)];
@@ -286,7 +286,7 @@ pub mod tests {
 	#[test]
 	fn test_range_remove_hides_committed() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("b"), Pending::Remove);
+		pending.insert(make_key("b"), PendingWrite::Remove);
 
 		let committed =
 			vec![make_committed("a", "1", 5), make_committed("b", "2", 6), make_committed("c", "3", 7)];
@@ -302,12 +302,12 @@ pub mod tests {
 	#[test]
 	fn test_range_bounded_query() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("a"), Pending::Set(make_value("a")));
-		pending.insert(make_key("b"), Pending::Set(make_value("b")));
-		pending.insert(make_key("c"), Pending::Set(make_value("c")));
-		pending.insert(make_key("d"), Pending::Set(make_value("d")));
-		pending.insert(make_key("e"), Pending::Set(make_value("e")));
-		pending.insert(make_key("f"), Pending::Set(make_value("f")));
+		pending.insert(make_key("a"), PendingWrite::Set(make_value("a")));
+		pending.insert(make_key("b"), PendingWrite::Set(make_value("b")));
+		pending.insert(make_key("c"), PendingWrite::Set(make_value("c")));
+		pending.insert(make_key("d"), PendingWrite::Set(make_value("d")));
+		pending.insert(make_key("e"), PendingWrite::Set(make_value("e")));
+		pending.insert(make_key("f"), PendingWrite::Set(make_value("f")));
 
 		let committed = vec![make_committed("b", "old_b", 5), make_committed("f", "f_old", 6)];
 
@@ -333,8 +333,8 @@ pub mod tests {
 	#[test]
 	fn test_range_interleaved_merge() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("b"), Pending::Set(make_value("pending_b")));
-		pending.insert(make_key("d"), Pending::Set(make_value("pending_d")));
+		pending.insert(make_key("b"), PendingWrite::Set(make_value("pending_b")));
+		pending.insert(make_key("d"), PendingWrite::Set(make_value("pending_d")));
 
 		let committed = vec![
 			make_committed("a", "committed_a", 5),
@@ -356,9 +356,9 @@ pub mod tests {
 	#[test]
 	fn test_range_sorted_order() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("m"), Pending::Set(make_value("m")));
-		pending.insert(make_key("a"), Pending::Set(make_value("a")));
-		pending.insert(make_key("z"), Pending::Set(make_value("z")));
+		pending.insert(make_key("m"), PendingWrite::Set(make_value("m")));
+		pending.insert(make_key("a"), PendingWrite::Set(make_value("a")));
+		pending.insert(make_key("z"), PendingWrite::Set(make_value("z")));
 
 		let committed =
 			vec![make_committed("d", "d", 5), make_committed("k", "k", 6), make_committed("p", "p", 7)];
@@ -378,10 +378,10 @@ pub mod tests {
 	#[test]
 	fn test_range_with_start_bound() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("a"), Pending::Set(make_value("a")));
-		pending.insert(make_key("b"), Pending::Set(make_value("b")));
-		pending.insert(make_key("c"), Pending::Set(make_value("c")));
-		pending.insert(make_key("d"), Pending::Set(make_value("d")));
+		pending.insert(make_key("a"), PendingWrite::Set(make_value("a")));
+		pending.insert(make_key("b"), PendingWrite::Set(make_value("b")));
+		pending.insert(make_key("c"), PendingWrite::Set(make_value("c")));
+		pending.insert(make_key("d"), PendingWrite::Set(make_value("d")));
 
 		let committed: Vec<MultiVersionValues> = vec![];
 
@@ -402,10 +402,10 @@ pub mod tests {
 	#[test]
 	fn test_range_with_end_bound() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("a"), Pending::Set(make_value("a")));
-		pending.insert(make_key("b"), Pending::Set(make_value("b")));
-		pending.insert(make_key("c"), Pending::Set(make_value("c")));
-		pending.insert(make_key("d"), Pending::Set(make_value("d")));
+		pending.insert(make_key("a"), PendingWrite::Set(make_value("a")));
+		pending.insert(make_key("b"), PendingWrite::Set(make_value("b")));
+		pending.insert(make_key("c"), PendingWrite::Set(make_value("c")));
+		pending.insert(make_key("d"), PendingWrite::Set(make_value("d")));
 
 		let committed: Vec<MultiVersionValues> = vec![];
 
@@ -425,10 +425,10 @@ pub mod tests {
 	#[test]
 	fn test_range_inclusive_bounds() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("a"), Pending::Set(make_value("a")));
-		pending.insert(make_key("b"), Pending::Set(make_value("b")));
-		pending.insert(make_key("c"), Pending::Set(make_value("c")));
-		pending.insert(make_key("d"), Pending::Set(make_value("d")));
+		pending.insert(make_key("a"), PendingWrite::Set(make_value("a")));
+		pending.insert(make_key("b"), PendingWrite::Set(make_value("b")));
+		pending.insert(make_key("c"), PendingWrite::Set(make_value("c")));
+		pending.insert(make_key("d"), PendingWrite::Set(make_value("d")));
 
 		let committed: Vec<MultiVersionValues> = vec![];
 
@@ -448,11 +448,11 @@ pub mod tests {
 	#[test]
 	fn test_range_complex_scenario() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("a"), Pending::Set(make_value("new_a")));
-		pending.insert(make_key("b"), Pending::Remove);
-		pending.insert(make_key("c"), Pending::Set(make_value("new_c")));
-		pending.insert(make_key("f"), Pending::Remove);
-		pending.insert(make_key("g"), Pending::Set(make_value("new_g")));
+		pending.insert(make_key("a"), PendingWrite::Set(make_value("new_a")));
+		pending.insert(make_key("b"), PendingWrite::Remove);
+		pending.insert(make_key("c"), PendingWrite::Set(make_value("new_c")));
+		pending.insert(make_key("f"), PendingWrite::Remove);
+		pending.insert(make_key("g"), PendingWrite::Set(make_value("new_g")));
 
 		let committed = vec![
 			make_committed("a", "old_a", 5),
@@ -487,8 +487,8 @@ pub mod tests {
 	#[test]
 	fn test_range_empty_result() {
 		let mut pending = BTreeMap::new();
-		pending.insert(make_key("a"), Pending::Set(make_value("a")));
-		pending.insert(make_key("z"), Pending::Set(make_value("z")));
+		pending.insert(make_key("a"), PendingWrite::Set(make_value("a")));
+		pending.insert(make_key("z"), PendingWrite::Set(make_value("z")));
 
 		let committed: Vec<MultiVersionValues> = vec![];
 

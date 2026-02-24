@@ -1,6 +1,6 @@
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_transaction::interceptor::builder::StandardInterceptorBuilder;
+use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 use crate::{subsystem::TaskSubsystem, task::ScheduledTask};
 
@@ -48,11 +48,7 @@ impl Default for TaskSubsystemFactory {
 }
 
 impl SubsystemFactory for TaskSubsystemFactory {
-	fn provide_interceptors(
-		&self,
-		builder: StandardInterceptorBuilder,
-		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder {
+	fn provide_interceptors(&self, builder: InterceptorBuilder, _ioc: &IocContainer) -> InterceptorBuilder {
 		// Task subsystem doesn't need any special interceptors
 		builder
 	}

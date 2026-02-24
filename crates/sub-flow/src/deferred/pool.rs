@@ -24,11 +24,11 @@ use reifydb_runtime::{
 use reifydb_type::util::hex::encode;
 use tracing::{Span, instrument};
 
-use crate::{
+use super::{
 	instruction::WorkerBatch,
-	transaction::pending::{Pending, PendingWrites},
 	worker::{FlowMsg, FlowResponse},
 };
+use crate::transaction::pending::{Pending, PendingWrite};
 
 /// Messages for the pool actor
 pub enum PoolMsg {
@@ -57,8 +57,10 @@ pub enum PoolMsg {
 
 /// Response from the pool actor
 pub enum PoolResponse {
-	/// Operation succeeded with pending writes
-	Success(PendingWrites),
+	/// Operation succeeded with pending writes and view changes
+	Success {
+		pending: Pending,
+	},
 	/// Registration succeeded
 	RegisterSuccess,
 	/// Operation failed with error message
@@ -72,7 +74,7 @@ enum Phase {
 	/// Waiting for multiple workers to reply
 	WaitingForWorkers {
 		pending_count: usize,
-		results: Vec<PendingWrites>,
+		results: Vec<Pending>,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 		started_at: Instant,
 	},
@@ -282,11 +284,15 @@ impl PoolActor {
 				is_register,
 			} => {
 				let resp = match response {
-					FlowResponse::Success(pending) => {
+					FlowResponse::Success {
+						pending,
+					} => {
 						if is_register {
 							PoolResponse::RegisterSuccess
 						} else {
-							PoolResponse::Success(pending)
+							PoolResponse::Success {
+								pending,
+							}
 						}
 					}
 					FlowResponse::Error(e) => PoolResponse::Error(e),
@@ -301,7 +307,9 @@ impl PoolActor {
 				started_at: start,
 			} => {
 				match response {
-					FlowResponse::Success(pending) => {
+					FlowResponse::Success {
+						pending,
+					} => {
 						results.push(pending);
 						pending_count -= 1;
 
@@ -313,9 +321,9 @@ impl PoolActor {
 										"elapsed_us",
 										start.elapsed().as_micros() as u64,
 									);
-									(original_reply)(PoolResponse::Success(
-										combined,
-									));
+									(original_reply)(PoolResponse::Success {
+										pending: combined,
+									});
 								}
 								Err(e) => {
 									(original_reply)(PoolResponse::Error(e));
@@ -349,11 +357,12 @@ impl PoolActor {
 		}
 	}
 
-	/// Aggregate PendingWrites from multiple workers with keyspace overlap detection.
-	fn aggregate_pending_writes(&self, writes: Vec<PendingWrites>) -> Result<PendingWrites, String> {
-		let mut combined = PendingWrites::new();
+	/// Aggregate Pending from multiple workers with keyspace overlap detection.
+	fn aggregate_pending_writes(&self, writes: Vec<Pending>) -> Result<Pending, String> {
+		let mut combined = Pending::new();
 
-		for pending in writes {
+		for mut pending in writes {
+			combined.extend_view_changes(pending.take_view_changes());
 			for (key, value) in pending.iter_sorted() {
 				// Validate no keyspace overlap between workers
 				if combined.contains_key(&key) {
@@ -366,10 +375,10 @@ impl PoolActor {
 
 				// Safe to merge - disjoint keyspaces
 				match value {
-					Pending::Set(v) => {
+					PendingWrite::Set(v) => {
 						combined.insert(key.clone(), v.clone());
 					}
-					Pending::Remove => {
+					PendingWrite::Remove => {
 						combined.remove(key.clone());
 					}
 				}

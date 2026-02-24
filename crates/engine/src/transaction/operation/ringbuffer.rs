@@ -1,12 +1,79 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::ringbuffer::RingBufferDef, key::row::RowKey};
+use reifydb_core::{
+	common::CommitVersion,
+	encoded::{encoded::EncodedValues, schema::Schema},
+	interface::{
+		catalog::{primitive::PrimitiveId, ringbuffer::RingBufferDef},
+		change::{Change, ChangeOrigin, Diff},
+	},
+	key::row::RowKey,
+	value::column::{Column, columns::Columns, data::ColumnData},
+};
 use reifydb_transaction::{
 	interceptor::ringbuffer::RingBufferInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
+
+fn build_encoded_columns(rb: &RingBufferDef, row_number: RowNumber, encoded: &EncodedValues) -> Columns {
+	let schema: Schema = (&rb.columns).into();
+	let fields = schema.fields();
+
+	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
+	for field in fields.iter() {
+		columns_vec.push(Column {
+			name: Fragment::internal(&field.name),
+			data: ColumnData::with_capacity(field.constraint.get_type(), 1),
+		});
+	}
+
+	for (i, _) in fields.iter().enumerate() {
+		columns_vec[i].data.push_value(schema.get_value(encoded, i));
+	}
+
+	Columns {
+		row_numbers: CowVec::new(vec![row_number]),
+		columns: CowVec::new(columns_vec),
+	}
+}
+
+fn build_ringbuffer_insert_change(rb: &RingBufferDef, row_number: RowNumber, encoded: &EncodedValues) -> Change {
+	Change {
+		origin: ChangeOrigin::Primitive(PrimitiveId::ringbuffer(rb.id)),
+		version: CommitVersion(0),
+		diffs: vec![Diff::Insert {
+			post: build_encoded_columns(rb, row_number, encoded),
+		}],
+	}
+}
+
+fn build_ringbuffer_update_change(
+	rb: &RingBufferDef,
+	row_number: RowNumber,
+	old: &EncodedValues,
+	new: &EncodedValues,
+) -> Change {
+	Change {
+		origin: ChangeOrigin::Primitive(PrimitiveId::ringbuffer(rb.id)),
+		version: CommitVersion(0),
+		diffs: vec![Diff::Update {
+			pre: build_encoded_columns(rb, row_number, old),
+			post: build_encoded_columns(rb, row_number, new),
+		}],
+	}
+}
+
+fn build_ringbuffer_remove_change(rb: &RingBufferDef, row_number: RowNumber, encoded: &EncodedValues) -> Change {
+	Change {
+		origin: ChangeOrigin::Primitive(PrimitiveId::ringbuffer(rb.id)),
+		version: CommitVersion(0),
+		diffs: vec![Diff::Remove {
+			pre: build_encoded_columns(rb, row_number, encoded),
+		}],
+	}
+}
 
 pub(crate) trait RingBufferOperations {
 	fn insert_ringbuffer(&mut self, ringbuffer: RingBufferDef, row: EncodedValues) -> crate::Result<RowNumber>;
@@ -62,6 +129,17 @@ impl RingBufferOperations for CommandTransaction {
 
 		RingBufferInterceptor::post_insert(self, &ringbuffer, row_number, &row)?;
 
+		if old_row.is_some() {
+			self.track_flow_change(build_ringbuffer_update_change(
+				&ringbuffer,
+				row_number,
+				old_row.as_ref().unwrap(),
+				&row,
+			));
+		} else {
+			self.track_flow_change(build_ringbuffer_insert_change(&ringbuffer, row_number, &row));
+		}
+
 		Ok(())
 	}
 
@@ -82,6 +160,7 @@ impl RingBufferOperations for CommandTransaction {
 
 		if let Some(ref old) = old_row {
 			RingBufferInterceptor::post_update(self, &ringbuffer, id, &row, old)?;
+			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, old, &row));
 		}
 
 		Ok(())
@@ -103,6 +182,8 @@ impl RingBufferOperations for CommandTransaction {
 		self.unset(&key, deleted_row.clone())?;
 
 		RingBufferInterceptor::post_delete(self, &ringbuffer, id, &deleted_row)?;
+
+		self.track_flow_change(build_ringbuffer_remove_change(&ringbuffer, id, &deleted_row));
 
 		Ok(())
 	}
@@ -136,6 +217,17 @@ impl RingBufferOperations for AdminTransaction {
 
 		RingBufferInterceptor::post_insert(self, &ringbuffer, row_number, &row)?;
 
+		if old_row.is_some() {
+			self.track_flow_change(build_ringbuffer_update_change(
+				&ringbuffer,
+				row_number,
+				old_row.as_ref().unwrap(),
+				&row,
+			));
+		} else {
+			self.track_flow_change(build_ringbuffer_insert_change(&ringbuffer, row_number, &row));
+		}
+
 		Ok(())
 	}
 
@@ -155,6 +247,7 @@ impl RingBufferOperations for AdminTransaction {
 
 		if let Some(ref old) = old_row {
 			RingBufferInterceptor::post_update(self, &ringbuffer, id, &row, old)?;
+			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, old, &row));
 		}
 
 		Ok(())
@@ -173,6 +266,8 @@ impl RingBufferOperations for AdminTransaction {
 		self.unset(&key, deleted_row.clone())?;
 
 		RingBufferInterceptor::post_delete(self, &ringbuffer, id, &deleted_row)?;
+
+		self.track_flow_change(build_ringbuffer_remove_change(&ringbuffer, id, &deleted_row));
 
 		Ok(())
 	}
