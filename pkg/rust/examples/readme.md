@@ -21,6 +21,7 @@ cargo run --bin basic-hello-world
 | `make basic-hello-world` | Simple hello world example with in-memory database | None |
 | `make basic-tables` | Table creation and namespace definition example    | None |
 | `make basic-enums` | Enum types: creation, insertion, querying, variant filtering | None |
+| `make basic-events-and-handlers` | Events and handlers: CREATE EVENT, CREATE HANDLER, DISPATCH with field access | None |
 
 ### RQL (Query Language) Examples
 
@@ -61,7 +62,9 @@ bin/examples/
 └── examples/
     ├── basic/          # Basic operations
     │   ├── 01_hello_world.rs
-    │   └── 02_basic_tables.rs
+    │   ├── 02_basic_tables.rs
+    │   ├── 03_enums.rs
+    │   └── 04_events_and_handlers.rs
     └── rql/            # RQL query language examples
         ├── 01_from_operator.rs         # FROM operator
         ├── 02_map_operator.rs          # MAP operator
