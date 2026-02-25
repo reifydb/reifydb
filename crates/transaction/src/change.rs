@@ -6,7 +6,11 @@ use reifydb_core::interface::catalog::{
 	dictionary::DictionaryDef,
 	flow::{FlowDef, FlowId},
 	handler::HandlerDef,
-	id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
+	id::{
+		HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
+		SubscriptionId, TableId, ViewId,
+	},
+	migration::{MigrationDef, MigrationEvent},
 	namespace::NamespaceDef,
 	procedure::ProcedureDef,
 	ringbuffer::RingBufferDef,
@@ -26,6 +30,7 @@ pub trait TransactionalChanges:
 	TransactionalDictionaryChanges
 	+ TransactionalFlowChanges
 	+ TransactionalHandlerChanges
+	+ TransactionalMigrationChanges
 	+ TransactionalNamespaceChanges
 	+ TransactionalProcedureChanges
 	+ TransactionalRingBufferChanges
@@ -183,6 +188,16 @@ pub trait TransactionalSecurityPolicyChanges {
 	fn is_security_policy_deleted_by_name(&self, name: &str) -> bool;
 }
 
+pub trait TransactionalMigrationChanges {
+	fn find_migration(&self, id: MigrationId) -> Option<&MigrationDef>;
+
+	fn find_migration_by_name(&self, name: &str) -> Option<&MigrationDef>;
+
+	fn is_migration_deleted(&self, id: MigrationId) -> bool;
+
+	fn is_migration_deleted_by_name(&self, name: &str) -> bool;
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct TransactionalDefChanges {
 	/// Transaction ID this change set belongs to
@@ -193,6 +208,10 @@ pub struct TransactionalDefChanges {
 	pub flow_def: Vec<Change<FlowDef>>,
 	/// All handler definition changes in order (no coalescing)
 	pub handler_def: Vec<Change<HandlerDef>>,
+	/// All migration definition changes in order (no coalescing)
+	pub migration_def: Vec<Change<MigrationDef>>,
+	/// All migration event changes in order (no coalescing)
+	pub migration_event: Vec<Change<MigrationEvent>>,
 	/// All namespace definition changes in order (no coalescing)
 	pub namespace_def: Vec<Change<NamespaceDef>>,
 	/// All procedure definition changes in order (no coalescing)
@@ -276,6 +295,36 @@ impl TransactionalDefChanges {
 		let op = change.op;
 		self.handler_def.push(change);
 		self.log.push(Operation::Handler {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_migration_def_change(&mut self, change: Change<MigrationDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|m| m.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.migration_def.push(change);
+		self.log.push(Operation::Migration {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_migration_event_change(&mut self, change: Change<MigrationEvent>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|e| e.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.migration_event.push(change);
+		self.log.push(Operation::MigrationEvent {
 			id,
 			op,
 		});
@@ -489,6 +538,14 @@ pub enum Operation {
 		id: HandlerId,
 		op: OperationType,
 	},
+	Migration {
+		id: MigrationId,
+		op: OperationType,
+	},
+	MigrationEvent {
+		id: MigrationEventId,
+		op: OperationType,
+	},
 	Namespace {
 		id: NamespaceId,
 		op: OperationType,
@@ -547,6 +604,8 @@ impl TransactionalDefChanges {
 			dictionary_def: Vec::new(),
 			flow_def: Vec::new(),
 			handler_def: Vec::new(),
+			migration_def: Vec::new(),
+			migration_event: Vec::new(),
 			namespace_def: Vec::new(),
 			procedure_def: Vec::new(),
 			ringbuffer_def: Vec::new(),
@@ -639,6 +698,8 @@ impl TransactionalDefChanges {
 		self.dictionary_def.clear();
 		self.flow_def.clear();
 		self.handler_def.clear();
+		self.migration_def.clear();
+		self.migration_event.clear();
 		self.namespace_def.clear();
 		self.procedure_def.clear();
 		self.ringbuffer_def.clear();

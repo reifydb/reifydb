@@ -129,6 +129,26 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_security_policy(id, version, change.post.clone());
 		}
 
+		for change in &ctx.changes.migration_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|m| m.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_migration(id, version, change.post.clone());
+		}
+
+		for change in &ctx.changes.migration_event {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|e| e.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_migration_event(id, version, change.post.clone());
+		}
+
 		Ok(())
 	}
 }

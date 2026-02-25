@@ -16,6 +16,7 @@ pub mod flow;
 pub mod flow_edge;
 pub mod flow_node;
 pub mod handler;
+pub mod migration;
 pub mod namespace;
 pub mod policy;
 pub mod primary_key;

@@ -733,6 +733,18 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateHandler(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateMigration(node) => {
+				self.emit(Instruction::CreateMigration(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::Migrate(node) => {
+				self.emit(Instruction::Migrate(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::RollbackMigration(node) => {
+				self.emit(Instruction::RollbackMigration(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::Dispatch(node) => {
 				self.emit(Instruction::Dispatch(node));
 				self.emit(Instruction::Emit);
@@ -873,6 +885,33 @@ impl InstructionCompiler {
 						},
 						physical::AlterFlowAction::Pause => nodes::AlterFlowAction::Pause,
 						physical::AlterFlowAction::Resume => nodes::AlterFlowAction::Resume,
+					},
+				}));
+				self.emit(Instruction::Emit);
+			}
+
+			PhysicalPlan::AlterTable(node) => {
+				self.emit(Instruction::AlterTable(nodes::AlterTableNode {
+					namespace: node.namespace,
+					table: node.table,
+					action: match node.action {
+						physical::AlterTableAction::AddColumn {
+							column,
+						} => nodes::AlterTableAction::AddColumn {
+							column,
+						},
+						physical::AlterTableAction::DropColumn {
+							column,
+						} => nodes::AlterTableAction::DropColumn {
+							column,
+						},
+						physical::AlterTableAction::RenameColumn {
+							old_name,
+							new_name,
+						} => nodes::AlterTableAction::RenameColumn {
+							old_name,
+							new_name,
+						},
 					},
 				}));
 				self.emit(Instruction::Emit);

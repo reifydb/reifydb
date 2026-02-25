@@ -57,7 +57,9 @@ use reifydb_transaction::{
 };
 use tracing::debug;
 
-use crate::{database::Database, health::HealthMonitor, subsystem::Subsystems, system::tasks::create_system_tasks};
+use crate::{
+	Migration, database::Database, health::HealthMonitor, subsystem::Subsystems, system::tasks::create_system_tasks,
+};
 
 pub struct DatabaseBuilder {
 	interceptors: InterceptorBuilder,
@@ -77,6 +79,7 @@ pub struct DatabaseBuilder {
 	#[cfg(feature = "sub_flow")]
 	flow_factory: Option<Box<dyn SubsystemFactory>>,
 	task_factory: Option<Box<dyn SubsystemFactory>>,
+	migrations: Vec<Migration>,
 }
 
 impl DatabaseBuilder {
@@ -107,6 +110,7 @@ impl DatabaseBuilder {
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
 			task_factory: None,
+			migrations: Vec::new(),
 		}
 	}
 
@@ -187,6 +191,11 @@ impl DatabaseBuilder {
 
 	pub fn with_actor_system(mut self, system: ActorSystem) -> Self {
 		self.actor_system = Some(system);
+		self
+	}
+
+	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
+		self.migrations = migrations;
 		self
 	}
 
@@ -380,7 +389,7 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, subsystems, health_monitor, runtime, actor_system))
+		Ok(Database::new(engine, subsystems, health_monitor, runtime, actor_system, self.migrations))
 	}
 
 	/// Load the materialized catalog from storage

@@ -9,11 +9,12 @@ use reifydb_type::{
 use crate::{
 	nodes::{
 		self, AlterFlowNode, AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateEventNode,
-		CreateFlowNode, CreateHandlerNode, CreateNamespaceNode, CreatePolicyNode, CreatePrimaryKeyNode,
-		CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode, CreateSubscriptionNode, CreateSumTypeNode,
-		CreateTableNode, CreateTagNode, CreateTransactionalViewNode, DeleteRingBufferNode, DeleteSeriesNode,
-		DeleteTableNode, DispatchNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
-		InsertSeriesNode, InsertTableNode, UpdateRingBufferNode, UpdateTableNode,
+		CreateFlowNode, CreateHandlerNode, CreateMigrationNode, CreateNamespaceNode, CreatePolicyNode,
+		CreatePrimaryKeyNode, CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode,
+		CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode, CreateTagNode, CreateTransactionalViewNode,
+		DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, DispatchNode, FunctionParameter,
+		InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode, InsertTableNode, MigrateNode,
+		RollbackMigrationNode, UpdateRingBufferNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -167,9 +168,13 @@ pub enum Instruction {
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
 	CreateHandler(CreateHandlerNode),
+	CreateMigration(CreateMigrationNode),
+	Migrate(MigrateNode),
+	RollbackMigration(RollbackMigrationNode),
 	Dispatch(DispatchNode),
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode),
+	AlterTable(nodes::AlterTableNode),
 
 	// === DDL (Drop) ===
 	DropNamespace(nodes::DropNamespaceNode),

@@ -126,6 +126,8 @@ pub enum Ast<'bump> {
 	Revoke(AstRevoke<'bump>),
 	Identity(AstIdentity<'bump>),
 	Require(AstRequire<'bump>),
+	Migrate(AstMigrate<'bump>),
+	RollbackMigration(AstRollbackMigration<'bump>),
 }
 
 impl<'bump> Default for Ast<'bump> {
@@ -220,6 +222,8 @@ impl<'bump> Ast<'bump> {
 			Ast::Revoke(node) => &node.token,
 			Ast::Identity(node) => &node.token,
 			Ast::Require(node) => &node.token,
+			Ast::Migrate(node) => &node.token,
+			Ast::RollbackMigration(node) => &node.token,
 		}
 	}
 
@@ -234,7 +238,13 @@ impl<'bump> Ast<'bump> {
 impl<'bump> Ast<'bump> {
 	/// Returns true if this AST node is a DDL statement (CREATE, ALTER, DROP).
 	pub fn is_ddl(&self) -> bool {
-		matches!(self, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Grant(_) | Ast::Revoke(_))
+		matches!(
+			self,
+			Ast::Create(_)
+				| Ast::Alter(_) | Ast::Drop(_)
+				| Ast::Grant(_) | Ast::Revoke(_)
+				| Ast::Migrate(_) | Ast::RollbackMigration(_)
+		)
 	}
 
 	pub fn is_dispatch(&self) -> bool {
@@ -808,6 +818,7 @@ pub enum AstCreate<'bump> {
 	User(AstCreateUser<'bump>),
 	Role(AstCreateRole<'bump>),
 	SecurityPolicy(AstCreateSecurityPolicy<'bump>),
+	Migration(AstCreateMigration<'bump>),
 }
 
 #[derive(Debug)]
@@ -815,6 +826,28 @@ pub enum AstAlter<'bump> {
 	Sequence(AstAlterSequence<'bump>),
 	Flow(AstAlterFlow<'bump>),
 	SecurityPolicy(AstAlterSecurityPolicy<'bump>),
+	Table(AstAlterTable<'bump>),
+}
+
+#[derive(Debug)]
+pub struct AstAlterTable<'bump> {
+	pub token: Token<'bump>,
+	pub table: MaybeQualifiedTableIdentifier<'bump>,
+	pub action: AstAlterTableAction<'bump>,
+}
+
+#[derive(Debug)]
+pub enum AstAlterTableAction<'bump> {
+	AddColumn {
+		column: AstColumnToCreate<'bump>,
+	},
+	DropColumn {
+		column: BumpFragment<'bump>,
+	},
+	RenameColumn {
+		old_name: BumpFragment<'bump>,
+		new_name: BumpFragment<'bump>,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1212,6 +1245,10 @@ impl<'bump> AstCreate<'bump> {
 				token,
 				..
 			}) => token,
+			AstCreate::Migration(AstCreateMigration {
+				token,
+				..
+			}) => token,
 		}
 	}
 }
@@ -1228,6 +1265,10 @@ impl<'bump> AstAlter<'bump> {
 				..
 			}) => token,
 			AstAlter::SecurityPolicy(AstAlterSecurityPolicy {
+				token,
+				..
+			}) => token,
+			AstAlter::Table(AstAlterTable {
 				token,
 				..
 			}) => token,
@@ -2087,6 +2128,29 @@ pub struct AstCreateHandler<'bump> {
 	pub on_variant: BumpFragment<'bump>,
 	pub body: Vec<Ast<'bump>>,
 	pub body_source: String,
+}
+
+/// CREATE MIGRATION — stores a named migration script in the database
+#[derive(Debug)]
+pub struct AstCreateMigration<'bump> {
+	pub token: Token<'bump>,
+	pub name: String,
+	pub body_source: String,
+	pub rollback_body_source: Option<String>,
+}
+
+/// MIGRATE — applies pending migrations
+#[derive(Debug)]
+pub struct AstMigrate<'bump> {
+	pub token: Token<'bump>,
+	pub target: Option<String>,
+}
+
+/// ROLLBACK MIGRATION — rolls back applied migrations
+#[derive(Debug)]
+pub struct AstRollbackMigration<'bump> {
+	pub token: Token<'bump>,
+	pub target: Option<String>,
 }
 
 /// DISPATCH — fires all handlers registered for the specified event variant

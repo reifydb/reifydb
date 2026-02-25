@@ -8,6 +8,7 @@ use crate::transaction::admin::AdminTransaction;
 pub mod dictionary;
 pub mod flow;
 pub mod handler;
+pub mod migration;
 pub mod namespace;
 pub mod procedure;
 pub mod ringbuffer;

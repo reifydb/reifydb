@@ -80,6 +80,9 @@ pub enum PhysicalPlan<'bump> {
 	CreateHandler(nodes::CreateHandlerNode),
 	CreateSeries(nodes::CreateSeriesNode),
 	CreateTag(nodes::CreateTagNode),
+	CreateMigration(nodes::CreateMigrationNode),
+	Migrate(nodes::MigrateNode),
+	RollbackMigration(nodes::RollbackMigrationNode),
 	Dispatch(nodes::DispatchNode),
 	// Drop
 	DropNamespace(nodes::DropNamespaceNode),
@@ -93,6 +96,7 @@ pub enum PhysicalPlan<'bump> {
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode<'bump>),
+	AlterTable(AlterTableNode<'bump>),
 	// Mutate
 	Delete(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
@@ -202,6 +206,28 @@ pub struct CreateSubscriptionNode<'bump> {
 pub struct AlterFlowNode<'bump> {
 	pub flow: nodes::AlterFlowIdentifier,
 	pub action: AlterFlowAction<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AlterTableNode<'bump> {
+	pub namespace: ResolvedNamespace,
+	pub table: Fragment,
+	pub action: AlterTableAction,
+	pub _phantom: std::marker::PhantomData<&'bump ()>,
+}
+
+#[derive(Debug)]
+pub enum AlterTableAction {
+	AddColumn {
+		column: reifydb_catalog::catalog::table::TableColumnToCreate,
+	},
+	DropColumn {
+		column: Fragment,
+	},
+	RenameColumn {
+		old_name: Fragment,
+		new_name: Fragment,
+	},
 }
 
 #[derive(Debug)]
@@ -611,12 +637,35 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_handler(rx, create)?);
 				}
 
+				LogicalPlan::CreateMigration(create) => {
+					stack.push(PhysicalPlan::CreateMigration(nodes::CreateMigrationNode {
+						name: create.name,
+						body_source: create.body_source,
+						rollback_body_source: create.rollback_body_source,
+					}));
+				}
+
+				LogicalPlan::Migrate(node) => {
+					stack.push(PhysicalPlan::Migrate(nodes::MigrateNode {
+						target: node.target,
+					}));
+				}
+
+				LogicalPlan::RollbackMigration(node) => {
+					stack.push(PhysicalPlan::RollbackMigration(nodes::RollbackMigrationNode {
+						target: node.target,
+					}));
+				}
+
 				LogicalPlan::Dispatch(dispatch) => {
 					stack.push(self.compile_dispatch(rx, dispatch)?);
 				}
 
 				LogicalPlan::AlterFlow(alter) => {
 					stack.push(self.compile_alter_flow(rx, alter)?);
+				}
+				LogicalPlan::AlterTable(alter) => {
+					stack.push(self.compile_alter_table(rx, alter)?);
 				}
 
 				// Drop

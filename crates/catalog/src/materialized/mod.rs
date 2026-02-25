@@ -5,6 +5,7 @@ pub mod dictionary;
 pub mod flow;
 pub mod handler;
 pub mod load;
+pub mod migration;
 pub mod namespace;
 pub mod operator_retention_policy;
 pub mod primary_key;
@@ -29,10 +30,11 @@ use reifydb_core::{
 		flow::{FlowDef, FlowId, FlowNodeId},
 		handler::HandlerDef,
 		id::{
-			HandlerId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId, SubscriptionId, TableId,
-			ViewId,
+			HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId,
+			SubscriptionId, TableId, ViewId,
 		},
 		key::PrimaryKeyDef,
+		migration::{MigrationDef, MigrationEvent},
 		namespace::NamespaceDef,
 		primitive::PrimitiveId,
 		procedure::ProcedureDef,
@@ -60,6 +62,8 @@ pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
 pub type MultiVersionDictionaryDef = MultiVersionContainer<DictionaryDef>;
 pub type MultiVersionHandlerDef = MultiVersionContainer<HandlerDef>;
+pub type MultiVersionMigrationDef = MultiVersionContainer<MigrationDef>;
+pub type MultiVersionMigrationEvent = MultiVersionContainer<MigrationEvent>;
 pub type MultiVersionProcedureDef = MultiVersionContainer<ProcedureDef>;
 pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
 pub type MultiVersionSumTypeDef = MultiVersionContainer<SumTypeDef>;
@@ -138,6 +142,12 @@ pub struct MaterializedCatalogInner {
 	pub(crate) security_policies: SkipMap<SecurityPolicyId, MultiVersionSecurityPolicyDef>,
 	/// Index from security policy name to security policy ID for fast name lookups
 	pub(crate) security_policies_by_name: SkipMap<String, SecurityPolicyId>,
+	/// MultiVersion migration definitions indexed by migration ID
+	pub(crate) migrations: SkipMap<MigrationId, MultiVersionMigrationDef>,
+	/// Index from migration name to migration ID for fast name lookups
+	pub(crate) migrations_by_name: SkipMap<String, MigrationId>,
+	/// MultiVersion migration events indexed by event ID
+	pub(crate) migration_events: SkipMap<MigrationEventId, MultiVersionMigrationEvent>,
 	/// User-defined virtual table definitions indexed by ID
 	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTableDef>>,
 	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
@@ -209,6 +219,9 @@ impl MaterializedCatalog {
 			user_roles: SkipMap::new(),
 			security_policies: SkipMap::new(),
 			security_policies_by_name: SkipMap::new(),
+			migrations: SkipMap::new(),
+			migrations_by_name: SkipMap::new(),
+			migration_events: SkipMap::new(),
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 		}))

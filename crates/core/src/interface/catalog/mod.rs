@@ -9,6 +9,7 @@ pub mod handler;
 pub mod id;
 pub mod key;
 pub mod layout;
+pub mod migration;
 pub mod namespace;
 pub mod policy;
 pub mod primitive;

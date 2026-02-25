@@ -26,6 +26,7 @@ pub enum CatalogObjectKind {
 	User,
 	Role,
 	SecurityPolicy,
+	Migration,
 }
 
 impl Display for CatalogObjectKind {
@@ -46,6 +47,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::User => f.write_str("user"),
 			CatalogObjectKind::Role => f.write_str("role"),
 			CatalogObjectKind::SecurityPolicy => f.write_str("security policy"),
+			CatalogObjectKind::Migration => f.write_str("migration"),
 		}
 	}
 }
@@ -64,6 +66,12 @@ pub enum CatalogError {
 	NotFound {
 		kind: CatalogObjectKind,
 		namespace: String,
+		name: String,
+		fragment: Fragment,
+	},
+
+	#[error("migration `{name}` has no rollback body")]
+	MigrationNoRollbackBody {
 		name: String,
 		fragment: Fragment,
 	},
@@ -146,6 +154,15 @@ pub enum CatalogError {
 	SubscriptionNotFound {
 		fragment: Fragment,
 		name: String,
+	},
+
+	#[error("column `{column}` not found in {kind} `{namespace}`.`{name}`")]
+	ColumnNotFound {
+		kind: CatalogObjectKind,
+		namespace: String,
+		name: String,
+		column: String,
+		fragment: Fragment,
 	},
 
 	#[error("cannot drop {kind} because it is in use")]
@@ -243,9 +260,15 @@ impl IntoDiagnostic for CatalogError {
 						"security policy",
 						"choose a different name or drop the existing security policy first",
 					),
+					CatalogObjectKind::Migration => {
+						("CA_046", "migration", "choose a different name for the migration")
+					}
 				};
-				let message = if matches!(kind, CatalogObjectKind::Namespace) {
-					format!("{} `{}` already exists", kind_str, namespace)
+				let message = if matches!(
+					kind,
+					CatalogObjectKind::Namespace | CatalogObjectKind::Migration
+				) {
+					format!("{} `{}` already exists", kind_str, name)
 				} else {
 					format!("{} `{}::{}` already exists", kind_str, namespace, name)
 				};
@@ -345,11 +368,18 @@ impl IntoDiagnostic for CatalogError {
 						"security policy",
 						"ensure the security policy exists or create it first".to_string(),
 					),
+					CatalogObjectKind::Migration => (
+						"CA_047",
+						"migration",
+						"ensure the migration exists or create it first using `CREATE MIGRATION`".to_string(),
+					),
 				};
-				let message = if matches!(kind, CatalogObjectKind::Namespace) {
-					format!("{} `{}` not found", kind_str, namespace)
-				} else {
-					format!("{} `{}::{}` not found", kind_str, namespace, name)
+				let message = match kind {
+					CatalogObjectKind::Namespace => {
+						format!("{} `{}` not found", kind_str, namespace)
+					}
+					CatalogObjectKind::Migration => format!("{} `{}` not found", kind_str, name),
+					_ => format!("{} `{}::{}` not found", kind_str, namespace, name),
 				};
 				let label_str = match kind {
 					CatalogObjectKind::Namespace => "unknown namespace reference".to_string(),
@@ -370,6 +400,22 @@ impl IntoDiagnostic for CatalogError {
 					operator_chain: None,
 				}
 			}
+
+			CatalogError::MigrationNoRollbackBody {
+				name,
+				fragment,
+			} => Diagnostic {
+				code: "CA_048".to_string(),
+				statement: None,
+				message: format!("migration `{}` has no rollback body", name),
+				fragment,
+				label: Some("no rollback body defined".to_string()),
+				help: Some("define a ROLLBACK clause when creating the migration".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 
 			CatalogError::ColumnAlreadyExists {
 				kind,
@@ -711,6 +757,35 @@ impl IntoDiagnostic for CatalogError {
 				cause: None,
 				operator_chain: None,
 			},
+
+			CatalogError::ColumnNotFound {
+				kind,
+				namespace,
+				name,
+				column,
+				fragment,
+			} => {
+				let kind_str = match kind {
+					CatalogObjectKind::Table => "table",
+					CatalogObjectKind::View => "view",
+					_ => "object",
+				};
+				Diagnostic {
+					code: "CA_039".to_string(),
+					statement: None,
+					message: format!(
+						"column `{}` not found in {} `{}`.`{}`",
+						column, kind_str, namespace, name
+					),
+					fragment,
+					label: Some("unknown column reference".to_string()),
+					help: Some("ensure the column exists in the table".to_string()),
+					column: None,
+					notes: vec![],
+					cause: None,
+					operator_chain: None,
+				}
+			}
 
 			CatalogError::InUse {
 				kind,

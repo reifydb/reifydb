@@ -10,9 +10,10 @@ use reifydb_core::{
 			flow::{FlowDef, FlowId},
 			handler::HandlerDef,
 			id::{
-				HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, SubscriptionId, TableId,
-				ViewId,
+				HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
+				SubscriptionId, TableId, ViewId,
 			},
+			migration::MigrationDef,
 			namespace::NamespaceDef,
 			procedure::ProcedureDef,
 			ringbuffer::RingBufferDef,
@@ -37,11 +38,11 @@ use crate::{
 	TransactionId,
 	change::{
 		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
-		TransactionalHandlerChanges, TransactionalNamespaceChanges, TransactionalProcedureChanges,
-		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalSecurityPolicyChanges,
-		TransactionalSeriesChanges, TransactionalSubscriptionChanges, TransactionalSumTypeChanges,
-		TransactionalTableChanges, TransactionalUserChanges, TransactionalUserRoleChanges,
-		TransactionalViewChanges,
+		TransactionalHandlerChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
+		TransactionalProcedureChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
+		TransactionalSecurityPolicyChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
+		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalUserChanges,
+		TransactionalUserRoleChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -407,6 +408,24 @@ impl TransactionalSecurityPolicyChanges for QueryTransaction {
 	}
 
 	fn is_security_policy_deleted_by_name(&self, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalMigrationChanges for QueryTransaction {
+	fn find_migration(&self, _id: MigrationId) -> Option<&MigrationDef> {
+		None
+	}
+
+	fn find_migration_by_name(&self, _name: &str) -> Option<&MigrationDef> {
+		None
+	}
+
+	fn is_migration_deleted(&self, _id: MigrationId) -> bool {
+		false
+	}
+
+	fn is_migration_deleted_by_name(&self, _name: &str) -> bool {
 		false
 	}
 }

@@ -66,6 +66,8 @@ pub mod handler;
 pub mod index;
 pub mod index_entry;
 pub mod kind;
+pub mod migration;
+pub mod migration_event;
 pub mod namespace;
 pub mod namespace_dictionary;
 pub mod namespace_flow;
@@ -329,6 +331,10 @@ impl Key {
 			KeyKind::UserRole => UserRoleKey::decode(&key).map(Self::UserRole),
 			KeyKind::SecurityPolicy => SecurityPolicyKey::decode(&key).map(Self::SecurityPolicy),
 			KeyKind::SecurityPolicyOp => SecurityPolicyOpKey::decode(&key).map(Self::SecurityPolicyOp),
+			KeyKind::Migration | KeyKind::MigrationEvent => {
+				// Migration keys are used directly via EncodableKey trait, not through Key enum
+				None
+			}
 		}
 	}
 }

@@ -20,6 +20,7 @@ pub mod flow_operator_outputs;
 pub mod flow_operators;
 pub mod flows;
 pub mod handlers;
+pub mod migrations;
 pub mod namespaces;
 pub mod operator_retention_policies;
 pub mod primary_key_columns;
@@ -64,6 +65,7 @@ use flow_operator_outputs::flow_operator_outputs;
 use flow_operators::flow_operators;
 use flows::flows;
 use handlers::handlers;
+use migrations::migrations;
 use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
 use primary_key_columns::primary_key_columns;
@@ -250,6 +252,17 @@ pub mod ids {
 			pub const ON_VARIANT_TAG: ColumnId = ColumnId(5);
 
 			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, ON_SUMTYPE_ID, ON_VARIANT_TAG];
+		}
+
+		pub mod migrations {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const NAME: ColumnId = ColumnId(1);
+			pub const ACTION: ColumnId = ColumnId(2);
+			pub const BODY: ColumnId = ColumnId(3);
+			pub const ROLLBACK_BODY: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [NAME, ACTION, BODY, ROLLBACK_BODY];
 		}
 
 		pub mod dictionaries {
@@ -518,8 +531,10 @@ pub mod ids {
 		pub const USER: SequenceId = SequenceId(11);
 		pub const ROLE: SequenceId = SequenceId(12);
 		pub const SECURITY_POLICY: SequenceId = SequenceId(13);
+		pub const MIGRATION: SequenceId = SequenceId(14);
+		pub const MIGRATION_EVENT: SequenceId = SequenceId(15);
 
-		pub const ALL: [SequenceId; 13] = [
+		pub const ALL: [SequenceId; 15] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -533,6 +548,8 @@ pub mod ids {
 			USER,
 			ROLE,
 			SECURITY_POLICY,
+			MIGRATION,
+			MIGRATION_EVENT,
 		];
 	}
 
@@ -582,8 +599,9 @@ pub mod ids {
 		pub const USER_ROLES: VTableId = VTableId(41);
 		pub const SECURITY_POLICIES: VTableId = VTableId(42);
 		pub const SECURITY_POLICY_OPERATIONS: VTableId = VTableId(43);
+		pub const MIGRATIONS: VTableId = VTableId(44);
 
-		pub const ALL: [VTableId; 43] = [
+		pub const ALL: [VTableId; 44] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -627,6 +645,7 @@ pub mod ids {
 			USER_ROLES,
 			SECURITY_POLICIES,
 			SECURITY_POLICY_OPERATIONS,
+			MIGRATIONS,
 		];
 	}
 }
@@ -866,5 +885,10 @@ impl SystemCatalog {
 	/// Get the security_policy_operations virtual table definition
 	pub fn get_system_security_policy_operations_table_def() -> Arc<VTableDef> {
 		security_policy_operations()
+	}
+
+	/// Get the migrations virtual table definition
+	pub fn get_system_migrations_table_def() -> Arc<VTableDef> {
+		migrations()
 	}
 }

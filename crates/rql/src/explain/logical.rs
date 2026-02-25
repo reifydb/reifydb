@@ -638,6 +638,15 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::CreateHandler(_) => {
 			output.push_str(&format!("{}{} CreateHandler\n", prefix, branch));
 		}
+		LogicalPlan::CreateMigration(_) => {
+			output.push_str(&format!("{}{} CreateMigration\n", prefix, branch));
+		}
+		LogicalPlan::Migrate(_) => {
+			output.push_str(&format!("{}{} Migrate\n", prefix, branch));
+		}
+		LogicalPlan::RollbackMigration(_) => {
+			output.push_str(&format!("{}{} RollbackMigration\n", prefix, branch));
+		}
 		LogicalPlan::Dispatch(_) => {
 			output.push_str(&format!("{}{} Dispatch\n", prefix, branch));
 		}
@@ -870,6 +879,14 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 					render_logical_plan_inner(plan, &new_prefix, is_last, output);
 				}
 			}
+		}
+		LogicalPlan::AlterTable(alter_table) => {
+			let table_name = if let Some(ns) = alter_table.table.namespace.first() {
+				format!("{}.{}", ns.text(), alter_table.table.name.text())
+			} else {
+				alter_table.table.name.text().to_string()
+			};
+			output.push_str(&format!("{}{} AlterTable: {}\n", prefix, branch, table_name));
 		}
 		LogicalPlan::DefineFunction(def) => {
 			let params: Vec<String> = def

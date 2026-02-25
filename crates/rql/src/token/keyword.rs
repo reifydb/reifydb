@@ -168,6 +168,14 @@ Disable => "DISABLE",
 Function => "FUNCTION",
 Session => "SESSION",
 Feature => "FEATURE",
+Add => "ADD",
+Migration => "MIGRATION",
+Migrate => "MIGRATE",
+Rollback => "ROLLBACK",
+Diff => "DIFF",
+Version => "VERSION",
+Current => "CURRENT",
+Pending => "PENDING",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -279,6 +287,14 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("FUNCTION", Keyword::Function);
 	map.insert("SESSION", Keyword::Session);
 	map.insert("FEATURE", Keyword::Feature);
+	map.insert("ADD", Keyword::Add);
+	map.insert("MIGRATION", Keyword::Migration);
+	map.insert("MIGRATE", Keyword::Migrate);
+	map.insert("ROLLBACK", Keyword::Rollback);
+	map.insert("DIFF", Keyword::Diff);
+	map.insert("VERSION", Keyword::Version);
+	map.insert("CURRENT", Keyword::Current);
+	map.insert("PENDING", Keyword::Pending);
 	map
 });
 

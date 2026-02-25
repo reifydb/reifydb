@@ -21,7 +21,7 @@ use super::{
 		flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes, flow_nodes::FlowNodes,
 		flow_operator_inputs::FlowOperatorInputs, flow_operator_outputs::FlowOperatorOutputs,
 		flow_operators::FlowOperators, flow_storage_stats::FlowStorageStats, flows::Flows, handlers::Handlers,
-		index_storage_stats::IndexStorageStats, namespaces::Namespaces,
+		index_storage_stats::IndexStorageStats, migrations::Migrations, namespaces::Namespaces,
 		operator_retention_policies::OperatorRetentionPolicies, primary_key_columns::PrimaryKeyColumns,
 		primary_keys::PrimaryKeys, primitive_retention_policies::PrimitiveRetentionPolicies,
 		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, roles::Roles,
@@ -86,6 +86,7 @@ pub enum VTables {
 	UserRoles(UserRoles),
 	SecurityPolicies(SecurityPolicies),
 	SecurityPolicyOperations(SecurityPolicyOperations),
+	Migrations(Migrations),
 
 	/// User-defined virtual table (callback-based)
 	UserDefined {
@@ -144,6 +145,7 @@ impl VTables {
 			Self::UserRoles(t) => &t.definition,
 			Self::SecurityPolicies(t) => &t.definition,
 			Self::SecurityPolicyOperations(t) => &t.definition,
+			Self::Migrations(t) => &t.definition,
 			Self::UserDefined {
 				def,
 				..
@@ -197,6 +199,7 @@ impl VTables {
 			Self::UserRoles(t) => t.initialize(txn, ctx),
 			Self::SecurityPolicies(t) => t.initialize(txn, ctx),
 			Self::SecurityPolicyOperations(t) => t.initialize(txn, ctx),
+			Self::Migrations(t) => t.initialize(txn, ctx),
 			Self::UserDefined {
 				params: stored_params,
 				exhausted,
@@ -264,6 +267,7 @@ impl VTables {
 			Self::UserRoles(t) => t.next(txn),
 			Self::SecurityPolicies(t) => t.next(txn),
 			Self::SecurityPolicyOperations(t) => t.next(txn),
+			Self::Migrations(t) => t.next(txn),
 			Self::UserDefined {
 				data_fn,
 				params: stored_params,

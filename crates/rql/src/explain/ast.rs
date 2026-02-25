@@ -93,6 +93,8 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::Revoke(_) => "Revoke",
 		Ast::Identity(_) => "Identity",
 		Ast::Require(_) => "Require",
+		Ast::Migrate(_) => "Migrate",
+		Ast::RollbackMigration(_) => "RollbackMigration",
 	};
 
 	let branch = if is_last {
@@ -124,6 +126,11 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 			}
 			AstAlter::SecurityPolicy(sp) => {
 				format!("ALTER {:?} POLICY {}", sp.target_type, sp.name.text())
+			}
+			AstAlter::Table(t) => {
+				let namespace =
+					t.table.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
+				format!("ALTER TABLE {}{}", namespace, t.table.name.text())
 			}
 		},
 		Ast::Create(create) => match create {
@@ -329,6 +336,9 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 					// The action is part of the flow node itself
 				}
 				AstAlter::SecurityPolicy(_) => {}
+				AstAlter::Table(_) => {
+					// Table alter doesn't have child operations to display here
+				}
 			}
 			// Return early since we handled the children
 			return;

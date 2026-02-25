@@ -112,6 +112,10 @@ impl<'bump> Parser<'bump> {
 					Keyword::Dispatch => Ok(Ast::Dispatch(self.parse_dispatch()?)),
 					Keyword::Grant => Ok(Ast::Grant(self.parse_grant()?)),
 					Keyword::Revoke => Ok(Ast::Revoke(self.parse_revoke()?)),
+					Keyword::Migrate => Ok(Ast::Migrate(self.parse_migrate()?)),
+					Keyword::Rollback => {
+						Ok(Ast::RollbackMigration(self.parse_rollback_migration()?))
+					}
 					Keyword::Loop => Ok(Ast::Loop(self.parse_loop()?)),
 					Keyword::While => Ok(Ast::While(self.parse_while()?)),
 					Keyword::For => Ok(Ast::For(self.parse_for()?)),
@@ -127,7 +131,7 @@ impl<'bump> Parser<'bump> {
 						if self.position + 1 < self.tokens.len()
 							&& matches!(
 								self.tokens[self.position + 1].kind,
-								TokenKind::Identifier
+								TokenKind::Identifier | TokenKind::Keyword(_)
 							) {
 							Ok(Ast::DefFunction(self.parse_def_function()?))
 						} else {

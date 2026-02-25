@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::schema::Schema,
 	interface::catalog::{
 		change::CatalogTrackTableChangeOperations,
-		column::ColumnDef,
+		column::{ColumnDef, ColumnIndex},
 		id::{NamespaceId, PrimaryKeyId, TableId},
 		policy::ColumnPolicyKind,
 		primitive::PrimitiveId,
@@ -30,6 +30,7 @@ use crate::{
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
+		column::create::ColumnToCreate,
 		primary_key::create::PrimaryKeyToCreate,
 		table::create::{TableColumnToCreate as StoreTableColumnToCreate, TableToCreate as StoreTableToCreate},
 	},
@@ -354,5 +355,95 @@ impl Catalog {
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
 		CatalogStore::get_table_pk_id(txn, table_id)
+	}
+
+	#[instrument(name = "catalog::table::add_column", level = "debug", skip(self, txn, column))]
+	pub fn add_table_column(
+		&self,
+		txn: &mut AdminTransaction,
+		table_id: TableId,
+		column: TableColumnToCreate,
+		namespace_name: &str,
+	) -> crate::Result<TableDef> {
+		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
+		let index = ColumnIndex(pre.columns.len() as u8);
+
+		CatalogStore::create_column(
+			txn,
+			table_id,
+			ColumnToCreate {
+				fragment: Some(column.fragment.clone()),
+				namespace_name: namespace_name.to_string(),
+				primitive_name: pre.name.clone(),
+				column: column.name.text().to_string(),
+				constraint: column.constraint,
+				policies: column.policies,
+				index,
+				auto_increment: column.auto_increment,
+				dictionary_id: column.dictionary_id,
+			},
+		)?;
+
+		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
+		txn.track_table_def_updated(pre, post.clone())?;
+
+		Ok(post)
+	}
+
+	#[instrument(name = "catalog::table::drop_column", level = "debug", skip(self, txn))]
+	pub fn drop_table_column(
+		&self,
+		txn: &mut AdminTransaction,
+		table_id: TableId,
+		column_name: &str,
+		namespace_name: &str,
+	) -> crate::Result<TableDef> {
+		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
+
+		let column = pre.columns.iter().find(|c| c.name == column_name).ok_or_else(|| {
+			CatalogError::ColumnNotFound {
+				kind: CatalogObjectKind::Table,
+				namespace: namespace_name.to_string(),
+				name: pre.name.clone(),
+				column: column_name.to_string(),
+				fragment: Fragment::None,
+			}
+		})?;
+
+		CatalogStore::drop_column(txn, PrimitiveId::Table(table_id), column.id)?;
+
+		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
+		txn.track_table_def_updated(pre, post.clone())?;
+
+		Ok(post)
+	}
+
+	#[instrument(name = "catalog::table::rename_column", level = "debug", skip(self, txn))]
+	pub fn rename_table_column(
+		&self,
+		txn: &mut AdminTransaction,
+		table_id: TableId,
+		old_name: &str,
+		new_name: &str,
+		namespace_name: &str,
+	) -> crate::Result<TableDef> {
+		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
+
+		let column = pre.columns.iter().find(|c| c.name == old_name).ok_or_else(|| {
+			CatalogError::ColumnNotFound {
+				kind: CatalogObjectKind::Table,
+				namespace: namespace_name.to_string(),
+				name: pre.name.clone(),
+				column: old_name.to_string(),
+				fragment: Fragment::None,
+			}
+		})?;
+
+		CatalogStore::rename_column(txn, PrimitiveId::Table(table_id), column.id, new_name)?;
+
+		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
+		txn.track_table_def_updated(pre, post.clone())?;
+
+		Ok(post)
 	}
 }

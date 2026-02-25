@@ -112,18 +112,20 @@ pub mod tests {
 			KeyKind::SchemaField => {}
 			KeyKind::Handler => {}
 			KeyKind::NamespaceHandler => {}
+			KeyKind::VariantHandler => {}
 			KeyKind::Series => {}
 			KeyKind::NamespaceSeries => {}
 			KeyKind::SeriesMetadata => {}
-			KeyKind::VariantHandler => {}
 			KeyKind::User => {}
 			KeyKind::Role => {}
 			KeyKind::UserRole => {}
 			KeyKind::SecurityPolicy => {}
-			KeyKind::SecurityPolicyOp => {} /* When adding a new variant, add it here.
-			                                 * The compiler will error if you forget.
-			                                 * Then add a test and update should_exclude_from_cdc() if
-			                                 * needed. */
+			KeyKind::SecurityPolicyOp => {}
+			KeyKind::Migration => {}
+			KeyKind::MigrationEvent => {} /* When adding a new variant, add it here.
+			                               * The compiler will error if you forget.
+			                               * Then add a test and update should_exclude_from_cdc() if
+			                               * needed. */
 		}
 	}
 

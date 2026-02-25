@@ -7,6 +7,7 @@ pub mod event;
 pub mod flow;
 pub mod handler;
 pub mod index;
+pub mod migration;
 pub mod namespace;
 pub mod policy;
 pub mod primary_key;
@@ -65,6 +66,7 @@ impl<'bump> Compiler<'bump> {
 					operations: node.operations,
 				}))
 			}
+			AstCreate::Migration(node) => self.compile_create_migration(node),
 		}
 	}
 }

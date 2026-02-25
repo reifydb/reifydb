@@ -34,6 +34,7 @@ pub mod literal;
 pub mod loop_construct;
 pub mod map;
 pub mod match_expr;
+pub mod migrate;
 pub mod patch;
 pub mod policy;
 pub mod prefix;
@@ -404,6 +405,23 @@ impl<'bump> Parser<'bump> {
 		self.advance()
 	}
 
+	/// Consume a token that is either an Identifier or a Keyword, returning it as an Identifier.
+	/// Used in contexts where a keyword-colliding name (e.g. enum variant `Pending`) should be accepted.
+	pub(crate) fn consume_name(&mut self) -> crate::Result<Token<'bump>> {
+		let token = self.advance()?;
+		if matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
+			Ok(Token {
+				kind: TokenKind::Identifier,
+				..token
+			})
+		} else {
+			Err(AstError::ExpectedIdentifier {
+				fragment: token.fragment.to_owned(),
+			}
+			.into())
+		}
+	}
+
 	pub(crate) fn consume_keyword_as_ident(&mut self) -> crate::Result<Token<'bump>> {
 		let token = self.advance()?;
 		if matches!(token.kind, TokenKind::Keyword(_)) {
@@ -574,19 +592,19 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_is(&mut self, left: Ast<'bump>) -> crate::Result<Ast<'bump>> {
 		let is_token = self.consume_keyword(Keyword::Is)?;
 
-		let first = self.consume(TokenKind::Identifier)?;
+		let first = self.consume_name()?;
 
 		let (namespace, sumtype_name) = if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon)
 		{
 			self.consume_operator(Operator::DoubleColon)?;
-			let sumtype_token = self.consume(TokenKind::Identifier)?;
+			let sumtype_token = self.consume_name()?;
 			(Some(first.fragment), sumtype_token.fragment)
 		} else {
 			(None, first.fragment)
 		};
 
 		self.consume_operator(Operator::DoubleColon)?;
-		let variant_token = self.consume(TokenKind::Identifier)?;
+		let variant_token = self.consume_name()?;
 
 		Ok(Ast::IsVariant(AstIsVariant {
 			token: is_token,

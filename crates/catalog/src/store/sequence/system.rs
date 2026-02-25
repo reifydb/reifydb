@@ -6,8 +6,8 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::catalog::{
 		id::{
-			ColumnId, ColumnPolicyId, HandlerId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId,
-			SeriesId, TableId, ViewId,
+			ColumnId, ColumnPolicyId, HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId,
+			ProcedureId, RingBufferId, SeriesId, TableId, ViewId,
 		},
 		security_policy::SecurityPolicyId,
 		user::{RoleId, UserId},
@@ -20,8 +20,8 @@ use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 use crate::{
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, NAMESPACE, PRIMARY_KEY, PROCEDURE, ROLE,
-		SECURITY_POLICY, SOURCE, USER,
+		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION, MIGRATION_EVENT, NAMESPACE,
+		PRIMARY_KEY, PROCEDURE, ROLE, SECURITY_POLICY, SOURCE, USER,
 	},
 };
 
@@ -50,6 +50,10 @@ static USER_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(USER
 static ROLE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(ROLE));
 
 static SECURITY_POLICY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(SECURITY_POLICY));
+
+static MIGRATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(MIGRATION));
+
+static MIGRATION_EVENT_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(MIGRATION_EVENT));
 
 pub(crate) struct SystemSequence {}
 
@@ -112,5 +116,13 @@ impl SystemSequence {
 
 	pub(crate) fn next_security_policy_id(txn: &mut AdminTransaction) -> crate::Result<SecurityPolicyId> {
 		GeneratorU64::next(txn, &SECURITY_POLICY_KEY, Some(1025)).map(|v| v)
+	}
+
+	pub(crate) fn next_migration_id(txn: &mut AdminTransaction) -> crate::Result<MigrationId> {
+		GeneratorU64::next(txn, &MIGRATION_KEY, None).map(MigrationId)
+	}
+
+	pub(crate) fn next_migration_event_id(txn: &mut AdminTransaction) -> crate::Result<MigrationEventId> {
+		GeneratorU64::next(txn, &MIGRATION_EVENT_KEY, None).map(MigrationEventId)
 	}
 }

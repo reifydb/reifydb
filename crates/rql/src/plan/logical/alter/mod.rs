@@ -3,6 +3,7 @@
 
 pub mod flow;
 pub mod sequence;
+pub mod table;
 
 use reifydb_transaction::transaction::Transaction;
 
@@ -27,6 +28,7 @@ impl<'bump> Compiler<'bump> {
 					action: node.action,
 				}))
 			}
+			AstAlter::Table(node) => self.compile_alter_table(node, tx),
 		}
 	}
 }

@@ -10,6 +10,7 @@ use crate::interface::catalog::{
 	dictionary::DictionaryDef,
 	flow::FlowDef,
 	handler::HandlerDef,
+	migration::{MigrationDef, MigrationEvent},
 	namespace::NamespaceDef,
 	procedure::ProcedureDef,
 	ringbuffer::RingBufferDef,
@@ -163,11 +164,25 @@ pub trait CatalogTrackSecurityPolicyChangeOperations {
 	fn track_security_policy_def_deleted(&mut self, policy: SecurityPolicyDef) -> reifydb_type::Result<()>;
 }
 
+/// Trait for tracking migration definition changes during a transaction.
+pub trait CatalogTrackMigrationChangeOperations {
+	fn track_migration_def_created(&mut self, migration: MigrationDef) -> reifydb_type::Result<()>;
+
+	fn track_migration_def_deleted(&mut self, migration: MigrationDef) -> reifydb_type::Result<()>;
+}
+
+/// Trait for tracking migration event changes during a transaction.
+pub trait CatalogTrackMigrationEventChangeOperations {
+	fn track_migration_event_created(&mut self, event: MigrationEvent) -> reifydb_type::Result<()>;
+}
+
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackDictionaryChangeOperations
 	+ CatalogTrackFlowChangeOperations
 	+ CatalogTrackHandlerChangeOperations
+	+ CatalogTrackMigrationChangeOperations
+	+ CatalogTrackMigrationEventChangeOperations
 	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackProcedureChangeOperations
 	+ CatalogTrackRingBufferChangeOperations

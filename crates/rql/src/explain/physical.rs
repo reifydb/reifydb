@@ -520,6 +520,15 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreateHandler(_) => {
 			write_node_header(output, prefix, is_last, "CreateHandler");
 		}
+		PhysicalPlan::CreateMigration(_) => {
+			write_node_header(output, prefix, is_last, "CreateMigration");
+		}
+		PhysicalPlan::Migrate(_) => {
+			write_node_header(output, prefix, is_last, "Migrate");
+		}
+		PhysicalPlan::RollbackMigration(_) => {
+			write_node_header(output, prefix, is_last, "RollbackMigration");
+		}
 		PhysicalPlan::Dispatch(_) => {
 			write_node_header(output, prefix, is_last, "Dispatch");
 		}
@@ -553,6 +562,10 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 					render_physical_plan_inner(query, child_prefix, true, output);
 				});
 			}
+		}
+		PhysicalPlan::AlterTable(node) => {
+			let label = format!("AlterTable: {}.{}", node.namespace.name(), node.table.text());
+			write_node_header(output, prefix, is_last, &label);
 		}
 		PhysicalPlan::TableVirtualScan(node) => {
 			let label = format!("VirtualScan: {}::{}", node.source.namespace().name(), node.source.name());

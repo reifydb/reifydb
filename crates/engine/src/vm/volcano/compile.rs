@@ -12,7 +12,7 @@ use reifydb_catalog::vtable::{
 		flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes, flow_nodes::FlowNodes,
 		flow_operator_inputs::FlowOperatorInputs, flow_operator_outputs::FlowOperatorOutputs,
 		flow_operators::FlowOperators, flow_storage_stats::FlowStorageStats, flows::Flows, handlers::Handlers,
-		index_storage_stats::IndexStorageStats, namespaces::Namespaces,
+		index_storage_stats::IndexStorageStats, migrations::Migrations, namespaces::Namespaces,
 		operator_retention_policies::OperatorRetentionPolicies, primary_key_columns::PrimaryKeyColumns,
 		primary_keys::PrimaryKeys, primitive_retention_policies::PrimitiveRetentionPolicies,
 		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, roles::Roles,
@@ -588,6 +588,7 @@ pub(crate) fn compile<'a>(
 					"security_policy_operations" => {
 						VTables::SecurityPolicyOperations(SecurityPolicyOperations::new())
 					}
+					"migrations" => VTables::Migrations(Migrations::new()),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {

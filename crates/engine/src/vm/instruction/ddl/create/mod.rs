@@ -18,6 +18,7 @@ pub mod dictionary;
 pub mod event;
 pub mod flow;
 pub mod handler;
+pub mod migration;
 pub mod namespace;
 pub mod policy;
 pub mod primary_key;

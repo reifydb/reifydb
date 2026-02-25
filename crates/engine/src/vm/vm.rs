@@ -1195,6 +1195,43 @@ impl Vm {
 					let columns = create_handler(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
+				Instruction::CreateMigration(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = super::instruction::ddl::create::migration::create_migration(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::Migrate(node) => {
+					let columns = super::instruction::ddl::migrate::migrate::execute_migrate(
+						self,
+						services,
+						tx,
+						node.clone(),
+						params,
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::RollbackMigration(node) => {
+					let columns =
+						super::instruction::ddl::migrate::rollback::execute_rollback_migration(
+							self,
+							services,
+							tx,
+							node.clone(),
+							params,
+						)?;
+					self.stack.push(Variable::Columns(columns));
+				}
 				Instruction::Dispatch(node) => {
 					match tx {
 						Transaction::Query(_) => {
@@ -1220,6 +1257,23 @@ impl Vm {
 						}
 					};
 					let columns = super::instruction::ddl::alter::flow::execute_alter_flow(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+
+				Instruction::AlterTable(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = super::instruction::ddl::alter::table::execute_alter_table(
 						services,
 						txn,
 						node.clone(),

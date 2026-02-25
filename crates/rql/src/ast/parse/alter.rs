@@ -5,8 +5,13 @@ use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
 	ast::{
-		ast::{AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstStatement},
-		identifier::{MaybeQualifiedFlowIdentifier, MaybeQualifiedSequenceIdentifier},
+		ast::{
+			AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstAlterTable,
+			AstAlterTableAction, AstStatement,
+		},
+		identifier::{
+			MaybeQualifiedFlowIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
+		},
 		parse::Parser,
 	},
 	token::{
@@ -39,8 +44,14 @@ impl<'bump> Parser<'bump> {
 
 		if self.current()?.is_keyword(Keyword::Table) {
 			self.consume_keyword(Keyword::Table)?;
-			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_security_policy(token, crate::ast::ast::AstPolicyTargetType::Table);
+			if self.current()?.is_keyword(Keyword::Policy) {
+				self.consume_keyword(Keyword::Policy)?;
+				return self.parse_alter_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Table,
+				);
+			}
+			return self.parse_alter_table(token);
 		}
 
 		if self.current()?.is_keyword(Keyword::Namespace) {
@@ -97,7 +108,7 @@ impl<'bump> Parser<'bump> {
 			return self.parse_alter_security_policy(token, crate::ast::ast::AstPolicyTargetType::Feature);
 		}
 
-		unimplemented!("Only ALTER SEQUENCE, ALTER FLOW, and ALTER <TYPE> POLICY are supported");
+		unimplemented!("Only ALTER SEQUENCE, ALTER FLOW, ALTER TABLE, and ALTER <TYPE> POLICY are supported");
 	}
 
 	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
@@ -130,6 +141,58 @@ impl<'bump> Parser<'bump> {
 			sequence,
 			column,
 			value,
+		}))
+	}
+
+	fn parse_alter_table(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
+
+		let action = if self.current()?.is_keyword(Keyword::Add) {
+			self.consume_keyword(Keyword::Add)?;
+			self.consume_keyword(Keyword::Column)?;
+			let column = self.parse_column()?;
+			AstAlterTableAction::AddColumn {
+				column,
+			}
+		} else if self.current()?.is_keyword(Keyword::Drop) {
+			self.consume_keyword(Keyword::Drop)?;
+			self.consume_keyword(Keyword::Column)?;
+			let col_name = self.consume(TokenKind::Identifier)?;
+			AstAlterTableAction::DropColumn {
+				column: col_name.fragment,
+			}
+		} else if self.current()?.is_keyword(Keyword::Rename) {
+			self.consume_keyword(Keyword::Rename)?;
+			self.consume_keyword(Keyword::Column)?;
+			let old_name = self.consume(TokenKind::Identifier)?;
+			self.consume_keyword(Keyword::To)?;
+			let new_name = self.consume(TokenKind::Identifier)?;
+			AstAlterTableAction::RenameColumn {
+				old_name: old_name.fragment,
+				new_name: new_name.fragment,
+			}
+		} else {
+			let fragment = self.current()?.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "ADD, DROP, or RENAME".to_string(),
+				},
+				message: format!(
+					"Unexpected token: expected {}, got {}",
+					"ADD COLUMN, DROP COLUMN, or RENAME COLUMN",
+					fragment.text()
+				),
+				fragment,
+			}));
+		};
+
+		Ok(AstAlter::Table(AstAlterTable {
+			token,
+			table,
+			action,
 		}))
 	}
 
@@ -251,7 +314,7 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::{AstAlter, AstAlterFlowAction, AstAlterSequence},
+			ast::{AstAlter, AstAlterFlowAction, AstAlterSequence, AstAlterTableAction},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -504,6 +567,97 @@ pub mod tests {
 				}
 			}
 			_ => panic!("Expected AstAlter::Flow"),
+		}
+	}
+
+	#[test]
+	fn test_alter_table_add_column() {
+		let bump = Bump::new();
+		let tokens =
+			tokenize(&bump, "ALTER TABLE app::users ADD COLUMN email: Utf8").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, "", tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Table(table) => {
+				assert_eq!(table.table.namespace[0].text(), "app");
+				assert_eq!(table.table.name.text(), "users");
+
+				match &table.action {
+					AstAlterTableAction::AddColumn {
+						column,
+					} => {
+						assert_eq!(column.name.text(), "email");
+					}
+					_ => panic!("Expected AddColumn action"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Table"),
+		}
+	}
+
+	#[test]
+	fn test_alter_table_drop_column() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER TABLE app::users DROP COLUMN email").unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, "", tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Table(table) => {
+				assert_eq!(table.table.name.text(), "users");
+
+				match &table.action {
+					AstAlterTableAction::DropColumn {
+						column,
+					} => {
+						assert_eq!(column.text(), "email");
+					}
+					_ => panic!("Expected DropColumn action"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Table"),
+		}
+	}
+
+	#[test]
+	fn test_alter_table_rename_column() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "ALTER TABLE users RENAME COLUMN name TO full_name")
+			.unwrap()
+			.into_iter()
+			.collect();
+		let mut parser = Parser::new(&bump, "", tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Table(table) => {
+				assert_eq!(table.table.name.text(), "users");
+
+				match &table.action {
+					AstAlterTableAction::RenameColumn {
+						old_name,
+						new_name,
+					} => {
+						assert_eq!(old_name.text(), "name");
+						assert_eq!(new_name.text(), "full_name");
+					}
+					_ => panic!("Expected RenameColumn action"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Table"),
 		}
 	}
 }

@@ -47,7 +47,7 @@ use crate::{
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
 	diagnostic::AstError,
 	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
-	plan::logical::alter::flow::AlterFlowNode,
+	plan::logical::alter::{flow::AlterFlowNode, table::AlterTableNode},
 };
 
 pub(crate) struct Compiler<'bump> {
@@ -267,6 +267,12 @@ impl<'bump> Compiler<'bump> {
 				// They appear inside policy bodies and pipe chains, not as top-level plan nodes.
 				self.compile_scalar_as_map(node)
 			}
+			Ast::Migrate(node) => Ok(LogicalPlan::Migrate(MigrateNode {
+				target: node.target,
+			})),
+			Ast::RollbackMigration(node) => Ok(LogicalPlan::RollbackMigration(RollbackMigrationNode {
+				target: node.target,
+			})),
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
@@ -363,6 +369,9 @@ pub enum LogicalPlan<'bump> {
 	CreateEvent(CreateEventNode<'bump>),
 	CreateTag(CreateTagNode<'bump>),
 	CreateHandler(CreateHandlerNode<'bump>),
+	CreateMigration(CreateMigrationNode),
+	Migrate(MigrateNode),
+	RollbackMigration(RollbackMigrationNode),
 	Dispatch(DispatchNode<'bump>),
 	// Drop
 	DropNamespace(DropNamespaceNode<'bump>),
@@ -376,6 +385,7 @@ pub enum LogicalPlan<'bump> {
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterFlow(AlterFlowNode<'bump>),
+	AlterTable(AlterTableNode<'bump>),
 	// Mutate
 	DeleteTable(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
@@ -969,6 +979,23 @@ pub struct CreateHandlerNode<'bump> {
 	pub on_event: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub on_variant: BumpFragment<'bump>,
 	pub body_source: String,
+}
+
+#[derive(Debug)]
+pub struct CreateMigrationNode {
+	pub name: String,
+	pub body_source: String,
+	pub rollback_body_source: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct MigrateNode {
+	pub target: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct RollbackMigrationNode {
+	pub target: Option<String>,
 }
 
 #[derive(Debug)]

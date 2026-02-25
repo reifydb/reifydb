@@ -14,7 +14,7 @@ impl<'bump> Parser<'bump> {
 	/// Parse `fun name ($param: type, ...) : return_type { body }`
 	pub(crate) fn parse_def_function(&mut self) -> crate::Result<AstDefFunction<'bump>> {
 		let token = self.consume_keyword(Keyword::Fun)?;
-		let name = self.parse_identifier()?;
+		let name = self.parse_as_identifier()?;
 
 		// Parse parameters: ($a: type, $b: type)
 		self.consume_operator(Operator::OpenParen)?;

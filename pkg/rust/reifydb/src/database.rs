@@ -26,6 +26,7 @@ use reifydb_type::{Result, error::Diagnostic, fragment::Fragment, params::Params
 use tracing::{debug, error, instrument, warn};
 
 use crate::{
+	Migration,
 	boot::Bootloader,
 	health::{ComponentHealth, HealthMonitor},
 	session::{
@@ -43,6 +44,7 @@ pub struct Database {
 	shared_runtime: SharedRuntime,
 	actor_system: ActorSystem,
 	running: bool,
+	migrations: Vec<Migration>,
 }
 
 impl Database {
@@ -76,6 +78,7 @@ impl Database {
 		health_monitor: Arc<HealthMonitor>,
 		shared_runtime: SharedRuntime,
 		actor_system: ActorSystem,
+		migrations: Vec<Migration>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -85,6 +88,7 @@ impl Database {
 			shared_runtime,
 			actor_system,
 			running: false,
+			migrations,
 		}
 	}
 
@@ -111,6 +115,11 @@ impl Database {
 		}
 
 		self.bootloader.load()?;
+
+		// Apply pending migrations if any were registered
+		if !self.migrations.is_empty() {
+			self.apply_migrations()?;
+		}
 
 		debug!("Starting system with {} subsystems", self.subsystem_count());
 
@@ -179,6 +188,52 @@ impl Database {
 		};
 
 		self.health_monitor.update_component_health("system".to_string(), system_health, self.running);
+	}
+
+	/// Apply registered migrations: CREATE MIGRATION for any new ones, then MIGRATE to apply pending.
+	fn apply_migrations(&self) -> Result<()> {
+		debug!("Applying {} registered migrations", self.migrations.len());
+
+		for migration in &self.migrations {
+			// Build CREATE MIGRATION statement
+			let mut rql = format!("CREATE MIGRATION '{}' {{", migration.name);
+			rql.push_str(&migration.body);
+			rql.push('}');
+
+			if let Some(ref rollback) = migration.rollback_body {
+				rql.push_str(" ROLLBACK {");
+				rql.push_str(rollback);
+				rql.push('}');
+			}
+
+			rql.push(';');
+
+			// Try to create — ignore "already exists" errors
+			match self.admin_as_root(&rql, Params::None) {
+				Ok(_) => {
+					debug!("Registered migration '{}'", migration.name);
+				}
+				Err(e) => {
+					let msg = format!("{}", e);
+					if msg.contains("already exists") {
+						debug!("Migration '{}' already registered, skipping", migration.name);
+					} else {
+						return Err(e);
+					}
+				}
+			}
+		}
+
+		// Apply all pending migrations
+		debug!("Running MIGRATE to apply pending migrations");
+		let result = self.admin_as_root("MIGRATE;", Params::None)?;
+		if let Some(frame) = result.first() {
+			if let Ok(Some(count)) = frame.get::<u32>("migrations_applied", 0) {
+				debug!("Applied {} pending migrations", count);
+			}
+		}
+
+		Ok(())
 	}
 
 	pub fn get_subsystem_names(&self) -> Vec<String> {

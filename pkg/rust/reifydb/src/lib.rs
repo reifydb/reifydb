@@ -13,7 +13,7 @@ pub mod subsystem;
 pub mod system;
 pub mod vendor;
 
-pub use api::*;
+pub use api::{migration::Migration, *};
 pub use builder::{
 	DatabaseBuilder, EmbeddedBuilder, InterceptBuilder, ServerBuilder, WithInterceptorBuilder, WithSubsystem,
 };

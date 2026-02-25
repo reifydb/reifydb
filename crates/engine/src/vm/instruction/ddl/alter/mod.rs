@@ -4,3 +4,4 @@
 pub mod flow;
 pub mod security_policy;
 pub mod sequence;
+pub mod table;

@@ -21,6 +21,7 @@ pub mod flow_storage_stats;
 pub mod flows;
 pub mod handlers;
 pub mod index_storage_stats;
+pub mod migrations;
 pub mod namespaces;
 pub mod operator_retention_policies;
 pub mod primary_key_columns;

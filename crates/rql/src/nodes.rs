@@ -64,10 +64,14 @@ pub enum PhysicalPlan {
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
 	CreateHandler(CreateHandlerNode),
+	CreateMigration(CreateMigrationNode),
+	Migrate(MigrateNode),
+	RollbackMigration(RollbackMigrationNode),
 	Dispatch(DispatchNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode),
+	AlterTable(AlterTableNode),
 	// Mutate
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),
@@ -257,6 +261,27 @@ pub enum AlterFlowAction {
 	Resume,
 }
 
+#[derive(Debug, Clone)]
+pub struct AlterTableNode {
+	pub namespace: ResolvedNamespace,
+	pub table: Fragment,
+	pub action: AlterTableAction,
+}
+
+#[derive(Debug, Clone)]
+pub enum AlterTableAction {
+	AddColumn {
+		column: reifydb_catalog::catalog::table::TableColumnToCreate,
+	},
+	DropColumn {
+		column: Fragment,
+	},
+	RenameColumn {
+		old_name: Fragment,
+		new_name: Fragment,
+	},
+}
+
 // Create Primary Key node
 #[derive(Debug, Clone)]
 pub struct CreatePrimaryKeyNode {
@@ -308,6 +333,26 @@ pub struct CreateHandlerNode {
 	pub on_sumtype_id: SumTypeId,
 	pub on_variant_tag: u8,
 	pub body_source: String,
+}
+
+/// Physical node for CREATE MIGRATION
+#[derive(Debug, Clone)]
+pub struct CreateMigrationNode {
+	pub name: String,
+	pub body_source: String,
+	pub rollback_body_source: Option<String>,
+}
+
+/// Physical node for MIGRATE
+#[derive(Debug, Clone)]
+pub struct MigrateNode {
+	pub target: Option<String>,
+}
+
+/// Physical node for ROLLBACK MIGRATION
+#[derive(Debug, Clone)]
+pub struct RollbackMigrationNode {
+	pub target: Option<String>,
 }
 
 /// Physical node for DISPATCH
