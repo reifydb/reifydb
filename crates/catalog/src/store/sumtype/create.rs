@@ -42,6 +42,7 @@ impl CatalogStore {
 				kind: match to_create.def.kind {
 					SumTypeKind::Event => CatalogObjectKind::Event,
 					SumTypeKind::Enum => CatalogObjectKind::Enum,
+					SumTypeKind::Tag => CatalogObjectKind::Tag,
 				},
 				namespace: namespace.name,
 				name: to_create.name.text().to_string(),

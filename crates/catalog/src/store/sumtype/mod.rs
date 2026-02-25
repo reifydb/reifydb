@@ -29,10 +29,14 @@ pub(crate) fn sumtype_def_from_row(row: &EncodedValues) -> SumTypeDef {
 		warn!("Failed to deserialize sumtype variants for {:?}: {}", id, e);
 		vec![]
 	});
-	let kind = if sumtype::SCHEMA.get_u8(row, sumtype::KIND) != 0 {
-		SumTypeKind::Event
-	} else {
-		SumTypeKind::Enum
+	let kind = match sumtype::SCHEMA.get_u8(row, sumtype::KIND) {
+		0 => SumTypeKind::Enum,
+		1 => SumTypeKind::Event,
+		2 => SumTypeKind::Tag,
+		other => {
+			warn!("Unknown SumTypeKind discriminant {} for {:?}, defaulting to Enum", other, id);
+			SumTypeKind::Enum
+		}
 	};
 
 	SumTypeDef {

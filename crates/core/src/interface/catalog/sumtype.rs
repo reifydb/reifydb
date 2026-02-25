@@ -11,6 +11,7 @@ use crate::interface::catalog::id::NamespaceId;
 pub enum SumTypeKind {
 	Enum = 0,
 	Event = 1,
+	Tag = 2,
 }
 
 impl Default for SumTypeKind {

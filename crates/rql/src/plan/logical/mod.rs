@@ -17,13 +17,13 @@ use std::fmt::{Display, Formatter};
 
 use query::window::WindowNode;
 use reifydb_catalog::catalog::{
-	Catalog, ringbuffer::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate,
-	table::TableColumnToCreate, view::ViewColumnToCreate,
+	Catalog, ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate,
+	subscription::SubscriptionColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::{
-		catalog::policy::ColumnPolicyKind,
+		catalog::{policy::ColumnPolicyKind, series::TimestampPrecision},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedPrimitive},
 	},
 	sort::{SortDirection, SortKey},
@@ -34,14 +34,14 @@ use tracing::instrument;
 
 use crate::{
 	ast::{
-		ast::{Ast, AstInfix, AstProcedureParam, AstStatement, AstType, InfixOperator},
+		ast::{Ast, AstInfix, AstProcedureParam, AstStatement, AstType, AstVariantDef, InfixOperator},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
 			MaybeQualifiedIndexIdentifier, MaybeQualifiedProcedureIdentifier,
 			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier,
-			MaybeQualifiedViewIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
@@ -346,7 +346,9 @@ pub enum LogicalPlan<'bump> {
 	CreatePrimaryKey(CreatePrimaryKeyNode<'bump>),
 	CreatePolicy(CreatePolicyNode<'bump>),
 	CreateProcedure(CreateProcedureNode<'bump>),
+	CreateSeries(CreateSeriesNode<'bump>),
 	CreateEvent(CreateEventNode<'bump>),
+	CreateTag(CreateTagNode<'bump>),
 	CreateHandler(CreateHandlerNode<'bump>),
 	Dispatch(DispatchNode<'bump>),
 	// Drop
@@ -367,6 +369,8 @@ pub enum LogicalPlan<'bump> {
 	InsertTable(InsertTableNode<'bump>),
 	InsertRingBuffer(InsertRingBufferNode<'bump>),
 	InsertDictionary(InsertDictionaryNode<'bump>),
+	InsertSeries(InsertSeriesNode<'bump>),
+	DeleteSeries(DeleteSeriesNode<'bump>),
 	Update(UpdateTableNode<'bump>),
 	UpdateRingBuffer(UpdateRingBufferNode<'bump>),
 	// Variable assignment
@@ -563,9 +567,9 @@ pub struct CreateDictionaryNode<'bump> {
 
 #[derive(Debug)]
 pub struct CreateSumTypeNode<'bump> {
-	pub name: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub if_not_exists: bool,
-	pub variants: Vec<crate::ast::ast::AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariantDef<'bump>>,
 }
 
 #[derive(Debug)]
@@ -631,6 +635,18 @@ pub struct InsertRingBufferNode<'bump> {
 pub struct InsertDictionaryNode<'bump> {
 	pub target: MaybeQualifiedDictionaryIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct InsertSeriesNode<'bump> {
+	pub target: MaybeQualifiedSeriesIdentifier<'bump>,
+	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct DeleteSeriesNode<'bump> {
+	pub target: MaybeQualifiedSeriesIdentifier<'bump>,
+	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
 }
 
 #[derive(Debug)]
@@ -826,7 +842,7 @@ pub struct DropDictionaryNode<'bump> {
 
 #[derive(Debug)]
 pub struct DropSumTypeNode<'bump> {
-	pub sumtype: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub sumtype: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub if_exists: bool,
 	pub cascade: bool,
 }
@@ -846,22 +862,36 @@ pub struct DropSubscriptionNode<'bump> {
 }
 
 #[derive(Debug)]
+pub struct CreateSeriesNode<'bump> {
+	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
+	pub columns: Vec<SeriesColumnToCreate>,
+	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
+	pub precision: TimestampPrecision,
+}
+
+#[derive(Debug)]
 pub struct CreateEventNode<'bump> {
-	pub name: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<crate::ast::ast::AstVariantDef<'bump>>,
+	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub variants: Vec<AstVariantDef<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct CreateTagNode<'bump> {
+	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub variants: Vec<AstVariantDef<'bump>>,
 }
 
 #[derive(Debug)]
 pub struct CreateHandlerNode<'bump> {
 	pub name: crate::ast::identifier::MaybeQualifiedTableIdentifier<'bump>,
-	pub on_event: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub on_event: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub on_variant: BumpFragment<'bump>,
 	pub body_source: String,
 }
 
 #[derive(Debug)]
 pub struct DispatchNode<'bump> {
-	pub on_event: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub on_event: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub variant: BumpFragment<'bump>,
 	pub fields: Vec<(BumpFragment<'bump>, Expression)>,
 }

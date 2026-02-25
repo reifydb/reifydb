@@ -13,7 +13,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
-		id::{RingBufferId, TableId, ViewId},
+		id::{RingBufferId, SeriesId, TableId, ViewId},
 		primitive::PrimitiveId,
 		vtable::VTableId,
 	},
@@ -274,6 +274,7 @@ fn decode_source_id(bytes: &[u8]) -> Option<PrimitiveId> {
 		4 => Some(PrimitiveId::TableVirtual(VTableId(id))),
 		5 => Some(PrimitiveId::RingBuffer(RingBufferId(id))),
 		6 => Some(PrimitiveId::Dictionary(DictionaryId(id))),
+		7 => Some(PrimitiveId::Series(SeriesId(id))),
 		_ => None,
 	}
 }

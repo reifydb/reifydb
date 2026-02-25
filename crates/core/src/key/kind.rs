@@ -56,6 +56,9 @@ pub enum KeyKind {
 	Handler = 0x2E,
 	NamespaceHandler = 0x2F,
 	VariantHandler = 0x30,
+	Series = 0x31,
+	NamespaceSeries = 0x32,
+	SeriesMetadata = 0x33,
 }
 
 impl From<KeyKind> for u8 {
@@ -116,6 +119,9 @@ impl TryFrom<u8> for KeyKind {
 			0x2E => Ok(Self::Handler),
 			0x2F => Ok(Self::NamespaceHandler),
 			0x30 => Ok(Self::VariantHandler),
+			0x31 => Ok(Self::Series),
+			0x32 => Ok(Self::NamespaceSeries),
+			0x33 => Ok(Self::SeriesMetadata),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

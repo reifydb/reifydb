@@ -98,6 +98,12 @@ impl CatalogStore {
 					"Cannot create primary key for dictionary. Dictionaries have their own key structure."
 				);
 			}
+			PrimitiveId::Series(_) => {
+				// Series don't support traditional primary keys
+				return_internal_error!(
+					"Cannot create primary key for series. Series use timestamp-based key ordering."
+				);
+			}
 		}
 
 		Ok(id)

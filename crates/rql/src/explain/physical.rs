@@ -129,6 +129,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::InsertTable(_) => unimplemented!(),
 		PhysicalPlan::InsertRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::InsertDictionary(_) => unimplemented!(),
+		PhysicalPlan::DeleteSeries(_) => unimplemented!(),
+		PhysicalPlan::InsertSeries(_) => unimplemented!(),
 		PhysicalPlan::Update(_) => unimplemented!(),
 		PhysicalPlan::UpdateRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::Aggregate(AggregateNode {
@@ -387,6 +389,11 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			write_node_header(output, prefix, is_last, &label);
 		}
 
+		PhysicalPlan::SeriesScan(node) => {
+			let label = format!("SeriesScan {}.{}", node.source.namespace().name(), node.source.name());
+			write_node_header(output, prefix, is_last, &label);
+		}
+
 		PhysicalPlan::Apply(ApplyNode {
 			operator,
 			expressions: arguments,
@@ -438,8 +445,14 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreateProcedure(_) => {
 			write_node_header(output, prefix, is_last, "CreateProcedure");
 		}
+		PhysicalPlan::CreateSeries(_) => {
+			write_node_header(output, prefix, is_last, "CreateSeries");
+		}
 		PhysicalPlan::CreateEvent(_) => {
 			write_node_header(output, prefix, is_last, "CreateEvent");
+		}
+		PhysicalPlan::CreateTag(_) => {
+			write_node_header(output, prefix, is_last, "CreateTag");
 		}
 		PhysicalPlan::CreateHandler(_) => {
 			write_node_header(output, prefix, is_last, "CreateHandler");

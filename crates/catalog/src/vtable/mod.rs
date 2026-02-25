@@ -86,6 +86,10 @@ impl VTableRegistry {
 			SCHEMAS => Some(SystemCatalog::get_system_schemas_table_def()),
 			SCHEMA_FIELDS => Some(SystemCatalog::get_system_schema_fields_table_def()),
 			ENUMS => Some(SystemCatalog::get_system_enums_table_def()),
+			EVENTS => Some(SystemCatalog::get_system_events_table_def()),
+			HANDLERS => Some(SystemCatalog::get_system_handlers_table_def()),
+			TAGS => Some(SystemCatalog::get_system_tags_table_def()),
+			SERIES => Some(SystemCatalog::get_system_series_table_def()),
 			_ => None,
 		})
 	}
@@ -112,6 +116,10 @@ impl VTableRegistry {
 			SystemCatalog::get_system_schemas_table_def(),
 			SystemCatalog::get_system_schema_fields_table_def(),
 			SystemCatalog::get_system_enums_table_def(),
+			SystemCatalog::get_system_events_table_def(),
+			SystemCatalog::get_system_handlers_table_def(),
+			SystemCatalog::get_system_tags_table_def(),
+			SystemCatalog::get_system_series_table_def(),
 		])
 	}
 }

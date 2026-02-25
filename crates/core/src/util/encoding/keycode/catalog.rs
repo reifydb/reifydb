@@ -6,7 +6,7 @@ use reifydb_type::value::dictionary::DictionaryId;
 use crate::{
 	interface::catalog::{
 		flow::FlowId,
-		id::{IndexId, PrimaryKeyId, RingBufferId, TableId, ViewId},
+		id::{IndexId, PrimaryKeyId, RingBufferId, SeriesId, TableId, ViewId},
 		primitive::PrimitiveId,
 		vtable::VTableId,
 	},
@@ -43,6 +43,10 @@ pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
 			result.push(0x06);
 			result.extend(&super::serialize(id));
 		}
+		PrimitiveId::Series(SeriesId(id)) => {
+			result.push(0x07);
+			result.extend(&super::serialize(id));
+		}
 	}
 	result
 }
@@ -65,6 +69,7 @@ pub fn deserialize_primitive_id(bytes: &[u8]) -> reifydb_type::Result<PrimitiveI
 		0x04 => Ok(PrimitiveId::RingBuffer(RingBufferId(id))),
 		0x05 => Ok(PrimitiveId::Flow(FlowId(id))),
 		0x06 => Ok(PrimitiveId::Dictionary(DictionaryId(id))),
+		0x07 => Ok(PrimitiveId::Series(SeriesId(id))),
 		_ => return_internal_error!("Invalid PrimitiveId type byte: 0x{:02x}.", type_byte),
 	}
 }

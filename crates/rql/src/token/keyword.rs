@@ -152,6 +152,7 @@ Procedure => "PROCEDURE",
 Event => "EVENT",
 Handler => "HANDLER",
 Dispatch => "DISPATCH",
+Tag => "TAG",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -247,6 +248,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("EVENT", Keyword::Event);
 	map.insert("HANDLER", Keyword::Handler);
 	map.insert("DISPATCH", Keyword::Dispatch);
+	map.insert("TAG", Keyword::Tag);
 	map
 });
 

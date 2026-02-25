@@ -6,11 +6,17 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{
 	ast::{
 		ast::{Ast, AstDelete, AstFrom},
-		identifier::{MaybeQualifiedRingBufferIdentifier, MaybeQualifiedTableIdentifier},
+		identifier::{
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
+			MaybeQualifiedTableIdentifier,
+		},
 	},
 	bump::{BumpBox, BumpVec},
 	expression::ExpressionCompiler,
-	plan::logical::{Compiler, DeleteRingBufferNode, DeleteTableNode, FilterNode, LogicalPlan, PipelineNode},
+	plan::logical::{
+		Compiler, DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, FilterNode, LogicalPlan,
+		PipelineNode,
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -75,20 +81,32 @@ impl<'bump> Compiler<'bump> {
 			if !namespace.is_empty() {
 				target = target.with_namespace(namespace);
 			}
-			Ok(LogicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
+			return Ok(LogicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
 				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
-			}))
-		} else {
-			// Assume it's a table (will error during physical plan if not found)
-			let mut target = MaybeQualifiedTableIdentifier::new(name);
+			}));
+		}
+
+		// Check if it's a series
+		if self.catalog.find_series_by_name(tx, namespace_id, target_name)?.is_some() {
+			let mut target = MaybeQualifiedSeriesIdentifier::new(name);
 			if !namespace.is_empty() {
 				target = target.with_namespace(namespace);
 			}
-			Ok(LogicalPlan::DeleteTable(DeleteTableNode {
-				target: Some(target),
+			return Ok(LogicalPlan::DeleteSeries(DeleteSeriesNode {
+				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
-			}))
+			}));
 		}
+
+		// Assume it's a table (will error during physical plan if not found)
+		let mut target = MaybeQualifiedTableIdentifier::new(name);
+		if !namespace.is_empty() {
+			target = target.with_namespace(namespace);
+		}
+		Ok(LogicalPlan::DeleteTable(DeleteTableNode {
+			target: Some(target),
+			input: Some(BumpBox::new_in(pipeline, self.bump)),
+		}))
 	}
 }

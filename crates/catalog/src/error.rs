@@ -21,6 +21,8 @@ pub enum CatalogObjectKind {
 	Event,
 	VirtualTable,
 	Handler,
+	Series,
+	Tag,
 }
 
 impl Display for CatalogObjectKind {
@@ -36,6 +38,8 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Event => f.write_str("event"),
 			CatalogObjectKind::VirtualTable => f.write_str("virtual table"),
 			CatalogObjectKind::Handler => f.write_str("handler"),
+			CatalogObjectKind::Series => f.write_str("series"),
+			CatalogObjectKind::Tag => f.write_str("tag"),
 		}
 	}
 }
@@ -208,6 +212,16 @@ impl IntoDiagnostic for CatalogError {
 						"handler",
 						"choose a different name or drop the existing handler first",
 					),
+					CatalogObjectKind::Series => (
+						"CA_003",
+						"series",
+						"choose a different name or drop the existing series first",
+					),
+					CatalogObjectKind::Tag => (
+						"CA_003",
+						"tag",
+						"choose a different name or drop the existing tag first",
+					),
 				};
 				let message = if matches!(kind, CatalogObjectKind::Namespace) {
 					format!("{} `{}` already exists", kind_str, namespace)
@@ -284,6 +298,16 @@ impl IntoDiagnostic for CatalogError {
 						"CA_004",
 						"handler",
 						"ensure the handler exists or create it first using `CREATE HANDLER`".to_string(),
+					),
+					CatalogObjectKind::Series => (
+						"CA_004",
+						"series",
+						"ensure the series exists or create it first using `CREATE SERIES`".to_string(),
+					),
+					CatalogObjectKind::Tag => (
+						"CA_002",
+						"tag",
+						format!("create the tag first with `CREATE TAG {}.{} {{ ... }}`", namespace, name),
 					),
 				};
 				let message = if matches!(kind, CatalogObjectKind::Namespace) {

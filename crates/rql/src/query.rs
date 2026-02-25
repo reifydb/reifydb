@@ -5,8 +5,8 @@ use crate::nodes::{
 	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, DictionaryScanNode, DistinctNode, EnvironmentNode,
 	ExtendNode, FilterNode, FlowScanNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
 	JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
-	RowRangeScanNode, ScalarizeNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode, VariableNode,
-	ViewScanNode, WindowNode,
+	RowRangeScanNode, ScalarizeNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode,
+	VariableNode, ViewScanNode, WindowNode,
 };
 
 #[derive(Debug, Clone)]
@@ -17,6 +17,7 @@ pub enum QueryPlan {
 	RingBufferScan(RingBufferScanNode),
 	FlowScan(FlowScanNode),
 	DictionaryScan(DictionaryScanNode),
+	SeriesScan(SeriesScanNode),
 	IndexScan(IndexScanNode),
 
 	/// O(1) point lookup by row number: `filter rownum == N`

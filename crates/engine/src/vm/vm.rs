@@ -1130,6 +1130,22 @@ impl Vm {
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
+				Instruction::CreateSeries(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = super::instruction::ddl::create::series::create_series(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
 				Instruction::CreateEvent(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
@@ -1140,6 +1156,22 @@ impl Vm {
 						}
 					};
 					let columns = create_event(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateTag(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = super::instruction::ddl::create::tag::create_tag(
+						services,
+						txn,
+						node.clone(),
+					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateHandler(node) => {
@@ -1412,6 +1444,42 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						&mut self.symbol_table,
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::InsertSeries(node) => {
+					match tx {
+						Transaction::Query(_) => {
+							return Err(internal_error!(
+								"Mutation operations cannot be executed in a query transaction"
+							));
+						}
+						_ => {}
+					}
+					let mut std_txn = tx.reborrow();
+					let columns = super::instruction::dml::series_insert::insert_series(
+						services,
+						&mut std_txn,
+						node.clone(),
+						params.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DeleteSeries(node) => {
+					match tx {
+						Transaction::Query(_) => {
+							return Err(internal_error!(
+								"Mutation operations cannot be executed in a query transaction"
+							));
+						}
+						_ => {}
+					}
+					let mut std_txn = tx.reborrow();
+					let columns = super::instruction::dml::series_delete::delete_series(
+						services,
+						&mut std_txn,
+						node.clone(),
+						params.clone(),
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}

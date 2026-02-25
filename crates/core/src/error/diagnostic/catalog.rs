@@ -611,3 +611,18 @@ pub fn subscription_not_found(fragment: Fragment, subscription: &str) -> Diagnos
 		operator_chain: None,
 	}
 }
+
+pub fn series_not_found(fragment: Fragment, namespace: &str, series: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_024".to_string(),
+		statement: None,
+		message: format!("series `{}.{}` not found", namespace, series),
+		fragment,
+		label: Some("unknown series reference".to_string()),
+		help: Some("ensure the series exists or create it first using `CREATE SERIES`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

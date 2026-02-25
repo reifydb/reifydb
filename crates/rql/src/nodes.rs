@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::catalog::{
-	ringbuffer::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, subscription::SubscriptionColumnToCreate,
+	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
@@ -13,10 +13,12 @@ use reifydb_core::{
 			id::{NamespaceId, RingBufferId, TableId, ViewId},
 			namespace::NamespaceDef,
 			procedure::ProcedureParamDef,
+			series::TimestampPrecision,
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
-			ResolvedRingBuffer, ResolvedSequence, ResolvedTable, ResolvedTableVirtual, ResolvedView,
+			ResolvedRingBuffer, ResolvedSequence, ResolvedSeries, ResolvedTable, ResolvedTableVirtual,
+			ResolvedView,
 		},
 	},
 	sort::{SortDirection, SortKey},
@@ -58,7 +60,9 @@ pub enum PhysicalPlan {
 	CreatePrimaryKey(CreatePrimaryKeyNode),
 	CreatePolicy(CreatePolicyNode),
 	CreateProcedure(CreateProcedureNode),
+	CreateSeries(CreateSeriesNode),
 	CreateEvent(CreateEventNode),
+	CreateTag(CreateTagNode),
 	CreateHandler(CreateHandlerNode),
 	Dispatch(DispatchNode),
 	// Alter
@@ -116,6 +120,10 @@ pub enum PhysicalPlan {
 	RingBufferScan(RingBufferScanNode),
 	FlowScan(FlowScanNode),
 	DictionaryScan(DictionaryScanNode),
+	SeriesScan(SeriesScanNode),
+	// Series DML
+	InsertSeries(InsertSeriesNode),
+	DeleteSeries(DeleteSeriesNode),
 	Generator(GeneratorNode),
 	Window(WindowNode),
 	// Auto-scalarization for 1x1 frames
@@ -256,9 +264,27 @@ pub struct CreateProcedureNode {
 	pub body_source: String,
 }
 
+/// Physical node for CREATE SERIES
+#[derive(Debug, Clone)]
+pub struct CreateSeriesNode {
+	pub namespace: ResolvedNamespace,
+	pub series: Fragment,
+	pub columns: Vec<SeriesColumnToCreate>,
+	pub tag: Option<SumTypeId>,
+	pub precision: TimestampPrecision,
+}
+
 /// Physical node for CREATE EVENT
 #[derive(Debug, Clone)]
 pub struct CreateEventNode {
+	pub namespace: NamespaceDef,
+	pub name: Fragment,
+	pub variants: Vec<CreateSumTypeVariant>,
+}
+
+/// Physical node for CREATE TAG
+#[derive(Debug, Clone)]
+pub struct CreateTagNode {
 	pub namespace: NamespaceDef,
 	pub name: Fragment,
 	pub variants: Vec<CreateSumTypeVariant>,
@@ -522,6 +548,26 @@ pub struct FlowScanNode {
 #[derive(Debug, Clone)]
 pub struct DictionaryScanNode {
 	pub source: ResolvedDictionary,
+}
+
+#[derive(Debug, Clone)]
+pub struct SeriesScanNode {
+	pub source: ResolvedSeries,
+	pub time_range_start: Option<i64>,
+	pub time_range_end: Option<i64>,
+	pub variant_tag: Option<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InsertSeriesNode {
+	pub input: Box<QueryPlan>,
+	pub target: ResolvedSeries,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeleteSeriesNode {
+	pub input: Option<Box<QueryPlan>>,
+	pub target: ResolvedSeries,
 }
 
 #[derive(Debug, Clone)]

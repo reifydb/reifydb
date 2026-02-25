@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	interface::catalog::{
 		flow::{FlowDef, FlowId},
-		id::{RingBufferId, TableId, ViewId},
+		id::{RingBufferId, SeriesId, TableId, ViewId},
 		table::TableDef,
 		view::ViewDef,
 		vtable::{VTableDef, VTableId},
@@ -24,6 +24,7 @@ pub enum PrimitiveId {
 	TableVirtual(VTableId),
 	RingBuffer(RingBufferId),
 	Dictionary(DictionaryId),
+	Series(SeriesId),
 }
 
 impl std::fmt::Display for PrimitiveId {
@@ -35,6 +36,7 @@ impl std::fmt::Display for PrimitiveId {
 			PrimitiveId::TableVirtual(id) => write!(f, "{}", id.0),
 			PrimitiveId::RingBuffer(id) => write!(f, "{}", id.0),
 			PrimitiveId::Dictionary(id) => write!(f, "{}", id.0),
+			PrimitiveId::Series(id) => write!(f, "{}", id.0),
 		}
 	}
 }
@@ -64,6 +66,10 @@ impl PrimitiveId {
 		Self::Dictionary(id.into())
 	}
 
+	pub fn series(id: impl Into<SeriesId>) -> Self {
+		Self::Series(id.into())
+	}
+
 	/// Get the inner u64 value from the ID variant.
 	#[inline]
 	pub fn to_u64(self) -> u64 {
@@ -74,6 +80,7 @@ impl PrimitiveId {
 			PrimitiveId::TableVirtual(id) => id.to_u64(),
 			PrimitiveId::RingBuffer(id) => id.to_u64(),
 			PrimitiveId::Dictionary(id) => id.to_u64(),
+			PrimitiveId::Series(id) => id.to_u64(),
 		}
 	}
 }
@@ -114,6 +121,12 @@ impl From<DictionaryId> for PrimitiveId {
 	}
 }
 
+impl From<SeriesId> for PrimitiveId {
+	fn from(id: SeriesId) -> Self {
+		PrimitiveId::Series(id)
+	}
+}
+
 impl PartialEq<u64> for PrimitiveId {
 	fn eq(&self, other: &u64) -> bool {
 		match self {
@@ -123,6 +136,7 @@ impl PartialEq<u64> for PrimitiveId {
 			PrimitiveId::TableVirtual(id) => id.0.eq(other),
 			PrimitiveId::RingBuffer(id) => id.0.eq(other),
 			PrimitiveId::Dictionary(id) => id.0.eq(other),
+			PrimitiveId::Series(id) => id.0.eq(other),
 		}
 	}
 }
@@ -181,6 +195,15 @@ impl PartialEq<DictionaryId> for PrimitiveId {
 	}
 }
 
+impl PartialEq<SeriesId> for PrimitiveId {
+	fn eq(&self, other: &SeriesId) -> bool {
+		match self {
+			PrimitiveId::Series(id) => id.0 == other.0,
+			_ => false,
+		}
+	}
+}
+
 impl From<PrimitiveId> for u64 {
 	fn from(primitive: PrimitiveId) -> u64 {
 		primitive.as_u64()
@@ -197,6 +220,7 @@ impl PrimitiveId {
 			PrimitiveId::TableVirtual(_) => 4,
 			PrimitiveId::RingBuffer(_) => 5,
 			PrimitiveId::Dictionary(_) => 6,
+			PrimitiveId::Series(_) => 7,
 		}
 	}
 
@@ -209,6 +233,7 @@ impl PrimitiveId {
 			PrimitiveId::TableVirtual(id) => id.0,
 			PrimitiveId::RingBuffer(id) => id.0,
 			PrimitiveId::Dictionary(id) => id.0,
+			PrimitiveId::Series(id) => id.0,
 		}
 	}
 
@@ -221,6 +246,7 @@ impl PrimitiveId {
 			PrimitiveId::TableVirtual(vtable) => PrimitiveId::vtable(vtable.0 + 1),
 			PrimitiveId::RingBuffer(ringbuffer) => PrimitiveId::ringbuffer(ringbuffer.0 + 1),
 			PrimitiveId::Dictionary(dictionary) => PrimitiveId::dictionary(dictionary.0 + 1),
+			PrimitiveId::Series(series) => PrimitiveId::series(series.0 + 1),
 		}
 	}
 
@@ -236,6 +262,7 @@ impl PrimitiveId {
 			PrimitiveId::TableVirtual(vtable) => PrimitiveId::vtable(vtable.0.wrapping_sub(1)),
 			PrimitiveId::RingBuffer(ringbuffer) => PrimitiveId::ringbuffer(ringbuffer.0.wrapping_sub(1)),
 			PrimitiveId::Dictionary(dictionary) => PrimitiveId::dictionary(dictionary.0.wrapping_sub(1)),
+			PrimitiveId::Series(series) => PrimitiveId::series(series.0.wrapping_sub(1)),
 		}
 	}
 
@@ -312,6 +339,19 @@ impl PrimitiveId {
 				"Data inconsistency: Expected PrimitiveId::Dictionary but found {:?}. \
 				This indicates a critical catalog inconsistency where a non-dictionary primitive ID \
 				was used in a context that requires a dictionary ID.",
+				self
+			)
+		}
+	}
+
+	pub fn to_series_id(self) -> reifydb_type::Result<SeriesId> {
+		if let PrimitiveId::Series(series) = self {
+			Ok(series)
+		} else {
+			return_internal_error!(
+				"Data inconsistency: Expected PrimitiveId::Series but found {:?}. \
+				This indicates a critical catalog inconsistency where a non-series primitive ID \
+				was used in a context that requires a series ID.",
 				self
 			)
 		}

@@ -17,6 +17,7 @@ pub(crate) mod retention_policy;
 pub(crate) mod ringbuffer;
 pub(crate) mod schema;
 pub(crate) mod sequence;
+pub(crate) mod series;
 pub(crate) mod subscription;
 pub(crate) mod sumtype;
 pub(crate) mod table;

@@ -209,6 +209,8 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::InsertTable(_) => unimplemented!(),
 		LogicalPlan::InsertRingBuffer(_) => unimplemented!(),
 		LogicalPlan::InsertDictionary(_) => unimplemented!(),
+		LogicalPlan::InsertSeries(_) => unimplemented!(),
+		LogicalPlan::DeleteSeries(_) => unimplemented!(),
 		LogicalPlan::Update(update) => {
 			output.push_str(&format!("{}{} Update\n", prefix, branch));
 
@@ -556,8 +558,14 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::CreateProcedure(_) => {
 			output.push_str(&format!("{}{} CreateProcedure\n", prefix, branch));
 		}
+		LogicalPlan::CreateSeries(_) => {
+			output.push_str(&format!("{}{} CreateSeries\n", prefix, branch));
+		}
 		LogicalPlan::CreateEvent(_) => {
 			output.push_str(&format!("{}{} CreateEvent\n", prefix, branch));
+		}
+		LogicalPlan::CreateTag(_) => {
+			output.push_str(&format!("{}{} CreateTag\n", prefix, branch));
 		}
 		LogicalPlan::CreateHandler(_) => {
 			output.push_str(&format!("{}{} CreateHandler\n", prefix, branch));

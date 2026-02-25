@@ -13,9 +13,10 @@ use crate::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier, MaybeQualifiedFunctionIdentifier,
 		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-		MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedSumTypeIdentifier,
-		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
-		UnqualifiedIdentifier, UnresolvedPrimitiveIdentifier,
+		MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier,
+		MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+		MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier, UnqualifiedIdentifier,
+		UnresolvedPrimitiveIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
 	token::token::{Literal, Token, TokenKind},
@@ -794,6 +795,7 @@ pub enum AstCreate<'bump> {
 	Policy(AstCreatePolicy<'bump>),
 	Procedure(AstCreateProcedure<'bump>),
 	Event(AstCreateEvent<'bump>),
+	Tag(AstCreateTag<'bump>),
 	Handler(AstCreateHandler<'bump>),
 }
 
@@ -947,8 +949,17 @@ pub struct AstCreateNamespace<'bump> {
 #[derive(Debug)]
 pub struct AstCreateSeries<'bump> {
 	pub token: Token<'bump>,
-	pub sequence: MaybeQualifiedSequenceIdentifier<'bump>,
+	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
+	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
+	pub precision: Option<AstTimestampPrecision>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AstTimestampPrecision {
+	Millisecond,
+	Microsecond,
+	Nanosecond,
 }
 
 #[derive(Debug)]
@@ -1163,6 +1174,10 @@ impl<'bump> AstCreate<'bump> {
 				..
 			}) => token,
 			AstCreate::Event(AstCreateEvent {
+				token,
+				..
+			}) => token,
+			AstCreate::Tag(AstCreateTag {
 				token,
 				..
 			}) => token,
@@ -1889,6 +1904,14 @@ pub struct AstClosure<'bump> {
 /// CREATE EVENT — declares a typed event type (a sum type with is_event: true)
 #[derive(Debug)]
 pub struct AstCreateEvent<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub variants: Vec<AstVariantDef<'bump>>,
+}
+
+/// CREATE TAG — declares a tag type (a sum type with SumTypeKind::Tag)
+#[derive(Debug)]
+pub struct AstCreateTag<'bump> {
 	pub token: Token<'bump>,
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub variants: Vec<AstVariantDef<'bump>>,

@@ -11,14 +11,15 @@ use crate::{
 		ast::{Ast, AstFrom, AstInsert},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedTableIdentifier, UnresolvedPrimitiveIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedTableIdentifier, UnresolvedPrimitiveIdentifier,
 		},
 	},
 	bump::BumpBox,
 	error::RqlError,
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
-		Compiler, InlineDataNode, InsertDictionaryNode, InsertRingBufferNode, InsertTableNode, LogicalPlan,
+		Compiler, InlineDataNode, InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode,
+		InsertTableNode, LogicalPlan,
 	},
 };
 
@@ -93,6 +94,17 @@ impl<'bump> Compiler<'bump> {
 				target = target.with_namespace(namespace);
 			}
 			return Ok(LogicalPlan::InsertDictionary(InsertDictionaryNode {
+				target,
+				source: BumpBox::new_in(source, self.bump),
+			}));
+		}
+
+		if self.catalog.find_series_by_name(tx, namespace_id, target_name)?.is_some() {
+			let mut target = MaybeQualifiedSeriesIdentifier::new(name);
+			if !namespace.is_empty() {
+				target = target.with_namespace(namespace);
+			}
+			return Ok(LogicalPlan::InsertSeries(InsertSeriesNode {
 				target,
 				source: BumpBox::new_in(source, self.bump),
 			}));

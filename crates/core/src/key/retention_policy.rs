@@ -9,7 +9,7 @@ use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
-		id::{RingBufferId, TableId, ViewId},
+		id::{RingBufferId, SeriesId, TableId, ViewId},
 		primitive::PrimitiveId,
 		vtable::VTableId,
 	},
@@ -60,6 +60,9 @@ impl EncodableKey for PrimitiveRetentionPolicyKey {
 			PrimitiveId::Dictionary(id) => {
 				serializer.extend_u8(0x06).extend_u64(id.0);
 			}
+			PrimitiveId::Series(id) => {
+				serializer.extend_u8(0x07).extend_u64(id.0);
+			}
 		}
 
 		serializer.to_encoded_key()
@@ -88,6 +91,7 @@ impl EncodableKey for PrimitiveRetentionPolicyKey {
 			0x04 => PrimitiveId::RingBuffer(RingBufferId(id)),
 			0x05 => PrimitiveId::Flow(FlowId(id)),
 			0x06 => PrimitiveId::Dictionary(DictionaryId(id)),
+			0x07 => PrimitiveId::Series(SeriesId(id)),
 			_ => return None,
 		};
 

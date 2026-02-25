@@ -112,6 +112,9 @@ pub mod tests {
 			KeyKind::SchemaField => {}
 			KeyKind::Handler => {}
 			KeyKind::NamespaceHandler => {}
+			KeyKind::Series => {}
+			KeyKind::NamespaceSeries => {}
+			KeyKind::SeriesMetadata => {}
 			KeyKind::VariantHandler => {} /* When adding a new variant, add it here.
 			                               * The compiler will error if you forget.
 			                               * Then add a test and update should_exclude_from_cdc() if

@@ -60,6 +60,11 @@ impl CatalogStore {
 				// None as they use a different retrieval mechanism
 				Ok(None)
 			}
+			PrimitiveId::Series(_series_id) => {
+				// TODO: Implement find_series when series
+				// catalog is ready
+				Ok(None)
+			}
 		}
 	}
 }

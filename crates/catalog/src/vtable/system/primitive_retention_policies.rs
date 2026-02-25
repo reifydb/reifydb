@@ -60,6 +60,7 @@ impl VTable for PrimitiveRetentionPolicies {
 				PrimitiveId::RingBuffer(id) => (id.0, "ringbuffer"),
 				PrimitiveId::Flow(id) => (id.0, "flow"),
 				PrimitiveId::Dictionary(id) => (id.0, "dictionary"),
+				PrimitiveId::Series(id) => (id.0, "series"),
 			};
 
 			primitive_ids.push(primitive_id);

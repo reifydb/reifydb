@@ -16,9 +16,9 @@ use reifydb_catalog::vtable::{
 		operator_retention_policies::OperatorRetentionPolicies, primary_key_columns::PrimaryKeyColumns,
 		primary_keys::PrimaryKeys, primitive_retention_policies::PrimitiveRetentionPolicies,
 		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers,
-		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences,
-		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, types::Types,
-		versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
+		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences, series::Series,
+		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, tags::Tags,
+		types::Types, versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
 	},
 	tables::VTables,
 };
@@ -62,8 +62,9 @@ use crate::vm::volcano::{
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
 	scan::{
-		dictionary::DictionaryScanNode, index::IndexScanNode, ringbuffer::RingBufferScan, table::TableScanNode,
-		view::ViewScanNode, vtable::VirtualScanNode,
+		dictionary::DictionaryScanNode, index::IndexScanNode, ringbuffer::RingBufferScan,
+		series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode, view::ViewScanNode,
+		vtable::VirtualScanNode,
 	},
 	sort::SortNode,
 	take::TakeNode,
@@ -78,6 +79,7 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 		RqlQueryPlan::ViewScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::RingBufferScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::DictionaryScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		RqlQueryPlan::SeriesScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		// For other node types, try to recursively find the source
 		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_source_name_from_query(p)),
 		RqlQueryPlan::Filter(node) => extract_source_name_from_query(&node.input),
@@ -93,6 +95,7 @@ pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedPri
 		RqlQueryPlan::ViewScan(node) => Some(ResolvedPrimitive::View(node.source.clone())),
 		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedPrimitive::RingBuffer(node.source.clone())),
 		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedPrimitive::Dictionary(node.source.clone())),
+		RqlQueryPlan::SeriesScan(node) => Some(ResolvedPrimitive::Series(node.source.clone())),
 		RqlQueryPlan::Filter(node) => extract_resolved_source(&node.input),
 		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
 		RqlQueryPlan::Map(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
@@ -485,6 +488,17 @@ pub(crate) fn compile<'a>(
 			Box::new(DictionaryScanNode::new(node.source.clone(), context).unwrap())
 		}
 
+		RqlQueryPlan::SeriesScan(node) => Box::new(
+			VolcanoSeriesScanNode::new(
+				node.source.clone(),
+				node.time_range_start,
+				node.time_range_end,
+				node.variant_tag,
+				context,
+			)
+			.unwrap(),
+		),
+
 		RqlQueryPlan::TableVirtualScan(node) => {
 			// Create the appropriate virtual table implementation
 			let namespace = node.source.namespace().def();
@@ -563,6 +577,8 @@ pub(crate) fn compile<'a>(
 					"enums" => VTables::Enums(Enums::new()),
 					"events" => VTables::Events(Events::new()),
 					"handlers" => VTables::Handlers(Handlers::new()),
+					"tags" => VTables::Tags(Tags::new()),
+					"series" => VTables::Series(Series::new()),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {

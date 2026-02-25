@@ -14,6 +14,7 @@ pub mod policy;
 pub mod primitive;
 pub mod procedure;
 pub mod ringbuffer;
+pub mod series;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;

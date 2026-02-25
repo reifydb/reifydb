@@ -21,7 +21,7 @@ use reifydb_core::{
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
-			ResolvedTable, ResolvedView,
+			ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
 	sort::SortKey,
@@ -42,7 +42,7 @@ use crate::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
 		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, FlowScanNode, GeneratorNode,
 		IndexScanNode, InlineDataNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
-		RowRangeScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
+		RowRangeScanNode, SeriesScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
 	plan::{
 		logical,
@@ -78,6 +78,8 @@ pub enum PhysicalPlan<'bump> {
 	CreateProcedure(nodes::CreateProcedureNode),
 	CreateEvent(nodes::CreateEventNode),
 	CreateHandler(nodes::CreateHandlerNode),
+	CreateSeries(nodes::CreateSeriesNode),
+	CreateTag(nodes::CreateTagNode),
 	Dispatch(nodes::DispatchNode),
 	// Drop
 	DropNamespace(nodes::DropNamespaceNode),
@@ -94,9 +96,11 @@ pub enum PhysicalPlan<'bump> {
 	// Mutate
 	Delete(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
+	DeleteSeries(DeleteSeriesNode<'bump>),
 	InsertTable(InsertTableNode<'bump>),
 	InsertRingBuffer(InsertRingBufferNode<'bump>),
 	InsertDictionary(InsertDictionaryNode<'bump>),
+	InsertSeries(InsertSeriesNode<'bump>),
 	Update(UpdateTableNode<'bump>),
 	UpdateRingBuffer(UpdateRingBufferNode<'bump>),
 	// Variable assignment
@@ -144,6 +148,7 @@ pub enum PhysicalPlan<'bump> {
 	RingBufferScan(RingBufferScanNode),
 	FlowScan(FlowScanNode),
 	DictionaryScan(DictionaryScanNode),
+	SeriesScan(SeriesScanNode),
 	Generator(GeneratorNode),
 	Window(WindowNode<'bump>),
 	Scalarize(ScalarizeNode<'bump>),
@@ -229,6 +234,18 @@ pub struct InsertRingBufferNode<'bump> {
 pub struct InsertDictionaryNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedDictionary,
+}
+
+#[derive(Debug)]
+pub struct InsertSeriesNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub target: ResolvedSeries,
+}
+
+#[derive(Debug)]
+pub struct DeleteSeriesNode<'bump> {
+	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub target: ResolvedSeries,
 }
 
 #[derive(Debug)]
@@ -568,8 +585,16 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_procedure(rx, create)?);
 				}
 
+				LogicalPlan::CreateSeries(create) => {
+					stack.push(self.compile_create_series(rx, create)?);
+				}
+
 				LogicalPlan::CreateEvent(create) => {
 					stack.push(self.compile_create_event(rx, create)?);
+				}
+
+				LogicalPlan::CreateTag(create) => {
+					stack.push(self.compile_create_tag(rx, create)?);
 				}
 
 				LogicalPlan::CreateHandler(create) => {
@@ -964,6 +989,121 @@ impl<'bump> Compiler<'bump> {
 					}))
 				}
 
+				LogicalPlan::InsertSeries(insert_series) => {
+					let input = self
+						.compile(
+							rx,
+							once(crate::bump::BumpBox::into_inner(insert_series.source)),
+						)?
+						.expect("Insert source must produce a plan");
+
+					let series_id = insert_series.target;
+					let namespace_name = if series_id.namespace.is_empty() {
+						"default".to_string()
+					} else {
+						series_id
+							.namespace
+							.iter()
+							.map(|n| n.text())
+							.collect::<Vec<_>>()
+							.join(".")
+					};
+					let namespace_def =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(series_def) = self.catalog.find_series_by_name(
+						rx,
+						namespace_def.id,
+						series_id.name.text(),
+					)?
+					else {
+						return_error!(
+							reifydb_core::error::diagnostic::catalog::series_not_found(
+								self.interner.intern_fragment(&series_id.name),
+								&namespace_def.name,
+								series_id.name.text()
+							)
+						);
+					};
+
+					let namespace_id = if let Some(n) = series_id.namespace.first() {
+						let interned = self.interner.intern_fragment(n);
+						interned.with_text(&namespace_def.name)
+					} else {
+						Fragment::internal(namespace_def.name.clone())
+					};
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let target = ResolvedSeries::new(
+						self.interner.intern_fragment(&series_id.name),
+						resolved_namespace,
+						series_def,
+					);
+
+					stack.push(PhysicalPlan::InsertSeries(InsertSeriesNode {
+						input: self.bump_box(input),
+						target,
+					}))
+				}
+
+				LogicalPlan::DeleteSeries(delete_series) => {
+					let input = if let Some(delete_input) = delete_series.input {
+						let sub_plan = self
+							.compile(
+								rx,
+								once(crate::bump::BumpBox::into_inner(delete_input)),
+							)?
+							.expect("Delete input must produce a plan");
+						Some(self.bump_box(sub_plan))
+					} else {
+						stack.pop().map(|i| self.bump_box(i))
+					};
+
+					let series_id = delete_series.target;
+					let namespace_name = if series_id.namespace.is_empty() {
+						"default".to_string()
+					} else {
+						series_id
+							.namespace
+							.iter()
+							.map(|n| n.text())
+							.collect::<Vec<_>>()
+							.join(".")
+					};
+					let namespace_def =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(series_def) = self.catalog.find_series_by_name(
+						rx,
+						namespace_def.id,
+						series_id.name.text(),
+					)?
+					else {
+						return_error!(
+							reifydb_core::error::diagnostic::catalog::series_not_found(
+								self.interner.intern_fragment(&series_id.name),
+								&namespace_def.name,
+								series_id.name.text()
+							)
+						);
+					};
+
+					let namespace_id = if let Some(n) = series_id.namespace.first() {
+						let interned = self.interner.intern_fragment(n);
+						interned.with_text(&namespace_def.name)
+					} else {
+						Fragment::internal(namespace_def.name.clone())
+					};
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let target = ResolvedSeries::new(
+						self.interner.intern_fragment(&series_id.name),
+						resolved_namespace,
+						series_def,
+					);
+
+					stack.push(PhysicalPlan::DeleteSeries(DeleteSeriesNode {
+						input,
+						target,
+					}))
+				}
+
 				LogicalPlan::Update(update) => {
 					let input = if let Some(update_input) = update.input {
 						let sub_plan = self
@@ -1294,6 +1434,17 @@ impl<'bump> Compiler<'bump> {
 						}
 						stack.push(PhysicalPlan::DictionaryScan(DictionaryScanNode {
 							source: resolved_dictionary.clone(),
+						}));
+					}
+					ResolvedPrimitive::Series(resolved_series) => {
+						if scan.index.is_some() {
+							unimplemented!("series do not support indexes");
+						}
+						stack.push(PhysicalPlan::SeriesScan(SeriesScanNode {
+							source: resolved_series.clone(),
+							time_range_start: None,
+							time_range_end: None,
+							variant_tag: None,
 						}));
 					}
 				},

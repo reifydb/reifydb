@@ -27,6 +27,7 @@ impl CatalogStore {
 				PrimitiveId::TableVirtual(_) => "TableVirtual",
 				PrimitiveId::RingBuffer(_) => "RingBuffer",
 				PrimitiveId::Dictionary(_) => "Dictionary",
+				PrimitiveId::Series(_) => "Series",
 			};
 
 			Error(internal!(

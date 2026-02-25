@@ -10,7 +10,7 @@ use reifydb_core::interface::{
 	},
 	resolved::{
 		ResolvedDeferredView, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
-		ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
+		ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -112,6 +112,11 @@ pub fn resolve_unresolved_source(
 			namespace,
 			dictionary,
 		)));
+	}
+
+	// Try series
+	if let Some(series) = catalog.find_series_by_name(tx, ns_def.id, name_str)? {
+		return Ok(ResolvedPrimitive::Series(ResolvedSeries::new(name_fragment, namespace, series)));
 	}
 
 	// Try flows (after views, since deferred views take precedence)

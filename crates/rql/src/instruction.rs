@@ -10,9 +10,10 @@ use crate::{
 	nodes::{
 		self, AlterFlowNode, AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateEventNode,
 		CreateFlowNode, CreateHandlerNode, CreateNamespaceNode, CreatePolicyNode, CreatePrimaryKeyNode,
-		CreateProcedureNode, CreateRingBufferNode, CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode,
-		CreateTransactionalViewNode, DeleteRingBufferNode, DeleteTableNode, DispatchNode, FunctionParameter,
-		InsertDictionaryNode, InsertRingBufferNode, InsertTableNode, UpdateRingBufferNode, UpdateTableNode,
+		CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode, CreateSubscriptionNode, CreateSumTypeNode,
+		CreateTableNode, CreateTagNode, CreateTransactionalViewNode, DeleteRingBufferNode, DeleteSeriesNode,
+		DeleteTableNode, DispatchNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
+		InsertSeriesNode, InsertTableNode, UpdateRingBufferNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -162,7 +163,9 @@ pub enum Instruction {
 	CreatePrimaryKey(CreatePrimaryKeyNode),
 	CreatePolicy(CreatePolicyNode),
 	CreateProcedure(CreateProcedureNode),
+	CreateSeries(CreateSeriesNode),
 	CreateEvent(CreateEventNode),
+	CreateTag(CreateTagNode),
 	CreateHandler(CreateHandlerNode),
 	Dispatch(DispatchNode),
 	AlterSequence(AlterSequenceNode),
@@ -181,9 +184,11 @@ pub enum Instruction {
 	// === DML ===
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),
+	DeleteSeries(DeleteSeriesNode),
 	InsertTable(InsertTableNode),
 	InsertRingBuffer(InsertRingBufferNode),
 	InsertDictionary(InsertDictionaryNode),
+	InsertSeries(InsertSeriesNode),
 	Update(UpdateTableNode),
 	UpdateRingBuffer(UpdateRingBufferNode),
 

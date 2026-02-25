@@ -19,6 +19,7 @@ use namespace_dictionary::NamespaceDictionaryKey;
 use namespace_flow::NamespaceFlowKey;
 use namespace_handler::NamespaceHandlerKey;
 use namespace_ringbuffer::NamespaceRingBufferKey;
+use namespace_series::NamespaceSeriesKey;
 use namespace_sumtype::NamespaceSumTypeKey;
 use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
@@ -27,6 +28,7 @@ use retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use row::RowKey;
 use row_sequence::RowSequenceKey;
+use series::{SeriesKey, SeriesMetadataKey};
 use subscription::SubscriptionKey;
 use subscription_column::SubscriptionColumnKey;
 use subscription_row::SubscriptionRowKey;
@@ -64,6 +66,7 @@ pub mod namespace_dictionary;
 pub mod namespace_flow;
 pub mod namespace_handler;
 pub mod namespace_ringbuffer;
+pub mod namespace_series;
 pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
@@ -73,6 +76,8 @@ pub mod ringbuffer;
 pub mod row;
 pub mod row_sequence;
 pub mod schema;
+pub mod series;
+pub mod series_row;
 pub mod subscription;
 pub mod subscription_column;
 pub mod subscription_row;
@@ -124,6 +129,9 @@ pub enum Key {
 	Subscription(SubscriptionKey),
 	SubscriptionColumn(SubscriptionColumnKey),
 	SubscriptionRow(SubscriptionRowKey),
+	Series(SeriesKey),
+	SeriesMetadata(SeriesMetadataKey),
+	NamespaceSeries(NamespaceSeriesKey),
 }
 
 impl Key {
@@ -168,6 +176,9 @@ impl Key {
 			Key::Subscription(key) => key.encode(),
 			Key::SubscriptionColumn(key) => key.encode(),
 			Key::SubscriptionRow(key) => key.encode(),
+			Key::Series(key) => key.encode(),
+			Key::SeriesMetadata(key) => key.encode(),
+			Key::NamespaceSeries(key) => key.encode(),
 		}
 	}
 }
@@ -290,6 +301,9 @@ impl Key {
 				// Schema keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
+			KeyKind::Series => SeriesKey::decode(&key).map(Self::Series),
+			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(&key).map(Self::NamespaceSeries),
+			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(&key).map(Self::SeriesMetadata),
 		}
 	}
 }

@@ -6,10 +6,11 @@ use reifydb_core::interface::catalog::{
 	dictionary::DictionaryDef,
 	flow::{FlowDef, FlowId},
 	handler::HandlerDef,
-	id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
+	id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
 	namespace::NamespaceDef,
 	procedure::ProcedureDef,
 	ringbuffer::RingBufferDef,
+	series::SeriesDef,
 	subscription::SubscriptionDef,
 	sumtype::SumTypeDef,
 	table::TableDef,
@@ -26,6 +27,7 @@ pub trait TransactionalChanges:
 	+ TransactionalNamespaceChanges
 	+ TransactionalProcedureChanges
 	+ TransactionalRingBufferChanges
+	+ TransactionalSeriesChanges
 	+ TransactionalSubscriptionChanges
 	+ TransactionalSumTypeChanges
 	+ TransactionalTableChanges
@@ -93,6 +95,16 @@ pub trait TransactionalRingBufferChanges {
 	fn is_ringbuffer_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
+pub trait TransactionalSeriesChanges {
+	fn find_series(&self, id: SeriesId) -> Option<&SeriesDef>;
+
+	fn find_series_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SeriesDef>;
+
+	fn is_series_deleted(&self, id: SeriesId) -> bool;
+
+	fn is_series_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
 pub trait TransactionalViewChanges {
 	fn find_view(&self, id: ViewId) -> Option<&ViewDef>;
 
@@ -145,6 +157,8 @@ pub struct TransactionalDefChanges {
 	pub procedure_def: Vec<Change<ProcedureDef>>,
 	/// All ring buffer definition changes in order (no coalescing)
 	pub ringbuffer_def: Vec<Change<RingBufferDef>>,
+	/// All series definition changes in order (no coalescing)
+	pub series_def: Vec<Change<SeriesDef>>,
 	/// All subscription definition changes in order (no coalescing)
 	pub sumtype_def: Vec<Change<SumTypeDef>>,
 	pub subscription_def: Vec<Change<SubscriptionDef>>,
@@ -242,6 +256,21 @@ impl TransactionalDefChanges {
 		let op = change.op;
 		self.ringbuffer_def.push(change);
 		self.log.push(Operation::RingBuffer {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_series_def_change(&mut self, change: Change<SeriesDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|s| s.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.series_def.push(change);
+		self.log.push(Operation::Series {
 			id,
 			op,
 		});
@@ -355,6 +384,10 @@ pub enum Operation {
 		id: RingBufferId,
 		op: OperationType,
 	},
+	Series {
+		id: SeriesId,
+		op: OperationType,
+	},
 	SumType {
 		id: SumTypeId,
 		op: OperationType,
@@ -383,6 +416,7 @@ impl TransactionalDefChanges {
 			namespace_def: Vec::new(),
 			procedure_def: Vec::new(),
 			ringbuffer_def: Vec::new(),
+			series_def: Vec::new(),
 			sumtype_def: Vec::new(),
 			subscription_def: Vec::new(),
 			table_def: Vec::new(),
@@ -470,6 +504,7 @@ impl TransactionalDefChanges {
 		self.namespace_def.clear();
 		self.procedure_def.clear();
 		self.ringbuffer_def.clear();
+		self.series_def.clear();
 		self.sumtype_def.clear();
 		self.subscription_def.clear();
 		self.table_def.clear();

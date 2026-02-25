@@ -257,6 +257,9 @@ impl FlowCompiler {
 			QueryPlan::Assert(_) => {
 				unimplemented!("Assert compilation not yet implemented for flow")
 			}
+			QueryPlan::SeriesScan(_) => {
+				unimplemented!("SeriesScan compilation not yet implemented for flow")
+			}
 		}
 	}
 }

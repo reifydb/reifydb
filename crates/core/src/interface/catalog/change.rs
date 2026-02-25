@@ -8,8 +8,8 @@
 
 use crate::interface::catalog::{
 	dictionary::DictionaryDef, flow::FlowDef, handler::HandlerDef, namespace::NamespaceDef,
-	procedure::ProcedureDef, ringbuffer::RingBufferDef, subscription::SubscriptionDef, sumtype::SumTypeDef,
-	table::TableDef, view::ViewDef,
+	procedure::ProcedureDef, ringbuffer::RingBufferDef, series::SeriesDef, subscription::SubscriptionDef,
+	sumtype::SumTypeDef, table::TableDef, view::ViewDef,
 };
 
 /// Trait for tracking table definition changes during a transaction.
@@ -56,6 +56,15 @@ pub trait CatalogTrackDictionaryChangeOperations {
 	-> reifydb_type::Result<()>;
 
 	fn track_dictionary_def_deleted(&mut self, dictionary: DictionaryDef) -> reifydb_type::Result<()>;
+}
+
+/// Trait for tracking series definition changes during a transaction.
+pub trait CatalogTrackSeriesChangeOperations {
+	fn track_series_def_created(&mut self, series: SeriesDef) -> reifydb_type::Result<()>;
+
+	fn track_series_def_updated(&mut self, pre: SeriesDef, post: SeriesDef) -> reifydb_type::Result<()>;
+
+	fn track_series_def_deleted(&mut self, series: SeriesDef) -> reifydb_type::Result<()>;
 }
 
 /// Trait for tracking ringbuffer definition changes during a transaction.
@@ -114,6 +123,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackProcedureChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
+	+ CatalogTrackSeriesChangeOperations
 	+ CatalogTrackSubscriptionChangeOperations
 	+ CatalogTrackSumTypeChangeOperations
 	+ CatalogTrackTableChangeOperations

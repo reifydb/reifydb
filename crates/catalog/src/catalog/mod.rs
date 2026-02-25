@@ -23,6 +23,7 @@ pub mod procedure;
 pub mod resolve;
 pub mod ringbuffer;
 pub mod sequence;
+pub mod series;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;

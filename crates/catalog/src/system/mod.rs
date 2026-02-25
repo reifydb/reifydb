@@ -29,6 +29,7 @@ pub mod ringbuffers;
 pub mod schema_fields;
 pub mod schemas;
 pub mod sequence;
+pub mod series;
 pub mod storage_stats_dictionary;
 pub mod storage_stats_flow;
 pub mod storage_stats_flow_node;
@@ -38,6 +39,7 @@ pub mod storage_stats_table;
 pub mod storage_stats_view;
 pub mod tables;
 pub mod tables_virtual;
+pub mod tags;
 pub mod types;
 pub mod versions;
 pub mod views;
@@ -65,6 +67,7 @@ use primitive_retention_policies::primitive_retention_policies;
 use schema_fields::schema_fields;
 use schemas::schemas;
 use sequence::sequences;
+use series::series;
 use storage_stats_dictionary::dictionary_storage_stats;
 use storage_stats_flow::flow_storage_stats;
 use storage_stats_flow_node::flow_node_storage_stats;
@@ -74,6 +77,7 @@ use storage_stats_table::table_storage_stats;
 use storage_stats_view::view_storage_stats;
 use tables::tables;
 use tables_virtual::virtual_tables;
+use tags::tags;
 use types::types;
 use versions::versions;
 use views::views;
@@ -202,6 +206,28 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(3);
 
 			pub const ALL: [ColumnId; 3] = [ID, NAMESPACE_ID, NAME];
+		}
+
+		pub mod tags {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+
+			pub const ALL: [ColumnId; 3] = [ID, NAMESPACE_ID, NAME];
+		}
+
+		pub mod series {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const TAG_ID: ColumnId = ColumnId(4);
+			pub const PRECISION: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, TAG_ID, PRECISION];
 		}
 
 		pub mod handlers {
@@ -480,8 +506,10 @@ pub mod ids {
 		pub const ENUMS: VTableId = VTableId(34);
 		pub const EVENTS: VTableId = VTableId(35);
 		pub const HANDLERS: VTableId = VTableId(36);
+		pub const TAGS: VTableId = VTableId(37);
+		pub const SERIES: VTableId = VTableId(38);
 
-		pub const ALL: [VTableId; 36] = [
+		pub const ALL: [VTableId; 38] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -518,6 +546,8 @@ pub mod ids {
 			ENUMS,
 			EVENTS,
 			HANDLERS,
+			TAGS,
+			SERIES,
 		];
 	}
 }
@@ -722,5 +752,15 @@ impl SystemCatalog {
 	/// Get the handlers virtual table definition
 	pub fn get_system_handlers_table_def() -> Arc<VTableDef> {
 		handlers()
+	}
+
+	/// Get the tags virtual table definition
+	pub fn get_system_tags_table_def() -> Arc<VTableDef> {
+		tags()
+	}
+
+	/// Get the series virtual table definition
+	pub fn get_system_series_table_def() -> Arc<VTableDef> {
+		series()
 	}
 }

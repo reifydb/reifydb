@@ -17,13 +17,14 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			flow::{FlowId, FlowNodeId},
-			id::{RingBufferId, TableId, ViewId},
+			id::{RingBufferId, SeriesId, TableId, ViewId},
 			primitive::PrimitiveId,
 			vtable::VTableId,
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
 };
+use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::ffi::arena::Arena;
 
@@ -88,6 +89,10 @@ impl Arena {
 					origin: 6,
 					id: id.0,
 				},
+				PrimitiveId::Series(id) => OriginFFI {
+					origin: 7,
+					id: id.0,
+				},
 			},
 		}
 	}
@@ -150,6 +155,8 @@ impl Arena {
 			3 => Ok(ChangeOrigin::Primitive(PrimitiveId::TableVirtual(VTableId(ffi.id)))),
 			4 => Ok(ChangeOrigin::Primitive(PrimitiveId::RingBuffer(RingBufferId(ffi.id)))),
 			5 => Ok(ChangeOrigin::Primitive(PrimitiveId::Flow(FlowId(ffi.id)))),
+			6 => Ok(ChangeOrigin::Primitive(PrimitiveId::Dictionary(DictionaryId(ffi.id)))),
+			7 => Ok(ChangeOrigin::Primitive(PrimitiveId::Series(SeriesId(ffi.id)))),
 			_ => Err(format!("Invalid origin_type: {}", ffi.origin)),
 		}
 	}

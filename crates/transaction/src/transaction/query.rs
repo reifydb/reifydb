@@ -9,10 +9,14 @@ use reifydb_core::{
 			dictionary::DictionaryDef,
 			flow::{FlowDef, FlowId},
 			handler::HandlerDef,
-			id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SubscriptionId, TableId, ViewId},
+			id::{
+				HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, SubscriptionId, TableId,
+				ViewId,
+			},
 			namespace::NamespaceDef,
 			procedure::ProcedureDef,
 			ringbuffer::RingBufferDef,
+			series::SeriesDef,
 			subscription::SubscriptionDef,
 			sumtype::SumTypeDef,
 			table::TableDef,
@@ -32,8 +36,8 @@ use crate::{
 	change::{
 		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalHandlerChanges, TransactionalNamespaceChanges, TransactionalProcedureChanges,
-		TransactionalRingBufferChanges, TransactionalSubscriptionChanges, TransactionalSumTypeChanges,
-		TransactionalTableChanges, TransactionalViewChanges,
+		TransactionalRingBufferChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
+		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -239,6 +243,24 @@ impl TransactionalRingBufferChanges for QueryTransaction {
 	}
 
 	fn is_ringbuffer_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalSeriesChanges for QueryTransaction {
+	fn find_series(&self, _id: SeriesId) -> Option<&SeriesDef> {
+		None
+	}
+
+	fn find_series_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&SeriesDef> {
+		None
+	}
+
+	fn is_series_deleted(&self, _id: SeriesId) -> bool {
+		false
+	}
+
+	fn is_series_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

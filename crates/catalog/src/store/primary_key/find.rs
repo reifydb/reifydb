@@ -52,6 +52,10 @@ impl CatalogStore {
 				// Dictionaries don't have traditional primary keys
 				return Ok(None);
 			}
+			PrimitiveId::Series(_) => {
+				// Series use timestamp-based key ordering, no traditional primary keys
+				return Ok(None);
+			}
 		};
 
 		// Fetch the primary key details

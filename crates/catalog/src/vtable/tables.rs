@@ -25,9 +25,9 @@ use super::{
 		operator_retention_policies::OperatorRetentionPolicies, primary_key_columns::PrimaryKeyColumns,
 		primary_keys::PrimaryKeys, primitive_retention_policies::PrimitiveRetentionPolicies,
 		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers,
-		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences,
-		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, types::Types,
-		versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
+		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences, series::Series,
+		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, tags::Tags,
+		types::Types, versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
 	},
 };
 
@@ -77,6 +77,8 @@ pub enum VTables {
 	Enums(Enums),
 	Events(Events),
 	Handlers(Handlers),
+	Tags(Tags),
+	Series(Series),
 
 	/// User-defined virtual table (callback-based)
 	UserDefined {
@@ -128,6 +130,8 @@ impl VTables {
 			Self::Enums(t) => &t.definition,
 			Self::Events(t) => &t.definition,
 			Self::Handlers(t) => &t.definition,
+			Self::Tags(t) => &t.definition,
+			Self::Series(t) => &t.definition,
 			Self::UserDefined {
 				def,
 				..
@@ -174,6 +178,8 @@ impl VTables {
 			Self::Enums(t) => t.initialize(txn, ctx),
 			Self::Events(t) => t.initialize(txn, ctx),
 			Self::Handlers(t) => t.initialize(txn, ctx),
+			Self::Tags(t) => t.initialize(txn, ctx),
+			Self::Series(t) => t.initialize(txn, ctx),
 			Self::UserDefined {
 				params: stored_params,
 				exhausted,
@@ -234,6 +240,8 @@ impl VTables {
 			Self::Enums(t) => t.next(txn),
 			Self::Events(t) => t.next(txn),
 			Self::Handlers(t) => t.next(txn),
+			Self::Tags(t) => t.next(txn),
+			Self::Series(t) => t.next(txn),
 			Self::UserDefined {
 				data_fn,
 				params: stored_params,

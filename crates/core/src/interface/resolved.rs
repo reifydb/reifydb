@@ -17,6 +17,7 @@ use super::catalog::{
 	namespace::NamespaceDef,
 	policy::ColumnPolicyKind,
 	ringbuffer::RingBufferDef,
+	series::SeriesDef,
 	subscription::{SubscriptionColumnDef, SubscriptionDef},
 	table::TableDef,
 	view::ViewDef,
@@ -355,6 +356,71 @@ impl ResolvedDictionary {
 	}
 }
 
+/// Resolved series
+#[derive(Debug, Clone)]
+pub struct ResolvedSeries(Arc<ResolvedSeriesInner>);
+
+#[derive(Debug)]
+struct ResolvedSeriesInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
+	pub def: SeriesDef,
+}
+
+impl ResolvedSeries {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: SeriesDef) -> Self {
+		Self(Arc::new(ResolvedSeriesInner {
+			identifier,
+			namespace,
+			def,
+		}))
+	}
+
+	/// Get the series name
+	pub fn name(&self) -> &str {
+		&self.0.def.name
+	}
+
+	/// Get the series def
+	pub fn def(&self) -> &SeriesDef {
+		&self.0.def
+	}
+
+	/// Get the namespace
+	pub fn namespace(&self) -> &ResolvedNamespace {
+		&self.0.namespace
+	}
+
+	/// Get the identifier
+	pub fn identifier(&self) -> &Fragment {
+		&self.0.identifier
+	}
+
+	/// Get fully qualified name
+	pub fn fully_qualified_name(&self) -> String {
+		format!("{}.{}", self.0.namespace.name(), self.name())
+	}
+
+	/// Get columns
+	pub fn columns(&self) -> &[ColumnDef] {
+		&self.0.def.columns
+	}
+
+	/// Find a column by name
+	pub fn find_column(&self, name: &str) -> Option<&ColumnDef> {
+		self.0.def.columns.iter().find(|c| c.name == name)
+	}
+
+	/// Convert to owned version with 'static lifetime
+	pub fn to_static(&self) -> ResolvedSeries {
+		ResolvedSeries(Arc::new(ResolvedSeriesInner {
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
+			def: self.0.def.clone(),
+		}))
+	}
+}
+
 /// Resolved subscription (global entity, no namespace)
 #[derive(Debug, Clone)]
 pub struct ResolvedSubscription(Arc<ResolvedSubscriptionInner>);
@@ -665,6 +731,7 @@ pub enum ResolvedPrimitive {
 	RingBuffer(ResolvedRingBuffer),
 	Flow(ResolvedFlow),
 	Dictionary(ResolvedDictionary),
+	Series(ResolvedSeries),
 }
 
 impl ResolvedPrimitive {
@@ -679,6 +746,7 @@ impl ResolvedPrimitive {
 			Self::RingBuffer(r) => r.identifier(),
 			Self::Flow(f) => f.identifier(),
 			Self::Dictionary(d) => d.identifier(),
+			Self::Series(s) => s.identifier(),
 		}
 	}
 
@@ -693,6 +761,7 @@ impl ResolvedPrimitive {
 			Self::RingBuffer(r) => Some(r.namespace()),
 			Self::Flow(f) => Some(f.namespace()),
 			Self::Dictionary(d) => Some(d.namespace()),
+			Self::Series(s) => Some(s.namespace()),
 		}
 	}
 
@@ -703,7 +772,7 @@ impl ResolvedPrimitive {
 
 	/// Check if this primitive supports mutations
 	pub fn supports_mutations(&self) -> bool {
-		matches!(self, Self::Table(_) | Self::RingBuffer(_))
+		matches!(self, Self::Table(_) | Self::RingBuffer(_) | Self::Series(_))
 	}
 
 	/// Get columns for this primitive
@@ -717,6 +786,7 @@ impl ResolvedPrimitive {
 			Self::RingBuffer(r) => r.columns(),
 			Self::Flow(_f) => unreachable!(),
 			Self::Dictionary(_d) => unreachable!(), // Dictionary columns are dynamic (id, value)
+			Self::Series(s) => s.columns(),
 		}
 	}
 
@@ -736,6 +806,7 @@ impl ResolvedPrimitive {
 			Self::RingBuffer(_) => "ring buffer",
 			Self::Flow(_) => "flow",
 			Self::Dictionary(_) => "dictionary",
+			Self::Series(_) => "series",
 		}
 	}
 
@@ -750,6 +821,7 @@ impl ResolvedPrimitive {
 			Self::RingBuffer(r) => Some(r.fully_qualified_name()),
 			Self::Flow(f) => Some(f.fully_qualified_name()),
 			Self::Dictionary(d) => Some(d.fully_qualified_name()),
+			Self::Series(s) => Some(s.fully_qualified_name()),
 		}
 	}
 
@@ -781,6 +853,14 @@ impl ResolvedPrimitive {
 	pub fn as_dictionary(&self) -> Option<&ResolvedDictionary> {
 		match self {
 			Self::Dictionary(d) => Some(d),
+			_ => None,
+		}
+	}
+
+	/// Convert to a series if this is a series primitive
+	pub fn as_series(&self) -> Option<&ResolvedSeries> {
+		match self {
+			Self::Series(s) => Some(s),
 			_ => None,
 		}
 	}
@@ -906,6 +986,9 @@ pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOu
 		}
 		ResolvedPrimitive::Dictionary(dict) => {
 			(Some(dict.namespace().name().to_string()), Some(dict.name().to_string()))
+		}
+		ResolvedPrimitive::Series(series) => {
+			(Some(series.namespace().name().to_string()), Some(series.name().to_string()))
 		}
 	};
 

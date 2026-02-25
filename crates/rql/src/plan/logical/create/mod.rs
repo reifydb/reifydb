@@ -16,6 +16,7 @@ pub mod series;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
+pub mod tag;
 pub mod transactional;
 
 use reifydb_transaction::transaction::Transaction;
@@ -36,7 +37,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::TransactionalView(node) => self.compile_transactional_view(node, tx),
 			AstCreate::Flow(node) => self.compile_create_flow(node, tx),
 			AstCreate::Namespace(node) => self.compile_create_namespace(node),
-			AstCreate::Series(node) => self.compile_create_series(node),
+			AstCreate::Series(node) => self.compile_create_series(node, tx),
 			AstCreate::Table(node) => self.compile_create_table(node, tx),
 			AstCreate::RingBuffer(node) => self.compile_create_ringbuffer(node, tx),
 			AstCreate::Dictionary(node) => self.compile_create_dictionary(node),
@@ -47,6 +48,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Policy(node) => self.compile_create_policy(node, tx),
 			AstCreate::Procedure(node) => self.compile_create_procedure(node),
 			AstCreate::Event(node) => self.compile_create_event(node),
+			AstCreate::Tag(node) => self.compile_create_tag(node),
 			AstCreate::Handler(node) => self.compile_create_handler(node),
 		}
 	}

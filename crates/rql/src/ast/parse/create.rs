@@ -10,16 +10,16 @@ use crate::{
 			AstColumnProperty, AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary,
 			AstCreateEvent, AstCreateFlow, AstCreateHandler, AstCreateNamespace, AstCreatePolicy,
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRingBuffer, AstCreateSeries,
-			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTransactionalView,
-			AstIndexColumn, AstPolicyEntry, AstPolicyKind, AstPrimaryKeyDef, AstProcedureParam, AstType,
-			AstVariantDef,
+			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
+			AstCreateTransactionalView, AstIndexColumn, AstPolicyEntry, AstPolicyKind, AstPrimaryKeyDef,
+			AstProcedureParam, AstTimestampPrecision, AstType, AstVariantDef,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
 			MaybeQualifiedFlowIdentifier, MaybeQualifiedNamespaceIdentifier,
 			MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSumTypeIdentifier,
-			MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTransactionalViewIdentifier,
 		},
 		parse::Parser,
 	},
@@ -29,7 +29,7 @@ use crate::{
 			Keyword,
 			Keyword::{
 				Create, Deferred, Dictionary, Exists, Flow, For, If, Namespace, Replace, Ringbuffer,
-				Series, Subscription, Table, Transactional, View,
+				Series, Subscription, Table, Tag, Transactional, View,
 			},
 		},
 		operator::{
@@ -136,6 +136,10 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Event))?).is_some() {
 			return self.parse_event(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Tag))?).is_some() {
+			return self.parse_tag(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Handler))?).is_some() {
@@ -282,12 +286,118 @@ impl<'bump> Parser<'bump> {
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
-		let sequence = MaybeQualifiedSequenceIdentifier::new(name).with_namespace(namespace);
+		let series = MaybeQualifiedSeriesIdentifier::new(name).with_namespace(namespace);
+
+		// Parse optional WITH block
+		let mut tag = None;
+		let mut precision = None;
+
+		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
+			self.consume_operator(Operator::OpenCurly)?;
+
+			loop {
+				self.skip_new_line()?;
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let key = {
+					let current = self.current()?;
+					match current.kind {
+						TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+						TokenKind::Keyword(Keyword::Tag) => {
+							let token = self.advance()?;
+							Token {
+								kind: TokenKind::Identifier,
+								..token
+							}
+						}
+						_ => {
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "'tag' or 'precision'".to_string(),
+								},
+								message: format!(
+									"expected 'tag' or 'precision', found `{}`",
+									current.fragment.text()
+								),
+								fragment: current.fragment.to_owned(),
+							}));
+						}
+					}
+				};
+				self.consume_operator(Operator::Colon)?;
+
+				match key.fragment.text() {
+					"tag" => {
+						let mut tag_segments =
+							self.parse_double_colon_separated_identifiers()?;
+						let tag_name = tag_segments.pop().unwrap().into_fragment();
+						let tag_namespace: Vec<_> =
+							tag_segments.into_iter().map(|s| s.into_fragment()).collect();
+						tag = Some(MaybeQualifiedSumTypeIdentifier::new(tag_name)
+							.with_namespace(tag_namespace));
+					}
+					"precision" => {
+						let prec_token = self.consume(TokenKind::Identifier)?;
+						precision = Some(match prec_token.fragment.text() {
+							"millisecond" => AstTimestampPrecision::Millisecond,
+							"microsecond" => AstTimestampPrecision::Microsecond,
+							"nanosecond" => AstTimestampPrecision::Nanosecond,
+							_ => {
+								let fragment = prec_token.fragment.to_owned();
+								return Err(Error::from(TypeError::Ast {
+									kind: AstErrorKind::UnexpectedToken {
+										expected: "'millisecond', 'microsecond', or 'nanosecond'"
+											.to_string(),
+									},
+									message: format!(
+										"Unexpected token: expected {}, got {}",
+										"'millisecond', 'microsecond', or 'nanosecond'",
+										fragment.text()
+									),
+									fragment,
+								}));
+							}
+						});
+					}
+					_other => {
+						let fragment = key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "'tag' or 'precision'".to_string(),
+							},
+							message: format!(
+								"Unexpected token: expected {}, got {}",
+								"'tag' or 'precision'",
+								fragment.text()
+							),
+							fragment,
+						}));
+					}
+				}
+
+				self.skip_new_line()?;
+
+				if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+					continue;
+				}
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+		}
 
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
-			sequence,
+			series,
 			columns,
+			tag,
+			precision,
 		}))
 	}
 
@@ -532,7 +642,31 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume(TokenKind::Identifier)?;
+			let key = {
+				let current = self.current()?;
+				match current.kind {
+					TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+					TokenKind::Keyword(Keyword::Tag) => {
+						let token = self.advance()?;
+						Token {
+							kind: TokenKind::Identifier,
+							..token
+						}
+					}
+					_ => {
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "'tag' or 'precision'".to_string(),
+							},
+							message: format!(
+								"expected 'tag' or 'precision', found `{}`",
+								current.fragment.text()
+							),
+							fragment: current.fragment.to_owned(),
+						}));
+					}
+				}
+			};
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
@@ -1137,6 +1271,55 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
+	pub(crate) fn parse_tag(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name_frag = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let sumtype_ident = if namespace.is_empty() {
+			MaybeQualifiedSumTypeIdentifier::new(name_frag)
+		} else {
+			MaybeQualifiedSumTypeIdentifier::new(name_frag).with_namespace(namespace)
+		};
+
+		self.consume_operator(Operator::OpenCurly)?;
+		let mut variants = Vec::new();
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let variant_name = self.parse_identifier_with_hyphens()?.into_fragment();
+
+			let columns = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+				self.parse_columns()?
+			} else {
+				Vec::new()
+			};
+
+			variants.push(AstVariantDef {
+				name: variant_name,
+				columns,
+			});
+
+			self.skip_new_line()?;
+			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+				self.skip_new_line()?;
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstCreate::Tag(AstCreateTag {
+			token,
+			name: sumtype_ident,
+			variants,
+		}))
+	}
+
 	pub(crate) fn parse_handler(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		// Parse handler name: ns.handler_name
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -1673,12 +1856,12 @@ pub mod tests {
 
 		match create {
 			AstCreate::Series(AstCreateSeries {
-				sequence,
+				series,
 				columns,
 				..
 			}) => {
-				assert_eq!(sequence.namespace[0].text(), "test");
-				assert_eq!(sequence.name.text(), "metrics");
+				assert_eq!(series.namespace[0].text(), "test");
+				assert_eq!(series.name.text(), "metrics");
 
 				assert_eq!(columns.len(), 1);
 

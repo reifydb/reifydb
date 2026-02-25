@@ -170,6 +170,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		PhysicalPlan::RingBufferScan(node) => QueryPlan::RingBufferScan(node),
 		PhysicalPlan::FlowScan(node) => QueryPlan::FlowScan(node),
 		PhysicalPlan::DictionaryScan(node) => QueryPlan::DictionaryScan(node),
+		PhysicalPlan::SeriesScan(node) => QueryPlan::SeriesScan(node),
 		PhysicalPlan::IndexScan(node) => QueryPlan::IndexScan(node),
 		PhysicalPlan::RowPointLookup(node) => QueryPlan::RowPointLookup(node),
 		PhysicalPlan::RowListLookup(node) => QueryPlan::RowListLookup(node),
@@ -716,8 +717,16 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateProcedure(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateSeries(node) => {
+				self.emit(Instruction::CreateSeries(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateEvent(node) => {
 				self.emit(Instruction::CreateEvent(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateTag(node) => {
+				self.emit(Instruction::CreateTag(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::CreateHandler(node) => {
@@ -873,6 +882,24 @@ impl InstructionCompiler {
 					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
 						node.input,
 					))),
+					target: node.target,
+				}));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::InsertSeries(node) => {
+				self.emit(Instruction::InsertSeries(nodes::InsertSeriesNode {
+					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+						node.input,
+					))),
+					target: node.target,
+				}));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DeleteSeries(node) => {
+				self.emit(Instruction::DeleteSeries(nodes::DeleteSeriesNode {
+					input: node.input.map(|i| {
+						Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))
+					}),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
@@ -1046,6 +1073,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DictionaryScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::DictionaryScan(node)));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::SeriesScan(node) => {
+				self.emit(Instruction::Query(QueryPlan::SeriesScan(node)));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::IndexScan(node) => {
@@ -1319,6 +1350,9 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DictionaryScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::DictionaryScan(node)));
+			}
+			PhysicalPlan::SeriesScan(node) => {
+				self.emit(Instruction::Query(QueryPlan::SeriesScan(node)));
 			}
 			PhysicalPlan::IndexScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::IndexScan(node)));

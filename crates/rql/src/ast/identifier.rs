@@ -299,6 +299,27 @@ impl<'bump> MaybeQualifiedSumTypeIdentifier<'bump> {
 	}
 }
 
+/// Maybe-qualified series identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedSeriesIdentifier<'bump> {
+	pub namespace: Vec<BumpFragment<'bump>>,
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedSeriesIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}
+
 /// Maybe-qualified sequence identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSequenceIdentifier<'bump> {
