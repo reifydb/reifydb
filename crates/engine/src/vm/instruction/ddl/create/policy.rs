@@ -56,7 +56,7 @@ pub(crate) fn create_policy(
 	txn.track_table_def_updated(pre_table, post_table)?;
 
 	Ok(Columns::single_row([
-		("operation", Value::Utf8("CREATE POLICY".to_string())),
+		("operation", Value::Utf8("CREATE COLUMN POLICY".to_string())),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("table", Value::Utf8(table.name)),
 		("column", Value::Utf8(column.name)),

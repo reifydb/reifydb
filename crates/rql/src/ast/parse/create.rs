@@ -126,7 +126,8 @@ impl<'bump> Parser<'bump> {
 			return self.parse_create_primary_key(token);
 		}
 
-		if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+		if (self.consume_if(TokenKind::Keyword(Keyword::Column))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
 			return self.parse_create_policy(token);
 		}
 
@@ -837,7 +838,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse CREATE POLICY ON ns.table.column { saturation: error, default: 0 }
+	/// Parse CREATE COLUMN POLICY ON ns.table.column { saturation: error, default: 0 }
 	fn parse_create_policy(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::On)?;
 

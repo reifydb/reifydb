@@ -129,7 +129,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 				format!("CREATE PRIMARY KEY ON {}{}", namespace, pk.table.name.text())
 			}
 			AstCreate::Policy(p) => {
-				format!("CREATE POLICY ON {}", p.column.name.text())
+				format!("CREATE COLUMN POLICY ON {}", p.column.name.text())
 			}
 			_ => ty.to_string(),
 		},

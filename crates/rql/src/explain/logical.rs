@@ -553,7 +553,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::CreatePolicy(CreatePolicyNode {
 			..
 		}) => {
-			output.push_str(&format!("{}{} CreatePolicy\n", prefix, branch));
+			output.push_str(&format!("{}{} CreateColumnPolicy\n", prefix, branch));
 		}
 		LogicalPlan::CreateProcedure(_) => {
 			output.push_str(&format!("{}{} CreateProcedure\n", prefix, branch));

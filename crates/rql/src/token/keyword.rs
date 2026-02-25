@@ -115,6 +115,7 @@ Series  => "SERIES",
 Subscription => "SUBSCRIPTION",
 Table  => "TABLE",
 Ringbuffer => "RINGBUFFER",
+Column => "COLUMN",
 Policy => "POLICY",
 View => "VIEW",
 Deferred => "DEFERRED",
@@ -213,6 +214,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("SUBSCRIPTION", Keyword::Subscription);
 	map.insert("TABLE", Keyword::Table);
 	map.insert("RINGBUFFER", Keyword::Ringbuffer);
+	map.insert("COLUMN", Keyword::Column);
 	map.insert("POLICY", Keyword::Policy);
 	map.insert("VIEW", Keyword::View);
 	map.insert("DEFERRED", Keyword::Deferred);
@@ -391,6 +393,7 @@ pub mod tests {
 	test_keyword_subscription => (Subscription, "SUBSCRIPTION"),
 	test_keyword_table => (Table, "TABLE"),
 	test_keyword_ringbuffer => (Ringbuffer, "RINGBUFFER"),
+	test_keyword_column => (Column, "COLUMN"),
 	test_keyword_policy => (Policy, "POLICY"),
 	test_keyword_view => (View, "VIEW"),
 	test_keyword_deferred => (Deferred, "DEFERRED"),
@@ -532,6 +535,7 @@ pub mod tests {
 	test_not_keyword_subscription => ( "subscription"),
 	test_not_keyword_table => ( "table"),
 	test_not_keyword_ringbuffer => ( "ringbuffer"),
+	test_not_keyword_column => ( "column"),
 	test_not_keyword_policy => ( "policy"),
 	test_not_keyword_view => ( "view"),
 	test_not_keyword_deferred => ( "deferred"),
