@@ -155,11 +155,17 @@ impl SchedulerHandle {
 		handle
 	}
 
+	pub fn shared(&self) -> Self {
+		Self {
+			command_tx: self.command_tx.clone(),
+			join_handle: None,
+		}
+	}
+
 	/// Shutdown the scheduler and wait for it to complete.
 	pub fn shutdown(&mut self) {
-		let _ = self.command_tx.send(SchedulerCommand::Shutdown);
-
 		if let Some(handle) = self.join_handle.take() {
+			let _ = self.command_tx.send(SchedulerCommand::Shutdown);
 			let _ = handle.join();
 		}
 	}
@@ -167,8 +173,8 @@ impl SchedulerHandle {
 
 impl Drop for SchedulerHandle {
 	fn drop(&mut self) {
-		let _ = self.command_tx.send(SchedulerCommand::Shutdown);
 		if let Some(handle) = self.join_handle.take() {
+			let _ = self.command_tx.send(SchedulerCommand::Shutdown);
 			let _ = handle.join();
 		}
 	}

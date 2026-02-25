@@ -162,19 +162,19 @@ impl ServerBuilder {
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		let runtime = SharedRuntime::from_config(runtime_config);
 
-		// Create storage using the runtime's actor system
-		let actor_system = runtime.actor_system();
+		let actor_system = runtime.actor_system().scope();
 		let (multi_store, single_store, transaction_single, eventbus) =
 			self.storage_factory.create(&actor_system);
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
-			actor_system,
+			actor_system.clone(),
 			runtime.clock().clone(),
 		);
 
 		let mut database_builder = DatabaseBuilder::new(multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone())
+			.with_actor_system(actor_system)
 			.with_stores(multi_store, single_store);
 
 		if let Some(configurator) = self.functions_configurator {

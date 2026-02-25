@@ -66,6 +66,14 @@ impl ActorSystem {
 		}
 	}
 
+	pub fn scope(&self) -> Self {
+		Self {
+			inner: Arc::new(ActorSystemInner {
+				cancel: CancellationToken::new(),
+			}),
+		}
+	}
+
 	/// Get the cancellation token for this system.
 	pub fn cancellation_token(&self) -> CancellationToken {
 		self.inner.cancel.clone()
@@ -79,6 +87,16 @@ impl ActorSystem {
 	/// Signal shutdown to all actors.
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
+	}
+
+	/// Wait for all actors to finish after shutdown (no-op in WASM).
+	pub fn join(&self) -> Result<(), JoinError> {
+		Ok(())
+	}
+
+	/// Wait for all actors to finish after shutdown with timeout (no-op in WASM).
+	pub fn join_timeout(&self, _timeout: std::time::Duration) -> Result<(), JoinError> {
+		Ok(())
 	}
 
 	/// Spawn an actor (processes messages inline in WASM).

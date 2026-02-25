@@ -21,6 +21,7 @@ use crate::{
 
 pub struct EmbeddedBuilder {
 	storage_factory: StorageFactory,
+	runtime: Option<SharedRuntime>,
 	runtime_config: Option<SharedRuntimeConfig>,
 	interceptors: InterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
@@ -40,6 +41,7 @@ impl EmbeddedBuilder {
 	pub fn new(storage_factory: StorageFactory) -> Self {
 		Self {
 			storage_factory,
+			runtime: None,
 			runtime_config: None,
 			interceptors: InterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
@@ -56,9 +58,18 @@ impl EmbeddedBuilder {
 		}
 	}
 
+	/// Provide a pre-built shared runtime.
+	///
+	/// When set, this runtime is used directly and `with_runtime_config` is ignored.
+	pub fn with_runtime(mut self, runtime: SharedRuntime) -> Self {
+		self.runtime = Some(runtime);
+		self
+	}
+
 	/// Configure the shared runtime.
 	///
 	/// If not set, a default configuration will be used.
+	/// Ignored if `with_runtime` was called.
 	pub fn with_runtime_config(mut self, config: SharedRuntimeConfig) -> Self {
 		self.runtime_config = Some(config);
 		self
@@ -97,22 +108,24 @@ impl EmbeddedBuilder {
 	}
 
 	pub fn build(self) -> crate::Result<Database> {
-		let runtime_config = self.runtime_config.unwrap_or_default();
-		let runtime = SharedRuntime::from_config(runtime_config);
+		let runtime = match self.runtime {
+			Some(rt) => rt,
+			None => SharedRuntime::from_config(self.runtime_config.unwrap_or_default()),
+		};
 
-		// Create storage using the runtime's actor system
-		let actor_system = runtime.actor_system();
+		let actor_system = runtime.actor_system().scope();
 		let (multi_store, single_store, transaction_single, eventbus) =
 			self.storage_factory.create(&actor_system);
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
-			actor_system,
+			actor_system.clone(),
 			runtime.clock().clone(),
 		);
 
 		let mut builder = DatabaseBuilder::new(multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone())
+			.with_actor_system(actor_system)
 			.with_stores(multi_store, single_store);
 
 		if let Some(configurator) = self.functions_configurator {

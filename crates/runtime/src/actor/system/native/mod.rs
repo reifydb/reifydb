@@ -11,6 +11,7 @@ use std::{
 	any::Any,
 	fmt::{Debug, Formatter},
 	sync::{Arc, Mutex},
+	time::Duration,
 };
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
@@ -38,6 +39,7 @@ struct ActorSystemInner {
 	scheduler: SchedulerHandle,
 	wakers: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
 	keepalive: Mutex<Vec<Box<dyn Any + Send + Sync>>>,
+	done_rxs: Mutex<Vec<crossbeam_channel::Receiver<()>>>,
 }
 
 /// Unified system for all concurrent work.
@@ -72,6 +74,21 @@ impl ActorSystem {
 				scheduler,
 				wakers: Mutex::new(Vec::new()),
 				keepalive: Mutex::new(Vec::new()),
+				done_rxs: Mutex::new(Vec::new()),
+			}),
+		}
+	}
+
+	pub fn scope(&self) -> Self {
+		Self {
+			inner: Arc::new(ActorSystemInner {
+				pool: self.inner.pool.clone(),
+				permits: self.inner.permits.clone(),
+				cancel: CancellationToken::new(),
+				scheduler: self.inner.scheduler.shared(),
+				wakers: Mutex::new(Vec::new()),
+				keepalive: Mutex::new(Vec::new()),
+				done_rxs: Mutex::new(Vec::new()),
 			}),
 		}
 	}
@@ -114,6 +131,35 @@ impl ActorSystem {
 	/// Cleared on shutdown so actor cells can be freed.
 	pub(crate) fn register_keepalive(&self, cell: Box<dyn Any + Send + Sync>) {
 		self.inner.keepalive.lock().unwrap().push(cell);
+	}
+
+	/// Register a done receiver for an actor, used by `join()` to wait for all actors.
+	pub(crate) fn register_done_rx(&self, rx: crossbeam_channel::Receiver<()>) {
+		self.inner.done_rxs.lock().unwrap().push(rx);
+	}
+
+	/// Wait for all actors to finish after shutdown, with a default 5-second timeout.
+	pub fn join(&self) -> Result<(), JoinError> {
+		self.join_timeout(Duration::from_secs(5))
+	}
+
+	/// Wait for all actors to finish after shutdown, with a custom timeout.
+	pub fn join_timeout(&self, timeout: Duration) -> Result<(), JoinError> {
+		let deadline = std::time::Instant::now() + timeout;
+		let rxs: Vec<_> = std::mem::take(&mut *self.inner.done_rxs.lock().unwrap());
+		for rx in rxs {
+			let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+			match rx.recv_timeout(remaining) {
+				Ok(()) => {}
+				Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+					// Cell dropped without sending — actor already cleaned up
+				}
+				Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+					return Err(JoinError::new("timed out waiting for actors to stop"));
+				}
+			}
+		}
+		Ok(())
 	}
 
 	/// Get the timer scheduler for scheduling delayed/periodic callbacks.
@@ -276,5 +322,19 @@ mod tests {
 		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let result = system.compute(|| 42).await.unwrap();
 		assert_eq!(result, 42);
+	}
+
+	#[test]
+	fn test_shutdown_join() {
+		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+
+		// Spawn several actors
+		for i in 0..5 {
+			system.spawn(&format!("counter-{i}"), CounterActor);
+		}
+
+		// Shutdown cancels all actors; join waits for them to finish
+		system.shutdown();
+		system.join().unwrap();
 	}
 }

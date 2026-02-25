@@ -37,7 +37,7 @@ use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
@@ -63,6 +63,7 @@ pub struct DatabaseBuilder {
 	interceptors: InterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
+	actor_system: Option<ActorSystem>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
@@ -92,6 +93,7 @@ impl DatabaseBuilder {
 			interceptors: InterceptorBuilder::new(),
 			factories: Vec::new(),
 			ioc,
+			actor_system: None,
 			functions_configurator: None,
 			procedures_configurator: None,
 			#[cfg(reifydb_target = "native")]
@@ -183,6 +185,11 @@ impl DatabaseBuilder {
 		self
 	}
 
+	pub fn with_actor_system(mut self, system: ActorSystem) -> Self {
+		self.actor_system = Some(system);
+		self
+	}
+
 	pub fn subsystem_count(&self) -> usize {
 		self.factories.len()
 	}
@@ -219,6 +226,7 @@ impl DatabaseBuilder {
 		Self::load_schema_registry(&multi, &single, &schema_registry)?;
 
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
+		let actor_system = self.actor_system.unwrap_or_else(|| runtime.actor_system().scope());
 
 		// Create and register CdcStore for CDC storage
 		let cdc_store = CdcStore::memory();
@@ -298,13 +306,8 @@ impl DatabaseBuilder {
 		// Spawn CDC producer actor and register event listener
 		// The handle is stored in IoC to keep it alive for the database lifetime
 		// Engine is passed for periodic cleanup based on consumer watermarks
-		let cdc_handle = spawn_cdc_producer(
-			&runtime.actor_system(),
-			cdc_store,
-			multi_store,
-			engine.clone(),
-			eventbus.clone(),
-		);
+		let cdc_handle =
+			spawn_cdc_producer(&actor_system, cdc_store, multi_store, engine.clone(), eventbus.clone());
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 			cdc_handle.actor_ref().clone(),
 			runtime.clock().clone(),
@@ -377,7 +380,7 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, subsystems, health_monitor, runtime))
+		Ok(Database::new(engine, subsystems, health_monitor, runtime, actor_system))
 	}
 
 	/// Load the materialized catalog from storage

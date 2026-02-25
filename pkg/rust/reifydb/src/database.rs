@@ -12,7 +12,7 @@ use std::{
 
 use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId};
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
 use reifydb_sub_api::subsystem::HealthStatus;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::subsystem::FlowSubsystem;
@@ -41,6 +41,7 @@ pub struct Database {
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	shared_runtime: SharedRuntime,
+	actor_system: ActorSystem,
 	running: bool,
 }
 
@@ -74,6 +75,7 @@ impl Database {
 		subsystem_manager: Subsystems,
 		health_monitor: Arc<HealthMonitor>,
 		shared_runtime: SharedRuntime,
+		actor_system: ActorSystem,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -81,6 +83,7 @@ impl Database {
 			subsystems: subsystem_manager,
 			health_monitor,
 			shared_runtime,
+			actor_system,
 			running: false,
 		}
 	}
@@ -145,12 +148,10 @@ impl Database {
 		// Stop all subsystems (now synchronously waits for each to finish)
 		self.subsystems.stop_all()?;
 
-		// Shutdown the actor system: cancels all actors and releases keepalive
-		// references so ActorCells (holding engine clones, event bus, etc.) can be freed
-		self.shared_runtime.actor_system().shutdown();
+		self.actor_system.shutdown();
+		let _ = self.actor_system.join();
 
-		// Break the IoC reference cycle so the SharedRuntime Arc can reach zero
-		self.engine.executor().ioc.clear();
+		self.engine.shutdown();
 
 		self.running = false;
 		debug!("System stopped successfully");
@@ -257,7 +258,7 @@ impl Database {
 			SubscriptionId(sub_id),
 			batch_size,
 			self.engine.clone(),
-			self.shared_runtime().actor_system(),
+			self.actor_system.clone(),
 		))
 	}
 
@@ -331,6 +332,10 @@ impl Drop for Database {
 			warn!("System being dropped while running, attempting graceful shutdown");
 			let _ = self.stop();
 		}
+		// Always break the Engine ↔ IoC cycle, even if we were never started.
+		// Without this, the engine→IoC→engine reference cycle keeps SharedRuntime
+		// (and the tokio runtime's FDs) alive indefinitely.
+		self.engine.shutdown();
 	}
 }
 

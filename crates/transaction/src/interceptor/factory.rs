@@ -35,6 +35,10 @@ impl InterceptorFactory {
 		self.late.write().unwrap().push(factory);
 	}
 
+	pub fn clear_late(&self) {
+		self.late.write().unwrap().clear();
+	}
+
 	/// Create a new set of interceptors by invoking all registered factories.
 	pub fn create(&self) -> Interceptors {
 		let mut interceptors = Interceptors::new();

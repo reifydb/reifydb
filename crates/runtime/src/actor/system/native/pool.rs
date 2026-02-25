@@ -39,6 +39,7 @@ struct ActorCell<A: Actor> {
 	cancel: CancellationToken,
 	schedule_state: AtomicU8,
 	completion_tx: crossbeam_channel::Sender<()>,
+	done_tx: crossbeam_channel::Sender<()>,
 	pool: Arc<ThreadPool>,
 }
 
@@ -110,6 +111,7 @@ where
 			*guard = None;
 			cell.schedule_state.store(IDLE, Ordering::Release);
 			let _ = cell.completion_tx.send(());
+			let _ = cell.done_tx.send(());
 		}
 		Directive::Park => {
 			// Go idle — consume zero pool resources until next send()
@@ -199,6 +201,8 @@ where
 	let pool = Arc::clone(system.pool());
 
 	let (completion_tx, completion_rx) = crossbeam_channel::bounded(1);
+	let (done_tx, done_rx) = crossbeam_channel::bounded(1);
+	system.register_done_rx(done_rx);
 
 	let cell = Arc::new(ActorCell {
 		actor,
@@ -208,6 +212,7 @@ where
 		cancel,
 		schedule_state: AtomicU8::new(SCHEDULED),
 		completion_tx,
+		done_tx,
 		pool,
 	});
 

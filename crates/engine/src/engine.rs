@@ -435,6 +435,11 @@ impl StandardEngine {
 		self.executor.ioc.resolve::<CdcStore>().expect("CdcStore must be registered")
 	}
 
+	pub fn shutdown(&self) {
+		self.interceptors.clear_late();
+		self.executor.ioc.clear();
+	}
+
 	/// Start a bulk insert operation with full validation.
 	///
 	/// This provides a fluent API for fast bulk inserts that bypasses RQL parsing.
