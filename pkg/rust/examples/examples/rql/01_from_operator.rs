@@ -100,7 +100,7 @@ fn main() {
 
 	db.admin_as_root(
 		r#"
-		create table demo.users {
+		create table demo::users {
 			id: int4,
 			username: utf8,
 			email: utf8,
@@ -115,7 +115,7 @@ fn main() {
 	info!("Inserting sample data...");
 	db.command_as_root(
 		r#"
-		INSERT demo.users [
+		INSERT demo::users [
 			{ id: 1, username: "alice", email: "alice@example.com", is_active: true },
 			{ id: 2, username: "bob", email: "bob@example.com", is_active: true },
 			{ id: 3, username: "charlie", email: "charlie@example.com", is_active: false }
@@ -126,8 +126,8 @@ fn main() {
 	.unwrap();
 
 	// Now query from the table
-	log_query(r#"from demo.users"#);
-	for frame in db.query_as_root(r#"from demo.users"#, Params::None).unwrap() {
+	log_query(r#"from demo::users"#);
+	for frame in db.query_as_root(r#"from demo::users"#, Params::None).unwrap() {
 		info!("{}", frame);
 		// Output:
 		// +------+------------+----------------------+-------------+

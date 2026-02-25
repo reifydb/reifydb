@@ -208,7 +208,7 @@ impl Database {
 
 	/// Create a subscription as root and return a cursor for consuming its data.
 	///
-	/// `query` is the inner subscription query (e.g. `from test.events`).
+	/// `query` is the inner subscription query (e.g. `from test::events`).
 	/// The full `create subscription { } as { <query> };` statement is assembled internally.
 	pub fn subscribe_as_root(&self, query: &str, batch_size: usize) -> Result<SubscriptionCursor> {
 		let identity = Identity::root();
@@ -217,7 +217,7 @@ impl Database {
 
 	/// Create a subscription as the given identity and return a cursor for consuming its data.
 	///
-	/// `query` is the inner subscription query (e.g. `from test.events`).
+	/// `query` is the inner subscription query (e.g. `from test::events`).
 	/// The full `create subscription { } as { <query> };` statement is assembled internally.
 	pub fn subscribe_as(&self, identity: &Identity, query: &str, batch_size: usize) -> Result<SubscriptionCursor> {
 		let rql = format!("create subscription {{}} as {{ {} }};", query);

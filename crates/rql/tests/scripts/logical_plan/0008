@@ -3,7 +3,7 @@
 
 logical 'from users left join { from orders } as orders using (id, orders.user_id)'
 ---
-> └── TableScan default.users
+> └── TableScan default::users
 > └──Join(Left) [(id == orders.user_id)]
->     └── TableScan default.orders
+>     └── TableScan default::orders
 >

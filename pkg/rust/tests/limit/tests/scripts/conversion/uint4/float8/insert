@@ -2,10 +2,10 @@
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 (admin 'create namespace test')
 
-(admin 'create table test.conversion{col: float8}')
+(admin 'create table test::conversion{col: float8}')
 
-(command 'INSERT test.conversion [{ col: cast(cast(0, uint4), float8) }]')
-command 'from test.conversion map {col}'
+(command 'INSERT test::conversion [{ col: cast(cast(0, uint4), float8) }]')
+command 'from test::conversion map {col}'
 ---
 > +----------+-------+
 > |  rownum  |  col  |
@@ -14,8 +14,8 @@ command 'from test.conversion map {col}'
 > +----------+-------+
 >
 
-(command 'INSERT test.conversion [{ col: cast(cast(4294967295, uint4), float8) }]')
-command 'from test.conversion map {col}'
+(command 'INSERT test::conversion [{ col: cast(cast(4294967295, uint4), float8) }]')
+command 'from test::conversion map {col}'
 ---
 > +----------+--------------+
 > |  rownum  |     col      |

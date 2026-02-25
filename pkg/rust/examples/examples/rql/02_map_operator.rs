@@ -156,7 +156,7 @@ map {
 	db.admin_as_root("create namespace sales", Params::None).unwrap();
 	db.admin_as_root(
 		r#"
-		create table sales.orders {
+		create table sales::orders {
 			id: int4,
 			customer: utf8,
 			subtotal: float8,
@@ -170,7 +170,7 @@ map {
 	// Insert sample data
 	db.command_as_root(
 		r#"
-		INSERT sales.orders [
+		INSERT sales::orders [
 			{ id: 1, customer: "Alice", subtotal: 100.0, discount_percent: 10.0 },
 			{ id: 2, customer: "Bob", subtotal: 200.0, discount_percent: 15.0 },
 			{ id: 3, customer: "Carol", subtotal: 150.0, discount_percent: 5.0 }
@@ -181,7 +181,7 @@ map {
 	.unwrap();
 
 	log_query(
-		r#"from sales.orders
+		r#"from sales::orders
 map {
   customer,
   subtotal,
@@ -193,7 +193,7 @@ map {
 	for frame in db
 		.query_as_root(
 			r#"
-			from sales.orders
+			from sales::orders
 			map {
 				customer,
 				subtotal,

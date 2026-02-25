@@ -36,7 +36,7 @@ fn main() {
 	let result = db
 		.admin_as_root(
 			r#"
-		create table app.users {
+		create table app::users {
 			id: int4,
 			name: utf8,
 			email: utf8,
@@ -54,7 +54,7 @@ fn main() {
 	// Insert data
 	info!("Inserting data...");
 	log_query(
-		r#"INSERT app.users [
+		r#"INSERT app::users [
   { id: 1, name: "Alice", email: "alice@example.com", active: true },
   { id: 2, name: "Bob", email: "bob@example.com", active: false },
   { id: 3, name: "Charlie", email: "charlie@example.com", active: true }
@@ -64,7 +64,7 @@ fn main() {
 	let result = db
 		.command_as_root(
 			r#"
-		INSERT app.users [
+		INSERT app::users [
 			{ id: 1, name: "Alice", email: "alice@example.com", active: true },
 			{ id: 2, name: "Bob", email: "bob@example.com", active: false },
 			{ id: 3, name: "Charlie", email: "charlie@example.com", active: true }
@@ -80,28 +80,28 @@ fn main() {
 
 	// Query all data
 	info!("Querying all users:");
-	log_query("from app.users");
+	log_query("from app::users");
 
-	for frame in db.query_as_root("from app.users", Params::None).unwrap() {
+	for frame in db.query_as_root("from app::users", Params::None).unwrap() {
 		info!("{}", frame);
 	}
 
 	// Query with filter
 	info!("\nQuerying active users:");
-	log_query("from app.users filter active == true");
+	log_query("from app::users filter active == true");
 
-	for frame in db.query_as_root("from app.users filter active == true", Params::None).unwrap() {
+	for frame in db.query_as_root("from app::users filter active == true", Params::None).unwrap() {
 		info!("{}", frame);
 	}
 
 	// Add more data
 	info!("\nAdding another user:");
-	log_query(r#"INSERT app.users [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]"#);
+	log_query(r#"INSERT app::users [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]"#);
 
 	let result = db
 		.command_as_root(
 			r#"
-		INSERT app.users [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]
+		INSERT app::users [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]
 		"#,
 			Params::None,
 		)
@@ -113,9 +113,9 @@ fn main() {
 
 	// Query updated data
 	info!("Querying all users after update:");
-	log_query("from app.users sort id");
+	log_query("from app::users sort id");
 
-	for frame in db.query_as_root("from app.users sort id", Params::None).unwrap() {
+	for frame in db.query_as_root("from app::users sort id", Params::None).unwrap() {
 		info!("{}", frame);
 	}
 }

@@ -107,7 +107,7 @@ impl ResolvedTable {
 
 	/// Get fully qualified name
 	pub fn fully_qualified_name(&self) -> String {
-		format!("{}.{}", self.0.namespace.name(), self.name())
+		format!("{}::{}", self.0.namespace.name(), self.name())
 	}
 
 	/// Get columns
@@ -222,7 +222,7 @@ impl ResolvedRingBuffer {
 
 	/// Get fully qualified name
 	pub fn fully_qualified_name(&self) -> String {
-		format!("{}.{}", self.0.namespace.name(), self.name())
+		format!("{}::{}", self.0.namespace.name(), self.name())
 	}
 
 	/// Get columns
@@ -287,7 +287,7 @@ impl ResolvedFlow {
 
 	/// Get fully qualified name
 	pub fn fully_qualified_name(&self) -> String {
-		format!("{}.{}", self.0.namespace.name(), self.name())
+		format!("{}::{}", self.0.namespace.name(), self.name())
 	}
 
 	/// Convert to owned version with 'static lifetime
@@ -342,7 +342,7 @@ impl ResolvedDictionary {
 
 	/// Get fully qualified name
 	pub fn fully_qualified_name(&self) -> String {
-		format!("{}.{}", self.0.namespace.name(), self.name())
+		format!("{}::{}", self.0.namespace.name(), self.name())
 	}
 
 	/// Convert to owned version with 'static lifetime
@@ -448,7 +448,7 @@ impl ResolvedView {
 	}
 
 	pub fn fully_qualified_name(&self) -> String {
-		format!("{}.{}", self.0.namespace.name(), self.name())
+		format!("{}::{}", self.0.namespace.name(), self.name())
 	}
 
 	/// Convert to owned version with 'static lifetime
@@ -744,9 +744,9 @@ impl ResolvedPrimitive {
 		match self {
 			Self::Table(t) => Some(t.fully_qualified_name()),
 			Self::View(v) => Some(v.fully_qualified_name()),
-			Self::DeferredView(v) => Some(format!("{}.{}", v.namespace().name(), v.name())),
-			Self::TransactionalView(v) => Some(format!("{}.{}", v.namespace().name(), v.name())),
-			Self::TableVirtual(t) => Some(format!("{}.{}", t.namespace().name(), t.name())),
+			Self::DeferredView(v) => Some(format!("{}::{}", v.namespace().name(), v.name())),
+			Self::TransactionalView(v) => Some(format!("{}::{}", v.namespace().name(), v.name())),
+			Self::TableVirtual(t) => Some(format!("{}::{}", t.namespace().name(), t.name())),
 			Self::RingBuffer(r) => Some(r.fully_qualified_name()),
 			Self::Flow(f) => Some(f.fully_qualified_name()),
 			Self::Dictionary(d) => Some(d.fully_qualified_name()),
@@ -1008,7 +1008,7 @@ pub mod tests {
 		let table = ResolvedTable::new(table_ident, namespace.clone(), test_table_def());
 
 		assert_eq!(table.name(), "users");
-		assert_eq!(table.fully_qualified_name(), "public.users");
+		assert_eq!(table.fully_qualified_name(), "public::users");
 		assert_eq!(table.columns().len(), 2);
 		assert!(table.find_column("id").is_some());
 		assert!(table.find_column("nonexistent").is_none());
@@ -1026,7 +1026,7 @@ pub mod tests {
 		assert!(primitive.supports_mutations());
 		assert_eq!(primitive.kind_name(), "table");
 		// effective_name removed - use identifier().text() instead
-		assert_eq!(primitive.fully_qualified_name(), Some("public.users".to_string()));
+		assert_eq!(primitive.fully_qualified_name(), Some("public::users".to_string()));
 		assert!(primitive.as_table().is_some());
 		assert!(primitive.as_view().is_none());
 	}
@@ -1056,6 +1056,6 @@ pub mod tests {
 		assert_eq!(column.name(), "id");
 		assert_eq!(column.type_constraint(), &TypeConstraint::unconstrained(Type::Int8));
 		assert!(!column.is_auto_increment());
-		assert_eq!(column.qualified_name(), "public.users.id");
+		assert_eq!(column.qualified_name(), "public::users.id");
 	}
 }

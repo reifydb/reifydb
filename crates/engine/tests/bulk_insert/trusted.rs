@@ -28,7 +28,7 @@ fn test_trusted_mode_basic_insert() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.trusted_tbl");
+	let frames = query_table(&engine, "test::trusted_tbl");
 	assert_eq!(row_count(&frames), 2);
 
 	let mut values: Vec<_> = frames[0]
@@ -56,7 +56,7 @@ fn test_trusted_mode_ringbuffer() {
 
 	assert_eq!(result.ringbuffers[0].inserted, 2);
 
-	let frames = crate::query_ringbuffer(&engine, "test.trusted_rb");
+	let frames = crate::query_ringbuffer(&engine, "test::trusted_rb");
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify values
@@ -108,6 +108,6 @@ fn test_trusted_mode_large_batch() {
 
 	assert_eq!(result.tables[0].inserted, 1000);
 
-	let frames = query_table(&engine, "test.large");
+	let frames = query_table(&engine, "test::large");
 	assert_eq!(row_count(&frames), 1000);
 }

@@ -169,7 +169,7 @@ fn emit_from_clause(from: &FromClause, cte_names: &HashSet<String>) -> Result<St
 					Ok(base)
 				}
 			} else if let Some(schema) = schema {
-				let base = format!("FROM {schema}.{name}");
+				let base = format!("FROM {schema}::{name}");
 				if let Some(alias) = alias {
 					Ok(format!("{base} AS {alias}"))
 				} else {
@@ -207,7 +207,7 @@ fn emit_join(join: &JoinClause, cte_names: &HashSet<String>) -> Result<String, E
 			if schema.is_none() && cte_names.contains(&name.to_ascii_lowercase()) {
 				format!("${}", name.to_ascii_lowercase())
 			} else if let Some(schema) = schema {
-				format!("{schema}.{name}")
+				format!("{schema}::{name}")
 			} else {
 				name.clone()
 			}
@@ -283,7 +283,7 @@ fn extract_join_columns(left: &Expr, right: &Expr, right_alias: &str) -> Result<
 
 fn emit_insert(ins: &InsertStatement) -> Result<String, Error> {
 	let table = if let Some(ref schema) = ins.schema {
-		format!("{schema}.{}", ins.table)
+		format!("{schema}::{}", ins.table)
 	} else {
 		ins.table.clone()
 	};
@@ -328,7 +328,7 @@ fn emit_insert(ins: &InsertStatement) -> Result<String, Error> {
 
 fn emit_update(upd: &UpdateStatement) -> Result<String, Error> {
 	let table = if let Some(ref schema) = upd.schema {
-		format!("{schema}.{}", upd.table)
+		format!("{schema}::{}", upd.table)
 	} else {
 		upd.table.clone()
 	};
@@ -351,7 +351,7 @@ fn emit_update(upd: &UpdateStatement) -> Result<String, Error> {
 
 fn emit_delete(del: &DeleteStatement) -> Result<String, Error> {
 	let table = if let Some(ref schema) = del.schema {
-		format!("{schema}.{}", del.table)
+		format!("{schema}::{}", del.table)
 	} else {
 		del.table.clone()
 	};
@@ -369,7 +369,7 @@ fn emit_delete(del: &DeleteStatement) -> Result<String, Error> {
 
 fn emit_create_table(ct: &CreateTableStatement) -> Result<String, Error> {
 	let table = if let Some(ref schema) = ct.schema {
-		format!("{schema}.{}", ct.table)
+		format!("{schema}::{}", ct.table)
 	} else {
 		ct.table.clone()
 	};
@@ -407,7 +407,7 @@ fn emit_create_index(ci: &CreateIndexStatement) -> Result<String, Error> {
 		""
 	};
 	let table = if let Some(ref schema) = ci.schema {
-		format!("{schema}.{}", ci.table)
+		format!("{schema}::{}", ci.table)
 	} else {
 		ci.table.clone()
 	};
@@ -428,7 +428,7 @@ fn emit_create_index(ci: &CreateIndexStatement) -> Result<String, Error> {
 
 fn emit_drop_table(dt: &DropTableStatement) -> Result<String, Error> {
 	let table = if let Some(ref schema) = dt.schema {
-		format!("{schema}.{}", dt.table)
+		format!("{schema}::{}", dt.table)
 	} else {
 		dt.table.clone()
 	};
@@ -1044,7 +1044,7 @@ mod tests {
 
 	#[test]
 	fn test_schema_qualified_table() {
-		assert_eq!(transpile("SELECT * FROM test.users"), "FROM test.users");
+		assert_eq!(transpile("SELECT * FROM test.users"), "FROM test::users");
 	}
 
 	#[test]

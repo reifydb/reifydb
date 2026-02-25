@@ -2,9 +2,9 @@
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 (admin 'create namespace test')
-(admin 'create table test.arith{id: int2, num: int2}')
+(admin 'create table test::arith{id: int2, num: int2}')
 (command '
-  INSERT test.arith [
+  INSERT test::arith [
     { id: 1, num: 6 },
     { id: 2, num: 8 },
     { id: 3, num: 4 },
@@ -12,7 +12,7 @@
     { id: 5, num: 3 }
   ]
 ')
-command 'from test.arith map { id + 42, id + id + id } '
+command 'from test::arith map { id + 42, id + id + id } '
 ---
 > +----------+---------+------------+
 > |  rownum  |  id+42  |  id+id+id  |

@@ -28,7 +28,7 @@ impl<'bump> Parser<'bump> {
 			.into());
 		}
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let target = if segments.len() > 1 {
 			let name = segments.pop().unwrap().into_fragment();
 			let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -139,7 +139,7 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-        INSERT test.users [{ id: 1, name: "Bob" }]
+        INSERT test::users [{ id: 1, name: "Bob" }]
     "#,
 		)
 		.unwrap()
@@ -356,7 +356,7 @@ pub mod tests {
 	#[test]
 	fn test_insert_positional_with_namespace() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"INSERT test.users [(1, "Alice")]"#).unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, r#"INSERT test::users [(1, "Alice")]"#).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);

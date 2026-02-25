@@ -30,7 +30,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_keyword(On)?;
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let table_fragment = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
@@ -128,7 +128,7 @@ pub mod tests {
 	#[test]
 	fn test_create_index() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"create index idx_email on test.users {email}"#)
+		let tokens = tokenize(&bump, r#"create index idx_email on test::users {email}"#)
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -163,7 +163,7 @@ pub mod tests {
 	#[test]
 	fn test_create_unique_index() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"create unique index idx_email on test.users {email}"#)
+		let tokens = tokenize(&bump, r#"create unique index idx_email on test::users {email}"#)
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -197,7 +197,7 @@ pub mod tests {
 	#[test]
 	fn test_create_composite_index() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"create index idx_name on test.users {last_name, first_name}"#)
+		let tokens = tokenize(&bump, r#"create index idx_name on test::users {last_name, first_name}"#)
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -226,7 +226,7 @@ pub mod tests {
 	#[test]
 	fn test_create_index_with_ordering() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"create index idx_status on test.users {created_at:desc, status:asc}"#)
+		let tokens = tokenize(&bump, r#"create index idx_status on test::users {created_at:desc, status:asc}"#)
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -257,11 +257,13 @@ pub mod tests {
 	#[test]
 	fn test_create_index_with_single_filter() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, r#"create index idx_active_email on test.users {email} filter active == true"#)
-				.unwrap()
-				.into_iter()
-				.collect();
+		let tokens = tokenize(
+			&bump,
+			r#"create index idx_active_email on test::users {email} filter active == true"#,
+		)
+		.unwrap()
+		.into_iter()
+		.collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -291,7 +293,7 @@ pub mod tests {
 		let bump = Bump::new();
 		let tokens = tokenize(
 			&bump,
-			r#"create index idx_filtered on test.users {email} filter active == true filter age > 18 filter country == "US""#,
+			r#"create index idx_filtered on test::users {email} filter active == true filter age > 18 filter country == "US""#,
 		)
 		.unwrap()
 		.into_iter()
@@ -326,7 +328,7 @@ pub mod tests {
 		let bump = Bump::new();
 		let tokens = tokenize(
 			&bump,
-			r#"create index idx_comptokenize on test.users {email} filter active == true filter age > 18 map email"#,
+			r#"create index idx_comptokenize on test::users {email} filter active == true filter age > 18 map email"#,
 		)
 		.unwrap()
 		.into_iter()

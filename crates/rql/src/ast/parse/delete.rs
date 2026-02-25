@@ -24,7 +24,7 @@ impl<'bump> Parser<'bump> {
 			.into());
 		}
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let target = if segments.len() > 1 {
 			let name = segments.pop().unwrap().into_fragment();
 			let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -92,7 +92,7 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-        DELETE test.users FILTER {id == 1}
+        DELETE test::users FILTER {id == 1}
     "#,
 		)
 		.unwrap()

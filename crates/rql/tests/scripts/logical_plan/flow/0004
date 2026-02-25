@@ -4,5 +4,5 @@
 logical 'ALTER FLOW my_flow SET QUERY AS from orders'
 ---
 > └── AlterFlow: my_flow (SET QUERY)
->     └── TableScan default.orders
+>     └── TableScan default::orders
 >

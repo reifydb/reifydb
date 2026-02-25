@@ -3,7 +3,7 @@
 
 logical 'from users aggregate {count(age)} by { name, age }'
 ---
-> └── TableScan default.users
+> └── TableScan default::users
 > └── Aggregate
 >     ├── Map
 >     │   └── count(age)

@@ -92,7 +92,7 @@ impl Runner for TestRunner {
 					.unwrap();
 
 					// Also create test namespace for tests that
-					// explicitly use test.users
+					// explicitly use test::users
 					let test_ns = catalog
 						.create_namespace(
 							&mut dummy_tx,

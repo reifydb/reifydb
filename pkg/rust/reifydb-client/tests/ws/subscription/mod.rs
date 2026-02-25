@@ -31,7 +31,7 @@ pub async fn create_test_table(client: &WsClient, name: &str, columns: &[(&str, 
 
 	let cols = columns.iter().map(|(name, typ)| format!("{}: {}", name, typ)).collect::<Vec<_>>().join(", ");
 
-	client.admin(&format!("create table test.{} {{ {} }}", name, cols), None).await?;
+	client.admin(&format!("create table test::{} {{ {} }}", name, cols), None).await?;
 	Ok(())
 }
 
@@ -133,33 +133,33 @@ impl TestContext {
 	pub async fn create_table(&self, name: &str, columns: &str) -> Result<String, Box<dyn Error>> {
 		let full_name = format!("{}_{}", self.table_prefix, name);
 		let _ = self.client.admin("create namespace test", None).await;
-		self.client.admin(&format!("create table test.{} {{ {} }}", full_name, columns), None).await?;
+		self.client.admin(&format!("create table test::{} {{ {} }}", full_name, columns), None).await?;
 		Ok(full_name)
 	}
 
 	/// Subscribe to a table, waits for settle, returns subscription ID
 	pub async fn subscribe(&mut self, table: &str) -> Result<String, Box<dyn Error>> {
-		let sub_id = self.client.subscribe(&format!("from test.{}", table)).await?;
+		let sub_id = self.client.subscribe(&format!("from test::{}", table)).await?;
 		Ok(sub_id)
 	}
 
-	/// Insert rows using RQL: `INSERT test.table [{row1}, {row2}]`
+	/// Insert rows using RQL: `INSERT test::table [{row1}, {row2}]`
 	pub async fn insert(&self, table: &str, rows: &str) -> Result<(), Box<dyn Error>> {
-		self.client.command(&format!("INSERT test.{} [{}]", table, rows), None).await?;
+		self.client.command(&format!("INSERT test::{} [{}]", table, rows), None).await?;
 		Ok(())
 	}
 
-	/// Update rows: `UPDATE test.table { new_vals } FILTER {cond}`
+	/// Update rows: `UPDATE test::table { new_vals } FILTER {cond}`
 	pub async fn update(&self, table: &str, filter: &str, map: &str) -> Result<(), Box<dyn Error>> {
 		self.client
-			.command(&format!("UPDATE test.{} {{ {} }} FILTER {{{}}}", table, map, filter), None)
+			.command(&format!("UPDATE test::{} {{ {} }} FILTER {{{}}}", table, map, filter), None)
 			.await?;
 		Ok(())
 	}
 
-	/// Delete rows: `DELETE test.table FILTER {cond}`
+	/// Delete rows: `DELETE test::table FILTER {cond}`
 	pub async fn delete(&self, table: &str, filter: &str) -> Result<(), Box<dyn Error>> {
-		self.client.command(&format!("DELETE test.{} FILTER {{{}}}", table, filter), None).await?;
+		self.client.command(&format!("DELETE test::{} FILTER {{{}}}", table, filter), None).await?;
 		Ok(())
 	}
 

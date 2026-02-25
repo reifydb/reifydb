@@ -93,10 +93,10 @@ impl<'bump> Parser<'bump> {
 				}));
 			}
 
-			// Check if there's a dot following
-			let has_dot = if !self.is_eof() {
+			// Check if there's a double-colon following (namespace separator)
+			let has_double_colon = if !self.is_eof() {
 				if let Ok(current) = self.current() {
-					current.is_operator(Operator::Dot)
+					current.is_operator(Operator::DoubleColon)
 				} else {
 					false
 				}
@@ -104,10 +104,10 @@ impl<'bump> Parser<'bump> {
 				false
 			};
 
-			let source = if has_dot {
+			let source = if has_double_colon {
 				let mut segments = vec![first_identifier];
-				while !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
-					self.consume_operator(Operator::Dot)?;
+				while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {
+					self.consume_operator(Operator::DoubleColon)?;
 					segments.push(self.parse_identifier_with_hyphens()?);
 				}
 				let name = segments.pop().unwrap().into_fragment();
@@ -133,11 +133,11 @@ impl<'bump> Parser<'bump> {
 				source
 			};
 
-			// Check for index directive using ::
+			// Check for index directive using USING keyword
 			let index_name = if !self.is_eof() {
 				if let Ok(current) = self.current() {
-					if current.is_operator(Operator::DoubleColon) {
-						self.consume_operator(Operator::DoubleColon)?;
+					if current.is_keyword(Keyword::Using) {
+						self.consume_keyword(Keyword::Using)?;
 						let index_token = self.consume(TokenKind::Identifier)?;
 						Some(index_token.fragment)
 					} else {
@@ -214,7 +214,7 @@ pub mod tests {
 	#[test]
 	fn test_from_schema_and_table() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM reifydb.users").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "FROM reifydb::users").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -357,7 +357,7 @@ pub mod tests {
 	#[test]
 	fn test_from_with_index_directive() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM users::user_id_pk").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "FROM users USING user_id_pk").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -382,8 +382,10 @@ pub mod tests {
 	#[test]
 	fn test_from_namespace_table_with_index_directive() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "FROM company.employees::employee_email_pk").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "FROM company::employees USING employee_email_pk")
+			.unwrap()
+			.into_iter()
+			.collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -434,7 +436,7 @@ pub mod tests {
 	#[test]
 	fn test_from_namespace_table_with_alias() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM test.orders o").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "FROM test::orders o").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -606,8 +608,8 @@ pub mod tests {
 	#[test]
 	fn test_from_namespace_table_with_hyphens() {
 		let bump = Bump::new();
-		// Test: FROM namespace.hyphenated-table
-		let tokens = tokenize(&bump, "FROM test.even-numbers").unwrap().into_iter().collect();
+		// Test: FROM namespace::hyphenated-table
+		let tokens = tokenize(&bump, "FROM test::even-numbers").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_from().unwrap();
 
@@ -648,8 +650,8 @@ pub mod tests {
 	#[test]
 	fn test_from_namespace_hyphens_with_alias() {
 		let bump = Bump::new();
-		// Test: FROM test.even-numbers nums
-		let tokens = tokenize(&bump, "FROM test.even-numbers nums").unwrap().into_iter().collect();
+		// Test: FROM test::even-numbers nums
+		let tokens = tokenize(&bump, "FROM test::even-numbers nums").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_from().unwrap();
 

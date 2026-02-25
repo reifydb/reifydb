@@ -45,7 +45,7 @@ fn row_count(frames: &[Frame]) -> usize {
 fn test_create_event_basic() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	let frames = admin(&engine, "CREATE EVENT ns.order_event { OrderPlaced { id: int4 } }");
+	let frames = admin(&engine, "CREATE EVENT ns::order_event { OrderPlaced { id: int4 } }");
 
 	let frame = &frames[0];
 	assert_eq!(frame.get::<String>("namespace", 0).unwrap().unwrap(), "ns");
@@ -58,7 +58,7 @@ fn test_create_event_multiple_variants() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
 	let frames =
-		admin(&engine, "CREATE EVENT ns.order_event { OrderPlaced { id: int4 }, OrderShipped { id: int4 } }");
+		admin(&engine, "CREATE EVENT ns::order_event { OrderPlaced { id: int4 }, OrderShipped { id: int4 } }");
 
 	let frame = &frames[0];
 	assert_eq!(frame.get::<String>("event", 0).unwrap().unwrap(), "order_event");
@@ -70,9 +70,9 @@ fn test_create_enum_is_not_event_handler_rejected() {
 	// CREATE HANDLER on a plain ENUM must fail at compile (physical planning) time.
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	admin(&engine, "CREATE ENUM ns.status { Active, Inactive }");
+	admin(&engine, "CREATE ENUM ns::status { Active, Inactive }");
 
-	let msg = admin_expect_err(&engine, "CREATE HANDLER ns.h ON ns.status::Active { }");
+	let msg = admin_expect_err(&engine, "CREATE HANDLER ns::h ON ns::status::Active { }");
 	// Physical planner returns: "'status' is not an EVENT type. Use CREATE EVENT..."
 	assert!(
 		msg.to_lowercase().contains("not an event") || msg.to_lowercase().contains("event type"),
@@ -84,13 +84,13 @@ fn test_create_enum_is_not_event_handler_rejected() {
 fn test_create_handler_basic() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	admin(&engine, "CREATE TABLE ns.audit { kind: utf8 }");
-	admin(&engine, "CREATE EVENT ns.order_event { OrderPlaced { id: int4 } }");
+	admin(&engine, "CREATE TABLE ns::audit { kind: utf8 }");
+	admin(&engine, "CREATE EVENT ns::order_event { OrderPlaced { id: int4 } }");
 
 	let frames = admin(
 		&engine,
-		"CREATE HANDLER ns.on_placed ON ns.order_event::OrderPlaced \
-		 { INSERT ns.audit [{ kind: \"placed\" }] }",
+		"CREATE HANDLER ns::on_placed ON ns::order_event::OrderPlaced \
+		 { INSERT ns::audit [{ kind: \"placed\" }] }",
 	);
 
 	let frame = &frames[0];
@@ -103,9 +103,9 @@ fn test_create_handler_basic() {
 fn test_create_handler_unknown_variant() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	admin(&engine, "CREATE EVENT ns.order_event { OrderPlaced { id: int4 } }");
+	admin(&engine, "CREATE EVENT ns::order_event { OrderPlaced { id: int4 } }");
 
-	let msg = admin_expect_err(&engine, "CREATE HANDLER ns.h ON ns.order_event::NonExistent { }");
+	let msg = admin_expect_err(&engine, "CREATE HANDLER ns::h ON ns::order_event::NonExistent { }");
 	assert!(
 		msg.contains("NonExistent")
 			|| msg.to_lowercase().contains("variant")
@@ -119,9 +119,9 @@ fn test_dispatch_no_handlers() {
 	// Dispatching an event with no registered handlers is a no-op — zero handlers fired.
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	admin(&engine, "CREATE EVENT ns.order_event { OrderPlaced { id: int4 } }");
+	admin(&engine, "CREATE EVENT ns::order_event { OrderPlaced { id: int4 } }");
 
-	let frames = command(&engine, "DISPATCH ns.order_event::OrderPlaced { id: 1 }");
+	let frames = command(&engine, "DISPATCH ns::order_event::OrderPlaced { id: 1 }");
 	let fired: u8 = frames[0].get::<u8>("handlers_fired", 0).unwrap().unwrap();
 	assert_eq!(fired, 0);
 }
@@ -131,20 +131,20 @@ fn test_dispatch_single_handler() {
 	// One handler fires and produces a side-effect row in the audit table.
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	admin(&engine, "CREATE TABLE ns.audit { kind: utf8 }");
-	admin(&engine, "CREATE EVENT ns.order_event { OrderPlaced { id: int4 } }");
+	admin(&engine, "CREATE TABLE ns::audit { kind: utf8 }");
+	admin(&engine, "CREATE EVENT ns::order_event { OrderPlaced { id: int4 } }");
 	admin(
 		&engine,
-		"CREATE HANDLER ns.on_placed ON ns.order_event::OrderPlaced \
-		 { INSERT ns.audit [{ kind: \"placed\" }] }",
+		"CREATE HANDLER ns::on_placed ON ns::order_event::OrderPlaced \
+		 { INSERT ns::audit [{ kind: \"placed\" }] }",
 	);
 
-	let frames = command(&engine, "DISPATCH ns.order_event::OrderPlaced { id: 42 }");
+	let frames = command(&engine, "DISPATCH ns::order_event::OrderPlaced { id: 42 }");
 	let fired: u8 = frames[0].get::<u8>("handlers_fired", 0).unwrap().unwrap();
 	assert_eq!(fired, 1);
 
 	// Verify the INSERT side-effect
-	let audit = query(&engine, "FROM ns.audit");
+	let audit = query(&engine, "FROM ns::audit");
 	assert_eq!(row_count(&audit), 1);
 	let kind: String = audit[0].get::<String>("kind", 0).unwrap().unwrap();
 	assert_eq!(kind, "placed");
@@ -155,24 +155,24 @@ fn test_dispatch_fanout_two_handlers() {
 	// Two handlers registered on the same variant — both must fire.
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	admin(&engine, "CREATE TABLE ns.audit { kind: utf8 }");
-	admin(&engine, "CREATE EVENT ns.order_event { OrderPlaced { id: int4 } }");
+	admin(&engine, "CREATE TABLE ns::audit { kind: utf8 }");
+	admin(&engine, "CREATE EVENT ns::order_event { OrderPlaced { id: int4 } }");
 	admin(
 		&engine,
-		"CREATE HANDLER ns.handler_a ON ns.order_event::OrderPlaced \
-		 { INSERT ns.audit [{ kind: \"a\" }] }",
+		"CREATE HANDLER ns::handler_a ON ns::order_event::OrderPlaced \
+		 { INSERT ns::audit [{ kind: \"a\" }] }",
 	);
 	admin(
 		&engine,
-		"CREATE HANDLER ns.handler_b ON ns.order_event::OrderPlaced \
-		 { INSERT ns.audit [{ kind: \"b\" }] }",
+		"CREATE HANDLER ns::handler_b ON ns::order_event::OrderPlaced \
+		 { INSERT ns::audit [{ kind: \"b\" }] }",
 	);
 
-	let frames = command(&engine, "DISPATCH ns.order_event::OrderPlaced { id: 1 }");
+	let frames = command(&engine, "DISPATCH ns::order_event::OrderPlaced { id: 1 }");
 	let fired: u8 = frames[0].get::<u8>("handlers_fired", 0).unwrap().unwrap();
 	assert_eq!(fired, 2);
 
-	let audit = query(&engine, "FROM ns.audit");
+	let audit = query(&engine, "FROM ns::audit");
 	assert_eq!(row_count(&audit), 2);
 }
 
@@ -181,20 +181,20 @@ fn test_dispatch_only_matching_variant() {
 	// A handler registered on variant B must NOT fire when variant A is dispatched.
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	admin(&engine, "CREATE TABLE ns.audit { kind: utf8 }");
-	admin(&engine, "CREATE EVENT ns.order_event { OrderPlaced { id: int4 }, OrderShipped { id: int4 } }");
+	admin(&engine, "CREATE TABLE ns::audit { kind: utf8 }");
+	admin(&engine, "CREATE EVENT ns::order_event { OrderPlaced { id: int4 }, OrderShipped { id: int4 } }");
 	admin(
 		&engine,
-		"CREATE HANDLER ns.on_shipped ON ns.order_event::OrderShipped \
-		 { INSERT ns.audit [{ kind: \"shipped\" }] }",
+		"CREATE HANDLER ns::on_shipped ON ns::order_event::OrderShipped \
+		 { INSERT ns::audit [{ kind: \"shipped\" }] }",
 	);
 
 	// Dispatch OrderPlaced — the handler is for OrderShipped, should not fire.
-	let frames = command(&engine, "DISPATCH ns.order_event::OrderPlaced { id: 1 }");
+	let frames = command(&engine, "DISPATCH ns::order_event::OrderPlaced { id: 1 }");
 	let fired: u8 = frames[0].get::<u8>("handlers_fired", 0).unwrap().unwrap();
 	assert_eq!(fired, 0);
 
-	let audit = query(&engine, "FROM ns.audit");
+	let audit = query(&engine, "FROM ns::audit");
 	assert_eq!(row_count(&audit), 0);
 }
 
@@ -204,27 +204,27 @@ fn test_dispatch_chained_events() {
 	// same transaction.
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	admin(&engine, "CREATE TABLE ns.audit { kind: utf8 }");
-	admin(&engine, "CREATE EVENT ns.order_event { OrderPlaced { id: int4 }, OrderShipped { id: int4 } }");
+	admin(&engine, "CREATE TABLE ns::audit { kind: utf8 }");
+	admin(&engine, "CREATE EVENT ns::order_event { OrderPlaced { id: int4 }, OrderShipped { id: int4 } }");
 
 	// handler_a fires on OrderPlaced, dispatches OrderShipped
 	admin(
 		&engine,
-		"CREATE HANDLER ns.on_placed ON ns.order_event::OrderPlaced \
-		 { INSERT ns.audit [{ kind: \"placed\" }]; DISPATCH ns.order_event::OrderShipped { id: 1 } }",
+		"CREATE HANDLER ns::on_placed ON ns::order_event::OrderPlaced \
+		 { INSERT ns::audit [{ kind: \"placed\" }]; DISPATCH ns::order_event::OrderShipped { id: 1 } }",
 	);
 
 	// handler_b fires on OrderShipped
 	admin(
 		&engine,
-		"CREATE HANDLER ns.on_shipped ON ns.order_event::OrderShipped \
-		 { INSERT ns.audit [{ kind: \"shipped\" }] }",
+		"CREATE HANDLER ns::on_shipped ON ns::order_event::OrderShipped \
+		 { INSERT ns::audit [{ kind: \"shipped\" }] }",
 	);
 
-	command(&engine, "DISPATCH ns.order_event::OrderPlaced { id: 1 }");
+	command(&engine, "DISPATCH ns::order_event::OrderPlaced { id: 1 }");
 
 	// Both "placed" and "shipped" rows should exist in the same committed transaction.
-	let audit = query(&engine, "FROM ns.audit");
+	let audit = query(&engine, "FROM ns::audit");
 	assert_eq!(row_count(&audit), 2);
 
 	let mut kinds: Vec<String> = (0..2).map(|i| audit[0].get::<String>("kind", i).unwrap().unwrap()).collect();
@@ -236,17 +236,17 @@ fn test_dispatch_chained_events() {
 fn test_dispatch_handler_accesses_event_fields() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	admin(&engine, "CREATE TABLE ns.audit { order_id: int4, note: utf8 }");
-	admin(&engine, "CREATE EVENT ns.order_event { OrderPlaced { id: int4, note: utf8 } }");
+	admin(&engine, "CREATE TABLE ns::audit { order_id: int4, note: utf8 }");
+	admin(&engine, "CREATE EVENT ns::order_event { OrderPlaced { id: int4, note: utf8 } }");
 	admin(
 		&engine,
-		"CREATE HANDLER ns.on_placed ON ns.order_event::OrderPlaced \
-		 { INSERT ns.audit [{ order_id: event_id, note: event_note }] }",
+		"CREATE HANDLER ns::on_placed ON ns::order_event::OrderPlaced \
+		 { INSERT ns::audit [{ order_id: event_id, note: event_note }] }",
 	);
 
-	command(&engine, "DISPATCH ns.order_event::OrderPlaced { id: 42, note: \"express\" }");
+	command(&engine, "DISPATCH ns::order_event::OrderPlaced { id: 42, note: \"express\" }");
 
-	let frames = query(&engine, "FROM ns.audit");
+	let frames = query(&engine, "FROM ns::audit");
 	let frame = &frames[0];
 	assert_eq!(frame.get::<i32>("order_id", 0).unwrap().unwrap(), 42);
 	assert_eq!(frame.get::<String>("note", 0).unwrap().unwrap(), "express");
@@ -257,10 +257,10 @@ fn test_dispatch_wrong_type_enum_not_event() {
 	// Dispatching to a plain ENUM must fail (physical planner catches at compile time).
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE ns");
-	admin(&engine, "CREATE ENUM ns.status { Active, Inactive }");
+	admin(&engine, "CREATE ENUM ns::status { Active, Inactive }");
 
 	// DISPATCH targets a SumType by name; physical planner checks is_event.
-	let msg = command_expect_err(&engine, "DISPATCH ns.status::Active { }");
+	let msg = command_expect_err(&engine, "DISPATCH ns::status::Active { }");
 	assert!(
 		msg.to_lowercase().contains("not an event") || msg.to_lowercase().contains("event type"),
 		"Expected event-type error, got: {msg}"

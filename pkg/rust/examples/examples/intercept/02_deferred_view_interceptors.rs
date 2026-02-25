@@ -34,7 +34,7 @@ fn main() {
 
 	let mut db = embedded::memory()
 		.intercept()
-		.view("test.active_users")
+		.view("test::active_users")
 		.post_insert(|ctx| {
 			info!("[VIEW INTERCEPTOR] Post-insert into view: {}", ctx.view.name);
 			Ok(())
@@ -56,17 +56,17 @@ fn main() {
 	info!("\n--- Creating namespace and table ---");
 	db.admin_as_root(r#"create namespace test;"#, Params::None).unwrap();
 
-	log_query("create table test.users { id: int4, username: utf8, active: bool }");
-	db.admin_as_root(r#"create table test.users { id: int4, username: utf8, active: bool }"#, Params::None)
+	log_query("create table test::users { id: int4, username: utf8, active: bool }");
+	db.admin_as_root(r#"create table test::users { id: int4, username: utf8, active: bool }"#, Params::None)
 		.unwrap();
 
 	// Step 3: Create a deferred view
 	info!("\n--- Creating deferred view ---");
 	log_query(
-		"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }",
+		"create deferred view test::active_users { id: int4, username: utf8 } as { from test::users filter active == true map { id: id, username: username } }",
 	);
 	db.admin_as_root(
-		r#"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }"#,
+		r#"create deferred view test::active_users { id: int4, username: utf8 } as { from test::users filter active == true map { id: id, username: username } }"#,
 		Params::None,
 	)
 	.unwrap();
@@ -74,14 +74,14 @@ fn main() {
 	// Step 4: Insert data into the source table — triggers post_insert on the view
 	info!("\n--- Inserting users into source table (triggers view post_insert interceptor) ---");
 	log_query(
-		r#"INSERT test.users [
+		r#"INSERT test::users [
     {id: 1, username: "alice", active: true},
     {id: 2, username: "bob", active: false},
     {id: 3, username: "charlie", active: true}
 ]"#,
 	);
 	db.command_as_root(
-		r#"INSERT test.users [
+		r#"INSERT test::users [
             {id: 1, username: "alice", active: true},
             {id: 2, username: "bob", active: false},
             {id: 3, username: "charlie", active: true}
@@ -96,8 +96,8 @@ fn main() {
 
 	// Step 5: Query the deferred view to verify it works
 	info!("\n--- Active users (from deferred view) ---");
-	log_query("from test.active_users");
-	for frame in db.query_as_root(r#"from test.active_users"#, Params::None).unwrap() {
+	log_query("from test::active_users");
+	for frame in db.query_as_root(r#"from test::active_users"#, Params::None).unwrap() {
 		info!("{}", frame);
 	}
 

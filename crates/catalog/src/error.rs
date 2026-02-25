@@ -42,7 +42,7 @@ impl Display for CatalogObjectKind {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CatalogError {
-	#[error("{kind} `{namespace}.{name}` already exists")]
+	#[error("{kind} `{namespace}::{name}` already exists")]
 	AlreadyExists {
 		kind: CatalogObjectKind,
 		namespace: String,
@@ -50,7 +50,7 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
-	#[error("{kind} `{namespace}.{name}` not found")]
+	#[error("{kind} `{namespace}::{name}` not found")]
 	NotFound {
 		kind: CatalogObjectKind,
 		namespace: String,
@@ -58,7 +58,7 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
-	#[error("column `{column}` already exists in {kind} `{namespace}`.`{name}`")]
+	#[error("column `{column}` already exists in {kind} `{namespace}::{name}`")]
 	ColumnAlreadyExists {
 		kind: CatalogObjectKind,
 		namespace: String,
@@ -212,7 +212,7 @@ impl IntoDiagnostic for CatalogError {
 				let message = if matches!(kind, CatalogObjectKind::Namespace) {
 					format!("{} `{}` already exists", kind_str, namespace)
 				} else {
-					format!("{} `{}.{}` already exists", kind_str, namespace, name)
+					format!("{} `{}::{}` already exists", kind_str, namespace, name)
 				};
 				Diagnostic {
 					code: code.to_string(),
@@ -268,12 +268,12 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::Enum => (
 						"CA_002",
 						"type",
-						format!("create the enum first with `CREATE ENUM {}.{} {{ ... }}`", namespace, name),
+						format!("create the enum first with `CREATE ENUM {}::{} {{ ... }}`", namespace, name),
 					),
 					CatalogObjectKind::Event => (
 						"CA_002",
 						"event",
-						format!("create the event first with `CREATE EVENT {}.{} {{ ... }}`", namespace, name),
+						format!("create the event first with `CREATE EVENT {}::{} {{ ... }}`", namespace, name),
 					),
 					CatalogObjectKind::VirtualTable => (
 						"CA_023",
@@ -289,7 +289,7 @@ impl IntoDiagnostic for CatalogError {
 				let message = if matches!(kind, CatalogObjectKind::Namespace) {
 					format!("{} `{}` not found", kind_str, namespace)
 				} else {
-					format!("{} `{}.{}` not found", kind_str, namespace, name)
+					format!("{} `{}::{}` not found", kind_str, namespace, name)
 				};
 				let label_str = match kind {
 					CatalogObjectKind::Namespace => "unknown namespace reference".to_string(),
@@ -327,7 +327,7 @@ impl IntoDiagnostic for CatalogError {
 					code: "CA_005".to_string(),
 					statement: None,
 					message: format!(
-						"column `{}` already exists in {} `{}`.`{}`",
+						"column `{}` already exists in {} `{}::{}`",
 						column, kind_str, namespace, name
 					),
 					fragment,
@@ -420,7 +420,7 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::Table => (
 						"CA_012",
 						format!(
-							"table `{}.{}` already has pending changes in this transaction",
+							"table `{}::{}` already has pending changes in this transaction",
 							namespace,
 							name.as_deref().unwrap_or("")
 						),
@@ -429,7 +429,7 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::View => (
 						"CA_013",
 						format!(
-							"view `{}.{}` already has pending changes in this transaction",
+							"view `{}::{}` already has pending changes in this transaction",
 							namespace,
 							name.as_deref().unwrap_or("")
 						),
@@ -487,7 +487,7 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::Table => (
 						"CA_015",
 						format!(
-							"cannot update table `{}.{}` as it is marked for deletion in this transaction",
+							"cannot update table `{}::{}` as it is marked for deletion in this transaction",
 							namespace,
 							name.as_deref().unwrap_or("")
 						),
@@ -496,7 +496,7 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::View => (
 						"CA_016",
 						format!(
-							"cannot update view `{}.{}` as it is marked for deletion in this transaction",
+							"cannot update view `{}::{}` as it is marked for deletion in this transaction",
 							namespace,
 							name.as_deref().unwrap_or("")
 						),
@@ -546,7 +546,7 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::Table => (
 						"CA_018",
 						format!(
-							"table `{}.{}` is already marked for deletion in this transaction",
+							"table `{}::{}` is already marked for deletion in this transaction",
 							namespace,
 							name.as_deref().unwrap_or("")
 						),
@@ -555,7 +555,7 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::View => (
 						"CA_019",
 						format!(
-							"view `{}.{}` is already marked for deletion in this transaction",
+							"view `{}::{}` is already marked for deletion in this transaction",
 							namespace,
 							name.as_deref().unwrap_or("")
 						),
@@ -713,7 +713,7 @@ impl IntoDiagnostic for CatalogError {
 					)
 				} else {
 					format!(
-						"cannot drop {} '{}.{}' because it is referenced by: {}",
+						"cannot drop {} '{}::{}' because it is referenced by: {}",
 						kind,
 						namespace,
 						name.as_deref().unwrap_or(""),

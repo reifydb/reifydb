@@ -46,7 +46,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number(), name: Schema.string()})
                 );
@@ -69,7 +69,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number()})
                 );
@@ -92,7 +92,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number()})
                 );
@@ -125,7 +125,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number()})
                 );
@@ -151,7 +151,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number(), value: Schema.string()})
                 );
@@ -165,7 +165,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test.${tableName} [{id: 1, value: 'test'}]`,
+                    `INSERT test::${tableName} [{id: 1, value: 'test'}]`,
                     null,
                     []
                 );
@@ -197,7 +197,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number(), name: Schema.string()})
                 );
@@ -212,7 +212,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test.${tableName} [{id: 1, name: 'alice'}]`,
+                    `INSERT test::${tableName} [{id: 1, name: 'alice'}]`,
                     null,
                     []
                 );
@@ -238,7 +238,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number()})
                 );
@@ -251,7 +251,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test.${tableName} [{id: 1}]`,
+                    `INSERT test::${tableName} [{id: 1}]`,
                     null,
                     []
                 );
@@ -277,7 +277,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number()})
                 );
@@ -304,7 +304,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number(), name: Schema.string()})
                 );
@@ -319,7 +319,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test.${tableName} [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}]`,
+                    `INSERT test::${tableName} [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}]`,
                     null,
                     []
                 );
@@ -350,7 +350,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number(), value: Schema.string()})
                 );
@@ -363,7 +363,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test.${tableName} [{id: 1, value: 'hello'}]`,
+                    `INSERT test::${tableName} [{id: 1, value: 'hello'}]`,
                     null,
                     []
                 );
@@ -389,14 +389,14 @@ describe('useSubscriptionExecutor Hook', () => {
             // Pre-populate with data
             const client = getConnection().getClient();
             await client!.command(
-                `INSERT test.${tableName} [{id: 1, value: 'original'}]`,
+                `INSERT test::${tableName} [{id: 1, value: 'original'}]`,
                 null,
                 []
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number(), value: Schema.string()})
                 );
@@ -408,7 +408,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await client!.command(
-                    `UPDATE test.${tableName} { value: 'updated' } FILTER id == 1`,
+                    `UPDATE test::${tableName} { value: 'updated' } FILTER id == 1`,
                     null,
                     []
                 );
@@ -435,14 +435,14 @@ describe('useSubscriptionExecutor Hook', () => {
             // Pre-populate with data
             const client = getConnection().getClient();
             await client!.command(
-                `INSERT test.${tableName} [{id: 1, value: 'to_delete'}]`,
+                `INSERT test::${tableName} [{id: 1, value: 'to_delete'}]`,
                 null,
                 []
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number(), value: Schema.string()})
                 );
@@ -454,7 +454,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await client!.command(
-                    `DELETE test.${tableName} FILTER id == 1`,
+                    `DELETE test::${tableName} FILTER id == 1`,
                     null,
                     []
                 );
@@ -480,7 +480,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number(), name: Schema.string()})
                 );
@@ -494,7 +494,7 @@ describe('useSubscriptionExecutor Hook', () => {
             const client = getConnection().getClient();
             await act(async () => {
                 await client!.command(
-                    `INSERT test.${tableName} [{id: 1, name: 'alice'}]`,
+                    `INSERT test::${tableName} [{id: 1, name: 'alice'}]`,
                     null,
                     []
                 );
@@ -507,7 +507,7 @@ describe('useSubscriptionExecutor Hook', () => {
             // UPDATE
             await act(async () => {
                 await client!.command(
-                    `UPDATE test.${tableName} { name: 'alice_updated' } FILTER id == 1`,
+                    `UPDATE test::${tableName} { name: 'alice_updated' } FILTER id == 1`,
                     null,
                     []
                 );
@@ -520,7 +520,7 @@ describe('useSubscriptionExecutor Hook', () => {
             // REMOVE
             await act(async () => {
                 await client!.command(
-                    `DELETE test.${tableName} FILTER id == 1`,
+                    `DELETE test::${tableName} FILTER id == 1`,
                     null,
                     []
                 );
@@ -544,7 +544,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     Schema.object({id: Schema.number(), value: Schema.string()})
                 );
@@ -558,7 +558,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test.${tableName} [{id: 1, value: 'first'}, {id: 2, value: 'second'}, {id: 3, value: 'third'}]`,
+                    `INSERT test::${tableName} [{id: 1, value: 'first'}, {id: 2, value: 'second'}, {id: 3, value: 'third'}]`,
                     null,
                     []
                 );
@@ -584,7 +584,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    'from nonexistent.table',
+                    'from nonexistent::table',
                     null,
                     Schema.object({id: Schema.number()})
                 );
@@ -621,7 +621,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    'from test.table_that_does_not_exist_xyz',
+                    'from test::table_that_does_not_exist_xyz',
                     null,
                     Schema.object({id: Schema.number()})
                 );
@@ -637,7 +637,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    'from invalid.syntax.here',
+                    'from invalid::syntax.here',
                     null,
                     Schema.object({id: Schema.number()})
                 );
@@ -667,12 +667,12 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result1.current.subscribe(
-                    `from test.${table1}`,
+                    `from test::${table1}`,
                     null,
                     Schema.object({id: Schema.number()})
                 );
                 await result2.current.subscribe(
-                    `from test.${table2}`,
+                    `from test::${table2}`,
                     null,
                     Schema.object({id: Schema.number()})
                 );
@@ -686,8 +686,8 @@ describe('useSubscriptionExecutor Hook', () => {
             // Trigger different operations on each
             await act(async () => {
                 const client = getConnection().getClient();
-                await client!.command(`INSERT test.${table1} [{id: 100}]`, null, []);
-                await client!.command(`INSERT test.${table2} [{id: 200}]`, null, []);
+                await client!.command(`INSERT test::${table1} [{id: 100}]`, null, []);
+                await client!.command(`INSERT test::${table2} [{id: 200}]`, null, []);
             });
 
             await waitFor(() => {
@@ -708,7 +708,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test.${tableName} filter id > 1000`,
+                    `from test::${tableName} filter id > 1000`,
                     null,
                     Schema.object({id: Schema.number()})
                 );
@@ -730,7 +730,7 @@ describe('useSubscriptionExecutor Hook', () => {
             );
 
             await act(async () => {
-                await result.current.subscribe(`from test.${tableName}`);
+                await result.current.subscribe(`from test::${tableName}`);
             });
 
             await waitFor(() => {
@@ -740,7 +740,7 @@ describe('useSubscriptionExecutor Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test.${tableName} [{id: 1, value: 'test'}]`,
+                    `INSERT test::${tableName} [{id: 1, value: 'test'}]`,
                     null,
                     []
                 );

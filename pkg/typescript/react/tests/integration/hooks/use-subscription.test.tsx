@@ -38,7 +38,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number(), name: Schema.string()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema
                 ),
@@ -66,7 +66,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema,
                     {enabled: false}
@@ -91,7 +91,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number()});
             const {result, rerender} = renderHook(
                 ({enabled}) => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema,
                     {enabled}
@@ -120,7 +120,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number()});
             const {result, rerender} = renderHook(
                 ({enabled}) => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema,
                     {enabled}
@@ -154,7 +154,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number()});
             const {result, unmount} = renderHook(
                 () => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema
                 ),
@@ -191,7 +191,7 @@ describe('useSubscription Hook', () => {
                     null,
                     schema
                 ),
-                {initialProps: {query: `from test.${table1}`}, wrapper}
+                {initialProps: {query: `from test::${table1}`}, wrapper}
             );
 
             await waitFor(() => {
@@ -201,7 +201,7 @@ describe('useSubscription Hook', () => {
             const firstSubId = result.current.subscriptionId;
 
             // Change query
-            rerender({query: `from test.${table2}`});
+            rerender({query: `from test::${table2}`});
 
             await waitFor(() => {
                 expect(result.current.subscriptionId).not.toBe(firstSubId);
@@ -219,7 +219,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number(), value: Schema.number()});
             const {result, rerender} = renderHook(
                 ({params}) => useSubscription(
-                    `from test.${tableName} filter value == $val`,
+                    `from test::${tableName} filter value == $val`,
                     params,
                     schema
                 ),
@@ -253,7 +253,7 @@ describe('useSubscription Hook', () => {
 
             const {result, rerender} = renderHook(
                 ({schema}) => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema as any
                 ),
@@ -293,7 +293,7 @@ describe('useSubscription Hook', () => {
                     null,
                     schema
                 ),
-                {initialProps: {query: `from test.${table1}`}, wrapper}
+                {initialProps: {query: `from test::${table1}`}, wrapper}
             );
 
             await waitFor(() => {
@@ -304,7 +304,7 @@ describe('useSubscription Hook', () => {
             expect(firstSubId).toBeDefined();
 
             // Change query to trigger re-subscription
-            rerender({query: `from test.${table2}`});
+            rerender({query: `from test::${table2}`});
 
             await waitFor(() => {
                 const newSubId = result.current.subscriptionId;
@@ -324,7 +324,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number(), name: Schema.string()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema
                 ),
@@ -339,7 +339,7 @@ describe('useSubscription Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test.${tableName} FROM [{id: 1, name: 'test'}]`,
+                    `INSERT test::${tableName} FROM [{id: 1, name: 'test'}]`,
                     null,
                     []
                 );
@@ -364,7 +364,7 @@ describe('useSubscription Hook', () => {
 
             const {result, unmount} = renderHook(
                 () => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema,
                     {connectionConfig: overrideConfig}
@@ -392,7 +392,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number(), value: Schema.string()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema
                 ),
@@ -423,7 +423,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number(), name: Schema.string()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema
                 ),
@@ -437,7 +437,7 @@ describe('useSubscription Hook', () => {
             await act(async () => {
                 const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test.${tableName} FROM [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}]`,
+                    `INSERT test::${tableName} FROM [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}]`,
                     null,
                     []
                 );
@@ -462,7 +462,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number()});
             const {result, rerender} = renderHook(
                 ({enabled}) => useSubscription(
-                    `from test.${tableName}`,
+                    `from test::${tableName}`,
                     null,
                     schema,
                     {enabled}
@@ -492,7 +492,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test.${tableName} filter id > 1000`,
+                    `from test::${tableName} filter id > 1000`,
                     null,
                     schema
                 ),
@@ -511,7 +511,7 @@ describe('useSubscription Hook', () => {
             const schema = Schema.object({id: Schema.number()});
             const {result} = renderHook(
                 () => useSubscription(
-                    'from nonexistent.table',
+                    'from nonexistent::table',
                     null,
                     schema
                 ),

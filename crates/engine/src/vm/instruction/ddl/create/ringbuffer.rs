@@ -83,7 +83,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE RINGBUFFER test_namespace.test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
+					rql: "CREATE RINGBUFFER test_namespace::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -99,7 +99,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE RINGBUFFER test_namespace.test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
+					rql: "CREATE RINGBUFFER test_namespace::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -139,7 +139,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE RINGBUFFER test_namespace.test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
+					rql: "CREATE RINGBUFFER test_namespace::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -155,7 +155,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE RINGBUFFER another_schema.test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
+					rql: "CREATE RINGBUFFER another_schema::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
 					identity: &identity,
 				},

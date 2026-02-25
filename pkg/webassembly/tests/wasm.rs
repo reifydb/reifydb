@@ -55,7 +55,7 @@ fn test_create_table() {
 	// Create table
 	let result = db.command(
 		r#"
-        CREATE TABLE test.users {
+        CREATE TABLE test::users {
             id: int4,
             name: utf8
         }
@@ -72,7 +72,7 @@ fn test_insert_and_query() {
 	db.admin("CREATE NAMESPACE test").expect("CREATE NAMESPACE failed");
 	db.command(
 		r#"
-        CREATE TABLE test.users {
+        CREATE TABLE test::users {
             id: int4,
             name: utf8
         }
@@ -83,7 +83,7 @@ fn test_insert_and_query() {
 	// Insert data
 	let result = db.command(
 		r#"
-        INSERT test.users [
+        INSERT test::users [
             { id: 1, name: "Alice" },
             { id: 2, name: "Bob" }
         ]
@@ -92,7 +92,7 @@ fn test_insert_and_query() {
 	assert!(result.is_ok(), "INSERT should succeed");
 
 	// Query data back
-	let result = db.query("FROM test.users");
+	let result = db.query("FROM test::users");
 	assert!(result.is_ok(), "Query after insert should succeed");
 }
 

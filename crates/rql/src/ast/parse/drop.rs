@@ -91,7 +91,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_drop_flow(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let flow = if namespace.is_empty() {
@@ -113,7 +113,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_drop_table(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let table = if namespace.is_empty() {
@@ -135,7 +135,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_drop_view(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let view = if namespace.is_empty() {
@@ -157,7 +157,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_drop_ringbuffer(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let ringbuffer = if namespace.is_empty() {
@@ -179,8 +179,11 @@ impl<'bump> Parser<'bump> {
 	fn parse_drop_namespace(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
-		let segments: Vec<_> =
-			self.parse_dot_separated_identifiers()?.into_iter().map(|s| s.into_fragment()).collect();
+		let segments: Vec<_> = self
+			.parse_double_colon_separated_identifiers()?
+			.into_iter()
+			.map(|s| s.into_fragment())
+			.collect();
 		let namespace = MaybeQualifiedNamespaceIdentifier::new(segments);
 
 		let cascade = self.parse_cascade()?;
@@ -196,7 +199,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_drop_dictionary(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let dictionary = if namespace.is_empty() {
@@ -218,7 +221,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_drop_enum(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let sumtype = if namespace.is_empty() {
@@ -291,7 +294,7 @@ pub mod tests {
 	#[test]
 	fn test_drop_flow_qualified() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP FLOW analytics.sales_flow").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "DROP FLOW analytics::sales_flow").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
@@ -333,7 +336,8 @@ pub mod tests {
 	#[test]
 	fn test_drop_flow_if_exists_cascade() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP FLOW IF EXISTS test.my_flow CASCADE").unwrap().into_iter().collect();
+		let tokens =
+			tokenize(&bump, "DROP FLOW IF EXISTS test::my_flow CASCADE").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
@@ -366,7 +370,7 @@ pub mod tests {
 	fn test_drop_table_if_exists_qualified() {
 		let bump = Bump::new();
 		let tokens =
-			tokenize(&bump, "DROP TABLE IF EXISTS analytics.users CASCADE").unwrap().into_iter().collect();
+			tokenize(&bump, "DROP TABLE IF EXISTS analytics::users CASCADE").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
@@ -398,7 +402,7 @@ pub mod tests {
 	#[test]
 	fn test_drop_view_if_exists_qualified() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP VIEW IF EXISTS ns.my_view CASCADE").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "DROP VIEW IF EXISTS ns::my_view CASCADE").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
@@ -430,7 +434,7 @@ pub mod tests {
 	#[test]
 	fn test_drop_ringbuffer_if_exists_qualified() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP RINGBUFFER IF EXISTS ns.my_buffer").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "DROP RINGBUFFER IF EXISTS ns::my_buffer").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
@@ -494,7 +498,7 @@ pub mod tests {
 	fn test_drop_dictionary_if_exists_qualified() {
 		let bump = Bump::new();
 		let tokens =
-			tokenize(&bump, "DROP DICTIONARY IF EXISTS ns.my_dict CASCADE").unwrap().into_iter().collect();
+			tokenize(&bump, "DROP DICTIONARY IF EXISTS ns::my_dict CASCADE").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 
@@ -526,7 +530,7 @@ pub mod tests {
 	#[test]
 	fn test_drop_enum_if_exists_qualified() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP ENUM IF EXISTS ns.my_enum CASCADE").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "DROP ENUM IF EXISTS ns::my_enum CASCADE").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse_drop().unwrap();
 

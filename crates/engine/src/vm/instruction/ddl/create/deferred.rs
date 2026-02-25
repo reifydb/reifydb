@@ -76,7 +76,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DEFERRED VIEW test_namespace.test_view { id: Int4 } AS { FROM [] }",
+					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM [] }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -93,7 +93,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DEFERRED VIEW test_namespace.test_view { id: Int4 } AS { FROM [] }",
+					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM [] }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -131,7 +131,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DEFERRED VIEW test_namespace.test_view { id: Int4 } AS { FROM [] }",
+					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM [] }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -147,7 +147,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DEFERRED VIEW another_schema.test_view { id: Int4 } AS { FROM [] }",
+					rql: "CREATE DEFERRED VIEW another_schema::test_view { id: Int4 } AS { FROM [] }",
 					params: Params::default(),
 					identity: &identity,
 				},

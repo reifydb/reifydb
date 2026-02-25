@@ -4,5 +4,5 @@
 logical 'CREATE FLOW IF NOT EXISTS my_flow AS from users'
 ---
 > └── CreateFlow: my_flow (IF NOT EXISTS)
->     └── TableScan default.users
+>     └── TableScan default::users
 >

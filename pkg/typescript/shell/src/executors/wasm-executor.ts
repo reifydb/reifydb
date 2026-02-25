@@ -62,12 +62,12 @@ export class WasmExecutor implements Executor {
   async getTables(): Promise<string[]> {
     try {
       // Query system catalog for tables
-      const result = await this.db.admin('FROM system.tables MAP { namespace, name }');
+      const result = await this.db.admin('FROM system::tables MAP { namespace, name }');
       if (Array.isArray(result)) {
         return result.map((row: Record<string, unknown>) => {
           const ns = row.namespace as string;
           const name = row.name as string;
-          return ns ? `${ns}.${name}` : name;
+          return ns ? `${ns}::${name}` : name;
         });
       }
       return [];
@@ -80,7 +80,7 @@ export class WasmExecutor implements Executor {
     try {
       // Query system catalog for table schema
       const result = await this.db.admin(
-        `FROM system.columns FILTER table = "${tableName}" MAP { name, type }`
+        `FROM system::columns FILTER table = "${tableName}" MAP { name, type }`
       );
       if (Array.isArray(result) && result.length > 0) {
         const columns = result.map((row: Record<string, unknown>) =>

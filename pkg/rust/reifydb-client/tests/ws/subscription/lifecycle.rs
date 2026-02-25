@@ -25,13 +25,13 @@ fn test_no_changes_after_unsubscribe() {
 		let table = unique_table_name("sub_after_unsub");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
 		// Unsubscribe
 		client.unsubscribe(&sub_id).await.unwrap();
 
 		// Insert data after unsubscribe
-		client.command(&format!("INSERT test.{} [{{ id: 1 }}]", table), None).await.unwrap();
+		client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 
 		// Should NOT receive any change
 		let change = recv_with_timeout(&mut client, 500).await;
@@ -57,7 +57,7 @@ fn test_close_cleans_up_subscriptions() {
 		let table = unique_table_name("sub_close");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let _sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let _sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
 		// Close without explicit unsubscribe - should not panic
 		client.close().await.unwrap();
@@ -82,15 +82,15 @@ fn test_rapid_subscribe_unsubscribe() {
 
 		// Rapid subscribe/unsubscribe cycles
 		for _ in 0..10 {
-			let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+			let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 			client.unsubscribe(&sub_id).await.unwrap();
 		}
 
 		// Should still work after rapid cycles
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 		assert!(!sub_id.is_empty());
 
-		client.command(&format!("INSERT test.{} [{{ id: 999 }}]", table), None).await.unwrap();
+		client.command(&format!("INSERT test::{} [{{ id: 999 }}]", table), None).await.unwrap();
 
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some(), "Should still receive changes after rapid cycles");

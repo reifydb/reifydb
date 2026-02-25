@@ -3,9 +3,9 @@
 
 # Test multiple sequential operations
 admin 'create namespace ops'
-admin 'create table ops.numbers{val: int4}'
-command 'INSERT ops.numbers [{ val: 10 }, { val: 20 }]'
-query 'from ops.numbers'
+admin 'create table ops::numbers{val: int4}'
+command 'INSERT ops::numbers [{ val: 10 }, { val: 20 }]'
+query 'from ops::numbers'
 ---
 > +-------------+-----------+
 > |  namespace  |  created  |

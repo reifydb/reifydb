@@ -4,7 +4,7 @@
 # Test logical plan for global aggregate without BY clause
 logical 'from users aggregate { count(id) }'
 ---
-> └── TableScan default.users
+> └── TableScan default::users
 > └── Aggregate
 >     ├── Map
 >     │   └── count(id)
@@ -14,7 +14,7 @@ logical 'from users aggregate { count(id) }'
 # Test logical plan for global aggregate with empty BY clause
 logical 'from users aggregate { total: count(id), sum: sum(amount) } by {}'
 ---
-> └── TableScan default.users
+> └── TableScan default::users
 > └── Aggregate
 >     ├── Map
 >     │   ├── count(id) as total
@@ -25,7 +25,7 @@ logical 'from users aggregate { total: count(id), sum: sum(amount) } by {}'
 # Test logical plan for multiple global aggregations
 logical 'from users aggregate { count(id), sum(amount), avg(price), min(age), max(age) } by {}'
 ---
-> └── TableScan default.users
+> └── TableScan default::users
 > └── Aggregate
 >     ├── Map
 >     │   ├── count(id)

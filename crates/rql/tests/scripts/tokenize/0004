@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-tokenize 'create primary key pk_users on test.users {id}'
+tokenize 'create primary key pk_users on test::users {id}'
 ---
 > Line 1:
 >   [  0] Keyword(Create)
@@ -10,7 +10,7 @@ tokenize 'create primary key pk_users on test.users {id}'
 >   [  3] Identifier("pk_users")
 >   [  4] Keyword(On)
 >   [  5] Identifier("test")
->   [  6] Operator(Dot)
+>   [  6] Operator(DoubleColon)
 >   [  7] Identifier("users")
 >   [  8] Operator(OpenCurly)
 >   [  9] Identifier("id")

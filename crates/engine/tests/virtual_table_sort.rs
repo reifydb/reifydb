@@ -30,9 +30,9 @@ fn test_sort_system_namespaces() {
 	engine.admin_as(&identity, "CREATE NAMESPACE alpha", Default::default()).unwrap();
 	engine.admin_as(&identity, "CREATE NAMESPACE beta", Default::default()).unwrap();
 
-	// Query system.namespaces with sort
+	// Query system::namespaces with sort
 	let frames: Vec<Frame> =
-		engine.query_as(&identity, "FROM system.namespaces SORT {name}", Default::default()).unwrap();
+		engine.query_as(&identity, "FROM system::namespaces SORT {name}", Default::default()).unwrap();
 
 	// Extract namespace names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -74,9 +74,9 @@ fn test_sort_system_namespaces_asc() {
 	engine.admin_as(&identity, "CREATE NAMESPACE alpha", Default::default()).unwrap();
 	engine.admin_as(&identity, "CREATE NAMESPACE beta", Default::default()).unwrap();
 
-	// Query system.namespaces with explicit ASC sort
+	// Query system::namespaces with explicit ASC sort
 	let frames: Vec<Frame> =
-		engine.query_as(&identity, "FROM system.namespaces SORT {name:ASC}", Default::default()).unwrap();
+		engine.query_as(&identity, "FROM system::namespaces SORT {name:ASC}", Default::default()).unwrap();
 
 	// Extract namespace names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -109,13 +109,13 @@ fn test_sort_system_tables() {
 
 	// Create some tables to have predictable data
 	engine.admin_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.zebra { id: int4 }", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.apple { id: int4 }", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.banana { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::zebra { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::apple { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::banana { id: int4 }", Default::default()).unwrap();
 
-	// Query system.tables with sort
+	// Query system::tables with sort
 	let frames: Vec<Frame> =
-		engine.query_as(&identity, "FROM system.tables SORT {name:ASC}", Default::default()).unwrap();
+		engine.query_as(&identity, "FROM system::tables SORT {name:ASC}", Default::default()).unwrap();
 
 	// Extract table names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -148,13 +148,13 @@ fn test_sort_system_tables_with_pipe_syntax() {
 
 	// Create some tables to have predictable data
 	engine.admin_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.zebra { id: int4 }", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.apple { id: int4 }", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.banana { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::zebra { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::apple { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::banana { id: int4 }", Default::default()).unwrap();
 
-	// Query system.tables with pipe syntax
+	// Query system::tables with pipe syntax
 	let frames: Vec<Frame> =
-		engine.query_as(&identity, "from system.tables | sort {name}", Default::default()).unwrap();
+		engine.query_as(&identity, "from system::tables | sort {name}", Default::default()).unwrap();
 
 	// Extract table names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -187,12 +187,12 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 
 	// Create multiple tables and insert data of varying sizes to ensure different storage sizes
 	engine.admin_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.tiny { id: int4 }", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.small { id: int4, name: text }", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.medium { id: int4, name: text }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::tiny { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::small { id: int4, name: text }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::medium { id: int4, name: text }", Default::default()).unwrap();
 	engine.admin_as(
 		&identity,
-		"CREATE TABLE test.large { id: int4, name: text, description: text }",
+		"CREATE TABLE test::large { id: int4, name: text, description: text }",
 		Default::default(),
 	)
 	.unwrap();
@@ -200,16 +200,16 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 	// Insert varying amounts of data to create clear size differences
 
 	// Tiny: 1 row, minimal data
-	engine.command_as(&identity, r#"INSERT test.tiny [{ id: 1 }]"#, Default::default()).unwrap();
+	engine.command_as(&identity, r#"INSERT test::tiny [{ id: 1 }]"#, Default::default()).unwrap();
 
 	// Small: 1 row with small text
-	engine.command_as(&identity, r#"INSERT test.small [{ id: 1, name: "a" }]"#, Default::default()).unwrap();
+	engine.command_as(&identity, r#"INSERT test::small [{ id: 1, name: "a" }]"#, Default::default()).unwrap();
 
 	// Medium: 3 rows with moderate text
 	engine.command_as(
 		&identity,
 		r#"
-		INSERT test.medium [
+		INSERT test::medium [
 			{ id: 1, name: "abc" },
 			{ id: 2, name: "def" },
 			{ id: 3, name: "ghi" }
@@ -223,7 +223,7 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 	engine.command_as(
 		&identity,
 		r#"
-		INSERT test.large [
+		INSERT test::large [
 			{ id: 1, name: "abcdefghij", description: "This is a longer description with more text" },
 			{ id: 2, name: "opqrstuvwx", description: "Fifth and final row with more text data" },
 			{ id: 3, name: "klmnopqrst", description: "Another long description with lots of data" },
@@ -238,11 +238,11 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 	// Wait for metrics worker to process the storage stats
 	wait_for_metrics_processing();
 
-	println!("\n=== Testing system.table_storage_stats Sorting ===\n");
+	println!("\n=== Testing system::table_storage_stats Sorting ===\n");
 
 	// First, query WITHOUT sorting to show natural order
 	let frames_unsorted: Vec<Frame> =
-		engine.query_as(&identity, "FROM system.table_storage_stats", Default::default()).unwrap();
+		engine.query_as(&identity, "FROM system::table_storage_stats", Default::default()).unwrap();
 
 	let frame_unsorted = frames_unsorted.first().expect("Expected at least one frame");
 	let id_col_unsorted = frame_unsorted.columns.iter().find(|c| c.name == "id").unwrap();
@@ -262,7 +262,7 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 
 	// Now query WITH sorting (ascending)
 	let frames_asc: Vec<Frame> = engine
-		.query_as(&identity, "FROM system.table_storage_stats SORT {total_bytes:ASC}", Default::default())
+		.query_as(&identity, "FROM system::table_storage_stats SORT {total_bytes:ASC}", Default::default())
 		.unwrap();
 
 	let frame_asc = frames_asc.first().expect("Expected at least one frame");
@@ -294,7 +294,7 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 
 	// Now query WITH sorting (descending)
 	let frames_desc: Vec<Frame> = engine
-		.query_as(&identity, "FROM system.table_storage_stats SORT {total_bytes:DESC}", Default::default())
+		.query_as(&identity, "FROM system::table_storage_stats SORT {total_bytes:DESC}", Default::default())
 		.unwrap();
 
 	let frame_desc = frames_desc.first().expect("Expected at least one frame");
@@ -347,22 +347,22 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 
 	// Create multiple tables with different sizes
 	engine.admin_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.tiny { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::tiny { id: int4 }", Default::default()).unwrap();
 	engine.admin_as(
 		&identity,
-		"CREATE TABLE test.large { id: int4, name: text, description: text }",
+		"CREATE TABLE test::large { id: int4, name: text, description: text }",
 		Default::default(),
 	)
 	.unwrap();
 
 	// Insert minimal data
-	engine.command_as(&identity, r#"INSERT test.tiny [{ id: 1 }]"#, Default::default()).unwrap();
+	engine.command_as(&identity, r#"INSERT test::tiny [{ id: 1 }]"#, Default::default()).unwrap();
 
 	// Insert lots of data
 	engine.command_as(
 		&identity,
 		r#"
-		INSERT test.large [
+		INSERT test::large [
 			{ id: 1, name: "abcdefghij", description: "This is a longer description with more text" },
 			{ id: 2, name: "klmnopqrst", description: "Another long description with lots of data" },
 			{ id: 3, name: "uvwxyzabcd", description: "Yet another description to increase size" }
@@ -378,7 +378,7 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 	println!("\n=== Testing Multi-line Syntax ===\n");
 
 	// Test with MULTI-LINE syntax (newline between from and sort) - EXACT USER SYNTAX
-	let multiline_query = "from system.table_storage_stats
+	let multiline_query = "from system::table_storage_stats
 sort {total_bytes:asc}";
 
 	println!("Query:\n{}\n", multiline_query);
@@ -439,15 +439,15 @@ fn test_asc_is_not_desc() {
 	let identity = test_identity();
 
 	engine.admin_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.a { id: int4 }", Default::default()).unwrap();
-	engine.admin_as(&identity, "CREATE TABLE test.b { id: int4, data: text }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::a { id: int4 }", Default::default()).unwrap();
+	engine.admin_as(&identity, "CREATE TABLE test::b { id: int4, data: text }", Default::default()).unwrap();
 
 	// Insert different amounts to create size difference
-	engine.command_as(&identity, r#"INSERT test.a [{ id: 1 }]"#, Default::default()).unwrap();
+	engine.command_as(&identity, r#"INSERT test::a [{ id: 1 }]"#, Default::default()).unwrap();
 	engine.command_as(
 		&identity,
 		r#"
-		INSERT test.b [
+		INSERT test::b [
 			{ id: 1, data: "lots of data here to make this bigger" },
 			{ id: 2, data: "even more data to increase size further" },
 			{ id: 3, data: "yet more data to make this the largest" }
@@ -462,12 +462,12 @@ fn test_asc_is_not_desc() {
 
 	// Get results with ASC
 	let frames_asc: Vec<Frame> = engine
-		.query_as(&identity, "from system.table_storage_stats\nsort {total_bytes:asc}", Default::default())
+		.query_as(&identity, "from system::table_storage_stats\nsort {total_bytes:asc}", Default::default())
 		.unwrap();
 
 	// Get results with DESC
 	let frames_desc: Vec<Frame> = engine
-		.query_as(&identity, "from system.table_storage_stats\nsort {total_bytes:desc}", Default::default())
+		.query_as(&identity, "from system::table_storage_stats\nsort {total_bytes:desc}", Default::default())
 		.unwrap();
 
 	// Extract first total_bytes from each

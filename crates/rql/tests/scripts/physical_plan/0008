@@ -9,5 +9,5 @@ physical 'from users AGGREGATE { min_age: min(age) } BY {name}'
 >     ├── By
 >     │   └── name
 >     └── Source
->         └── TableScan default.users
+>         └── TableScan default::users
 >

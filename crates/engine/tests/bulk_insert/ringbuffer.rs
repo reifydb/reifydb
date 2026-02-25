@@ -26,7 +26,7 @@ fn test_ringbuffer_below_capacity() {
 
 	assert_eq!(result.ringbuffers[0].inserted, 3);
 
-	let frames = query_ringbuffer(&engine, "test.events");
+	let frames = query_ringbuffer(&engine, "test::events");
 	assert_eq!(row_count(&frames), 3);
 
 	let mut values: Vec<_> = frames[0].rows().map(|r| r.get::<i32>("id").unwrap().unwrap()).collect();
@@ -50,7 +50,7 @@ fn test_ringbuffer_at_capacity() {
 
 	assert_eq!(result.ringbuffers[0].inserted, 5);
 
-	let frames = query_ringbuffer(&engine, "test.events");
+	let frames = query_ringbuffer(&engine, "test::events");
 	assert_eq!(row_count(&frames), 5);
 
 	// Verify all values are present
@@ -81,7 +81,7 @@ fn test_ringbuffer_overflow_single() {
 	assert_eq!(result.ringbuffers[0].inserted, 1);
 
 	// Should still have 3 rows, but oldest (1) should be removed
-	let frames = query_ringbuffer(&engine, "test.events");
+	let frames = query_ringbuffer(&engine, "test::events");
 	assert_eq!(row_count(&frames), 3);
 
 	let mut values: Vec<_> = frames[0].rows().map(|r| r.get::<i32>("id").unwrap().unwrap()).collect();
@@ -107,7 +107,7 @@ fn test_ringbuffer_overflow_batch() {
 	assert_eq!(result.ringbuffers[0].inserted, 8);
 
 	// Should have exactly capacity rows
-	let frames = query_ringbuffer(&engine, "test.events");
+	let frames = query_ringbuffer(&engine, "test::events");
 	assert_eq!(row_count(&frames), 5);
 
 	// Only the most recent 5 entries should remain (4, 5, 6, 7, 8)
@@ -134,7 +134,7 @@ fn test_ringbuffer_circular_overwrite() {
 	}
 
 	// After 3 batches of 3 each (9 total), only last 3 should remain
-	let frames = query_ringbuffer(&engine, "test.circular");
+	let frames = query_ringbuffer(&engine, "test::circular");
 	assert_eq!(row_count(&frames), 3);
 
 	let mut values: Vec<_> = frames[0].rows().map(|r| r.get::<i32>("val").unwrap().unwrap()).collect();
@@ -159,7 +159,7 @@ fn test_ringbuffer_incremental_fill_and_overflow() {
 	}
 
 	// After inserting 6 into capacity 4, should have 3, 4, 5, 6
-	let frames = query_ringbuffer(&engine, "test.incr");
+	let frames = query_ringbuffer(&engine, "test::incr");
 	assert_eq!(row_count(&frames), 4);
 
 	let mut values: Vec<_> = frames[0].rows().map(|r| r.get::<i32>("n").unwrap().unwrap()).collect();

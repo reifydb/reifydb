@@ -116,7 +116,7 @@ pub mod tests {
 	#[test]
 	fn test_append_query_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "append { from test.orders }").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "append { from test::orders }").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -147,7 +147,7 @@ pub mod tests {
 	#[test]
 	fn test_append_query_with_from() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "from test.source1 append { from test.source2 }")
+		let tokens = tokenize(&bump, "from test::source1 append { from test::source2 }")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -186,11 +186,13 @@ pub mod tests {
 	#[test]
 	fn test_append_query_chained() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "from test.source1 append { from test.source2 } append { from test.source3 }")
-				.unwrap()
-				.into_iter()
-				.collect();
+		let tokens = tokenize(
+			&bump,
+			"from test::source1 append { from test::source2 } append { from test::source3 }",
+		)
+		.unwrap()
+		.into_iter()
+		.collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);

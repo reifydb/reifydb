@@ -34,7 +34,7 @@ fn main() {
 	// Create a table with various data types
 	info!("Creating employees table...");
 	log_query(
-		r#"create table company.employees {
+		r#"create table company::employees {
     id: int4,
     name: utf8,
     age: int1,
@@ -45,7 +45,7 @@ fn main() {
 	);
 	db.admin_as_root(
 		r#"
-		create table company.employees {
+		create table company::employees {
 			id: int4,
 			name: utf8,
 			age: int1,
@@ -61,7 +61,7 @@ fn main() {
 	// Insert some initial data
 	info!("Inserting employees...");
 	log_query(
-		r#"INSERT company.employees [
+		r#"INSERT company::employees [
     { id: 1, name: "Alice Johnson", age: 28, salary: 75000.0, is_active: true, department: "Engineering" },
     { id: 2, name: "Bob Smith", age: 35, salary: 85000.0, is_active: true, department: "Sales" },
     { id: 3, name: "Charlie Bframen", age: 42, salary: 95000.0, is_active: true, department: "Engineering" },
@@ -71,7 +71,7 @@ fn main() {
 	);
 	db.command_as_root(
 		r#"
-		INSERT company.employees [
+		INSERT company::employees [
 			{ id: 1, name: "Alice Johnson", age: 28, salary: 75000.0, is_active: true, department: "Engineering" },
 			{ id: 2, name: "Bob Smith", age: 35, salary: 85000.0, is_active: true, department: "Sales" },
 			{ id: 3, name: "Charlie Bframen", age: 42, salary: 95000.0, is_active: true, department: "Engineering" },
@@ -84,11 +84,11 @@ fn main() {
 	.unwrap();
 
 	// Query all employees
-	log_query("from company.employees");
+	log_query("from company::employees");
 	let results = db
 		.query_as_root(
 			r#"
-			from company.employees
+			from company::employees
 			"#,
 			Params::None,
 		)
@@ -99,11 +99,11 @@ fn main() {
 	}
 
 	// Query with filter - find active employees in Engineering
-	log_query(r#"from company.employees filter { is_active == true and department == "Engineering" }"#);
+	log_query(r#"from company::employees filter { is_active == true and department == "Engineering" }"#);
 	let results = db
 		.query_as_root(
 			r#"
-			from company.employees
+			from company::employees
 			filter { is_active == true and department == "Engineering" }
 			"#,
 			Params::None,
@@ -116,21 +116,21 @@ fn main() {
 
 	// Update operation - give everyone in Engineering a raise
 	info!("Giving Engineering department a 10% raise...");
-	log_query(r#"UPDATE company.employees { salary: salary * 1.1 } FILTER department == "Engineering""#);
+	log_query(r#"UPDATE company::employees { salary: salary * 1.1 } FILTER department == "Engineering""#);
 	db.command_as_root(
 		r#"
-		UPDATE company.employees { salary: salary * 1.1 } FILTER department == "Engineering";
+		UPDATE company::employees { salary: salary * 1.1 } FILTER department == "Engineering";
 		"#,
 		Params::None,
 	)
 	.unwrap();
 
 	// Query to see the updated salaries
-	log_query(r#"from company.employees filter { department == "Engineering" }"#);
+	log_query(r#"from company::employees filter { department == "Engineering" }"#);
 	let results = db
 		.query_as_root(
 			r#"
-			from company.employees
+			from company::employees
 			filter { department == "Engineering" }
 			"#,
 			Params::None,
@@ -143,21 +143,21 @@ fn main() {
 
 	// Delete operation - remove inactive employees
 	info!("Removing inactive employees...");
-	log_query(r#"DELETE company.employees FILTER is_active == false"#);
+	log_query(r#"DELETE company::employees FILTER is_active == false"#);
 	db.command_as_root(
 		r#"
-		DELETE company.employees FILTER is_active == false;
+		DELETE company::employees FILTER is_active == false;
 		"#,
 		Params::None,
 	)
 	.unwrap();
 
 	// Final query - show remaining employees
-	log_query("from company.employees");
+	log_query("from company::employees");
 	let results = db
 		.query_as_root(
 			r#"
-			from company.employees
+			from company::employees
 			"#,
 			Params::None,
 		)
@@ -168,11 +168,11 @@ fn main() {
 	}
 
 	// Query with different filter - high earners
-	log_query("from company.employees filter { salary > 80000 }");
+	log_query("from company::employees filter { salary > 80000 }");
 	let results = db
 		.query_as_root(
 			r#"
-			from company.employees
+			from company::employees
 			filter { salary > 80000 }
 			"#,
 			Params::None,

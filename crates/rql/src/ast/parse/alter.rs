@@ -36,7 +36,7 @@ impl<'bump> Parser<'bump> {
 
 	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
 		// Parse [namespace...].table.column (at least 2 segments required)
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		if segments.len() < 2 {
 			unimplemented!("ALTER SEQUENCE requires table.column or namespace.table.column");
 		}
@@ -68,7 +68,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_alter_flow(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let flow = if namespace.is_empty() {
@@ -196,7 +196,7 @@ pub mod tests {
 	fn test_alter_sequence_with_schema() {
 		let bump = Bump::new();
 		let tokens =
-			tokenize(&bump, "ALTER SEQUENCE test.users.id SET VALUE 1000").unwrap().into_iter().collect();
+			tokenize(&bump, "ALTER SEQUENCE test::users::id SET VALUE 1000").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -229,7 +229,7 @@ pub mod tests {
 	#[test]
 	fn test_alter_sequence_without_schema() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "ALTER SEQUENCE users.id SET VALUE 500").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "ALTER SEQUENCE users::id SET VALUE 500").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -291,7 +291,7 @@ pub mod tests {
 	fn test_alter_flow_rename_qualified() {
 		let bump = Bump::new();
 		let tokens =
-			tokenize(&bump, "ALTER FLOW test.old_flow RENAME TO new_flow").unwrap().into_iter().collect();
+			tokenize(&bump, "ALTER FLOW test::old_flow RENAME TO new_flow").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -417,7 +417,7 @@ pub mod tests {
 	#[test]
 	fn test_alter_flow_resume() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "ALTER FLOW analytics.my_flow RESUME").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "ALTER FLOW analytics::my_flow RESUME").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);

@@ -26,7 +26,7 @@ cargo test -p regression
 
 🛠️ Adding a Regression Test
 
-1. Reproduce the bug with a failing test.
+1. Reproduce the bug with a failing test::
 2. Commit the test (even if failing).
 3. Apply the fix.
 4. Ensure the test now passes.
@@ -34,5 +34,5 @@ cargo test -p regression
 
 📌 Philosophy
 
-Every fix deserves a test. If a bug was important enough to fix, it's important enough to protect
+Every fix deserves a test:: If a bug was important enough to fix, it's important enough to protect
 against forever.

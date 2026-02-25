@@ -78,7 +78,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DICTIONARY test_namespace.test_dictionary FOR Utf8 AS Uint4",
+					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -93,7 +93,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DICTIONARY IF NOT EXISTS test_namespace.test_dictionary FOR Utf8 AS Uint4",
+					rql: "CREATE DICTIONARY IF NOT EXISTS test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -108,7 +108,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DICTIONARY test_namespace.test_dictionary FOR Utf8 AS Uint4",
+					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -146,7 +146,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DICTIONARY test_namespace.test_dictionary FOR Utf8 AS Uint4",
+					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -161,7 +161,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DICTIONARY another_schema.test_dictionary FOR Utf8 AS Uint4",
+					rql: "CREATE DICTIONARY another_schema::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
 					identity: &identity,
 				},

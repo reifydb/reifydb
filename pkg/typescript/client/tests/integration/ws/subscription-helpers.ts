@@ -13,7 +13,7 @@ export function createTestTableName(prefix: string = 'test'): string {
 
 /**
  * Helper to create a test table with schema
- * Creates a 'test' namespace if it doesn't exist and uses test.table_name
+ * Creates a 'test' namespace if it doesn't exist and uses test::table_name
  */
 export async function createTestTable(
     client: WsClient,
@@ -33,7 +33,7 @@ export async function createTestTable(
     }).join(', ');
 
     await client.admin(
-        `create table test.${tableName} { ${columnDefs} }`,
+        `create table test::${tableName} { ${columnDefs} }`,
         null,
         []
     );

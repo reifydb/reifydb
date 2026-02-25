@@ -2,7 +2,7 @@
 // // Copyright (c) 2025 ReifyDB
 //
 // //! Integration tests for WebSocket subscriptions
-// //! Ported from TypeScript integration tests in pkg/typescript/client/tests/integration/ws/subscription.test.ts
+// //! Ported from TypeScript integration tests in pkg/typescript/client/tests/integration/ws/subscription.test::ts
 // //!
 // //! These tests focus on connection reliability by repeatedly connecting to the same server instance.
 //
@@ -238,17 +238,17 @@
 // 		create_test_table(&client, &table1, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 // 		create_test_table(&client, &table2, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 //
-// 		let sub1 = client.subscribe(&format!("from test.{}", table1)).await.unwrap();
-// 		let sub2 = client.subscribe(&format!("from test.{}", table2)).await.unwrap();
+// 		let sub1 = client.subscribe(&format!("from test::{}", table1)).await.unwrap();
+// 		let sub2 = client.subscribe(&format!("from test::{}", table2)).await.unwrap();
 //
 // 		// Insert into table 1
-// 		client.command(&format!("INSERT test. [{{ id: 1, name: 'alice' }}]{}", table1), None).await.unwrap();
+// 		client.command(&format!("INSERT test:: [{{ id: 1, name: 'alice' }}]{}", table1), None).await.unwrap();
 //
 // 		let change1 = recv_with_timeout(&mut client, 5000).await.expect("Should receive change from table1");
 // 		assert_eq!(change1.subscription_id, sub1);
 //
 // 		// Insert into table 2
-// 		client.command(&format!("INSERT test. [{{ id: 2, value: 200 }}]{}", table2), None).await.unwrap();
+// 		client.command(&format!("INSERT test:: [{{ id: 2, value: 200 }}]{}", table2), None).await.unwrap();
 //
 // 		let change2 = recv_with_timeout(&mut client, 5000).await.expect("Should receive change from table2");
 // 		assert_eq!(change2.subscription_id, sub2);
@@ -280,7 +280,7 @@
 // 		for i in 0..NUM_TABLES {
 // 			let table = unique_table_name(&format!("sub_conc_{}", i));
 // 			create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
-// 			let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+// 			let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 // 			tables.push(table);
 // 			sub_ids.push(sub_id);
 // 		}
@@ -288,7 +288,7 @@
 // 		// Insert into all tables
 // 		for (i, table) in tables.iter().enumerate() {
 // 			client
-// 				.command(&format!("INSERT test. [{{ id: {}, value: {} }}]{}", i, i * 100, table), None)
+// 				.command(&format!("INSERT test:: [{{ id: {}, value: {} }}]{}", i, i * 100, table), None)
 // 				.await
 // 				.unwrap();
 // 		}
@@ -331,7 +331,7 @@
 // 		let table = unique_table_name("sub_reconn");
 // 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 //
-// 		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+// 		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 // 		assert!(!sub_id.is_empty(), "Subscription ID should be defined");
 //
 // 		// Close and reconnect
@@ -342,10 +342,10 @@
 // 		client2.authenticate("mysecrettoken").await.unwrap();
 //
 // 		// Resubscribe
-// 		let sub_id2 = client2.subscribe(&format!("from test.{}", table)).await.unwrap();
+// 		let sub_id2 = client2.subscribe(&format!("from test::{}", table)).await.unwrap();
 //
 // 		// Insert new data
-// 		client2.command(&format!("INSERT test. [{{ id: 1, name: 'after_reconnect' }}]{}", table),
+// 		client2.command(&format!("INSERT test:: [{{ id: 1, name: 'after_reconnect' }}]{}", table),
 // None).await.unwrap();
 //
 // 		let change = recv_with_timeout(&mut client2, 5000).await.expect("Should receive notification after reconnect");
@@ -381,7 +381,7 @@
 // 		// Subscribe to all tables
 // 		let mut sub_ids = Vec::new();
 // 		for table in &tables {
-// 			let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+// 			let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 // 			sub_ids.push(sub_id);
 // 		}
 //
@@ -394,13 +394,13 @@
 // 		// Resubscribe to all tables
 // 		let mut sub_ids2 = Vec::new();
 // 		for table in &tables {
-// 			let sub_id = client2.subscribe(&format!("from test.{}", table)).await.unwrap();
+// 			let sub_id = client2.subscribe(&format!("from test::{}", table)).await.unwrap();
 // 			sub_ids2.push(sub_id);
 // 		}
 //
 // 		// Insert into all tables
 // 		for (i, table) in tables.iter().enumerate() {
-// 			client2.command(&format!("INSERT test. [{{ id: {}, value: {} }}]{}", i, i * 100, table),
+// 			client2.command(&format!("INSERT test:: [{{ id: {}, value: {} }}]{}", i, i * 100, table),
 // None).await.unwrap(); 		}
 //
 // 		let changes = recv_multiple_with_timeout(&mut client2, 3, 10000).await;
@@ -514,7 +514,7 @@
 // 		let table = unique_table_name("sub_cleanup");
 // 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 //
-// 		let _sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+// 		let _sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 //
 // 		// Close without explicit unsubscribe - should not panic
 // 		client.close().await.unwrap();
@@ -557,7 +557,7 @@
 // 		let table = ctx.create_table("sub_empty", "id: int4, value: int4").await?;
 //
 // 		// Subscribe with filter that won't match
-// 		let sub_id = ctx.client.subscribe(&format!("from test.{} filter {{ id > 1000 }}", table)).await?;
+// 		let sub_id = ctx.client.subscribe(&format!("from test::{} filter {{ id > 1000 }}", table)).await?;
 //
 // 		// Insert data that doesn't match filter
 // 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
@@ -626,12 +626,12 @@
 // 		let table = unique_table_name("sub_rapid");
 // 		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 //
-// 		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+// 		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 //
 // 		// Fire 10 insert commands rapidly
 // 		for i in 0..10 {
 // 			client
-// 				.command(&format!("INSERT test. [{{ id: {}, value: {} }}]{}", i, i * 10, table), None)
+// 				.command(&format!("INSERT test:: [{{ id: {}, value: {} }}]{}", i, i * 10, table), None)
 // 				.await
 // 				.unwrap();
 // 		}
@@ -674,14 +674,14 @@
 // 		for i in 0..NUM_SUBS {
 // 			let table = unique_table_name(&format!("stress_{}", i));
 // 			create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
-// 			let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+// 			let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 // 			sub_ids.push(sub_id);
 // 			tables.push(table);
 // 		}
 //
 // 		// Insert into all tables
 // 		for table in &tables {
-// 			client.command(&format!("INSERT test. [{{ id: 1 }}]{}", table), None).await.unwrap();
+// 			client.command(&format!("INSERT test:: [{{ id: 1 }}]{}", table), None).await.unwrap();
 // 		}
 //
 // 		// Receive all notifications
@@ -735,7 +735,7 @@
 // 				let mut client = WsClient::connect("127.0.0.1:8090").await?;
 // 				client.authenticate("mysecrettoken").await?;
 //
-// 				let _sub_id = client.subscribe(&format!("from test.{}", table)).await?;
+// 				let _sub_id = client.subscribe(&format!("from test::{}", table)).await?;
 //
 // 				let change = recv_with_timeout(&mut client, 10000).await;
 // 				if change.is_some() {
@@ -754,7 +754,7 @@
 // 		// Trigger insert
 // 		let mut trigger_client = WsClient::connect("127.0.0.1:8090").await.unwrap();
 // 		trigger_client.authenticate("mysecrettoken").await.unwrap();
-// 		trigger_client.command(&format!("INSERT test. [{{ id: 999 }}]{}", shared_table), None).await.unwrap();
+// 		trigger_client.command(&format!("INSERT test:: [{{ id: 999 }}]{}", shared_table), None).await.unwrap();
 // 		trigger_client.close().await.unwrap();
 //
 // 		// Wait for all clients
@@ -789,7 +789,7 @@
 //
 // 		const NUM_CYCLES: usize = 100;
 // 		for i in 0..NUM_CYCLES {
-// 			let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+// 			let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 // 			client.unsubscribe(&sub_id).await.unwrap();
 //
 // 			if (i + 1) % 25 == 0 {
@@ -798,10 +798,10 @@
 // 		}
 //
 // 		// Verify system still works
-// 		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+// 		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 // 		assert!(!sub_id.is_empty(), "Should get valid subscription after rapid cycles");
 //
-// 		client.command(&format!("INSERT test. [{{ id: 999 }}]{}", table), None).await.unwrap();
+// 		client.command(&format!("INSERT test:: [{{ id: 999 }}]{}", table), None).await.unwrap();
 //
 // 		let change = recv_with_timeout(&mut client, 5000).await;
 // 		assert!(change.is_some(), "Should still receive changes after {} rapid cycles", NUM_CYCLES);
@@ -835,7 +835,7 @@
 // 		for i in 0..NUM_CLIENTS {
 // 			let mut client = WsClient::connect("127.0.0.1:8090").await.unwrap();
 // 			client.authenticate("mysecrettoken").await.unwrap();
-// 			let _sub_id = client.subscribe(&format!("from test.{}", shared_table)).await.unwrap();
+// 			let _sub_id = client.subscribe(&format!("from test::{}", shared_table)).await.unwrap();
 //
 // 			// Drop without unsubscribe - simulates abrupt disconnect
 // 			drop(client);
@@ -852,10 +852,10 @@
 // 		let mut new_client = WsClient::connect("127.0.0.1:8090").await.unwrap();
 // 		new_client.authenticate("mysecrettoken").await.unwrap();
 //
-// 		let sub_id = new_client.subscribe(&format!("from test.{}", shared_table)).await.unwrap();
+// 		let sub_id = new_client.subscribe(&format!("from test::{}", shared_table)).await.unwrap();
 // 		assert!(!sub_id.is_empty(), "New client should be able to subscribe after abrupt disconnects");
 //
-// 		new_client.command(&format!("INSERT test. [{{ id: 1 }}]{}", shared_table), None).await.unwrap();
+// 		new_client.command(&format!("INSERT test:: [{{ id: 1 }}]{}", shared_table), None).await.unwrap();
 //
 // 		let change = recv_with_timeout(&mut new_client, 5000).await;
 // 		assert!(change.is_some(), "New client should receive notification");
@@ -908,7 +908,7 @@
 // 						let mut client = WsClient::connect("127.0.0.1:8090").await?;
 // 						client.authenticate("mysecrettoken").await?;
 //
-// 						match client.subscribe(&format!("from test.{}", table)).await {
+// 						match client.subscribe(&format!("from test::{}", table)).await {
 // 							Ok(sub_id) => {
 // 								sleep(Duration::from_millis(10)).await;
 // 								client.unsubscribe(&sub_id).await?;
@@ -955,10 +955,10 @@
 // 		let mut final_client = WsClient::connect("127.0.0.1:8090").await.unwrap();
 // 		final_client.authenticate("mysecrettoken").await.unwrap();
 //
-// 		let sub_id = final_client.subscribe(&format!("from test.{}", tables[0])).await.unwrap();
+// 		let sub_id = final_client.subscribe(&format!("from test::{}", tables[0])).await.unwrap();
 // 		assert!(!sub_id.is_empty(), "Server should still accept new subscriptions");
 //
-// 		final_client.command(&format!("INSERT test. [{{ id: 1 }}]{}", tables[0]), None).await.unwrap();
+// 		final_client.command(&format!("INSERT test:: [{{ id: 1 }}]{}", tables[0]), None).await.unwrap();
 //
 // 		let change = recv_with_timeout(&mut final_client, 5000).await;
 // 		assert!(change.is_some(), "Server should still deliver notifications after stress test");
@@ -987,8 +987,8 @@
 //
 // 		const NUM_CYCLES: usize = 200;
 // 		for i in 0..NUM_CYCLES {
-// 			let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
-// 			client.command(&format!("INSERT test. [{{ id: {} }}]{}", i, table), None).await.unwrap();
+// 			let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+// 			client.command(&format!("INSERT test:: [{{ id: {} }}]{}", i, table), None).await.unwrap();
 //
 // 			let change = recv_with_timeout(&mut client, 500).await;
 // 			assert!(change.is_some(), "Cycle {}: should receive notification", i);

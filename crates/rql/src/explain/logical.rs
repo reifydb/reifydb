@@ -725,7 +725,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		}
 		LogicalPlan::CreateFlow(create_flow) => {
 			let flow_name = if let Some(ns) = create_flow.flow.namespace.first() {
-				format!("{}.{}", ns.text(), create_flow.flow.name.text())
+				format!("{}::{}", ns.text(), create_flow.flow.name.text())
 			} else {
 				create_flow.flow.name.text().to_string()
 			};
@@ -757,7 +757,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		}
 		LogicalPlan::AlterFlow(alter_flow) => {
 			let flow_name = if let Some(ns) = alter_flow.flow.namespace.first() {
-				format!("{}.{}", ns.text(), alter_flow.flow.name.text())
+				format!("{}::{}", ns.text(), alter_flow.flow.name.text())
 			} else {
 				alter_flow.flow.name.text().to_string()
 			};

@@ -151,7 +151,7 @@ impl<'bump> Parser<'bump> {
 
 	fn parse_procedure(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		// Parse dot-separated name: ns.procedure_name
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
@@ -257,7 +257,7 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		let segments = self.parse_dot_separated_identifiers()?;
+		let segments = self.parse_double_colon_separated_identifiers()?;
 
 		// Check for IF NOT EXISTS AFTER identifier (alternate syntax)
 		if !if_not_exists && (self.consume_if(TokenKind::Keyword(If))?).is_some() {
@@ -277,7 +277,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_series(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
@@ -387,7 +387,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_deferred_view(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
@@ -443,7 +443,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_transactional_view(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
@@ -499,7 +499,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_table(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
@@ -514,7 +514,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_ringbuffer(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
@@ -689,7 +689,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_create_primary_key(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::On)?;
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
@@ -776,7 +776,7 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let dictionary = if namespace.is_empty() {
@@ -811,7 +811,7 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name_frag = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let sumtype_ident = if namespace.is_empty() {
@@ -871,8 +871,8 @@ impl<'bump> Parser<'bump> {
 			return Ok(AstType::Optional(Box::new(inner)));
 		}
 
-		if !self.is_eof() && self.current()?.is_operator(Operator::Dot) {
-			self.consume_operator(Operator::Dot)?;
+		if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon) {
+			self.consume_operator(Operator::DoubleColon)?;
 			let name_token = self.consume(TokenKind::Identifier)?;
 			return Ok(AstType::Qualified {
 				namespace: ty_token.fragment,
@@ -943,8 +943,8 @@ impl<'bump> Parser<'bump> {
 			let inner = self.parse_type()?;
 			self.consume_operator(Operator::CloseParen)?;
 			AstType::Optional(Box::new(inner))
-		} else if !self.is_eof() && self.current()?.is_operator(Operator::Dot) {
-			self.consume_operator(Operator::Dot)?;
+		} else if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon) {
+			self.consume_operator(Operator::DoubleColon)?;
 			let name_token = self.consume(TokenKind::Identifier)?;
 			AstType::Qualified {
 				namespace: ty_token.fragment,
@@ -1033,7 +1033,7 @@ impl<'bump> Parser<'bump> {
 				"auto_increment" => AstColumnProperty::AutoIncrement,
 				"dictionary" => {
 					self.consume_operator(Colon)?;
-					let mut segments = self.parse_dot_separated_identifiers()?;
+					let mut segments = self.parse_double_colon_separated_identifiers()?;
 					let name = segments.pop().unwrap().into_fragment();
 					let namespace: Vec<_> =
 						segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1089,7 +1089,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn parse_event(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name_frag = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let sumtype_ident = if namespace.is_empty() {
@@ -1139,7 +1139,7 @@ impl<'bump> Parser<'bump> {
 
 	pub(crate) fn parse_handler(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		// Parse handler name: ns.handler_name
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name_frag = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let handler_name = MaybeQualifiedTableIdentifier::new(name_frag).with_namespace(namespace);
@@ -1147,17 +1147,19 @@ impl<'bump> Parser<'bump> {
 		// ON event_type::VariantName AS alias
 		self.consume_keyword(Keyword::On)?;
 
-		let mut event_segments = self.parse_dot_separated_identifiers()?;
+		// Parse event_namespace::event_type::variant as a single chain of :: separated identifiers
+		let mut event_segments = self.parse_double_colon_separated_identifiers()?;
+		// Last segment is the variant name
+		let on_variant = event_segments.pop().unwrap().into_fragment();
+		// Second-to-last is the event type name
 		let event_name_frag = event_segments.pop().unwrap().into_fragment();
+		// Remaining segments are the namespace
 		let event_namespace: Vec<_> = event_segments.into_iter().map(|s| s.into_fragment()).collect();
 		let on_event = if event_namespace.is_empty() {
 			MaybeQualifiedSumTypeIdentifier::new(event_name_frag)
 		} else {
 			MaybeQualifiedSumTypeIdentifier::new(event_name_frag).with_namespace(event_namespace)
 		};
-
-		self.consume_operator(Operator::DoubleColon)?;
-		let on_variant = self.parse_identifier_with_hyphens()?.into_fragment();
 
 		// Body: { statements... }
 		self.consume_operator(Operator::OpenCurly)?;
@@ -1211,7 +1213,7 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		let mut segments = self.parse_dot_separated_identifiers()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let flow = if namespace.is_empty() {
@@ -1528,7 +1530,7 @@ pub mod tests {
 	fn test_create_table_with_hyphen() {
 		let bump = Bump::new();
 		let tokens =
-			tokenize(&bump, "CREATE TABLE my-schema.my-table { id: Int4 }").unwrap().into_iter().collect();
+			tokenize(&bump, "CREATE TABLE my-schema::my-table { id: Int4 }").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -1551,7 +1553,7 @@ pub mod tests {
 	#[test]
 	fn test_create_ringbuffer_with_hyphen() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE RINGBUFFER my-ns.my-buffer { id: Int4 } WITH { capacity: 100 }")
+		let tokens = tokenize(&bump, "CREATE RINGBUFFER my-ns::my-buffer { id: Int4 } WITH { capacity: 100 }")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -1602,7 +1604,7 @@ pub mod tests {
 	#[test]
 	fn test_create_table_with_hyphenated_columns() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE TABLE test.user-data { user-id: Int4, user-name: Text }")
+		let tokens = tokenize(&bump, "CREATE TABLE test::user-data { user-id: Int4, user-name: Text }")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -1656,7 +1658,7 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-            create series test.metrics{value: Int2}
+            create series test::metrics{value: Int2}
         "#,
 		)
 		.unwrap()
@@ -1699,7 +1701,7 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-        create table test.users{id: int2, name: text, is_premium: bool}
+        create table test::users{id: int2, name: text, is_premium: bool}
     "#,
 		)
 		.unwrap()
@@ -1768,7 +1770,7 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-        create table test.users { id: int4 with { auto_increment }, name: utf8 }
+        create table test::users { id: int4 with { auto_increment }, name: utf8 }
     "#,
 		)
 		.unwrap()
@@ -1826,7 +1828,7 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-        create deferred view test.views{field: int2}
+        create deferred view test::views{field: int2}
     "#,
 		)
 		.unwrap()
@@ -1869,7 +1871,7 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-        create transactional view test.myview{id: int4, name: utf8}
+        create transactional view test::myview{id: int4, name: utf8}
     "#,
 		)
 		.unwrap()
@@ -1926,7 +1928,7 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-        create ringbuffer test.events { id: int4, data: utf8 } with { capacity: 10 }
+        create ringbuffer test::events { id: int4, data: utf8 } with { capacity: 10 }
     "#,
 		)
 		.unwrap()
@@ -1983,8 +1985,8 @@ pub mod tests {
 		let tokens = tokenize(
 			&bump,
 			r#"
-        create transactional view test.myview{id: int4, name: utf8} as {
-            from test.users
+        create transactional view test::myview{id: int4, name: utf8} as {
+            from test::users
             where age > 18
         }
     "#,
@@ -2095,7 +2097,7 @@ pub mod tests {
 	#[test]
 	fn test_create_flow_qualified_name() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE FLOW analytics.sales_flow AS FROM sales.orders")
+		let tokens = tokenize(&bump, "CREATE FLOW analytics::sales_flow AS FROM sales::orders")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -2151,7 +2153,7 @@ pub mod tests {
 	#[test]
 	fn test_create_or_replace_flow_if_not_exists() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE OR REPLACE FLOW IF NOT EXISTS test.my_flow AS FROM orders")
+		let tokens = tokenize(&bump, "CREATE OR REPLACE FLOW IF NOT EXISTS test::my_flow AS FROM orders")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -2207,7 +2209,7 @@ pub mod tests {
 	#[test]
 	fn test_create_dictionary_qualified() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE DICTIONARY analytics.token_mints FOR Utf8 AS Uint4")
+		let tokens = tokenize(&bump, "CREATE DICTIONARY analytics::token_mints FOR Utf8 AS Uint4")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -2373,7 +2375,7 @@ pub mod tests {
 	#[test]
 	fn test_create_enum_qualified_name() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE ENUM analytics.Status { Active, Inactive }")
+		let tokens = tokenize(&bump, "CREATE ENUM analytics::Status { Active, Inactive }")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -2504,7 +2506,7 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_with_simple_query() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { id: Int4, name: Utf8 } AS { from test.products }")
+		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { id: Int4, name: Utf8 } AS { from test::products }")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -2544,7 +2546,7 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_with_piped_query() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump,"CREATE SUBSCRIPTION { id: Int4, price: Float8 } AS { from test.products | filter {price > 50} | filter {stock > 0} }",
+		let tokens = tokenize(&bump,"CREATE SUBSCRIPTION { id: Int4, price: Float8 } AS { from test::products | filter {price > 50} | filter {stock > 0} }",
 		).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
@@ -2601,9 +2603,9 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_schemaless() {
 		let bump = Bump::new();
-		// Test schema-less subscription: CREATE SUBSCRIPTION AS { FROM demo.events }
+		// Test schema-less subscription: CREATE SUBSCRIPTION AS { FROM demo::events }
 		let tokens =
-			tokenize(&bump, "CREATE SUBSCRIPTION AS { FROM demo.events }").unwrap().into_iter().collect();
+			tokenize(&bump, "CREATE SUBSCRIPTION AS { FROM demo::events }").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -2638,7 +2640,7 @@ pub mod tests {
 	fn test_create_subscription_schemaless_with_filter() {
 		let bump = Bump::new();
 		let tokens =
-			tokenize(&bump, "CREATE SUBSCRIPTION AS { FROM demo.events | FILTER {id > 1 and id < 3} }")
+			tokenize(&bump, "CREATE SUBSCRIPTION AS { FROM demo::events | FILTER {id > 1 and id < 3} }")
 				.unwrap()
 				.into_iter()
 				.collect();
@@ -2687,7 +2689,7 @@ pub mod tests {
 	fn test_create_subscription_backward_compat_with_columns() {
 		let bump = Bump::new();
 		// Test backward compatibility: subscriptions with columns and AS still work
-		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { id: Int4 } AS { FROM demo.events }")
+		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { id: Int4 } AS { FROM demo::events }")
 			.unwrap()
 			.into_iter()
 			.collect();

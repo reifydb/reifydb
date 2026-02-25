@@ -3,9 +3,9 @@
 
 # Test command execution (schema creation and data insertion)
 admin 'create namespace test'
-admin 'create table test.simple{id: int4, name: text}'
-command 'INSERT test.simple [{ id: 1, name: "Alice" }]'
-query 'from test.simple'
+admin 'create table test::simple{id: int4, name: text}'
+command 'INSERT test::simple [{ id: 1, name: "Alice" }]'
+query 'from test::simple'
 ---
 > +-------------+-----------+
 > |  namespace  |  created  |

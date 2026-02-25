@@ -110,7 +110,7 @@ fn main() {
 	db.admin_as_root("create namespace test", Params::None).unwrap();
 	db.admin_as_root(
 		r#"
-		create table test.scores {
+		create table test::scores {
 			id: int4,
 			student: utf8,
 			subject: utf8,
@@ -125,7 +125,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT test.scores [
+		INSERT test::scores [
 			{ id: 1, student: "Alice", subject: "Math", score: 95, grade: "A", passed: true },
 			{ id: 2, student: "Bob", subject: "Math", score: 78, grade: "C", passed: true },
 			{ id: 3, student: "Carol", subject: "Math", score: 88, grade: "B", passed: true },
@@ -142,11 +142,11 @@ fn main() {
 
 	// Example 4: Equality comparisons in filters
 	info!("\nExample 4: Filter with equality (exact match)");
-	log_query(r#"from test.scores filter grade == "A""#);
+	log_query(r#"from test::scores filter grade == "A""#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from test.scores
+			from test::scores
 			filter grade == "A"
 			"#,
 			Params::None,
@@ -158,11 +158,11 @@ fn main() {
 
 	// Example 5: Inequality comparisons
 	info!("\nExample 5: Filter with inequality (not equal)");
-	log_query(r#"from test.scores filter grade != "F""#);
+	log_query(r#"from test::scores filter grade != "F""#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from test.scores
+			from test::scores
 			filter grade != "F"
 			"#,
 			Params::None,
@@ -174,11 +174,11 @@ fn main() {
 
 	// Example 6: Greater than comparison
 	info!("\nExample 6: Filter scores greater than 85");
-	log_query(r#"from test.scores filter score > 85"#);
+	log_query(r#"from test::scores filter score > 85"#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from test.scores
+			from test::scores
 			filter score > 85
 			"#,
 			Params::None,
@@ -190,11 +190,11 @@ fn main() {
 
 	// Example 7: Less than or equal comparison
 	info!("\nExample 7: Filter scores less than or equal to 70");
-	log_query(r#"from test.scores filter score <= 70"#);
+	log_query(r#"from test::scores filter score <= 70"#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from test.scores
+			from test::scores
 			filter score <= 70
 			"#,
 			Params::None,
@@ -206,11 +206,11 @@ fn main() {
 
 	// Example 8: BETWEEN operator
 	info!("\nExample 8: Filter scores between 70 and 90 (inclusive)");
-	log_query(r#"from test.scores filter score between 70 and 90"#);
+	log_query(r#"from test::scores filter score between 70 and 90"#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from test.scores
+			from test::scores
 			filter score between 70 and 90
 			"#,
 			Params::None,
@@ -223,7 +223,7 @@ fn main() {
 	// Example 9: Comparisons in computed fields
 	info!("\nExample 9: Create computed boolean fields");
 	log_query(
-		r#"from test.scores
+		r#"from test::scores
 map {
   student,
   score,
@@ -235,7 +235,7 @@ map {
 	for frame in db
 		.query_as_root(
 			r#"
-			from test.scores
+			from test::scores
 			map {
 				student,
 				score,
@@ -254,13 +254,13 @@ map {
 	// Example 10: Chained comparisons
 	info!("\nExample 10: Multiple comparisons in filter");
 	log_query(
-		r#"from test.scores
+		r#"from test::scores
 filter score >= 80 and score < 95"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from test.scores
+			from test::scores
 			filter score >= 80 and score < 95
 			"#,
 			Params::None,

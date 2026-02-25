@@ -25,7 +25,7 @@ fn test_subscribe_returns_subscription_id() {
 		let table = unique_table_name("sub_basic");
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 		assert_eq!(sub_id, "1");
 
 		client.unsubscribe(&sub_id).await.unwrap();
@@ -49,7 +49,7 @@ fn test_unsubscribe_success() {
 		let table = unique_table_name("sub_unsub");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
 		// Unsubscribe should succeed without error
 		let result = client.unsubscribe(&sub_id).await;
@@ -139,7 +139,7 @@ fn test_try_recv_empty() {
 		let table = unique_table_name("sub_try_recv");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
 		// try_recv should return Empty when no changes
 		let result = client.try_recv();

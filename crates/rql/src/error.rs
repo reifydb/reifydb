@@ -621,7 +621,7 @@ impl IntoDiagnostic for RqlError {
 				notes: vec![
 					"The target table specifies which table to delete rows from".to_string(),
 					"Example: DELETE users FILTER id == 1".to_string(),
-					"Example with namespace: DELETE test.users FILTER id == 1".to_string(),
+					"Example with namespace: DELETE test::users FILTER id == 1".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
@@ -661,7 +661,7 @@ impl IntoDiagnostic for RqlError {
 				notes: vec![
 					"The target table specifies where to insert the data".to_string(),
 					"Example: INSERT users [{ id: 1, name: \"Alice\" }]".to_string(),
-					"Example with namespace: INSERT test.users [{ id: 1, name: \"Alice\" }]".to_string(),
+					"Example with namespace: INSERT test::users [{ id: 1, name: \"Alice\" }]".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
@@ -885,14 +885,14 @@ impl fmt::Display for IdentifierError {
 				namespace,
 				name,
 			} => {
-				write!(f, "Sequence '{}.{}' not found", namespace, name)
+				write!(f, "Sequence '{}::{}' not found", namespace, name)
 			}
 			IdentifierError::IndexNotFound {
 				namespace,
 				table,
 				name,
 			} => {
-				write!(f, "Index '{}' on table '{}.{}' not found", name, namespace, table)
+				write!(f, "Index '{}' on table '{}::{}' not found", name, namespace, table)
 			}
 		}
 	}
@@ -942,7 +942,7 @@ impl fmt::Display for PrimitiveNotFoundError {
 		if self.namespace == "public" || self.namespace.is_empty() {
 			write!(f, "Table or view '{}' does not exist", self.name)
 		} else {
-			write!(f, "Table or view '{}.{}' does not exist", self.namespace, self.name)
+			write!(f, "Table or view '{}::{}' does not exist", self.namespace, self.name)
 		}
 	}
 }
@@ -1038,7 +1038,7 @@ pub mod tests {
 			name: "users".to_string(),
 			fragment: reifydb_type::fragment::Fragment::None,
 		};
-		assert_eq!(err.to_string(), "Table or view 'myschema.users' does not exist");
+		assert_eq!(err.to_string(), "Table or view 'myschema::users' does not exist");
 	}
 
 	#[test]

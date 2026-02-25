@@ -142,7 +142,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE TABLE test_namespace.test_table { id: Int4 }",
+					rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -158,7 +158,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE TABLE test_namespace.test_table { id: Int4 }",
+					rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -198,7 +198,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE TABLE test_namespace.test_table { id: Int4 }",
+					rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -214,7 +214,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE TABLE another_schema.test_table { id: Int4 }",
+					rql: "CREATE TABLE another_schema::test_table { id: Int4 }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -245,7 +245,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE ENUM app.Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
+				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -256,7 +256,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE TABLE app.drawings { id: Int4, shape: app.Shape }",
+					rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -285,7 +285,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE ENUM app.Status { Active, Inactive, Pending }",
+				rql: "CREATE ENUM app::Status { Active, Inactive, Pending }",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -296,7 +296,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE TABLE app.tasks { id: Int4, status: app.Status }",
+					rql: "CREATE TABLE app::tasks { id: Int4, status: app::Status }",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -325,7 +325,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE ENUM app.Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
+				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -335,7 +335,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE TABLE app.drawings { id: Int4, shape: app.Shape }",
+				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -346,7 +346,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "INSERT app.drawings [{ id: 1, shape: app.Shape::Circle { radius: 5.0 } }]",
+					rql: "INSERT app::drawings [{ id: 1, shape: app::Shape::Circle { radius: 5.0 } }]",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -375,7 +375,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE ENUM app.Status { Active, Inactive, Pending }",
+				rql: "CREATE ENUM app::Status { Active, Inactive, Pending }",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -385,7 +385,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE TABLE app.tasks { id: Int4, status: app.Status }",
+				rql: "CREATE TABLE app::tasks { id: Int4, status: app::Status }",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -396,7 +396,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "INSERT app.tasks [{ id: 1, status: app.Status::Active }]",
+					rql: "INSERT app::tasks [{ id: 1, status: app::Status::Active }]",
 					params: Params::default(),
 					identity: &identity,
 				},
@@ -425,7 +425,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE ENUM app.Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
+				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -435,7 +435,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE TABLE app.drawings { id: Int4, shape: app.Shape }",
+				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -445,7 +445,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app.drawings [{ id: 1, shape: app.Shape::Circle { radius: 5.0 } }]",
+				rql: "INSERT app::drawings [{ id: 1, shape: app::Shape::Circle { radius: 5.0 } }]",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -455,7 +455,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app.drawings [{ id: 2, shape: app.Shape::Rectangle { width: 3.0, height: 4.0 } }]",
+				rql: "INSERT app::drawings [{ id: 2, shape: app::Shape::Rectangle { width: 3.0, height: 4.0 } }]",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -465,7 +465,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "INSERT app.drawings [{ id: 3, shape: app.Shape::Circle { radius: 10.0 } }]",
+				rql: "INSERT app::drawings [{ id: 3, shape: app::Shape::Circle { radius: 10.0 } }]",
 				params: Params::default(),
 				identity: &identity,
 			},
@@ -476,7 +476,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "FROM app.drawings | FILTER shape IS app.Shape::Circle",
+					rql: "FROM app::drawings | FILTER shape IS app::Shape::Circle",
 					params: Params::default(),
 					identity: &identity,
 				},

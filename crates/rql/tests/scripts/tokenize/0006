@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-tokenize 'create index idx_active on test.users {email} filter active == true'
+tokenize 'create index idx_active on test::users {email} filter active == true'
 ---
 > Line 1:
 >   [  0] Keyword(Create)
@@ -9,7 +9,7 @@ tokenize 'create index idx_active on test.users {email} filter active == true'
 >   [  2] Identifier("idx_active")
 >   [  3] Keyword(On)
 >   [  4] Identifier("test")
->   [  5] Operator(Dot)
+>   [  5] Operator(DoubleColon)
 >   [  6] Identifier("users")
 >   [  7] Operator(OpenCurly)
 >   [  8] Identifier("email")

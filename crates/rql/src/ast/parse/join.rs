@@ -180,7 +180,7 @@ pub mod tests {
 	fn test_left_join_with_using() {
 		let bump = Bump::new();
 		let tokens =
-			tokenize(&bump, "left join { from namespace.orders } as orders using (id, orders.user_id)")
+			tokenize(&bump, "left join { from namespace::orders } as orders using (id, orders.user_id)")
 				.unwrap()
 				.into_iter()
 				.collect();
@@ -234,7 +234,7 @@ pub mod tests {
 	#[test]
 	fn test_left_join_with_alias() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "left join { from test.customers } as c using (id, c.customer_id)")
+		let tokens = tokenize(&bump, "left join { from test::customers } as c using (id, c.customer_id)")
 			.unwrap()
 			.into_iter()
 			.collect();
@@ -289,7 +289,7 @@ pub mod tests {
 		// Test the full example query with aliases
 		let tokens = tokenize(
 			&bump,
-			"from test.orders left join { from test.customers } as c using (customer_id, c.id)",
+			"from test::orders left join { from test::customers } as c using (customer_id, c.id)",
 		)
 		.unwrap()
 		.into_iter()
@@ -329,7 +329,7 @@ pub mod tests {
 		// Check alias
 		assert_eq!(alias.text(), "c");
 
-		// Check that the subquery contains "from test.customers"
+		// Check that the subquery contains "from test::customers"
 		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,

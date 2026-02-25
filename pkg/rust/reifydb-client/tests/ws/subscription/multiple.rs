@@ -29,14 +29,14 @@ fn test_multiple_subscriptions_different_tables() {
 		create_test_table(&client, &table1, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 		create_test_table(&client, &table2, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
-		let sub_id1 = client.subscribe(&format!("from test.{}", table1)).await.unwrap();
-		let sub_id2 = client.subscribe(&format!("from test.{}", table2)).await.unwrap();
+		let sub_id1 = client.subscribe(&format!("from test::{}", table1)).await.unwrap();
+		let sub_id2 = client.subscribe(&format!("from test::{}", table2)).await.unwrap();
 
 		assert_ne!(sub_id1, sub_id2, "Subscription IDs should be different");
 
 		// Insert into both tables
-		client.command(&format!("INSERT test.{} [{{ id: 1, name: 'alice' }}]", table1), None).await.unwrap();
-		client.command(&format!("INSERT test.{} [{{ id: 2, value: 200 }}]", table2), None).await.unwrap();
+		client.command(&format!("INSERT test::{} [{{ id: 1, name: 'alice' }}]", table1), None).await.unwrap();
+		client.command(&format!("INSERT test::{} [{{ id: 2, value: 200 }}]", table2), None).await.unwrap();
 
 		// Receive both changes
 		let changes = recv_multiple_with_timeout(&mut client, 2, 5000).await;
@@ -70,13 +70,13 @@ fn test_multiple_subscriptions_same_table() {
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
 		// Subscribe twice to the same table
-		let sub_id1 = client.subscribe(&format!("from test.{}", table)).await.unwrap();
-		let sub_id2 = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id1 = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub_id2 = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
 		assert_ne!(sub_id1, sub_id2, "Different subscriptions should have different IDs");
 
 		// Insert data
-		client.command(&format!("INSERT test.{} [{{ id: 1, name: 'test' }}]", table), None).await.unwrap();
+		client.command(&format!("INSERT test::{} [{{ id: 1, name: 'test' }}]", table), None).await.unwrap();
 
 		// Should receive change for both subscriptions
 		let changes = recv_multiple_with_timeout(&mut client, 2, 5000).await;
@@ -106,11 +106,11 @@ fn test_changes_routed_to_correct_subscription() {
 		create_test_table(&client, &table1, &[("id", "int4")]).await.unwrap();
 		create_test_table(&client, &table2, &[("id", "int4")]).await.unwrap();
 
-		let sub_id1 = client.subscribe(&format!("from test.{}", table1)).await.unwrap();
-		let sub_id2 = client.subscribe(&format!("from test.{}", table2)).await.unwrap();
+		let sub_id1 = client.subscribe(&format!("from test::{}", table1)).await.unwrap();
+		let sub_id2 = client.subscribe(&format!("from test::{}", table2)).await.unwrap();
 
 		// Insert only into table1
-		client.command(&format!("INSERT test.{} [{{ id: 100 }}]", table1), None).await.unwrap();
+		client.command(&format!("INSERT test::{} [{{ id: 100 }}]", table1), None).await.unwrap();
 
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some());

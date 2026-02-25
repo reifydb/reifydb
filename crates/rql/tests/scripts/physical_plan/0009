@@ -9,7 +9,7 @@ physical 'from users aggregate { count(id) }'
 >     │   └── count(id)
 >     ├── By
 >     └── Source
->         └── TableScan default.users
+>         └── TableScan default::users
 >
 
 # Test physical plan for global aggregate with empty BY clause
@@ -21,7 +21,7 @@ physical 'from users aggregate { total: count(id), sum: sum(age) } by {}'
 >     │   └── sum(age) as sum
 >     ├── By
 >     └── Source
->         └── TableScan default.users
+>         └── TableScan default::users
 >
 
 # Test physical plan for multiple global aggregations with aliases
@@ -36,5 +36,5 @@ physical 'from users aggregate { cnt: count(id), total: sum(age), average: avg(a
 >     │   └── max(age) as maximum
 >     ├── By
 >     └── Source
->         └── TableScan default.users
+>         └── TableScan default::users
 >

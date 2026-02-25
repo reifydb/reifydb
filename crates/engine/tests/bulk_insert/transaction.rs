@@ -26,7 +26,7 @@ fn test_commit_on_success() {
 	assert_eq!(result.tables[0].inserted, 2);
 
 	// Data should be persisted after commit
-	let frames = query_table(&engine, "test.commits");
+	let frames = query_table(&engine, "test::commits");
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify values survive query
@@ -54,7 +54,7 @@ fn test_rollback_on_error_namespace_not_found() {
 
 	assert!(result.is_err());
 
-	let frames = query_table(&engine, "test.data");
+	let frames = query_table(&engine, "test::data");
 	assert_eq!(row_count(&frames), 0, "First insert should be rolled back");
 }
 
@@ -75,7 +75,7 @@ fn test_rollback_on_error_table_not_found() {
 	assert!(result.is_err());
 
 	// The real table should NOT have data due to rollback
-	let frames = query_table(&engine, "test.real");
+	let frames = query_table(&engine, "test::real");
 	assert_eq!(row_count(&frames), 0, "First insert should be rolled back");
 }
 
@@ -102,9 +102,9 @@ fn test_multiple_tables_all_succeed() {
 	assert_eq!(result.tables[2].inserted, 3);
 
 	// Verify all tables have data
-	let frames1 = query_table(&engine, "test.t1");
-	let frames2 = query_table(&engine, "test.t2");
-	let frames3 = query_table(&engine, "test.t3");
+	let frames1 = query_table(&engine, "test::t1");
+	let frames2 = query_table(&engine, "test::t2");
+	let frames3 = query_table(&engine, "test::t3");
 	assert_eq!(row_count(&frames1), 1);
 	assert_eq!(row_count(&frames2), 2);
 	assert_eq!(row_count(&frames3), 3);
@@ -129,8 +129,8 @@ fn test_mixed_tables_and_ringbuffers_atomic() {
 	assert_eq!(result.ringbuffers[0].inserted, 1);
 
 	// Verify both have data
-	let table_frames = query_table(&engine, "test.atomic_table");
-	let rb_frames = crate::query_ringbuffer(&engine, "test.atomic_rb");
+	let table_frames = query_table(&engine, "test::atomic_table");
+	let rb_frames = crate::query_ringbuffer(&engine, "test::atomic_rb");
 	assert_eq!(row_count(&table_frames), 2);
 	assert_eq!(row_count(&rb_frames), 1);
 }
@@ -154,8 +154,8 @@ fn test_rollback_mixed_batch_on_error() {
 	assert!(result.is_err());
 
 	// Both table and ringbuffer should be empty due to rollback
-	let table_frames = query_table(&engine, "test.rollback_tbl");
-	let rb_frames = crate::query_ringbuffer(&engine, "test.rollback_rb");
+	let table_frames = query_table(&engine, "test::rollback_tbl");
+	let rb_frames = crate::query_ringbuffer(&engine, "test::rollback_rb");
 	assert_eq!(row_count(&table_frames), 0, "Table should be rolled back");
 	assert_eq!(row_count(&rb_frames), 0, "Ringbuffer should be rolled back");
 }

@@ -124,7 +124,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 				let namespace =
 					pk.table.namespace
 						.first()
-						.map(|s| format!("{}.", s.text()))
+						.map(|s| format!("{}::", s.text()))
 						.unwrap_or_default();
 				format!("CREATE PRIMARY KEY ON {}{}", namespace, pk.table.name.text())
 			}

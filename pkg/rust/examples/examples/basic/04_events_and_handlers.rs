@@ -32,11 +32,11 @@ fn main() {
 
 	info!("Creating order_event with two variants...");
 	log_query(
-		"CREATE EVENT shop.order_event { OrderPlaced { id: Int4, amount: Float8 }, OrderShipped { id: Int4, tracking_code: Utf8 } }",
+		"CREATE EVENT shop::order_event { OrderPlaced { id: Int4, amount: Float8 }, OrderShipped { id: Int4, tracking_code: Utf8 } }",
 	);
 	db.admin_as_root(
 		r#"
-		CREATE EVENT shop.order_event {
+		CREATE EVENT shop::order_event {
 			OrderPlaced { id: Int4, amount: Float8 },
 			OrderShipped { id: Int4, tracking_code: Utf8 }
 		};
@@ -46,10 +46,10 @@ fn main() {
 	.unwrap();
 
 	info!("Creating orders table...");
-	log_query("CREATE TABLE shop.orders { id: Int4, amount: Float8 }");
+	log_query("CREATE TABLE shop::orders { id: Int4, amount: Float8 }");
 	db.admin_as_root(
 		r#"
-		CREATE TABLE shop.orders {
+		CREATE TABLE shop::orders {
 			id: Int4,
 			amount: Float8
 		};
@@ -59,10 +59,10 @@ fn main() {
 	.unwrap();
 
 	info!("Creating shipments table...");
-	log_query("CREATE TABLE shop.shipments { order_id: Int4, tracking_code: Utf8 }");
+	log_query("CREATE TABLE shop::shipments { order_id: Int4, tracking_code: Utf8 }");
 	db.admin_as_root(
 		r#"
-		CREATE TABLE shop.shipments {
+		CREATE TABLE shop::shipments {
 			order_id: Int4,
 			tracking_code: Utf8
 		};
@@ -71,28 +71,28 @@ fn main() {
 	)
 	.unwrap();
 
-	info!("Creating handler: on_order_placed inserts into shop.orders...");
+	info!("Creating handler: on_order_placed inserts into shop::orders...");
 	log_query(
-		"CREATE HANDLER shop.on_order_placed ON shop.order_event::OrderPlaced { INSERT shop.orders [{ id: event_id, amount: event_amount }] }",
+		"CREATE HANDLER shop::on_order_placed ON shop::order_event::OrderPlaced { INSERT shop::orders [{ id: event_id, amount: event_amount }] }",
 	);
 	db.admin_as_root(
 		r#"
-		CREATE HANDLER shop.on_order_placed ON shop.order_event::OrderPlaced {
-			INSERT shop.orders [{ id: event_id, amount: event_amount }]
+		CREATE HANDLER shop::on_order_placed ON shop::order_event::OrderPlaced {
+			INSERT shop::orders [{ id: event_id, amount: event_amount }]
 		};
 		"#,
 		Params::None,
 	)
 	.unwrap();
 
-	info!("Creating handler: on_order_shipped inserts into shop.shipments...");
+	info!("Creating handler: on_order_shipped inserts into shop::shipments...");
 	log_query(
-		"CREATE HANDLER shop.on_order_shipped ON shop.order_event::OrderShipped { INSERT shop.shipments [{ order_id: event_id, tracking_code: event_tracking_code }] }",
+		"CREATE HANDLER shop::on_order_shipped ON shop::order_event::OrderShipped { INSERT shop::shipments [{ order_id: event_id, tracking_code: event_tracking_code }] }",
 	);
 	db.admin_as_root(
 		r#"
-		CREATE HANDLER shop.on_order_shipped ON shop.order_event::OrderShipped {
-			INSERT shop.shipments [{ order_id: event_id, tracking_code: event_tracking_code }]
+		CREATE HANDLER shop::on_order_shipped ON shop::order_event::OrderShipped {
+			INSERT shop::shipments [{ order_id: event_id, tracking_code: event_tracking_code }]
 		};
 		"#,
 		Params::None,
@@ -100,11 +100,11 @@ fn main() {
 	.unwrap();
 
 	info!("Dispatching OrderPlaced for order 1 (amount: 49.99)...");
-	log_query("DISPATCH shop.order_event::OrderPlaced { id: 1, amount: 49.99 }");
+	log_query("DISPATCH shop::order_event::OrderPlaced { id: 1, amount: 49.99 }");
 	let results = db
 		.command_as_root(
 			r#"
-			DISPATCH shop.order_event::OrderPlaced { id: 1, amount: 49.99 }
+			DISPATCH shop::order_event::OrderPlaced { id: 1, amount: 49.99 }
 			"#,
 			Params::None,
 		)
@@ -115,11 +115,11 @@ fn main() {
 	}
 
 	info!("Dispatching OrderPlaced for order 2 (amount: 129.50)...");
-	log_query("DISPATCH shop.order_event::OrderPlaced { id: 2, amount: 129.50 }");
+	log_query("DISPATCH shop::order_event::OrderPlaced { id: 2, amount: 129.50 }");
 	let results = db
 		.command_as_root(
 			r#"
-			DISPATCH shop.order_event::OrderPlaced { id: 2, amount: 129.50 }
+			DISPATCH shop::order_event::OrderPlaced { id: 2, amount: 129.50 }
 			"#,
 			Params::None,
 		)
@@ -130,11 +130,11 @@ fn main() {
 	}
 
 	info!("Dispatching OrderShipped for order 1 (tracking: TRK-001)...");
-	log_query("DISPATCH shop.order_event::OrderShipped { id: 1, tracking_code: \"TRK-001\" }");
+	log_query("DISPATCH shop::order_event::OrderShipped { id: 1, tracking_code: \"TRK-001\" }");
 	let results = db
 		.command_as_root(
 			r#"
-			DISPATCH shop.order_event::OrderShipped { id: 1, tracking_code: "TRK-001" }
+			DISPATCH shop::order_event::OrderShipped { id: 1, tracking_code: "TRK-001" }
 			"#,
 			Params::None,
 		)
@@ -145,11 +145,11 @@ fn main() {
 	}
 
 	info!("Querying all orders (populated by on_order_placed handler)...");
-	log_query("FROM shop.orders");
+	log_query("FROM shop::orders");
 	let results = db
 		.query_as_root(
 			r#"
-			FROM shop.orders
+			FROM shop::orders
 			"#,
 			Params::None,
 		)
@@ -160,11 +160,11 @@ fn main() {
 	}
 
 	info!("Querying all shipments (populated by on_order_shipped handler)...");
-	log_query("FROM shop.shipments");
+	log_query("FROM shop::shipments");
 	let results = db
 		.query_as_root(
 			r#"
-			FROM shop.shipments
+			FROM shop::shipments
 			"#,
 			Params::None,
 		)

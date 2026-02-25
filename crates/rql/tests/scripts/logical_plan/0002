@@ -3,7 +3,7 @@
 
 logical 'from users map {id, name}'
 ---
-> └── TableScan default.users
+> └── TableScan default::users
 > └── Map
 >     ├── id
 >     └── name

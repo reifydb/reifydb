@@ -33,7 +33,7 @@ describe('useSchema Hook', () => {
         // Create tables with all supported column types
         // Table 1: Integer types
         await setupClient.admin(
-            `CREATE TABLE ${TEST_NAMESPACE}.types_integers {
+            `CREATE TABLE ${TEST_NAMESPACE}::types_integers {
                 col_int1: INT1,
                 col_int2: INT2,
                 col_int4: INT4,
@@ -53,7 +53,7 @@ describe('useSchema Hook', () => {
 
         // Table 2: Float types
         await setupClient.admin(
-            `CREATE TABLE ${TEST_NAMESPACE}.types_floats {
+            `CREATE TABLE ${TEST_NAMESPACE}::types_floats {
                 col_float4: FLOAT4,
                 col_float8: FLOAT8,
                 col_decimal: DECIMAL
@@ -64,7 +64,7 @@ describe('useSchema Hook', () => {
 
         // Table 3: Text and binary types
         await setupClient.admin(
-            `CREATE TABLE ${TEST_NAMESPACE}.types_text {
+            `CREATE TABLE ${TEST_NAMESPACE}::types_text {
                 col_utf8: UTF8,
                 col_blob: BLOB
             }`,
@@ -74,7 +74,7 @@ describe('useSchema Hook', () => {
 
         // Table 4: Temporal types
         await setupClient.admin(
-            `CREATE TABLE ${TEST_NAMESPACE}.types_temporal {
+            `CREATE TABLE ${TEST_NAMESPACE}::types_temporal {
                 col_date: DATE,
                 col_datetime: DATETIME,
                 col_time: TIME,
@@ -86,7 +86,7 @@ describe('useSchema Hook', () => {
 
         // Table 5: Identifier types
         await setupClient.admin(
-            `CREATE TABLE ${TEST_NAMESPACE}.types_identifiers {
+            `CREATE TABLE ${TEST_NAMESPACE}::types_identifiers {
                 col_uuid4: UUID4,
                 col_uuid7: UUID7
             }`,
@@ -96,7 +96,7 @@ describe('useSchema Hook', () => {
 
         // Table 6: Misc types
         await setupClient.admin(
-            `CREATE TABLE ${TEST_NAMESPACE}.types_misc {
+            `CREATE TABLE ${TEST_NAMESPACE}::types_misc {
                 col_boolean: BOOLEAN
             }`,
             {},
@@ -141,17 +141,17 @@ describe('useSchema Hook', () => {
         expect(schema.length).toBeGreaterThan(0);
 
         // Find our test tables
-        const testTables = schema.filter((t) => t.name.startsWith(`${TEST_NAMESPACE}.`));
+        const testTables = schema.filter((t) => t.name.startsWith(`${TEST_NAMESPACE}::`));
         expect(testTables.length).toBe(6);
 
         // Verify table names
         const tableNames = testTables.map((t) => t.name).sort();
-        expect(tableNames).toContain(`${TEST_NAMESPACE}.types_integers`);
-        expect(tableNames).toContain(`${TEST_NAMESPACE}.types_floats`);
-        expect(tableNames).toContain(`${TEST_NAMESPACE}.types_text`);
-        expect(tableNames).toContain(`${TEST_NAMESPACE}.types_temporal`);
-        expect(tableNames).toContain(`${TEST_NAMESPACE}.types_identifiers`);
-        expect(tableNames).toContain(`${TEST_NAMESPACE}.types_misc`);
+        expect(tableNames).toContain(`${TEST_NAMESPACE}::types_integers`);
+        expect(tableNames).toContain(`${TEST_NAMESPACE}::types_floats`);
+        expect(tableNames).toContain(`${TEST_NAMESPACE}::types_text`);
+        expect(tableNames).toContain(`${TEST_NAMESPACE}::types_temporal`);
+        expect(tableNames).toContain(`${TEST_NAMESPACE}::types_identifiers`);
+        expect(tableNames).toContain(`${TEST_NAMESPACE}::types_misc`);
     });
 
     it('should correctly map integer column types', async () => {
@@ -165,7 +165,7 @@ describe('useSchema Hook', () => {
         );
 
         const [, schema] = result.current;
-        const integersTable = schema.find((t) => t.name === `${TEST_NAMESPACE}.types_integers`);
+        const integersTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_integers`);
 
         expect(integersTable).toBeDefined();
         expect(integersTable!.columns).toHaveLength(12);
@@ -197,7 +197,7 @@ describe('useSchema Hook', () => {
         );
 
         const [, schema] = result.current;
-        const floatsTable = schema.find((t) => t.name === `${TEST_NAMESPACE}.types_floats`);
+        const floatsTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_floats`);
 
         expect(floatsTable).toBeDefined();
         expect(floatsTable!.columns).toHaveLength(3);
@@ -220,7 +220,7 @@ describe('useSchema Hook', () => {
         );
 
         const [, schema] = result.current;
-        const textTable = schema.find((t) => t.name === `${TEST_NAMESPACE}.types_text`);
+        const textTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_text`);
 
         expect(textTable).toBeDefined();
         expect(textTable!.columns).toHaveLength(2);
@@ -242,7 +242,7 @@ describe('useSchema Hook', () => {
         );
 
         const [, schema] = result.current;
-        const temporalTable = schema.find((t) => t.name === `${TEST_NAMESPACE}.types_temporal`);
+        const temporalTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_temporal`);
 
         expect(temporalTable).toBeDefined();
         expect(temporalTable!.columns).toHaveLength(4);
@@ -266,7 +266,7 @@ describe('useSchema Hook', () => {
         );
 
         const [, schema] = result.current;
-        const identifiersTable = schema.find((t) => t.name === `${TEST_NAMESPACE}.types_identifiers`);
+        const identifiersTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_identifiers`);
 
         expect(identifiersTable).toBeDefined();
         expect(identifiersTable!.columns).toHaveLength(2);
@@ -289,7 +289,7 @@ describe('useSchema Hook', () => {
         );
 
         const [, schema] = result.current;
-        const miscTable = schema.find((t) => t.name === `${TEST_NAMESPACE}.types_misc`);
+        const miscTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_misc`);
 
         expect(miscTable).toBeDefined();
         expect(miscTable!.columns).toHaveLength(1);
@@ -308,7 +308,7 @@ describe('useSchema Hook', () => {
         );
 
         const [, schema] = result.current;
-        const integersTable = schema.find((t) => t.name === `${TEST_NAMESPACE}.types_integers`);
+        const integersTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_integers`);
 
         expect(integersTable).toBeDefined();
 

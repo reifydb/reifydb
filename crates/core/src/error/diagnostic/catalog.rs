@@ -37,7 +37,7 @@ pub fn table_already_exists(fragment: Fragment, namespace: &str, table: &str) ->
 	Diagnostic {
 		code: "CA_003".to_string(),
 		statement: None,
-		message: format!("table `{}.{}` already exists", namespace, table),
+		message: format!("table `{}::{}` already exists", namespace, table),
 		fragment,
 		label: Some("duplicate table definition".to_string()),
 		help: Some("choose a different name, drop the existing table or create table in a different namespace"
@@ -53,7 +53,7 @@ pub fn flow_already_exists(fragment: Fragment, namespace: &str, flow: &str) -> D
 	Diagnostic {
 		code: "CA_030".to_string(),
 		statement: None,
-		message: format!("flow `{}.{}` already exists", namespace, flow),
+		message: format!("flow `{}::{}` already exists", namespace, flow),
 		fragment,
 		label: Some("duplicate flow definition".to_string()),
 		help: Some("choose a different name, drop the existing flow or create flow in a different namespace"
@@ -69,7 +69,7 @@ pub fn flow_not_found(fragment: Fragment, namespace: &str, flow: &str) -> Diagno
 	Diagnostic {
 		code: "CA_031".to_string(),
 		statement: None,
-		message: format!("flow `{}.{}` not found", namespace, flow),
+		message: format!("flow `{}::{}` not found", namespace, flow),
 		fragment,
 		label: Some("unknown flow reference".to_string()),
 		help: Some("ensure the flow exists or create it first using `CREATE FLOW`".to_string()),
@@ -84,7 +84,7 @@ pub fn view_already_exists(fragment: Fragment, namespace: &str, view: &str) -> D
 	Diagnostic {
 		code: "CA_003".to_string(),
 		statement: None,
-		message: format!("view `{}.{}` already exists", namespace, view),
+		message: format!("view `{}::{}` already exists", namespace, view),
 		fragment,
 		label: Some("duplicate view definition".to_string()),
 		help: Some("choose a different name, drop the existing view or create view in a different namespace"
@@ -100,7 +100,7 @@ pub fn table_not_found(fragment: Fragment, namespace: &str, table: &str) -> Diag
 	Diagnostic {
 		code: "CA_004".to_string(),
 		statement: None,
-		message: format!("table `{}.{}` not found", namespace, table),
+		message: format!("table `{}::{}` not found", namespace, table),
 		fragment,
 		label: Some("unknown table reference".to_string()),
 		help: Some("ensure the table exists or create it first using `CREATE TABLE`".to_string()),
@@ -115,7 +115,7 @@ pub fn ringbuffer_already_exists(fragment: Fragment, namespace: &str, ringbuffer
 	Diagnostic {
 		code: "CA_005".to_string(),
 		statement: None,
-		message: format!("ring buffer `{}.{}` already exists", namespace, ringbuffer),
+		message: format!("ring buffer `{}::{}` already exists", namespace, ringbuffer),
 		fragment,
 		label: Some("duplicate ring buffer definition".to_string()),
 		help: Some(
@@ -133,7 +133,7 @@ pub fn ringbuffer_not_found(fragment: Fragment, namespace: &str, ringbuffer: &st
 	Diagnostic {
 		code: "CA_006".to_string(),
 		statement: None,
-		message: format!("ring buffer `{}.{}` not found", namespace, ringbuffer),
+		message: format!("ring buffer `{}::{}` not found", namespace, ringbuffer),
 		fragment,
 		label: Some("unknown ring buffer reference".to_string()),
 		help: Some("ensure the ring buffer exists or create it first using `CREATE RING BUFFER`".to_string()),
@@ -148,7 +148,7 @@ pub fn sumtype_already_exists(fragment: Fragment, namespace: &str, name: &str) -
 	Diagnostic {
 		code: "CA_003".to_string(),
 		statement: None,
-		message: format!("enum `{}.{}` already exists", namespace, name),
+		message: format!("enum `{}::{}` already exists", namespace, name),
 		fragment,
 		label: Some("duplicate enum definition".to_string()),
 		help: Some("choose a different name or drop the existing enum first".to_string()),
@@ -163,10 +163,10 @@ pub fn sumtype_not_found(fragment: Fragment, namespace: &str, name: &str) -> Dia
 	Diagnostic {
 		code: "CA_002".to_string(),
 		statement: None,
-		message: format!("type `{}.{}` not found", namespace, name),
+		message: format!("type `{}::{}` not found", namespace, name),
 		fragment,
 		label: Some("unknown type".to_string()),
-		help: Some(format!("create the enum first with `CREATE ENUM {}.{} {{ ... }}`", namespace, name)),
+		help: Some(format!("create the enum first with `CREATE ENUM {}::{} {{ ... }}`", namespace, name)),
 		column: None,
 		notes: vec![],
 		cause: None,
@@ -178,7 +178,7 @@ pub fn dictionary_already_exists(fragment: Fragment, namespace: &str, dictionary
 	Diagnostic {
 		code: "CA_006".to_string(),
 		statement: None,
-		message: format!("dictionary `{}.{}` already exists", namespace, dictionary),
+		message: format!("dictionary `{}::{}` already exists", namespace, dictionary),
 		fragment,
 		label: Some("duplicate dictionary definition".to_string()),
 		help: Some("choose a different name, drop the existing dictionary or create dictionary in a different namespace".to_string()),
@@ -193,7 +193,7 @@ pub fn dictionary_not_found(fragment: Fragment, namespace: &str, dictionary: &st
 	Diagnostic {
 		code: "CA_007".to_string(),
 		statement: None,
-		message: format!("dictionary `{}.{}` not found", namespace, dictionary),
+		message: format!("dictionary `{}::{}` not found", namespace, dictionary),
 		fragment,
 		label: Some("unknown dictionary reference".to_string()),
 		help: Some("ensure the dictionary exists or create it first using `CREATE DICTIONARY`".to_string()),
@@ -235,7 +235,7 @@ pub fn table_column_already_exists(fragment: Fragment, namespace: &str, table: &
 	Diagnostic {
 		code: "CA_005".to_string(),
 		statement: None,
-		message: format!("column `{}` already exists in table `{}`.`{}`", column, namespace, table),
+		message: format!("column `{}` already exists in table `{}::{}`", column, namespace, table),
 		fragment,
 		label: Some("duplicate column definition".to_string()),
 		help: Some("choose a different column name or drop the existing one first".to_string()),
@@ -250,7 +250,7 @@ pub fn view_not_found(fragment: Fragment, namespace: &str, view: &str) -> Diagno
 	Diagnostic {
 		code: "CA_004".to_string(),
 		statement: None,
-		message: format!("view `{}.{}` not found", namespace, view),
+		message: format!("view `{}::{}` not found", namespace, view),
 		fragment,
 		label: Some("unknown view reference".to_string()),
 		help: Some("ensure the view exists or create it first using `CREATE VIEW`".to_string()),
@@ -265,7 +265,7 @@ pub fn view_column_already_exists(fragment: Fragment, namespace: &str, view: &st
 	Diagnostic {
 		code: "CA_005".to_string(),
 		statement: None,
-		message: format!("column `{}` already exists in view `{}`.`{}`", column, namespace, view),
+		message: format!("column `{}` already exists in view `{}::{}`", column, namespace, view),
 		fragment,
 		label: Some("duplicate column definition".to_string()),
 		help: Some("choose a different column name or drop the existing one first".to_string()),
@@ -370,7 +370,7 @@ pub fn table_already_pending_in_transaction(namespace_name: Fragment, table_name
 	Diagnostic {
 		code: "CA_012".to_string(),
 		statement: None,
-		message: format!("table `{}.{}` already has pending changes in this transaction", namespace, table),
+		message: format!("table `{}::{}` already has pending changes in this transaction", namespace, table),
 		fragment: table_fragment,
 		label: Some("duplicate table modification in transaction".to_string()),
 		help: Some("a table can only be created, updated, or deleted once per transaction".to_string()),
@@ -392,7 +392,7 @@ pub fn view_already_pending_in_transaction(namespace_name: Fragment, view_name: 
 	Diagnostic {
 		code: "CA_013".to_string(),
 		statement: None,
-		message: format!("view `{}.{}` already has pending changes in this transaction", namespace, view),
+		message: format!("view `{}::{}` already has pending changes in this transaction", namespace, view),
 		fragment: view_fragment,
 		label: Some("duplicate view modification in transaction".to_string()),
 		help: Some("a view can only be created, updated, or deleted once per transaction".to_string()),
@@ -432,7 +432,7 @@ pub fn cannot_update_deleted_table(namespace_name: Fragment, table_name: Fragmen
 		code: "CA_015".to_string(),
 		statement: None,
 		message: format!(
-			"cannot update table `{}.{}` as it is marked for deletion in this transaction",
+			"cannot update table `{}::{}` as it is marked for deletion in this transaction",
 			namespace, table
 		),
 		fragment: table_fragment,
@@ -454,7 +454,7 @@ pub fn cannot_update_deleted_view(namespace_name: Fragment, view_name: Fragment)
 		code: "CA_016".to_string(),
 		statement: None,
 		message: format!(
-			"cannot update view `{}.{}` as it is marked for deletion in this transaction",
+			"cannot update view `{}::{}` as it is marked for deletion in this transaction",
 			namespace, view
 		),
 		fragment: view_fragment,
@@ -492,7 +492,7 @@ pub fn cannot_delete_already_deleted_table(namespace_name: Fragment, table_name:
 	Diagnostic {
 		code: "CA_018".to_string(),
 		statement: None,
-		message: format!("table `{}.{}` is already marked for deletion in this transaction", namespace, table),
+		message: format!("table `{}::{}` is already marked for deletion in this transaction", namespace, table),
 		fragment: table_fragment,
 		label: Some("duplicate table deletion".to_string()),
 		help: Some("remove the duplicate delete operation".to_string()),
@@ -511,7 +511,7 @@ pub fn cannot_delete_already_deleted_view(namespace_name: Fragment, view_name: F
 	Diagnostic {
 		code: "CA_019".to_string(),
 		statement: None,
-		message: format!("view `{}.{}` is already marked for deletion in this transaction", namespace, view),
+		message: format!("view `{}::{}` is already marked for deletion in this transaction", namespace, view),
 		fragment: view_fragment,
 		label: Some("duplicate view deletion".to_string()),
 		help: Some("remove the duplicate delete operation".to_string()),
@@ -556,7 +556,7 @@ pub fn virtual_table_already_exists(namespace: &str, name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_022".to_string(),
 		statement: None,
-		message: format!("virtual table `{}.{}` already exists", namespace, name),
+		message: format!("virtual table `{}::{}` already exists", namespace, name),
 		fragment: Fragment::None,
 		label: Some("duplicate virtual table definition".to_string()),
 		help: Some("choose a different name or unregister the existing virtual table first".to_string()),
@@ -571,7 +571,7 @@ pub fn virtual_table_not_found(namespace: &str, name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_023".to_string(),
 		statement: None,
-		message: format!("virtual table `{}.{}` not found", namespace, name),
+		message: format!("virtual table `{}::{}` not found", namespace, name),
 		fragment: Fragment::None,
 		label: Some("unknown virtual table reference".to_string()),
 		help: Some("ensure the virtual table is registered before using it".to_string()),

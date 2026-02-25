@@ -34,7 +34,7 @@ fn main() {
 
 	let mut db = embedded::memory()
 		.intercept()
-		.table("test.users")
+		.table("test::users")
 			.pre_insert(|ctx| {
 				info!("[TABLE INTERCEPTOR] Pre-insert into: {}", ctx.table.name);
 				Ok(())
@@ -56,21 +56,21 @@ fn main() {
 	info!("\n--- Creating namespace and table ---");
 	db.admin_as_root(r#"create namespace test;"#, Params::None).unwrap();
 
-	log_query("create table test.users { id: int4, username: utf8, active: bool }");
-	db.admin_as_root(r#"create table test.users { id: int4, username: utf8, active: bool }"#, Params::None)
+	log_query("create table test::users { id: int4, username: utf8, active: bool }");
+	db.admin_as_root(r#"create table test::users { id: int4, username: utf8, active: bool }"#, Params::None)
 		.unwrap();
 
 	// Step 3: Create a deferred view that filters active users
 	info!("\n--- Creating deferred view ---");
 	log_query(
-		"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }",
+		"create deferred view test::active_users { id: int4, username: utf8 } as { from test::users filter active == true map { id: id, username: username } }",
 	);
 	db.admin_as_root(
-		r#"create deferred view test.active_users {
+		r#"create deferred view test::active_users {
 				id: int4,
 				username: utf8
 			} as {
-				from test.users filter active == true map { id: id, username: username }
+				from test::users filter active == true map { id: id, username: username }
 			}"#,
 		Params::None,
 	)
@@ -79,14 +79,14 @@ fn main() {
 	// Step 4: Insert data - this triggers the table interceptors
 	info!("\n--- Inserting users (triggers table interceptors) ---");
 	log_query(
-		r#"INSERT test.users [
+		r#"INSERT test::users [
     {id: 1, username: "alice", active: true},
     {id: 2, username: "bob", active: false},
     {id: 3, username: "charlie", active: true}
 ]"#,
 	);
 	db.command_as_root(
-		r#"INSERT test.users [
+		r#"INSERT test::users [
             {id: 1, username: "alice", active: true},
             {id: 2, username: "bob", active: false},
             {id: 3, username: "charlie", active: true}
@@ -101,14 +101,14 @@ fn main() {
 
 	// Step 5: Query the results
 	info!("\n--- All users (from table) ---");
-	log_query("from test.users");
-	for frame in db.query_as_root(r#"from test.users"#, Params::None).unwrap() {
+	log_query("from test::users");
+	for frame in db.query_as_root(r#"from test::users"#, Params::None).unwrap() {
 		info!("{}", frame);
 	}
 
 	info!("\n--- Active users only (from deferred view) ---");
-	log_query("from test.active_users");
-	for frame in db.query_as_root(r#"from test.active_users"#, Params::None).unwrap() {
+	log_query("from test::active_users");
+	for frame in db.query_as_root(r#"from test::active_users"#, Params::None).unwrap() {
 		info!("{}", frame);
 	}
 

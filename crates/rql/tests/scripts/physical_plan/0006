@@ -5,5 +5,5 @@ physical 'from users map {id, name} filter {id == 10}'
 ---
 > └── Filter [(id == Constant(10))]
 >     └── Map [id, name]
->         └── TableScan default.users
+>         └── TableScan default::users
 >

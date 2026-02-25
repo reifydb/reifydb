@@ -387,7 +387,7 @@ pub fn delete_missing_target(fragment: Fragment) -> Diagnostic {
 		notes: vec![
 			"The target table specifies which table to delete rows from".to_string(),
 			"Example: DELETE users FILTER id == 1".to_string(),
-			"Example with namespace: DELETE test.users FILTER id == 1".to_string(),
+			"Example with namespace: DELETE test::users FILTER id == 1".to_string(),
 		],
 		cause: None,
 		operator_chain: None,
@@ -429,7 +429,7 @@ pub fn insert_missing_target(fragment: Fragment) -> Diagnostic {
 		notes: vec![
 			"The target table specifies where to insert the data".to_string(),
 			"Example: INSERT users [{ id: 1, name: \"Alice\" }]".to_string(),
-			"Example with namespace: INSERT test.users [{ id: 1, name: \"Alice\" }]".to_string(),
+			"Example with namespace: INSERT test::users [{ id: 1, name: \"Alice\" }]".to_string(),
 		],
 		cause: None,
 		operator_chain: None,

@@ -54,7 +54,7 @@ take 3"#,
 	db.admin_as_root("create namespace demo", Params::None).unwrap();
 	db.admin_as_root(
 		r#"
-		create table demo.events {
+		create table demo::events {
 			id: int4,
 			event_type: utf8,
 			timestamp: int8,
@@ -68,7 +68,7 @@ take 3"#,
 
 	db.command_as_root(
 		r#"
-		INSERT demo.events [
+		INSERT demo::events [
 			{ id: 1, event_type: "ERROR", timestamp: 1000, severity: "HIGH", message: "Database connection failed" },
 			{ id: 2, event_type: "INFO", timestamp: 1001, severity: "LOW", message: "User logged in" },
 			{ id: 3, event_type: "WARNING", timestamp: 1002, severity: "MEDIUM", message: "Memory usage high" },
@@ -87,11 +87,11 @@ take 3"#,
 
 	// Example 2: Take from a table
 	info!("\nExample 2: Take first 5 events from table");
-	log_query(r#"from demo.events take 5"#);
+	log_query(r#"from demo::events take 5"#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from demo.events
+			from demo::events
 			take 5
 			"#,
 			Params::None,
@@ -104,14 +104,14 @@ take 3"#,
 	// Example 3: Take with filter
 	info!("\nExample 3: Filter ERROR events, then take first 2");
 	log_query(
-		r#"from demo.events
+		r#"from demo::events
 filter event_type == "ERROR"
 take 2"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from demo.events
+			from demo::events
 			filter event_type == "ERROR"
 			take 2
 			"#,
@@ -125,14 +125,14 @@ take 2"#,
 	// Example 4: Sort then take (top-N pattern)
 	info!("\nExample 4: Get 3 most recent events (sort by timestamp desc, take 3)");
 	log_query(
-		r#"from demo.events
+		r#"from demo::events
 sort {timestamp:desc}
 take 3"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from demo.events
+			from demo::events
 			sort {timestamp:desc}
 			take 3
 			"#,
@@ -146,14 +146,14 @@ take 3"#,
 	// Example 5: Take with projection
 	info!("\nExample 5: Project specific columns, then take");
 	log_query(
-		r#"from demo.events
+		r#"from demo::events
 map { event_type, severity, message }
 take 4"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from demo.events
+			from demo::events
 			map { event_type, severity, message }
 			take 4
 			"#,
@@ -167,7 +167,7 @@ take 4"#,
 	// Example 6: Comptokenize pipeline with take
 	info!("\nExample 6: Comptokenize pipeline - filter high severity, sort, take top 3");
 	log_query(
-		r#"from demo.events
+		r#"from demo::events
 filter severity == "HIGH" or severity == "CRITICAL"
 sort {timestamp:desc}
 map { id, event_type, severity, message }
@@ -176,7 +176,7 @@ take 3"#,
 	for frame in db
 		.query_as_root(
 			r#"
-			from demo.events
+			from demo::events
 			filter severity == "HIGH" or severity == "CRITICAL"
 			sort {timestamp:desc}
 			map { id, event_type, severity, message }
@@ -192,14 +192,14 @@ take 3"#,
 	// Example 7: Take 1 (getting single encoded)
 	info!("\nExample 7: Take single encoded (take 1)");
 	log_query(
-		r#"from demo.events
+		r#"from demo::events
 filter severity == "CRITICAL"
 take 1"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from demo.events
+			from demo::events
 			filter severity == "CRITICAL"
 			take 1
 			"#,
@@ -213,14 +213,14 @@ take 1"#,
 	// Example 8: Take with no matching results
 	info!("\nExample 8: Take when filter returns no results");
 	log_query(
-		r#"from demo.events
+		r#"from demo::events
 filter severity == "UNKNOWN"
 take 5"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from demo.events
+			from demo::events
 			filter severity == "UNKNOWN"
 			take 5
 			"#,

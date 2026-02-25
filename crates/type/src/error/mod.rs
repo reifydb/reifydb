@@ -637,10 +637,10 @@ pub struct NumberOutOfRangeDescriptor {
 impl NumberOutOfRangeDescriptor {
 	pub fn location_string(&self) -> String {
 		match (self.namespace.as_deref(), self.table.as_deref(), self.column.as_deref()) {
-			(Some(s), Some(t), Some(c)) => format!("{}.{}.{}", s, t, c),
-			(Some(s), Some(t), None) => format!("{}.{}", s, t),
+			(Some(s), Some(t), Some(c)) => format!("{}::{}.{}", s, t, c),
+			(Some(s), Some(t), None) => format!("{}::{}", s, t),
 			(None, Some(t), Some(c)) => format!("{}.{}", t, c),
-			(Some(s), None, Some(c)) => format!("{}.{}", s, c),
+			(Some(s), None, Some(c)) => format!("{}::{}", s, c),
 			(Some(s), None, None) => s.to_string(),
 			(None, Some(t), None) => t.to_string(),
 			(None, None, Some(c)) => c.to_string(),

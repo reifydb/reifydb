@@ -2,11 +2,11 @@
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 (admin 'create namespace test')
-(admin 'create table test.a { id: int4, val: utf8 }')
-(admin 'create table test.b { id: int4, name: utf8 }')
-(command 'INSERT test.a [{ id: 1, val: "x" }, { id: 2, val: "y" }]')
-(command 'INSERT test.b [{ id: 1, name: "one" }]')
-command 'from test.a left join { from test.b } as t using (id, t.id)'
+(admin 'create table test::a { id: int4, val: utf8 }')
+(admin 'create table test::b { id: int4, name: utf8 }')
+(command 'INSERT test::a [{ id: 1, val: "x" }, { id: 2, val: "y" }]')
+(command 'INSERT test::b [{ id: 1, name: "one" }]')
+command 'from test::a left join { from test::b } as t using (id, t.id)'
 ---
 > +----------+------+-------+--------+----------+
 > |  rownum  |  id  |  val  |  t_id  |  t_name  |
@@ -16,7 +16,7 @@ command 'from test.a left join { from test.b } as t using (id, t.id)'
 > +----------+------+-------+--------+----------+
 >
 
-command 'from test.a left join { from test.b } as t using (id, t.id)'
+command 'from test::a left join { from test::b } as t using (id, t.id)'
 ---
 > +----------+------+-------+--------+----------+
 > |  rownum  |  id  |  val  |  t_id  |  t_name  |

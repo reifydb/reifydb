@@ -8,7 +8,7 @@ tokenize 'from [
     { id: 3, name: "中文"    },
     { id: 4, name: "العربية" },
     { id: 5, name: "Banana"  }
-  ] insert test.unicode_names'
+  ] insert test::unicode_names'
 ---
 > Line 1:
 >   [  0] Keyword(From)
@@ -77,7 +77,7 @@ tokenize 'from [
 >   [ 51] Operator(CloseBracket)
 >   [ 52] Keyword(Insert)
 >   [ 53] Identifier("test")
->   [ 54] Operator(Dot)
+>   [ 54] Operator(DoubleColon)
 >   [ 55] Identifier("unicode_names")
 >
 >

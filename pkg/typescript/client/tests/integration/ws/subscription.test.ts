@@ -44,7 +44,7 @@ describe('WebSocket Subscriptions', () => {
 
             const tracker = createCallbackTracker();
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 Schema.object({
                     id: Schema.number(),
@@ -76,7 +76,7 @@ describe('WebSocket Subscriptions', () => {
 
             const tracker = createCallbackTracker();
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 Schema.object({
                     id: Schema.number(),
@@ -113,7 +113,7 @@ describe('WebSocket Subscriptions', () => {
             const { promise, callback } = waitForCallback(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 {
@@ -123,7 +123,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert data after subscription is established
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 1, name: 'test', value: 100 }]`,
+                `INSERT test::${tableName} [{ id: 1, name: 'test', value: 100 }]`,
                 null,
                 []
             );
@@ -160,7 +160,7 @@ describe('WebSocket Subscriptions', () => {
             const removeTracker = createCallbackTracker(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 {
@@ -171,7 +171,7 @@ describe('WebSocket Subscriptions', () => {
             );
 
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
+                `INSERT test::${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
                 null,
                 []
             );
@@ -213,7 +213,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Subscribe to empty table FIRST
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 {
@@ -225,7 +225,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Now insert initial data
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
+                `INSERT test::${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
                 null,
                 []
             );
@@ -240,7 +240,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Update data
             await wsClient.command(
-                `UPDATE test.${tableName} { name: 'alice_updated' } FILTER id == 1`,
+                `UPDATE test::${tableName} { name: 'alice_updated' } FILTER id == 1`,
                 null,
                 []
             );
@@ -279,7 +279,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Subscribe to empty table FIRST
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 {
@@ -291,7 +291,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Now insert initial data
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
+                `INSERT test::${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
                 null,
                 []
             );
@@ -306,7 +306,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Delete data
             await wsClient.command(
-                `DELETE test.${tableName} FILTER id == 1`,
+                `DELETE test::${tableName} FILTER id == 1`,
                 null,
                 []
             );
@@ -344,7 +344,7 @@ describe('WebSocket Subscriptions', () => {
             const removeTracker = createCallbackTracker(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 {
@@ -356,7 +356,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 1, name: 'alice' }]`,
+                `INSERT test::${tableName} [{ id: 1, name: 'alice' }]`,
                 null,
                 []
             );
@@ -364,7 +364,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Update
             await wsClient.command(
-                `UPDATE test.${tableName} { name: 'alice_updated' } FILTER id == 1`,
+                `UPDATE test::${tableName} { name: 'alice_updated' } FILTER id == 1`,
                 null,
                 []
             );
@@ -372,7 +372,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Remove
             await wsClient.command(
-                `DELETE test.${tableName} FILTER id == 1`,
+                `DELETE test::${tableName} FILTER id == 1`,
                 null,
                 []
             );
@@ -421,7 +421,7 @@ describe('WebSocket Subscriptions', () => {
             const insertTracker = createCallbackTracker(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 {
@@ -432,7 +432,7 @@ describe('WebSocket Subscriptions', () => {
             // Insert 10 rows at once
             const rows = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, name: `user${i + 1}` }));
             await wsClient.command(
-                `INSERT test.${tableName} FROM ${JSON.stringify(rows)}`,
+                `INSERT test::${tableName} FROM ${JSON.stringify(rows)}`,
                 null,
                 []
             );
@@ -473,7 +473,7 @@ describe('WebSocket Subscriptions', () => {
             const { promise, callback } = waitForCallback(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 {
@@ -482,7 +482,7 @@ describe('WebSocket Subscriptions', () => {
             );
 
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 42, name: 'test', value: 100 }]`,
+                `INSERT test::${tableName} [{ id: 42, name: 'test', value: 100 }]`,
                 null,
                 []
             );
@@ -518,7 +518,7 @@ describe('WebSocket Subscriptions', () => {
             const { promise, callback } = waitForCallback(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 {
@@ -527,7 +527,7 @@ describe('WebSocket Subscriptions', () => {
             );
 
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 42, name: 'test' }]`,
+                `INSERT test::${tableName} [{ id: 42, name: 'test' }]`,
                 null,
                 []
             );
@@ -563,17 +563,17 @@ describe('WebSocket Subscriptions', () => {
             const tracker1 = createCallbackTracker(schema1);
             const tracker2 = createCallbackTracker(schema2);
 
-            const sub1 = await wsClient.subscribe(`from test.${table1}`, null, schema1, {
+            const sub1 = await wsClient.subscribe(`from test::${table1}`, null, schema1, {
                 onInsert: tracker1.callback
             });
 
-            const sub2 = await wsClient.subscribe(`from test.${table2}`, null, schema2, {
+            const sub2 = await wsClient.subscribe(`from test::${table2}`, null, schema2, {
                 onInsert: tracker2.callback
             });
 
             // Insert into table 1
             await wsClient.command(
-                `INSERT test.${table1} [{ id: 1, name: 'alice' }]`,
+                `INSERT test::${table1} [{ id: 1, name: 'alice' }]`,
                 null,
                 []
             );
@@ -581,7 +581,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert into table 2
             await wsClient.command(
-                `INSERT test.${table2} [{ id: 2, value: 200 }]`,
+                `INSERT test::${table2} [{ id: 2, value: 200 }]`,
                 null,
                 []
             );
@@ -621,7 +621,7 @@ describe('WebSocket Subscriptions', () => {
             // Subscribe to all tables
             const subscriptions = await Promise.all(
                 tables.map((table, i) =>
-                    wsClient.subscribe(`from test.${table}`, null, schema, {
+                    wsClient.subscribe(`from test::${table}`, null, schema, {
                         onInsert: trackers[i].callback
                     })
                 )
@@ -631,7 +631,7 @@ describe('WebSocket Subscriptions', () => {
             await Promise.all(
                 tables.map((table, i) =>
                     wsClient.command(
-                        `INSERT test.${table} [{ id: ${i}, value: ${i * 100} }]`,
+                        `INSERT test::${table} [{ id: ${i}, value: ${i * 100} }]`,
                         null,
                         []
                 )
@@ -670,7 +670,7 @@ describe('WebSocket Subscriptions', () => {
             const tracker = createCallbackTracker(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 {
@@ -689,7 +689,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert new data
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 1, name: 'after_reconnect' }]`,
+                `INSERT test::${tableName} [{ id: 1, name: 'after_reconnect' }]`,
                 null,
                 []
             );
@@ -720,7 +720,7 @@ describe('WebSocket Subscriptions', () => {
             const tracker = createCallbackTracker(schema);
 
             await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 { onInsert: tracker.callback }
@@ -728,7 +728,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert before disconnect
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 1, value: 100 }]`,
+                `INSERT test::${tableName} [{ id: 1, value: 100 }]`,
                 null,
                 []
             );
@@ -749,7 +749,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert after reconnect
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 2, value: 200 }]`,
+                `INSERT test::${tableName} [{ id: 2, value: 200 }]`,
                 null,
                 []
             );
@@ -787,7 +787,7 @@ describe('WebSocket Subscriptions', () => {
             // Subscribe to all tables
             await Promise.all(
                 tables.map((table, i) =>
-                    wsClient.subscribe(`from test.${table}`, null, schema, {
+                    wsClient.subscribe(`from test::${table}`, null, schema, {
                         onInsert: trackers[i].callback
                     })
                 )
@@ -803,7 +803,7 @@ describe('WebSocket Subscriptions', () => {
             await Promise.all(
                 tables.map((table, i) =>
                     wsClient.command(
-                        `INSERT test.${table} [{ id: ${i}, value: ${i * 100} }]`,
+                        `INSERT test::${table} [{ id: ${i}, value: ${i * 100} }]`,
                         null,
                         []
                     )
@@ -882,7 +882,7 @@ describe('WebSocket Subscriptions', () => {
             const tracker = createCallbackTracker(schema);
 
             await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 { onInsert: tracker.callback }
@@ -909,7 +909,7 @@ describe('WebSocket Subscriptions', () => {
             const tracker = createCallbackTracker(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 { onInsert: tracker.callback }
@@ -920,7 +920,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert data
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 1, value: 100 }]`,
+                `INSERT test::${tableName} [{ id: 1, value: 100 }]`,
                 null,
                 []
             );
@@ -946,7 +946,7 @@ describe('WebSocket Subscriptions', () => {
             const tracker = createCallbackTracker(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName} filter { id > 1000 }`,
+                `from test::${tableName} filter { id > 1000 }`,
                 null,
                 schema,
                 { onInsert: tracker.callback }
@@ -954,7 +954,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert data that doesn't match filter
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 1, value: 100 }]`,
+                `INSERT test::${tableName} [{ id: 1, value: 100 }]`,
                 null,
                 []
             );
@@ -966,7 +966,7 @@ describe('WebSocket Subscriptions', () => {
 
             // Insert data that matches filter
             await wsClient.command(
-                `INSERT test.${tableName} [{ id: 1001, value: 200 }]`,
+                `INSERT test::${tableName} [{ id: 1001, value: 200 }]`,
                 null,
                 []
             );
@@ -996,7 +996,7 @@ describe('WebSocket Subscriptions', () => {
             const tracker = createCallbackTracker(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 { onInsert: tracker.callback }
@@ -1007,7 +1007,7 @@ describe('WebSocket Subscriptions', () => {
 
             const startTime = Date.now();
             await wsClient.command(
-                `INSERT test.${tableName} FROM ${JSON.stringify(rows)}`,
+                `INSERT test::${tableName} FROM ${JSON.stringify(rows)}`,
                 null,
                 []
             );
@@ -1051,7 +1051,7 @@ describe('WebSocket Subscriptions', () => {
             const tracker = createCallbackTracker(schema);
 
             const subscriptionId = await wsClient.subscribe(
-                `from test.${tableName}`,
+                `from test::${tableName}`,
                 null,
                 schema,
                 { onInsert: tracker.callback }
@@ -1060,7 +1060,7 @@ describe('WebSocket Subscriptions', () => {
             // Fire 10 insert commands rapidly without await
             const promises = Array.from({ length: 10 }, (_, i) =>
                 wsClient.command(
-                    `INSERT test.${tableName} [{ id: ${i}, value: ${i * 10} }]`,
+                    `INSERT test::${tableName} [{ id: ${i}, value: ${i * 10} }]`,
                     null,
                     []
                 )

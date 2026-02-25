@@ -131,23 +131,44 @@ impl<'bump> Parser<'bump> {
 		Ok(UnqualifiedIdentifier::from_fragment(fragment))
 	}
 
-	/// Parse a dot-separated chain of identifiers: `a.b.c.d`
+	/// Parse a double-colon-separated chain of identifiers: `a::b::c::d`
 	/// Returns all segments. Caller splits namespace vs. name.
-	pub(crate) fn parse_dot_separated_identifiers(&mut self) -> crate::Result<Vec<UnqualifiedIdentifier<'bump>>> {
+	pub(crate) fn parse_double_colon_separated_identifiers(
+		&mut self,
+	) -> crate::Result<Vec<UnqualifiedIdentifier<'bump>>> {
 		let mut segments = vec![self.parse_identifier_with_hyphens()?];
-		while !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
-			self.consume_operator(Operator::Dot)?;
+		while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {
+			self.consume_operator(Operator::DoubleColon)?;
 			segments.push(self.parse_identifier_with_hyphens()?);
 		}
 		Ok(segments)
 	}
 
 	/// Parse a potentially qualified column identifier
-	/// Handles patterns like: column, table.column, ns.table.column, ns1.ns2.table.column
+	/// Handles patterns like: column, table.column, ns::table.column, ns1::ns2::table.column
 	/// Supports hyphenated identifiers like: my-column, my-table.my-column
 	pub(crate) fn parse_column_identifier(&mut self) -> crate::Result<MaybeQualifiedColumnIdentifier<'bump>> {
-		let segments = self.parse_dot_separated_identifiers()?;
-		Self::segments_to_column_identifier(segments)
+		// Parse :: separated identifiers for namespace::table qualification
+		let mut ns_table_segments = self.parse_double_colon_separated_identifiers()?;
+
+		// Check for .column (dot-separated column access)
+		if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
+			self.consume_operator(Operator::Dot)?;
+			let col = self.parse_identifier_with_hyphens()?;
+
+			// ns_table_segments = [namespace..., table], col = column
+			let table = ns_table_segments.pop().unwrap();
+			let namespace: Vec<_> = ns_table_segments.into_iter().map(|s| s.into_fragment()).collect();
+
+			Ok(MaybeQualifiedColumnIdentifier::with_primitive(
+				namespace,
+				table.into_fragment(),
+				col.into_fragment(),
+			))
+		} else {
+			// No dot found - all segments are just identifiers
+			Self::segments_to_column_identifier(ns_table_segments)
+		}
 	}
 
 	fn segments_to_column_identifier(
@@ -184,13 +205,34 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_column_identifier_or_keyword(
 		&mut self,
 	) -> crate::Result<MaybeQualifiedColumnIdentifier<'bump>> {
-		let mut segments = vec![self.advance()?];
-		while !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
-			self.consume_operator(Operator::Dot)?;
-			segments.push(self.advance()?);
+		// Parse :: separated identifiers for namespace::table qualification
+		let mut ns_table_segments = vec![self.advance()?];
+		while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {
+			self.consume_operator(Operator::DoubleColon)?;
+			ns_table_segments.push(self.advance()?);
 		}
-		let identifiers: Vec<_> = segments.into_iter().map(|t| UnqualifiedIdentifier::new(t)).collect();
-		Self::segments_to_column_identifier(identifiers)
+
+		// Check for .column (dot-separated column access)
+		if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
+			self.consume_operator(Operator::Dot)?;
+			let col = self.advance()?;
+
+			let table = ns_table_segments.pop().unwrap();
+			let namespace: Vec<_> = ns_table_segments
+				.into_iter()
+				.map(|t| UnqualifiedIdentifier::new(t).into_fragment())
+				.collect();
+
+			Ok(MaybeQualifiedColumnIdentifier::with_primitive(
+				namespace,
+				UnqualifiedIdentifier::new(table).into_fragment(),
+				UnqualifiedIdentifier::new(col).into_fragment(),
+			))
+		} else {
+			let identifiers: Vec<_> =
+				ns_table_segments.into_iter().map(|t| UnqualifiedIdentifier::new(t)).collect();
+			Self::segments_to_column_identifier(identifiers)
+		}
 	}
 }
 

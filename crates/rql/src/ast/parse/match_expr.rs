@@ -142,8 +142,9 @@ impl<'bump> Parser<'bump> {
 		// Parse [namespace.]SumType::Variant
 		let first = self.consume(TokenKind::Identifier)?;
 
-		let (namespace, sumtype_name) = if !self.is_eof() && self.current()?.is_operator(Operator::Dot) {
-			self.consume_operator(Operator::Dot)?;
+		let (namespace, sumtype_name) = if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon)
+		{
+			self.consume_operator(Operator::DoubleColon)?;
 			let sumtype_token = self.consume(TokenKind::Identifier)?;
 			(Some(first.fragment), sumtype_token.fragment)
 		} else {

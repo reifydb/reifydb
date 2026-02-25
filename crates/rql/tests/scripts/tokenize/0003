@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-tokenize 'create unique index idx_email on test.users {email}'
+tokenize 'create unique index idx_email on test::users {email}'
 ---
 > Line 1:
 >   [  0] Keyword(Create)
@@ -10,7 +10,7 @@ tokenize 'create unique index idx_email on test.users {email}'
 >   [  3] Identifier("idx_email")
 >   [  4] Keyword(On)
 >   [  5] Identifier("test")
->   [  6] Operator(Dot)
+>   [  6] Operator(DoubleColon)
 >   [  7] Identifier("users")
 >   [  8] Operator(OpenCurly)
 >   [  9] Identifier("email")

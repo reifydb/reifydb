@@ -24,7 +24,7 @@ fn main() {
 	db.admin_as_root("create namespace store", Params::None).unwrap();
 	db.admin_as_root(
 		r#"
-		create table store.products {
+		create table store::products {
 			id: int4,
 			name: utf8,
 			category: utf8,
@@ -39,7 +39,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT store.products [
+		INSERT store::products [
 			{ id: 1, name: "Laptop", category: "Electronics", price: 999.99, stock: 15, rating: 4.5 },
 			{ id: 2, name: "Mouse", category: "Electronics", price: 25.99, stock: 50, rating: 4.2 },
 			{ id: 3, name: "Desk", category: "Furniture", price: 299.99, stock: 8, rating: 4.7 },
@@ -57,13 +57,13 @@ fn main() {
 	// Example 1: Sort by single column (ascending - default)
 	info!("Example 1: Sort by price (ascending - default)");
 	log_query(
-		r#"from store.products
+		r#"from store::products
 sort {price}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from store.products
+			from store::products
 			sort {price}
 			"#,
 			Params::None,
@@ -76,13 +76,13 @@ sort {price}"#,
 	// Example 2: Sort by single column (ascending - explicit)
 	info!("\nExample 2: Sort by name (ascending - explicit)");
 	log_query(
-		r#"from store.products
+		r#"from store::products
 sort {name:asc}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from store.products
+			from store::products
 			sort {name:asc}
 			"#,
 			Params::None,
@@ -95,13 +95,13 @@ sort {name:asc}"#,
 	// Example 3: Sort by single column (descending)
 	info!("\nExample 3: Sort by rating (descending)");
 	log_query(
-		r#"from store.products
+		r#"from store::products
 sort {rating:desc}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from store.products
+			from store::products
 			sort {rating:desc}
 			"#,
 			Params::None,
@@ -114,13 +114,13 @@ sort {rating:desc}"#,
 	// Example 4: Sort by multiple columns
 	info!("\nExample 4: Sort by category, then by price");
 	log_query(
-		r#"from store.products
+		r#"from store::products
 sort { category:asc, price:asc }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from store.products
+			from store::products
 			sort { category:asc, price:asc }
 			"#,
 			Params::None,
@@ -133,14 +133,14 @@ sort { category:asc, price:asc }"#,
 	// Example 5: Sort with filter
 	info!("\nExample 5: Filter Electronics, then sort by stock descending");
 	log_query(
-		r#"from store.products
+		r#"from store::products
 filter category == "Electronics"
 sort {stock:desc}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from store.products
+			from store::products
 			filter category == "Electronics"
 			sort {stock:desc}
 			"#,
@@ -183,14 +183,14 @@ sort {score:desc}"#,
 	// Example 7: Sort with map (projection)
 	info!("\nExample 7: Project specific columns, then sort");
 	log_query(
-		r#"from store.products
+		r#"from store::products
 map { name, price, rating }
 sort {rating:desc}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from store.products
+			from store::products
 			map { name, price, rating }
 			sort {rating:desc}
 			"#,
@@ -204,13 +204,13 @@ sort {rating:desc}"#,
 	// Example 8: Comptokenize sort with mixed directions
 	info!("\nExample 8: Sort by category ascending, then rating descending");
 	log_query(
-		r#"from store.products
+		r#"from store::products
 sort { category:asc, rating:desc }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from store.products
+			from store::products
 			sort { category:asc, rating:desc }
 			"#,
 			Params::None,
@@ -223,13 +223,13 @@ sort { category:asc, rating:desc }"#,
 	// Example 9: Sort numeric data
 	info!("\nExample 9: Sort by id to show original insertion order");
 	log_query(
-		r#"from store.products
+		r#"from store::products
 sort {id:asc}"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from store.products
+			from store::products
 			sort {id:asc}
 			"#,
 			Params::None,

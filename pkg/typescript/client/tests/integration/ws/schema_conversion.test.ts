@@ -49,7 +49,7 @@ describe('Schema Type Conversion', () => {
     describe('Primitive Schema Conversion', () => {
         it('should convert Value objects to primitives when using primitive schema', async () => {
             const result = await wsClient.query(
-                "FROM system.versions TAKE 1",
+                "FROM system::versions TAKE 1",
                 null,
                 [versionSchema]
             );
@@ -175,7 +175,7 @@ describe('Schema Type Conversion', () => {
     describe('Without Schema (backward compatibility)', () => {
         it('should return Value objects when no schema is provided', async () => {
             const result = await wsClient.query(
-                "FROM system.versions TAKE 1",
+                "FROM system::versions TAKE 1",
                 null,
                 [] // No schema provided
             );

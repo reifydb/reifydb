@@ -61,7 +61,7 @@ fn main() {
 	db.admin_as_root("create namespace inventory", Params::None).unwrap();
 	db.admin_as_root(
 		r#"
-		create table inventory.products {
+		create table inventory::products {
 			id: int4,
 			name: utf8,
 			category: utf8,
@@ -78,7 +78,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT inventory.products [
+		INSERT inventory::products [
 			{ id: 1, name: "Toy Car", category: "Toys", price: 15.99, in_stock: true, on_sale: true, featured: false, min_age: 3 },
 			{ id: 2, name: "Laptop", category: "Electronics", price: 999.99, in_stock: true, on_sale: false, featured: true, min_age: 0 },
 			{ id: 3, name: "Book", category: "Books", price: 12.99, in_stock: false, on_sale: false, featured: false, min_age: 0 },
@@ -97,13 +97,13 @@ fn main() {
 	// Example 2: AND operator in filters
 	info!("\nExample 2: AND operator - products in stock AND on sale");
 	log_query(
-		r#"from inventory.products
+		r#"from inventory::products
 filter in_stock == true and on_sale == true"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from inventory.products
+			from inventory::products
 			filter in_stock == true and on_sale == true
 			"#,
 			Params::None,
@@ -116,13 +116,13 @@ filter in_stock == true and on_sale == true"#,
 	// Example 3: OR operator in filters
 	info!("\nExample 3: OR operator - featured OR on sale");
 	log_query(
-		r#"from inventory.products
+		r#"from inventory::products
 filter featured == true or on_sale == true"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from inventory.products
+			from inventory::products
 			filter featured == true or on_sale == true
 			"#,
 			Params::None,
@@ -135,13 +135,13 @@ filter featured == true or on_sale == true"#,
 	// Example 4: NOT operator
 	info!("\nExample 4: NOT operator - products NOT in stock");
 	log_query(
-		r#"from inventory.products
+		r#"from inventory::products
 filter not in_stock"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from inventory.products
+			from inventory::products
 			filter not in_stock
 			"#,
 			Params::None,
@@ -154,14 +154,14 @@ filter not in_stock"#,
 	// Example 5: Comptokenize logical expression with parentheses
 	info!("\nExample 5: Comptokenize expression - (Electronics OR Toys) AND on_sale");
 	log_query(
-		r#"from inventory.products
+		r#"from inventory::products
 filter (category == "Electronics" or category == "Toys")
    and on_sale == true"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from inventory.products
+			from inventory::products
 			filter (category == "Electronics" or category == "Toys") 
 			   and on_sale == true
 			"#,
@@ -175,13 +175,13 @@ filter (category == "Electronics" or category == "Toys")
 	// Example 6: XOR operator
 	info!("\nExample 6: XOR operator - either featured OR on_sale (but not both)");
 	log_query(
-		r#"from inventory.products
+		r#"from inventory::products
 filter featured xor on_sale"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from inventory.products
+			from inventory::products
 			filter featured xor on_sale
 			"#,
 			Params::None,
@@ -194,13 +194,13 @@ filter featured xor on_sale"#,
 	// Example 7: Multiple AND conditions
 	info!("\nExample 7: Multiple AND conditions");
 	log_query(
-		r#"from inventory.products
+		r#"from inventory::products
 filter category == "Toys" and in_stock == true and price < 30"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from inventory.products
+			from inventory::products
 			filter category == "Toys" and in_stock == true and price < 30
 			"#,
 			Params::None,
@@ -214,13 +214,13 @@ filter category == "Toys" and in_stock == true and price < 30"#,
 	info!("\nExample 8: Operator precedence demonstration");
 	info!("Without parentheses (AND has higher precedence):");
 	log_query(
-		r#"from inventory.products
+		r#"from inventory::products
 filter on_sale == true or featured == true and category == "Electronics""#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from inventory.products
+			from inventory::products
 			filter on_sale == true or featured == true and category == "Electronics"
 			"#,
 			Params::None,
@@ -232,13 +232,13 @@ filter on_sale == true or featured == true and category == "Electronics""#,
 
 	info!("\nWith parentheses (changing precedence):");
 	log_query(
-		r#"from inventory.products
+		r#"from inventory::products
 filter (on_sale == true or featured == true) and category == "Electronics""#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from inventory.products
+			from inventory::products
 			filter (on_sale == true or featured == true) and category == "Electronics"
 			"#,
 			Params::None,
@@ -251,7 +251,7 @@ filter (on_sale == true or featured == true) and category == "Electronics""#,
 	// Example 9: Logical operators in computed fields
 	info!("\nExample 9: Logical operators in computed fields");
 	log_query(
-		r#"from inventory.products
+		r#"from inventory::products
 map {
   name,
   price,
@@ -263,7 +263,7 @@ map {
 	for frame in db
 		.query_as_root(
 			r#"
-			from inventory.products
+			from inventory::products
 			map {
 				name,
 				price,
@@ -282,7 +282,7 @@ map {
 	// Example 10: Comptokenize nested logical expressions
 	info!("\nExample 10: Comptokenize nested logical expression");
 	log_query(
-		r#"from inventory.products
+		r#"from inventory::products
 filter ((category == "Toys" and min_age >= 5) or
         (category == "Electronics" and price < 100)) and
         in_stock == true"#,
@@ -290,7 +290,7 @@ filter ((category == "Toys" and min_age >= 5) or
 	for frame in db
 		.query_as_root(
 			r#"
-			from inventory.products
+			from inventory::products
 			filter ((category == "Toys" and min_age >= 5) or
 			        (category == "Electronics" and price < 100)) and
 			        in_stock == true

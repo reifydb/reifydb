@@ -25,11 +25,11 @@ fn test_subscription_int_types() {
 			.await
 			.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
 		client.command(
 			&format!(
-				"INSERT test.{} [{{ i1: 127, i2: 32767, i4: 2147483647, i8: 9223372036854775807 }}]",
+				"INSERT test::{} [{{ i1: 127, i2: 32767, i4: 2147483647, i8: 9223372036854775807 }}]",
 				table
 			),
 			None,
@@ -73,11 +73,11 @@ fn test_subscription_uint_types() {
 		.await
 		.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
 		client.command(
 			&format!(
-				"INSERT test.{} [{{ u1: 255, u2: 65535, u4: 4294967295, u8: 18446744073709551615 }}]",
+				"INSERT test::{} [{{ u1: 255, u2: 65535, u4: 4294967295, u8: 18446744073709551615 }}]",
 				table
 			),
 			None,
@@ -115,9 +115,9 @@ fn test_subscription_float_types() {
 		let table = unique_table_name("sub_float_types");
 		create_test_table(&client, &table, &[("f4", "float4"), ("f8", "float8")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
-		client.command(&format!("INSERT test.{} [{{ f4: 3.14, f8: 2.718281828459045 }}]", table), None)
+		client.command(&format!("INSERT test::{} [{{ f4: 3.14, f8: 2.718281828459045 }}]", table), None)
 			.await
 			.unwrap();
 
@@ -152,9 +152,9 @@ fn test_subscription_string_types() {
 		let table = unique_table_name("sub_string");
 		create_test_table(&client, &table, &[("s", "utf8"), ("s2", "utf8")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
-		client.command(&format!("INSERT test.{} [{{ s: 'hello world', s2: 'test data' }}]", table), None)
+		client.command(&format!("INSERT test::{} [{{ s: 'hello world', s2: 'test data' }}]", table), None)
 			.await
 			.unwrap();
 
@@ -186,12 +186,12 @@ fn test_subscription_temporal() {
 		let table = unique_table_name("sub_temporal");
 		create_test_table(&client, &table, &[("d", "date"), ("t", "time"), ("dt", "datetime")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
 		// Use quoted strings for temporal values (will be cast to temporal types)
 		client.command(
 			&format!(
-				"INSERT test.{} [{{ d: '2025-01-15', t: '14:30:00', dt: '2025-01-15T14:30:00Z' }}]",
+				"INSERT test::{} [{{ d: '2025-01-15', t: '14:30:00', dt: '2025-01-15T14:30:00Z' }}]",
 				table
 			),
 			None,
@@ -227,11 +227,11 @@ fn test_subscription_uuid() {
 		let table = unique_table_name("sub_uuid");
 		create_test_table(&client, &table, &[("u4", "uuid4"), ("u7", "uuid7")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test.{}", table)).await.unwrap();
+		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
 
 		client.command(
 			&format!(
-				"INSERT test.{} [{{ u4: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', u7: '019478f0-d3af-7e22-9d7a-f8d7c7a3b3c4' }}]",
+				"INSERT test::{} [{{ u4: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', u7: '019478f0-d3af-7e22-9d7a-f8d7c7a3b3c4' }}]",
 				table
 			),
 			None,

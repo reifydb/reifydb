@@ -292,7 +292,7 @@ impl<'bump> Parser<'bump> {
 							left = self.parse_sumtype_constructor(infix)?;
 							continue;
 						}
-						if matches!(infix.left.as_ref(), Ast::Infix(inner) if matches!(inner.operator, InfixOperator::AccessTable(_)))
+						if matches!(infix.left.as_ref(), Ast::Infix(inner) if matches!(inner.operator, InfixOperator::AccessTable(_) | InfixOperator::AccessNamespace(_)))
 						{
 							left = self.parse_sumtype_unit_constructor(infix)?;
 							continue;
@@ -308,7 +308,12 @@ impl<'bump> Parser<'bump> {
 	fn parse_sumtype_constructor(&mut self, infix: AstInfix<'bump>) -> crate::Result<Ast<'bump>> {
 		let variant_name = *infix.right.as_identifier().fragment();
 		let (namespace, sumtype_name) = match infix.left.as_ref() {
-			Ast::Infix(inner) if matches!(inner.operator, InfixOperator::AccessTable(_)) => {
+			Ast::Infix(inner)
+				if matches!(
+					inner.operator,
+					InfixOperator::AccessTable(_) | InfixOperator::AccessNamespace(_)
+				) =>
+			{
 				let ns = *inner.left.as_identifier().fragment();
 				let name = *inner.right.as_identifier().fragment();
 				(ns, name)
@@ -565,8 +570,9 @@ impl<'bump> Parser<'bump> {
 
 		let first = self.consume(TokenKind::Identifier)?;
 
-		let (namespace, sumtype_name) = if !self.is_eof() && self.current()?.is_operator(Operator::Dot) {
-			self.consume_operator(Operator::Dot)?;
+		let (namespace, sumtype_name) = if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon)
+		{
+			self.consume_operator(Operator::DoubleColon)?;
 			let sumtype_token = self.consume(TokenKind::Identifier)?;
 			(Some(first.fragment), sumtype_token.fragment)
 		} else {
@@ -1006,7 +1012,7 @@ pub mod tests {
 	#[test]
 	fn test_pipe_with_system_tables() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "from system.tables | sort {id}").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "from system::tables | sort {id}").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let result = parser.parse().unwrap();
 

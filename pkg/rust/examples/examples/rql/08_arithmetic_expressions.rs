@@ -100,7 +100,7 @@ fn main() {
 	db.admin_as_root("create namespace shop", Params::None).unwrap();
 	db.admin_as_root(
 		r#"
-		create table shop.products {
+		create table shop::products {
 			id: int4,
 			name: utf8,
 			price: float8,
@@ -115,7 +115,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT shop.products [
+		INSERT shop::products [
 			{ id: 1, name: "Widget", price: 29.99, quantity: 5, discount_percent: 10.0, tax_rate: 8.5 },
 			{ id: 2, name: "Gadget", price: 49.99, quantity: 3, discount_percent: 15.0, tax_rate: 8.5 },
 			{ id: 3, name: "Tool", price: 99.99, quantity: 2, discount_percent: 20.0, tax_rate: 8.5 },
@@ -129,13 +129,13 @@ fn main() {
 	// Example 4: Arithmetic on table columns
 	info!("\nExample 4: Calculate total price (price * quantity)");
 	log_query(
-		r#"from shop.products
+		r#"from shop::products
 map { name, price, quantity, total: price * quantity }"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from shop.products
+			from shop::products
 			map { name, price, quantity, total: price * quantity }
 			"#,
 			Params::None,
@@ -148,7 +148,7 @@ map { name, price, quantity, total: price * quantity }"#,
 	// Example 5: Comptokenize calculations with discounts
 	info!("\nExample 5: Calculate discount amount and final price");
 	log_query(
-		r#"from shop.products
+		r#"from shop::products
 map {
   name,
   price,
@@ -160,7 +160,7 @@ map {
 	for frame in db
 		.query_as_root(
 			r#"
-			from shop.products
+			from shop::products
 			map {
 				name,
 				price,
@@ -179,7 +179,7 @@ map {
 	// Example 6: Tax calculations
 	info!("\nExample 6: Calculate price with tax");
 	log_query(
-		r#"from shop.products
+		r#"from shop::products
 map {
   name,
   price,
@@ -191,7 +191,7 @@ map {
 	for frame in db
 		.query_as_root(
 			r#"
-			from shop.products
+			from shop::products
 			map {
 				name,
 				price,
@@ -210,13 +210,13 @@ map {
 	// Example 7: Arithmetic in filter conditions
 	info!("\nExample 7: Filter using arithmetic expression");
 	log_query(
-		r#"from shop.products
+		r#"from shop::products
 filter price * quantity > 100"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from shop.products
+			from shop::products
 			filter price * quantity > 100
 			"#,
 			Params::None,
@@ -229,7 +229,7 @@ filter price * quantity > 100"#,
 	// Example 8: Comptokenize nested calculations
 	info!("\nExample 8: Complete order calculation");
 	log_query(
-		r#"from shop.products
+		r#"from shop::products
 map {
   name,
   quantity,
@@ -243,7 +243,7 @@ map {
 	for frame in db
 		.query_as_root(
 			r#"
-			from shop.products
+			from shop::products
 			map {
 				name,
 				quantity,

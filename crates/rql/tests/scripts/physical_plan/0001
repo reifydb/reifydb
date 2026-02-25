@@ -3,5 +3,5 @@
 
 physical 'from users'
 ---
-> └── TableScan default.users
+> └── TableScan default::users
 >

@@ -102,7 +102,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::DropSubscription(_) => unimplemented!(),
 		PhysicalPlan::CreateFlow(create_flow) => {
 			let mut label =
-				format!("CreateFlow {}.{}", create_flow.namespace.name, create_flow.flow.text());
+				format!("CreateFlow {}::{}", create_flow.namespace.name, create_flow.flow.text());
 
 			if create_flow.if_not_exists {
 				label.push_str(" (IF NOT EXISTS)");
@@ -353,7 +353,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 
 		PhysicalPlan::IndexScan(node) => {
 			let label = format!(
-				"IndexScan {}.{}::{}",
+				"IndexScan {}::{}::{}",
 				node.source.namespace().name(),
 				node.source.name(),
 				node.index_name
@@ -362,26 +362,28 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		}
 
 		PhysicalPlan::TableScan(node) => {
-			let label = format!("TableScan {}.{}", node.source.namespace().name(), node.source.name());
+			let label = format!("TableScan {}::{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 
 		PhysicalPlan::ViewScan(node) => {
-			let label = format!("ViewScan {}.{}", node.source.namespace().name(), node.source.name());
+			let label = format!("ViewScan {}::{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 
 		PhysicalPlan::RingBufferScan(node) => {
-			let label = format!("RingBufferScan {}.{}", node.source.namespace().name(), node.source.name());
+			let label =
+				format!("RingBufferScan {}::{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 		PhysicalPlan::FlowScan(node) => {
-			let label = format!("FlowScan {}.{}", node.source.namespace().name(), node.source.name());
+			let label = format!("FlowScan {}::{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 
 		PhysicalPlan::DictionaryScan(node) => {
-			let label = format!("DictionaryScan {}.{}", node.source.namespace().name(), node.source.name());
+			let label =
+				format!("DictionaryScan {}::{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 
@@ -477,7 +479,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			}
 		}
 		PhysicalPlan::TableVirtualScan(node) => {
-			let label = format!("VirtualScan: {}.{}", node.source.namespace().name(), node.source.name());
+			let label = format!("VirtualScan: {}::{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 		PhysicalPlan::Generator(node) => {

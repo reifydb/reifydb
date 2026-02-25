@@ -61,7 +61,7 @@ export function useSchema(): [boolean, TableInfo[], string | undefined] {
 
             try {
                 await query(
-                    `OUTPUT FROM system.namespaces; OUTPUT FROM system.tables; OUTPUT FROM system.views; FROM system.columns;`,
+                    `OUTPUT FROM system::namespaces; OUTPUT FROM system::tables; OUTPUT FROM system::views; FROM system::columns;`,
                     undefined,
                     [namespaceSchema, tableSchema, viewSchema, columnSchema]
                 );
@@ -115,7 +115,7 @@ export function useSchema(): [boolean, TableInfo[], string | undefined] {
             const namespace = namespaceMap.get(namespaceId);
             if (!namespace) return;
 
-            const fullTableName = `${namespace}.${tableName}`;
+            const fullTableName = `${namespace}::${tableName}`;
 
             tableInfoMap.set(tableId, {
                 name: fullTableName,
@@ -133,7 +133,7 @@ export function useSchema(): [boolean, TableInfo[], string | undefined] {
             const namespace = namespaceMap.get(namespaceId);
             if (!namespace) return;
 
-            const fullViewName = `${namespace}.${viewName}`;
+            const fullViewName = `${namespace}::${viewName}`;
 
             tableInfoMap.set(viewId, {
                 name: fullViewName,
@@ -205,7 +205,7 @@ export function useSchema(): [boolean, TableInfo[], string | undefined] {
         });
 
         const schemaArray = Array.from(tableInfoMap.values())
-            .filter((table) => table.name !== 'reifydb.flows')
+            .filter((table) => table.name !== 'reifydb::flows')
             .sort((a, b) => a.name.localeCompare(b.name));
 
         setSchema(schemaArray);

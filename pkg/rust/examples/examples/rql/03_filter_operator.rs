@@ -25,7 +25,7 @@ fn main() {
 	db.admin_as_root("create namespace hr", Params::None).unwrap();
 	db.admin_as_root(
 		r#"
-		create table hr.employees {
+		create table hr::employees {
 			id: int4,
 			name: utf8,
 			department: utf8,
@@ -40,7 +40,7 @@ fn main() {
 
 	db.command_as_root(
 		r#"
-		INSERT hr.employees [
+		INSERT hr::employees [
 			{ id: 1, name: "Alice", department: "Engineering", salary: 120000, years_experience: 8, is_manager: true },
 			{ id: 2, name: "Bob", department: "Sales", salary: 80000, years_experience: 5, is_manager: false },
 			{ id: 3, name: "Carol", department: "Engineering", salary: 95000, years_experience: 3, is_manager: false },
@@ -57,11 +57,11 @@ fn main() {
 
 	// Example 1: Simple equality filter
 	info!("\nExample 1: Filter by exact match (equality)");
-	log_query(r#"from hr.employees filter department == "Engineering""#);
+	log_query(r#"from hr::employees filter department == "Engineering""#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from hr.employees
+			from hr::employees
 			filter department == "Engineering"
 			"#,
 			Params::None,
@@ -74,11 +74,11 @@ fn main() {
 
 	// Example 2: Not equal filter
 	info!("\nExample 2: Filter by not equal");
-	log_query(r#"from hr.employees filter department != "Engineering""#);
+	log_query(r#"from hr::employees filter department != "Engineering""#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from hr.employees
+			from hr::employees
 			filter department != "Engineering"
 			"#,
 			Params::None,
@@ -91,11 +91,11 @@ fn main() {
 
 	// Example 3: Greater than filter
 	info!("\nExample 3: Filter by greater than");
-	log_query(r#"from hr.employees filter salary > 100000"#);
+	log_query(r#"from hr::employees filter salary > 100000"#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from hr.employees
+			from hr::employees
 			filter salary > 100000
 			"#,
 			Params::None,
@@ -108,11 +108,11 @@ fn main() {
 
 	// Example 4: Less than or equal filter
 	info!("\nExample 4: Filter by less than or equal");
-	log_query(r#"from hr.employees filter years_experience <= 5"#);
+	log_query(r#"from hr::employees filter years_experience <= 5"#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from hr.employees
+			from hr::employees
 			filter years_experience <= 5
 			"#,
 			Params::None,
@@ -125,11 +125,11 @@ fn main() {
 
 	// Example 5: Boolean filter
 	info!("\nExample 5: Filter by boolean value");
-	log_query(r#"from hr.employees filter is_manager == true"#);
+	log_query(r#"from hr::employees filter is_manager == true"#);
 	for frame in db
 		.query_as_root(
 			r#"
-			from hr.employees
+			from hr::employees
 			filter is_manager == true
 			"#,
 			Params::None,
@@ -143,13 +143,13 @@ fn main() {
 	// Example 6: AND operator
 	info!("\nExample 6: Filter with AND operator");
 	log_query(
-		r#"from hr.employees
+		r#"from hr::employees
 filter department == "Engineering" and salary > 100000"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from hr.employees
+			from hr::employees
 			filter department == "Engineering" and salary > 100000
 			"#,
 			Params::None,
@@ -163,13 +163,13 @@ filter department == "Engineering" and salary > 100000"#,
 	// Example 7: OR operator
 	info!("\nExample 7: Filter with OR operator");
 	log_query(
-		r#"from hr.employees
+		r#"from hr::employees
 filter department == "Sales" or department == "Marketing""#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from hr.employees
+			from hr::employees
 			filter department == "Sales" or department == "Marketing"
 			"#,
 			Params::None,
@@ -183,14 +183,14 @@ filter department == "Sales" or department == "Marketing""#,
 	// Example 8: Comptokenize filter with parentheses
 	info!("\nExample 8: Comptokenize filter with parentheses");
 	log_query(
-		r#"from hr.employees
+		r#"from hr::employees
 filter (department == "Engineering" or department == "Sales")
    and salary >= 100000"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from hr.employees
+			from hr::employees
 			filter (department == "Engineering" or department == "Sales") 
 			   and salary >= 100000
 			"#,
@@ -235,14 +235,14 @@ filter score >= 90"#,
 	// Example 10: Multiple filters in sequence
 	info!("\nExample 10: Multiple filters in sequence");
 	log_query(
-		r#"from hr.employees
+		r#"from hr::employees
 filter salary > 80000
 filter is_manager == false"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from hr.employees
+			from hr::employees
 			filter salary > 80000
 			filter is_manager == false
 			"#,
@@ -257,13 +257,13 @@ filter is_manager == false"#,
 	// Example 11: BETWEEN operator
 	info!("\nExample 11: Filter with BETWEEN operator");
 	log_query(
-		r#"from hr.employees
+		r#"from hr::employees
 filter salary between 90000 and 110000"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
-			from hr.employees
+			from hr::employees
 			filter salary between 90000 and 110000
 			"#,
 			Params::None,

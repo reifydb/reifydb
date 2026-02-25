@@ -9,7 +9,7 @@ CREATE TABLE users {id: Option(int4), name: Option(utf8), active: Option(bool)}
 
 transpile 'CREATE TABLE test.scores (id BIGINT, score SMALLINT, grade VARCHAR)'
 ---
-CREATE TABLE test.scores {id: Option(int8), score: Option(int2), grade: Option(utf8)}
+CREATE TABLE test::scores {id: Option(int8), score: Option(int2), grade: Option(utf8)}
 
 transpile 'CREATE TABLE t (id INT NOT NULL, name TEXT)'
 ---

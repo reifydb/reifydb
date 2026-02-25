@@ -93,7 +93,7 @@ export class WsExecutor implements Executor {
   async getTables(): Promise<string[]> {
     try {
       const frames = await this.client.admin(
-        'FROM system.tables MAP { namespace, name }',
+        'FROM system::tables MAP { namespace, name }',
         null,
         []
       );
@@ -103,7 +103,7 @@ export class WsExecutor implements Executor {
         const r = row as Record<string, unknown>;
         const ns = this.extractValue(r.namespace) as string;
         const name = this.extractValue(r.name) as string;
-        return ns ? `${ns}.${name}` : name;
+        return ns ? `${ns}::${name}` : name;
       });
     } catch {
       return [];
@@ -113,7 +113,7 @@ export class WsExecutor implements Executor {
   async getSchema(tableName: string): Promise<string | null> {
     try {
       const frames = await this.client.admin(
-        `FROM system.columns FILTER table = "${tableName}" MAP { name, type }`,
+        `FROM system::columns FILTER table = "${tableName}" MAP { name, type }`,
         null,
         []
       );

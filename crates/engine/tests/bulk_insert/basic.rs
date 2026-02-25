@@ -31,7 +31,7 @@ fn test_table_insert_named_params() {
 	assert_eq!(result.tables[0].table, "users");
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.users");
+	let frames = query_table(&engine, "test::users");
 	assert_eq!(row_count(&frames), 2);
 
 	let mut values: Vec<_> = frames[0]
@@ -56,7 +56,7 @@ fn test_table_insert_positional_params() {
 
 	assert_eq!(result.tables[0].inserted, 3);
 
-	let frames = query_table(&engine, "test.items");
+	let frames = query_table(&engine, "test::items");
 	assert_eq!(row_count(&frames), 3);
 
 	let mut values: Vec<_> = frames[0]
@@ -129,7 +129,7 @@ fn test_ringbuffer_insert_basic() {
 	assert_eq!(result.ringbuffers[0].ringbuffer, "events");
 	assert_eq!(result.ringbuffers[0].inserted, 2);
 
-	let frames = query_ringbuffer(&engine, "test.events");
+	let frames = query_ringbuffer(&engine, "test::events");
 	assert_eq!(row_count(&frames), 2);
 
 	let mut values: Vec<_> = frames[0]
@@ -164,13 +164,13 @@ fn test_mixed_table_and_ringbuffer() {
 	assert_eq!(result.ringbuffers[0].inserted, 3);
 
 	// Verify table values (order-independent)
-	let table_frames = query_table(&engine, "test.logs");
+	let table_frames = query_table(&engine, "test::logs");
 	let mut table_ids: Vec<_> = table_frames[0].rows().map(|r| r.get::<i32>("id").unwrap().unwrap()).collect();
 	table_ids.sort();
 	assert_eq!(table_ids, vec![1, 2]);
 
 	// Verify ringbuffer values (order-independent)
-	let rb_frames = query_ringbuffer(&engine, "test.stream");
+	let rb_frames = query_ringbuffer(&engine, "test::stream");
 	let mut rb_seqs: Vec<_> = rb_frames[0].rows().map(|r| r.get::<i32>("seq").unwrap().unwrap()).collect();
 	rb_seqs.sort();
 	assert_eq!(rb_seqs, vec![100, 101, 102]);
@@ -197,12 +197,12 @@ fn test_multiple_tables() {
 	assert_eq!(result.tables[1].inserted, 2);
 
 	// Verify table_a values
-	let frames_a = query_table(&engine, "test.table_a");
+	let frames_a = query_table(&engine, "test::table_a");
 	let values_a: Vec<_> = frames_a[0].rows().map(|r| r.get::<i32>("a").unwrap().unwrap()).collect();
 	assert_eq!(values_a, vec![1]);
 
 	// Verify table_b values (order-independent)
-	let frames_b = query_table(&engine, "test.table_b");
+	let frames_b = query_table(&engine, "test::table_b");
 	let mut values_b: Vec<_> = frames_b[0].rows().map(|r| r.get::<i32>("b").unwrap().unwrap()).collect();
 	values_b.sort();
 	assert_eq!(values_b, vec![2, 3]);
@@ -256,7 +256,7 @@ fn test_empty_insert() {
 	assert_eq!(result.tables.len(), 1);
 	assert_eq!(result.tables[0].inserted, 0);
 
-	let frames = query_table(&engine, "test.empty");
+	let frames = query_table(&engine, "test::empty");
 	assert_eq!(row_count(&frames), 0);
 }
 
@@ -275,7 +275,7 @@ fn test_single_row_insert() {
 	assert_eq!(result.tables[0].inserted, 1);
 
 	// Verify actual values
-	let frames = query_table(&engine, "test.single");
+	let frames = query_table(&engine, "test::single");
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows[0].get::<i32>("id").unwrap(), Some(1));
 	assert_eq!(rows[0].get::<String>("data").unwrap(), Some("only one".to_string()));

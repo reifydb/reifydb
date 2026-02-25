@@ -25,7 +25,7 @@ fn test_type_coercion_int_to_larger_int() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.coerce");
+	let frames = query_table(&engine, "test::coerce");
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify values were coerced correctly
@@ -49,7 +49,7 @@ fn test_type_coercion_int_to_float() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.coerce");
+	let frames = query_table(&engine, "test::coerce");
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify values were coerced correctly
@@ -77,7 +77,7 @@ fn test_missing_column_uses_undefined() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.partial");
+	let frames = query_table(&engine, "test::partial");
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify column 'a' has values and column 'b' is undefined (None)
@@ -108,7 +108,7 @@ fn test_mixed_some_none_values() {
 
 	assert_eq!(result.tables[0].inserted, 3);
 
-	let frames = query_table(&engine, "test.mixed");
+	let frames = query_table(&engine, "test::mixed");
 	assert_eq!(row_count(&frames), 3);
 }
 
@@ -130,7 +130,7 @@ fn test_coercion_batch_multiple_rows() {
 
 	assert_eq!(result.tables[0].inserted, 100);
 
-	let frames = query_table(&engine, "test.batch");
+	let frames = query_table(&engine, "test::batch");
 	assert_eq!(row_count(&frames), 100);
 
 	// Verify all values were coerced correctly
@@ -155,7 +155,7 @@ fn test_coercion_float4_to_float8() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.floats");
+	let frames = query_table(&engine, "test::floats");
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify values were coerced (allowing for f32->f64 precision)
