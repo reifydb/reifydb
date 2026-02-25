@@ -7,7 +7,7 @@ use crate::{
 	ast::{
 		ast::{
 			AstDrop, AstDropDictionary, AstDropFlow, AstDropNamespace, AstDropRingBuffer,
-			AstDropSubscription, AstDropSumType, AstDropTable, AstDropView,
+			AstDropSubscription, AstDropSumType, AstDropTable, AstDropView, AstPolicyTargetType,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
@@ -28,9 +28,15 @@ impl<'bump> Parser<'bump> {
 
 		// Check what we're dropping
 		if (self.consume_if(TokenKind::Keyword(Keyword::Flow))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_drop_security_policy(token, AstPolicyTargetType::Flow);
+			}
 			return self.parse_drop_flow(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Table))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_drop_security_policy(token, AstPolicyTargetType::Table);
+			}
 			return self.parse_drop_table(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::View))?).is_some() {
@@ -40,16 +46,51 @@ impl<'bump> Parser<'bump> {
 			return self.parse_drop_ringbuffer(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Namespace))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_drop_security_policy(token, AstPolicyTargetType::Namespace);
+			}
 			return self.parse_drop_namespace(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Dictionary))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_drop_security_policy(token, AstPolicyTargetType::Dictionary);
+			}
 			return self.parse_drop_dictionary(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Enum))?).is_some() {
 			return self.parse_drop_enum(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Subscription))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_drop_security_policy(token, AstPolicyTargetType::Subscription);
+			}
 			return self.parse_drop_subscription(token);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {
+			return self.parse_drop_user(token);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Role))?).is_some() {
+			return self.parse_drop_role(token);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Session))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_drop_security_policy(token, AstPolicyTargetType::Session);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Feature))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_drop_security_policy(token, AstPolicyTargetType::Feature);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Function))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_drop_security_policy(token, AstPolicyTargetType::Function);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_drop_security_policy(token, AstPolicyTargetType::Procedure);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Series))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_drop_security_policy(token, AstPolicyTargetType::Series);
 		}
 
 		let fragment = self.current()?.fragment.to_owned();
@@ -68,7 +109,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse IF EXISTS clause, returning true if present.
-	fn parse_if_exists(&mut self) -> crate::Result<bool> {
+	pub(crate) fn parse_if_exists(&mut self) -> crate::Result<bool> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::If))?).is_some() {
 			self.consume_keyword(Keyword::Exists)?;
 			Ok(true)

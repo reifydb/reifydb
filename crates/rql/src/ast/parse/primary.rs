@@ -3,7 +3,9 @@
 
 use crate::{
 	ast::{
-		ast::{Ast, AstCallFunction, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard},
+		ast::{
+			Ast, AstCallFunction, AstEnvironment, AstFrom, AstIdentity, AstRownum, AstVariable, AstWildcard,
+		},
 		identifier::MaybeQualifiedFunctionIdentifier,
 		parse::Parser,
 	},
@@ -62,6 +64,27 @@ impl<'bump> Parser<'bump> {
 				match keyword {
 					Keyword::Append => Ok(Ast::Append(self.parse_append()?)),
 					Keyword::Assert => Ok(Ast::Assert(self.parse_assert()?)),
+					Keyword::Require => {
+						let token = self.consume_keyword(Keyword::Require)?;
+						// Handle optional braces like filter does
+						let has_braces = !self.is_eof()
+							&& self.current()?.is_operator(
+								crate::token::operator::Operator::OpenCurly,
+							);
+						if has_braces {
+							self.advance()?; // consume {
+						}
+						let body = self.parse_node(crate::ast::parse::Precedence::None)?;
+						if has_braces {
+							self.consume_operator(
+								crate::token::operator::Operator::CloseCurly,
+							)?;
+						}
+						Ok(Ast::Require(crate::ast::ast::AstRequire {
+							token,
+							body: crate::bump::BumpBox::new_in(body, self.bump()),
+						}))
+					}
 					Keyword::From => Ok(Ast::From(self.parse_from()?)),
 					Keyword::Map => Ok(Ast::Map(self.parse_map()?)),
 					Keyword::Extend => Ok(Ast::Extend(self.parse_extend()?)),
@@ -87,6 +110,8 @@ impl<'bump> Parser<'bump> {
 					Keyword::If => Ok(Ast::If(self.parse_if()?)),
 					Keyword::Match => Ok(Ast::Match(self.parse_match()?)),
 					Keyword::Dispatch => Ok(Ast::Dispatch(self.parse_dispatch()?)),
+					Keyword::Grant => Ok(Ast::Grant(self.parse_grant()?)),
+					Keyword::Revoke => Ok(Ast::Revoke(self.parse_revoke()?)),
 					Keyword::Loop => Ok(Ast::Loop(self.parse_loop()?)),
 					Keyword::While => Ok(Ast::While(self.parse_while()?)),
 					Keyword::For => Ok(Ast::For(self.parse_for()?)),
@@ -175,6 +200,11 @@ impl<'bump> Parser<'bump> {
 						let var_token = self.advance()?;
 						if var_token.fragment.text() == "$env" {
 							return Ok(Ast::Environment(AstEnvironment {
+								token: var_token,
+							}));
+						}
+						if var_token.fragment.text() == "$identity" {
+							return Ok(Ast::Identity(AstIdentity {
 								token: var_token,
 							}));
 						}

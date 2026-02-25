@@ -22,6 +22,7 @@ pub mod drop;
 pub mod extend;
 pub mod filter;
 pub mod from;
+pub mod grant;
 pub mod identifier;
 pub mod infix;
 pub mod inline;
@@ -37,11 +38,13 @@ pub mod patch;
 pub mod policy;
 pub mod prefix;
 pub mod primary;
+pub mod security_policy;
 pub mod sort;
 pub mod sub_query;
 pub mod take;
 pub mod tuple;
 pub mod update;
+pub mod user;
 pub mod window;
 
 use std::cmp::PartialOrd;
@@ -158,7 +161,10 @@ impl<'bump> Parser<'bump> {
 
 			// Check if this is a DDL statement (CREATE, ALTER, DROP)
 			// These should stand alone and not have arbitrary expressions after them
-			let is_ddl = matches!(node, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_));
+			let is_ddl = matches!(
+				node,
+				Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Grant(_) | Ast::Revoke(_)
+			);
 
 			nodes.push(node);
 
@@ -233,9 +239,9 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> crate::Result<Ast<'bump>> {
 		let mut left = self.parse_primary()?;
 
-		// DDL statements (CREATE, ALTER, DROP) cannot be used in infix expressions
+		// DDL statements (CREATE, ALTER, DROP, GRANT, REVOKE) cannot be used in infix expressions
 		// They must stand alone
-		if matches!(left, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_)) {
+		if matches!(left, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Grant(_) | Ast::Revoke(_)) {
 			return Ok(left);
 		}
 

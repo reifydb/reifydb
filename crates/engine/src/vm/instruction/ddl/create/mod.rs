@@ -23,12 +23,15 @@ pub mod policy;
 pub mod primary_key;
 pub mod procedure;
 pub mod ringbuffer;
+pub mod role;
+pub mod security_policy;
 pub mod series;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod tag;
 pub mod transactional;
+pub mod user;
 
 /// Creates a flow for a deferred view.
 ///

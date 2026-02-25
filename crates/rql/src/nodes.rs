@@ -128,6 +128,16 @@ pub enum PhysicalPlan {
 	Window(WindowNode),
 	// Auto-scalarization for 1x1 frames
 	Scalarize(ScalarizeNode),
+	// Auth/Permissions
+	CreateUser(CreateUserNode),
+	CreateRole(CreateRoleNode),
+	Grant(GrantNode),
+	Revoke(RevokeNode),
+	DropUser(DropUserNode),
+	DropRole(DropRoleNode),
+	CreateSecurityPolicy(CreateSecurityPolicyNode),
+	AlterSecurityPolicy(AlterSecurityPolicyNode),
+	DropSecurityPolicy(DropSecurityPolicyNode),
 }
 
 #[derive(Debug, Clone)]
@@ -781,4 +791,70 @@ pub struct DropSubscriptionNode {
 	pub subscription_name: Fragment,
 	pub if_exists: bool,
 	pub cascade: bool,
+}
+
+// === Auth/Permissions physical plan nodes ===
+
+#[derive(Debug, Clone)]
+pub struct CreateUserNode {
+	pub name: Fragment,
+	pub password: Fragment,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateRoleNode {
+	pub name: Fragment,
+}
+
+#[derive(Debug, Clone)]
+pub struct GrantNode {
+	pub role: Fragment,
+	pub user: Fragment,
+}
+
+#[derive(Debug, Clone)]
+pub struct RevokeNode {
+	pub role: Fragment,
+	pub user: Fragment,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropUserNode {
+	pub name: Fragment,
+	pub if_exists: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropRoleNode {
+	pub name: Fragment,
+	pub if_exists: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSecurityPolicyNode {
+	pub name: Option<Fragment>,
+	pub target_type: String,
+	pub scope_namespace: Option<Fragment>,
+	pub scope_object: Option<Fragment>,
+	pub operations: Vec<SecurityPolicyOperationNode>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SecurityPolicyOperationNode {
+	pub operation: String,
+	pub body_source: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterSecurityPolicyNode {
+	pub target_type: String,
+	pub name: Fragment,
+	pub enable: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropSecurityPolicyNode {
+	pub target_type: String,
+	pub name: Fragment,
+	pub if_exists: bool,
 }

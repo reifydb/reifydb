@@ -23,6 +23,9 @@ pub enum CatalogObjectKind {
 	Handler,
 	Series,
 	Tag,
+	User,
+	Role,
+	SecurityPolicy,
 }
 
 impl Display for CatalogObjectKind {
@@ -40,6 +43,9 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Handler => f.write_str("handler"),
 			CatalogObjectKind::Series => f.write_str("series"),
 			CatalogObjectKind::Tag => f.write_str("tag"),
+			CatalogObjectKind::User => f.write_str("user"),
+			CatalogObjectKind::Role => f.write_str("role"),
+			CatalogObjectKind::SecurityPolicy => f.write_str("security policy"),
 		}
 	}
 }
@@ -222,6 +228,21 @@ impl IntoDiagnostic for CatalogError {
 						"tag",
 						"choose a different name or drop the existing tag first",
 					),
+					CatalogObjectKind::User => (
+						"CA_040",
+						"user",
+						"choose a different name or drop the existing user first",
+					),
+					CatalogObjectKind::Role => (
+						"CA_041",
+						"role",
+						"choose a different name or drop the existing role first",
+					),
+					CatalogObjectKind::SecurityPolicy => (
+						"CA_042",
+						"security policy",
+						"choose a different name or drop the existing security policy first",
+					),
 				};
 				let message = if matches!(kind, CatalogObjectKind::Namespace) {
 					format!("{} `{}` already exists", kind_str, namespace)
@@ -308,6 +329,21 @@ impl IntoDiagnostic for CatalogError {
 						"CA_002",
 						"tag",
 						format!("create the tag first with `CREATE TAG {}.{} {{ ... }}`", namespace, name),
+					),
+					CatalogObjectKind::User => (
+						"CA_043",
+						"user",
+						"ensure the user exists or create it first using `CREATE USER`".to_string(),
+					),
+					CatalogObjectKind::Role => (
+						"CA_044",
+						"role",
+						"ensure the role exists or create it first using `CREATE ROLE`".to_string(),
+					),
+					CatalogObjectKind::SecurityPolicy => (
+						"CA_045",
+						"security policy",
+						"ensure the security policy exists or create it first".to_string(),
 					),
 				};
 				let message = if matches!(kind, CatalogObjectKind::Namespace) {

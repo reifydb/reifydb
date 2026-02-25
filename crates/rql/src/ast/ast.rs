@@ -122,6 +122,10 @@ pub enum Ast<'bump> {
 	Match(AstMatch<'bump>),
 	Closure(AstClosure<'bump>),
 	Dispatch(AstDispatch<'bump>),
+	Grant(AstGrant<'bump>),
+	Revoke(AstRevoke<'bump>),
+	Identity(AstIdentity<'bump>),
+	Require(AstRequire<'bump>),
 }
 
 impl<'bump> Default for Ast<'bump> {
@@ -212,6 +216,10 @@ impl<'bump> Ast<'bump> {
 			Ast::Match(node) => &node.token,
 			Ast::Closure(node) => &node.token,
 			Ast::Dispatch(node) => &node.token,
+			Ast::Grant(node) => &node.token,
+			Ast::Revoke(node) => &node.token,
+			Ast::Identity(node) => &node.token,
+			Ast::Require(node) => &node.token,
 		}
 	}
 
@@ -226,7 +234,7 @@ impl<'bump> Ast<'bump> {
 impl<'bump> Ast<'bump> {
 	/// Returns true if this AST node is a DDL statement (CREATE, ALTER, DROP).
 	pub fn is_ddl(&self) -> bool {
-		matches!(self, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_))
+		matches!(self, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Grant(_) | Ast::Revoke(_))
 	}
 
 	pub fn is_dispatch(&self) -> bool {
@@ -797,12 +805,16 @@ pub enum AstCreate<'bump> {
 	Event(AstCreateEvent<'bump>),
 	Tag(AstCreateTag<'bump>),
 	Handler(AstCreateHandler<'bump>),
+	User(AstCreateUser<'bump>),
+	Role(AstCreateRole<'bump>),
+	SecurityPolicy(AstCreateSecurityPolicy<'bump>),
 }
 
 #[derive(Debug)]
 pub enum AstAlter<'bump> {
 	Sequence(AstAlterSequence<'bump>),
 	Flow(AstAlterFlow<'bump>),
+	SecurityPolicy(AstAlterSecurityPolicy<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -815,6 +827,9 @@ pub enum AstDrop<'bump> {
 	Dictionary(AstDropDictionary<'bump>),
 	Enum(AstDropSumType<'bump>),
 	Subscription(AstDropSubscription<'bump>),
+	User(AstDropUser<'bump>),
+	Role(AstDropRole<'bump>),
+	SecurityPolicy(AstDropSecurityPolicy<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1185,6 +1200,18 @@ impl<'bump> AstCreate<'bump> {
 				token,
 				..
 			}) => token,
+			AstCreate::User(AstCreateUser {
+				token,
+				..
+			}) => token,
+			AstCreate::Role(AstCreateRole {
+				token,
+				..
+			}) => token,
+			AstCreate::SecurityPolicy(AstCreateSecurityPolicy {
+				token,
+				..
+			}) => token,
 		}
 	}
 }
@@ -1197,6 +1224,10 @@ impl<'bump> AstAlter<'bump> {
 				..
 			}) => token,
 			AstAlter::Flow(AstAlterFlow {
+				token,
+				..
+			}) => token,
+			AstAlter::SecurityPolicy(AstAlterSecurityPolicy {
 				token,
 				..
 			}) => token,
@@ -1236,6 +1267,18 @@ impl<'bump> AstDrop<'bump> {
 				..
 			}) => token,
 			AstDrop::Subscription(AstDropSubscription {
+				token,
+				..
+			}) => token,
+			AstDrop::User(AstDropUser {
+				token,
+				..
+			}) => token,
+			AstDrop::Role(AstDropRole {
+				token,
+				..
+			}) => token,
+			AstDrop::SecurityPolicy(AstDropSecurityPolicy {
 				token,
 				..
 			}) => token,
@@ -1693,6 +1736,124 @@ pub struct AstRownum<'bump> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstEnvironment<'bump> {
 	pub token: Token<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstIdentity<'bump> {
+	pub token: Token<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstRequire<'bump> {
+	pub token: Token<'bump>,
+	pub body: BumpBox<'bump, Ast<'bump>>,
+}
+
+// === User/Role/Grant AST nodes ===
+
+#[derive(Debug)]
+pub struct AstCreateUser<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+	pub password: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateRole<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstGrant<'bump> {
+	pub token: Token<'bump>,
+	pub role: BumpFragment<'bump>,
+	pub user: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstRevoke<'bump> {
+	pub token: Token<'bump>,
+	pub role: BumpFragment<'bump>,
+	pub user: BumpFragment<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropUser<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+	pub if_exists: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropRole<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+	pub if_exists: bool,
+}
+
+// === Security Policy AST nodes ===
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AstPolicyTargetType {
+	Table,
+	Column,
+	Namespace,
+	Procedure,
+	Function,
+	Flow,
+	Subscription,
+	Series,
+	Dictionary,
+	Session,
+	Feature,
+}
+
+#[derive(Debug)]
+pub enum AstPolicyScope<'bump> {
+	/// e.g. ON ns::object
+	Specific(Vec<BumpFragment<'bump>>),
+	/// e.g. ON ns (namespace-wide)
+	NamespaceWide(BumpFragment<'bump>),
+	/// SESSION POLICY (no ON clause)
+	Global,
+}
+
+#[derive(Debug)]
+pub struct AstPolicyOperationEntry<'bump> {
+	pub operation: BumpFragment<'bump>,
+	pub body: Vec<Ast<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateSecurityPolicy<'bump> {
+	pub token: Token<'bump>,
+	pub name: Option<BumpFragment<'bump>>,
+	pub target_type: AstPolicyTargetType,
+	pub scope: AstPolicyScope<'bump>,
+	pub operations: Vec<AstPolicyOperationEntry<'bump>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AstAlterPolicyAction {
+	Enable,
+	Disable,
+}
+
+#[derive(Debug)]
+pub struct AstAlterSecurityPolicy<'bump> {
+	pub token: Token<'bump>,
+	pub target_type: AstPolicyTargetType,
+	pub name: BumpFragment<'bump>,
+	pub action: AstAlterPolicyAction,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropSecurityPolicy<'bump> {
+	pub token: Token<'bump>,
+	pub target_type: AstPolicyTargetType,
+	pub name: BumpFragment<'bump>,
+	pub if_exists: bool,
 }
 
 impl<'bump> AstVariable<'bump> {

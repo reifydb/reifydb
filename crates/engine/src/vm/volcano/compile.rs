@@ -15,10 +15,12 @@ use reifydb_catalog::vtable::{
 		index_storage_stats::IndexStorageStats, namespaces::Namespaces,
 		operator_retention_policies::OperatorRetentionPolicies, primary_key_columns::PrimaryKeyColumns,
 		primary_keys::PrimaryKeys, primitive_retention_policies::PrimitiveRetentionPolicies,
-		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers,
-		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences, series::Series,
+		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, roles::Roles,
+		schema_fields::SchemaFields, schemas::Schemas, security_policies::SecurityPolicies,
+		security_policy_operations::SecurityPolicyOperations, sequences::Sequences, series::Series,
 		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, tags::Tags,
-		types::Types, versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
+		types::Types, user_roles::UserRoles, users::Users, versions::Versions,
+		view_storage_stats::ViewStorageStats, views::Views,
 	},
 	tables::VTables,
 };
@@ -579,6 +581,13 @@ pub(crate) fn compile<'a>(
 					"handlers" => VTables::Handlers(Handlers::new()),
 					"tags" => VTables::Tags(Tags::new()),
 					"series" => VTables::Series(Series::new()),
+					"users" => VTables::Users(Users::new()),
+					"roles" => VTables::Roles(Roles::new()),
+					"user_roles" => VTables::UserRoles(UserRoles::new()),
+					"security_policies" => VTables::SecurityPolicies(SecurityPolicies::new()),
+					"security_policy_operations" => {
+						VTables::SecurityPolicyOperations(SecurityPolicyOperations::new())
+					}
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {

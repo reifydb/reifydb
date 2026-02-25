@@ -26,8 +26,11 @@ pub mod primary_key_columns;
 pub mod primary_keys;
 pub mod primitive_retention_policies;
 pub mod ringbuffers;
+pub mod roles;
 pub mod schema_fields;
 pub mod schemas;
+pub mod security_policies;
+pub mod security_policy_operations;
 pub mod sequence;
 pub mod series;
 pub mod storage_stats_dictionary;
@@ -41,6 +44,8 @@ pub mod tables;
 pub mod tables_virtual;
 pub mod tags;
 pub mod types;
+pub mod user_roles;
+pub mod users;
 pub mod versions;
 pub mod views;
 
@@ -64,8 +69,11 @@ use operator_retention_policies::operator_retention_policies;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
 use primitive_retention_policies::primitive_retention_policies;
+use roles::roles;
 use schema_fields::schema_fields;
 use schemas::schemas;
+use security_policies::security_policies;
+use security_policy_operations::security_policy_operations;
 use sequence::sequences;
 use series::series;
 use storage_stats_dictionary::dictionary_storage_stats;
@@ -79,6 +87,8 @@ use tables::tables;
 use tables_virtual::virtual_tables;
 use tags::tags;
 use types::types;
+use user_roles::user_roles;
+use users::users;
 use versions::versions;
 use views::views;
 
@@ -437,6 +447,59 @@ pub mod ids {
 				ALIGN,
 			];
 		}
+
+		pub mod users {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAME: ColumnId = ColumnId(2);
+			pub const PASSWORD_HASH: ColumnId = ColumnId(3);
+			pub const ENABLED: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [ID, NAME, PASSWORD_HASH, ENABLED];
+		}
+
+		pub mod roles {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAME: ColumnId = ColumnId(2);
+
+			pub const ALL: [ColumnId; 2] = [ID, NAME];
+		}
+
+		pub mod user_roles {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const USER_ID: ColumnId = ColumnId(1);
+			pub const ROLE_ID: ColumnId = ColumnId(2);
+
+			pub const ALL: [ColumnId; 2] = [USER_ID, ROLE_ID];
+		}
+
+		pub mod security_policies {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAME: ColumnId = ColumnId(2);
+			pub const TARGET_TYPE: ColumnId = ColumnId(3);
+			pub const TARGET_NAMESPACE: ColumnId = ColumnId(4);
+			pub const TARGET_OBJECT: ColumnId = ColumnId(5);
+			pub const ENABLED: ColumnId = ColumnId(6);
+
+			pub const ALL: [ColumnId; 6] =
+				[ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_OBJECT, ENABLED];
+		}
+
+		pub mod security_policy_operations {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const POLICY_ID: ColumnId = ColumnId(1);
+			pub const OPERATION: ColumnId = ColumnId(2);
+			pub const BODY_SOURCE: ColumnId = ColumnId(3);
+
+			pub const ALL: [ColumnId; 3] = [POLICY_ID, OPERATION, BODY_SOURCE];
+		}
 	}
 
 	pub mod sequences {
@@ -452,8 +515,11 @@ pub mod ids {
 		pub const PRIMARY_KEY: SequenceId = SequenceId(8);
 		pub const PROCEDURE: SequenceId = SequenceId(9);
 		pub const HANDLER: SequenceId = SequenceId(10);
+		pub const USER: SequenceId = SequenceId(11);
+		pub const ROLE: SequenceId = SequenceId(12);
+		pub const SECURITY_POLICY: SequenceId = SequenceId(13);
 
-		pub const ALL: [SequenceId; 10] = [
+		pub const ALL: [SequenceId; 13] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -464,6 +530,9 @@ pub mod ids {
 			PRIMARY_KEY,
 			PROCEDURE,
 			HANDLER,
+			USER,
+			ROLE,
+			SECURITY_POLICY,
 		];
 	}
 
@@ -508,8 +577,13 @@ pub mod ids {
 		pub const HANDLERS: VTableId = VTableId(36);
 		pub const TAGS: VTableId = VTableId(37);
 		pub const SERIES: VTableId = VTableId(38);
+		pub const USERS: VTableId = VTableId(39);
+		pub const ROLES: VTableId = VTableId(40);
+		pub const USER_ROLES: VTableId = VTableId(41);
+		pub const SECURITY_POLICIES: VTableId = VTableId(42);
+		pub const SECURITY_POLICY_OPERATIONS: VTableId = VTableId(43);
 
-		pub const ALL: [VTableId; 38] = [
+		pub const ALL: [VTableId; 43] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -548,6 +622,11 @@ pub mod ids {
 			HANDLERS,
 			TAGS,
 			SERIES,
+			USERS,
+			ROLES,
+			USER_ROLES,
+			SECURITY_POLICIES,
+			SECURITY_POLICY_OPERATIONS,
 		];
 	}
 }
@@ -762,5 +841,30 @@ impl SystemCatalog {
 	/// Get the series virtual table definition
 	pub fn get_system_series_table_def() -> Arc<VTableDef> {
 		series()
+	}
+
+	/// Get the users virtual table definition
+	pub fn get_system_users_table_def() -> Arc<VTableDef> {
+		users()
+	}
+
+	/// Get the roles virtual table definition
+	pub fn get_system_roles_table_def() -> Arc<VTableDef> {
+		roles()
+	}
+
+	/// Get the user_roles virtual table definition
+	pub fn get_system_user_roles_table_def() -> Arc<VTableDef> {
+		user_roles()
+	}
+
+	/// Get the security_policies virtual table definition
+	pub fn get_system_security_policies_table_def() -> Arc<VTableDef> {
+		security_policies()
+	}
+
+	/// Get the security_policy_operations virtual table definition
+	pub fn get_system_security_policy_operations_table_def() -> Arc<VTableDef> {
+		security_policy_operations()
 	}
 }

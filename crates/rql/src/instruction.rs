@@ -181,6 +181,17 @@ pub enum Instruction {
 	DropFlow(nodes::DropFlowNode),
 	DropSubscription(nodes::DropSubscriptionNode),
 
+	// === Auth/Permissions ===
+	CreateUser(nodes::CreateUserNode),
+	CreateRole(nodes::CreateRoleNode),
+	Grant(nodes::GrantNode),
+	Revoke(nodes::RevokeNode),
+	DropUser(nodes::DropUserNode),
+	DropRole(nodes::DropRoleNode),
+	CreateSecurityPolicy(nodes::CreateSecurityPolicyNode),
+	AlterSecurityPolicy(nodes::AlterSecurityPolicyNode),
+	DropSecurityPolicy(nodes::DropSecurityPolicyNode),
+
 	// === DML ===
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),

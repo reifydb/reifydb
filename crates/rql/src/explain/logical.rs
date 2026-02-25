@@ -92,6 +92,74 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::DropSumType(_) => unimplemented!(),
 		LogicalPlan::DropFlow(_) => unimplemented!(),
 		LogicalPlan::DropSubscription(_) => unimplemented!(),
+		LogicalPlan::CreateUser(n) => {
+			output.push_str(&format!("{}{} CreateUser name={}\n", prefix, branch, n.name.text()));
+		}
+		LogicalPlan::CreateRole(n) => {
+			output.push_str(&format!("{}{} CreateRole name={}\n", prefix, branch, n.name.text()));
+		}
+		LogicalPlan::Grant(n) => {
+			output.push_str(&format!(
+				"{}{} Grant role={} user={}\n",
+				prefix,
+				branch,
+				n.role.text(),
+				n.user.text()
+			));
+		}
+		LogicalPlan::Revoke(n) => {
+			output.push_str(&format!(
+				"{}{} Revoke role={} user={}\n",
+				prefix,
+				branch,
+				n.role.text(),
+				n.user.text()
+			));
+		}
+		LogicalPlan::DropUser(n) => {
+			output.push_str(&format!(
+				"{}{} DropUser name={} if_exists={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				n.if_exists
+			));
+		}
+		LogicalPlan::DropRole(n) => {
+			output.push_str(&format!(
+				"{}{} DropRole name={} if_exists={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				n.if_exists
+			));
+		}
+		LogicalPlan::CreateSecurityPolicy(n) => {
+			let name = n.name.as_ref().map(|f| f.text()).unwrap_or("<unnamed>");
+			output.push_str(&format!(
+				"{}{} CreateSecurityPolicy name={} type={:?}\n",
+				prefix, branch, name, n.target_type
+			));
+		}
+		LogicalPlan::AlterSecurityPolicy(n) => {
+			let enabled = n.action == crate::ast::ast::AstAlterPolicyAction::Enable;
+			output.push_str(&format!(
+				"{}{} AlterSecurityPolicy name={} enabled={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				enabled
+			));
+		}
+		LogicalPlan::DropSecurityPolicy(n) => {
+			output.push_str(&format!(
+				"{}{} DropSecurityPolicy name={} if_exists={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				n.if_exists
+			));
+		}
 		LogicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,

@@ -24,10 +24,12 @@ use super::{
 		index_storage_stats::IndexStorageStats, namespaces::Namespaces,
 		operator_retention_policies::OperatorRetentionPolicies, primary_key_columns::PrimaryKeyColumns,
 		primary_keys::PrimaryKeys, primitive_retention_policies::PrimitiveRetentionPolicies,
-		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers,
-		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences, series::Series,
+		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, roles::Roles,
+		schema_fields::SchemaFields, schemas::Schemas, security_policies::SecurityPolicies,
+		security_policy_operations::SecurityPolicyOperations, sequences::Sequences, series::Series,
 		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, tags::Tags,
-		types::Types, versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
+		types::Types, user_roles::UserRoles, users::Users, versions::Versions,
+		view_storage_stats::ViewStorageStats, views::Views,
 	},
 };
 
@@ -79,6 +81,11 @@ pub enum VTables {
 	Handlers(Handlers),
 	Tags(Tags),
 	Series(Series),
+	Users(Users),
+	Roles(Roles),
+	UserRoles(UserRoles),
+	SecurityPolicies(SecurityPolicies),
+	SecurityPolicyOperations(SecurityPolicyOperations),
 
 	/// User-defined virtual table (callback-based)
 	UserDefined {
@@ -132,6 +139,11 @@ impl VTables {
 			Self::Handlers(t) => &t.definition,
 			Self::Tags(t) => &t.definition,
 			Self::Series(t) => &t.definition,
+			Self::Users(t) => &t.definition,
+			Self::Roles(t) => &t.definition,
+			Self::UserRoles(t) => &t.definition,
+			Self::SecurityPolicies(t) => &t.definition,
+			Self::SecurityPolicyOperations(t) => &t.definition,
 			Self::UserDefined {
 				def,
 				..
@@ -180,6 +192,11 @@ impl VTables {
 			Self::Handlers(t) => t.initialize(txn, ctx),
 			Self::Tags(t) => t.initialize(txn, ctx),
 			Self::Series(t) => t.initialize(txn, ctx),
+			Self::Users(t) => t.initialize(txn, ctx),
+			Self::Roles(t) => t.initialize(txn, ctx),
+			Self::UserRoles(t) => t.initialize(txn, ctx),
+			Self::SecurityPolicies(t) => t.initialize(txn, ctx),
+			Self::SecurityPolicyOperations(t) => t.initialize(txn, ctx),
 			Self::UserDefined {
 				params: stored_params,
 				exhausted,
@@ -242,6 +259,11 @@ impl VTables {
 			Self::Handlers(t) => t.next(txn),
 			Self::Tags(t) => t.next(txn),
 			Self::Series(t) => t.next(txn),
+			Self::Users(t) => t.next(txn),
+			Self::Roles(t) => t.next(txn),
+			Self::UserRoles(t) => t.next(txn),
+			Self::SecurityPolicies(t) => t.next(txn),
+			Self::SecurityPolicyOperations(t) => t.next(txn),
 			Self::UserDefined {
 				data_fn,
 				params: stored_params,

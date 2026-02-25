@@ -59,6 +59,11 @@ pub enum KeyKind {
 	Series = 0x31,
 	NamespaceSeries = 0x32,
 	SeriesMetadata = 0x33,
+	User = 0x34,
+	Role = 0x35,
+	UserRole = 0x36,
+	SecurityPolicy = 0x37,
+	SecurityPolicyOp = 0x38,
 }
 
 impl From<KeyKind> for u8 {
@@ -122,6 +127,11 @@ impl TryFrom<u8> for KeyKind {
 			0x31 => Ok(Self::Series),
 			0x32 => Ok(Self::NamespaceSeries),
 			0x33 => Ok(Self::SeriesMetadata),
+			0x34 => Ok(Self::User),
+			0x35 => Ok(Self::Role),
+			0x36 => Ok(Self::UserRole),
+			0x37 => Ok(Self::SecurityPolicy),
+			0x38 => Ok(Self::SecurityPolicyOp),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

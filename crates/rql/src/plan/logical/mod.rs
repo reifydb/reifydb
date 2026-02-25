@@ -254,6 +254,19 @@ impl<'bump> Compiler<'bump> {
 			Ast::Closure(node) => self.compile_closure(node, tx),
 			Ast::Call(call_node) => self.compile_call(call_node),
 			Ast::Dispatch(node) => self.compile_dispatch(node, tx),
+			Ast::Grant(node) => Ok(LogicalPlan::Grant(GrantNode {
+				role: node.role,
+				user: node.user,
+			})),
+			Ast::Revoke(node) => Ok(LogicalPlan::Revoke(RevokeNode {
+				role: node.role,
+				user: node.user,
+			})),
+			Ast::Identity(_) | Ast::Require(_) => {
+				// Identity and Require are expression-level constructs, not standalone statements.
+				// They appear inside policy bodies and pipe chains, not as top-level plan nodes.
+				self.compile_scalar_as_map(node)
+			}
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
@@ -414,6 +427,16 @@ pub enum LogicalPlan<'bump> {
 	CallFunction(function::CallFunctionNode<'bump>),
 	// Closures
 	DefineClosure(DefineClosureNode<'bump>),
+	// Auth/Permissions
+	CreateUser(CreateUserNode<'bump>),
+	CreateRole(CreateRoleNode<'bump>),
+	Grant(GrantNode<'bump>),
+	Revoke(RevokeNode<'bump>),
+	DropUser(DropUserNode<'bump>),
+	DropRole(DropRoleNode<'bump>),
+	CreateSecurityPolicy(CreateSecurityPolicyNode<'bump>),
+	AlterSecurityPolicy(AlterSecurityPolicyNode<'bump>),
+	DropSecurityPolicy(DropSecurityPolicyNode<'bump>),
 }
 
 #[derive(Debug)]
@@ -859,6 +882,65 @@ pub struct DropSubscriptionNode<'bump> {
 	pub identifier: BumpFragment<'bump>,
 	pub if_exists: bool,
 	pub cascade: bool,
+}
+
+// === Auth/Permissions logical plan nodes ===
+
+#[derive(Debug)]
+pub struct CreateUserNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub password: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct CreateRoleNode<'bump> {
+	pub name: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct GrantNode<'bump> {
+	pub role: BumpFragment<'bump>,
+	pub user: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct RevokeNode<'bump> {
+	pub role: BumpFragment<'bump>,
+	pub user: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct DropUserNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub if_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct DropRoleNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub if_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateSecurityPolicyNode<'bump> {
+	pub name: Option<BumpFragment<'bump>>,
+	pub target_type: crate::ast::ast::AstPolicyTargetType,
+	pub scope: crate::ast::ast::AstPolicyScope<'bump>,
+	pub operations: Vec<crate::ast::ast::AstPolicyOperationEntry<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AlterSecurityPolicyNode<'bump> {
+	pub target_type: crate::ast::ast::AstPolicyTargetType,
+	pub name: BumpFragment<'bump>,
+	pub action: crate::ast::ast::AstAlterPolicyAction,
+}
+
+#[derive(Debug)]
+pub struct DropSecurityPolicyNode<'bump> {
+	pub target_type: crate::ast::ast::AstPolicyTargetType,
+	pub name: BumpFragment<'bump>,
+	pub if_exists: bool,
 }
 
 #[derive(Debug)]

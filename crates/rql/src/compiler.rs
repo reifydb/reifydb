@@ -772,6 +772,44 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
+			// Auth/Permissions — leaf instructions
+			PhysicalPlan::CreateUser(node) => {
+				self.emit(Instruction::CreateUser(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateRole(node) => {
+				self.emit(Instruction::CreateRole(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::Grant(node) => {
+				self.emit(Instruction::Grant(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::Revoke(node) => {
+				self.emit(Instruction::Revoke(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropUser(node) => {
+				self.emit(Instruction::DropUser(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropRole(node) => {
+				self.emit(Instruction::DropRole(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateSecurityPolicy(node) => {
+				self.emit(Instruction::CreateSecurityPolicy(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::AlterSecurityPolicy(node) => {
+				self.emit(Instruction::AlterSecurityPolicy(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropSecurityPolicy(node) => {
+				self.emit(Instruction::DropSecurityPolicy(node));
+				self.emit(Instruction::Emit);
+			}
+
 			// DDL — nodes with query subtrees that need materialization
 			PhysicalPlan::CreateDeferredView(node) => {
 				self.emit(Instruction::CreateDeferredView(nodes::CreateDeferredViewNode {

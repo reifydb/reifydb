@@ -23,7 +23,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::ast::AstCreate,
-	plan::logical::{Compiler, LogicalPlan},
+	plan::logical::{Compiler, CreateRoleNode, CreateSecurityPolicyNode, CreateUserNode, LogicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -50,6 +50,21 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Event(node) => self.compile_create_event(node),
 			AstCreate::Tag(node) => self.compile_create_tag(node),
 			AstCreate::Handler(node) => self.compile_create_handler(node),
+			AstCreate::User(node) => Ok(LogicalPlan::CreateUser(CreateUserNode {
+				name: node.name,
+				password: node.password,
+			})),
+			AstCreate::Role(node) => Ok(LogicalPlan::CreateRole(CreateRoleNode {
+				name: node.name,
+			})),
+			AstCreate::SecurityPolicy(node) => {
+				Ok(LogicalPlan::CreateSecurityPolicy(CreateSecurityPolicyNode {
+					name: node.name,
+					target_type: node.target_type,
+					scope: node.scope,
+					operations: node.operations,
+				}))
+			}
 		}
 	}
 }

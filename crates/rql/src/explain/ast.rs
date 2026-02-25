@@ -89,6 +89,10 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::Match(_) => "Match",
 		Ast::Closure(_) => "Closure",
 		Ast::Dispatch(_) => "Dispatch",
+		Ast::Grant(_) => "Grant",
+		Ast::Revoke(_) => "Revoke",
+		Ast::Identity(_) => "Identity",
+		Ast::Require(_) => "Require",
 	};
 
 	let branch = if is_last {
@@ -117,6 +121,9 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 				let namespace =
 					f.flow.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
 				format!("ALTER FLOW {}{}", namespace, f.flow.name.text())
+			}
+			AstAlter::SecurityPolicy(sp) => {
+				format!("ALTER {:?} POLICY {}", sp.target_type, sp.name.text())
 			}
 		},
 		Ast::Create(create) => match create {
@@ -321,6 +328,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 					// Flow alter doesn't have child operations to display here
 					// The action is part of the flow node itself
 				}
+				AstAlter::SecurityPolicy(_) => {}
 			}
 			// Return early since we handled the children
 			return;

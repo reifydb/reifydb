@@ -152,6 +152,16 @@ pub enum PhysicalPlan<'bump> {
 	Generator(GeneratorNode),
 	Window(WindowNode<'bump>),
 	Scalarize(ScalarizeNode<'bump>),
+	// Auth/Permissions
+	CreateUser(nodes::CreateUserNode),
+	CreateRole(nodes::CreateRoleNode),
+	Grant(nodes::GrantNode),
+	Revoke(nodes::RevokeNode),
+	DropUser(nodes::DropUserNode),
+	DropRole(nodes::DropRoleNode),
+	CreateSecurityPolicy(nodes::CreateSecurityPolicyNode),
+	AlterSecurityPolicy(nodes::AlterSecurityPolicyNode),
+	DropSecurityPolicy(nodes::DropSecurityPolicyNode),
 }
 
 // --- Nodes with recursive children (bump-allocated) ---
@@ -633,6 +643,109 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::DropSubscription(drop) => {
 					stack.push(self.compile_drop_subscription(rx, drop)?);
+				}
+
+				// Auth/Permissions - pass through logical to physical directly
+				LogicalPlan::CreateUser(node) => {
+					stack.push(PhysicalPlan::CreateUser(nodes::CreateUserNode {
+						name: self.interner.intern_fragment(&node.name),
+						password: self.interner.intern_fragment(&node.password),
+					}));
+				}
+				LogicalPlan::CreateRole(node) => {
+					stack.push(PhysicalPlan::CreateRole(nodes::CreateRoleNode {
+						name: self.interner.intern_fragment(&node.name),
+					}));
+				}
+				LogicalPlan::Grant(node) => {
+					stack.push(PhysicalPlan::Grant(nodes::GrantNode {
+						role: self.interner.intern_fragment(&node.role),
+						user: self.interner.intern_fragment(&node.user),
+					}));
+				}
+				LogicalPlan::Revoke(node) => {
+					stack.push(PhysicalPlan::Revoke(nodes::RevokeNode {
+						role: self.interner.intern_fragment(&node.role),
+						user: self.interner.intern_fragment(&node.user),
+					}));
+				}
+				LogicalPlan::DropUser(node) => {
+					stack.push(PhysicalPlan::DropUser(nodes::DropUserNode {
+						name: self.interner.intern_fragment(&node.name),
+						if_exists: node.if_exists,
+					}));
+				}
+				LogicalPlan::DropRole(node) => {
+					stack.push(PhysicalPlan::DropRole(nodes::DropRoleNode {
+						name: self.interner.intern_fragment(&node.name),
+						if_exists: node.if_exists,
+					}));
+				}
+				LogicalPlan::CreateSecurityPolicy(node) => {
+					let name = node.name.map(|n| self.interner.intern_fragment(&n));
+					let target_type = format!("{:?}", node.target_type);
+					let (scope_namespace, scope_object) = match &node.scope {
+						crate::ast::ast::AstPolicyScope::Specific(segments) => {
+							if segments.len() >= 2 {
+								(
+									Some(self
+										.interner
+										.intern_fragment(&segments[0])),
+									Some(self.interner.intern_fragment(
+										&segments[segments.len() - 1],
+									)),
+								)
+							} else if segments.len() == 1 {
+								(
+									Some(self
+										.interner
+										.intern_fragment(&segments[0])),
+									None,
+								)
+							} else {
+								(None, None)
+							}
+						}
+						crate::ast::ast::AstPolicyScope::NamespaceWide(ns) => {
+							(Some(self.interner.intern_fragment(ns)), None)
+						}
+						crate::ast::ast::AstPolicyScope::Global => (None, None),
+					};
+					let operations = node
+						.operations
+						.iter()
+						.map(|op| {
+							nodes::SecurityPolicyOperationNode {
+								operation: op.operation.text().to_string(),
+								body_source: String::new(), /* Body source captured
+								                             * separately */
+							}
+						})
+						.collect();
+					stack.push(PhysicalPlan::CreateSecurityPolicy(
+						nodes::CreateSecurityPolicyNode {
+							name,
+							target_type,
+							scope_namespace,
+							scope_object,
+							operations,
+						},
+					));
+				}
+				LogicalPlan::AlterSecurityPolicy(node) => {
+					let enable = node.action == crate::ast::ast::AstAlterPolicyAction::Enable;
+					stack.push(PhysicalPlan::AlterSecurityPolicy(nodes::AlterSecurityPolicyNode {
+						target_type: format!("{:?}", node.target_type),
+						name: self.interner.intern_fragment(&node.name),
+						enable,
+					}));
+				}
+				LogicalPlan::DropSecurityPolicy(node) => {
+					stack.push(PhysicalPlan::DropSecurityPolicy(nodes::DropSecurityPolicyNode {
+						target_type: format!("{:?}", node.target_type),
+						name: self.interner.intern_fragment(&node.name),
+						if_exists: node.if_exists,
+					}));
 				}
 
 				LogicalPlan::Assert(assert_node) => {

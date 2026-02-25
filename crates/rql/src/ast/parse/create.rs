@@ -53,8 +53,14 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		// Check for CREATE FLOW
+		// Check for CREATE FLOW / CREATE FLOW POLICY
 		if (self.consume_if(TokenKind::Keyword(Flow))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Flow,
+				);
+			}
 			return self.parse_flow(token, or_replace);
 		}
 
@@ -75,6 +81,12 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Namespace))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Namespace,
+				);
+			}
 			return self.parse_namespace(token);
 		}
 
@@ -98,6 +110,12 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Table))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Table,
+				);
+			}
 			return self.parse_table(token);
 		}
 
@@ -106,6 +124,12 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Dictionary))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Dictionary,
+				);
+			}
 			return self.parse_dictionary(token);
 		}
 
@@ -114,10 +138,22 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Series,
+				);
+			}
 			return self.parse_series(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Subscription))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Subscription,
+				);
+			}
 			return self.parse_subscription(token);
 		}
 
@@ -132,6 +168,12 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Procedure,
+				);
+			}
 			return self.parse_procedure(token);
 		}
 
@@ -145,6 +187,30 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Handler))?).is_some() {
 			return self.parse_handler(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {
+			return self.parse_create_user(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Role))?).is_some() {
+			return self.parse_create_role(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Session))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_create_security_policy(token, crate::ast::ast::AstPolicyTargetType::Session);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Feature))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_create_security_policy(token, crate::ast::ast::AstPolicyTargetType::Feature);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Function))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self
+				.parse_create_security_policy(token, crate::ast::ast::AstPolicyTargetType::Function);
 		}
 
 		if self.peek_is_index_creation()? {
