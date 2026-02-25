@@ -7,9 +7,19 @@
 //! during a transaction, allowing for proper transactional semantics and rollback.
 
 use crate::interface::catalog::{
-	dictionary::DictionaryDef, flow::FlowDef, handler::HandlerDef, namespace::NamespaceDef,
-	procedure::ProcedureDef, ringbuffer::RingBufferDef, series::SeriesDef, subscription::SubscriptionDef,
-	sumtype::SumTypeDef, table::TableDef, view::ViewDef,
+	dictionary::DictionaryDef,
+	flow::FlowDef,
+	handler::HandlerDef,
+	namespace::NamespaceDef,
+	procedure::ProcedureDef,
+	ringbuffer::RingBufferDef,
+	security_policy::SecurityPolicyDef,
+	series::SeriesDef,
+	subscription::SubscriptionDef,
+	sumtype::SumTypeDef,
+	table::TableDef,
+	user::{RoleDef, UserDef, UserRoleDef},
+	view::ViewDef,
 };
 
 /// Trait for tracking table definition changes during a transaction.
@@ -115,6 +125,44 @@ pub trait CatalogTrackHandlerChangeOperations {
 	fn track_handler_def_deleted(&mut self, handler: HandlerDef) -> reifydb_type::Result<()>;
 }
 
+/// Trait for tracking user definition changes during a transaction.
+pub trait CatalogTrackUserChangeOperations {
+	fn track_user_def_created(&mut self, user: UserDef) -> reifydb_type::Result<()>;
+
+	fn track_user_def_updated(&mut self, pre: UserDef, post: UserDef) -> reifydb_type::Result<()>;
+
+	fn track_user_def_deleted(&mut self, user: UserDef) -> reifydb_type::Result<()>;
+}
+
+/// Trait for tracking role definition changes during a transaction.
+pub trait CatalogTrackRoleChangeOperations {
+	fn track_role_def_created(&mut self, role: RoleDef) -> reifydb_type::Result<()>;
+
+	fn track_role_def_updated(&mut self, pre: RoleDef, post: RoleDef) -> reifydb_type::Result<()>;
+
+	fn track_role_def_deleted(&mut self, role: RoleDef) -> reifydb_type::Result<()>;
+}
+
+/// Trait for tracking user-role definition changes during a transaction.
+pub trait CatalogTrackUserRoleChangeOperations {
+	fn track_user_role_def_created(&mut self, user_role: UserRoleDef) -> reifydb_type::Result<()>;
+
+	fn track_user_role_def_deleted(&mut self, user_role: UserRoleDef) -> reifydb_type::Result<()>;
+}
+
+/// Trait for tracking security policy definition changes during a transaction.
+pub trait CatalogTrackSecurityPolicyChangeOperations {
+	fn track_security_policy_def_created(&mut self, policy: SecurityPolicyDef) -> reifydb_type::Result<()>;
+
+	fn track_security_policy_def_updated(
+		&mut self,
+		pre: SecurityPolicyDef,
+		post: SecurityPolicyDef,
+	) -> reifydb_type::Result<()>;
+
+	fn track_security_policy_def_deleted(&mut self, policy: SecurityPolicyDef) -> reifydb_type::Result<()>;
+}
+
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackDictionaryChangeOperations
@@ -123,10 +171,14 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackProcedureChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
+	+ CatalogTrackRoleChangeOperations
+	+ CatalogTrackSecurityPolicyChangeOperations
 	+ CatalogTrackSeriesChangeOperations
 	+ CatalogTrackSubscriptionChangeOperations
 	+ CatalogTrackSumTypeChangeOperations
 	+ CatalogTrackTableChangeOperations
+	+ CatalogTrackUserChangeOperations
+	+ CatalogTrackUserRoleChangeOperations
 	+ CatalogTrackViewChangeOperations
 {
 }

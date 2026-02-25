@@ -11,10 +11,14 @@ pub mod handler;
 pub mod namespace;
 pub mod procedure;
 pub mod ringbuffer;
+pub mod role;
+pub mod security_policy;
 pub mod series;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
+pub mod user;
+pub mod user_role;
 pub mod view;
 
 // Implement the umbrella trait for AdminTransaction

@@ -11,9 +11,13 @@ pub mod primary_key;
 pub mod primitive_retention_policy;
 pub mod procedure;
 pub mod ringbuffer;
+pub mod role;
+pub mod security_policy;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
+pub mod user;
+pub mod user_role;
 pub mod view;
 
 use std::sync::Arc;
@@ -33,9 +37,11 @@ use reifydb_core::{
 		primitive::PrimitiveId,
 		procedure::ProcedureDef,
 		ringbuffer::RingBufferDef,
+		security_policy::{SecurityPolicyDef, SecurityPolicyId},
 		subscription::SubscriptionDef,
 		sumtype::SumTypeDef,
 		table::TableDef,
+		user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
 		view::ViewDef,
 		vtable::{VTableDef, VTableId},
 	},
@@ -58,6 +64,10 @@ pub type MultiVersionProcedureDef = MultiVersionContainer<ProcedureDef>;
 pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
 pub type MultiVersionSumTypeDef = MultiVersionContainer<SumTypeDef>;
 pub type MultiVersionSubscriptionDef = MultiVersionContainer<SubscriptionDef>;
+pub type MultiVersionUserDef = MultiVersionContainer<UserDef>;
+pub type MultiVersionRoleDef = MultiVersionContainer<RoleDef>;
+pub type MultiVersionUserRoleDef = MultiVersionContainer<UserRoleDef>;
+pub type MultiVersionSecurityPolicyDef = MultiVersionContainer<SecurityPolicyDef>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -114,6 +124,20 @@ pub struct MaterializedCatalogInner {
 	pub(crate) handlers_by_name: SkipMap<(NamespaceId, String), HandlerId>,
 	/// Index from (sumtype_id, variant_tag) to Vec<HandlerId> for dispatch hot-path
 	pub(crate) handlers_by_variant: SkipMap<(SumTypeId, u8), Vec<HandlerId>>,
+	/// MultiVersion user definitions indexed by user ID
+	pub(crate) users: SkipMap<UserId, MultiVersionUserDef>,
+	/// Index from user name to user ID for fast name lookups
+	pub(crate) users_by_name: SkipMap<String, UserId>,
+	/// MultiVersion role definitions indexed by role ID
+	pub(crate) roles: SkipMap<RoleId, MultiVersionRoleDef>,
+	/// Index from role name to role ID for fast name lookups
+	pub(crate) roles_by_name: SkipMap<String, RoleId>,
+	/// MultiVersion user-role definitions indexed by (user_id, role_id)
+	pub(crate) user_roles: SkipMap<(UserId, RoleId), MultiVersionUserRoleDef>,
+	/// MultiVersion security policy definitions indexed by security policy ID
+	pub(crate) security_policies: SkipMap<SecurityPolicyId, MultiVersionSecurityPolicyDef>,
+	/// Index from security policy name to security policy ID for fast name lookups
+	pub(crate) security_policies_by_name: SkipMap<String, SecurityPolicyId>,
 	/// User-defined virtual table definitions indexed by ID
 	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTableDef>>,
 	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
@@ -178,6 +202,13 @@ impl MaterializedCatalog {
 			handlers: SkipMap::new(),
 			handlers_by_name: SkipMap::new(),
 			handlers_by_variant: SkipMap::new(),
+			users: SkipMap::new(),
+			users_by_name: SkipMap::new(),
+			roles: SkipMap::new(),
+			roles_by_name: SkipMap::new(),
+			user_roles: SkipMap::new(),
+			security_policies: SkipMap::new(),
+			security_policies_by_name: SkipMap::new(),
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 		}))

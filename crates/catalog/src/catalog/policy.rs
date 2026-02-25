@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::security_policy::{
-	SecurityPolicyDef, SecurityPolicyId, SecurityPolicyOperationDef, SecurityPolicyToCreate,
+use reifydb_core::interface::catalog::{
+	change::CatalogTrackSecurityPolicyChangeOperations,
+	security_policy::{SecurityPolicyDef, SecurityPolicyId, SecurityPolicyOperationDef, SecurityPolicyToCreate},
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use tracing::instrument;
+use reifydb_transaction::{
+	change::TransactionalSecurityPolicyChanges,
+	transaction::{Transaction, admin::AdminTransaction},
+};
+use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore,
@@ -20,7 +24,82 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		name: &str,
 	) -> crate::Result<Option<SecurityPolicyDef>> {
-		CatalogStore::find_security_policy_by_name(txn, name)
+		match txn.reborrow() {
+			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(policy) =
+					TransactionalSecurityPolicyChanges::find_security_policy_by_name(admin, name)
+				{
+					return Ok(Some(policy.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalSecurityPolicyChanges::is_security_policy_deleted_by_name(admin, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(policy) =
+					self.materialized.find_security_policy_by_name_at(name, admin.version())
+				{
+					return Ok(Some(policy));
+				}
+
+				// 4. Fall back to storage
+				if let Some(policy) = CatalogStore::find_security_policy_by_name(
+					&mut Transaction::Admin(&mut *admin),
+					name,
+				)? {
+					warn!(
+						"SecurityPolicy '{}' found in storage but not in MaterializedCatalog",
+						name
+					);
+					return Ok(Some(policy));
+				}
+
+				Ok(None)
+			}
+			Transaction::Command(cmd) => {
+				if let Some(policy) =
+					self.materialized.find_security_policy_by_name_at(name, cmd.version())
+				{
+					return Ok(Some(policy));
+				}
+
+				if let Some(policy) = CatalogStore::find_security_policy_by_name(
+					&mut Transaction::Command(&mut *cmd),
+					name,
+				)? {
+					warn!(
+						"SecurityPolicy '{}' found in storage but not in MaterializedCatalog",
+						name
+					);
+					return Ok(Some(policy));
+				}
+
+				Ok(None)
+			}
+			Transaction::Query(qry) => {
+				if let Some(policy) =
+					self.materialized.find_security_policy_by_name_at(name, qry.version())
+				{
+					return Ok(Some(policy));
+				}
+
+				if let Some(policy) = CatalogStore::find_security_policy_by_name(
+					&mut Transaction::Query(&mut *qry),
+					name,
+				)? {
+					warn!(
+						"SecurityPolicy '{}' found in storage but not in MaterializedCatalog",
+						name
+					);
+					return Ok(Some(policy));
+				}
+
+				Ok(None)
+			}
+		}
 	}
 
 	#[instrument(name = "catalog::security_policy::create", level = "debug", skip(self, txn, to_create))]
@@ -29,7 +108,9 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: SecurityPolicyToCreate,
 	) -> crate::Result<(SecurityPolicyDef, Vec<SecurityPolicyOperationDef>)> {
-		CatalogStore::create_security_policy(txn, to_create)
+		let (policy, ops) = CatalogStore::create_security_policy(txn, to_create)?;
+		txn.track_security_policy_def_created(policy.clone())?;
+		Ok((policy, ops))
 	}
 
 	#[instrument(name = "catalog::security_policy::alter", level = "debug", skip(self, txn))]
@@ -39,7 +120,19 @@ impl Catalog {
 		policy_id: SecurityPolicyId,
 		enabled: bool,
 	) -> crate::Result<()> {
-		CatalogStore::alter_security_policy_enabled(txn, policy_id, enabled)
+		// Read pre-state
+		let pre = CatalogStore::find_security_policy(&mut Transaction::Admin(&mut *txn), policy_id)?;
+
+		CatalogStore::alter_security_policy_enabled(txn, policy_id, enabled)?;
+
+		// Read post-state
+		let post = CatalogStore::find_security_policy(&mut Transaction::Admin(&mut *txn), policy_id)?;
+
+		if let (Some(pre), Some(post)) = (pre, post) {
+			txn.track_security_policy_def_updated(pre, post)?;
+		}
+
+		Ok(())
 	}
 
 	#[instrument(name = "catalog::security_policy::drop", level = "debug", skip(self, txn))]
@@ -48,7 +141,15 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		policy_id: SecurityPolicyId,
 	) -> crate::Result<()> {
-		CatalogStore::drop_security_policy(txn, policy_id)
+		// Get the policy def before dropping for change tracking
+		if let Some(policy) = CatalogStore::find_security_policy(&mut Transaction::Admin(&mut *txn), policy_id)?
+		{
+			CatalogStore::drop_security_policy(txn, policy_id)?;
+			txn.track_security_policy_def_deleted(policy)?;
+		} else {
+			CatalogStore::drop_security_policy(txn, policy_id)?;
+		}
+		Ok(())
 	}
 
 	pub fn get_security_policy_by_name(

@@ -16,10 +16,12 @@ use reifydb_core::{
 			namespace::NamespaceDef,
 			procedure::ProcedureDef,
 			ringbuffer::RingBufferDef,
+			security_policy::{SecurityPolicyDef, SecurityPolicyId},
 			series::SeriesDef,
 			subscription::SubscriptionDef,
 			sumtype::SumTypeDef,
 			table::TableDef,
+			user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
 			view::ViewDef,
 		},
 		store::{MultiVersionBatch, MultiVersionValues},
@@ -36,8 +38,10 @@ use crate::{
 	change::{
 		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalHandlerChanges, TransactionalNamespaceChanges, TransactionalProcedureChanges,
-		TransactionalRingBufferChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalViewChanges,
+		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalSecurityPolicyChanges,
+		TransactionalSeriesChanges, TransactionalSubscriptionChanges, TransactionalSumTypeChanges,
+		TransactionalTableChanges, TransactionalUserChanges, TransactionalUserRoleChanges,
+		TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -339,6 +343,70 @@ impl TransactionalHandlerChanges for QueryTransaction {
 	}
 
 	fn is_handler_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalUserChanges for QueryTransaction {
+	fn find_user(&self, _id: UserId) -> Option<&UserDef> {
+		None
+	}
+
+	fn find_user_by_name(&self, _name: &str) -> Option<&UserDef> {
+		None
+	}
+
+	fn is_user_deleted(&self, _id: UserId) -> bool {
+		false
+	}
+
+	fn is_user_deleted_by_name(&self, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalRoleChanges for QueryTransaction {
+	fn find_role(&self, _id: RoleId) -> Option<&RoleDef> {
+		None
+	}
+
+	fn find_role_by_name(&self, _name: &str) -> Option<&RoleDef> {
+		None
+	}
+
+	fn is_role_deleted(&self, _id: RoleId) -> bool {
+		false
+	}
+
+	fn is_role_deleted_by_name(&self, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalUserRoleChanges for QueryTransaction {
+	fn find_user_role(&self, _user: UserId, _role: RoleId) -> Option<&UserRoleDef> {
+		None
+	}
+
+	fn is_user_role_deleted(&self, _user: UserId, _role: RoleId) -> bool {
+		false
+	}
+}
+
+impl TransactionalSecurityPolicyChanges for QueryTransaction {
+	fn find_security_policy(&self, _id: SecurityPolicyId) -> Option<&SecurityPolicyDef> {
+		None
+	}
+
+	fn find_security_policy_by_name(&self, _name: &str) -> Option<&SecurityPolicyDef> {
+		None
+	}
+
+	fn is_security_policy_deleted(&self, _id: SecurityPolicyId) -> bool {
+		false
+	}
+
+	fn is_security_policy_deleted_by_name(&self, _name: &str) -> bool {
 		false
 	}
 }

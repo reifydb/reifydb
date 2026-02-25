@@ -10,10 +10,12 @@ use reifydb_core::interface::catalog::{
 	namespace::NamespaceDef,
 	procedure::ProcedureDef,
 	ringbuffer::RingBufferDef,
+	security_policy::{SecurityPolicyDef, SecurityPolicyId},
 	series::SeriesDef,
 	subscription::SubscriptionDef,
 	sumtype::SumTypeDef,
 	table::TableDef,
+	user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
 	view::ViewDef,
 };
 use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
@@ -27,10 +29,14 @@ pub trait TransactionalChanges:
 	+ TransactionalNamespaceChanges
 	+ TransactionalProcedureChanges
 	+ TransactionalRingBufferChanges
+	+ TransactionalRoleChanges
+	+ TransactionalSecurityPolicyChanges
 	+ TransactionalSeriesChanges
 	+ TransactionalSubscriptionChanges
 	+ TransactionalSumTypeChanges
 	+ TransactionalTableChanges
+	+ TransactionalUserChanges
+	+ TransactionalUserRoleChanges
 	+ TransactionalViewChanges
 {
 }
@@ -141,6 +147,42 @@ pub trait TransactionalHandlerChanges {
 	fn is_handler_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
+pub trait TransactionalUserChanges {
+	fn find_user(&self, id: UserId) -> Option<&UserDef>;
+
+	fn find_user_by_name(&self, name: &str) -> Option<&UserDef>;
+
+	fn is_user_deleted(&self, id: UserId) -> bool;
+
+	fn is_user_deleted_by_name(&self, name: &str) -> bool;
+}
+
+pub trait TransactionalRoleChanges {
+	fn find_role(&self, id: RoleId) -> Option<&RoleDef>;
+
+	fn find_role_by_name(&self, name: &str) -> Option<&RoleDef>;
+
+	fn is_role_deleted(&self, id: RoleId) -> bool;
+
+	fn is_role_deleted_by_name(&self, name: &str) -> bool;
+}
+
+pub trait TransactionalUserRoleChanges {
+	fn find_user_role(&self, user: UserId, role: RoleId) -> Option<&UserRoleDef>;
+
+	fn is_user_role_deleted(&self, user: UserId, role: RoleId) -> bool;
+}
+
+pub trait TransactionalSecurityPolicyChanges {
+	fn find_security_policy(&self, id: SecurityPolicyId) -> Option<&SecurityPolicyDef>;
+
+	fn find_security_policy_by_name(&self, name: &str) -> Option<&SecurityPolicyDef>;
+
+	fn is_security_policy_deleted(&self, id: SecurityPolicyId) -> bool;
+
+	fn is_security_policy_deleted_by_name(&self, name: &str) -> bool;
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct TransactionalDefChanges {
 	/// Transaction ID this change set belongs to
@@ -164,6 +206,14 @@ pub struct TransactionalDefChanges {
 	pub subscription_def: Vec<Change<SubscriptionDef>>,
 	/// All table definition changes in order (no coalescing)
 	pub table_def: Vec<Change<TableDef>>,
+	/// All user definition changes in order (no coalescing)
+	pub user_def: Vec<Change<UserDef>>,
+	/// All role definition changes in order (no coalescing)
+	pub role_def: Vec<Change<RoleDef>>,
+	/// All user-role definition changes in order (no coalescing)
+	pub user_role_def: Vec<Change<UserRoleDef>>,
+	/// All security policy definition changes in order (no coalescing)
+	pub security_policy_def: Vec<Change<SecurityPolicyDef>>,
 	/// All view definition changes in order (no coalescing)
 	pub view_def: Vec<Change<ViewDef>>,
 	/// Order of operations for replay/rollback
@@ -335,6 +385,73 @@ impl TransactionalDefChanges {
 			op,
 		});
 	}
+
+	pub fn add_user_def_change(&mut self, change: Change<UserDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|u| u.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.user_def.push(change);
+		self.log.push(Operation::User {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_role_def_change(&mut self, change: Change<RoleDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|r| r.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.role_def.push(change);
+		self.log.push(Operation::Role {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_user_role_def_change(&mut self, change: Change<UserRoleDef>) {
+		let user = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|ur| ur.user_id)
+			.expect("Change must have either pre or post state");
+		let role = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|ur| ur.role_id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.user_role_def.push(change);
+		self.log.push(Operation::UserRole {
+			user,
+			role,
+			op,
+		});
+	}
+
+	pub fn add_security_policy_def_change(&mut self, change: Change<SecurityPolicyDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|p| p.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.security_policy_def.push(change);
+		self.log.push(Operation::SecurityPolicy {
+			id,
+			op,
+		});
+	}
 }
 
 /// Represents a single change
@@ -400,6 +517,23 @@ pub enum Operation {
 		id: TableId,
 		op: OperationType,
 	},
+	User {
+		id: UserId,
+		op: OperationType,
+	},
+	Role {
+		id: RoleId,
+		op: OperationType,
+	},
+	UserRole {
+		user: UserId,
+		role: RoleId,
+		op: OperationType,
+	},
+	SecurityPolicy {
+		id: SecurityPolicyId,
+		op: OperationType,
+	},
 	View {
 		id: ViewId,
 		op: OperationType,
@@ -420,6 +554,10 @@ impl TransactionalDefChanges {
 			sumtype_def: Vec::new(),
 			subscription_def: Vec::new(),
 			table_def: Vec::new(),
+			user_def: Vec::new(),
+			role_def: Vec::new(),
+			user_role_def: Vec::new(),
+			security_policy_def: Vec::new(),
 			view_def: Vec::new(),
 			log: Vec::new(),
 		}
@@ -508,6 +646,10 @@ impl TransactionalDefChanges {
 		self.sumtype_def.clear();
 		self.subscription_def.clear();
 		self.table_def.clear();
+		self.user_def.clear();
+		self.role_def.clear();
+		self.user_role_def.clear();
+		self.security_policy_def.clear();
 		self.view_def.clear();
 		self.log.clear();
 	}
