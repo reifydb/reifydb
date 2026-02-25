@@ -126,6 +126,13 @@ impl Catalog {
 		Ok(series)
 	}
 
+	#[instrument(name = "catalog::series::drop", level = "debug", skip(self, txn))]
+	pub fn drop_series(&self, txn: &mut AdminTransaction, series: SeriesDef) -> crate::Result<()> {
+		CatalogStore::drop_series(txn, series.id)?;
+		txn.track_series_def_deleted(series)?;
+		Ok(())
+	}
+
 	#[instrument(name = "catalog::series::list_all", level = "debug", skip(self, txn))]
 	pub fn list_series_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<SeriesDef>> {
 		CatalogStore::list_series_all(txn)

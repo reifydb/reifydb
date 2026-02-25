@@ -4,7 +4,7 @@
 use crate::{
 	ast::ast::AstDrop,
 	plan::logical::{
-		Compiler, DropDictionaryNode, DropFlowNode, DropNamespaceNode, DropRingBufferNode,
+		Compiler, DropDictionaryNode, DropFlowNode, DropNamespaceNode, DropRingBufferNode, DropSeriesNode,
 		DropSubscriptionNode, DropSumTypeNode, DropTableNode, DropViewNode, LogicalPlan,
 	},
 };
@@ -49,6 +49,11 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstDrop::Subscription(node) => Ok(LogicalPlan::DropSubscription(DropSubscriptionNode {
 				identifier: node.identifier,
+				if_exists: node.if_exists,
+				cascade: node.cascade,
+			})),
+			AstDrop::Series(node) => Ok(LogicalPlan::DropSeries(DropSeriesNode {
+				series: node.series,
 				if_exists: node.if_exists,
 				cascade: node.cascade,
 			})),

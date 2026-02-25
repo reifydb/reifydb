@@ -11,6 +11,7 @@ pub mod query;
 pub mod resolver;
 pub mod row_predicate;
 pub mod scripting;
+pub mod series_predicate;
 pub mod variable;
 
 use std::fmt::{Display, Formatter};
@@ -360,6 +361,7 @@ pub enum LogicalPlan<'bump> {
 	DropSumType(DropSumTypeNode<'bump>),
 	DropFlow(DropFlowNode<'bump>),
 	DropSubscription(DropSubscriptionNode<'bump>),
+	DropSeries(DropSeriesNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterFlow(AlterFlowNode<'bump>),
@@ -857,6 +859,13 @@ pub struct DropFlowNode<'bump> {
 #[derive(Debug)]
 pub struct DropSubscriptionNode<'bump> {
 	pub identifier: BumpFragment<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropSeriesNode<'bump> {
+	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub if_exists: bool,
 	pub cascade: bool,
 }

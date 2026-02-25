@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::error::diagnostic::catalog::{
-	dictionary_not_found, flow_not_found, namespace_not_found, ringbuffer_not_found, sumtype_not_found,
-	table_not_found, view_not_found,
+	dictionary_not_found, flow_not_found, namespace_not_found, ringbuffer_not_found, series_not_found,
+	sumtype_not_found, table_not_found, view_not_found,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
@@ -352,5 +352,56 @@ impl<'bump> Compiler<'bump> {
 			if_exists: drop.if_exists,
 			cascade: drop.cascade,
 		}))
+	}
+
+	pub(crate) fn compile_drop_series(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropSeriesNode<'_>,
+	) -> crate::Result<PhysicalPlan<'bump>> {
+		let namespace_name = if drop.series.namespace.is_empty() {
+			"default".to_string()
+		} else {
+			drop.series.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+		};
+		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+			let ns_fragment = if let Some(n) = drop.series.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&namespace_name)
+			} else {
+				Fragment::internal("default".to_string())
+			};
+			return_error!(namespace_not_found(ns_fragment, &namespace_name));
+		};
+
+		let series_name = self.interner.intern_fragment(&drop.series.name);
+		let ns_fragment = if let Some(n) = drop.series.namespace.first() {
+			self.interner.intern_fragment(n).with_text(&namespace_def.name)
+		} else {
+			Fragment::internal(namespace_def.name.clone())
+		};
+
+		match self.catalog.find_series_by_name(rx, namespace_def.id, drop.series.name.text())? {
+			Some(def) => Ok(PhysicalPlan::DropSeries(nodes::DropSeriesNode {
+				namespace_name: ns_fragment,
+				series_name,
+				series_id: Some(def.id),
+				if_exists: drop.if_exists,
+				cascade: drop.cascade,
+			})),
+			None if drop.if_exists => Ok(PhysicalPlan::DropSeries(nodes::DropSeriesNode {
+				namespace_name: ns_fragment,
+				series_name,
+				series_id: None,
+				if_exists: true,
+				cascade: drop.cascade,
+			})),
+			None => {
+				return_error!(series_not_found(
+					series_name,
+					&namespace_def.name,
+					drop.series.name.text()
+				));
+			}
+		}
 	}
 }

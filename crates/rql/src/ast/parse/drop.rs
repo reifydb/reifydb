@@ -6,13 +6,14 @@ use reifydb_type::error::{AstErrorKind, Error, TypeError};
 use crate::{
 	ast::{
 		ast::{
-			AstDrop, AstDropDictionary, AstDropFlow, AstDropNamespace, AstDropRingBuffer,
+			AstDrop, AstDropDictionary, AstDropFlow, AstDropNamespace, AstDropRingBuffer, AstDropSeries,
 			AstDropSubscription, AstDropSumType, AstDropTable, AstDropView,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
 			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedViewIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedViewIdentifier,
 		},
 		parse::Parser,
 	},
@@ -51,16 +52,19 @@ impl<'bump> Parser<'bump> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::Subscription))?).is_some() {
 			return self.parse_drop_subscription(token);
 		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Series))?).is_some() {
+			return self.parse_drop_series(token);
+		}
 
 		let fragment = self.current()?.fragment.to_owned();
 		Err(Error::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
-				expected: "FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, or SUBSCRIPTION"
+				expected: "FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, or SERIES"
 					.to_string(),
 			},
 			message: format!(
 				"Unexpected token: expected {}, got {}",
-				"FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, or SUBSCRIPTION",
+				"FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, or SERIES",
 				fragment.text()
 			),
 			fragment,
@@ -236,6 +240,28 @@ impl<'bump> Parser<'bump> {
 			token,
 			if_exists,
 			sumtype,
+			cascade,
+		}))
+	}
+
+	fn parse_drop_series(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+		let if_exists = self.parse_if_exists()?;
+
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let series = if namespace.is_empty() {
+			MaybeQualifiedSeriesIdentifier::new(name)
+		} else {
+			MaybeQualifiedSeriesIdentifier::new(name).with_namespace(namespace)
+		};
+
+		let cascade = self.parse_cascade()?;
+
+		Ok(AstDrop::Series(AstDropSeries {
+			token,
+			if_exists,
+			series,
 			cascade,
 		}))
 	}

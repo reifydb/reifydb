@@ -782,3 +782,12 @@ pub struct DropSubscriptionNode {
 	pub if_exists: bool,
 	pub cascade: bool,
 }
+
+#[derive(Debug, Clone)]
+pub struct DropSeriesNode {
+	pub namespace_name: Fragment,
+	pub series_name: Fragment,
+	pub series_id: Option<reifydb_core::interface::catalog::id::SeriesId>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}

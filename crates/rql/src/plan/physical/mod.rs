@@ -49,6 +49,7 @@ use crate::{
 		logical::{
 			LogicalPlan,
 			row_predicate::{RowPredicate, extract_row_predicate},
+			series_predicate::extract_series_predicate,
 		},
 	},
 };
@@ -90,6 +91,7 @@ pub enum PhysicalPlan<'bump> {
 	DropSumType(nodes::DropSumTypeNode),
 	DropFlow(nodes::DropFlowNode),
 	DropSubscription(nodes::DropSubscriptionNode),
+	DropSeries(nodes::DropSeriesNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode<'bump>),
@@ -634,6 +636,9 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::DropSubscription(drop) => {
 					stack.push(self.compile_drop_subscription(rx, drop)?);
 				}
+				LogicalPlan::DropSeries(drop) => {
+					stack.push(self.compile_drop_series(rx, drop)?);
+				}
 
 				LogicalPlan::Assert(assert_node) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
@@ -697,6 +702,29 @@ impl<'bump> Compiler<'bump> {
 									continue;
 								}
 							}
+						}
+					}
+
+					// Try to push down timestamp/tag predicates into SeriesScan
+					if let PhysicalPlan::SeriesScan(ref scan) = input {
+						if let Some(sp) = extract_series_predicate(&filter.condition) {
+							let rewritten = PhysicalPlan::SeriesScan(SeriesScanNode {
+								source: scan.source.clone(),
+								time_range_start: sp
+									.time_start
+									.or(scan.time_range_start),
+								time_range_end: sp.time_end.or(scan.time_range_end),
+								variant_tag: sp.variant_tag.or(scan.variant_tag),
+							});
+							if sp.remaining.is_empty() {
+								stack.push(rewritten);
+							} else {
+								stack.push(PhysicalPlan::Filter(FilterNode {
+									conditions: sp.remaining,
+									input: self.bump_box(rewritten),
+								}));
+							}
+							continue;
 						}
 					}
 

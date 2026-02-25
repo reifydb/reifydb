@@ -771,6 +771,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::DropSubscription(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::DropSeries(node) => {
+				self.emit(Instruction::DropSeries(node));
+				self.emit(Instruction::Emit);
+			}
 
 			// DDL — nodes with query subtrees that need materialization
 			PhysicalPlan::CreateDeferredView(node) => {

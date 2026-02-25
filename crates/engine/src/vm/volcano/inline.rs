@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	collections::{BTreeSet, HashMap},
+	collections::{BTreeSet, HashMap, HashSet},
 	sync::Arc,
 };
 
@@ -33,8 +33,24 @@ impl InlineDataNode {
 	pub fn new(rows: Vec<Vec<AliasExpression>>, context: Arc<QueryContext>) -> Self {
 		// Clone the Arc to extract headers without borrowing issues
 		let cloned_context = context.clone();
-		let headers =
-			cloned_context.source.as_ref().map(|source| Self::create_columns_layout_from_source(source));
+		let headers = cloned_context.source.as_ref().map(|source| {
+			let mut layout = Self::create_columns_layout_from_source(source);
+			// For series, include extra columns from input (e.g., timestamp, tag)
+			// that aren't part of the schema but are needed by the insert executor.
+			if matches!(source, ResolvedPrimitive::Series(_)) {
+				let existing: HashSet<String> =
+					layout.columns.iter().map(|c| c.text().to_string()).collect();
+				for row in &rows {
+					for alias in row {
+						let name = alias.alias.0.text().to_string();
+						if !existing.contains(&name) {
+							layout.columns.push(Fragment::internal(&name));
+						}
+					}
+				}
+			}
+			layout
+		});
 
 		Self {
 			rows,
@@ -550,10 +566,15 @@ impl<'a> InlineDataNode {
 		let mut columns = Vec::new();
 
 		for column_name in &headers.columns {
-			// Find the corresponding source column for policies
-			let table_column = source.columns().iter().find(|col| col.name == column_name.text()).unwrap();
+			// Find the corresponding source column for type info and policies.
+			// May be None for extra columns like "timestamp" or "tag" in series inserts.
+			let table_column = source.columns().iter().find(|col| col.name == column_name.text());
 
-			let mut column_data = ColumnData::none_typed(table_column.constraint.get_type(), 0);
+			let mut column_data = if let Some(tc) = table_column {
+				ColumnData::none_typed(tc.constraint.get_type(), 0)
+			} else {
+				ColumnData::with_capacity(Type::Int16, 0)
+			};
 			let mut column_fragment: Option<Fragment> = None;
 
 			for row_data in &rows_data {
@@ -561,12 +582,12 @@ impl<'a> InlineDataNode {
 					if column_fragment.is_none() {
 						column_fragment = Some(alias_expr.fragment.clone());
 					}
-					let ctx = EvalContext {
-						target: Some(TargetColumn::Partial {
+					let eval_ctx = EvalContext {
+						target: table_column.map(|tc| TargetColumn::Partial {
 							source_name: Some(source.identifier().text().to_string()),
-							column_name: Some(table_column.name.clone()),
-							column_type: table_column.constraint.get_type(),
-							policies: table_column
+							column_name: Some(tc.name.clone()),
+							column_type: tc.constraint.get_type(),
+							policies: tc
 								.policies
 								.iter()
 								.map(|cp| cp.policy.clone())
@@ -584,7 +605,7 @@ impl<'a> InlineDataNode {
 					};
 
 					let evaluated = evaluate(
-						&ctx,
+						&eval_ctx,
 						&alias_expr.expression,
 						&self.context.as_ref().unwrap().services.functions,
 						&self.context.as_ref().unwrap().services.clock,
@@ -593,23 +614,76 @@ impl<'a> InlineDataNode {
 					// Ensure we always add exactly one
 					// value
 					let eval_len = evaluated.data().len();
-					if eval_len == 1 {
-						column_data.extend(evaluated.data().clone())?;
-					} else if eval_len == 0 {
-						// If evaluation returned empty,
-						// push undefined
-						column_data.push_value(Value::none());
+					if table_column.is_some() {
+						// Source-defined column: types match, extend directly
+						if eval_len == 1 {
+							column_data.extend(evaluated.data().clone())?;
+						} else if eval_len == 0 {
+							column_data.push_value(Value::none());
+						} else {
+							let first_value =
+								evaluated.data().iter().next().unwrap_or(Value::none());
+							column_data.push_value(first_value);
+						}
 					} else {
-						// This shouldn't happen for
-						// single-encoded evaluation
-						// but if it does, take only the
-						// first value
-						let first_value =
-							evaluated.data().iter().next().unwrap_or(Value::none());
-						column_data.push_value(first_value);
+						// Extra column (e.g., timestamp): cast value to Int16
+						let value = if eval_len > 0 {
+							evaluated.data().iter().next().unwrap_or(Value::none())
+						} else {
+							Value::none()
+						};
+						match &value {
+							Value::None {
+								..
+							} => column_data.push_none(),
+							Value::Int16(_) => column_data.push_value(value),
+							_ => {
+								let temp = ColumnData::from(value.clone());
+								match cast_column_data(
+									&eval_ctx,
+									&temp,
+									Type::Int16,
+									|| Fragment::none(),
+								) {
+									Ok(casted) => {
+										if let Some(v) = casted.iter().next() {
+											column_data.push_value(v);
+										} else {
+											column_data.push_none();
+										}
+									}
+									Err(_) => column_data.push_value(value),
+								}
+							}
+						}
 					}
 				} else {
 					column_data.push_value(Value::none());
+				}
+			}
+
+			// For extra columns, narrow the integer type
+			if table_column.is_none() {
+				let optimal_type = Self::find_optimal_integer_type(&column_data);
+				if optimal_type != Type::Int16 {
+					let eval_ctx = EvalContext {
+						target: None,
+						columns: Columns::empty(),
+						row_count: column_data.len(),
+						take: None,
+						params: &ctx.params,
+						symbol_table: &ctx.stack,
+						is_aggregate_context: false,
+						functions: &self.context.as_ref().unwrap().services.functions,
+						clock: &self.context.as_ref().unwrap().services.clock,
+						arena: None,
+					};
+					if let Ok(demoted) =
+						cast_column_data(&eval_ctx, &column_data, optimal_type, || {
+							Fragment::none()
+						}) {
+						column_data = demoted;
+					}
 				}
 			}
 

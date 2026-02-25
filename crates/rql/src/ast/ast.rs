@@ -815,6 +815,7 @@ pub enum AstDrop<'bump> {
 	Dictionary(AstDropDictionary<'bump>),
 	Enum(AstDropSumType<'bump>),
 	Subscription(AstDropSubscription<'bump>),
+	Series(AstDropSeries<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -846,6 +847,14 @@ pub struct AstDropRingBuffer<'bump> {
 	pub token: Token<'bump>,
 	pub if_exists: bool,
 	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropSeries<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub cascade: bool,
 }
 
@@ -1236,6 +1245,10 @@ impl<'bump> AstDrop<'bump> {
 				..
 			}) => token,
 			AstDrop::Subscription(AstDropSubscription {
+				token,
+				..
+			}) => token,
+			AstDrop::Series(AstDropSeries {
 				token,
 				..
 			}) => token,

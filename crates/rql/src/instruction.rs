@@ -180,6 +180,7 @@ pub enum Instruction {
 	DropSumType(nodes::DropSumTypeNode),
 	DropFlow(nodes::DropFlowNode),
 	DropSubscription(nodes::DropSubscriptionNode),
+	DropSeries(nodes::DropSeriesNode),
 
 	// === DML ===
 	Delete(DeleteTableNode),

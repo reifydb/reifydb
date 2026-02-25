@@ -6,6 +6,7 @@ pub mod dictionary;
 pub mod flow;
 pub mod namespace;
 pub mod ringbuffer;
+pub mod series;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;

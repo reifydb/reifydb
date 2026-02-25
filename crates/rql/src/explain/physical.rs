@@ -100,6 +100,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::DropSumType(_) => unimplemented!(),
 		PhysicalPlan::DropFlow(_) => unimplemented!(),
 		PhysicalPlan::DropSubscription(_) => unimplemented!(),
+		PhysicalPlan::DropSeries(_) => unimplemented!(),
 		PhysicalPlan::CreateFlow(create_flow) => {
 			let mut label =
 				format!("CreateFlow {}::{}", create_flow.namespace.name, create_flow.flow.text());

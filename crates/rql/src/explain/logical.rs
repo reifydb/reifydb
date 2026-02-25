@@ -92,6 +92,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::DropSumType(_) => unimplemented!(),
 		LogicalPlan::DropFlow(_) => unimplemented!(),
 		LogicalPlan::DropSubscription(_) => unimplemented!(),
+		LogicalPlan::DropSeries(_) => unimplemented!(),
 		LogicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,

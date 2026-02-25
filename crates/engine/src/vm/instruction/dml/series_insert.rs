@@ -86,10 +86,16 @@ pub(crate) fn insert_series<'a>(
 			let timestamp: i64 =
 				if let Some(ts_col) = columns.iter().find(|col| col.name().text() == "timestamp") {
 					match ts_col.data().get_value(row_idx) {
-						Value::Int8(ts) => ts,
-						Value::Uint8(ts) => ts as i64,
+						Value::Int1(ts) => ts as i64,
+						Value::Int2(ts) => ts as i64,
 						Value::Int4(ts) => ts as i64,
+						Value::Int8(ts) => ts,
+						Value::Int16(ts) => ts as i64,
+						Value::Uint1(ts) => ts as i64,
+						Value::Uint2(ts) => ts as i64,
 						Value::Uint4(ts) => ts as i64,
+						Value::Uint8(ts) => ts as i64,
+						Value::Uint16(ts) => ts as i64,
 						_ => generate_timestamp(services, precision),
 					}
 				} else {
