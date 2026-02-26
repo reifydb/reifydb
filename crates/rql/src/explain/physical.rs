@@ -134,6 +134,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::InsertSeries(_) => unimplemented!(),
 		PhysicalPlan::Update(_) => unimplemented!(),
 		PhysicalPlan::UpdateRingBuffer(_) => unimplemented!(),
+		PhysicalPlan::UpdateSeries(_) => unimplemented!(),
 		PhysicalPlan::Aggregate(AggregateNode {
 			by,
 			map,

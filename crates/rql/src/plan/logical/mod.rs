@@ -375,6 +375,7 @@ pub enum LogicalPlan<'bump> {
 	DeleteSeries(DeleteSeriesNode<'bump>),
 	Update(UpdateTableNode<'bump>),
 	UpdateRingBuffer(UpdateRingBufferNode<'bump>),
+	UpdateSeries(UpdateSeriesNode<'bump>),
 	// Variable assignment
 	Declare(DeclareNode<'bump>),
 	Assign(AssignNode<'bump>),
@@ -660,6 +661,12 @@ pub struct UpdateTableNode<'bump> {
 #[derive(Debug)]
 pub struct UpdateRingBufferNode<'bump> {
 	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
+	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+}
+
+#[derive(Debug)]
+pub struct UpdateSeriesNode<'bump> {
+	pub target: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
 }
 

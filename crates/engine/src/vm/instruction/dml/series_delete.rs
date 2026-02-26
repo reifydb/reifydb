@@ -5,25 +5,24 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	error::diagnostic::catalog::series_not_found,
-	interface::resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedSeries},
+	internal_error,
 	key::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	value::column::columns::Columns,
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_rql::nodes::DeleteSeriesNode;
+use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, return_error, value::Value};
+use reifydb_type::{fragment::Fragment, params::Params, return_error, util::bitvec::BitVec, value::Value};
 use tracing::instrument;
 
-use crate::vm::{
-	services::Services,
-	stack::SymbolTable,
-	volcano::{
-		compile::compile,
-		query::{QueryContext, QueryNode},
+use crate::{
+	expression::{
+		compile::{CompiledExpr, compile_expression},
+		context::{CompileContext, EvalContext},
 	},
+	vm::{services::Services, stack::SymbolTable, volcano::scan::series::build_data_column},
 };
 
 #[instrument(name = "mutate::series::delete", level = "trace", skip_all)]
@@ -48,96 +47,129 @@ pub(crate) fn delete_series<'a>(
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
-	// Create resolved source for the series
-	let namespace_ident = Fragment::internal(namespace.name.clone());
-	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
-	let series_ident = Fragment::internal(series_def.name.clone());
-	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series_def.clone());
-	let resolved_source = Some(ResolvedPrimitive::Series(resolved_series));
-
+	let has_tag = series_def.tag.is_some();
 	let mut deleted_count = 0u64;
 
 	if let Some(input_plan) = plan.input {
-		// Delete rows matching the filter - collect keys from the scan results
-		// The input plan is a pipeline (FROM series | FILTER ...) which goes through the
-		// volcano series scan, so we get back rows with timestamp column.
-		// We need to reconstruct SeriesRowKeys from the scanned data.
-		let mut keys_to_delete = Vec::new();
+		// Extract filter conditions from the plan
+		let conditions = match *input_plan {
+			QueryPlan::Filter(filter) => filter.conditions,
+			_ => vec![],
+		};
+
+		// Scan all rows directly from storage
+		let range = SeriesRowKeyRange::full_scan(series_def.id, None);
+		let mut keys = Vec::new();
+		let mut timestamps = Vec::new();
+		let mut tags = Vec::new();
+		let mut data_rows: Vec<Vec<Value>> = Vec::new();
 
 		{
-			let execution_context = Arc::new(QueryContext {
-				services: services.clone(),
-				source: resolved_source.clone(),
-				batch_size: 1024,
-				params: params.clone(),
-				stack: SymbolTable::new(),
-			});
-
-			let mut input_node = compile(*input_plan, txn, execution_context.clone());
-			input_node.initialize(txn, &execution_context)?;
-
-			let mut mutable_context = (*execution_context).clone();
-			while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-				let row_count = columns.row_count();
-				let has_tag = series_def.tag.is_some();
-
-				// Extract timestamps from the scan results
-				let ts_col = columns.iter().find(|c| c.name().text() == "timestamp");
-				let tag_col = if has_tag {
-					columns.iter().find(|c| c.name().text() == "tag")
-				} else {
-					None
-				};
-
-				for row_idx in 0..row_count {
-					let timestamp = ts_col
-						.map(|c| match c.data().get_value(row_idx) {
-							Value::Int8(ts) => ts,
-							_ => 0,
-						})
-						.unwrap_or(0);
-
-					let variant_tag = if has_tag {
-						tag_col.map(|c| match c.data().get_value(row_idx) {
-							Value::Uint1(t) => Some(t),
-							_ => Some(0),
-						})
-						.unwrap_or(Some(0))
-					} else {
-						None
-					};
-
-					// We need the sequence too, but the scan doesn't expose it directly.
-					// Instead, scan the storage for matching timestamp+tag to find actual keys.
-					let range = SeriesRowKeyRange::scan_range(
-						series_def.id,
-						variant_tag,
-						Some(timestamp),
-						Some(timestamp),
-						None,
-					);
-					let mut stream = txn.range(range, 1024)?;
-					while let Some(entry) = stream.next() {
-						let entry = entry?;
-						if let Some(key) = SeriesRowKey::decode(&entry.key) {
-							if key.timestamp == timestamp && key.variant_tag == variant_tag
-							{
-								keys_to_delete.push(entry.key);
-							}
-						}
+			let mut stream = txn.range(range, 4096)?;
+			while let Some(entry) = stream.next() {
+				let entry = entry?;
+				if let Some(key) = SeriesRowKey::decode(&entry.key) {
+					keys.push(entry.key);
+					timestamps.push(key.timestamp);
+					if has_tag {
+						tags.push(key.variant_tag.unwrap_or(0));
 					}
+					let values: Vec<Value> = postcard::from_bytes(&entry.values).map_err(|e| {
+						internal_error!("Failed to deserialize series row values: {}", e)
+					})?;
+					data_rows.push(values);
 				}
 			}
 		}
 
-		// Deduplicate keys
-		keys_to_delete.sort();
-		keys_to_delete.dedup();
+		if !keys.is_empty() {
+			// Build Columns from scanned data
+			let mut result_columns = Vec::new();
+			result_columns.push(Column {
+				name: Fragment::internal("timestamp"),
+				data: ColumnData::int8(timestamps),
+			});
+			if has_tag {
+				result_columns.push(Column {
+					name: Fragment::internal("tag"),
+					data: ColumnData::uint1(tags),
+				});
+			}
+			for (col_idx, col_def) in series_def.columns.iter().enumerate() {
+				let col_type = col_def.constraint.get_type();
+				let col_values: Vec<Value> = data_rows
+					.iter()
+					.map(|row| row.get(col_idx).cloned().unwrap_or(Value::none()))
+					.collect();
+				result_columns.push(build_data_column(&col_def.name, &col_values, col_type)?);
+			}
+			let columns = Columns::new(result_columns);
+			let row_count = columns.row_count();
 
-		// Delete the collected keys
-		for key in &keys_to_delete {
-			txn.remove(key)?;
-			deleted_count += 1;
+			// Compile and evaluate filter conditions
+			let stack = SymbolTable::new();
+			let compile_ctx = CompileContext {
+				functions: &services.functions,
+				symbol_table: &stack,
+			};
+			let compiled_exprs: Vec<CompiledExpr> = conditions
+				.iter()
+				.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
+				.collect();
+
+			let mut filter_mask = BitVec::repeat(row_count, true);
+			for compiled_expr in &compiled_exprs {
+				let exec_ctx = EvalContext {
+					target: None,
+					columns: columns.clone(),
+					row_count,
+					take: None,
+					params: &params,
+					symbol_table: &stack,
+					is_aggregate_context: false,
+					functions: &services.functions,
+					clock: &services.clock,
+					arena: None,
+				};
+
+				let result = compiled_expr.execute(&exec_ctx)?;
+				match result.data() {
+					ColumnData::Bool(container) => {
+						for i in 0..row_count {
+							if filter_mask.get(i) {
+								let valid = container.is_defined(i);
+								let filter_result = container.data().get(i);
+								filter_mask.set(i, valid & filter_result);
+							}
+						}
+					}
+					ColumnData::Option {
+						inner,
+						bitvec,
+					} => match inner.as_ref() {
+						ColumnData::Bool(container) => {
+							for i in 0..row_count {
+								if filter_mask.get(i) {
+									let defined = i < bitvec.len() && bitvec.get(i);
+									let valid = defined && container.is_defined(i);
+									let value = valid && container.data().get(i);
+									filter_mask.set(i, value);
+								}
+							}
+						}
+						_ => panic!("filter expression must evaluate to a boolean column"),
+					},
+					_ => panic!("filter expression must evaluate to a boolean column"),
+				}
+			}
+
+			// Delete matching rows
+			for (i, key) in keys.iter().enumerate() {
+				if filter_mask.get(i) {
+					txn.remove(key)?;
+					deleted_count += 1;
+				}
+			}
 		}
 	} else {
 		// Delete all rows - scan the full range and delete

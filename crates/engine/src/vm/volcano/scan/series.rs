@@ -171,7 +171,7 @@ impl QueryNode for SeriesScanNode {
 	}
 }
 
-fn build_data_column(name: &str, values: &[Value], col_type: Type) -> crate::Result<Column> {
+pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) -> crate::Result<Column> {
 	let data = match col_type {
 		Type::Boolean => {
 			let vals: Vec<bool> = values

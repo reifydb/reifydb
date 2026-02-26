@@ -212,6 +212,23 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::InsertDictionary(_) => unimplemented!(),
 		LogicalPlan::InsertSeries(_) => unimplemented!(),
 		LogicalPlan::DeleteSeries(_) => unimplemented!(),
+		LogicalPlan::UpdateSeries(update_series) => {
+			output.push_str(&format!("{}{} UpdateSeries\n", prefix, branch));
+
+			let namespace = update_series.target.namespace.first().map(|n| n.text()).unwrap_or("default");
+			output.push_str(&format!(
+				"{}├── target series: {}.{}\n",
+				child_prefix,
+				namespace,
+				update_series.target.name.text()
+			));
+
+			if let Some(input) = &update_series.input {
+				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
+				let pipeline_prefix = format!("{}    ", child_prefix);
+				render_logical_plan_inner(input, &pipeline_prefix, true, output);
+			}
+		}
 		LogicalPlan::Update(update) => {
 			output.push_str(&format!("{}{} Update\n", prefix, branch));
 

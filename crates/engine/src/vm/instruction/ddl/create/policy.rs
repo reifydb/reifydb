@@ -3,7 +3,11 @@
 
 use reifydb_core::{
 	error::diagnostic::{catalog::table_not_found, query::column_not_found},
-	interface::catalog::{change::CatalogTrackTableChangeOperations, primitive::PrimitiveId, table::TableDef},
+	interface::catalog::{
+		change::{CatalogTrackSeriesChangeOperations, CatalogTrackTableChangeOperations},
+		primitive::PrimitiveId,
+		table::TableDef,
+	},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreatePolicyNode;
@@ -21,44 +25,76 @@ pub(crate) fn create_policy(
 	let table_name = plan.table.text();
 
 	// Find the table
-	let Some(table) =
-		services.catalog.find_table_by_name(&mut Transaction::Admin(txn), namespace_id, table_name)?
-	else {
-		return_error!(table_not_found(plan.table.clone(), plan.namespace.name(), table_name));
-	};
+	let table = services.catalog.find_table_by_name(&mut Transaction::Admin(txn), namespace_id, table_name)?;
 
-	// Save pre-state for materialized catalog update
-	let pre_table = table.clone();
+	if let Some(table) = table {
+		// Save pre-state for materialized catalog update
+		let pre_table = table.clone();
 
-	// Find the column
-	let column_name = plan.column.text();
-	let Some(column) = services.catalog.find_column_by_name(
-		&mut Transaction::Admin(txn),
-		PrimitiveId::Table(table.id),
-		column_name,
-	)?
-	else {
-		return_error!(column_not_found(plan.column.clone()));
-	};
+		// Find the column
+		let column_name = plan.column.text();
+		let Some(column) = services.catalog.find_column_by_name(
+			&mut Transaction::Admin(txn),
+			PrimitiveId::Table(table.id),
+			column_name,
+		)?
+		else {
+			return_error!(column_not_found(plan.column.clone()));
+		};
 
-	// Apply each policy to the column
-	for policy in &plan.policies {
-		services.catalog.create_column_policy(txn, column.id, policy.clone())?;
+		// Apply each policy to the column
+		for policy in &plan.policies {
+			services.catalog.create_column_policy(txn, column.id, policy.clone())?;
+		}
+
+		// Re-read columns from the KV store to get updated policies, then track the
+		// table_def change so the MaterializedCatalogInterceptor refreshes its cache.
+		let updated_columns = services.catalog.list_columns(&mut Transaction::Admin(txn), pre_table.id)?;
+		let post_table = TableDef {
+			columns: updated_columns,
+			..pre_table.clone()
+		};
+		txn.track_table_def_updated(pre_table, post_table)?;
+
+		Ok(Columns::single_row([
+			("operation", Value::Utf8("CREATE COLUMN POLICY".to_string())),
+			("namespace", Value::Utf8(plan.namespace.name().to_string())),
+			("table", Value::Utf8(table.name)),
+			("column", Value::Utf8(column.name)),
+		]))
+	} else {
+		// Try series
+		let Some(series) =
+			services.catalog.find_series_by_name(&mut Transaction::Admin(txn), namespace_id, table_name)?
+		else {
+			return_error!(table_not_found(plan.table.clone(), plan.namespace.name(), table_name));
+		};
+
+		let pre_series = series.clone();
+
+		let column_name = plan.column.text();
+		let Some(column) = services.catalog.find_column_by_name(
+			&mut Transaction::Admin(txn),
+			PrimitiveId::Series(series.id),
+			column_name,
+		)?
+		else {
+			return_error!(column_not_found(plan.column.clone()));
+		};
+
+		for policy in &plan.policies {
+			services.catalog.create_column_policy(txn, column.id, policy.clone())?;
+		}
+
+		// Re-read series def to get updated column policies
+		let post_series = services.catalog.get_series(&mut Transaction::Admin(txn), series.id)?;
+		txn.track_series_def_updated(pre_series, post_series)?;
+
+		Ok(Columns::single_row([
+			("operation", Value::Utf8("CREATE COLUMN POLICY".to_string())),
+			("namespace", Value::Utf8(plan.namespace.name().to_string())),
+			("series", Value::Utf8(series.name)),
+			("column", Value::Utf8(column.name)),
+		]))
 	}
-
-	// Re-read columns from the KV store to get updated policies, then track the
-	// table_def change so the MaterializedCatalogInterceptor refreshes its cache.
-	let updated_columns = services.catalog.list_columns(&mut Transaction::Admin(txn), pre_table.id)?;
-	let post_table = TableDef {
-		columns: updated_columns,
-		..pre_table.clone()
-	};
-	txn.track_table_def_updated(pre_table, post_table)?;
-
-	Ok(Columns::single_row([
-		("operation", Value::Utf8("CREATE COLUMN POLICY".to_string())),
-		("namespace", Value::Utf8(plan.namespace.name().to_string())),
-		("table", Value::Utf8(table.name)),
-		("column", Value::Utf8(column.name)),
-	]))
 }

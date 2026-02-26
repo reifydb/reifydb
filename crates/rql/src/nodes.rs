@@ -76,6 +76,7 @@ pub enum PhysicalPlan {
 	InsertDictionary(InsertDictionaryNode),
 	Update(UpdateTableNode),
 	UpdateRingBuffer(UpdateRingBufferNode),
+	UpdateSeries(UpdateSeriesNode),
 	// Variable assignment
 	Declare(DeclareNode),
 	Assign(AssignNode),
@@ -451,6 +452,12 @@ pub struct DeleteRingBufferNode {
 pub struct UpdateRingBufferNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedRingBuffer,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateSeriesNode {
+	pub input: Box<QueryPlan>,
+	pub target: ResolvedSeries,
 }
 
 #[derive(Debug, Clone)]

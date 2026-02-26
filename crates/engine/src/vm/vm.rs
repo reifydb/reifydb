@@ -1536,6 +1536,24 @@ impl Vm {
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
+				Instruction::UpdateSeries(node) => {
+					match tx {
+						Transaction::Query(_) => {
+							return Err(internal_error!(
+								"Mutation operations cannot be executed in a query transaction"
+							));
+						}
+						_ => {}
+					}
+					let mut std_txn = tx.reborrow();
+					let columns = super::instruction::dml::series_update::update_series(
+						services,
+						&mut std_txn,
+						node.clone(),
+						params.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
 
 				Instruction::Query(plan) => {
 					let mut std_txn = tx.reborrow();

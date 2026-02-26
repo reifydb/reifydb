@@ -926,6 +926,15 @@ impl InstructionCompiler {
 				}));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::UpdateSeries(node) => {
+				self.emit(Instruction::UpdateSeries(nodes::UpdateSeriesNode {
+					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+						node.input,
+					))),
+					target: node.target,
+				}));
+				self.emit(Instruction::Emit);
+			}
 
 			// Variables
 			PhysicalPlan::Declare(node) => {

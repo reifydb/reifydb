@@ -6,11 +6,17 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{
 	ast::{
 		ast::{Ast, AstFrom, AstPatch, AstUpdate},
-		identifier::{MaybeQualifiedRingBufferIdentifier, MaybeQualifiedTableIdentifier},
+		identifier::{
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
+			MaybeQualifiedTableIdentifier,
+		},
 	},
 	bump::{BumpBox, BumpVec},
 	expression::ExpressionCompiler,
-	plan::logical::{Compiler, FilterNode, LogicalPlan, PipelineNode, UpdateRingBufferNode, UpdateTableNode},
+	plan::logical::{
+		Compiler, FilterNode, LogicalPlan, PipelineNode, UpdateRingBufferNode, UpdateSeriesNode,
+		UpdateTableNode,
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -84,6 +90,15 @@ impl<'bump> Compiler<'bump> {
 				target = target.with_namespace(namespace);
 			}
 			Ok(LogicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
+				target,
+				input: Some(BumpBox::new_in(pipeline, self.bump)),
+			}))
+		} else if self.catalog.find_series_by_name(tx, namespace_id, target_name)?.is_some() {
+			let mut target = MaybeQualifiedSeriesIdentifier::new(name);
+			if !namespace.is_empty() {
+				target = target.with_namespace(namespace);
+			}
+			Ok(LogicalPlan::UpdateSeries(UpdateSeriesNode {
 				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
 			}))

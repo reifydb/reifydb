@@ -116,17 +116,27 @@ impl InlineDataNode {
 								.source
 								.as_ref()
 								.expect("source required for unresolved sumtype");
-							let tag_col = source
-								.columns()
-								.iter()
-								.find(|c| c.name == tag_col_name)
-								.expect("tag column not found");
-							let Some(Constraint::SumType(id)) =
-								tag_col.constraint.constraint()
-							else {
-								panic!("expected SumType constraint on tag column")
-							};
-							ctx.services.catalog.get_sumtype(txn, *id)?
+
+							if let Some(tag_col) =
+								source.columns().iter().find(|c| c.name == tag_col_name)
+							{
+								let Some(Constraint::SumType(id)) =
+									tag_col.constraint.constraint()
+								else {
+									panic!(
+										"expected SumType constraint on tag column"
+									)
+								};
+								ctx.services.catalog.get_sumtype(txn, *id)?
+							} else if let ResolvedPrimitive::Series(series) = source {
+								// For series, the tag is stored as SeriesDef.tag, not
+								// as a column
+								let tag_id =
+									series.def().tag.expect("series tag expected");
+								ctx.services.catalog.get_sumtype(txn, tag_id)?
+							} else {
+								panic!("tag column not found: {}", tag_col_name)
+							}
 						} else {
 							// Resolve from fully-qualified namespace
 							let ns_name = ctor.namespace.text();
@@ -196,6 +206,31 @@ impl InlineDataNode {
 										.services
 										.catalog
 										.get_sumtype(txn, *id)?;
+									let variant_name_lower =
+										col.0.name.text().to_lowercase();
+									let maybe_tag = sumtype_def
+										.variants
+										.iter()
+										.find(|v| {
+											v.name.to_lowercase()
+												== variant_name_lower
+										})
+										.map(|v| v.tag);
+									if let Some(tag) = maybe_tag {
+										Some((sumtype_def, tag))
+									} else {
+										None
+									}
+								} else {
+									None
+								}
+							} else if let ResolvedPrimitive::Series(series) = source {
+								// For series, the tag is stored as SeriesDef.tag
+								if let Some(tag_id) = series.def().tag {
+									let sumtype_def = ctx
+										.services
+										.catalog
+										.get_sumtype(txn, tag_id)?;
 									let variant_name_lower =
 										col.0.name.text().to_lowercase();
 									let maybe_tag = sumtype_def

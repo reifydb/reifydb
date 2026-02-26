@@ -105,6 +105,7 @@ pub enum PhysicalPlan<'bump> {
 	InsertSeries(InsertSeriesNode<'bump>),
 	Update(UpdateTableNode<'bump>),
 	UpdateRingBuffer(UpdateRingBufferNode<'bump>),
+	UpdateSeries(UpdateSeriesNode<'bump>),
 	// Variable assignment
 	Declare(DeclareNode<'bump>),
 	Assign(AssignNode<'bump>),
@@ -260,6 +261,12 @@ pub struct UpdateTableNode<'bump> {
 pub struct UpdateRingBufferNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedRingBuffer,
+}
+
+#[derive(Debug)]
+pub struct UpdateSeriesNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub target: ResolvedSeries,
 }
 
 #[derive(Debug)]
@@ -1248,6 +1255,66 @@ impl<'bump> Compiler<'bump> {
 					);
 
 					stack.push(PhysicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
+						input,
+						target,
+					}))
+				}
+
+				LogicalPlan::UpdateSeries(update_series) => {
+					let input = if let Some(update_input) = update_series.input {
+						let sub_plan = self
+							.compile(
+								rx,
+								once(crate::bump::BumpBox::into_inner(update_input)),
+							)?
+							.expect("UpdateSeries input must produce a plan");
+						self.bump_box(sub_plan)
+					} else {
+						self.bump_box(stack.pop().expect("UpdateSeries requires input"))
+					};
+
+					let series_id = update_series.target;
+					let namespace_name = if series_id.namespace.is_empty() {
+						"default".to_string()
+					} else {
+						series_id
+							.namespace
+							.iter()
+							.map(|n| n.text())
+							.collect::<Vec<_>>()
+							.join(".")
+					};
+					let namespace_def =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(series_def) = self.catalog.find_series_by_name(
+						rx,
+						namespace_def.id,
+						series_id.name.text(),
+					)?
+					else {
+						return_error!(
+							reifydb_core::error::diagnostic::catalog::series_not_found(
+								self.interner.intern_fragment(&series_id.name),
+								&namespace_def.name,
+								series_id.name.text()
+							)
+						);
+					};
+
+					let namespace_id = if let Some(n) = series_id.namespace.first() {
+						let interned = self.interner.intern_fragment(n);
+						interned.with_text(&namespace_def.name)
+					} else {
+						Fragment::internal(namespace_def.name.clone())
+					};
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let target = ResolvedSeries::new(
+						self.interner.intern_fragment(&series_id.name),
+						resolved_namespace,
+						series_def,
+					);
+
+					stack.push(PhysicalPlan::UpdateSeries(UpdateSeriesNode {
 						input,
 						target,
 					}))

@@ -11,6 +11,7 @@ pub mod ringbuffer_update;
 pub(crate) mod schema;
 pub mod series_delete;
 pub mod series_insert;
+pub mod series_update;
 pub mod table_delete;
 pub mod table_insert;
 pub mod table_update;

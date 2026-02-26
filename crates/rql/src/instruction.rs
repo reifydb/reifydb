@@ -13,7 +13,7 @@ use crate::{
 		CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode, CreateSubscriptionNode, CreateSumTypeNode,
 		CreateTableNode, CreateTagNode, CreateTransactionalViewNode, DeleteRingBufferNode, DeleteSeriesNode,
 		DeleteTableNode, DispatchNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
-		InsertSeriesNode, InsertTableNode, UpdateRingBufferNode, UpdateTableNode,
+		InsertSeriesNode, InsertTableNode, UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -192,6 +192,7 @@ pub enum Instruction {
 	InsertSeries(InsertSeriesNode),
 	Update(UpdateTableNode),
 	UpdateRingBuffer(UpdateRingBufferNode),
+	UpdateSeries(UpdateSeriesNode),
 
 	// === Append ===
 	Append {
