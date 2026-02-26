@@ -26,6 +26,7 @@ pub mod operator_retention_policies;
 pub mod primary_key_columns;
 pub mod primary_keys;
 pub mod primitive_retention_policies;
+pub mod procedures;
 pub mod ringbuffers;
 pub mod roles;
 pub mod schema_fields;
@@ -71,6 +72,7 @@ use operator_retention_policies::operator_retention_policies;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
 use primitive_retention_policies::primitive_retention_policies;
+use procedures::procedures;
 use roles::roles;
 use schema_fields::schema_fields;
 use schemas::schemas;
@@ -211,6 +213,16 @@ pub mod ids {
 		}
 
 		pub mod events {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+
+			pub const ALL: [ColumnId; 3] = [ID, NAMESPACE_ID, NAME];
+		}
+
+		pub mod procedures {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
@@ -591,17 +603,18 @@ pub mod ids {
 		pub const SCHEMA_FIELDS: VTableId = VTableId(33);
 		pub const ENUMS: VTableId = VTableId(34);
 		pub const EVENTS: VTableId = VTableId(35);
-		pub const HANDLERS: VTableId = VTableId(36);
-		pub const TAGS: VTableId = VTableId(37);
-		pub const SERIES: VTableId = VTableId(38);
-		pub const USERS: VTableId = VTableId(39);
-		pub const ROLES: VTableId = VTableId(40);
-		pub const USER_ROLES: VTableId = VTableId(41);
-		pub const SECURITY_POLICIES: VTableId = VTableId(42);
-		pub const SECURITY_POLICY_OPERATIONS: VTableId = VTableId(43);
-		pub const MIGRATIONS: VTableId = VTableId(44);
+		pub const PROCEDURES: VTableId = VTableId(36);
+		pub const HANDLERS: VTableId = VTableId(37);
+		pub const TAGS: VTableId = VTableId(38);
+		pub const SERIES: VTableId = VTableId(39);
+		pub const USERS: VTableId = VTableId(40);
+		pub const ROLES: VTableId = VTableId(41);
+		pub const USER_ROLES: VTableId = VTableId(42);
+		pub const SECURITY_POLICIES: VTableId = VTableId(43);
+		pub const SECURITY_POLICY_OPERATIONS: VTableId = VTableId(44);
+		pub const MIGRATIONS: VTableId = VTableId(45);
 
-		pub const ALL: [VTableId; 44] = [
+		pub const ALL: [VTableId; 45] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -637,6 +650,7 @@ pub mod ids {
 			SCHEMA_FIELDS,
 			ENUMS,
 			EVENTS,
+			PROCEDURES,
 			HANDLERS,
 			TAGS,
 			SERIES,
@@ -845,6 +859,11 @@ impl SystemCatalog {
 	/// Get the events virtual table definition
 	pub fn get_system_events_table_def() -> Arc<VTableDef> {
 		events()
+	}
+
+	/// Get the procedures virtual table definition
+	pub fn get_system_procedures_table_def() -> Arc<VTableDef> {
+		procedures()
 	}
 
 	/// Get the handlers virtual table definition

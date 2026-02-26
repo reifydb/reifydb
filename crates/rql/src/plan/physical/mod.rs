@@ -78,7 +78,7 @@ pub enum PhysicalPlan<'bump> {
 	CreatePolicy(nodes::CreatePolicyNode),
 	CreateProcedure(nodes::CreateProcedureNode),
 	CreateEvent(nodes::CreateEventNode),
-	CreateHandler(nodes::CreateHandlerNode),
+
 	CreateSeries(nodes::CreateSeriesNode),
 	CreateTag(nodes::CreateTagNode),
 	CreateMigration(nodes::CreateMigrationNode),
@@ -640,10 +640,6 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::CreateTag(create) => {
 					stack.push(self.compile_create_tag(rx, create)?);
-				}
-
-				LogicalPlan::CreateHandler(create) => {
-					stack.push(self.compile_create_handler(rx, create)?);
 				}
 
 				LogicalPlan::CreateMigration(create) => {

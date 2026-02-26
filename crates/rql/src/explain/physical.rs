@@ -519,9 +519,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreateTag(_) => {
 			write_node_header(output, prefix, is_last, "CreateTag");
 		}
-		PhysicalPlan::CreateHandler(_) => {
-			write_node_header(output, prefix, is_last, "CreateHandler");
-		}
+
 		PhysicalPlan::CreateMigration(_) => {
 			write_node_header(output, prefix, is_last, "CreateMigration");
 		}

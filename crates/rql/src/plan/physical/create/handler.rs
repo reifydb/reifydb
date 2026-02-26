@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::interface::catalog::sumtype::SumTypeKind;
+use reifydb_core::interface::catalog::{procedure::ProcedureTrigger, sumtype::SumTypeKind};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	nodes::CreateHandlerNode,
+	nodes::CreateProcedureNode,
 	plan::{
 		logical,
 		physical::{Compiler, PhysicalPlan},
@@ -18,16 +18,20 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_create_handler(
 		&mut self,
 		rx: &mut Transaction<'_>,
-		create: logical::CreateHandlerNode<'_>,
+		create: logical::CreateProcedureNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
+		// Handler-style procedures always have on_event/on_variant set
+		let on_event = create.on_event.expect("handler must have on_event");
+		let on_variant = create.on_variant.expect("handler must have on_variant");
+
 		// Resolve namespace for the handler itself (from the handler name)
-		let handler_ns_name = if create.name.namespace.is_empty() {
+		let handler_ns_name = if create.procedure.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			create.name.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			create.procedure.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &handler_ns_name)? else {
-			let ns_fragment = if let Some(n) = create.name.namespace.first() {
+			let ns_fragment = if let Some(n) = create.procedure.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(&handler_ns_name)
 			} else {
@@ -43,10 +47,10 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		// Resolve event sumtype namespace
-		let event_ns_name = if create.on_event.namespace.is_empty() {
+		let event_ns_name = if on_event.namespace.is_empty() {
 			handler_ns_name.clone()
 		} else {
-			create.on_event.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			on_event.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
 		};
 		let Some(event_ns_def) = self.catalog.find_namespace_by_name(rx, &event_ns_name)? else {
 			let ns_fragment = Fragment::internal(event_ns_name.clone());
@@ -60,7 +64,7 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		// Look up the event sumtype by name
-		let event_name = create.on_event.name.text();
+		let event_name = on_event.name.text();
 		let Some(sumtype_def) = self.catalog.find_sumtype_by_name(rx, event_ns_def.id, event_name)? else {
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Event,
@@ -80,23 +84,26 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		// Find variant by name → get tag
-		let variant_name = create.on_variant.text().to_lowercase();
+		let variant_name = on_variant.text().to_lowercase();
 		let Some(variant_def) = sumtype_def.variants.iter().find(|v| v.name == variant_name) else {
 			return Err(reifydb_core::internal_error!(
 				"Variant '{}' not found in event type '{}'",
-				create.on_variant.text(),
+				on_variant.text(),
 				event_name
 			));
 		};
 
 		let on_variant_tag = variant_def.tag;
 
-		Ok(PhysicalPlan::CreateHandler(CreateHandlerNode {
+		Ok(PhysicalPlan::CreateProcedure(CreateProcedureNode {
 			namespace: namespace_def,
-			name: self.interner.intern_fragment(&create.name.name),
-			on_sumtype_id: sumtype_def.id,
-			on_variant_tag,
+			name: self.interner.intern_fragment(&create.procedure.name),
+			params: vec![],
 			body_source: create.body_source,
+			trigger: ProcedureTrigger::Event {
+				sumtype_id: sumtype_def.id,
+				variant_tag: on_variant_tag,
+			},
 		}))
 	}
 }

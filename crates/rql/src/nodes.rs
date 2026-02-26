@@ -12,7 +12,7 @@ use reifydb_core::{
 			flow::FlowId,
 			id::{NamespaceId, RingBufferId, TableId, ViewId},
 			namespace::NamespaceDef,
-			procedure::ProcedureParamDef,
+			procedure::{ProcedureParamDef, ProcedureTrigger},
 			series::TimestampPrecision,
 		},
 		resolved::{
@@ -63,7 +63,7 @@ pub enum PhysicalPlan {
 	CreateSeries(CreateSeriesNode),
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
-	CreateHandler(CreateHandlerNode),
+
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),
 	RollbackMigration(RollbackMigrationNode),
@@ -298,6 +298,7 @@ pub struct CreateProcedureNode {
 	pub name: Fragment,
 	pub params: Vec<ProcedureParamDef>,
 	pub body_source: String,
+	pub trigger: ProcedureTrigger,
 }
 
 /// Physical node for CREATE SERIES
@@ -324,16 +325,6 @@ pub struct CreateTagNode {
 	pub namespace: NamespaceDef,
 	pub name: Fragment,
 	pub variants: Vec<CreateSumTypeVariant>,
-}
-
-/// Physical node for CREATE HANDLER
-#[derive(Debug, Clone)]
-pub struct CreateHandlerNode {
-	pub namespace: NamespaceDef,
-	pub name: Fragment,
-	pub on_sumtype_id: SumTypeId,
-	pub on_variant_tag: u8,
-	pub body_source: String,
 }
 
 /// Physical node for CREATE MIGRATION

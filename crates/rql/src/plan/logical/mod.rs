@@ -369,7 +369,7 @@ pub enum LogicalPlan<'bump> {
 	CreateSeries(CreateSeriesNode<'bump>),
 	CreateEvent(CreateEventNode<'bump>),
 	CreateTag(CreateTagNode<'bump>),
-	CreateHandler(CreateHandlerNode<'bump>),
+
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),
 	RollbackMigration(RollbackMigrationNode),
@@ -843,6 +843,10 @@ pub struct CreateProcedureNode<'bump> {
 	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
 	pub params: Vec<AstProcedureParam<'bump>>,
 	pub body_source: String,
+	/// Set when this procedure is created via CREATE HANDLER (event binding)
+	pub on_event: Option<crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>>,
+	/// Variant name for event-triggered procedures
+	pub on_variant: Option<BumpFragment<'bump>>,
 }
 
 // === Drop nodes ===
@@ -987,14 +991,6 @@ pub struct CreateEventNode<'bump> {
 pub struct CreateTagNode<'bump> {
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub variants: Vec<AstVariantDef<'bump>>,
-}
-
-#[derive(Debug)]
-pub struct CreateHandlerNode<'bump> {
-	pub name: crate::ast::identifier::MaybeQualifiedTableIdentifier<'bump>,
-	pub on_event: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub on_variant: BumpFragment<'bump>,
-	pub body_source: String,
 }
 
 #[derive(Debug)]

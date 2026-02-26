@@ -509,14 +509,14 @@ impl<'bump> Compiler<'bump> {
 	/// This compiles to the same CallFunction logical plan node, so the VM
 	/// will resolve it against DEF functions, catalog procedures, or built-in functions.
 	pub(crate) fn compile_call(&self, ast: AstCall<'bump>) -> crate::Result<LogicalPlan<'bump>> {
-		// Build qualified name: join namespaces with '.' for catalog lookup
+		// Build qualified name: join namespaces with '::' for catalog lookup
 		let name = if ast.function.namespaces.is_empty() {
 			ast.function.name
 		} else {
 			let mut qualified = String::new();
 			for ns in &ast.function.namespaces {
 				qualified.push_str(ns.text());
-				qualified.push('.');
+				qualified.push_str("::");
 			}
 			qualified.push_str(ast.function.name.text());
 			BumpFragment::internal(self.bump, &qualified)

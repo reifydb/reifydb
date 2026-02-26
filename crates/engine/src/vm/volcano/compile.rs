@@ -15,8 +15,8 @@ use reifydb_catalog::vtable::{
 		index_storage_stats::IndexStorageStats, migrations::Migrations, namespaces::Namespaces,
 		operator_retention_policies::OperatorRetentionPolicies, primary_key_columns::PrimaryKeyColumns,
 		primary_keys::PrimaryKeys, primitive_retention_policies::PrimitiveRetentionPolicies,
-		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, roles::Roles,
-		schema_fields::SchemaFields, schemas::Schemas, security_policies::SecurityPolicies,
+		procedures::Procedures, ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers,
+		roles::Roles, schema_fields::SchemaFields, schemas::Schemas, security_policies::SecurityPolicies,
 		security_policy_operations::SecurityPolicyOperations, sequences::Sequences, series::Series,
 		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, tags::Tags,
 		types::Types, user_roles::UserRoles, users::Users, versions::Versions,
@@ -578,7 +578,12 @@ pub(crate) fn compile<'a>(
 					)),
 					"enums" => VTables::Enums(Enums::new()),
 					"events" => VTables::Events(Events::new()),
-					"handlers" => VTables::Handlers(Handlers::new()),
+					"procedures" => {
+						VTables::Procedures(Procedures::new(context.services.catalog.clone()))
+					}
+					"handlers" => {
+						VTables::Handlers(Handlers::new(context.services.catalog.clone()))
+					}
 					"tags" => VTables::Tags(Tags::new()),
 					"series" => VTables::Series(Series::new()),
 					"users" => VTables::Users(Users::new()),

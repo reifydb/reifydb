@@ -56,8 +56,9 @@ pub fn register_wasm_procedures_from_dir(
 		})?;
 
 		let name_for_closure = name.clone();
-		builder = builder
-			.register(&name, move || WasmProcedure::new(name_for_closure.clone(), wasm_bytes.clone()));
+		builder = builder.with_procedure(&name, move || {
+			WasmProcedure::new(name_for_closure.clone(), wasm_bytes.clone())
+		});
 	}
 
 	Ok(builder)

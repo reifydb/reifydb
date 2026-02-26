@@ -5,9 +5,10 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		id::{NamespaceId, ProcedureId},
-		procedure::ProcedureDef,
+		procedure::{ProcedureDef, ProcedureTrigger},
 	},
 };
+use reifydb_type::value::sumtype::SumTypeId;
 
 use crate::materialized::{MaterializedCatalog, MultiVersionProcedureDef};
 
@@ -49,17 +50,67 @@ impl MaterializedCatalog {
 		})
 	}
 
+	/// List all procedures for a specific event variant at a specific version
+	pub fn list_procedures_for_variant_at(
+		&self,
+		sumtype_id: SumTypeId,
+		variant_tag: u8,
+		version: CommitVersion,
+	) -> Vec<ProcedureDef> {
+		let key = (sumtype_id, variant_tag);
+		if let Some(entry) = self.procedures_by_variant.get(&key) {
+			entry.value().iter().filter_map(|id| self.find_procedure_at(*id, version)).collect()
+		} else {
+			vec![]
+		}
+	}
+
 	pub fn set_procedure(&self, id: ProcedureId, version: CommitVersion, procedure: Option<ProcedureDef>) {
 		if let Some(entry) = self.procedures.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
 				// Remove old name from index
 				self.procedures_by_name.remove(&(pre.namespace, pre.name.clone()));
+
+				// Remove from variant index if it had an event binding
+				if let ProcedureTrigger::Event {
+					sumtype_id,
+					variant_tag,
+				} = &pre.trigger
+				{
+					let variant_key = (*sumtype_id, *variant_tag);
+					if let Some(ids_entry) = self.procedures_by_variant.get(&variant_key) {
+						let mut ids = ids_entry.value().clone();
+						ids.retain(|existing| *existing != id);
+						drop(ids_entry);
+						self.procedures_by_variant.insert(variant_key, ids);
+					}
+				}
 			}
 		}
 
 		let multi = self.procedures.get_or_insert_with(id, MultiVersionProcedureDef::new);
 		if let Some(new) = procedure {
 			self.procedures_by_name.insert((new.namespace, new.name.clone()), id);
+
+			// Add to variant index if it has an event binding
+			if let ProcedureTrigger::Event {
+				sumtype_id,
+				variant_tag,
+			} = &new.trigger
+			{
+				let variant_key = (*sumtype_id, *variant_tag);
+				if let Some(entry) = self.procedures_by_variant.get(&variant_key) {
+					let mut ids = entry.value().clone();
+					if !ids.contains(&id) {
+						ids.push(id);
+					}
+					drop(entry);
+					self.procedures_by_variant.insert(variant_key, ids);
+				} else {
+					self.procedures_by_variant.insert(variant_key, vec![id]);
+				}
+			}
+
 			multi.value().insert(version, new);
 		} else {
 			multi.value().remove(version);

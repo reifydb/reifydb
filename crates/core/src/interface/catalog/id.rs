@@ -890,7 +890,6 @@ impl From<SeriesId> for u64 {
 }
 
 impl SeriesId {
-	/// Get the inner u64 value.
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		self.0

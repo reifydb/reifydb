@@ -653,9 +653,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::CreateTag(_) => {
 			output.push_str(&format!("{}{} CreateTag\n", prefix, branch));
 		}
-		LogicalPlan::CreateHandler(_) => {
-			output.push_str(&format!("{}{} CreateHandler\n", prefix, branch));
-		}
+
 		LogicalPlan::CreateMigration(_) => {
 			output.push_str(&format!("{}{} CreateMigration\n", prefix, branch));
 		}

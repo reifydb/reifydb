@@ -101,6 +101,8 @@ pub struct MaterializedCatalogInner {
 	pub(crate) procedures: SkipMap<ProcedureId, MultiVersionProcedureDef>,
 	/// Index from (namespace_id, procedure_name) to procedure ID for fast name lookups
 	pub(crate) procedures_by_name: SkipMap<(NamespaceId, String), ProcedureId>,
+	/// Index from (sumtype_id, variant_tag) to Vec<ProcedureId> for procedure dispatch
+	pub(crate) procedures_by_variant: SkipMap<(SumTypeId, u8), Vec<ProcedureId>>,
 	/// MultiVersion primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
 	/// MultiVersion source retention policies indexed by source ID
@@ -193,6 +195,7 @@ impl MaterializedCatalog {
 			namespaces_by_name,
 			procedures: SkipMap::new(),
 			procedures_by_name: SkipMap::new(),
+			procedures_by_variant: SkipMap::new(),
 			tables: SkipMap::new(),
 			tables_by_name: SkipMap::new(),
 			views: SkipMap::new(),

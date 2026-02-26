@@ -267,7 +267,7 @@ pub fn register_procedures_from_dir(
 
 	for name in names {
 		let name_clone = name.clone();
-		builder = builder.register(&name, move || {
+		builder = builder.with_procedure(&name, move || {
 			let loader = ffi_procedure_loader();
 			let mut loader_guard = loader.write().unwrap();
 			loader_guard.create_procedure_by_name(&name_clone, &[]).unwrap()

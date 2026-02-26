@@ -15,6 +15,8 @@ impl<'bump> Compiler<'bump> {
 			procedure: ast.name,
 			params: ast.params,
 			body_source: ast.body_source,
+			on_event: None,
+			on_variant: None,
 		}))
 	}
 }

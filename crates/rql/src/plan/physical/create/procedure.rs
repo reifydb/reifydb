@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{error::diagnostic::catalog::namespace_not_found, interface::catalog::procedure::ProcedureParamDef};
+use reifydb_core::{
+	error::diagnostic::catalog::namespace_not_found,
+	interface::catalog::procedure::{ProcedureParamDef, ProcedureTrigger},
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
@@ -19,6 +22,11 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateProcedureNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
+		// If this is a handler-style procedure (has on_event), delegate to handler compiler
+		if create.on_event.is_some() {
+			return self.compile_create_handler(rx, create);
+		}
+
 		// Resolve namespace
 		let namespace_name = if create.procedure.namespace.is_empty() {
 			"default".to_string()
@@ -50,6 +58,7 @@ impl<'bump> Compiler<'bump> {
 			name: self.interner.intern_fragment(&create.procedure.name),
 			params,
 			body_source: create.body_source,
+			trigger: ProcedureTrigger::Call,
 		}))
 	}
 }

@@ -9,12 +9,12 @@ use reifydb_type::{
 use crate::{
 	nodes::{
 		self, AlterFlowNode, AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateEventNode,
-		CreateFlowNode, CreateHandlerNode, CreateMigrationNode, CreateNamespaceNode, CreatePolicyNode,
-		CreatePrimaryKeyNode, CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode,
-		CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode, CreateTagNode, CreateTransactionalViewNode,
-		DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, DispatchNode, FunctionParameter,
-		InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode, InsertTableNode, MigrateNode,
-		RollbackMigrationNode, UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
+		CreateFlowNode, CreateMigrationNode, CreateNamespaceNode, CreatePolicyNode, CreatePrimaryKeyNode,
+		CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode, CreateSubscriptionNode, CreateSumTypeNode,
+		CreateTableNode, CreateTagNode, CreateTransactionalViewNode, DeleteRingBufferNode, DeleteSeriesNode,
+		DeleteTableNode, DispatchNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
+		InsertSeriesNode, InsertTableNode, MigrateNode, RollbackMigrationNode, UpdateRingBufferNode,
+		UpdateSeriesNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -167,7 +167,7 @@ pub enum Instruction {
 	CreateSeries(CreateSeriesNode),
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
-	CreateHandler(CreateHandlerNode),
+
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),
 	RollbackMigration(RollbackMigrationNode),

@@ -38,8 +38,8 @@ use crate::{
 		ddl::{
 			alter::security_policy::alter_security_policy,
 			create::{
-				event::create_event, handler::create_handler, role::create_role,
-				security_policy::create_security_policy, user::create_user,
+				event::create_event, role::create_role, security_policy::create_security_policy,
+				user::create_user,
 			},
 			drop::{role::drop_role, security_policy::drop_security_policy, user::drop_user},
 			grant::grant,
@@ -1183,18 +1183,7 @@ impl Vm {
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::CreateHandler(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_handler(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
+
 				Instruction::CreateMigration(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,

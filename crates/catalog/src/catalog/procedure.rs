@@ -4,13 +4,16 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackProcedureChangeOperations,
 	id::{NamespaceId, ProcedureId},
-	procedure::{ProcedureDef, ProcedureParamDef},
+	procedure::{ProcedureDef, ProcedureParamDef, ProcedureTrigger},
 };
 use reifydb_transaction::{
 	change::TransactionalProcedureChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{fragment::Fragment, value::constraint::TypeConstraint};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{constraint::TypeConstraint, sumtype::SumTypeId},
+};
 use tracing::instrument;
 
 use crate::{catalog::Catalog, store::sequence::system::SystemSequence};
@@ -23,6 +26,7 @@ pub struct ProcedureToCreate {
 	pub params: Vec<ProcedureParamDef>,
 	pub return_type: Option<TypeConstraint>,
 	pub body: String,
+	pub trigger: ProcedureTrigger,
 }
 
 impl Catalog {
@@ -134,6 +138,56 @@ impl Catalog {
 		}
 	}
 
+	#[instrument(name = "catalog::procedure::list_for_variant", level = "trace", skip(self, txn))]
+	pub fn list_procedures_for_variant(
+		&self,
+		txn: &mut Transaction<'_>,
+		sumtype_id: SumTypeId,
+		variant_tag: u8,
+	) -> crate::Result<Vec<ProcedureDef>> {
+		match txn.reborrow() {
+			Transaction::Command(cmd) => Ok(self.materialized.list_procedures_for_variant_at(
+				sumtype_id,
+				variant_tag,
+				cmd.version(),
+			)),
+			Transaction::Admin(admin) => {
+				// Check materialized catalog + transactional additions
+				let mut procedures = self.materialized.list_procedures_for_variant_at(
+					sumtype_id,
+					variant_tag,
+					admin.version(),
+				);
+
+				// Also check transactional changes for newly created procedures with event binding
+				for change in &admin.changes.procedure_def {
+					if let Some(p) = &change.post {
+						if let ProcedureTrigger::Event {
+							sumtype_id: sid,
+							variant_tag: vtag,
+						} = &p.trigger
+						{
+							if *sid == sumtype_id
+								&& *vtag == variant_tag && !procedures
+								.iter()
+								.any(|existing| existing.id == p.id)
+							{
+								procedures.push(p.clone());
+							}
+						}
+					}
+				}
+
+				Ok(procedures)
+			}
+			Transaction::Query(qry) => Ok(self.materialized.list_procedures_for_variant_at(
+				sumtype_id,
+				variant_tag,
+				qry.version(),
+			)),
+		}
+	}
+
 	#[instrument(name = "catalog::procedure::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_procedure(
 		&self,
@@ -149,6 +203,7 @@ impl Catalog {
 			params: to_create.params,
 			return_type: to_create.return_type,
 			body: to_create.body,
+			trigger: to_create.trigger,
 		};
 
 		txn.track_procedure_def_created(procedure.clone())?;

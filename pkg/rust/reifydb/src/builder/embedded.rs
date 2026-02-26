@@ -27,6 +27,7 @@ pub struct EmbeddedBuilder {
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
+	handlers_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,
@@ -48,6 +49,7 @@ impl EmbeddedBuilder {
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
 			procedures_configurator: None,
+			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
 			wasm_procedure_dir: None,
@@ -90,6 +92,14 @@ impl EmbeddedBuilder {
 		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
 	{
 		self.procedures_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_handlers<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+	{
+		self.handlers_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -145,6 +155,10 @@ impl EmbeddedBuilder {
 
 		if let Some(configurator) = self.procedures_configurator {
 			builder = builder.with_procedures_configurator(configurator);
+		}
+
+		if let Some(configurator) = self.handlers_configurator {
+			builder = builder.with_handlers_configurator(configurator);
 		}
 
 		#[cfg(reifydb_target = "native")]

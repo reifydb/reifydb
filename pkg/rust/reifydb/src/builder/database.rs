@@ -68,6 +68,7 @@ pub struct DatabaseBuilder {
 	actor_system: Option<ActorSystem>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
+	handlers_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,
@@ -99,6 +100,7 @@ impl DatabaseBuilder {
 			actor_system: None,
 			functions_configurator: None,
 			procedures_configurator: None,
+			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
 			wasm_procedure_dir: None,
@@ -162,6 +164,14 @@ impl DatabaseBuilder {
 		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
 	{
 		self.procedures_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_handlers_configurator<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+	{
+		self.handlers_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -290,10 +300,17 @@ impl DatabaseBuilder {
 			}
 
 			if let Some(configurator) = self.procedures_configurator {
-				configurator(procedures_builder).build()
-			} else {
-				procedures_builder.build()
+				procedures_builder = configurator(procedures_builder);
 			}
+
+			if let Some(configurator) = self.handlers_configurator {
+				procedures_builder = configurator(procedures_builder);
+			}
+
+			procedures_builder =
+				procedures_builder.resolve(&catalog).map_err(|e| reifydb_core::internal_error!(e))?;
+
+			procedures_builder.build()
 		};
 
 		// Create engine before CDC worker (CDC worker needs engine for cleanup)

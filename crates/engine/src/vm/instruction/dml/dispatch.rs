@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::value::column::{Column, columns::Columns};
+use reifydb_core::{
+	interface::auth::Identity,
+	value::column::{Column, columns::Columns},
+};
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 use crate::{
 	expression::{context::EvalContext, eval::evaluate},
-	vm::{services::Services, stack::Variable, vm::Vm},
+	procedure::context::ProcedureContext,
+	vm::{executor::Executor, services::Services, stack::Variable, vm::Vm},
 };
 
 pub(crate) const MAX_DISPATCH_DEPTH: u8 = 32;
@@ -47,13 +51,13 @@ pub(crate) fn dispatch(
 	};
 	let variant_tag = variant_def.tag;
 
-	// List all handlers for this event variant
-	let handlers = {
+	// List all procedures with event binding for this variant
+	let procedures = {
 		let mut tx_tmp = tx.reborrow();
-		services.catalog.list_handlers_for_variant(&mut tx_tmp, plan.on_sumtype_id, variant_tag)?
+		services.catalog.list_procedures_for_variant(&mut tx_tmp, plan.on_sumtype_id, variant_tag)?
 	};
 
-	let handler_count = handlers.len();
+	let handler_count = procedures.len();
 
 	// Evaluate dispatch fields into a Columns payload
 	let mut event_columns = Vec::with_capacity(plan.fields.len());
@@ -75,9 +79,9 @@ pub(crate) fn dispatch(
 	}
 	let event_payload = Columns::new(event_columns);
 
-	// Fire each handler in declaration order
-	for handler in handlers {
-		let compiled = services.compiler.compile(tx, &handler.body_source)?;
+	// Fire each catalog (RQL) procedure in declaration order
+	for procedure in &procedures {
+		let compiled = services.compiler.compile(tx, &procedure.body)?;
 
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
@@ -108,5 +112,35 @@ pub(crate) fn dispatch(
 		}
 	}
 
-	Ok(Columns::single_row([("handlers_fired", Value::Uint1(handler_count as u8))]))
+	// Fire native (runtime-registered) handlers
+	let native_handlers = services.procedures.get_handlers(plan.on_sumtype_id, variant_tag);
+	let native_count = native_handlers.len();
+	if !native_handlers.is_empty() {
+		// Build named params from event payload (single-row columns → scalar values)
+		let mut named_map = HashMap::new();
+		for col in event_payload.columns.iter() {
+			let key = format!("event_{}", col.name.text());
+			if let Some(val) = col.data.iter().next() {
+				named_map.insert(key, val);
+			}
+		}
+		let call_params = Params::Named(named_map);
+		let identity = Identity::Anonymous {};
+		let executor = Executor::from_services(services.clone());
+
+		for native_proc in native_handlers {
+			let ctx = ProcedureContext {
+				identity: &identity,
+				params: &call_params,
+				catalog: &services.catalog,
+				functions: &services.functions,
+				clock: &services.clock,
+				executor: &executor,
+			};
+			let _result = native_proc.call(&ctx, tx)?;
+		}
+	}
+
+	let total_fired = handler_count + native_count;
+	Ok(Columns::single_row([("handlers_fired", Value::Uint1(total_fired as u8))]))
 }

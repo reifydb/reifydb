@@ -14,7 +14,6 @@ use schema::handler;
 pub mod create;
 pub mod find;
 pub mod get;
-pub mod list;
 pub(crate) mod schema;
 
 pub(crate) fn handler_def_from_row(row: &EncodedValues) -> HandlerDef {

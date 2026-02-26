@@ -27,6 +27,7 @@ pub mod operator_retention_policies;
 pub mod primary_key_columns;
 pub mod primary_keys;
 pub mod primitive_retention_policies;
+pub mod procedures;
 pub mod ringbuffer_storage_stats;
 pub mod ringbuffers;
 pub mod roles;

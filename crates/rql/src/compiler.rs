@@ -729,10 +729,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateTag(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::CreateHandler(node) => {
-				self.emit(Instruction::CreateHandler(node));
-				self.emit(Instruction::Emit);
-			}
+
 			PhysicalPlan::CreateMigration(node) => {
 				self.emit(Instruction::CreateMigration(node));
 				self.emit(Instruction::Emit);

@@ -34,6 +34,7 @@ pub struct ServerBuilder {
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
+	handlers_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	#[cfg(feature = "sub_tracing")]
@@ -53,6 +54,7 @@ impl ServerBuilder {
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
 			procedures_configurator: None,
+			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
 			#[cfg(feature = "sub_tracing")]
@@ -85,6 +87,14 @@ impl ServerBuilder {
 		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
 	{
 		self.procedures_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_handlers<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+	{
+		self.handlers_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -183,6 +193,10 @@ impl ServerBuilder {
 
 		if let Some(configurator) = self.procedures_configurator {
 			database_builder = database_builder.with_procedures_configurator(configurator);
+		}
+
+		if let Some(configurator) = self.handlers_configurator {
+			database_builder = database_builder.with_handlers_configurator(configurator);
 		}
 
 		#[cfg(reifydb_target = "native")]

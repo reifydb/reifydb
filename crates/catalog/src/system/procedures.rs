@@ -10,18 +10,18 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-use super::ids::{columns::handlers::*, vtable::HANDLERS};
+use super::ids::{columns::procedures::*, vtable::PROCEDURES};
 
-/// Returns the static definition for the system.handlers virtual table
-/// This table exposes information about all procedures with trigger = Event (event handlers)
-pub fn handlers() -> Arc<VTableDef> {
+/// Returns the static definition for the system.procedures virtual table
+/// This table exposes information about all procedures with trigger = Call
+pub fn procedures() -> Arc<VTableDef> {
 	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
-			id: HANDLERS,
+			id: PROCEDURES,
 			namespace: NamespaceId(1),
-			name: "handlers".to_string(),
+			name: "procedures".to_string(),
 			columns: vec![
 				ColumnDef {
 					id: ID,
@@ -47,24 +47,6 @@ pub fn handlers() -> Arc<VTableDef> {
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					policies: vec![],
 					index: ColumnIndex(2),
-					auto_increment: false,
-					dictionary_id: None,
-				},
-				ColumnDef {
-					id: ON_SUMTYPE_ID,
-					name: "on_sumtype_id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
-					policies: vec![],
-					index: ColumnIndex(3),
-					auto_increment: false,
-					dictionary_id: None,
-				},
-				ColumnDef {
-					id: ON_VARIANT_TAG,
-					name: "on_variant_tag".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint1),
-					policies: vec![],
-					index: ColumnIndex(4),
 					auto_increment: false,
 					dictionary_id: None,
 				},
