@@ -8,9 +8,13 @@ pub mod operator_retention_policy;
 pub mod primary_key;
 pub mod primitive_retention_policy;
 pub mod ringbuffer;
+pub mod role;
+pub mod security_policy;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
+pub mod user;
+pub mod user_role;
 pub mod view;
 
 use dictionary::load_dictionaries;
@@ -21,9 +25,13 @@ use primary_key::load_primary_keys;
 use primitive_retention_policy::load_source_retention_policies;
 use reifydb_transaction::transaction::Transaction;
 use ringbuffer::load_ringbuffers;
+use role::load_roles;
+use security_policy::load_security_policies;
 use subscription::load_subscriptions;
 use sumtype::load_sumtypes;
 use table::load_tables;
+use user::load_users;
+use user_role::load_user_roles;
 use view::load_views;
 
 use super::MaterializedCatalog;
@@ -54,6 +62,12 @@ impl MaterializedCatalogLoader {
 
 		// Load subscriptions
 		load_subscriptions(rx, catalog)?;
+
+		// Load auth entities
+		load_users(rx, catalog)?;
+		load_roles(rx, catalog)?;
+		load_user_roles(rx, catalog)?;
+		load_security_policies(rx, catalog)?;
 
 		Ok(())
 	}

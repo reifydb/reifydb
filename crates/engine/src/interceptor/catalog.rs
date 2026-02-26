@@ -90,6 +90,65 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_handler(id, version, change.post.clone());
 		}
 
+		for change in &ctx.changes.user_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|u| u.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_user(id, version, change.post.clone());
+		}
+
+		for change in &ctx.changes.role_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|r| r.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_role(id, version, change.post.clone());
+		}
+
+		for change in &ctx.changes.user_role_def {
+			let ur = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.expect("Change must have either pre or post state");
+			self.catalog.set_user_role(ur.user_id, ur.role_id, version, change.post.clone());
+		}
+
+		for change in &ctx.changes.security_policy_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|p| p.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_security_policy(id, version, change.post.clone());
+		}
+
+		for change in &ctx.changes.migration_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|m| m.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_migration(id, version, change.post.clone());
+		}
+
+		for change in &ctx.changes.migration_event {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|e| e.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_migration_event(id, version, change.post.clone());
+		}
+
 		Ok(())
 	}
 }

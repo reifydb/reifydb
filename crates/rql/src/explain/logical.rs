@@ -93,6 +93,74 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::DropFlow(_) => unimplemented!(),
 		LogicalPlan::DropSubscription(_) => unimplemented!(),
 		LogicalPlan::DropSeries(_) => unimplemented!(),
+		LogicalPlan::CreateUser(n) => {
+			output.push_str(&format!("{}{} CreateUser name={}\n", prefix, branch, n.name.text()));
+		}
+		LogicalPlan::CreateRole(n) => {
+			output.push_str(&format!("{}{} CreateRole name={}\n", prefix, branch, n.name.text()));
+		}
+		LogicalPlan::Grant(n) => {
+			output.push_str(&format!(
+				"{}{} Grant role={} user={}\n",
+				prefix,
+				branch,
+				n.role.text(),
+				n.user.text()
+			));
+		}
+		LogicalPlan::Revoke(n) => {
+			output.push_str(&format!(
+				"{}{} Revoke role={} user={}\n",
+				prefix,
+				branch,
+				n.role.text(),
+				n.user.text()
+			));
+		}
+		LogicalPlan::DropUser(n) => {
+			output.push_str(&format!(
+				"{}{} DropUser name={} if_exists={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				n.if_exists
+			));
+		}
+		LogicalPlan::DropRole(n) => {
+			output.push_str(&format!(
+				"{}{} DropRole name={} if_exists={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				n.if_exists
+			));
+		}
+		LogicalPlan::CreateSecurityPolicy(n) => {
+			let name = n.name.as_ref().map(|f| f.text()).unwrap_or("<unnamed>");
+			output.push_str(&format!(
+				"{}{} CreateSecurityPolicy name={} type={:?}\n",
+				prefix, branch, name, n.target_type
+			));
+		}
+		LogicalPlan::AlterSecurityPolicy(n) => {
+			let enabled = n.action == crate::ast::ast::AstAlterPolicyAction::Enable;
+			output.push_str(&format!(
+				"{}{} AlterSecurityPolicy name={} enabled={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				enabled
+			));
+		}
+		LogicalPlan::DropSecurityPolicy(n) => {
+			output.push_str(&format!(
+				"{}{} DropSecurityPolicy name={} if_exists={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				n.if_exists
+			));
+		}
 		LogicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,
@@ -588,6 +656,15 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::CreateHandler(_) => {
 			output.push_str(&format!("{}{} CreateHandler\n", prefix, branch));
 		}
+		LogicalPlan::CreateMigration(_) => {
+			output.push_str(&format!("{}{} CreateMigration\n", prefix, branch));
+		}
+		LogicalPlan::Migrate(_) => {
+			output.push_str(&format!("{}{} Migrate\n", prefix, branch));
+		}
+		LogicalPlan::RollbackMigration(_) => {
+			output.push_str(&format!("{}{} RollbackMigration\n", prefix, branch));
+		}
 		LogicalPlan::Dispatch(_) => {
 			output.push_str(&format!("{}{} Dispatch\n", prefix, branch));
 		}
@@ -820,6 +897,14 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 					render_logical_plan_inner(plan, &new_prefix, is_last, output);
 				}
 			}
+		}
+		LogicalPlan::AlterTable(alter_table) => {
+			let table_name = if let Some(ns) = alter_table.table.namespace.first() {
+				format!("{}.{}", ns.text(), alter_table.table.name.text())
+			} else {
+				alter_table.table.name.text().to_string()
+			};
+			output.push_str(&format!("{}{} AlterTable: {}\n", prefix, branch, table_name));
 		}
 		LogicalPlan::DefineFunction(def) => {
 			let params: Vec<String> = def

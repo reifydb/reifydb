@@ -64,10 +64,14 @@ pub enum PhysicalPlan {
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
 	CreateHandler(CreateHandlerNode),
+	CreateMigration(CreateMigrationNode),
+	Migrate(MigrateNode),
+	RollbackMigration(RollbackMigrationNode),
 	Dispatch(DispatchNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode),
+	AlterTable(AlterTableNode),
 	// Mutate
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),
@@ -129,6 +133,16 @@ pub enum PhysicalPlan {
 	Window(WindowNode),
 	// Auto-scalarization for 1x1 frames
 	Scalarize(ScalarizeNode),
+	// Auth/Permissions
+	CreateUser(CreateUserNode),
+	CreateRole(CreateRoleNode),
+	Grant(GrantNode),
+	Revoke(RevokeNode),
+	DropUser(DropUserNode),
+	DropRole(DropRoleNode),
+	CreateSecurityPolicy(CreateSecurityPolicyNode),
+	AlterSecurityPolicy(AlterSecurityPolicyNode),
+	DropSecurityPolicy(DropSecurityPolicyNode),
 }
 
 #[derive(Debug, Clone)]
@@ -248,6 +262,27 @@ pub enum AlterFlowAction {
 	Resume,
 }
 
+#[derive(Debug, Clone)]
+pub struct AlterTableNode {
+	pub namespace: ResolvedNamespace,
+	pub table: Fragment,
+	pub action: AlterTableAction,
+}
+
+#[derive(Debug, Clone)]
+pub enum AlterTableAction {
+	AddColumn {
+		column: reifydb_catalog::catalog::table::TableColumnToCreate,
+	},
+	DropColumn {
+		column: Fragment,
+	},
+	RenameColumn {
+		old_name: Fragment,
+		new_name: Fragment,
+	},
+}
+
 // Create Primary Key node
 #[derive(Debug, Clone)]
 pub struct CreatePrimaryKeyNode {
@@ -299,6 +334,26 @@ pub struct CreateHandlerNode {
 	pub on_sumtype_id: SumTypeId,
 	pub on_variant_tag: u8,
 	pub body_source: String,
+}
+
+/// Physical node for CREATE MIGRATION
+#[derive(Debug, Clone)]
+pub struct CreateMigrationNode {
+	pub name: String,
+	pub body_source: String,
+	pub rollback_body_source: Option<String>,
+}
+
+/// Physical node for MIGRATE
+#[derive(Debug, Clone)]
+pub struct MigrateNode {
+	pub target: Option<String>,
+}
+
+/// Physical node for ROLLBACK MIGRATION
+#[derive(Debug, Clone)]
+pub struct RollbackMigrationNode {
+	pub target: Option<String>,
 }
 
 /// Physical node for DISPATCH
@@ -797,4 +852,70 @@ pub struct DropSeriesNode {
 	pub series_id: Option<reifydb_core::interface::catalog::id::SeriesId>,
 	pub if_exists: bool,
 	pub cascade: bool,
+}
+
+// === Auth/Permissions physical plan nodes ===
+
+#[derive(Debug, Clone)]
+pub struct CreateUserNode {
+	pub name: Fragment,
+	pub password: Fragment,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateRoleNode {
+	pub name: Fragment,
+}
+
+#[derive(Debug, Clone)]
+pub struct GrantNode {
+	pub role: Fragment,
+	pub user: Fragment,
+}
+
+#[derive(Debug, Clone)]
+pub struct RevokeNode {
+	pub role: Fragment,
+	pub user: Fragment,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropUserNode {
+	pub name: Fragment,
+	pub if_exists: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropRoleNode {
+	pub name: Fragment,
+	pub if_exists: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSecurityPolicyNode {
+	pub name: Option<Fragment>,
+	pub target_type: String,
+	pub scope_namespace: Option<Fragment>,
+	pub scope_object: Option<Fragment>,
+	pub operations: Vec<SecurityPolicyOperationNode>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SecurityPolicyOperationNode {
+	pub operation: String,
+	pub body_source: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterSecurityPolicyNode {
+	pub target_type: String,
+	pub name: Fragment,
+	pub enable: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropSecurityPolicyNode {
+	pub target_type: String,
+	pub name: Fragment,
+	pub if_exists: bool,
 }

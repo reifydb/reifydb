@@ -101,6 +101,69 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::DropFlow(_) => unimplemented!(),
 		PhysicalPlan::DropSubscription(_) => unimplemented!(),
 		PhysicalPlan::DropSeries(_) => unimplemented!(),
+		PhysicalPlan::CreateUser(n) => {
+			write_node_header(output, prefix, is_last, &format!("CreateUser name={}", n.name.text()));
+		}
+		PhysicalPlan::CreateRole(n) => {
+			write_node_header(output, prefix, is_last, &format!("CreateRole name={}", n.name.text()));
+		}
+		PhysicalPlan::Grant(n) => {
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("Grant role={} user={}", n.role.text(), n.user.text()),
+			);
+		}
+		PhysicalPlan::Revoke(n) => {
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("Revoke role={} user={}", n.role.text(), n.user.text()),
+			);
+		}
+		PhysicalPlan::DropUser(n) => {
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("DropUser name={} if_exists={}", n.name.text(), n.if_exists),
+			);
+		}
+		PhysicalPlan::DropRole(n) => {
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("DropRole name={} if_exists={}", n.name.text(), n.if_exists),
+			);
+		}
+		PhysicalPlan::CreateSecurityPolicy(n) => {
+			let name = n.name.as_ref().map(|f| f.text()).unwrap_or("<unnamed>");
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("CreateSecurityPolicy name={} type={}", name, n.target_type),
+			);
+		}
+		PhysicalPlan::AlterSecurityPolicy(n) => {
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("AlterSecurityPolicy name={} enabled={}", n.name.text(), n.enable),
+			);
+		}
+		PhysicalPlan::DropSecurityPolicy(n) => {
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("DropSecurityPolicy name={} if_exists={}", n.name.text(), n.if_exists),
+			);
+		}
 		PhysicalPlan::CreateFlow(create_flow) => {
 			let mut label =
 				format!("CreateFlow {}::{}", create_flow.namespace.name, create_flow.flow.text());
@@ -459,6 +522,15 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreateHandler(_) => {
 			write_node_header(output, prefix, is_last, "CreateHandler");
 		}
+		PhysicalPlan::CreateMigration(_) => {
+			write_node_header(output, prefix, is_last, "CreateMigration");
+		}
+		PhysicalPlan::Migrate(_) => {
+			write_node_header(output, prefix, is_last, "Migrate");
+		}
+		PhysicalPlan::RollbackMigration(_) => {
+			write_node_header(output, prefix, is_last, "RollbackMigration");
+		}
 		PhysicalPlan::Dispatch(_) => {
 			write_node_header(output, prefix, is_last, "Dispatch");
 		}
@@ -492,6 +564,10 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 					render_physical_plan_inner(query, child_prefix, true, output);
 				});
 			}
+		}
+		PhysicalPlan::AlterTable(node) => {
+			let label = format!("AlterTable: {}.{}", node.namespace.name(), node.table.text());
+			write_node_header(output, prefix, is_last, &label);
 		}
 		PhysicalPlan::TableVirtualScan(node) => {
 			let label = format!("VirtualScan: {}::{}", node.source.namespace().name(), node.source.name());

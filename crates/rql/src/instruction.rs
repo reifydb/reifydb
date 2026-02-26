@@ -9,11 +9,12 @@ use reifydb_type::{
 use crate::{
 	nodes::{
 		self, AlterFlowNode, AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateEventNode,
-		CreateFlowNode, CreateHandlerNode, CreateNamespaceNode, CreatePolicyNode, CreatePrimaryKeyNode,
-		CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode, CreateSubscriptionNode, CreateSumTypeNode,
-		CreateTableNode, CreateTagNode, CreateTransactionalViewNode, DeleteRingBufferNode, DeleteSeriesNode,
-		DeleteTableNode, DispatchNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
-		InsertSeriesNode, InsertTableNode, UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
+		CreateFlowNode, CreateHandlerNode, CreateMigrationNode, CreateNamespaceNode, CreatePolicyNode,
+		CreatePrimaryKeyNode, CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode,
+		CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode, CreateTagNode, CreateTransactionalViewNode,
+		DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, DispatchNode, FunctionParameter,
+		InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode, InsertTableNode, MigrateNode,
+		RollbackMigrationNode, UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -167,9 +168,13 @@ pub enum Instruction {
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
 	CreateHandler(CreateHandlerNode),
+	CreateMigration(CreateMigrationNode),
+	Migrate(MigrateNode),
+	RollbackMigration(RollbackMigrationNode),
 	Dispatch(DispatchNode),
 	AlterSequence(AlterSequenceNode),
 	AlterFlow(AlterFlowNode),
+	AlterTable(nodes::AlterTableNode),
 
 	// === DDL (Drop) ===
 	DropNamespace(nodes::DropNamespaceNode),
@@ -181,6 +186,17 @@ pub enum Instruction {
 	DropFlow(nodes::DropFlowNode),
 	DropSubscription(nodes::DropSubscriptionNode),
 	DropSeries(nodes::DropSeriesNode),
+
+	// === Auth/Permissions ===
+	CreateUser(nodes::CreateUserNode),
+	CreateRole(nodes::CreateRoleNode),
+	Grant(nodes::GrantNode),
+	Revoke(nodes::RevokeNode),
+	DropUser(nodes::DropUserNode),
+	DropRole(nodes::DropRoleNode),
+	CreateSecurityPolicy(nodes::CreateSecurityPolicyNode),
+	AlterSecurityPolicy(nodes::AlterSecurityPolicyNode),
+	DropSecurityPolicy(nodes::DropSecurityPolicyNode),
 
 	// === DML ===
 	Delete(DeleteTableNode),

@@ -22,6 +22,7 @@ pub mod drop;
 pub mod extend;
 pub mod filter;
 pub mod from;
+pub mod grant;
 pub mod identifier;
 pub mod infix;
 pub mod inline;
@@ -33,15 +34,18 @@ pub mod literal;
 pub mod loop_construct;
 pub mod map;
 pub mod match_expr;
+pub mod migrate;
 pub mod patch;
 pub mod policy;
 pub mod prefix;
 pub mod primary;
+pub mod security_policy;
 pub mod sort;
 pub mod sub_query;
 pub mod take;
 pub mod tuple;
 pub mod update;
+pub mod user;
 pub mod window;
 
 use std::cmp::PartialOrd;
@@ -158,7 +162,10 @@ impl<'bump> Parser<'bump> {
 
 			// Check if this is a DDL statement (CREATE, ALTER, DROP)
 			// These should stand alone and not have arbitrary expressions after them
-			let is_ddl = matches!(node, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_));
+			let is_ddl = matches!(
+				node,
+				Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Grant(_) | Ast::Revoke(_)
+			);
 
 			nodes.push(node);
 
@@ -233,9 +240,9 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> crate::Result<Ast<'bump>> {
 		let mut left = self.parse_primary()?;
 
-		// DDL statements (CREATE, ALTER, DROP) cannot be used in infix expressions
+		// DDL statements (CREATE, ALTER, DROP, GRANT, REVOKE) cannot be used in infix expressions
 		// They must stand alone
-		if matches!(left, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_)) {
+		if matches!(left, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Grant(_) | Ast::Revoke(_)) {
 			return Ok(left);
 		}
 
@@ -396,6 +403,23 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn consume_keyword(&mut self, expected: Keyword) -> crate::Result<Token<'bump>> {
 		self.current_expect_keyword(expected)?;
 		self.advance()
+	}
+
+	/// Consume a token that is either an Identifier or a Keyword, returning it as an Identifier.
+	/// Used in contexts where a keyword-colliding name (e.g. enum variant `Pending`) should be accepted.
+	pub(crate) fn consume_name(&mut self) -> crate::Result<Token<'bump>> {
+		let token = self.advance()?;
+		if matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
+			Ok(Token {
+				kind: TokenKind::Identifier,
+				..token
+			})
+		} else {
+			Err(AstError::ExpectedIdentifier {
+				fragment: token.fragment.to_owned(),
+			}
+			.into())
+		}
 	}
 
 	pub(crate) fn consume_keyword_as_ident(&mut self) -> crate::Result<Token<'bump>> {
@@ -568,19 +592,19 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_is(&mut self, left: Ast<'bump>) -> crate::Result<Ast<'bump>> {
 		let is_token = self.consume_keyword(Keyword::Is)?;
 
-		let first = self.consume(TokenKind::Identifier)?;
+		let first = self.consume_name()?;
 
 		let (namespace, sumtype_name) = if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon)
 		{
 			self.consume_operator(Operator::DoubleColon)?;
-			let sumtype_token = self.consume(TokenKind::Identifier)?;
+			let sumtype_token = self.consume_name()?;
 			(Some(first.fragment), sumtype_token.fragment)
 		} else {
 			(None, first.fragment)
 		};
 
 		self.consume_operator(Operator::DoubleColon)?;
-		let variant_token = self.consume(TokenKind::Identifier)?;
+		let variant_token = self.consume_name()?;
 
 		Ok(Ast::IsVariant(AstIsVariant {
 			token: is_token,

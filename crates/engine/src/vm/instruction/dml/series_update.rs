@@ -6,7 +6,10 @@ use std::sync::Arc;
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, key::EncodedKey},
 	error::diagnostic::catalog::series_not_found,
-	interface::{evaluate::TargetColumn, resolved::{ResolvedColumn, ResolvedPrimitive}},
+	interface::{
+		evaluate::TargetColumn,
+		resolved::{ResolvedColumn, ResolvedPrimitive},
+	},
 	internal_error,
 	key::{
 		EncodableKey,

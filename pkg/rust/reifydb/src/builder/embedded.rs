@@ -15,7 +15,7 @@ use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::{
-	Database,
+	Database, Migration,
 	api::{StorageFactory, transaction},
 };
 
@@ -35,6 +35,7 @@ pub struct EmbeddedBuilder {
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
+	migrations: Vec<Migration>,
 }
 
 impl EmbeddedBuilder {
@@ -55,6 +56,7 @@ impl EmbeddedBuilder {
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
+			migrations: Vec::new(),
 		}
 	}
 
@@ -104,6 +106,15 @@ impl EmbeddedBuilder {
 
 	pub fn with_transforms(mut self, transforms: Transforms) -> Self {
 		self.transforms = Some(transforms);
+		self
+	}
+
+	/// Register migrations to be applied during `Database::start()`.
+	///
+	/// Migrations are stored in the database on first encounter and
+	/// applied in name order. Already-applied migrations are skipped.
+	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
+		self.migrations = migrations;
 		self
 	}
 
@@ -161,6 +172,10 @@ impl EmbeddedBuilder {
 
 		for factory in self.subsystem_factories {
 			builder = builder.add_subsystem_factory(factory);
+		}
+
+		if !self.migrations.is_empty() {
+			builder = builder.with_migrations(self.migrations);
 		}
 
 		builder.build()

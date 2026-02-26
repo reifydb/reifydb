@@ -8,8 +8,8 @@ use crate::{
 	ast::{
 		ast::{
 			AstColumnProperty, AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary,
-			AstCreateEvent, AstCreateFlow, AstCreateHandler, AstCreateNamespace, AstCreatePolicy,
-			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRingBuffer, AstCreateSeries,
+			AstCreateEvent, AstCreateFlow, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
+			AstCreatePolicy, AstCreatePrimaryKey, AstCreateProcedure, AstCreateRingBuffer, AstCreateSeries,
 			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
 			AstCreateTransactionalView, AstIndexColumn, AstPolicyEntry, AstPolicyKind, AstPrimaryKeyDef,
 			AstProcedureParam, AstTimestampPrecision, AstType, AstVariantDef,
@@ -53,8 +53,14 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		// Check for CREATE FLOW
+		// Check for CREATE FLOW / CREATE FLOW POLICY
 		if (self.consume_if(TokenKind::Keyword(Flow))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Flow,
+				);
+			}
 			return self.parse_flow(token, or_replace);
 		}
 
@@ -75,6 +81,12 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Namespace))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Namespace,
+				);
+			}
 			return self.parse_namespace(token);
 		}
 
@@ -98,6 +110,12 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Table))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Table,
+				);
+			}
 			return self.parse_table(token);
 		}
 
@@ -106,6 +124,12 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Dictionary))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Dictionary,
+				);
+			}
 			return self.parse_dictionary(token);
 		}
 
@@ -114,10 +138,22 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Series,
+				);
+			}
 			return self.parse_series(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Subscription))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Subscription,
+				);
+			}
 			return self.parse_subscription(token);
 		}
 
@@ -132,6 +168,12 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_security_policy(
+					token,
+					crate::ast::ast::AstPolicyTargetType::Procedure,
+				);
+			}
 			return self.parse_procedure(token);
 		}
 
@@ -145,6 +187,34 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Handler))?).is_some() {
 			return self.parse_handler(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {
+			return self.parse_create_user(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Role))?).is_some() {
+			return self.parse_create_role(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Session))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_create_security_policy(token, crate::ast::ast::AstPolicyTargetType::Session);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Feature))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_create_security_policy(token, crate::ast::ast::AstPolicyTargetType::Feature);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Function))?).is_some() {
+			self.consume_keyword(Keyword::Policy)?;
+			return self
+				.parse_create_security_policy(token, crate::ast::ast::AstPolicyTargetType::Function);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Migration))?).is_some() {
+			return self.parse_migration(token);
 		}
 
 		if self.peek_is_index_creation()? {
@@ -1064,7 +1134,7 @@ impl<'bump> Parser<'bump> {
 		Ok(result)
 	}
 
-	fn parse_column(&mut self) -> crate::Result<AstColumnToCreate<'bump>> {
+	pub(crate) fn parse_column(&mut self) -> crate::Result<AstColumnToCreate<'bump>> {
 		let name_identifier = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Colon)?;
 		let ty_token = self.consume(TokenKind::Identifier)?;
@@ -1085,7 +1155,7 @@ impl<'bump> Parser<'bump> {
 				namespace: ty_token.fragment,
 				name: name_token.fragment,
 			}
-		} else if self.current()?.is_operator(Operator::OpenParen) {
+		} else if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
 			// Type with parameters like UTF8(50) or DECIMAL(10,2)
 			self.consume_operator(Operator::OpenParen)?;
 			let mut params = Vec::new();
@@ -1384,6 +1454,134 @@ impl<'bump> Parser<'bump> {
 			on_variant,
 			body,
 			body_source,
+		}))
+	}
+
+	fn parse_migration(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+		// Parse migration name as a string literal: CREATE MIGRATION 'name'
+		let name = match &self.current()?.kind {
+			TokenKind::Literal(Literal::Text) => {
+				let text = self.current()?.fragment.text().to_string();
+				self.advance()?;
+				text
+			}
+			_ => {
+				let fragment = self.current()?.fragment.to_owned();
+				return Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "migration name as string literal".to_string(),
+					},
+					message: format!(
+						"Expected migration name as string literal, got {}",
+						fragment.text()
+					),
+					fragment,
+				}));
+			}
+		};
+
+		// Parse body: { statements... }
+		self.consume_operator(Operator::OpenCurly)?;
+		let body_start_pos = self.position;
+
+		// Skip over body tokens, counting brace depth
+		let mut depth = 1u32;
+		while depth > 0 {
+			if self.is_eof() {
+				let fragment = self.tokens[body_start_pos].fragment.to_owned();
+				return Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "closing '}'".to_string(),
+					},
+					message: "Unexpected end of input while parsing migration body".to_string(),
+					fragment,
+				}));
+			}
+			match self.current()?.kind {
+				TokenKind::Operator(Operator::OpenCurly) => {
+					depth += 1;
+					self.advance()?;
+				}
+				TokenKind::Operator(Operator::CloseCurly) => {
+					depth -= 1;
+					if depth > 0 {
+						self.advance()?;
+					}
+				}
+				_ => {
+					self.advance()?;
+				}
+			}
+		}
+
+		let body_end_pos = self.position;
+		let body_source = if body_start_pos < body_end_pos {
+			let start = self.tokens[body_start_pos].fragment.offset();
+			let end = self.tokens[body_end_pos - 1].fragment.offset()
+				+ self.tokens[body_end_pos - 1].fragment.text().len();
+			self.source[start..end].trim().to_string()
+		} else {
+			String::new()
+		};
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		// Parse optional ROLLBACK { ... }
+		let rollback_body_source = if (self.consume_if(TokenKind::Keyword(Keyword::Rollback))?).is_some() {
+			self.consume_operator(Operator::OpenCurly)?;
+			let rb_start_pos = self.position;
+
+			let mut depth = 1u32;
+			while depth > 0 {
+				if self.is_eof() {
+					let fragment = self.tokens[rb_start_pos].fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "closing '}'".to_string(),
+						},
+						message: "Unexpected end of input while parsing rollback body"
+							.to_string(),
+						fragment,
+					}));
+				}
+				match self.current()?.kind {
+					TokenKind::Operator(Operator::OpenCurly) => {
+						depth += 1;
+						self.advance()?;
+					}
+					TokenKind::Operator(Operator::CloseCurly) => {
+						depth -= 1;
+						if depth > 0 {
+							self.advance()?;
+						}
+					}
+					_ => {
+						self.advance()?;
+					}
+				}
+			}
+
+			let rb_end_pos = self.position;
+			let rb_source = if rb_start_pos < rb_end_pos {
+				let start = self.tokens[rb_start_pos].fragment.offset();
+				let end = self.tokens[rb_end_pos - 1].fragment.offset()
+					+ self.tokens[rb_end_pos - 1].fragment.text().len();
+				self.source[start..end].trim().to_string()
+			} else {
+				String::new()
+			};
+
+			self.consume_operator(Operator::CloseCurly)?;
+			Some(rb_source)
+		} else {
+			None
+		};
+
+		Ok(AstCreate::Migration(AstCreateMigration {
+			token,
+			name,
+			body_source,
+			rollback_body_source,
 		}))
 	}
 

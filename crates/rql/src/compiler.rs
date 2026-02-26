@@ -733,6 +733,18 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateHandler(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateMigration(node) => {
+				self.emit(Instruction::CreateMigration(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::Migrate(node) => {
+				self.emit(Instruction::Migrate(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::RollbackMigration(node) => {
+				self.emit(Instruction::RollbackMigration(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::Dispatch(node) => {
 				self.emit(Instruction::Dispatch(node));
 				self.emit(Instruction::Emit);
@@ -773,6 +785,44 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DropSeries(node) => {
 				self.emit(Instruction::DropSeries(node));
+				self.emit(Instruction::Emit);
+			}
+
+			// Auth/Permissions — leaf instructions
+			PhysicalPlan::CreateUser(node) => {
+				self.emit(Instruction::CreateUser(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateRole(node) => {
+				self.emit(Instruction::CreateRole(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::Grant(node) => {
+				self.emit(Instruction::Grant(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::Revoke(node) => {
+				self.emit(Instruction::Revoke(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropUser(node) => {
+				self.emit(Instruction::DropUser(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropRole(node) => {
+				self.emit(Instruction::DropRole(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateSecurityPolicy(node) => {
+				self.emit(Instruction::CreateSecurityPolicy(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::AlterSecurityPolicy(node) => {
+				self.emit(Instruction::AlterSecurityPolicy(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropSecurityPolicy(node) => {
+				self.emit(Instruction::DropSecurityPolicy(node));
 				self.emit(Instruction::Emit);
 			}
 
@@ -839,6 +889,33 @@ impl InstructionCompiler {
 						},
 						physical::AlterFlowAction::Pause => nodes::AlterFlowAction::Pause,
 						physical::AlterFlowAction::Resume => nodes::AlterFlowAction::Resume,
+					},
+				}));
+				self.emit(Instruction::Emit);
+			}
+
+			PhysicalPlan::AlterTable(node) => {
+				self.emit(Instruction::AlterTable(nodes::AlterTableNode {
+					namespace: node.namespace,
+					table: node.table,
+					action: match node.action {
+						physical::AlterTableAction::AddColumn {
+							column,
+						} => nodes::AlterTableAction::AddColumn {
+							column,
+						},
+						physical::AlterTableAction::DropColumn {
+							column,
+						} => nodes::AlterTableAction::DropColumn {
+							column,
+						},
+						physical::AlterTableAction::RenameColumn {
+							old_name,
+							new_name,
+						} => nodes::AlterTableAction::RenameColumn {
+							old_name,
+							new_name,
+						},
 					},
 				}));
 				self.emit(Instruction::Emit);

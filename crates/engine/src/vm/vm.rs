@@ -35,7 +35,16 @@ use crate::{
 	arena::QueryArena,
 	expression::{context::EvalContext, eval::evaluate},
 	vm::instruction::{
-		ddl::create::{event::create_event, handler::create_handler},
+		ddl::{
+			alter::security_policy::alter_security_policy,
+			create::{
+				event::create_event, handler::create_handler, role::create_role,
+				security_policy::create_security_policy, user::create_user,
+			},
+			drop::{role::drop_role, security_policy::drop_security_policy, user::drop_user},
+			grant::grant,
+			revoke::revoke,
+		},
 		dml::dispatch::dispatch,
 	},
 };
@@ -1186,6 +1195,43 @@ impl Vm {
 					let columns = create_handler(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
+				Instruction::CreateMigration(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = super::instruction::ddl::create::migration::create_migration(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::Migrate(node) => {
+					let columns = super::instruction::ddl::migrate::migrate::execute_migrate(
+						self,
+						services,
+						tx,
+						node.clone(),
+						params,
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::RollbackMigration(node) => {
+					let columns =
+						super::instruction::ddl::migrate::rollback::execute_rollback_migration(
+							self,
+							services,
+							tx,
+							node.clone(),
+							params,
+						)?;
+					self.stack.push(Variable::Columns(columns));
+				}
 				Instruction::Dispatch(node) => {
 					match tx {
 						Transaction::Query(_) => {
@@ -1211,6 +1257,23 @@ impl Vm {
 						}
 					};
 					let columns = super::instruction::ddl::alter::flow::execute_alter_flow(
+						services,
+						txn,
+						node.clone(),
+					)?;
+					self.stack.push(Variable::Columns(columns));
+				}
+
+				Instruction::AlterTable(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = super::instruction::ddl::alter::table::execute_alter_table(
 						services,
 						txn,
 						node.clone(),
@@ -1612,6 +1675,116 @@ impl Vm {
 							.into());
 						}
 					}
+				}
+
+				// Auth/Permissions
+				Instruction::CreateUser(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_user(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateRole(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_role(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::Grant(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = grant(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::Revoke(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = revoke(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropUser(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = drop_user(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropRole(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = drop_role(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateSecurityPolicy(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_security_policy(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::AlterSecurityPolicy(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = alter_security_policy(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropSecurityPolicy(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = drop_security_policy(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
 				}
 			}
 

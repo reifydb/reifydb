@@ -3,12 +3,13 @@
 
 pub mod flow;
 pub mod sequence;
+pub mod table;
 
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	ast::ast::AstAlter,
-	plan::logical::{Compiler, LogicalPlan},
+	plan::logical::{AlterSecurityPolicyNode, Compiler, LogicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -20,6 +21,14 @@ impl<'bump> Compiler<'bump> {
 		match ast {
 			AstAlter::Sequence(node) => self.compile_alter_sequence(node),
 			AstAlter::Flow(node) => self.compile_alter_flow(node, tx),
+			AstAlter::SecurityPolicy(node) => {
+				Ok(LogicalPlan::AlterSecurityPolicy(AlterSecurityPolicyNode {
+					target_type: node.target_type,
+					name: node.name,
+					action: node.action,
+				}))
+			}
+			AstAlter::Table(node) => self.compile_alter_table(node, tx),
 		}
 	}
 }

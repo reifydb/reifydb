@@ -26,8 +26,11 @@ use namespace_view::NamespaceViewKey;
 use primary_key::PrimaryKeyKey;
 use retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
+use role::RoleKey;
 use row::RowKey;
 use row_sequence::RowSequenceKey;
+use security_policy::SecurityPolicyKey;
+use security_policy_op::SecurityPolicyOpKey;
 use series::{SeriesKey, SeriesMetadataKey};
 use subscription::SubscriptionKey;
 use subscription_column::SubscriptionColumnKey;
@@ -37,6 +40,8 @@ use system_sequence::SystemSequenceKey;
 use system_version::SystemVersionKey;
 use table::TableKey;
 use transaction_version::TransactionVersionKey;
+use user::UserKey;
+use user_role::UserRoleKey;
 use view::ViewKey;
 
 use crate::{
@@ -61,6 +66,8 @@ pub mod handler;
 pub mod index;
 pub mod index_entry;
 pub mod kind;
+pub mod migration;
+pub mod migration_event;
 pub mod namespace;
 pub mod namespace_dictionary;
 pub mod namespace_flow;
@@ -73,9 +80,12 @@ pub mod namespace_view;
 pub mod primary_key;
 pub mod retention_policy;
 pub mod ringbuffer;
+pub mod role;
 pub mod row;
 pub mod row_sequence;
 pub mod schema;
+pub mod security_policy;
+pub mod security_policy_op;
 pub mod series;
 pub mod series_row;
 pub mod subscription;
@@ -86,6 +96,8 @@ pub mod system_sequence;
 pub mod system_version;
 pub mod table;
 pub mod transaction_version;
+pub mod user;
+pub mod user_role;
 pub mod variant_handler;
 pub mod view;
 #[derive(Debug)]
@@ -132,6 +144,11 @@ pub enum Key {
 	Series(SeriesKey),
 	SeriesMetadata(SeriesMetadataKey),
 	NamespaceSeries(NamespaceSeriesKey),
+	User(UserKey),
+	Role(RoleKey),
+	UserRole(UserRoleKey),
+	SecurityPolicy(SecurityPolicyKey),
+	SecurityPolicyOp(SecurityPolicyOpKey),
 }
 
 impl Key {
@@ -179,6 +196,11 @@ impl Key {
 			Key::Series(key) => key.encode(),
 			Key::SeriesMetadata(key) => key.encode(),
 			Key::NamespaceSeries(key) => key.encode(),
+			Key::User(key) => key.encode(),
+			Key::Role(key) => key.encode(),
+			Key::UserRole(key) => key.encode(),
+			Key::SecurityPolicy(key) => key.encode(),
+			Key::SecurityPolicyOp(key) => key.encode(),
 		}
 	}
 }
@@ -304,6 +326,15 @@ impl Key {
 			KeyKind::Series => SeriesKey::decode(&key).map(Self::Series),
 			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(&key).map(Self::NamespaceSeries),
 			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(&key).map(Self::SeriesMetadata),
+			KeyKind::User => UserKey::decode(&key).map(Self::User),
+			KeyKind::Role => RoleKey::decode(&key).map(Self::Role),
+			KeyKind::UserRole => UserRoleKey::decode(&key).map(Self::UserRole),
+			KeyKind::SecurityPolicy => SecurityPolicyKey::decode(&key).map(Self::SecurityPolicy),
+			KeyKind::SecurityPolicyOp => SecurityPolicyOpKey::decode(&key).map(Self::SecurityPolicyOp),
+			KeyKind::Migration | KeyKind::MigrationEvent => {
+				// Migration keys are used directly via EncodableKey trait, not through Key enum
+				None
+			}
 		}
 	}
 }

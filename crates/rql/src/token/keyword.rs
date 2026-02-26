@@ -154,6 +154,28 @@ Event => "EVENT",
 Handler => "HANDLER",
 Dispatch => "DISPATCH",
 Tag => "TAG",
+User => "USER",
+Role => "ROLE",
+Grant => "GRANT",
+Revoke => "REVOKE",
+Password => "PASSWORD",
+Require => "REQUIRE",
+Execute => "EXECUTE",
+Access => "ACCESS",
+Subscribe => "SUBSCRIBE",
+Enable => "ENABLE",
+Disable => "DISABLE",
+Function => "FUNCTION",
+Session => "SESSION",
+Feature => "FEATURE",
+Add => "ADD",
+Migration => "MIGRATION",
+Migrate => "MIGRATE",
+Rollback => "ROLLBACK",
+Diff => "DIFF",
+Version => "VERSION",
+Current => "CURRENT",
+Pending => "PENDING",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -251,6 +273,28 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("HANDLER", Keyword::Handler);
 	map.insert("DISPATCH", Keyword::Dispatch);
 	map.insert("TAG", Keyword::Tag);
+	map.insert("USER", Keyword::User);
+	map.insert("ROLE", Keyword::Role);
+	map.insert("GRANT", Keyword::Grant);
+	map.insert("REVOKE", Keyword::Revoke);
+	map.insert("PASSWORD", Keyword::Password);
+	map.insert("REQUIRE", Keyword::Require);
+	map.insert("EXECUTE", Keyword::Execute);
+	map.insert("ACCESS", Keyword::Access);
+	map.insert("SUBSCRIBE", Keyword::Subscribe);
+	map.insert("ENABLE", Keyword::Enable);
+	map.insert("DISABLE", Keyword::Disable);
+	map.insert("FUNCTION", Keyword::Function);
+	map.insert("SESSION", Keyword::Session);
+	map.insert("FEATURE", Keyword::Feature);
+	map.insert("ADD", Keyword::Add);
+	map.insert("MIGRATION", Keyword::Migration);
+	map.insert("MIGRATE", Keyword::Migrate);
+	map.insert("ROLLBACK", Keyword::Rollback);
+	map.insert("DIFF", Keyword::Diff);
+	map.insert("VERSION", Keyword::Version);
+	map.insert("CURRENT", Keyword::Current);
+	map.insert("PENDING", Keyword::Pending);
 	map
 });
 
@@ -430,6 +474,20 @@ pub mod tests {
 	test_keyword_enum => (Enum, "ENUM"),
 	test_keyword_match => (Match, "MATCH"),
 	test_keyword_procedure => (Procedure, "PROCEDURE"),
+	test_keyword_user => (User, "USER"),
+	test_keyword_role => (Role, "ROLE"),
+	test_keyword_grant => (Grant, "GRANT"),
+	test_keyword_revoke => (Revoke, "REVOKE"),
+	test_keyword_password => (Password, "PASSWORD"),
+	test_keyword_require => (Require, "REQUIRE"),
+	test_keyword_execute => (Execute, "EXECUTE"),
+	test_keyword_access => (Access, "ACCESS"),
+	test_keyword_subscribe => (Subscribe, "SUBSCRIBE"),
+	test_keyword_enable => (Enable, "ENABLE"),
+	test_keyword_disable => (Disable, "DISABLE"),
+	test_keyword_function => (Function, "FUNCTION"),
+	test_keyword_session => (Session, "SESSION"),
+	test_keyword_feature => (Feature, "FEATURE"),
 	}
 
 	fn check_no_keyword(repr: &str) {
@@ -572,6 +630,20 @@ pub mod tests {
 	test_not_keyword_enum => ( "enum"),
 	test_not_keyword_match => ( "match"),
 	test_not_keyword_procedure => ( "procedure"),
+	test_not_keyword_user => ( "user"),
+	test_not_keyword_role => ( "role"),
+	test_not_keyword_grant => ( "grant"),
+	test_not_keyword_revoke => ( "revoke"),
+	test_not_keyword_password => ( "password"),
+	test_not_keyword_require => ( "require"),
+	test_not_keyword_execute => ( "execute"),
+	test_not_keyword_access => ( "access"),
+	test_not_keyword_subscribe => ( "subscribe"),
+	test_not_keyword_enable => ( "enable"),
+	test_not_keyword_disable => ( "disable"),
+	test_not_keyword_function => ( "function"),
+	test_not_keyword_session => ( "session"),
+	test_not_keyword_feature => ( "feature"),
 	}
 
 	#[test]
