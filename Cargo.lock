@@ -1949,6 +1949,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-function",
  "reifydb-metric",
+ "reifydb-policy",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
@@ -2012,6 +2013,20 @@ dependencies = [
  "reifydb-testing",
  "reifydb-type",
  "test_each_file",
+ "tracing",
+]
+
+[[package]]
+name = "reifydb-policy"
+version = "0.3.0"
+dependencies = [
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-rql",
+ "reifydb-runtime",
+ "reifydb-transaction",
+ "reifydb-type",
+ "thiserror",
  "tracing",
 ]
 

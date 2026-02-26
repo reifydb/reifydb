@@ -1,0 +1,21 @@
+[package]
+name = "reifydb-policy"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Policy engine for ReifyDB — compiles, caches, and evaluates security policies"
+
+[features]
+default = []
+
+[dependencies]
+reifydb-catalog = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-rql = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

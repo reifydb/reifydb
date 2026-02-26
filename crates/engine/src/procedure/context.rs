@@ -22,6 +22,6 @@ pub struct ProcedureContext<'a> {
 impl ProcedureContext<'_> {
 	/// Execute RQL within the current transaction.
 	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
-		self.executor.rql(tx, rql, params)
+		self.executor.rql(tx, self.identity, rql, params)
 	}
 }

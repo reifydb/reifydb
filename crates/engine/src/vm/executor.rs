@@ -108,7 +108,13 @@ impl Executor {
 	/// This is the universal RQL execution interface: it compiles and runs
 	/// arbitrary RQL within whatever transaction variant the caller provides.
 	#[instrument(name = "executor::rql", level = "debug", skip(self, tx, params), fields(rql = %rql))]
-	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
+	pub fn rql(
+		&self,
+		tx: &mut Transaction<'_>,
+		identity: &Identity,
+		rql: &str,
+		params: Params,
+	) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &params)?;
@@ -122,7 +128,7 @@ impl Executor {
 
 		for compiled in compiled.iter() {
 			result.clear();
-			let mut vm = Vm::new(symbol_table);
+			let mut vm = Vm::new(symbol_table, identity.clone());
 			vm.run(&self.0, tx, &compiled.instructions, &params, &mut result)?;
 			symbol_table = vm.symbol_table;
 		}
@@ -142,7 +148,7 @@ impl Executor {
 				for compiled in compiled.iter() {
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
-					let mut vm = Vm::new(symbol_table);
+					let mut vm = Vm::new(symbol_table, cmd.identity.clone());
 					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbol_table = vm.symbol_table;
 
@@ -157,7 +163,7 @@ impl Executor {
 				{
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
-					let mut vm = Vm::new(symbol_table);
+					let mut vm = Vm::new(symbol_table, cmd.identity.clone());
 					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbol_table = vm.symbol_table;
 
@@ -190,7 +196,7 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Command(txn);
-			let mut vm = Vm::new(symbol_table);
+			let mut vm = Vm::new(symbol_table, cmd.identity.clone());
 			vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 			symbol_table = vm.symbol_table;
 
@@ -205,11 +211,11 @@ impl Executor {
 	}
 
 	/// Call a procedure by fully-qualified name (e.g., "banking.transfer_funds").
-	#[instrument(name = "executor::call_procedure", level = "debug", skip(self, txn, _identity, params), fields(name = %name))]
+	#[instrument(name = "executor::call_procedure", level = "debug", skip(self, txn, params), fields(name = %name))]
 	pub fn call_procedure(
 		&self,
 		txn: &mut CommandTransaction,
-		_identity: &Identity,
+		identity: &Identity,
 		name: &str,
 		params: &Params,
 	) -> crate::Result<Vec<Frame>> {
@@ -229,7 +235,7 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Command(txn);
-			let mut vm = Vm::new(symbol_table);
+			let mut vm = Vm::new(symbol_table, identity.clone());
 			vm.run(&self.0, &mut tx, &compiled.instructions, params, &mut result)?;
 			symbol_table = vm.symbol_table;
 		}
@@ -254,7 +260,7 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Query(txn);
-			let mut vm = Vm::new(symbol_table);
+			let mut vm = Vm::new(symbol_table, qry.identity.clone());
 			vm.run(&self.0, &mut tx, &compiled.instructions, &qry.params, &mut result)?;
 			symbol_table = vm.symbol_table;
 

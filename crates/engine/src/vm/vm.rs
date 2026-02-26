@@ -69,10 +69,11 @@ pub struct Vm {
 	pub symbol_table: SymbolTable,
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
+	pub(crate) identity: Identity,
 }
 
 impl Vm {
-	pub fn new(symbol_table: SymbolTable) -> Self {
+	pub fn new(symbol_table: SymbolTable, identity: Identity) -> Self {
 		Self {
 			ip: 0,
 			iteration_count: 0,
@@ -80,6 +81,7 @@ impl Vm {
 			symbol_table,
 			control_flow: ControlFlow::Normal,
 			dispatch_depth: 0,
+			identity,
 		}
 	}
 
