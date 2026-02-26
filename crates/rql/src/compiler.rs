@@ -663,8 +663,13 @@ impl InstructionCompiler {
 					}
 				}
 			}
-			Expression::Column(_)
-			| Expression::AccessSource(_)
+			Expression::Column(col) => {
+				// Bare identifiers (e.g., `event_x`) in bytecode context
+				// should resolve as variable lookups — mirrors the runtime
+				// evaluator's column_lookup() which falls back to the symbol table.
+				self.emit(Instruction::LoadVar(col.0.name.clone()));
+			}
+			Expression::AccessSource(_)
 			| Expression::Alias(_)
 			| Expression::Extend(_)
 			| Expression::SumTypeConstructor(_)

@@ -119,15 +119,22 @@ impl Catalog {
 		}
 	}
 
-	/// Convenience: splits "ns.name" into namespace + name, resolves namespace, then calls find_procedure_by_name
+	/// Splits a `::` qualified name (e.g., `"ns::proc"` or `"a::b::proc"`) into (namespace_name, entity_name).
+	/// The namespace part converts `::` to `.` to match stored namespace names.
+	/// Returns `None` if there's no `::` separator (unqualified name).
+	pub fn split_qualified_name(qualified_name: &str) -> Option<(String, &str)> {
+		qualified_name.rsplit_once("::").map(|(ns_part, entity_name)| (ns_part.replace("::", "."), entity_name))
+	}
+
+	/// Convenience: splits "ns::name" into namespace + name, resolves namespace, then calls find_procedure_by_name
 	#[instrument(name = "catalog::procedure::find_by_qualified_name", level = "trace", skip(self, txn))]
 	pub fn find_procedure_by_qualified_name(
 		&self,
 		txn: &mut Transaction<'_>,
 		qualified_name: &str,
 	) -> crate::Result<Option<ProcedureDef>> {
-		if let Some((ns_name, proc_name)) = qualified_name.split_once('.') {
-			if let Some(ns) = self.find_namespace_by_name(txn, ns_name)? {
+		if let Some((ns_name, proc_name)) = Self::split_qualified_name(qualified_name) {
+			if let Some(ns) = self.find_namespace_by_name(txn, &ns_name)? {
 				return self.find_procedure_by_name(txn, ns.id, proc_name);
 			}
 			Ok(None)
