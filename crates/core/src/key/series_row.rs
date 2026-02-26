@@ -137,22 +137,29 @@ impl SeriesRowKeyRange {
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
-		if let Some(ts) = self.time_start {
+		// Descending key encoding: higher timestamps have lower key values.
+		// The start key (lower bound) uses time_end (the highest timestamp in
+		// the desired range) to begin scanning from the newest matching row.
+		if let Some(ts) = self.time_end {
 			serializer.extend_i64(ts);
 		}
 		serializer.to_encoded_key()
 	}
 
 	fn end_key(&self) -> EncodedKey {
-		if let Some(ts) = self.time_end {
+		// Descending key encoding: lower timestamps have higher key values.
+		// The end key (upper bound) uses time_start (the lowest timestamp in
+		// the desired range) to stop scanning after the oldest matching row.
+		if let Some(ts) = self.time_start {
 			let primitive = PrimitiveId::Series(self.series);
 			let mut serializer = KeySerializer::with_capacity(28);
 			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_primitive_id(primitive);
 			if let Some(tag) = self.variant_tag {
 				serializer.extend_u8(tag);
 			}
-			// End timestamp with max sequence to include all rows at that timestamp
-			serializer.extend_i64(ts).extend_u64(u64::MAX);
+			// Use sequence 0 which encodes to max bytes in descending encoding,
+			// ensuring all rows at this timestamp are included.
+			serializer.extend_i64(ts).extend_u64(0u64);
 			serializer.to_encoded_key()
 		} else {
 			// Use PrimitiveId ordering trick to get end of range

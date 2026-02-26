@@ -67,14 +67,32 @@ pub(crate) fn delete_series<'a>(
 	let mut deleted_count = 0u64;
 
 	if let Some(input_plan) = plan.input {
-		// Extract filter conditions from the plan
-		let conditions = match *input_plan {
-			QueryPlan::Filter(filter) => filter.conditions,
-			_ => vec![],
+		// Extract filter conditions and scan bounds from the plan.
+		// The physical plan optimizer may push timestamp/tag predicates into the
+		// SeriesScan node and remove the Filter node entirely. We need to recover
+		// those bounds so the scan is properly limited.
+		let (conditions, scan_start, scan_end, scan_tag) = match *input_plan {
+			QueryPlan::Filter(filter) => {
+				let (start, end, tag) = match *filter.input {
+					QueryPlan::SeriesScan(scan) => {
+						(scan.time_range_start, scan.time_range_end, scan.variant_tag)
+					}
+					_ => (None, None, None),
+				};
+				(filter.conditions, start, end, tag)
+			}
+			QueryPlan::SeriesScan(scan) => {
+				(vec![], scan.time_range_start, scan.time_range_end, scan.variant_tag)
+			}
+			_ => (vec![], None, None, None),
 		};
 
-		// Scan all rows directly from storage
-		let range = SeriesRowKeyRange::full_scan(series_def.id, None);
+		// Use bounded scan when time range or tag is available from predicate pushdown
+		let range = if scan_start.is_some() || scan_end.is_some() || scan_tag.is_some() {
+			SeriesRowKeyRange::scan_range(series_def.id, scan_tag, scan_start, scan_end, None)
+		} else {
+			SeriesRowKeyRange::full_scan(series_def.id, None)
+		};
 		let mut keys = Vec::new();
 		let mut encoded_values = Vec::new();
 		let mut timestamps = Vec::new();

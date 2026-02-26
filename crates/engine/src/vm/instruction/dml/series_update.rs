@@ -63,20 +63,36 @@ pub(crate) fn update_series<'a>(
 
 	let has_tag = series_def.tag.is_some();
 
-	// Extract filter conditions and patch assignments from the plan
-	let (conditions, assignments) = match *plan.input {
+	// Extract filter conditions, patch assignments, and scan bounds from the plan.
+	// The physical plan optimizer may push timestamp/tag predicates into the
+	// SeriesScan node and remove the Filter node entirely. We need to recover
+	// those bounds so the scan is properly limited.
+	let (conditions, assignments, scan_start, scan_end, scan_tag) = match *plan.input {
 		QueryPlan::Patch(patch) => {
-			let conditions = if let Some(input) = patch.input {
+			let (conditions, start, end, tag) = if let Some(input) = patch.input {
 				match *input {
-					QueryPlan::Filter(filter) => filter.conditions,
-					_ => vec![],
+					QueryPlan::Filter(filter) => {
+						let (start, end, tag) = match *filter.input {
+							QueryPlan::SeriesScan(scan) => (
+								scan.time_range_start,
+								scan.time_range_end,
+								scan.variant_tag,
+							),
+							_ => (None, None, None),
+						};
+						(filter.conditions, start, end, tag)
+					}
+					QueryPlan::SeriesScan(scan) => {
+						(vec![], scan.time_range_start, scan.time_range_end, scan.variant_tag)
+					}
+					_ => (vec![], None, None, None),
 				}
 			} else {
-				vec![]
+				(vec![], None, None, None)
 			};
-			(conditions, patch.assignments)
+			(conditions, patch.assignments, start, end, tag)
 		}
-		_ => (vec![], vec![]),
+		_ => (vec![], vec![], None, None, None),
 	};
 
 	let mut updated_count = 0u64;
@@ -87,8 +103,12 @@ pub(crate) fn update_series<'a>(
 	let mut scanned_timestamps: Vec<i64> = Vec::new();
 	let mut scanned_sequences: Vec<u64> = Vec::new();
 
-	// Scan all rows directly from storage
-	let range = SeriesRowKeyRange::full_scan(series_def.id, None);
+	// Use bounded scan when time range or tag is available from predicate pushdown
+	let range = if scan_start.is_some() || scan_end.is_some() || scan_tag.is_some() {
+		SeriesRowKeyRange::scan_range(series_def.id, scan_tag, scan_start, scan_end, None)
+	} else {
+		SeriesRowKeyRange::full_scan(series_def.id, None)
+	};
 	let mut keys = Vec::new();
 	let mut timestamps = Vec::new();
 	let mut tags = Vec::new();

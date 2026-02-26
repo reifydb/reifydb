@@ -344,7 +344,7 @@ impl IntoDiagnostic for CatalogError {
 						"ensure the handler exists or create it first using `CREATE HANDLER`".to_string(),
 					),
 					CatalogObjectKind::Series => (
-						"CA_004",
+						"CA_024",
 						"series",
 						"ensure the series exists or create it first using `CREATE SERIES`".to_string(),
 					),
