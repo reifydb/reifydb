@@ -7,10 +7,13 @@
 //! over MultiVersionAdminTransaction to avoid lifetime issues with async recursion.
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::catalog::{
-	flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId},
-	subscription::SubscriptionDef,
-	view::ViewDef,
+use reifydb_core::{
+	interface::catalog::{
+		flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId},
+		subscription::SubscriptionDef,
+		view::ViewDef,
+	},
+	internal,
 };
 use reifydb_rql::{
 	flow::{
@@ -19,7 +22,7 @@ use reifydb_rql::{
 	},
 	query::QueryPlan,
 };
-use reifydb_type::{Result, value::blob::Blob};
+use reifydb_type::{Result, error::Error, value::blob::Blob};
 
 pub mod operator;
 pub mod primitive;
@@ -34,7 +37,7 @@ use crate::flow::compiler::{
 	},
 	primitive::{
 		flow_scan::FlowScanCompiler, inline_data::InlineDataCompiler, ringbuffer_scan::RingBufferScanCompiler,
-		table_scan::TableScanCompiler, view_scan::ViewScanCompiler,
+		series_scan::SeriesScanCompiler, table_scan::TableScanCompiler, view_scan::ViewScanCompiler,
 	},
 };
 
@@ -123,9 +126,8 @@ impl FlowCompiler {
 		let flow_id = self.builder.id();
 
 		// Serialize the node type to blob
-		let data = postcard::to_stdvec(&node_type).map_err(|e| {
-			reifydb_type::error::Error(reifydb_core::internal!("Failed to serialize FlowNodeType: {}", e))
-		})?;
+		let data = postcard::to_stdvec(&node_type)
+			.map_err(|e| Error(internal!("Failed to serialize FlowNodeType: {}", e)))?;
 
 		// Create the catalog entry
 		let node_def = FlowNodeDef {
@@ -257,9 +259,7 @@ impl FlowCompiler {
 			QueryPlan::Assert(_) => {
 				unimplemented!("Assert compilation not yet implemented for flow")
 			}
-			QueryPlan::SeriesScan(_) => {
-				unimplemented!("SeriesScan compilation not yet implemented for flow")
-			}
+			QueryPlan::SeriesScan(series_scan) => SeriesScanCompiler::from(series_scan).compile(self, txn),
 		}
 	}
 }

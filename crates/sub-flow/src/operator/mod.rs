@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_type::{Result, value::row_number::RowNumber};
 
 use crate::transaction::FlowTransaction;
 
@@ -31,8 +31,8 @@ use join::operator::JoinOperator;
 use map::MapOperator;
 use reifydb_core::interface::change::Change;
 use scan::{
-	flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator, table::PrimitiveTableOperator,
-	view::PrimitiveViewOperator,
+	flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator, series::PrimitiveSeriesOperator,
+	table::PrimitiveTableOperator, view::PrimitiveViewOperator,
 };
 use sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator};
 use sort::SortOperator;
@@ -42,9 +42,9 @@ use window::WindowOperator;
 pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId;
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change>;
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change>;
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns>;
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns>;
 }
 
 pub type BoxedOperator = Box<dyn Operator + Send + Sync>;
@@ -54,6 +54,7 @@ pub enum Operators {
 	SourceView(PrimitiveViewOperator),
 	SourceFlow(PrimitiveFlowOperator),
 	SourceRingBuffer(PrimitiveRingBufferOperator),
+	SourceSeries(PrimitiveSeriesOperator),
 	Filter(FilterOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),
@@ -69,7 +70,7 @@ pub enum Operators {
 }
 
 impl Operators {
-	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		match self {
 			Operators::Filter(op) => op.apply(txn, change),
 			Operators::Map(op) => op.apply(txn, change),
@@ -87,10 +88,11 @@ impl Operators {
 			Operators::SourceView(op) => op.apply(txn, change),
 			Operators::SourceFlow(op) => op.apply(txn, change),
 			Operators::SourceRingBuffer(op) => op.apply(txn, change),
+			Operators::SourceSeries(op) => op.apply(txn, change),
 		}
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		match self {
 			Operators::Filter(op) => op.pull(txn, rows),
 			Operators::Map(op) => op.pull(txn, rows),
@@ -108,6 +110,7 @@ impl Operators {
 			Operators::SourceView(op) => op.pull(txn, rows),
 			Operators::SourceFlow(op) => op.pull(txn, rows),
 			Operators::SourceRingBuffer(op) => op.pull(txn, rows),
+			Operators::SourceSeries(op) => op.pull(txn, rows),
 		}
 	}
 }

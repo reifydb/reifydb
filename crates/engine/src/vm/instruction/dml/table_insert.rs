@@ -5,7 +5,10 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, schema::Schema},
-	error::diagnostic::{catalog::table_not_found, index::primary_key_violation},
+	error::diagnostic::{
+		catalog::{namespace_not_found, table_not_found},
+		index::primary_key_violation,
+	},
 	interface::{
 		catalog::id::IndexId,
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
@@ -47,7 +50,9 @@ pub(crate) fn insert_table<'a>(
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 
-	let namespace = services.catalog.find_namespace_by_name(txn, namespace_name)?.unwrap();
+	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
+		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
+	};
 
 	let table_name = plan.target.name();
 	let Some(table) = services.catalog.find_table_by_name(txn, namespace.id, table_name)? else {

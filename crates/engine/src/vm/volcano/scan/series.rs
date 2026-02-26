@@ -6,7 +6,6 @@ use std::sync::Arc;
 use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::resolved::ResolvedSeries,
-	internal_error,
 	key::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
@@ -20,7 +19,10 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::vm::{
+	instruction::dml::schema::get_or_create_series_schema,
+	volcano::query::{QueryContext, QueryNode},
+};
 
 pub struct SeriesScanNode {
 	series: ResolvedSeries,
@@ -99,6 +101,9 @@ impl QueryNode for SeriesScanNode {
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
 		let mut new_last_key = None;
 
+		// Get the schema for decoding series values before borrowing rx for the stream
+		let read_schema = get_or_create_series_schema(&stored_ctx.services.catalog, self.series.def(), rx)?;
+
 		let mut stream = rx.range(range, batch_size as usize)?;
 		let mut count = 0;
 
@@ -112,10 +117,11 @@ impl QueryNode for SeriesScanNode {
 					tags.push(key.variant_tag.unwrap_or(0));
 				}
 
-				// Decode data columns from value
-				let values: Vec<Value> = postcard::from_bytes(&entry.values).map_err(|e| {
-					internal_error!("Failed to deserialize series row values: {}", e)
-				})?;
+				// Decode data columns from value using schema
+				let mut values = Vec::with_capacity(series_def.columns.len());
+				for (i, _) in series_def.columns.iter().enumerate() {
+					values.push(read_schema.get_value(&entry.values, i + 1));
+				}
 				data_rows.push(values);
 
 				new_last_key = Some(entry.key);

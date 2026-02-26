@@ -17,13 +17,13 @@ use reifydb_rql::flow::{
 		FlowNode,
 		FlowNodeType::{
 			self, Aggregate, Append, Apply, Distinct, Extend, Filter, Join, Map, SinkSubscription,
-			SinkView, Sort, SourceFlow, SourceInlineData, SourceRingBuffer, SourceTable, SourceView, Take,
-			Window,
+			SinkView, Sort, SourceFlow, SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable,
+			SourceView, Take, Window,
 		},
 	},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_type::error::Error;
+use reifydb_type::{Result, error::Error};
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
@@ -40,7 +40,7 @@ use crate::{
 		map::MapOperator,
 		scan::{
 			flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
-			table::PrimitiveTableOperator, view::PrimitiveViewOperator,
+			series::PrimitiveSeriesOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator,
 		},
 		sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator},
 		sort::SortOperator,
@@ -51,7 +51,7 @@ use crate::{
 
 impl FlowEngine {
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> reifydb_type::Result<()> {
+	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
 		debug_assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.topological_order()? {
@@ -66,7 +66,7 @@ impl FlowEngine {
 	}
 
 	#[instrument(name = "flow::register::add_node", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?std::mem::discriminant(&node.ty)))]
-	fn add(&mut self, txn: &mut CommandTransaction, flow: &FlowDag, node: &FlowNode) -> reifydb_type::Result<()> {
+	fn add(&mut self, txn: &mut CommandTransaction, flow: &FlowDag, node: &FlowNode) -> Result<()> {
 		debug_assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
 
@@ -110,8 +110,10 @@ impl FlowEngine {
 							view_flow.id,
 						)?;
 						for flow_node in &flow_nodes {
-							// SourceTable = 1, SourceRingBuffer = 17
-							if flow_node.node_type == 1 || flow_node.node_type == 17 {
+							// SourceTable = 1, SourceRingBuffer = 17, SourceSeries = 18
+							if flow_node.node_type == 1
+								|| flow_node.node_type == 17 || flow_node.node_type == 18
+							{
 								if let Ok(nt) = postcard::from_bytes::<FlowNodeType>(
 									&flow_node.data,
 								) {
@@ -130,6 +132,13 @@ impl FlowEngine {
 												PrimitiveId::ringbuffer(
 													rb,
 												),
+											);
+										}
+										SourceSeries {
+											series: s,
+										} => {
+											additional_sources.push(
+												PrimitiveId::series(s),
 											);
 										}
 										_ => {}
@@ -174,6 +183,16 @@ impl FlowEngine {
 					Arc::new(Operators::SourceRingBuffer(PrimitiveRingBufferOperator::new(
 						node.id, rb,
 					))),
+				);
+			}
+			SourceSeries {
+				series,
+			} => {
+				let s = self.catalog.get_series(&mut Transaction::Command(&mut *txn), series)?;
+				self.add_source(flow.id, node.id, PrimitiveId::series(s.id));
+				self.operators.insert(
+					node.id,
+					Arc::new(Operators::SourceSeries(PrimitiveSeriesOperator::new(node.id, s))),
 				);
 			}
 			SinkView {

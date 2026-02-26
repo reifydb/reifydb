@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use reifydb_core::interface::catalog::{
 	flow::{FlowId, FlowNodeId},
-	id::{RingBufferId, TableId, ViewId},
+	id::{RingBufferId, SeriesId, TableId, ViewId},
 };
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +19,7 @@ pub enum PrimitiveReference {
 	Table(TableId),
 	View(ViewId),
 	RingBuffer(RingBufferId),
+	Series(SeriesId),
 }
 
 /// Represents a reference to a data sink
@@ -54,6 +55,7 @@ pub struct FlowDependencyGraph {
 	pub source_tables: HashMap<TableId, Vec<FlowId>>,
 	pub source_views: HashMap<ViewId, Vec<FlowId>>,
 	pub source_ringbuffers: HashMap<RingBufferId, Vec<FlowId>>,
+	pub source_series: HashMap<SeriesId, Vec<FlowId>>,
 	pub sink_views: HashMap<ViewId, FlowId>,
 }
 
@@ -72,6 +74,7 @@ impl FlowGraphAnalyzer {
 				source_tables: HashMap::new(),
 				source_views: HashMap::new(),
 				source_ringbuffers: HashMap::new(),
+				source_series: HashMap::new(),
 				sink_views: HashMap::new(),
 			},
 		}
@@ -122,6 +125,11 @@ impl FlowGraphAnalyzer {
 					} => {
 						sources.push(PrimitiveReference::RingBuffer(*ringbuffer));
 					}
+					FlowNodeType::SourceSeries {
+						series,
+					} => {
+						sources.push(PrimitiveReference::Series(*series));
+					}
 					_ => {}
 				}
 			}
@@ -157,6 +165,7 @@ impl FlowGraphAnalyzer {
 		let mut source_tables: HashMap<TableId, Vec<FlowId>> = HashMap::new();
 		let mut source_views: HashMap<ViewId, Vec<FlowId>> = HashMap::new();
 		let mut source_ringbuffers: HashMap<RingBufferId, Vec<FlowId>> = HashMap::new();
+		let mut source_series: HashMap<SeriesId, Vec<FlowId>> = HashMap::new();
 		let mut sink_views: HashMap<ViewId, FlowId> = HashMap::new();
 
 		// First pass: analyze all stored flows and build lookup maps
@@ -174,6 +183,9 @@ impl FlowGraphAnalyzer {
 					}
 					PrimitiveReference::RingBuffer(rb_id) => {
 						source_ringbuffers.entry(*rb_id).or_default().push(flow.id());
+					}
+					PrimitiveReference::Series(series_id) => {
+						source_series.entry(*series_id).or_default().push(flow.id());
 					}
 				}
 			}
@@ -199,6 +211,7 @@ impl FlowGraphAnalyzer {
 			source_tables,
 			source_views,
 			source_ringbuffers,
+			source_series,
 			sink_views,
 		}
 	}
@@ -278,6 +291,7 @@ impl FlowGraphAnalyzer {
 			source_tables: HashMap::new(),
 			source_views: HashMap::new(),
 			source_ringbuffers: HashMap::new(),
+			source_series: HashMap::new(),
 			sink_views: HashMap::new(),
 		};
 	}
@@ -337,9 +351,12 @@ impl Default for FlowGraphAnalyzer {
 #[cfg(test)]
 pub mod tests {
 	use FlowNodeType::{Filter, SinkView, SourceTable, SourceView};
-	use reifydb_core::interface::catalog::{
-		flow::{FlowId, FlowNodeId},
-		id::{TableId, ViewId},
+	use reifydb_core::{
+		common::JoinType,
+		interface::catalog::{
+			flow::{FlowId, FlowNodeId},
+			id::{TableId, ViewId},
+		},
 	};
 
 	use super::*;
@@ -426,7 +443,7 @@ pub mod tests {
 					view: ViewId(600),
 				},
 				FlowNodeType::Join {
-					join_type: reifydb_core::common::JoinType::Inner,
+					join_type: JoinType::Inner,
 					left: vec![],
 					right: vec![],
 					alias: None,

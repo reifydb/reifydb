@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	error::diagnostic::catalog::dictionary_not_found,
+	error::diagnostic::catalog::{dictionary_not_found, namespace_not_found},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertDictionaryNode;
@@ -36,7 +36,9 @@ pub(crate) fn insert_dictionary<'a>(
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 
-	let namespace = services.catalog.find_namespace_by_name(txn, namespace_name)?.unwrap();
+	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
+		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
+	};
 
 	let dictionary_name = plan.target.name();
 	let Some(dictionary) = services.catalog.find_dictionary_by_name(txn, namespace.id, dictionary_name)? else {

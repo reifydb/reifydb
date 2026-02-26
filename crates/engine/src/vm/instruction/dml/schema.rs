@@ -4,10 +4,10 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	encoded::schema::{Schema, SchemaField},
-	interface::catalog::{ringbuffer::RingBufferDef, table::TableDef},
+	interface::catalog::{ringbuffer::RingBufferDef, series::SeriesDef, table::TableDef},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::constraint::TypeConstraint;
+use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 /// Get or create a schema for a table, properly handling dictionary-encoded columns
 ///
@@ -70,5 +70,32 @@ pub fn get_or_create_ringbuffer_schema(
 		fields.push(SchemaField::new(col.name.clone(), constraint));
 	}
 
+	catalog.schema.get_or_create(fields)
+}
+
+/// Get or create a schema for a series.
+///
+/// The schema includes a leading `timestamp` (Int8) field followed by the series data columns.
+/// This ensures series rows are encoded with a fingerprint header, enabling the CDC pipeline
+/// to decode them via SchemaRegistry lookup.
+pub fn get_or_create_series_schema(
+	catalog: &Catalog,
+	series: &SeriesDef,
+	txn: &mut Transaction<'_>,
+) -> crate::Result<Schema> {
+	let mut fields = Vec::with_capacity(1 + series.columns.len());
+	fields.push(SchemaField::new("timestamp".to_string(), TypeConstraint::unconstrained(Type::Int8)));
+	for col in &series.columns {
+		let constraint = if let Some(dict_id) = col.dictionary_id {
+			if let Some(dict) = catalog.find_dictionary(txn, dict_id)? {
+				TypeConstraint::dictionary(dict_id, dict.id_type)
+			} else {
+				col.constraint.clone()
+			}
+		} else {
+			col.constraint.clone()
+		};
+		fields.push(SchemaField::new(col.name.clone(), constraint));
+	}
 	catalog.schema.get_or_create(fields)
 }

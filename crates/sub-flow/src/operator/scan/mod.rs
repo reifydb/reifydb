@@ -3,6 +3,7 @@
 
 pub mod flow;
 pub mod ringbuffer;
+pub mod series;
 pub mod table;
 pub mod view;
 

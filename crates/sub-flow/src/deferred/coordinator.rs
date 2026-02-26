@@ -804,6 +804,13 @@ impl CoordinatorActor {
 			}
 		}
 
+		// Add series sources
+		for (series_id, flow_ids) in &dependency_graph.source_series {
+			if flow_ids.contains(&flow_id) {
+				flow_sources.insert(PrimitiveId::Series(*series_id));
+			}
+		}
+
 		// Resolve transitive dependencies through views: if this flow depends on
 		// a view that is produced by another flow (e.g. a transactional view),
 		// also consider that producer flow's primitive sources as triggers.
@@ -817,6 +824,11 @@ impl CoordinatorActor {
 				for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
 					if flow_ids.contains(producer_flow_id) {
 						flow_sources.insert(PrimitiveId::RingBuffer(*rb_id));
+					}
+				}
+				for (series_id, flow_ids) in &dependency_graph.source_series {
+					if flow_ids.contains(producer_flow_id) {
+						flow_sources.insert(PrimitiveId::Series(*series_id));
 					}
 				}
 			}

@@ -4,18 +4,25 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
-	error::diagnostic::catalog::series_not_found,
+	common::CommitVersion,
+	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
-		catalog::series::TimestampPrecision,
+		catalog::{primitive::PrimitiveId, series::TimestampPrecision},
+		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedSeries},
 	},
 	key::{EncodableKey, series_row::SeriesRowKey},
-	value::column::columns::Columns,
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertSeriesNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, return_error, util::cowvec::CowVec, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	return_error,
+	util::cowvec::CowVec,
+	value::{Value, row_number::RowNumber},
+};
 use tracing::instrument;
 
 use crate::vm::{
@@ -35,7 +42,9 @@ pub(crate) fn insert_series<'a>(
 	params: Params,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
-	let namespace = services.catalog.find_namespace_by_name(txn, namespace_name)?.unwrap();
+	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
+		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
+	};
 
 	let series_name = plan.target.name();
 	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id, series_name)? else {
@@ -75,6 +84,9 @@ pub(crate) fn insert_series<'a>(
 
 	// Determine timestamp from clock based on precision
 	let precision = series_def.precision;
+
+	// Create schema for series encoding
+	let schema = super::schema::get_or_create_series_schema(&services.catalog, &series_def, txn)?;
 
 	// Process all input batches
 	let mut mutable_context = (*execution_context).clone();
@@ -143,13 +155,44 @@ pub(crate) fn insert_series<'a>(
 				data_values.push(value);
 			}
 
-			// Encode data values using postcard
-			let encoded_values = postcard::to_allocvec(&data_values).map_err(|e| {
-				reifydb_core::internal_error!("Failed to serialize series row values: {}", e)
-			})?;
+			// Encode using schema (timestamp at index 0, data columns at index 1+)
+			let mut row = schema.allocate();
+			schema.set_value(&mut row, 0, &Value::Int8(timestamp));
+			for (i, value) in data_values.iter().enumerate() {
+				schema.set_value(&mut row, i + 1, value);
+			}
 
 			// Write to storage
-			txn.set(&encoded_key, EncodedValues(CowVec::new(encoded_values)))?;
+			txn.set(&encoded_key, row)?;
+
+			// Track flow change for transactional/deferred view processing
+			{
+				let row_number = RowNumber::from(sequence as u64);
+				let mut cols = Vec::with_capacity(1 + series_def.columns.len());
+				cols.push(Column {
+					name: Fragment::internal("timestamp"),
+					data: ColumnData::int8(vec![timestamp]),
+				});
+				for (i, col_def) in series_def.columns.iter().enumerate() {
+					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
+					data.push_value(data_values[i].clone());
+					cols.push(Column {
+						name: Fragment::internal(&col_def.name),
+						data,
+					});
+				}
+				let post = Columns {
+					row_numbers: CowVec::new(vec![row_number]),
+					columns: CowVec::new(cols),
+				};
+				txn.track_flow_change(Change {
+					origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+					version: CommitVersion(0),
+					diffs: vec![Diff::Insert {
+						post,
+					}],
+				});
+			}
 
 			// Update metadata
 			if metadata.row_count == 0 {

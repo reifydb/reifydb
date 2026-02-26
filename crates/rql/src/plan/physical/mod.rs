@@ -11,7 +11,9 @@ use std::iter::once;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
-	error::diagnostic::catalog::{dictionary_not_found, ringbuffer_not_found, table_not_found},
+	error::diagnostic::catalog::{
+		dictionary_not_found, namespace_not_found, ringbuffer_not_found, table_not_found,
+	},
 	interface::{
 		catalog::{
 			column::{ColumnDef, ColumnIndex},
@@ -1029,8 +1031,16 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join(".")
 					};
-					let namespace_def =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(namespace_def) =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+					else {
+						let fragment = ringbuffer_id
+							.namespace
+							.first()
+							.map(|n| self.interner.intern_fragment(n))
+							.unwrap_or_else(|| Fragment::internal(&namespace_name));
+						return_error!(namespace_not_found(fragment, &namespace_name));
+					};
 					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
@@ -1074,8 +1084,16 @@ impl<'bump> Compiler<'bump> {
 					} else {
 						table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
 					};
-					let namespace_def =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(namespace_def) =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+					else {
+						let fragment = table
+							.namespace
+							.first()
+							.map(|n| self.interner.intern_fragment(n))
+							.unwrap_or_else(|| Fragment::internal(&namespace_name));
+						return_error!(namespace_not_found(fragment, &namespace_name));
+					};
 					let Some(table_def) = self.catalog.find_table_by_name(
 						rx,
 						namespace_def.id,
@@ -1124,8 +1142,16 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join(".")
 					};
-					let namespace_def =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(namespace_def) =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+					else {
+						let fragment = ringbuffer_id
+							.namespace
+							.first()
+							.map(|n| self.interner.intern_fragment(n))
+							.unwrap_or_else(|| Fragment::internal(&namespace_name));
+						return_error!(namespace_not_found(fragment, &namespace_name));
+					};
 					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
@@ -1177,8 +1203,16 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join(".")
 					};
-					let namespace_def =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(namespace_def) =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+					else {
+						let fragment = dictionary_id
+							.namespace
+							.first()
+							.map(|n| self.interner.intern_fragment(n))
+							.unwrap_or_else(|| Fragment::internal(&namespace_name));
+						return_error!(namespace_not_found(fragment, &namespace_name));
+					};
 					let Some(dictionary_def) = self.catalog.find_dictionary_by_name(
 						rx,
 						namespace_def.id,
@@ -1230,8 +1264,16 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join(".")
 					};
-					let namespace_def =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(namespace_def) =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+					else {
+						let fragment = series_id
+							.namespace
+							.first()
+							.map(|n| self.interner.intern_fragment(n))
+							.unwrap_or_else(|| Fragment::internal(&namespace_name));
+						return_error!(namespace_not_found(fragment, &namespace_name));
+					};
 					let Some(series_def) = self.catalog.find_series_by_name(
 						rx,
 						namespace_def.id,
@@ -1290,8 +1332,16 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join(".")
 					};
-					let namespace_def =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(namespace_def) =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+					else {
+						let fragment = series_id
+							.namespace
+							.first()
+							.map(|n| self.interner.intern_fragment(n))
+							.unwrap_or_else(|| Fragment::internal(&namespace_name));
+						return_error!(namespace_not_found(fragment, &namespace_name));
+					};
 					let Some(series_def) = self.catalog.find_series_by_name(
 						rx,
 						namespace_def.id,
@@ -1349,10 +1399,16 @@ impl<'bump> Compiler<'bump> {
 								.collect::<Vec<_>>()
 								.join(".")
 						};
-						let namespace_def = self
-							.catalog
-							.find_namespace_by_name(rx, &namespace_name)?
-							.unwrap();
+						let Some(namespace_def) =
+							self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						else {
+							let fragment = table_id
+								.namespace
+								.first()
+								.map(|n| self.interner.intern_fragment(n))
+								.unwrap_or_else(|| Fragment::internal(&namespace_name));
+							return_error!(namespace_not_found(fragment, &namespace_name));
+						};
 						let Some(table_def) = self.catalog.find_table_by_name(
 							rx,
 							namespace_def.id,
@@ -1413,8 +1469,16 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join(".")
 					};
-					let namespace_def =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(namespace_def) =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+					else {
+						let fragment = ringbuffer_id
+							.namespace
+							.first()
+							.map(|n| self.interner.intern_fragment(n))
+							.unwrap_or_else(|| Fragment::internal(&namespace_name));
+						return_error!(namespace_not_found(fragment, &namespace_name));
+					};
 					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
@@ -1471,8 +1535,16 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join(".")
 					};
-					let namespace_def =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?.unwrap();
+					let Some(namespace_def) =
+						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+					else {
+						let fragment = series_id
+							.namespace
+							.first()
+							.map(|n| self.interner.intern_fragment(n))
+							.unwrap_or_else(|| Fragment::internal(&namespace_name));
+						return_error!(namespace_not_found(fragment, &namespace_name));
+					};
 					let Some(series_def) = self.catalog.find_series_by_name(
 						rx,
 						namespace_def.id,

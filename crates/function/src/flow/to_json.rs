@@ -10,10 +10,10 @@ use reifydb_core::{
 	value::column::data::ColumnData,
 };
 use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
-use reifydb_type::value::r#type::Type;
+use reifydb_type::{error::Error, value::r#type::Type};
 use serde::Serialize;
 
-use crate::{ScalarFunction, ScalarFunctionContext, propagate_options};
+use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionResult, propagate_options};
 
 /// JSON-serializable version of FlowNodeType that uses JsonExpression
 /// for clean expression serialization without Fragment metadata.
@@ -32,6 +32,9 @@ pub enum JsonFlowNodeType {
 	},
 	SourceRingBuffer {
 		ringbuffer: u64,
+	},
+	SourceSeries {
+		series: u64,
 	},
 	Filter {
 		conditions: Vec<JsonExpression>,
@@ -118,6 +121,11 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				ringbuffer,
 			} => JsonFlowNodeType::SourceRingBuffer {
 				ringbuffer: ringbuffer.0,
+			},
+			FlowNodeType::SourceSeries {
+				series,
+			} => JsonFlowNodeType::SourceSeries {
+				series: series.0,
 			},
 			FlowNodeType::Filter {
 				conditions,
@@ -217,7 +225,7 @@ impl FlowNodeToJson {
 }
 
 impl ScalarFunction for FlowNodeToJson {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}
@@ -246,7 +254,7 @@ impl ScalarFunction for FlowNodeToJson {
 						// Deserialize from postcard
 						let node_type: FlowNodeType =
 							postcard::from_bytes(bytes).map_err(|e| {
-								reifydb_type::error::Error(internal!(
+								Error(internal!(
 									"Failed to deserialize FlowNodeType: {}",
 									e
 								))
@@ -258,7 +266,7 @@ impl ScalarFunction for FlowNodeToJson {
 						// Serialize to JSON (untagged - extract inner value only)
 						let json_value =
 							serde_json::to_value(&json_node_type).map_err(|e| {
-								reifydb_type::error::Error(internal!(
+								Error(internal!(
 									"Failed to serialize FlowNodeType to JSON: {}",
 									e
 								))
@@ -280,7 +288,7 @@ impl ScalarFunction for FlowNodeToJson {
 						};
 
 						let json = serde_json::to_string(&inner_value).map_err(|e| {
-							reifydb_type::error::Error(internal!(
+							Error(internal!(
 								"Failed to serialize FlowNodeType to JSON: {}",
 								e
 							))
@@ -294,8 +302,7 @@ impl ScalarFunction for FlowNodeToJson {
 
 				Ok(ColumnData::utf8(result_data))
 			}
-			_ => Err(reifydb_type::error::Error(internal!("flow_node::to_json only supports Blob input"))
-				.into()),
+			_ => Err(Error(internal!("flow_node::to_json only supports Blob input")).into()),
 		}
 	}
 

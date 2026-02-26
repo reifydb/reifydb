@@ -4,7 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	error::diagnostic::{catalog::ringbuffer_not_found, engine},
+	error::diagnostic::{
+		catalog::{namespace_not_found, ringbuffer_not_found},
+		engine,
+	},
 	interface::resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	key::row::RowKey,
 	value::column::columns::Columns,
@@ -37,7 +40,9 @@ pub(crate) fn delete_ringbuffer<'a>(
 	params: Params,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
-	let namespace = services.catalog.find_namespace_by_name(txn, namespace_name)?.unwrap();
+	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
+		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
+	};
 
 	let ringbuffer_name = plan.target.name();
 	let Some(ringbuffer) = services.catalog.find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)? else {

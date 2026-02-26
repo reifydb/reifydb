@@ -4,13 +4,15 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::{encoded::EncodedValues, key::EncodedKey},
-	error::diagnostic::catalog::series_not_found,
+	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
+		catalog::primitive::PrimitiveId,
+		change::{Change, ChangeOrigin, Diff},
 		evaluate::TargetColumn,
 		resolved::{ResolvedColumn, ResolvedPrimitive},
 	},
-	internal_error,
 	key::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
@@ -28,7 +30,7 @@ use reifydb_type::{
 	params::Params,
 	return_error,
 	util::{bitvec::BitVec, cowvec::CowVec},
-	value::Value,
+	value::{Value, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -49,7 +51,9 @@ pub(crate) fn update_series<'a>(
 	params: Params,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
-	let namespace = services.catalog.find_namespace_by_name(txn, namespace_name)?.unwrap();
+	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
+		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
+	};
 
 	let series_name = plan.target.name();
 	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id, series_name)? else {
@@ -76,7 +80,12 @@ pub(crate) fn update_series<'a>(
 	};
 
 	let mut updated_count = 0u64;
-	let mut updates_to_apply: Vec<(EncodedKey, Vec<u8>)> = Vec::new();
+	let mut updates_to_apply: Vec<(EncodedKey, EncodedValues)> = Vec::new();
+	let mut updated_row_indices: Vec<usize> = Vec::new();
+	let mut pre_columns: Option<Columns> = None;
+	let mut post_columns: Option<Columns> = None;
+	let mut scanned_timestamps: Vec<i64> = Vec::new();
+	let mut scanned_sequences: Vec<u64> = Vec::new();
 
 	// Scan all rows directly from storage
 	let range = SeriesRowKeyRange::full_scan(series_def.id, None);
@@ -85,6 +94,9 @@ pub(crate) fn update_series<'a>(
 	let mut tags = Vec::new();
 	let mut data_rows: Vec<Vec<Value>> = Vec::new();
 
+	// Get the schema for decoding series values
+	let read_schema = super::schema::get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+
 	{
 		let mut stream = txn.range(range, 4096)?;
 		while let Some(entry) = stream.next() {
@@ -92,18 +104,22 @@ pub(crate) fn update_series<'a>(
 			if let Some(key) = SeriesRowKey::decode(&entry.key) {
 				keys.push(entry.key);
 				timestamps.push(key.timestamp);
+				scanned_sequences.push(key.sequence);
 				if has_tag {
 					tags.push(key.variant_tag.unwrap_or(0));
 				}
-				let values: Vec<Value> = postcard::from_bytes(&entry.values).map_err(|e| {
-					internal_error!("Failed to deserialize series row values: {}", e)
-				})?;
+				let mut values = Vec::with_capacity(series_def.columns.len());
+				for (i, _col) in series_def.columns.iter().enumerate() {
+					values.push(read_schema.get_value(&entry.values, i + 1));
+				}
 				data_rows.push(values);
 			}
 		}
 	}
 
 	if !keys.is_empty() {
+		scanned_timestamps = timestamps.clone();
+
 		// Build Columns from scanned data
 		let mut result_columns = Vec::new();
 		result_columns.push(Column {
@@ -249,6 +265,9 @@ pub(crate) fn update_series<'a>(
 			patch_columns.push(column);
 		}
 
+		// Save pre-columns for flow change tracking before consuming
+		pre_columns = Some(columns.clone());
+
 		// Build patched columns by merging originals with patches
 		let mut patched = Vec::new();
 		for original_col in columns.into_iter() {
@@ -280,17 +299,89 @@ pub(crate) fn update_series<'a>(
 				data_values.push(value);
 			}
 
-			let encoded_values = postcard::to_allocvec(&data_values)
-				.map_err(|e| internal_error!("Failed to serialize series row values: {}", e))?;
+			let schema = super::schema::get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+			let mut row = schema.allocate();
+			// Get timestamp for this row
+			let ts = patched_columns
+				.iter()
+				.find(|c| c.name().text() == "timestamp")
+				.map(|c| c.data().get_value(row_idx))
+				.unwrap_or(Value::Int8(0));
+			schema.set_value(&mut row, 0, &ts);
+			for (i, value) in data_values.iter().enumerate() {
+				schema.set_value(&mut row, i + 1, value);
+			}
 
-			updates_to_apply.push((keys[row_idx].clone(), encoded_values));
+			updates_to_apply.push((keys[row_idx].clone(), row));
+			updated_row_indices.push(row_idx);
 		}
+
+		post_columns = Some(patched_columns);
 	}
 
 	// Apply all collected updates
-	for (key, encoded_values) in &updates_to_apply {
-		txn.set(key, EncodedValues(CowVec::new(encoded_values.clone())))?;
+	for (key, row) in &updates_to_apply {
+		txn.set(key, row.clone())?;
 		updated_count += 1;
+	}
+
+	// Track flow changes for updated rows
+	if let (Some(pre_cols), Some(post_cols)) = (&pre_columns, &post_columns) {
+		for &row_idx in &updated_row_indices {
+			let timestamp = scanned_timestamps[row_idx];
+			let row_number = RowNumber::from(scanned_sequences[row_idx]);
+
+			// Build pre columns (original values)
+			let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
+			pre_col_vec.push(Column {
+				name: Fragment::internal("timestamp"),
+				data: ColumnData::int8(vec![timestamp]),
+			});
+			for col in pre_cols.iter() {
+				if col.name().text() != "timestamp" && col.name().text() != "tag" {
+					let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
+					data.push_value(col.data().get_value(row_idx));
+					pre_col_vec.push(Column {
+						name: col.name().clone(),
+						data,
+					});
+				}
+			}
+
+			// Build post columns (updated values)
+			let mut post_col_vec = Vec::with_capacity(1 + series_def.columns.len());
+			post_col_vec.push(Column {
+				name: Fragment::internal("timestamp"),
+				data: ColumnData::int8(vec![timestamp]),
+			});
+			for col in post_cols.iter() {
+				if col.name().text() != "timestamp" && col.name().text() != "tag" {
+					let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
+					data.push_value(col.data().get_value(row_idx));
+					post_col_vec.push(Column {
+						name: col.name().clone(),
+						data,
+					});
+				}
+			}
+
+			let pre = Columns {
+				row_numbers: CowVec::new(vec![row_number]),
+				columns: CowVec::new(pre_col_vec),
+			};
+			let post = Columns {
+				row_numbers: CowVec::new(vec![row_number]),
+				columns: CowVec::new(post_col_vec),
+			};
+			txn.track_flow_change(Change {
+				origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+				version: CommitVersion(0),
+				diffs: vec![Diff::Update {
+					pre,
+					post,
+				}],
+			});
+		}
 	}
 
 	// Return summary

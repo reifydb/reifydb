@@ -4,8 +4,13 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	error::diagnostic::catalog::series_not_found,
-	internal_error,
+	common::CommitVersion,
+	encoded::{encoded::EncodedValues, key::EncodedKey},
+	error::diagnostic::catalog::{namespace_not_found, series_not_found},
+	interface::{
+		catalog::primitive::PrimitiveId,
+		change::{Change, ChangeOrigin, Diff},
+	},
 	key::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
@@ -14,7 +19,13 @@ use reifydb_core::{
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, return_error, util::bitvec::BitVec, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	return_error,
+	util::{bitvec::BitVec, cowvec::CowVec},
+	value::{Value, row_number::RowNumber},
+};
 use tracing::instrument;
 
 use crate::{
@@ -22,7 +33,10 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
-	vm::{services::Services, stack::SymbolTable, volcano::scan::series::build_data_column},
+	vm::{
+		instruction::dml::schema::get_or_create_series_schema, services::Services, stack::SymbolTable,
+		volcano::scan::series::build_data_column,
+	},
 };
 
 #[instrument(name = "mutate::series::delete", level = "trace", skip_all)]
@@ -33,7 +47,9 @@ pub(crate) fn delete_series<'a>(
 	params: Params,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
-	let namespace = services.catalog.find_namespace_by_name(txn, namespace_name)?.unwrap();
+	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
+		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
+	};
 
 	let series_name = plan.target.name();
 	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id, series_name)? else {
@@ -60,9 +76,14 @@ pub(crate) fn delete_series<'a>(
 		// Scan all rows directly from storage
 		let range = SeriesRowKeyRange::full_scan(series_def.id, None);
 		let mut keys = Vec::new();
+		let mut encoded_values = Vec::new();
 		let mut timestamps = Vec::new();
+		let mut sequences = Vec::new();
 		let mut tags = Vec::new();
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
+
+		// Get the schema for decoding series values
+		let read_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
 
 		{
 			let mut stream = txn.range(range, 4096)?;
@@ -71,13 +92,16 @@ pub(crate) fn delete_series<'a>(
 				if let Some(key) = SeriesRowKey::decode(&entry.key) {
 					keys.push(entry.key);
 					timestamps.push(key.timestamp);
+					sequences.push(key.sequence);
 					if has_tag {
 						tags.push(key.variant_tag.unwrap_or(0));
 					}
-					let values: Vec<Value> = postcard::from_bytes(&entry.values).map_err(|e| {
-						internal_error!("Failed to deserialize series row values: {}", e)
-					})?;
+					let mut values = Vec::with_capacity(series_def.columns.len());
+					for (i, _col) in series_def.columns.iter().enumerate() {
+						values.push(read_schema.get_value(&entry.values, i + 1));
+					}
 					data_rows.push(values);
+					encoded_values.push(entry.values);
 				}
 			}
 		}
@@ -166,7 +190,42 @@ pub(crate) fn delete_series<'a>(
 			// Delete matching rows
 			for (i, key) in keys.iter().enumerate() {
 				if filter_mask.get(i) {
-					txn.remove(key)?;
+					// Track flow change for deleted row before removing
+					let row_number = RowNumber::from(sequences[i]);
+					let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
+					// Get timestamp from the columns Columns struct
+					if let Some(ts_col) = columns.iter().find(|c| c.name().text() == "timestamp") {
+						let mut data = ColumnData::with_capacity(ts_col.data().get_type(), 1);
+						data.push_value(ts_col.data().get_value(i));
+						pre_col_vec.push(Column {
+							name: Fragment::internal("timestamp"),
+							data,
+						});
+					}
+					for col in columns.iter() {
+						if col.name().text() != "timestamp" && col.name().text() != "tag" {
+							let mut data =
+								ColumnData::with_capacity(col.data().get_type(), 1);
+							data.push_value(col.data().get_value(i));
+							pre_col_vec.push(Column {
+								name: col.name().clone(),
+								data,
+							});
+						}
+					}
+					let pre = Columns {
+						row_numbers: CowVec::new(vec![row_number]),
+						columns: CowVec::new(pre_col_vec),
+					};
+					txn.track_flow_change(Change {
+						origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+						version: CommitVersion(0),
+						diffs: vec![Diff::Remove {
+							pre,
+						}],
+					});
+
+					txn.unset(key, encoded_values[i].clone())?;
 					deleted_count += 1;
 				}
 			}
@@ -174,17 +233,54 @@ pub(crate) fn delete_series<'a>(
 	} else {
 		// Delete all rows - scan the full range and delete
 		let range = SeriesRowKeyRange::full_scan(series_def.id, None);
-		let mut keys_to_delete = Vec::new();
+		let mut entries_to_delete: Vec<(EncodedKey, EncodedValues)> = Vec::new();
 
 		let mut stream = txn.range(range, 4096)?;
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
-			keys_to_delete.push(entry.key);
+			entries_to_delete.push((entry.key, entry.values));
 		}
 		drop(stream);
 
-		for key in &keys_to_delete {
-			txn.remove(key)?;
+		let delete_all_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+
+		for (key, encoded_values) in entries_to_delete.iter() {
+			// Track flow change before removing
+			if let Some(decoded_key) = SeriesRowKey::decode(key) {
+				let row_number = RowNumber::from(decoded_key.sequence);
+				let data_values: Vec<Value> = series_def
+					.columns
+					.iter()
+					.enumerate()
+					.map(|(i, _)| delete_all_schema.get_value(encoded_values, i + 1))
+					.collect();
+				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
+				pre_col_vec.push(Column {
+					name: Fragment::internal("timestamp"),
+					data: ColumnData::int8(vec![decoded_key.timestamp]),
+				});
+				for (col_idx, col_def) in series_def.columns.iter().enumerate() {
+					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
+					data.push_value(data_values.get(col_idx).cloned().unwrap_or(Value::none()));
+					pre_col_vec.push(Column {
+						name: Fragment::internal(&col_def.name),
+						data,
+					});
+				}
+				let pre = Columns {
+					row_numbers: CowVec::new(vec![row_number]),
+					columns: CowVec::new(pre_col_vec),
+				};
+				txn.track_flow_change(Change {
+					origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+					version: CommitVersion(0),
+					diffs: vec![Diff::Remove {
+						pre,
+					}],
+				});
+			}
+
+			txn.unset(key, encoded_values.clone())?;
 			deleted_count += 1;
 		}
 	}
