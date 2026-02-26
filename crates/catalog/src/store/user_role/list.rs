@@ -30,7 +30,7 @@ mod tests {
 	#[test]
 	fn test_list_user_roles() {
 		let mut txn = create_test_admin_transaction();
-		let user = CatalogStore::create_user(&mut txn, "alice", "hash").unwrap();
+		let user = CatalogStore::create_user(&mut txn, "alice").unwrap();
 		let r1 = CatalogStore::create_role(&mut txn, "admin").unwrap();
 		let r2 = CatalogStore::create_role(&mut txn, "editor").unwrap();
 		CatalogStore::grant_role(&mut txn, user.id, r1.id).unwrap();

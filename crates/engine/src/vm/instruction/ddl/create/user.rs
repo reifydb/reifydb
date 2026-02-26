@@ -14,9 +14,8 @@ pub(crate) fn create_user(
 	plan: CreateUserNode,
 ) -> crate::Result<Columns> {
 	let name = plan.name.text();
-	let password = plan.password.text();
 
-	services.catalog.create_user(txn, name, password)?;
+	services.catalog.create_user(txn, name)?;
 
 	Ok(Columns::single_row([("user", Value::Utf8(name.to_string())), ("created", Value::Boolean(true))]))
 }

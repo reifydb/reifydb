@@ -38,23 +38,16 @@ macro_rules! __detect_target_features {
         #[cfg(target_arch = "x86_64")]
         use core::arch::x86_64::{__cpuid, __cpuid_count, CpuidResult};
 
-        // These wrappers are workarounds around
-        // https://github.com/rust-lang/rust/issues/101346
-        //
-        // DO NOT remove it until MSRV is bumped to a version
-        // with the issue fix (at least 1.64).
-        #[inline(never)]
         unsafe fn cpuid(leaf: u32) -> CpuidResult {
             __cpuid(leaf)
         }
 
-        #[inline(never)]
         unsafe fn cpuid_count(leaf: u32, sub_leaf: u32) -> CpuidResult {
             __cpuid_count(leaf, sub_leaf)
         }
 
         let cr = unsafe {
-            [cpuid(1), cpuid_count(7, 0)]
+            [cpuid(1), cpuid_count(7, 0), cpuid_count(7, 1)]
         };
 
         $($crate::check!(cr, $tf) & )+ true
@@ -149,4 +142,8 @@ __expand_check_macro! {
     ("vpclmulqdq", "zmm", 1, ecx, 10),
     ("avx512bitalg", "zmm", 1, ecx, 12),
     ("avx512vpopcntdq", "zmm", 1, ecx, 14),
+
+    ("sha512", "ymm", 2, eax, 0),
+    ("sm3", "xmm", 2, eax, 1),
+    ("sm4", "ymm", 2, eax, 2),
 }

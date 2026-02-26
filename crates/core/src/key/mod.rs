@@ -41,6 +41,7 @@ use system_version::SystemVersionKey;
 use table::TableKey;
 use transaction_version::TransactionVersionKey;
 use user::UserKey;
+use user_authentication::UserAuthenticationKey;
 use user_role::UserRoleKey;
 use view::ViewKey;
 
@@ -97,6 +98,7 @@ pub mod system_version;
 pub mod table;
 pub mod transaction_version;
 pub mod user;
+pub mod user_authentication;
 pub mod user_role;
 pub mod variant_handler;
 pub mod view;
@@ -145,6 +147,7 @@ pub enum Key {
 	SeriesMetadata(SeriesMetadataKey),
 	NamespaceSeries(NamespaceSeriesKey),
 	User(UserKey),
+	UserAuthentication(UserAuthenticationKey),
 	Role(RoleKey),
 	UserRole(UserRoleKey),
 	SecurityPolicy(SecurityPolicyKey),
@@ -197,6 +200,7 @@ impl Key {
 			Key::SeriesMetadata(key) => key.encode(),
 			Key::NamespaceSeries(key) => key.encode(),
 			Key::User(key) => key.encode(),
+			Key::UserAuthentication(key) => key.encode(),
 			Key::Role(key) => key.encode(),
 			Key::UserRole(key) => key.encode(),
 			Key::SecurityPolicy(key) => key.encode(),
@@ -327,6 +331,9 @@ impl Key {
 			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(&key).map(Self::NamespaceSeries),
 			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(&key).map(Self::SeriesMetadata),
 			KeyKind::User => UserKey::decode(&key).map(Self::User),
+			KeyKind::UserAuthentication => {
+				UserAuthenticationKey::decode(&key).map(Self::UserAuthentication)
+			}
 			KeyKind::Role => RoleKey::decode(&key).map(Self::Role),
 			KeyKind::UserRole => UserRoleKey::decode(&key).map(Self::UserRole),
 			KeyKind::SecurityPolicy => SecurityPolicyKey::decode(&key).map(Self::SecurityPolicy),

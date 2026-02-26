@@ -6,23 +6,17 @@ use crate::{
 		ast::{AstCreate, AstCreateRole, AstCreateUser, AstDrop, AstDropRole, AstDropUser},
 		parse::Parser,
 	},
-	token::{
-		keyword::Keyword,
-		token::{Literal, Token, TokenKind},
-	},
+	token::token::{Token, TokenKind},
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `CREATE USER name PASSWORD 'text'`
+	/// Parse `CREATE USER name`
 	pub(crate) fn parse_create_user(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		let name_token = self.consume(TokenKind::Identifier)?;
-		self.consume_keyword(Keyword::Password)?;
-		let password_token = self.consume_literal(Literal::Text)?;
 
 		Ok(AstCreate::User(AstCreateUser {
 			token,
 			name: name_token.fragment,
-			password: password_token.fragment,
 		}))
 	}
 
@@ -75,7 +69,7 @@ mod tests {
 	#[test]
 	fn test_create_user() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE USER alice PASSWORD 'secret123'").unwrap().into_iter().collect();
+		let tokens = tokenize(&bump, "CREATE USER alice").unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, "", tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
@@ -84,7 +78,6 @@ mod tests {
 			panic!("expected CreateUser")
 		};
 		assert_eq!(user.name.text(), "alice");
-		assert_eq!(user.password.text(), "secret123");
 	}
 
 	#[test]

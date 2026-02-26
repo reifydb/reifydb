@@ -38,10 +38,13 @@ use crate::{
 		ddl::{
 			alter::security_policy::alter_security_policy,
 			create::{
-				event::create_event, role::create_role, security_policy::create_security_policy,
-				user::create_user,
+				authentication::create_authentication, event::create_event, role::create_role,
+				security_policy::create_security_policy, user::create_user,
 			},
-			drop::{role::drop_role, security_policy::drop_security_policy, user::drop_user},
+			drop::{
+				authentication::drop_authentication, role::drop_role,
+				security_policy::drop_security_policy, user::drop_user,
+			},
 			grant::grant,
 			revoke::revoke,
 		},
@@ -1773,6 +1776,30 @@ impl Vm {
 						}
 					};
 					let columns = drop_security_policy(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateAuthentication(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_authentication(services, txn, plan.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropAuthentication(plan) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = drop_authentication(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 			}

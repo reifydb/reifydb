@@ -5,6 +5,12 @@
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
+pub(crate) mod crypto;
+pub mod error;
+pub mod password;
+pub mod registry;
+pub mod token;
+
 pub struct AuthVersion;
 
 impl HasVersion for AuthVersion {

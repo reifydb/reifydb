@@ -12,6 +12,7 @@ default = []
 
 [dependencies]
 reifydb-abi = { workspace = true }
+reifydb-auth = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-metric = { workspace = true }
 reifydb-store-multi = { workspace = true }

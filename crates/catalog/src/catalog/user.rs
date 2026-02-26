@@ -82,13 +82,8 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::user::create", level = "debug", skip(self, txn))]
-	pub fn create_user(
-		&self,
-		txn: &mut AdminTransaction,
-		name: &str,
-		password_hash: &str,
-	) -> crate::Result<UserDef> {
-		let user = CatalogStore::create_user(txn, name, password_hash)?;
+	pub fn create_user(&self, txn: &mut AdminTransaction, name: &str) -> crate::Result<UserDef> {
+		let user = CatalogStore::create_user(txn, name)?;
 		txn.track_user_def_created(user.clone())?;
 		Ok(user)
 	}

@@ -810,6 +810,14 @@ impl InstructionCompiler {
 				self.emit(Instruction::DropRole(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateAuthentication(node) => {
+				self.emit(Instruction::CreateAuthentication(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropAuthentication(node) => {
+				self.emit(Instruction::DropAuthentication(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateSecurityPolicy(node) => {
 				self.emit(Instruction::CreateSecurityPolicy(node));
 				self.emit(Instruction::Emit);

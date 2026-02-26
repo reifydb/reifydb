@@ -817,6 +817,7 @@ pub enum AstCreate<'bump> {
 	Handler(AstCreateHandler<'bump>),
 	User(AstCreateUser<'bump>),
 	Role(AstCreateRole<'bump>),
+	Authentication(AstCreateAuthentication<'bump>),
 	SecurityPolicy(AstCreateSecurityPolicy<'bump>),
 	Migration(AstCreateMigration<'bump>),
 }
@@ -863,6 +864,7 @@ pub enum AstDrop<'bump> {
 	Series(AstDropSeries<'bump>),
 	User(AstDropUser<'bump>),
 	Role(AstDropRole<'bump>),
+	Authentication(AstDropAuthentication<'bump>),
 	SecurityPolicy(AstDropSecurityPolicy<'bump>),
 }
 
@@ -1250,6 +1252,10 @@ impl<'bump> AstCreate<'bump> {
 				token,
 				..
 			}) => token,
+			AstCreate::Authentication(AstCreateAuthentication {
+				token,
+				..
+			}) => token,
 			AstCreate::SecurityPolicy(AstCreateSecurityPolicy {
 				token,
 				..
@@ -1329,6 +1335,10 @@ impl<'bump> AstDrop<'bump> {
 				..
 			}) => token,
 			AstDrop::Role(AstDropRole {
+				token,
+				..
+			}) => token,
+			AstDrop::Authentication(AstDropAuthentication {
 				token,
 				..
 			}) => token,
@@ -1809,7 +1819,6 @@ pub struct AstRequire<'bump> {
 pub struct AstCreateUser<'bump> {
 	pub token: Token<'bump>,
 	pub name: BumpFragment<'bump>,
-	pub password: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]
@@ -1844,6 +1853,29 @@ pub struct AstDropRole<'bump> {
 	pub token: Token<'bump>,
 	pub name: BumpFragment<'bump>,
 	pub if_exists: bool,
+}
+
+// === Authentication AST nodes ===
+
+#[derive(Debug)]
+pub struct AstAuthenticationEntry<'bump> {
+	pub key: BumpFragment<'bump>,
+	pub value: Ast<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateAuthentication<'bump> {
+	pub token: Token<'bump>,
+	pub user: BumpFragment<'bump>,
+	pub entries: Vec<AstAuthenticationEntry<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropAuthentication<'bump> {
+	pub token: Token<'bump>,
+	pub user: BumpFragment<'bump>,
+	pub if_exists: bool,
+	pub method: BumpFragment<'bump>,
 }
 
 // === Security Policy AST nodes ===

@@ -21,5 +21,6 @@ pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod user;
+pub mod user_authentication;
 pub mod view;
 pub mod vtable;

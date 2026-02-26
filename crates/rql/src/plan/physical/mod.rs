@@ -166,6 +166,8 @@ pub enum PhysicalPlan<'bump> {
 	Revoke(nodes::RevokeNode),
 	DropUser(nodes::DropUserNode),
 	DropRole(nodes::DropRoleNode),
+	CreateAuthentication(nodes::CreateAuthenticationNode),
+	DropAuthentication(nodes::DropAuthenticationNode),
 	CreateSecurityPolicy(nodes::CreateSecurityPolicyNode),
 	AlterSecurityPolicy(nodes::AlterSecurityPolicyNode),
 	DropSecurityPolicy(nodes::DropSecurityPolicyNode),
@@ -706,7 +708,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::CreateUser(node) => {
 					stack.push(PhysicalPlan::CreateUser(nodes::CreateUserNode {
 						name: self.interner.intern_fragment(&node.name),
-						password: self.interner.intern_fragment(&node.password),
 					}));
 				}
 				LogicalPlan::CreateRole(node) => {
@@ -735,6 +736,34 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::DropRole(node) => {
 					stack.push(PhysicalPlan::DropRole(nodes::DropRoleNode {
 						name: self.interner.intern_fragment(&node.name),
+						if_exists: node.if_exists,
+					}));
+				}
+				LogicalPlan::CreateAuthentication(node) => {
+					// Extract method and config from entries
+					let mut method_str = String::new();
+					let mut config = std::collections::HashMap::new();
+					for entry in &node.entries {
+						let key = entry.key.text().to_string();
+						let value = entry.value.value().to_string();
+						if key == "method" {
+							method_str = value;
+						} else {
+							config.insert(key, value);
+						}
+					}
+					stack.push(PhysicalPlan::CreateAuthentication(
+						nodes::CreateAuthenticationNode {
+							user: self.interner.intern_fragment(&node.user),
+							method: Fragment::internal(&method_str),
+							config,
+						},
+					));
+				}
+				LogicalPlan::DropAuthentication(node) => {
+					stack.push(PhysicalPlan::DropAuthentication(nodes::DropAuthenticationNode {
+						user: self.interner.intern_fragment(&node.user),
+						method: self.interner.intern_fragment(&node.method),
 						if_exists: node.if_exists,
 					}));
 				}

@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
 	catalog::Catalog,
 	vtable::{system::flow_operator_store::FlowOperatorStore, user::registry::UserVTableRegistry},
@@ -31,6 +32,7 @@ pub struct Services {
 	pub virtual_table_registry: UserVTableRegistry,
 	pub stats_reader: MetricReader<SingleStore>,
 	pub ioc: IocContainer,
+	pub auth_registry: AuthenticationRegistry,
 }
 
 impl Services {
@@ -55,13 +57,14 @@ impl Services {
 			virtual_table_registry: UserVTableRegistry::new(),
 			stats_reader,
 			ioc,
+			auth_registry: AuthenticationRegistry::new(),
 		}
 	}
 
 	#[allow(dead_code)]
 	pub fn testing() -> Arc<Self> {
 		let store = SingleStore::testing_memory();
-		Arc::new(Self::new(
+		let mut services = Self::new(
 			Catalog::testing(),
 			Clock::default(),
 			Functions::builder()
@@ -87,6 +90,8 @@ impl Services {
 			FlowOperatorStore::new(),
 			MetricReader::new(store),
 			IocContainer::new(),
-		))
+		);
+		services.auth_registry = AuthenticationRegistry::new();
+		Arc::new(services)
 	}
 }

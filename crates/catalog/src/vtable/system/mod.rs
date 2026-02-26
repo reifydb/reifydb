@@ -42,6 +42,7 @@ pub mod tables;
 pub mod tables_virtual;
 pub mod tags;
 pub mod types;
+pub mod user_authentications;
 pub mod user_roles;
 pub mod users;
 pub mod versions;

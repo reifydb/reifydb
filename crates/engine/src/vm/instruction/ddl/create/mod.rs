@@ -13,6 +13,7 @@ use reifydb_type::fragment::Fragment;
 
 use crate::flow::compiler::{compile_flow, compile_subscription_flow};
 
+pub mod authentication;
 pub mod deferred;
 pub mod dictionary;
 pub mod event;

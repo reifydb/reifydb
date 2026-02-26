@@ -140,6 +140,8 @@ pub enum PhysicalPlan {
 	Revoke(RevokeNode),
 	DropUser(DropUserNode),
 	DropRole(DropRoleNode),
+	CreateAuthentication(CreateAuthenticationNode),
+	DropAuthentication(DropAuthenticationNode),
 	CreateSecurityPolicy(CreateSecurityPolicyNode),
 	AlterSecurityPolicy(AlterSecurityPolicyNode),
 	DropSecurityPolicy(DropSecurityPolicyNode),
@@ -850,7 +852,6 @@ pub struct DropSeriesNode {
 #[derive(Debug, Clone)]
 pub struct CreateUserNode {
 	pub name: Fragment,
-	pub password: Fragment,
 }
 
 #[derive(Debug, Clone)]
@@ -879,6 +880,20 @@ pub struct DropUserNode {
 #[derive(Debug, Clone)]
 pub struct DropRoleNode {
 	pub name: Fragment,
+	pub if_exists: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateAuthenticationNode {
+	pub user: Fragment,
+	pub method: Fragment,
+	pub config: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropAuthenticationNode {
+	pub user: Fragment,
+	pub method: Fragment,
 	pub if_exists: bool,
 }
 

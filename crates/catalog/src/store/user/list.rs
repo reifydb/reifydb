@@ -30,8 +30,8 @@ mod tests {
 	#[test]
 	fn test_list_users() {
 		let mut txn = create_test_admin_transaction();
-		CatalogStore::create_user(&mut txn, "alice", "hash1").unwrap();
-		CatalogStore::create_user(&mut txn, "bob", "hash2").unwrap();
+		CatalogStore::create_user(&mut txn, "alice").unwrap();
+		CatalogStore::create_user(&mut txn, "bob").unwrap();
 		let users = CatalogStore::list_all_users(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(users.len(), 2);
 	}

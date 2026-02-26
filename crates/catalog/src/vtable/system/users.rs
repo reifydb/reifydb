@@ -46,13 +46,11 @@ impl VTable for Users {
 
 		let mut ids = ColumnData::uint8_with_capacity(users.len());
 		let mut names = ColumnData::utf8_with_capacity(users.len());
-		let mut password_hashes = ColumnData::utf8_with_capacity(users.len());
 		let mut enabled_flags = ColumnData::bool_with_capacity(users.len());
 
 		for u in users {
 			ids.push(u.id);
 			names.push(u.name.as_str());
-			password_hashes.push(u.password_hash.as_str());
 			enabled_flags.push(u.enabled);
 		}
 
@@ -64,10 +62,6 @@ impl VTable for Users {
 			Column {
 				name: Fragment::internal("name"),
 				data: names,
-			},
-			Column {
-				name: Fragment::internal("password_hash"),
-				data: password_hashes,
 			},
 			Column {
 				name: Fragment::internal("enabled"),

@@ -20,6 +20,7 @@ use crate::interface::catalog::{
 	sumtype::SumTypeDef,
 	table::TableDef,
 	user::{RoleDef, UserDef, UserRoleDef},
+	user_authentication::UserAuthenticationDef,
 	view::ViewDef,
 };
 
@@ -176,6 +177,13 @@ pub trait CatalogTrackMigrationEventChangeOperations {
 	fn track_migration_event_created(&mut self, event: MigrationEvent) -> reifydb_type::Result<()>;
 }
 
+/// Trait for tracking user authentication definition changes during a transaction.
+pub trait CatalogTrackUserAuthenticationChangeOperations {
+	fn track_user_authentication_def_created(&mut self, auth: UserAuthenticationDef) -> reifydb_type::Result<()>;
+
+	fn track_user_authentication_def_deleted(&mut self, auth: UserAuthenticationDef) -> reifydb_type::Result<()>;
+}
+
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackDictionaryChangeOperations
@@ -192,6 +200,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackSubscriptionChangeOperations
 	+ CatalogTrackSumTypeChangeOperations
 	+ CatalogTrackTableChangeOperations
+	+ CatalogTrackUserAuthenticationChangeOperations
 	+ CatalogTrackUserChangeOperations
 	+ CatalogTrackUserRoleChangeOperations
 	+ CatalogTrackViewChangeOperations

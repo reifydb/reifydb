@@ -43,7 +43,7 @@ mod tests {
 	#[test]
 	fn test_find_user_by_name() {
 		let mut txn = create_test_admin_transaction();
-		CatalogStore::create_user(&mut txn, "alice", "hash123").unwrap();
+		CatalogStore::create_user(&mut txn, "alice").unwrap();
 		let found = CatalogStore::find_user_by_name(&mut Transaction::Admin(&mut txn), "alice").unwrap();
 		assert!(found.is_some());
 		assert_eq!(found.unwrap().name, "alice");

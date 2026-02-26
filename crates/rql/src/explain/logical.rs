@@ -135,6 +135,18 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				n.if_exists
 			));
 		}
+		LogicalPlan::CreateAuthentication(n) => {
+			output.push_str(&format!("{}{} CreateAuthentication user={}\n", prefix, branch, n.user.text()));
+		}
+		LogicalPlan::DropAuthentication(n) => {
+			output.push_str(&format!(
+				"{}{} DropAuthentication user={} if_exists={}\n",
+				prefix,
+				branch,
+				n.user.text(),
+				n.if_exists
+			));
+		}
 		LogicalPlan::CreateSecurityPolicy(n) => {
 			let name = n.name.as_ref().map(|f| f.text()).unwrap_or("<unnamed>");
 			output.push_str(&format!(

@@ -66,6 +66,7 @@ pub enum KeyKind {
 	SecurityPolicyOp = 0x38,
 	Migration = 0x39,
 	MigrationEvent = 0x3A,
+	UserAuthentication = 0x3B,
 }
 
 impl From<KeyKind> for u8 {
@@ -136,6 +137,7 @@ impl TryFrom<u8> for KeyKind {
 			0x38 => Ok(Self::SecurityPolicyOp),
 			0x39 => Ok(Self::Migration),
 			0x3A => Ok(Self::MigrationEvent),
+			0x3B => Ok(Self::UserAuthentication),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

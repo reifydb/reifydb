@@ -10,6 +10,7 @@
 //! 3. Check MaterializedCatalog at transaction version
 //! 4. Fall back to storage as defensive measure
 
+pub mod authentication;
 pub mod column;
 pub mod dictionary;
 pub mod flow;

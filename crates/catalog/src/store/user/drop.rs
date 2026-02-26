@@ -43,7 +43,7 @@ mod tests {
 	#[test]
 	fn test_drop_user() {
 		let mut txn = create_test_admin_transaction();
-		let user = CatalogStore::create_user(&mut txn, "alice", "hash123").unwrap();
+		let user = CatalogStore::create_user(&mut txn, "alice").unwrap();
 		CatalogStore::drop_user(&mut txn, user.id).unwrap();
 		let found = CatalogStore::find_user_by_name(&mut Transaction::Admin(&mut txn), "alice").unwrap();
 		assert!(found.is_none());

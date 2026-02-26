@@ -447,6 +447,8 @@ pub enum LogicalPlan<'bump> {
 	Revoke(RevokeNode<'bump>),
 	DropUser(DropUserNode<'bump>),
 	DropRole(DropRoleNode<'bump>),
+	CreateAuthentication(CreateAuthenticationNode<'bump>),
+	DropAuthentication(DropAuthenticationNode<'bump>),
 	CreateSecurityPolicy(CreateSecurityPolicyNode<'bump>),
 	AlterSecurityPolicy(AlterSecurityPolicyNode<'bump>),
 	DropSecurityPolicy(DropSecurityPolicyNode<'bump>),
@@ -912,7 +914,6 @@ pub struct DropSubscriptionNode<'bump> {
 #[derive(Debug)]
 pub struct CreateUserNode<'bump> {
 	pub name: BumpFragment<'bump>,
-	pub password: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]
@@ -942,6 +943,19 @@ pub struct DropUserNode<'bump> {
 pub struct DropRoleNode<'bump> {
 	pub name: BumpFragment<'bump>,
 	pub if_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateAuthenticationNode<'bump> {
+	pub user: BumpFragment<'bump>,
+	pub entries: Vec<crate::ast::ast::AstAuthenticationEntry<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct DropAuthenticationNode<'bump> {
+	pub user: BumpFragment<'bump>,
+	pub if_exists: bool,
+	pub method: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]

@@ -6,6 +6,7 @@ pub mod alter;
 pub mod append;
 pub mod apply;
 pub mod assert;
+pub mod authentication;
 pub mod block;
 pub mod call;
 pub mod cast;

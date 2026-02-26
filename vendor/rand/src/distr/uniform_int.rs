@@ -13,12 +13,10 @@ use super::{Error, SampleBorrow, SampleUniform, UniformSampler};
 use crate::distr::utils::WideningMultiply;
 #[cfg(feature = "simd_support")]
 use crate::distr::{Distribution, StandardUniform};
-use crate::Rng;
+use crate::{Rng, RngExt};
 
 #[cfg(feature = "simd_support")]
-use core::simd::prelude::*;
-#[cfg(feature = "simd_support")]
-use core::simd::{LaneCount, SupportedLaneCount};
+use core::simd::{Select, prelude::*};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -89,7 +87,7 @@ macro_rules! uniform_int_impl {
             type X = $ty;
 
             #[inline] // if the range is constant, this helps LLVM to do the
-                      // calculations at compile-time.
+            // calculations at compile-time.
             fn new<B1, B2>(low_b: B1, high_b: B2) -> Result<Self, Error>
             where
                 B1: SampleBorrow<Self::X> + Sized,
@@ -104,7 +102,7 @@ macro_rules! uniform_int_impl {
             }
 
             #[inline] // if the range is constant, this helps LLVM to do the
-                      // calculations at compile-time.
+            // calculations at compile-time.
             fn new_inclusive<B1, B2>(low_b: B1, high_b: B2) -> Result<Self, Error>
             where
                 B1: SampleBorrow<Self::X> + Sized,
@@ -283,7 +281,6 @@ macro_rules! uniform_simd_int_impl {
         #[cfg(feature = "simd_support")]
         impl<const LANES: usize> SampleUniform for Simd<$ty, LANES>
         where
-            LaneCount<LANES>: SupportedLaneCount,
             Simd<$unsigned, LANES>:
                 WideningMultiply<Output = (Simd<$unsigned, LANES>, Simd<$unsigned, LANES>)>,
             StandardUniform: Distribution<Simd<$unsigned, LANES>>,
@@ -294,7 +291,6 @@ macro_rules! uniform_simd_int_impl {
         #[cfg(feature = "simd_support")]
         impl<const LANES: usize> UniformSampler for UniformInt<Simd<$ty, LANES>>
         where
-            LaneCount<LANES>: SupportedLaneCount,
             Simd<$unsigned, LANES>:
                 WideningMultiply<Output = (Simd<$unsigned, LANES>, Simd<$unsigned, LANES>)>,
             StandardUniform: Distribution<Simd<$unsigned, LANES>>,
@@ -437,7 +433,7 @@ impl UniformSampler for UniformUsize {
     type X = usize;
 
     #[inline] // if the range is constant, this helps LLVM to do the
-              // calculations at compile-time.
+    // calculations at compile-time.
     fn new<B1, B2>(low_b: B1, high_b: B2) -> Result<Self, Error>
     where
         B1: SampleBorrow<Self::X> + Sized,
@@ -453,7 +449,7 @@ impl UniformSampler for UniformUsize {
     }
 
     #[inline] // if the range is constant, this helps LLVM to do the
-              // calculations at compile-time.
+    // calculations at compile-time.
     fn new_inclusive<B1, B2>(low_b: B1, high_b: B2) -> Result<Self, Error>
     where
         B1: SampleBorrow<Self::X> + Sized,
@@ -882,7 +878,7 @@ mod tests {
         use serde_json;
         let serialized_on_32bit = r#"{"low":10,"range":91,"thresh":74}"#;
         let deserialized: UniformUsize =
-            serde_json::from_str(&serialized_on_32bit).expect("deserialization");
+            serde_json::from_str(serialized_on_32bit).expect("deserialization");
         assert_eq!(
             deserialized,
             UniformUsize::new_inclusive(10, 100).expect("creation")

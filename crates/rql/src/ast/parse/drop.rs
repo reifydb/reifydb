@@ -73,6 +73,9 @@ impl<'bump> Parser<'bump> {
 			}
 			return self.parse_drop_series(token);
 		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Authentication))?).is_some() {
+			return self.parse_drop_authentication(token);
+		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {
 			return self.parse_drop_user(token);
 		}
@@ -99,12 +102,12 @@ impl<'bump> Parser<'bump> {
 		let fragment = self.current()?.fragment.to_owned();
 		Err(Error::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
-				expected: "FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, or SERIES"
+				expected: "AUTHENTICATION, FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, or SERIES"
 					.to_string(),
 			},
 			message: format!(
 				"Unexpected token: expected {}, got {}",
-				"FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, or SERIES",
+				"AUTHENTICATION, FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, or SERIES",
 				fragment.text()
 			),
 			fragment,

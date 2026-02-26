@@ -46,6 +46,7 @@ pub mod tables;
 pub mod tables_virtual;
 pub mod tags;
 pub mod types;
+pub mod user_authentications;
 pub mod user_roles;
 pub mod users;
 pub mod versions;
@@ -91,6 +92,7 @@ use tables::tables;
 use tables_virtual::virtual_tables;
 use tags::tags;
 use types::types;
+use user_authentications::user_authentications;
 use user_roles::user_roles;
 use users::users;
 use versions::versions;
@@ -478,10 +480,9 @@ pub mod ids {
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAME: ColumnId = ColumnId(2);
-			pub const PASSWORD_HASH: ColumnId = ColumnId(3);
-			pub const ENABLED: ColumnId = ColumnId(4);
+			pub const ENABLED: ColumnId = ColumnId(3);
 
-			pub const ALL: [ColumnId; 4] = [ID, NAME, PASSWORD_HASH, ENABLED];
+			pub const ALL: [ColumnId; 3] = [ID, NAME, ENABLED];
 		}
 
 		pub mod roles {
@@ -516,6 +517,16 @@ pub mod ids {
 				[ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_OBJECT, ENABLED];
 		}
 
+		pub mod user_authentications {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const USER_ID: ColumnId = ColumnId(2);
+			pub const METHOD: ColumnId = ColumnId(3);
+
+			pub const ALL: [ColumnId; 3] = [ID, USER_ID, METHOD];
+		}
+
 		pub mod security_policy_operations {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -545,8 +556,9 @@ pub mod ids {
 		pub const SECURITY_POLICY: SequenceId = SequenceId(13);
 		pub const MIGRATION: SequenceId = SequenceId(14);
 		pub const MIGRATION_EVENT: SequenceId = SequenceId(15);
+		pub const USER_AUTHENTICATION: SequenceId = SequenceId(16);
 
-		pub const ALL: [SequenceId; 15] = [
+		pub const ALL: [SequenceId; 16] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -562,6 +574,7 @@ pub mod ids {
 			SECURITY_POLICY,
 			MIGRATION,
 			MIGRATION_EVENT,
+			USER_AUTHENTICATION,
 		];
 	}
 
@@ -613,8 +626,9 @@ pub mod ids {
 		pub const SECURITY_POLICIES: VTableId = VTableId(43);
 		pub const SECURITY_POLICY_OPERATIONS: VTableId = VTableId(44);
 		pub const MIGRATIONS: VTableId = VTableId(45);
+		pub const USER_AUTHENTICATIONS: VTableId = VTableId(46);
 
-		pub const ALL: [VTableId; 45] = [
+		pub const ALL: [VTableId; 46] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -660,6 +674,7 @@ pub mod ids {
 			SECURITY_POLICIES,
 			SECURITY_POLICY_OPERATIONS,
 			MIGRATIONS,
+			USER_AUTHENTICATIONS,
 		];
 	}
 }
@@ -909,5 +924,10 @@ impl SystemCatalog {
 	/// Get the migrations virtual table definition
 	pub fn get_system_migrations_table_def() -> Arc<VTableDef> {
 		migrations()
+	}
+
+	/// Get the user_authentications virtual table definition
+	pub fn get_system_user_authentications_table_def() -> Arc<VTableDef> {
+		user_authentications()
 	}
 }

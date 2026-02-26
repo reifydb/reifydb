@@ -23,6 +23,7 @@ use reifydb_core::{
 			sumtype::SumTypeDef,
 			table::TableDef,
 			user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
+			user_authentication::{UserAuthenticationDef, UserAuthenticationId},
 			view::ViewDef,
 		},
 		store::{MultiVersionBatch, MultiVersionValues},
@@ -41,8 +42,8 @@ use crate::{
 		TransactionalHandlerChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
 		TransactionalProcedureChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
 		TransactionalSecurityPolicyChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalUserChanges,
-		TransactionalUserRoleChanges, TransactionalViewChanges,
+		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalUserAuthenticationChanges,
+		TransactionalUserChanges, TransactionalUserRoleChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -426,6 +427,24 @@ impl TransactionalMigrationChanges for QueryTransaction {
 	}
 
 	fn is_migration_deleted_by_name(&self, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalUserAuthenticationChanges for QueryTransaction {
+	fn find_user_authentication(&self, _id: UserAuthenticationId) -> Option<&UserAuthenticationDef> {
+		None
+	}
+
+	fn find_user_authentication_by_user_and_method(
+		&self,
+		_user_id: UserId,
+		_method: &str,
+	) -> Option<&UserAuthenticationDef> {
+		None
+	}
+
+	fn is_user_authentication_deleted(&self, _id: UserAuthenticationId) -> bool {
 		false
 	}
 }

@@ -11,6 +11,7 @@ use reifydb_core::{
 		},
 		security_policy::SecurityPolicyId,
 		user::{RoleId, UserId},
+		user_authentication::UserAuthenticationId,
 	},
 	key::system_sequence::SystemSequenceKey,
 };
@@ -21,7 +22,7 @@ use crate::{
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
 		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION, MIGRATION_EVENT, NAMESPACE,
-		PRIMARY_KEY, PROCEDURE, ROLE, SECURITY_POLICY, SOURCE, USER,
+		PRIMARY_KEY, PROCEDURE, ROLE, SECURITY_POLICY, SOURCE, USER, USER_AUTHENTICATION,
 	},
 };
 
@@ -54,6 +55,8 @@ static SECURITY_POLICY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::e
 static MIGRATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(MIGRATION));
 
 static MIGRATION_EVENT_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(MIGRATION_EVENT));
+
+static USER_AUTHENTICATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(USER_AUTHENTICATION));
 
 pub(crate) struct SystemSequence {}
 
@@ -124,5 +127,9 @@ impl SystemSequence {
 
 	pub(crate) fn next_migration_event_id(txn: &mut AdminTransaction) -> crate::Result<MigrationEventId> {
 		GeneratorU64::next(txn, &MIGRATION_EVENT_KEY, None).map(MigrationEventId)
+	}
+
+	pub(crate) fn next_user_authentication_id(txn: &mut AdminTransaction) -> crate::Result<UserAuthenticationId> {
+		GeneratorU64::next(txn, &USER_AUTHENTICATION_KEY, None).map(|v| v)
 	}
 }

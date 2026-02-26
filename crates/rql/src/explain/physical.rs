@@ -139,6 +139,27 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				&format!("DropRole name={} if_exists={}", n.name.text(), n.if_exists),
 			);
 		}
+		PhysicalPlan::CreateAuthentication(n) => {
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("CreateAuthentication user={} method={}", n.user.text(), n.method.text()),
+			);
+		}
+		PhysicalPlan::DropAuthentication(n) => {
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!(
+					"DropAuthentication user={} method={} if_exists={}",
+					n.user.text(),
+					n.method.text(),
+					n.if_exists
+				),
+			);
+		}
 		PhysicalPlan::CreateSecurityPolicy(n) => {
 			let name = n.name.as_ref().map(|f| f.text()).unwrap_or("<unnamed>");
 			write_node_header(

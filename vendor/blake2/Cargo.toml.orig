@@ -1,0 +1,34 @@
+[package]
+name = "blake2"
+version = "0.11.0-rc.5"
+description = "BLAKE2 hash functions"
+authors = ["RustCrypto Developers"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+edition = "2024"
+rust-version = "1.85"
+documentation = "https://docs.rs/blake2"
+repository = "https://github.com/RustCrypto/hashes"
+keywords = ["blake2", "hash", "digest"]
+categories = ["cryptography", "no-std"]
+
+[dependencies]
+digest = { version = "0.11.0-rc.11", features = ["mac"] }
+
+[dev-dependencies]
+digest = { version = "0.11.0-rc.11", features = ["dev"] }
+hex-literal = "1"
+base16ct = { version = "1", features = ["alloc"] }
+
+[features]
+default = ["alloc"]
+alloc = ["digest/alloc"]
+zeroize = ["digest/zeroize"]
+reset = [] # Enable reset functionality
+#simd = []
+#simd_opt = ["simd"]
+#simd_asm = ["simd_opt"]
+size_opt = [] # Optimize for code size. Removes some `inline(always)`
+
+[package.metadata.docs.rs]
+all-features = true

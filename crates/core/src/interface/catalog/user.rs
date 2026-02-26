@@ -10,7 +10,6 @@ pub type RoleId = u64;
 pub struct UserDef {
 	pub id: UserId,
 	pub name: String,
-	pub password_hash: String,
 	pub enabled: bool,
 }
 

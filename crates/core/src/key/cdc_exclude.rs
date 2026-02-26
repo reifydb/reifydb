@@ -122,6 +122,7 @@ pub mod tests {
 			KeyKind::SecurityPolicy => {}
 			KeyKind::SecurityPolicyOp => {}
 			KeyKind::Migration => {}
+			KeyKind::UserAuthentication => {}
 			KeyKind::MigrationEvent => {} /* When adding a new variant, add it here.
 			                               * The compiler will error if you forget.
 			                               * Then add a test and update should_exclude_from_cdc() if
@@ -353,5 +354,86 @@ pub mod tests {
 	#[test]
 	fn test_include_variant_handler() {
 		assert!(!should_exclude_from_cdc(KeyKind::VariantHandler));
+	}
+
+	#[test]
+	fn test_include_schema() {
+		assert!(!should_exclude_from_cdc(KeyKind::Schema));
+	}
+
+	#[test]
+	fn test_include_sum_type() {
+		assert!(!should_exclude_from_cdc(KeyKind::SumType));
+	}
+
+	#[test]
+	fn test_include_namespace_sum_type() {
+		assert!(!should_exclude_from_cdc(KeyKind::NamespaceSumType));
+	}
+
+	#[test]
+	fn test_include_schema_field() {
+		assert!(!should_exclude_from_cdc(KeyKind::SchemaField));
+	}
+
+	#[test]
+	fn test_include_series() {
+		assert!(!should_exclude_from_cdc(KeyKind::Series));
+	}
+
+	#[test]
+	fn test_include_namespace_series() {
+		assert!(!should_exclude_from_cdc(KeyKind::NamespaceSeries));
+	}
+
+	#[test]
+	fn test_include_series_metadata() {
+		assert!(!should_exclude_from_cdc(KeyKind::SeriesMetadata));
+	}
+
+	#[test]
+	fn test_include_user() {
+		assert!(!should_exclude_from_cdc(KeyKind::User));
+	}
+
+	#[test]
+	fn test_include_role() {
+		assert!(!should_exclude_from_cdc(KeyKind::Role));
+	}
+
+	#[test]
+	fn test_include_user_role() {
+		assert!(!should_exclude_from_cdc(KeyKind::UserRole));
+	}
+
+	#[test]
+	fn test_include_user_authentication() {
+		assert!(!should_exclude_from_cdc(KeyKind::UserAuthentication));
+	}
+
+	#[test]
+	fn test_include_security_policy() {
+		assert!(!should_exclude_from_cdc(KeyKind::SecurityPolicy));
+	}
+
+	#[test]
+	fn test_include_security_policy_op() {
+		assert!(!should_exclude_from_cdc(KeyKind::SecurityPolicyOp));
+	}
+
+	#[test]
+	fn test_include_migration() {
+		assert!(!should_exclude_from_cdc(KeyKind::Migration));
+	}
+
+	#[test]
+	fn test_include_migration_event() {
+		assert!(!should_exclude_from_cdc(KeyKind::MigrationEvent));
+	}
+
+	// Version tracking (excluded)
+	#[test]
+	fn test_exclude_flow_version() {
+		assert!(should_exclude_from_cdc(KeyKind::FlowVersion));
 	}
 }

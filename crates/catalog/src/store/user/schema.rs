@@ -8,14 +8,12 @@ pub(crate) mod user {
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;
-	pub(crate) const PASSWORD_HASH: usize = 2;
-	pub(crate) const ENABLED: usize = 3;
+	pub(crate) const ENABLED: usize = 2;
 
 	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
 		Schema::new(vec![
 			SchemaField::unconstrained("id", Type::Uint8),
 			SchemaField::unconstrained("name", Type::Utf8),
-			SchemaField::unconstrained("password_hash", Type::Utf8),
 			SchemaField::unconstrained("enabled", Type::Boolean),
 		])
 	});
