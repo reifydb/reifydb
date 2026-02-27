@@ -4,8 +4,8 @@
 use reifydb_core::interface::catalog::{
 	column::ColumnDef,
 	id::ColumnId,
-	policy::{ColumnPolicy, ColumnPolicyKind},
 	primitive::PrimitiveId,
+	property::{ColumnProperty, ColumnPropertyKind},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use tracing::instrument;
@@ -34,12 +34,12 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::column::create_policy", level = "debug", skip(self, txn))]
-	pub fn create_column_policy(
+	pub fn create_column_property(
 		&self,
 		txn: &mut AdminTransaction,
 		column: ColumnId,
-		policy: ColumnPolicyKind,
-	) -> crate::Result<ColumnPolicy> {
-		CatalogStore::create_column_policy(txn, column, policy)
+		policy: ColumnPropertyKind,
+	) -> crate::Result<ColumnProperty> {
+		CatalogStore::create_column_property(txn, column, policy)
 	}
 }

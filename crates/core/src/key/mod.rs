@@ -3,7 +3,6 @@
 
 use cdc_consumer::CdcConsumerKey;
 use column::ColumnKey;
-use column_policy::ColumnPolicyKey;
 use column_sequence::ColumnSequenceKey;
 use columns::ColumnsKey;
 use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey, DictionarySequenceKey};
@@ -25,6 +24,7 @@ use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
 use policy::SecurityPolicyKey;
 use primary_key::PrimaryKeyKey;
+use property::ColumnPropertyKey;
 use retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use role::RoleKey;
@@ -53,7 +53,6 @@ use crate::{
 pub mod cdc_consumer;
 pub mod cdc_exclude;
 pub mod column;
-pub mod column_policy;
 pub mod column_sequence;
 pub mod columns;
 pub mod dictionary;
@@ -80,6 +79,7 @@ pub mod namespace_table;
 pub mod namespace_view;
 pub mod policy;
 pub mod primary_key;
+pub mod property;
 pub mod retention_policy;
 pub mod ringbuffer;
 pub mod role;
@@ -122,7 +122,7 @@ pub enum Key {
 	Row(RowKey),
 	RowSequence(RowSequenceKey),
 	TableColumnSequence(ColumnSequenceKey),
-	TableColumnPolicy(ColumnPolicyKey),
+	TableColumnProperty(ColumnPropertyKey),
 	SystemVersion(SystemVersionKey),
 	TransactionVersion(TransactionVersionKey),
 	View(ViewKey),
@@ -166,7 +166,7 @@ impl Key {
 			Key::Flow(key) => key.encode(),
 			Key::Column(key) => key.encode(),
 			Key::Columns(key) => key.encode(),
-			Key::TableColumnPolicy(key) => key.encode(),
+			Key::TableColumnProperty(key) => key.encode(),
 			Key::Index(key) => key.encode(),
 			Key::IndexEntry(key) => key.encode(),
 			Key::FlowNodeState(key) => key.encode(),
@@ -250,7 +250,7 @@ impl Key {
 		match kind {
 			KeyKind::CdcConsumer => CdcConsumerKey::decode(&key).map(Self::CdcConsumer),
 			KeyKind::Columns => ColumnsKey::decode(&key).map(Self::Columns),
-			KeyKind::ColumnPolicy => ColumnPolicyKey::decode(&key).map(Self::TableColumnPolicy),
+			KeyKind::ColumnProperty => ColumnPropertyKey::decode(&key).map(Self::TableColumnProperty),
 			KeyKind::Namespace => NamespaceKey::decode(&key).map(Self::Namespace),
 			KeyKind::NamespaceTable => NamespaceTableKey::decode(&key).map(Self::NamespaceTable),
 			KeyKind::NamespaceView => NamespaceViewKey::decode(&key).map(Self::NamespaceView),
@@ -353,15 +353,15 @@ pub mod tests {
 	use crate::{
 		interface::catalog::{
 			flow::FlowNodeId,
-			id::{ColumnId, ColumnPolicyId, IndexId, NamespaceId, SequenceId, TableId},
+			id::{ColumnId, ColumnPropertyId, IndexId, NamespaceId, SequenceId, TableId},
 			primitive::PrimitiveId,
 		},
 		key::{
-			Key, column::ColumnKey, column_policy::ColumnPolicyKey, column_sequence::ColumnSequenceKey,
-			columns::ColumnsKey, flow_node_state::FlowNodeStateKey, index::IndexKey,
-			namespace::NamespaceKey, namespace_sumtype::NamespaceSumTypeKey,
-			namespace_table::NamespaceTableKey, row::RowKey, row_sequence::RowSequenceKey,
-			sumtype::SumTypeKey, system_sequence::SystemSequenceKey, table::TableKey,
+			Key, column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey,
+			flow_node_state::FlowNodeStateKey, index::IndexKey, namespace::NamespaceKey,
+			namespace_sumtype::NamespaceSumTypeKey, namespace_table::NamespaceTableKey,
+			property::ColumnPropertyKey, row::RowKey, row_sequence::RowSequenceKey, sumtype::SumTypeKey,
+			system_sequence::SystemSequenceKey, table::TableKey,
 			transaction_version::TransactionVersionKey,
 		},
 	};
@@ -403,19 +403,19 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_column_policy() {
-		let key = Key::TableColumnPolicy(ColumnPolicyKey {
+	fn test_column_property() {
+		let key = Key::TableColumnProperty(ColumnPropertyKey {
 			column: ColumnId(42),
-			policy: ColumnPolicyId(999_999),
+			property: ColumnPropertyId(999_999),
 		});
 
 		let encoded = key.encode();
 		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
-			Key::TableColumnPolicy(decoded_inner) => {
+			Key::TableColumnProperty(decoded_inner) => {
 				assert_eq!(decoded_inner.column, 42);
-				assert_eq!(decoded_inner.policy, 999_999);
+				assert_eq!(decoded_inner.property, 999_999);
 			}
 			_ => unreachable!(),
 		}

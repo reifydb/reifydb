@@ -72,7 +72,7 @@ mod tests {
 				id: ColumnId(id),
 				name: name.to_string(),
 				constraint: TypeConstraint::unconstrained(ty),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(index),
 				auto_increment: false,
 				dictionary_id: None,

@@ -9,9 +9,9 @@ pub mod handler;
 pub mod index;
 pub mod migration;
 pub mod namespace;
-pub mod policy;
 pub mod primary_key;
 pub mod procedure;
+pub mod property;
 pub mod ringbuffer;
 pub mod series;
 pub mod subscription;
@@ -49,7 +49,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Index(node) => self.compile_create_index(node),
 			AstCreate::Subscription(node) => self.compile_create_subscription(node, tx),
 			AstCreate::PrimaryKey(node) => self.compile_create_primary_key(node, tx),
-			AstCreate::Policy(node) => self.compile_create_policy(node, tx),
+			AstCreate::ColumnProperty(node) => self.compile_create_column_property(node, tx),
 			AstCreate::Procedure(node) => self.compile_create_procedure(node),
 			AstCreate::Event(node) => self.compile_create_event(node),
 			AstCreate::Tag(node) => self.compile_create_tag(node),

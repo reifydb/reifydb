@@ -59,7 +59,7 @@ pub mod tests {
 				primitive_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
 				dictionary_id: None,

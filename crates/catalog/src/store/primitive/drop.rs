@@ -4,8 +4,8 @@
 use reifydb_core::{
 	interface::catalog::{id::PrimaryKeyId, primitive::PrimitiveId},
 	key::{
-		column::ColumnKey, column_policy::ColumnPolicyKey, column_sequence::ColumnSequenceKey,
-		columns::ColumnsKey, primary_key::PrimaryKeyKey, retention_policy::PrimitiveRetentionPolicyKey,
+		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, primary_key::PrimaryKeyKey,
+		property::ColumnPropertyKey, retention_policy::PrimitiveRetentionPolicyKey,
 		row_sequence::RowSequenceKey,
 	},
 };
@@ -37,7 +37,7 @@ pub(crate) fn drop_primitive_metadata(
 	// Step 2: For each column, clean up policies, sequence, and definition
 	for (col_key, col_id) in &col_entries {
 		// Delete column policies
-		let policy_range = ColumnPolicyKey::full_scan(*col_id);
+		let policy_range = ColumnPropertyKey::full_scan(*col_id);
 		let mut policy_stream = txn.range(policy_range, 1024)?;
 		let mut policy_keys = Vec::new();
 		while let Some(entry) = policy_stream.next() {

@@ -1112,7 +1112,7 @@ impl Vm {
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::CreatePolicy(node) => {
+				Instruction::CreateColumnProperty(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
@@ -1121,11 +1121,12 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::policy::create_policy(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns =
+						super::instruction::ddl::create::property::create_column_property(
+							services,
+							txn,
+							node.clone(),
+						)?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateProcedure(node) => {

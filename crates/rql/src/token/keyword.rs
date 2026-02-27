@@ -117,6 +117,7 @@ Table  => "TABLE",
 Ringbuffer => "RINGBUFFER",
 Column => "COLUMN",
 Policy => "POLICY",
+Property => "PROPERTY",
 View => "VIEW",
 Deferred => "DEFERRED",
 Transactional => "TRANSACTIONAL",
@@ -239,6 +240,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("RINGBUFFER", Keyword::Ringbuffer);
 	map.insert("COLUMN", Keyword::Column);
 	map.insert("POLICY", Keyword::Policy);
+	map.insert("PROPERTY", Keyword::Property);
 	map.insert("VIEW", Keyword::View);
 	map.insert("DEFERRED", Keyword::Deferred);
 	map.insert("TRANSACTIONAL", Keyword::Transactional);
@@ -441,6 +443,7 @@ pub mod tests {
 	test_keyword_ringbuffer => (Ringbuffer, "RINGBUFFER"),
 	test_keyword_column => (Column, "COLUMN"),
 	test_keyword_policy => (Policy, "POLICY"),
+	test_keyword_property => (Property, "PROPERTY"),
 	test_keyword_view => (View, "VIEW"),
 	test_keyword_deferred => (Deferred, "DEFERRED"),
 	test_keyword_transactional => (Transactional, "TRANSACTIONAL"),

@@ -79,7 +79,7 @@ fn expand_sumtype_columns(
 						Type::Uint1,
 						Constraint::SumType(*id),
 					),
-					policies: vec![],
+					properties: vec![],
 					auto_increment: false,
 					dictionary_id: None,
 				});
@@ -94,7 +94,7 @@ fn expand_sumtype_columns(
 							)),
 							fragment: col.fragment.clone(),
 							constraint: TypeConstraint::unconstrained(field_type),
-							policies: vec![],
+							properties: vec![],
 							auto_increment: false,
 							dictionary_id: None,
 						});

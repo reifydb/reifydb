@@ -810,7 +810,7 @@ pub enum AstCreate<'bump> {
 	Enum(AstCreateSumType<'bump>),
 	Index(AstCreateIndex<'bump>),
 	PrimaryKey(AstCreatePrimaryKey<'bump>),
-	Policy(AstCreatePolicy<'bump>),
+	ColumnProperty(AstCreateColumnProperty<'bump>),
 	Procedure(AstCreateProcedure<'bump>),
 	Event(AstCreateEvent<'bump>),
 	Tag(AstCreateTag<'bump>),
@@ -1224,7 +1224,7 @@ impl<'bump> AstCreate<'bump> {
 				token,
 				..
 			}) => token,
-			AstCreate::Policy(AstCreatePolicy {
+			AstCreate::ColumnProperty(AstCreateColumnProperty {
 				token,
 				..
 			}) => token,
@@ -1627,14 +1627,14 @@ pub struct AstSort<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstPolicyKind {
+pub enum AstColumnPropertyKind {
 	Saturation,
 	Default,
 }
 
 #[derive(Debug)]
-pub struct AstPolicyEntry<'bump> {
-	pub kind: AstPolicyKind,
+pub struct AstColumnPropertyEntry<'bump> {
+	pub kind: AstColumnPropertyKind,
 	pub value: BumpBox<'bump, Ast<'bump>>,
 }
 
@@ -1646,10 +1646,10 @@ pub struct AstCreatePrimaryKey<'bump> {
 }
 
 #[derive(Debug)]
-pub struct AstCreatePolicy<'bump> {
+pub struct AstCreateColumnProperty<'bump> {
 	pub token: Token<'bump>,
 	pub column: MaybeQualifiedColumnIdentifier<'bump>,
-	pub policies: Vec<AstPolicyEntry<'bump>>,
+	pub properties: Vec<AstColumnPropertyEntry<'bump>>,
 }
 
 #[derive(Debug)]

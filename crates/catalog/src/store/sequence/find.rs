@@ -25,7 +25,7 @@ impl CatalogStore {
 			crate::system::ids::sequences::NAMESPACE => (NamespaceId(1), "namespace"),
 			crate::system::ids::sequences::SOURCE => (NamespaceId(1), "source"),
 			crate::system::ids::sequences::COLUMN => (NamespaceId(1), "column"),
-			crate::system::ids::sequences::COLUMN_POLICY => (NamespaceId(1), "column_policy"),
+			crate::system::ids::sequences::COLUMN_PROPERTY => (NamespaceId(1), "column_property"),
 			crate::system::ids::sequences::FLOW => (NamespaceId(1), "flow"),
 			crate::system::ids::sequences::FLOW_NODE => (NamespaceId(1), "flow_node"),
 			crate::system::ids::sequences::FLOW_EDGE => (NamespaceId(1), "flow_edge"),

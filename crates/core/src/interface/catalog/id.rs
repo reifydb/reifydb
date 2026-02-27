@@ -155,9 +155,9 @@ impl<'de> Deserialize<'de> for IndexId {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct ColumnPolicyId(pub u64);
+pub struct ColumnPropertyId(pub u64);
 
-impl Deref for ColumnPolicyId {
+impl Deref for ColumnPropertyId {
 	type Target = u64;
 
 	fn deref(&self) -> &Self::Target {
@@ -165,19 +165,19 @@ impl Deref for ColumnPolicyId {
 	}
 }
 
-impl PartialEq<u64> for ColumnPolicyId {
+impl PartialEq<u64> for ColumnPropertyId {
 	fn eq(&self, other: &u64) -> bool {
 		self.0.eq(other)
 	}
 }
 
-impl From<ColumnPolicyId> for u64 {
-	fn from(value: ColumnPolicyId) -> Self {
+impl From<ColumnPropertyId> for u64 {
+	fn from(value: ColumnPropertyId) -> Self {
 		value.0
 	}
 }
 
-impl Serialize for ColumnPolicyId {
+impl Serialize for ColumnPropertyId {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -186,22 +186,22 @@ impl Serialize for ColumnPolicyId {
 	}
 }
 
-impl<'de> Deserialize<'de> for ColumnPolicyId {
-	fn deserialize<D>(deserializer: D) -> Result<ColumnPolicyId, D::Error>
+impl<'de> Deserialize<'de> for ColumnPropertyId {
+	fn deserialize<D>(deserializer: D) -> Result<ColumnPropertyId, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
 		struct U64Visitor;
 
 		impl Visitor<'_> for U64Visitor {
-			type Value = ColumnPolicyId;
+			type Value = ColumnPropertyId;
 
 			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
 			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
-				Ok(ColumnPolicyId(value))
+				Ok(ColumnPropertyId(value))
 			}
 		}
 

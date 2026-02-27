@@ -58,7 +58,7 @@ impl VTable for TablesVirtual {
 			(vtable::VIEWS, "views"),
 			(vtable::FLOWS, "flows"),
 			(vtable::COLUMNS, "columns"),
-			(vtable::COLUMN_POLICIES, "column_policies"),
+			(vtable::COLUMN_PROPERTIES, "column_properties"),
 			(vtable::PRIMARY_KEYS, "primary_keys"),
 			(vtable::PRIMARY_KEY_COLUMNS, "primary_key_columns"),
 			(vtable::VERSIONS, "versions"),

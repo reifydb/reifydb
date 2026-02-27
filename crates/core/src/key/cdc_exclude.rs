@@ -73,7 +73,7 @@ pub mod tests {
 			KeyKind::Columns => {}
 			KeyKind::Column => {}
 			KeyKind::RowSequence => {}
-			KeyKind::ColumnPolicy => {}
+			KeyKind::ColumnProperty => {}
 			KeyKind::SystemVersion => {}
 			KeyKind::TransactionVersion => {}
 			KeyKind::Index => {}
@@ -247,8 +247,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_column_policy() {
-		assert!(!should_exclude_from_cdc(KeyKind::ColumnPolicy));
+	fn test_include_column_property() {
+		assert!(!should_exclude_from_cdc(KeyKind::ColumnProperty));
 	}
 
 	#[test]

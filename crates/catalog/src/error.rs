@@ -104,7 +104,7 @@ pub enum CatalogError {
 	},
 
 	#[error("policy `{policy}` already exists for column `{column}`")]
-	ColumnPolicyAlreadyExists {
+	ColumnPropertyAlreadyExists {
 		policy: String,
 		column: String,
 	},
@@ -492,7 +492,7 @@ impl IntoDiagnostic for CatalogError {
 				operator_chain: None,
 			},
 
-			CatalogError::ColumnPolicyAlreadyExists {
+			CatalogError::ColumnPropertyAlreadyExists {
 				policy,
 				column,
 			} => Diagnostic {

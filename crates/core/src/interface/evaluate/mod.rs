@@ -4,7 +4,7 @@
 use reifydb_type::{error::NumberOutOfRangeDescriptor, value::r#type::Type};
 
 use crate::interface::{
-	catalog::policy::ColumnPolicyKind,
+	catalog::property::ColumnPropertyKind,
 	resolved::{ResolvedColumn, resolved_column_to_number_descriptor},
 };
 
@@ -18,7 +18,7 @@ pub enum TargetColumn {
 		source_name: Option<String>,
 		column_name: Option<String>,
 		column_type: Type,
-		policies: Vec<ColumnPolicyKind>,
+		properties: Vec<ColumnPropertyKind>,
 	},
 }
 
@@ -34,14 +34,14 @@ impl TargetColumn {
 		}
 	}
 
-	/// Get the column policies
-	pub fn policies(&self) -> Vec<ColumnPolicyKind> {
+	/// Get the column properties
+	pub fn properties(&self) -> Vec<ColumnPropertyKind> {
 		match self {
-			Self::Resolved(col) => col.policies(),
+			Self::Resolved(col) => col.properties(),
 			Self::Partial {
-				policies,
+				properties,
 				..
-			} => policies.clone(),
+			} => properties.clone(),
 		}
 	}
 

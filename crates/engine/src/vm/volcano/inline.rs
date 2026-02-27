@@ -622,10 +622,10 @@ impl<'a> InlineDataNode {
 							source_name: Some(source.identifier().text().to_string()),
 							column_name: Some(tc.name.clone()),
 							column_type: tc.constraint.get_type(),
-							policies: tc
-								.policies
+							properties: tc
+								.properties
 								.iter()
-								.map(|cp| cp.policy.clone())
+								.map(|cp| cp.property.clone())
 								.collect(),
 						}),
 						columns: Columns::empty(),

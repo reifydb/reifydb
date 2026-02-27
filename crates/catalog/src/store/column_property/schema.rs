@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-pub(crate) mod column_policy {
+pub(crate) mod column_property {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::schema::{Schema, SchemaField};
 	use reifydb_type::value::r#type::Type;

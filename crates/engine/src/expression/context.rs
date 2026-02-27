@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use reifydb_core::{
 	interface::{
-		catalog::policy::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
+		catalog::property::{ColumnPropertyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
 		evaluate::TargetColumn,
 	},
 	value::column::columns::Columns,
@@ -55,8 +55,8 @@ impl<'a> EvalContext<'a> {
 		self.target
 			.as_ref()
 			.and_then(|t| {
-				t.policies().into_iter().find_map(|p| match p {
-					ColumnPolicyKind::Saturation(policy) => Some(policy),
+				t.properties().into_iter().find_map(|p| match p {
+					ColumnPropertyKind::Saturation(policy) => Some(policy),
 				})
 			})
 			.unwrap_or(DEFAULT_COLUMN_SATURATION_POLICY.clone())

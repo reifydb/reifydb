@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{policy::ColumnPolicyKind, primitive::PrimitiveId},
+	interface::catalog::{primitive::PrimitiveId, property::ColumnPropertyKind},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -64,7 +64,7 @@ pub(crate) struct ColumnToCreate {
 	pub primitive_name: String, // FIXME refactor to source_name
 	pub column: String,
 	pub constraint: TypeConstraint,
-	pub policies: Vec<ColumnPolicyKind>,
+	pub properties: Vec<ColumnPropertyKind>,
 	pub index: ColumnIndex,
 	pub auto_increment: bool,
 	pub dictionary_id: Option<DictionaryId>,
@@ -140,8 +140,8 @@ impl CatalogStore {
 		primitive_column::SCHEMA.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
 		txn.set(&ColumnKey::encoded(source, id), row)?;
 
-		for policy in column_to_create.policies {
-			Self::create_column_policy(txn, id, policy)?;
+		for policy in column_to_create.properties {
+			Self::create_column_property(txn, id, policy)?;
 		}
 
 		Ok(ColumnDef {
@@ -149,7 +149,7 @@ impl CatalogStore {
 			name: column_to_create.column,
 			constraint: column_to_create.constraint,
 			index: column_to_create.index,
-			policies: Self::list_column_policies(&mut Transaction::Admin(&mut *txn), id)?,
+			properties: Self::list_column_properties(&mut Transaction::Admin(&mut *txn), id)?,
 			auto_increment: column_to_create.auto_increment,
 			dictionary_id: column_to_create.dictionary_id,
 		})
@@ -182,7 +182,7 @@ pub mod test {
 				primitive_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
 				dictionary_id: None,
@@ -199,7 +199,7 @@ pub mod test {
 				primitive_name: "test_table".to_string(),
 				column: "col_2".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
 				dictionary_id: None,
@@ -236,7 +236,7 @@ pub mod test {
 				primitive_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
 				dictionary_id: None,
@@ -268,7 +268,7 @@ pub mod test {
 				primitive_name: "test_table".to_string(),
 				column: "name".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Utf8),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
 				dictionary_id: None,
@@ -290,7 +290,7 @@ pub mod test {
 				primitive_name: "test_table".to_string(),
 				column: "is_active".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
 				dictionary_id: None,
@@ -310,7 +310,7 @@ pub mod test {
 				primitive_name: "test_table".to_string(),
 				column: "price".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Float8),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
 				dictionary_id: None,
@@ -335,7 +335,7 @@ pub mod test {
 				primitive_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
 				dictionary_id: None,
@@ -353,7 +353,7 @@ pub mod test {
 				primitive_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
 				dictionary_id: None,

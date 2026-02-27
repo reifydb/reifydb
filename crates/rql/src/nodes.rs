@@ -58,7 +58,7 @@ pub enum PhysicalPlan {
 	CreateSumType(CreateSumTypeNode),
 	CreateSubscription(CreateSubscriptionNode),
 	CreatePrimaryKey(CreatePrimaryKeyNode),
-	CreatePolicy(CreatePolicyNode),
+	CreateColumnProperty(CreateColumnPropertyNode),
 	CreateProcedure(CreateProcedureNode),
 	CreateSeries(CreateSeriesNode),
 	CreateEvent(CreateEventNode),
@@ -360,11 +360,11 @@ pub struct DispatchNode {
 
 // Create Policy node
 #[derive(Debug, Clone)]
-pub struct CreatePolicyNode {
+pub struct CreateColumnPropertyNode {
 	pub namespace: ResolvedNamespace,
 	pub table: Fragment,
 	pub column: Fragment,
-	pub policies: Vec<reifydb_core::interface::catalog::policy::ColumnPolicyKind>,
+	pub properties: Vec<reifydb_core::interface::catalog::property::ColumnPropertyKind>,
 }
 
 #[derive(Debug, Clone)]

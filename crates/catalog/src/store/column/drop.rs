@@ -4,8 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{id::ColumnId, primitive::PrimitiveId},
 	key::{
-		column::ColumnKey, column_policy::ColumnPolicyKey, column_sequence::ColumnSequenceKey,
-		columns::ColumnsKey,
+		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, property::ColumnPropertyKey,
 	},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -19,7 +18,7 @@ impl CatalogStore {
 		column_id: ColumnId,
 	) -> crate::Result<()> {
 		// Delete column policies
-		let policy_range = ColumnPolicyKey::full_scan(column_id);
+		let policy_range = ColumnPropertyKey::full_scan(column_id);
 		let mut policy_stream = txn.range(policy_range, 1024)?;
 		let mut policy_keys = Vec::new();
 		while let Some(entry) = policy_stream.next() {

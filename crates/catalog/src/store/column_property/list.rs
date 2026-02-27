@@ -3,45 +3,45 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		id::{ColumnId, ColumnPolicyId},
-		policy::{ColumnPolicy, ColumnPolicyKind},
+		id::{ColumnId, ColumnPropertyId},
+		property::{ColumnProperty, ColumnPropertyKind},
 	},
-	key::column_policy::ColumnPolicyKey,
+	key::property::ColumnPropertyKey,
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::column_policy::schema::column_policy};
+use crate::{CatalogStore, store::column_property::schema::column_property};
 
 impl CatalogStore {
-	pub(crate) fn list_column_policies(
+	pub(crate) fn list_column_properties(
 		rx: &mut Transaction<'_>,
 		column: ColumnId,
-	) -> crate::Result<Vec<ColumnPolicy>> {
-		let mut stream = rx.range(ColumnPolicyKey::full_scan(column), 1024)?;
+	) -> crate::Result<Vec<ColumnProperty>> {
+		let mut stream = rx.range(ColumnPropertyKey::full_scan(column), 1024)?;
 		let mut result = Vec::new();
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = multi.values;
-			let id = ColumnPolicyId(column_policy::SCHEMA.get_u64(&row, column_policy::ID));
-			let column = ColumnId(column_policy::SCHEMA.get_u64(&row, column_policy::COLUMN));
+			let id = ColumnPropertyId(column_property::SCHEMA.get_u64(&row, column_property::ID));
+			let column = ColumnId(column_property::SCHEMA.get_u64(&row, column_property::COLUMN));
 
-			let policy = ColumnPolicyKind::from_u8(
-				column_policy::SCHEMA.get_u8(&row, column_policy::POLICY),
-				column_policy::SCHEMA.get_u8(&row, column_policy::VALUE),
+			let property = ColumnPropertyKind::from_u8(
+				column_property::SCHEMA.get_u8(&row, column_property::POLICY),
+				column_property::SCHEMA.get_u8(&row, column_property::VALUE),
 			);
 
-			result.push(ColumnPolicy {
+			result.push(ColumnProperty {
 				id,
 				column,
-				policy,
+				property,
 			});
 		}
 
 		Ok(result)
 	}
 
-	pub(crate) fn list_column_policies_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<ColumnPolicy>> {
+	pub(crate) fn list_column_properties_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<ColumnProperty>> {
 		let mut result = Vec::new();
 
 		// Get all columns from tables and views
@@ -49,7 +49,7 @@ impl CatalogStore {
 
 		// For each column, get its policies
 		for info in columns {
-			let policies = CatalogStore::list_column_policies(rx, info.column.id)?;
+			let policies = CatalogStore::list_column_properties(rx, info.column.id)?;
 			result.extend(policies);
 		}
 
@@ -62,7 +62,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, TableId},
-		policy::{ColumnPolicyKind, ColumnSaturationPolicy},
+		property::{ColumnPropertyKind, ColumnSaturationPolicy},
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -84,7 +84,7 @@ pub mod tests {
 				primitive_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
-				policies: vec![ColumnPolicyKind::Saturation(ColumnSaturationPolicy::None)],
+				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
 				index: ColumnIndex(0),
 				auto_increment: false,
 				dictionary_id: None,
@@ -94,11 +94,11 @@ pub mod tests {
 
 		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8193)).unwrap();
 
-		let policies =
-			CatalogStore::list_column_policies(&mut Transaction::Admin(&mut txn), column.id).unwrap();
+		let properties =
+			CatalogStore::list_column_properties(&mut Transaction::Admin(&mut txn), column.id).unwrap();
 
-		assert_eq!(policies.len(), 1);
-		assert_eq!(policies[0].column, column.id);
-		assert!(matches!(policies[0].policy, ColumnPolicyKind::Saturation(ColumnSaturationPolicy::None)));
+		assert_eq!(properties.len(), 1);
+		assert_eq!(properties[0].column, column.id);
+		assert!(matches!(properties[0].property, ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)));
 	}
 }

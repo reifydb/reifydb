@@ -24,7 +24,7 @@ use reifydb_catalog::catalog::{
 use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::{
-		catalog::{policy::ColumnPolicyKind, series::TimestampPrecision},
+		catalog::{property::ColumnPropertyKind, series::TimestampPrecision},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedPrimitive},
 	},
 	sort::{SortDirection, SortKey},
@@ -364,7 +364,7 @@ pub enum LogicalPlan<'bump> {
 	CreateIndex(CreateIndexNode<'bump>),
 	CreateSubscription(CreateSubscriptionNode<'bump>),
 	CreatePrimaryKey(CreatePrimaryKeyNode<'bump>),
-	CreatePolicy(CreatePolicyNode<'bump>),
+	CreateColumnProperty(CreateColumnPropertyNode<'bump>),
 	CreateProcedure(CreateProcedureNode<'bump>),
 	CreateSeries(CreateSeriesNode<'bump>),
 	CreateEvent(CreateEventNode<'bump>),
@@ -835,9 +835,9 @@ pub struct CreatePrimaryKeyNode<'bump> {
 }
 
 #[derive(Debug)]
-pub struct CreatePolicyNode<'bump> {
+pub struct CreateColumnPropertyNode<'bump> {
 	pub column: MaybeQualifiedColumnIdentifier<'bump>,
-	pub policies: Vec<ColumnPolicyKind>,
+	pub properties: Vec<ColumnPropertyKind>,
 }
 
 #[derive(Debug)]

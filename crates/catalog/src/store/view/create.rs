@@ -138,7 +138,7 @@ impl CatalogStore {
 					primitive_name: to_create.name.text().to_string(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
-					policies: vec![],
+					properties: vec![],
 					index: ColumnIndex(idx as u8),
 					auto_increment: false,
 					dictionary_id: None, // Views don't support dictionaries yet

@@ -525,8 +525,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreatePrimaryKey(_) => {
 			write_node_header(output, prefix, is_last, "CreatePrimaryKey");
 		}
-		PhysicalPlan::CreatePolicy(_) => {
-			write_node_header(output, prefix, is_last, "CreateColumnPolicy");
+		PhysicalPlan::CreateColumnProperty(_) => {
+			write_node_header(output, prefix, is_last, "CreateColumnProperty");
 		}
 		PhysicalPlan::CreateProcedure(_) => {
 			write_node_header(output, prefix, is_last, "CreateProcedure");

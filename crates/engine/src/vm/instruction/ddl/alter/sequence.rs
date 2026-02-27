@@ -55,7 +55,7 @@ pub(crate) fn alter_table_sequence<'a>(
 				source_name: None,
 				column_name: None,
 				column_type: column.constraint.get_type(),
-				policies: column.policies.into_iter().map(|p| p.policy).collect(),
+				properties: column.properties.into_iter().map(|p| p.property).collect(),
 			}),
 			columns: Columns::empty(),
 			row_count: 1,

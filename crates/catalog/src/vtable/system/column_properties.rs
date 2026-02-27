@@ -17,21 +17,21 @@ use crate::{
 };
 
 /// Virtual table that exposes system column policy information
-pub struct ColumnPolicies {
+pub struct ColumnProperties {
 	pub(crate) definition: Arc<VTableDef>,
 	exhausted: bool,
 }
 
-impl ColumnPolicies {
+impl ColumnProperties {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_column_policies_table_def().clone(),
+			definition: SystemCatalog::get_system_column_properties_table_def().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for ColumnPolicies {
+impl VTable for ColumnProperties {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -42,24 +42,24 @@ impl VTable for ColumnPolicies {
 			return Ok(None);
 		}
 
-		let mut policy_ids = Vec::new();
+		let mut property_ids = Vec::new();
 		let mut column_ids = Vec::new();
-		let mut policy_types = Vec::new();
-		let mut policy_values = Vec::new();
+		let mut property_types = Vec::new();
+		let mut property_values = Vec::new();
 
-		let policies = CatalogStore::list_column_policies_all(txn)?;
-		for policy in policies {
-			policy_ids.push(policy.id.0);
-			column_ids.push(policy.column.0);
-			let (ty, val) = policy.policy.to_u8();
-			policy_types.push(ty);
-			policy_values.push(val);
+		let properties = CatalogStore::list_column_properties_all(txn)?;
+		for prop in properties {
+			property_ids.push(prop.id.0);
+			column_ids.push(prop.column.0);
+			let (ty, val) = prop.property.to_u8();
+			property_types.push(ty);
+			property_values.push(val);
 		}
 
 		let columns = vec![
 			Column {
 				name: Fragment::internal("id"),
-				data: ColumnData::uint8(policy_ids),
+				data: ColumnData::uint8(property_ids),
 			},
 			Column {
 				name: Fragment::internal("column_id"),
@@ -67,11 +67,11 @@ impl VTable for ColumnPolicies {
 			},
 			Column {
 				name: Fragment::internal("type"),
-				data: ColumnData::uint1(policy_types),
+				data: ColumnData::uint1(property_types),
 			},
 			Column {
 				name: Fragment::internal("value"),
-				data: ColumnData::uint1(policy_values),
+				data: ColumnData::uint1(property_values),
 			},
 		];
 

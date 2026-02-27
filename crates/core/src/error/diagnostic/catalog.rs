@@ -294,7 +294,7 @@ pub fn auto_increment_invalid_type(fragment: Fragment, column: &str, ty: Type) -
 	}
 }
 
-pub fn table_column_policy_already_exists(policy: &str, column: &str) -> Diagnostic {
+pub fn table_column_property_already_exists(policy: &str, column: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_008".to_string(),
 		statement: None,

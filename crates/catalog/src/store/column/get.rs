@@ -117,14 +117,14 @@ impl CatalogStore {
 			(None, None) => TypeConstraint::unconstrained(base_type),
 		};
 
-		let policies = Self::list_column_policies(rx, id)?;
+		let properties = Self::list_column_properties(rx, id)?;
 
 		Ok(ColumnDef {
 			id,
 			name,
 			constraint,
 			index,
-			policies,
+			properties,
 			auto_increment,
 			dictionary_id,
 		})

@@ -27,7 +27,7 @@ pub fn flow_nodes() -> Arc<VTableDef> {
 					id: ID,
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
-					policies: vec![],
+					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
 					dictionary_id: None,
@@ -36,7 +36,7 @@ pub fn flow_nodes() -> Arc<VTableDef> {
 					id: FLOW_ID,
 					name: "flow_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
-					policies: vec![],
+					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
 					dictionary_id: None,
@@ -46,7 +46,7 @@ pub fn flow_nodes() -> Arc<VTableDef> {
 					name: "node_type".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1), /* 0-255 for node
 					                                                         * type discriminator */
-					policies: vec![],
+					properties: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
 					dictionary_id: None,
@@ -55,7 +55,7 @@ pub fn flow_nodes() -> Arc<VTableDef> {
 					id: DATA,
 					name: "data".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Blob), // Serialized node data
-					policies: vec![],
+					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,
 					dictionary_id: None,

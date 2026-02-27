@@ -493,7 +493,7 @@ fn convert_vtable_user_columns_to_column_defs(columns: &[UserVTableColumnDef]) -
 				id: ColumnId(idx as u64),
 				name: col.name.clone(),
 				constraint,
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(idx as u8),
 				auto_increment: false,
 				dictionary_id: None,

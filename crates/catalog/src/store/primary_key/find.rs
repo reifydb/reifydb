@@ -79,7 +79,7 @@ impl CatalogStore {
 				id: column_def.id,
 				name: column_def.name,
 				constraint: column_def.constraint,
-				policies: column_def.policies,
+				properties: column_def.properties,
 				index: column_def.index,
 				auto_increment: column_def.auto_increment,
 				dictionary_id: None,

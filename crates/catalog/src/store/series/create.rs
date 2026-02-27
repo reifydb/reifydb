@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{NamespaceId, SeriesId},
-		policy::ColumnPolicyKind,
+		property::ColumnPropertyKind,
 		series::{SeriesDef, TimestampPrecision},
 	},
 	key::{
@@ -34,7 +34,7 @@ pub struct SeriesColumnToCreate {
 	pub name: Fragment,
 	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
-	pub policies: Vec<ColumnPolicyKind>,
+	pub properties: Vec<ColumnPropertyKind>,
 	pub auto_increment: bool,
 	pub dictionary_id: Option<DictionaryId>,
 }
@@ -127,7 +127,7 @@ impl CatalogStore {
 					primitive_name: String::new(),
 					column: col.name.text().to_string(),
 					constraint: col.constraint.clone(),
-					policies: col.policies.clone(),
+					properties: col.properties.clone(),
 					index: ColumnIndex(idx as u8),
 					auto_increment: col.auto_increment,
 					dictionary_id: col.dictionary_id,

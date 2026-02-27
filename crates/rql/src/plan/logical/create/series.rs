@@ -31,7 +31,7 @@ impl<'bump> Compiler<'bump> {
 
 			let mut auto_increment = false;
 			let mut dictionary_id = None;
-			let policies = vec![];
+			let properties = vec![];
 
 			for property in &col.properties {
 				match property {
@@ -82,7 +82,7 @@ impl<'bump> Compiler<'bump> {
 				name,
 				fragment,
 				constraint,
-				policies,
+				properties,
 				auto_increment,
 				dictionary_id,
 			});

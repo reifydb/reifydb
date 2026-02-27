@@ -8,13 +8,13 @@ use reifydb_type::{
 
 use crate::{
 	nodes::{
-		self, AlterFlowNode, AlterSequenceNode, CreateDeferredViewNode, CreateDictionaryNode, CreateEventNode,
-		CreateFlowNode, CreateMigrationNode, CreateNamespaceNode, CreatePolicyNode, CreatePrimaryKeyNode,
-		CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode, CreateSubscriptionNode, CreateSumTypeNode,
-		CreateTableNode, CreateTagNode, CreateTransactionalViewNode, DeleteRingBufferNode, DeleteSeriesNode,
-		DeleteTableNode, DispatchNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode,
-		InsertSeriesNode, InsertTableNode, MigrateNode, RollbackMigrationNode, UpdateRingBufferNode,
-		UpdateSeriesNode, UpdateTableNode,
+		self, AlterFlowNode, AlterSequenceNode, CreateColumnPropertyNode, CreateDeferredViewNode,
+		CreateDictionaryNode, CreateEventNode, CreateFlowNode, CreateMigrationNode, CreateNamespaceNode,
+		CreatePrimaryKeyNode, CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode,
+		CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode, CreateTagNode, CreateTransactionalViewNode,
+		DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, DispatchNode, FunctionParameter,
+		InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode, InsertTableNode, MigrateNode,
+		RollbackMigrationNode, UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -162,7 +162,7 @@ pub enum Instruction {
 	CreateSumType(CreateSumTypeNode),
 	CreateSubscription(CreateSubscriptionNode),
 	CreatePrimaryKey(CreatePrimaryKeyNode),
-	CreatePolicy(CreatePolicyNode),
+	CreateColumnProperty(CreateColumnPropertyNode),
 	CreateProcedure(CreateProcedureNode),
 	CreateSeries(CreateSeriesNode),
 	CreateEvent(CreateEventNode),

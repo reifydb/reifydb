@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_catalog::vtable::{
 	VTableContext,
 	system::{
-		cdc_consumers::CdcConsumers, column_policies::ColumnPolicies, columns::ColumnsTable,
+		cdc_consumers::CdcConsumers, column_properties::ColumnProperties, columns::ColumnsTable,
 		dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, enums::Enums,
 		events::Events, flow_edges::FlowEdges, flow_lags::FlowLags,
 		flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes, flow_nodes::FlowNodes,
@@ -526,7 +526,7 @@ pub(crate) fn compile<'a>(
 					"columns" => VTables::Columns(ColumnsTable::new()),
 					"primary_keys" => VTables::PrimaryKeys(PrimaryKeys::new()),
 					"primary_key_columns" => VTables::PrimaryKeyColumns(PrimaryKeyColumns::new()),
-					"column_policies" => VTables::ColumnPolicies(ColumnPolicies::new()),
+					"column_properties" => VTables::ColumnProperties(ColumnProperties::new()),
 					"versions" => VTables::Versions(Versions::new(context.services.ioc.clone())),
 					"primitive_retention_policies" => {
 						VTables::PrimitiveRetentionPolicies(PrimitiveRetentionPolicies::new())

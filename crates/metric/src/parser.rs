@@ -37,7 +37,7 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 		| KeyKind::Column
 		| KeyKind::Columns
 		| KeyKind::ColumnSequence
-		| KeyKind::ColumnPolicy
+		| KeyKind::ColumnProperty
 		| KeyKind::Index
 		| KeyKind::IndexEntry
 		| KeyKind::PrimaryKey => extract_source_id(key).map(MetricId::Source).unwrap_or(MetricId::System),

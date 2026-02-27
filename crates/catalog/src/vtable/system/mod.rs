@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod cdc_consumers;
-pub mod column_policies;
+pub mod column_properties;
 pub mod columns;
 pub mod dictionaries;
 pub mod dictionary_storage_stats;

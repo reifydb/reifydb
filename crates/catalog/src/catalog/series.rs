@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackSeriesChangeOperations,
 		id::{NamespaceId, SeriesId},
-		policy::ColumnPolicyKind,
+		property::ColumnPropertyKind,
 		series::{SeriesDef, SeriesMetadata, TimestampPrecision},
 	},
 	internal,
@@ -32,7 +32,7 @@ pub struct SeriesColumnToCreate {
 	pub name: Fragment,
 	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
-	pub policies: Vec<ColumnPolicyKind>,
+	pub properties: Vec<ColumnPropertyKind>,
 	pub auto_increment: bool,
 	pub dictionary_id: Option<DictionaryId>,
 }
@@ -52,7 +52,7 @@ impl From<SeriesColumnToCreate> for StoreSeriesColumnToCreate {
 			name: col.name,
 			fragment: col.fragment,
 			constraint: col.constraint,
-			policies: col.policies,
+			properties: col.properties,
 			auto_increment: col.auto_increment,
 			dictionary_id: col.dictionary_id,
 		}

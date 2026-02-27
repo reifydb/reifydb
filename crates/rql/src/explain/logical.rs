@@ -9,7 +9,7 @@ use crate::{
 	ast::parse_str,
 	bump::Bump,
 	plan::logical::{
-		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, CreateIndexNode, CreatePolicyNode,
+		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, CreateColumnPropertyNode, CreateIndexNode,
 		CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode, InlineDataNode,
 		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode, PatchNode,
 		PrimitiveScanNode, TakeNode, VariableSourceNode, alter::flow::AlterFlowAction,
@@ -648,10 +648,10 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		}) => {
 			output.push_str(&format!("{}{} CreatePrimaryKey\n", prefix, branch));
 		}
-		LogicalPlan::CreatePolicy(CreatePolicyNode {
+		LogicalPlan::CreateColumnProperty(CreateColumnPropertyNode {
 			..
 		}) => {
-			output.push_str(&format!("{}{} CreateColumnPolicy\n", prefix, branch));
+			output.push_str(&format!("{}{} CreateColumnProperty\n", prefix, branch));
 		}
 		LogicalPlan::CreateProcedure(_) => {
 			output.push_str(&format!("{}{} CreateProcedure\n", prefix, branch));

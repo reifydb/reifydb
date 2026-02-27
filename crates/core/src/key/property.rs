@@ -4,20 +4,20 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::id::{ColumnId, ColumnPolicyId},
+	interface::catalog::id::{ColumnId, ColumnPropertyId},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ColumnPolicyKey {
+pub struct ColumnPropertyKey {
 	pub column: ColumnId,
-	pub policy: ColumnPolicyId,
+	pub property: ColumnPropertyId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for ColumnPolicyKey {
-	const KIND: KeyKind = KeyKind::ColumnPolicy;
+impl EncodableKey for ColumnPropertyKey {
+	const KIND: KeyKind = KeyKind::ColumnProperty;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(18);
@@ -25,7 +25,7 @@ impl EncodableKey for ColumnPolicyKey {
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(self.column)
-			.extend_u64(self.policy);
+			.extend_u64(self.property);
 		serializer.to_encoded_key()
 	}
 
@@ -47,16 +47,16 @@ impl EncodableKey for ColumnPolicyKey {
 
 		Some(Self {
 			column: ColumnId(column),
-			policy: ColumnPolicyId(policy),
+			property: ColumnPropertyId(policy),
 		})
 	}
 }
 
-impl ColumnPolicyKey {
-	pub fn encoded(column: impl Into<ColumnId>, policy: impl Into<ColumnPolicyId>) -> EncodedKey {
+impl ColumnPropertyKey {
+	pub fn encoded(column: impl Into<ColumnId>, property: impl Into<ColumnPropertyId>) -> EncodedKey {
 		Self {
 			column: column.into(),
-			policy: policy.into(),
+			property: property.into(),
 		}
 		.encode()
 	}
@@ -80,14 +80,14 @@ impl ColumnPolicyKey {
 
 #[cfg(test)]
 pub mod tests {
-	use super::{ColumnPolicyKey, EncodableKey};
-	use crate::interface::catalog::id::{ColumnId, ColumnPolicyId};
+	use super::{ColumnPropertyKey, EncodableKey};
+	use crate::interface::catalog::id::{ColumnId, ColumnPropertyId};
 
 	#[test]
 	fn test_encode_decode() {
-		let key = ColumnPolicyKey {
+		let key = ColumnPropertyKey {
 			column: ColumnId(0xABCD),
-			policy: ColumnPolicyId(0x123456789ABCDEF0),
+			property: ColumnPropertyId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
 
@@ -99,24 +99,24 @@ pub mod tests {
 
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = ColumnPolicyKey::decode(&encoded).unwrap();
+		let key = ColumnPropertyKey::decode(&encoded).unwrap();
 		assert_eq!(key.column, 0xABCD);
-		assert_eq!(key.policy, 0x123456789ABCDEF0);
+		assert_eq!(key.property, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
-		let key1 = ColumnPolicyKey {
+		let key1 = ColumnPropertyKey {
 			column: ColumnId(1),
-			policy: ColumnPolicyId(100),
+			property: ColumnPropertyId(100),
 		};
-		let key2 = ColumnPolicyKey {
+		let key2 = ColumnPropertyKey {
 			column: ColumnId(1),
-			policy: ColumnPolicyId(200),
+			property: ColumnPropertyId(200),
 		};
-		let key3 = ColumnPolicyKey {
+		let key3 = ColumnPropertyKey {
 			column: ColumnId(2),
-			policy: ColumnPolicyId(0),
+			property: ColumnPropertyId(0),
 		};
 
 		let encoded1 = key1.encode();

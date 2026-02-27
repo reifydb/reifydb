@@ -14,6 +14,7 @@ pub mod namespace;
 pub mod policy;
 pub mod primitive;
 pub mod procedure;
+pub mod property;
 pub mod ringbuffer;
 pub mod series;
 pub mod subscription;

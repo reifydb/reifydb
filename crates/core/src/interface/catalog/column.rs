@@ -6,14 +6,14 @@ use std::ops::Deref;
 use reifydb_type::value::{constraint::TypeConstraint, dictionary::DictionaryId};
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{id::ColumnId, policy::ColumnPolicy};
+use crate::interface::catalog::{id::ColumnId, property::ColumnProperty};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnDef {
 	pub id: ColumnId,
 	pub name: String,
 	pub constraint: TypeConstraint,
-	pub policies: Vec<ColumnPolicy>,
+	pub properties: Vec<ColumnProperty>,
 	pub index: ColumnIndex,
 	pub auto_increment: bool,
 	pub dictionary_id: Option<DictionaryId>,

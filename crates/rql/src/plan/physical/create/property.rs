@@ -7,7 +7,7 @@ use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
 	ast::identifier::MaybeQualifiedColumnPrimitive,
-	nodes::CreatePolicyNode,
+	nodes::CreateColumnPropertyNode,
 	plan::{
 		logical,
 		physical::{Compiler, PhysicalPlan},
@@ -15,10 +15,10 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_policy(
+	pub(crate) fn compile_create_column_property(
 		&mut self,
 		rx: &mut Transaction<'_>,
-		create: logical::CreatePolicyNode<'_>,
+		create: logical::CreateColumnPropertyNode<'_>,
 	) -> crate::Result<PhysicalPlan<'bump>> {
 		let (namespace_name, table_fragment) = match &create.column.primitive {
 			MaybeQualifiedColumnPrimitive::Primitive {
@@ -69,11 +69,11 @@ impl<'bump> Compiler<'bump> {
 		};
 		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 
-		Ok(PhysicalPlan::CreatePolicy(CreatePolicyNode {
+		Ok(PhysicalPlan::CreateColumnProperty(CreateColumnPropertyNode {
 			namespace: resolved_namespace,
 			table: table_fragment,
 			column: self.interner.intern_fragment(&create.column.name),
-			policies: create.policies,
+			properties: create.properties,
 		}))
 	}
 }

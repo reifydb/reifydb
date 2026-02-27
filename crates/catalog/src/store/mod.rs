@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod column;
-pub(crate) mod column_policy;
+pub(crate) mod column_property;
 pub(crate) mod dictionary;
 pub(crate) mod flow;
 pub(crate) mod flow_edge;

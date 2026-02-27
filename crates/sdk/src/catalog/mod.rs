@@ -153,7 +153,7 @@ pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnDefFFI) -> Result<ColumnDe
 		id: ColumnId(ffi_col.id),
 		name,
 		constraint,
-		policies: Vec::new(), // Simplified version - no policies
+		properties: Vec::new(), // Simplified version - no policies
 		index: ColumnIndex(ffi_col.column_index),
 		auto_increment: ffi_col.auto_increment != 0,
 		dictionary_id: None, // Simplified version - no dictionary
@@ -179,7 +179,7 @@ pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<Pri
 			id: ColumnId(col_id),
 			name: format!("col_{}", col_id),
 			constraint: TypeConstraint::unconstrained(Type::Int4),
-			policies: Vec::new(),
+			properties: Vec::new(),
 			index: ColumnIndex(idx as u8),
 			auto_increment: false,
 			dictionary_id: None,

@@ -77,7 +77,7 @@ pub enum PhysicalPlan<'bump> {
 	CreateSumType(CreateSumTypeNode),
 	CreateSubscription(CreateSubscriptionNode<'bump>),
 	CreatePrimaryKey(nodes::CreatePrimaryKeyNode),
-	CreatePolicy(nodes::CreatePolicyNode),
+	CreateColumnProperty(nodes::CreateColumnPropertyNode),
 	CreateProcedure(nodes::CreateProcedureNode),
 	CreateEvent(nodes::CreateEventNode),
 
@@ -626,8 +626,8 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_primary_key(rx, create)?);
 				}
 
-				LogicalPlan::CreatePolicy(create) => {
-					stack.push(self.compile_create_policy(rx, create)?);
+				LogicalPlan::CreateColumnProperty(create) => {
+					stack.push(self.compile_create_column_property(rx, create)?);
 				}
 
 				LogicalPlan::CreateProcedure(create) => {
@@ -1654,7 +1654,7 @@ impl<'bump> Compiler<'bump> {
 							id: ColumnId(1),
 							name: col.name.text().to_string(),
 							constraint: TypeConstraint::unconstrained(Type::Utf8),
-							policies: vec![],
+							properties: vec![],
 							index: ColumnIndex(0),
 							auto_increment: false,
 							dictionary_id: None,

@@ -5,8 +5,8 @@ use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{NamespaceId, TableId},
-		policy::ColumnPolicyKind,
 		primitive::PrimitiveId,
+		property::ColumnPropertyKind,
 		table::TableDef,
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
@@ -34,7 +34,7 @@ pub struct TableColumnToCreate {
 	pub name: Fragment,
 	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
-	pub policies: Vec<ColumnPolicyKind>,
+	pub properties: Vec<ColumnPropertyKind>,
 	pub auto_increment: bool,
 	pub dictionary_id: Option<DictionaryId>,
 }
@@ -127,7 +127,7 @@ impl CatalogStore {
 					primitive_name: to_create.name.text().to_string(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
-					policies: column_to_create.policies.clone(),
+					properties: column_to_create.properties.clone(),
 					index: ColumnIndex(idx as u8),
 					auto_increment: column_to_create.auto_increment,
 					dictionary_id: column_to_create.dictionary_id,

@@ -812,8 +812,8 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreatePrimaryKey(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::CreatePolicy(node) => {
-				self.emit(Instruction::CreatePolicy(node));
+			PhysicalPlan::CreateColumnProperty(node) => {
+				self.emit(Instruction::CreateColumnProperty(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::CreateProcedure(node) => {

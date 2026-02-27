@@ -15,7 +15,7 @@ use super::catalog::{
 	dictionary::DictionaryDef,
 	flow::FlowDef,
 	namespace::NamespaceDef,
-	policy::ColumnPolicyKind,
+	property::ColumnPropertyKind,
 	ringbuffer::RingBufferDef,
 	series::SeriesDef,
 	subscription::{SubscriptionColumnDef, SubscriptionDef},
@@ -920,8 +920,8 @@ impl ResolvedColumn {
 	}
 
 	/// Get the column policies
-	pub fn policies(&self) -> Vec<ColumnPolicyKind> {
-		self.0.def.policies.iter().map(|p| p.policy.clone()).collect()
+	pub fn properties(&self) -> Vec<ColumnPropertyKind> {
+		self.0.def.properties.iter().map(|p| p.property.clone()).collect()
 	}
 
 	/// Check if column has auto increment
@@ -1053,7 +1053,7 @@ pub mod tests {
 					id: ColumnId(1),
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Int8),
-					policies: vec![],
+					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
 					dictionary_id: None,
@@ -1062,7 +1062,7 @@ pub mod tests {
 					id: ColumnId(2),
 					name: "name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
-					policies: vec![],
+					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
 					dictionary_id: None,
@@ -1128,7 +1128,7 @@ pub mod tests {
 			id: ColumnId(1),
 			name: "id".to_string(),
 			constraint: TypeConstraint::unconstrained(Type::Int8),
-			policies: vec![],
+			properties: vec![],
 			index: ColumnIndex(0),
 			auto_increment: false,
 			dictionary_id: None,

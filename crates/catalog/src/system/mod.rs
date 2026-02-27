@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::interface::{catalog::vtable::VTableDef, version::SystemVersion};
 
 pub mod cdc_consumers;
-pub mod column_policies;
+pub mod column_properties;
 pub mod columns;
 pub mod dictionaries;
 pub mod enums;
@@ -53,7 +53,7 @@ pub mod versions;
 pub mod views;
 
 use cdc_consumers::cdc_consumers;
-use column_policies::column_policies;
+use column_properties::column_properties;
 use columns::columns;
 use dictionaries::dictionaries;
 use enums::enums;
@@ -322,7 +322,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 3] = [PRIMARY_KEY_ID, COLUMN_ID, POSITION];
 		}
 
-		pub mod column_policies {
+		pub mod column_properties {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
@@ -544,7 +544,7 @@ pub mod ids {
 		pub const NAMESPACE: SequenceId = SequenceId(1);
 		pub const SOURCE: SequenceId = SequenceId(2);
 		pub const COLUMN: SequenceId = SequenceId(3);
-		pub const COLUMN_POLICY: SequenceId = SequenceId(4);
+		pub const COLUMN_PROPERTY: SequenceId = SequenceId(4);
 		pub const FLOW: SequenceId = SequenceId(5);
 		pub const FLOW_NODE: SequenceId = SequenceId(6);
 		pub const FLOW_EDGE: SequenceId = SequenceId(7);
@@ -562,7 +562,7 @@ pub mod ids {
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
-			COLUMN_POLICY,
+			COLUMN_PROPERTY,
 			FLOW,
 			FLOW_NODE,
 			FLOW_EDGE,
@@ -587,7 +587,7 @@ pub mod ids {
 		pub const VIEWS: VTableId = VTableId(4);
 		pub const FLOWS: VTableId = VTableId(13);
 		pub const COLUMNS: VTableId = VTableId(5);
-		pub const COLUMN_POLICIES: VTableId = VTableId(6);
+		pub const COLUMN_PROPERTIES: VTableId = VTableId(6);
 		pub const PRIMARY_KEYS: VTableId = VTableId(7);
 		pub const PRIMARY_KEY_COLUMNS: VTableId = VTableId(8);
 		pub const VERSIONS: VTableId = VTableId(9);
@@ -635,7 +635,7 @@ pub mod ids {
 			VIEWS,
 			FLOWS,
 			COLUMNS,
-			COLUMN_POLICIES,
+			COLUMN_PROPERTIES,
 			PRIMARY_KEYS,
 			PRIMARY_KEY_COLUMNS,
 			VERSIONS,
@@ -746,9 +746,9 @@ impl SystemCatalog {
 		primary_key_columns()
 	}
 
-	/// Get the column_policies virtual table definition
-	pub fn get_system_column_policies_table_def() -> Arc<VTableDef> {
-		column_policies()
+	/// Get the column_properties virtual table definition
+	pub fn get_system_column_properties_table_def() -> Arc<VTableDef> {
+		column_properties()
 	}
 
 	/// Get the system versions virtual table definition

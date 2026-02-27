@@ -6,8 +6,8 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::catalog::{
 		id::{
-			ColumnId, ColumnPolicyId, HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId,
-			ProcedureId, RingBufferId, SeriesId, TableId, ViewId,
+			ColumnId, ColumnPropertyId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
+			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, TableId, ViewId,
 		},
 		policy::SecurityPolicyId,
 		user::{RoleId, UserId},
@@ -21,7 +21,7 @@ use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
 use crate::{
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION, MIGRATION_EVENT, NAMESPACE,
+		COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION, MIGRATION_EVENT, NAMESPACE,
 		PRIMARY_KEY, PROCEDURE, ROLE, SECURITY_POLICY, SOURCE, USER, USER_AUTHENTICATION,
 	},
 };
@@ -32,7 +32,7 @@ static SOURCE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(SO
 
 static COLUMN_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(COLUMN));
 
-static COLUMN_POLICY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(COLUMN_POLICY));
+static COLUMN_PROPERTY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(COLUMN_PROPERTY));
 
 pub(crate) static FLOW_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(FLOW));
 
@@ -73,8 +73,8 @@ impl SystemSequence {
 		GeneratorU64::next(txn, &COLUMN_KEY, Some(8193)).map(ColumnId)
 	}
 
-	pub(crate) fn next_column_policy_id(txn: &mut AdminTransaction) -> crate::Result<ColumnPolicyId> {
-		GeneratorU64::next(txn, &COLUMN_POLICY_KEY, Some(1025)).map(ColumnPolicyId)
+	pub(crate) fn next_column_property_id(txn: &mut AdminTransaction) -> crate::Result<ColumnPropertyId> {
+		GeneratorU64::next(txn, &COLUMN_PROPERTY_KEY, Some(1025)).map(ColumnPropertyId)
 	}
 
 	pub(crate) fn next_view_id(txn: &mut AdminTransaction) -> crate::Result<ViewId> {

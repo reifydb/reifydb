@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackRingBufferChangeOperations,
 		id::{NamespaceId, PrimaryKeyId, RingBufferId},
-		policy::ColumnPolicyKind,
+		property::ColumnPropertyKind,
 		ringbuffer::{RingBufferDef, RingBufferMetadata},
 	},
 	internal,
@@ -33,7 +33,7 @@ pub struct RingBufferColumnToCreate {
 	pub name: Fragment,
 	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
-	pub policies: Vec<ColumnPolicyKind>,
+	pub properties: Vec<ColumnPropertyKind>,
 	pub auto_increment: bool,
 	pub dictionary_id: Option<DictionaryId>,
 }
@@ -52,7 +52,7 @@ impl From<RingBufferColumnToCreate> for StoreRingBufferColumnToCreate {
 			name: col.name,
 			fragment: col.fragment,
 			constraint: col.constraint,
-			policies: col.policies,
+			properties: col.properties,
 			auto_increment: col.auto_increment,
 			dictionary_id: col.dictionary_id,
 		}

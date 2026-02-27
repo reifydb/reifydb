@@ -4,68 +4,68 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::ColumnId,
-		policy::{ColumnPolicy, ColumnPolicyKind},
+		property::{ColumnProperty, ColumnPropertyKind},
 	},
-	key::column_policy::ColumnPolicyKey,
+	key::property::ColumnPropertyKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::{
 	CatalogStore,
 	error::CatalogError,
-	store::{column_policy::schema::column_policy, sequence::system::SystemSequence},
+	store::{column_property::schema::column_property, sequence::system::SystemSequence},
 };
 
 impl CatalogStore {
-	pub(crate) fn create_column_policy(
+	pub(crate) fn create_column_property(
 		txn: &mut AdminTransaction,
 		column: ColumnId,
-		policy: ColumnPolicyKind,
-	) -> crate::Result<ColumnPolicy> {
-		let (policy_kind, _value_kind) = policy.to_u8();
-		for existing in Self::list_column_policies(&mut Transaction::Admin(&mut *txn), column)? {
-			let (existing_kind, _) = existing.policy.to_u8();
-			if existing_kind == policy_kind {
+		property: ColumnPropertyKind,
+	) -> crate::Result<ColumnProperty> {
+		let (property_kind, _value_kind) = property.to_u8();
+		for existing in Self::list_column_properties(&mut Transaction::Admin(&mut *txn), column)? {
+			let (existing_kind, _) = existing.property.to_u8();
+			if existing_kind == property_kind {
 				let column = Self::get_column(&mut Transaction::Admin(&mut *txn), column)?;
 
-				return Err(CatalogError::ColumnPolicyAlreadyExists {
-					policy: policy.to_string(),
+				return Err(CatalogError::ColumnPropertyAlreadyExists {
+					policy: property.to_string(),
 					column: column.name,
 				}
 				.into());
 			}
 		}
 
-		let id = SystemSequence::next_column_policy_id(txn)?;
+		let id = SystemSequence::next_column_property_id(txn)?;
 
-		let mut row = column_policy::SCHEMA.allocate();
-		column_policy::SCHEMA.set_u64(&mut row, column_policy::ID, id);
-		column_policy::SCHEMA.set_u64(&mut row, column_policy::COLUMN, column);
+		let mut row = column_property::SCHEMA.allocate();
+		column_property::SCHEMA.set_u64(&mut row, column_property::ID, id);
+		column_property::SCHEMA.set_u64(&mut row, column_property::COLUMN, column);
 
 		{
-			let (policy, value) = policy.to_u8();
-			column_policy::SCHEMA.set_u8(&mut row, column_policy::POLICY, policy);
-			column_policy::SCHEMA.set_u8(&mut row, column_policy::VALUE, value);
+			let (kind, value) = property.to_u8();
+			column_property::SCHEMA.set_u8(&mut row, column_property::POLICY, kind);
+			column_property::SCHEMA.set_u8(&mut row, column_property::VALUE, value);
 		}
 
-		txn.set(&ColumnPolicyKey::encoded(column, id), row)?;
+		txn.set(&ColumnPropertyKey::encoded(column, id), row)?;
 
-		Ok(ColumnPolicy {
+		Ok(ColumnProperty {
 			id,
 			column,
-			policy,
+			property,
 		})
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use ColumnPolicyKind::Saturation;
+	use ColumnPropertyKind::Saturation;
 	use ColumnSaturationPolicy::Error;
 	use reifydb_core::interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, TableId},
-		policy::{ColumnPolicyKind, ColumnSaturationPolicy},
+		property::{ColumnPropertyKind, ColumnSaturationPolicy},
 	};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
@@ -84,13 +84,13 @@ pub mod tests {
 
 		let policy = Saturation(Error);
 
-		let result = CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap();
+		let result = CatalogStore::create_column_property(&mut txn, ColumnId(8193), policy.clone()).unwrap();
 		assert_eq!(result.column, ColumnId(8193));
-		assert_eq!(result.policy, policy);
+		assert_eq!(result.property, policy);
 	}
 
 	#[test]
-	fn test_create_column_policy_duplicate_error() {
+	fn test_create_column_property_duplicate_error() {
 		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
@@ -103,7 +103,7 @@ pub mod tests {
 				primitive_name: "table".to_string(),
 				column: "col1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
-				policies: vec![],
+				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
 				dictionary_id: None,
@@ -112,9 +112,9 @@ pub mod tests {
 		.unwrap();
 
 		let policy = Saturation(ColumnSaturationPolicy::None);
-		CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap();
+		CatalogStore::create_column_property(&mut txn, ColumnId(8193), policy.clone()).unwrap();
 
-		let err = CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap_err();
+		let err = CatalogStore::create_column_property(&mut txn, ColumnId(8193), policy.clone()).unwrap_err();
 		let diagnostic = err.diagnostic();
 		assert_eq!(diagnostic.code, "CA_008");
 	}

@@ -7,7 +7,7 @@ use reifydb_core::interface::catalog::{
 	handler::HandlerDef,
 	id::{RingBufferId, TableId},
 	namespace::NamespaceDef,
-	policy::ColumnPolicyKind,
+	property::ColumnPropertyKind,
 	ringbuffer::RingBufferDef,
 	sumtype::{SumTypeDef, SumTypeKind, VariantDef},
 	table::TableDef,
@@ -92,7 +92,7 @@ pub fn create_test_column(
 	txn: &mut AdminTransaction,
 	name: &str,
 	constraint: TypeConstraint,
-	policies: Vec<ColumnPolicyKind>,
+	properties: Vec<ColumnPropertyKind>,
 ) {
 	ensure_test_table(txn);
 
@@ -107,7 +107,7 @@ pub fn create_test_column(
 			primitive_name: "test_table".to_string(),
 			column: name.to_string(),
 			constraint,
-			policies,
+			properties,
 			index: ColumnIndex(columns.len() as u8),
 			auto_increment: false,
 			dictionary_id: None,
@@ -177,7 +177,7 @@ pub fn create_test_ringbuffer_column(
 	ringbuffer_id: RingBufferId,
 	name: &str,
 	constraint: TypeConstraint,
-	policies: Vec<ColumnPolicyKind>,
+	properties: Vec<ColumnPropertyKind>,
 ) {
 	let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut *txn), ringbuffer_id).unwrap();
 
@@ -190,7 +190,7 @@ pub fn create_test_ringbuffer_column(
 			primitive_name: "test_ringbuffer".to_string(),
 			column: name.to_string(),
 			constraint,
-			policies,
+			properties,
 			index: ColumnIndex(columns.len() as u8),
 			auto_increment: false,
 			dictionary_id: None,

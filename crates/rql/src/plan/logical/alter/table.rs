@@ -62,7 +62,7 @@ impl<'bump> Compiler<'bump> {
 					name: Fragment::internal(column.name.text().to_string()),
 					fragment: Fragment::internal(column.name.text().to_string()),
 					constraint,
-					policies: vec![],
+					properties: vec![],
 					auto_increment,
 					dictionary_id,
 				};

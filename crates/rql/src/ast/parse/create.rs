@@ -7,12 +7,12 @@ use reifydb_type::error::{AstErrorKind, Error, TypeError};
 use crate::{
 	ast::{
 		ast::{
-			AstColumnProperty, AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary,
-			AstCreateEvent, AstCreateFlow, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
-			AstCreatePolicy, AstCreatePrimaryKey, AstCreateProcedure, AstCreateRingBuffer, AstCreateSeries,
-			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
-			AstCreateTransactionalView, AstIndexColumn, AstPolicyEntry, AstPolicyKind, AstPrimaryKeyDef,
-			AstProcedureParam, AstTimestampPrecision, AstType, AstVariantDef,
+			AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind, AstColumnToCreate, AstCreate,
+			AstCreateColumnProperty, AstCreateDeferredView, AstCreateDictionary, AstCreateEvent,
+			AstCreateFlow, AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
+			AstCreateProcedure, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
+			AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTransactionalView, AstIndexColumn,
+			AstPrimaryKeyDef, AstProcedureParam, AstTimestampPrecision, AstType, AstVariantDef,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -163,8 +163,8 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Column))?).is_some() {
-			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_create_policy(token);
+			self.consume_keyword(Keyword::Property)?;
+			return self.parse_create_column_property(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
@@ -913,14 +913,14 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse CREATE COLUMN POLICY ON ns.table.column { saturation: error, default: 0 }
-	fn parse_create_policy(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_create_column_property(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::On)?;
 
 		let column = self.parse_column_identifier()?;
 
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut policies = Vec::new();
+		let mut properties = Vec::new();
 
 		loop {
 			self.skip_new_line()?;
@@ -929,16 +929,16 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Parse policy kind
+			// Parse property kind
 			let kind_token = self.consume(TokenKind::Identifier)?;
 			let kind = match kind_token.fragment.text() {
-				"saturation" => AstPolicyKind::Saturation,
-				"default" => AstPolicyKind::Default,
+				"saturation" => AstColumnPropertyKind::Saturation,
+				"default" => AstColumnPropertyKind::Default,
 				_ => {
 					let fragment = kind_token.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::InvalidPolicy,
-						message: format!("Invalid policy token: {}", fragment.text()),
+						message: format!("Invalid property token: {}", fragment.text()),
 						fragment,
 					}));
 				}
@@ -947,10 +947,10 @@ impl<'bump> Parser<'bump> {
 			// Consume colon separator
 			self.consume_operator(Operator::Colon)?;
 
-			// Parse policy value
+			// Parse property value
 			let value = BumpBox::new_in(self.parse_node(crate::ast::parse::Precedence::None)?, self.bump());
 
-			policies.push(AstPolicyEntry {
+			properties.push(AstColumnPropertyEntry {
 				kind,
 				value,
 			});
@@ -968,10 +968,10 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
-		Ok(AstCreate::Policy(AstCreatePolicy {
+		Ok(AstCreate::ColumnProperty(AstCreateColumnProperty {
 			token,
 			column,
-			policies,
+			properties,
 		}))
 	}
 
