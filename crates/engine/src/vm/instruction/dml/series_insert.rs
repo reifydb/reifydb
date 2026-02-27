@@ -21,7 +21,7 @@ use reifydb_type::{
 	params::Params,
 	return_error,
 	util::cowvec::CowVec,
-	value::{Value, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -73,6 +73,7 @@ pub(crate) fn insert_series<'a>(
 		batch_size: 1024,
 		params: params.clone(),
 		stack: SymbolTable::new(),
+		identity: IdentityId::root(),
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());

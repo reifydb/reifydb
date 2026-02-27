@@ -226,7 +226,7 @@ pub async fn handle_command(
 /// Tries in order:
 /// 1. Authorization header (Bearer token)
 /// 2. X-Api-Key header
-fn extract_identity(headers: &HeaderMap) -> Result<reifydb_core::interface::auth::Identity, AppError> {
+fn extract_identity(headers: &HeaderMap) -> Result<reifydb_type::value::identity::IdentityId, AppError> {
 	// Try Authorization header first
 	if let Some(auth_header) = headers.get("authorization") {
 		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;

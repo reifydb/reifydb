@@ -20,7 +20,7 @@ fn test_ringbuffer_below_capacity() {
 	create_ringbuffer(&engine, "test", "events", 10, "id: int4"); // capacity 10
 
 	// Insert fewer rows than capacity
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.ringbuffer("test.events").row(params! { id: 1 }).row(params! { id: 2 }).row(params! { id: 3 }).done();
 	let result = builder.execute().unwrap();
 
@@ -44,7 +44,7 @@ fn test_ringbuffer_at_capacity() {
 
 	// Insert exactly capacity rows
 	let rows: Vec<_> = (1..=5).map(|n| params! { id: n }).collect();
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.ringbuffer("test.events").rows(rows).done();
 	let result = builder.execute().unwrap();
 
@@ -69,12 +69,12 @@ fn test_ringbuffer_overflow_single() {
 
 	// First: fill to capacity
 	let rows: Vec<_> = (1..=3).map(|n| params! { id: n }).collect();
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.ringbuffer("test.events").rows(rows).done();
 	builder.execute().unwrap();
 
 	// Second: add one more (should overflow, removing oldest)
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.ringbuffer("test.events").row(params! { id: 4 }).done();
 	let result = builder.execute().unwrap();
 
@@ -100,7 +100,7 @@ fn test_ringbuffer_overflow_batch() {
 
 	// Insert more than capacity in one batch
 	let rows: Vec<_> = (1..=8).map(|n| params! { id: n }).collect();
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.ringbuffer("test.events").rows(rows).done();
 	let result = builder.execute().unwrap();
 
@@ -128,7 +128,7 @@ fn test_ringbuffer_circular_overwrite() {
 	for batch in 0..3 {
 		let start = batch * 3 + 1;
 		let rows: Vec<_> = (start..start + 3).map(|n| params! { val: n }).collect();
-		let mut builder = engine.bulk_insert(&identity);
+		let mut builder = engine.bulk_insert(identity);
 		builder.ringbuffer("test.circular").rows(rows).done();
 		builder.execute().unwrap();
 	}
@@ -153,7 +153,7 @@ fn test_ringbuffer_incremental_fill_and_overflow() {
 
 	// Insert one at a time
 	for n in 1..=6 {
-		let mut builder = engine.bulk_insert(&identity);
+		let mut builder = engine.bulk_insert(identity);
 		builder.ringbuffer("test.incr").row(params! { n: n }).done();
 		builder.execute().unwrap();
 	}

@@ -14,7 +14,11 @@ use reifydb_engine::{
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::clock::Clock;
-use reifydb_type::{Result, params::Params, value::Value};
+use reifydb_type::{
+	Result,
+	params::Params,
+	value::{Value, identity::IdentityId},
+};
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
@@ -61,6 +65,7 @@ pub fn evaluate_operator_config(
 		functions,
 		clock,
 		arena: None,
+		identity: IdentityId::root(),
 	};
 
 	for expr in expressions {

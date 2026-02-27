@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_function::registry::Functions;
 use reifydb_runtime::clock::Clock;
-use reifydb_type::{fragment::Fragment, params::Params};
+use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 use crate::{
 	expression::{cast::cast_column_data, context::EvalContext},
@@ -33,6 +33,7 @@ pub(super) fn coerce_columns(
 		functions: &Functions::empty(),
 		clock: &Clock::default(),
 		arena: None,
+		identity: IdentityId::root(),
 	};
 
 	let mut coerced_columns: Vec<ColumnData> = Vec::with_capacity(columns.len());

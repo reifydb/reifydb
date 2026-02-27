@@ -281,7 +281,10 @@ impl DatabaseBuilder {
 		let transforms = self.transforms.unwrap_or_else(Transforms::empty);
 
 		let procedures = {
-			let mut procedures_builder = Procedures::builder();
+			let mut procedures_builder = Procedures::builder().with_procedure(
+				"identity::inject",
+				reifydb_engine::procedure::identity_inject::IdentityInject::new,
+			);
 
 			#[cfg(reifydb_target = "native")]
 			if let Some(dir) = &self.procedure_dir {

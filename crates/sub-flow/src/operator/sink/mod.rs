@@ -29,7 +29,7 @@ use reifydb_runtime::clock::Clock;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, dictionary::DictionaryEntryId, row_number::RowNumber},
+	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
 };
 
 use crate::transaction::FlowTransaction;
@@ -76,6 +76,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 			functions: &Functions::empty(),
 			clock: &Clock::default(),
 			arena: None,
+			identity: IdentityId::root(),
 		};
 
 		if let Some(source_col) = columns.column(&target_col.name) {
@@ -142,6 +143,7 @@ pub(crate) fn coerce_subscription_columns(
 			functions: &Functions::empty(),
 			clock: &Clock::default(),
 			arena: None,
+			identity: IdentityId::root(),
 		};
 
 		if let Some(source_col) = columns.column(&target_col.name) {

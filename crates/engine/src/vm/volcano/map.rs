@@ -105,6 +105,7 @@ impl Transform for MapNode {
 				functions: ctx.functions,
 				clock: ctx.clock,
 				arena: None,
+				identity: stored_ctx.identity,
 			};
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
@@ -200,6 +201,7 @@ impl QueryNode for MapWithoutInputNode {
 				functions: &stored_ctx.services.functions,
 				clock: &stored_ctx.services.clock,
 				arena: None,
+				identity: stored_ctx.identity,
 			};
 
 			let column = compiled_expr.execute(&exec_ctx)?;

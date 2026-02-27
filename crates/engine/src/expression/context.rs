@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_function::registry::Functions;
 use reifydb_runtime::clock::Clock;
-use reifydb_type::params::Params;
+use reifydb_type::{params::Params, value::identity::IdentityId};
 
 use crate::{arena::QueryArena, vm::stack::SymbolTable};
 
@@ -29,6 +29,7 @@ pub struct EvalContext<'a> {
 	pub functions: &'a Functions,
 	pub clock: &'a Clock,
 	pub arena: Option<&'a QueryArena>,
+	pub identity: IdentityId,
 }
 
 impl<'a> EvalContext<'a> {
@@ -48,6 +49,7 @@ impl<'a> EvalContext<'a> {
 			functions: &EMPTY_FUNCTIONS,
 			clock: &DEFAULT_CLOCK,
 			arena: None,
+			identity: IdentityId::root(),
 		}
 	}
 

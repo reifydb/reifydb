@@ -3,13 +3,14 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::{
-	interface::auth::Identity,
-	value::column::{Column, columns::Columns},
-};
+use reifydb_core::value::column::{Column, columns::Columns};
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, identity::IdentityId},
+};
 
 use crate::{
 	expression::{context::EvalContext, eval::evaluate},
@@ -73,6 +74,7 @@ pub(crate) fn dispatch(
 			functions: &services.functions,
 			clock: &services.clock,
 			arena: None,
+			identity: IdentityId::anonymous(),
 		};
 		let col = evaluate(&eval_ctx, expr, &services.functions, &services.clock)?;
 		event_columns.push(Column::new(Fragment::internal(field_name), col.data));
@@ -125,12 +127,12 @@ pub(crate) fn dispatch(
 			}
 		}
 		let call_params = Params::Named(named_map);
-		let identity = Identity::Anonymous {};
+		let identity = IdentityId::anonymous();
 		let executor = Executor::from_services(services.clone());
 
 		for native_proc in native_handlers {
 			let ctx = ProcedureContext {
-				identity: &identity,
+				identity,
 				params: &call_params,
 				catalog: &services.catalog,
 				functions: &services.functions,

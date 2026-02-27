@@ -19,7 +19,6 @@ use reifydb_core::{
 	event::{Event, EventBus},
 	interface::{
 		WithEventBus,
-		auth::Identity,
 		catalog::{
 			column::{ColumnDef, ColumnIndex},
 			id::ColumnId,
@@ -41,7 +40,7 @@ use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{constraint::TypeConstraint, frame::frame::Frame},
+	value::{constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId},
 };
 use tracing::instrument;
 
@@ -81,7 +80,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::admin", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn admin_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_admin()?;
 			let frames = self.executor.admin(
@@ -102,7 +101,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_command()?;
 			let frames = self.executor.command(
@@ -123,7 +122,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::query", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_query()?;
 			self.executor.query(
@@ -143,7 +142,7 @@ impl StandardEngine {
 
 	/// Call a procedure by fully-qualified name.
 	#[instrument(name = "engine::procedure", level = "debug", skip(self, params), fields(name = %name))]
-	pub fn procedure_as(&self, identity: &Identity, name: &str, params: Params) -> Result<Vec<Frame>, Error> {
+	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		let mut txn = self.begin_command()?;
 		let frames = self.executor.call_procedure(&mut txn, identity, name, &params)?;
 		txn.commit()?;
@@ -459,7 +458,7 @@ impl StandardEngine {
 	/// ```
 	pub fn bulk_insert<'e>(
 		&'e self,
-		identity: &'e Identity,
+		identity: IdentityId,
 	) -> BulkInsertBuilder<'e, crate::bulk_insert::builder::Validated> {
 		BulkInsertBuilder::new(self, identity)
 	}
@@ -475,7 +474,7 @@ impl StandardEngine {
 	/// schema constraints. Invalid data may cause undefined behavior.
 	pub fn bulk_insert_trusted<'e>(
 		&'e self,
-		identity: &'e Identity,
+		identity: IdentityId,
 	) -> BulkInsertBuilder<'e, crate::bulk_insert::builder::Trusted> {
 		BulkInsertBuilder::new_trusted(self, identity)
 	}

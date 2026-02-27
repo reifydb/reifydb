@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::auth::Identity;
 use reifydb_engine::{
 	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
 	engine::StandardEngine,
 };
+use reifydb_type::value::identity::IdentityId;
 
 pub struct CommandSession {
 	pub(crate) engine: StandardEngine,
-	pub(crate) identity: Identity,
+	pub(crate) identity: IdentityId,
 }
 
 impl CommandSession {
@@ -32,7 +32,7 @@ impl CommandSession {
 	///     .execute()?;
 	/// ```
 	pub fn bulk_insert(&self) -> BulkInsertBuilder<'_, Validated> {
-		self.engine.bulk_insert(&self.identity)
+		self.engine.bulk_insert(self.identity)
 	}
 
 	/// Start a bulk insert operation with validation disabled (trusted mode).
@@ -40,6 +40,6 @@ impl CommandSession {
 	/// Use this for pre-validated internal data where constraint validation
 	/// can be skipped for maximum performance. Uses this session's identity.
 	pub fn bulk_insert_trusted(&self) -> BulkInsertBuilder<'_, Trusted> {
-		self.engine.bulk_insert_trusted(&self.identity)
+		self.engine.bulk_insert_trusted(self.identity)
 	}
 }

@@ -9,7 +9,11 @@ use reifydb_core::value::column::{
 };
 use reifydb_runtime::clock::Clock;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, util::bitvec::BitVec, value::r#type::Type};
+use reifydb_type::{
+	fragment::Fragment,
+	util::bitvec::BitVec,
+	value::{identity::IdentityId, r#type::Type},
+};
 
 pub mod blob;
 pub mod clock;
@@ -18,6 +22,7 @@ pub mod datetime;
 pub mod duration;
 pub mod error;
 pub mod flow;
+pub mod identity;
 pub mod is;
 pub mod math;
 pub mod meta;
@@ -36,6 +41,7 @@ pub struct GeneratorContext<'a> {
 	pub params: Columns,
 	pub txn: &'a mut Transaction<'a>,
 	pub catalog: &'a Catalog,
+	pub identity: IdentityId,
 }
 
 pub trait GeneratorFunction: Send + Sync {
@@ -47,6 +53,7 @@ pub struct ScalarFunctionContext<'a> {
 	pub columns: &'a Columns,
 	pub row_count: usize,
 	pub clock: &'a Clock,
+	pub identity: IdentityId,
 }
 pub trait ScalarFunction: Send + Sync {
 	fn scalar<'a>(&'a self, ctx: ScalarFunctionContext<'a>) -> ScalarFunctionResult<ColumnData>;
@@ -114,6 +121,7 @@ pub fn propagate_options(
 		columns: &unwrapped_columns,
 		row_count: ctx.row_count,
 		clock: ctx.clock,
+		identity: ctx.identity,
 	});
 
 	Some(result.map(|data| match combined_bv {

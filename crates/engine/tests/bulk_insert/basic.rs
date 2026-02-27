@@ -21,7 +21,7 @@ fn test_table_insert_named_params() {
 	create_namespace(&engine, "test");
 	create_table(&engine, "test", "users", "id: int4, name: utf8");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.users").row(params! { id: 1, name: "Alice" }).row(params! { id: 2, name: "Bob" }).done();
 
 	let result = builder.execute().unwrap();
@@ -50,7 +50,7 @@ fn test_table_insert_positional_params() {
 	create_namespace(&engine, "test");
 	create_table(&engine, "test", "items", "id: int4, value: float8");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.items").row(params![1, 10.5]).row(params![2, 20.5]).row(params![3, 30.5]).done();
 	let result = builder.execute().unwrap();
 
@@ -79,7 +79,7 @@ fn test_table_insert_multiple_rows_chained() {
 	create_namespace(&engine, "test");
 	create_table(&engine, "test", "data", "x: int4");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.data")
 		.row(params! { x: 1 })
 		.row(params! { x: 2 })
@@ -102,7 +102,7 @@ fn test_table_insert_rows_iterator() {
 
 	let rows: Vec<_> = (1..=10).map(|n| params! { n: n }).collect();
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.batch").rows(rows).done();
 	let result = builder.execute().unwrap();
 
@@ -117,7 +117,7 @@ fn test_ringbuffer_insert_basic() {
 	create_namespace(&engine, "test");
 	create_ringbuffer(&engine, "test", "events", 100, "id: int4, msg: utf8");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.ringbuffer("test.events")
 		.row(params! { id: 1, msg: "event1" })
 		.row(params! { id: 2, msg: "event2" })
@@ -149,7 +149,7 @@ fn test_mixed_table_and_ringbuffer() {
 	create_table(&engine, "test", "logs", "id: int4");
 	create_ringbuffer(&engine, "test", "stream", 50, "seq: int4");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.logs").row(params! { id: 1 }).row(params! { id: 2 }).done();
 	builder.ringbuffer("test.stream")
 		.row(params! { seq: 100 })
@@ -185,7 +185,7 @@ fn test_multiple_tables() {
 	create_table(&engine, "test", "table_a", "a: int4");
 	create_table(&engine, "test", "table_b", "b: int4");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.table_a").row(params! { a: 1 }).done();
 	builder.table("test.table_b").row(params! { b: 2 }).row(params! { b: 3 }).done();
 	let result = builder.execute().unwrap();
@@ -216,7 +216,7 @@ fn test_qualified_name_with_namespace() {
 	create_namespace(&engine, "myns");
 	create_table(&engine, "myns", "mytable", "val: int4");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("myns.mytable").row(params! { val: 42 }).done();
 	let result = builder.execute().unwrap();
 
@@ -232,7 +232,7 @@ fn test_qualified_name_default_namespace() {
 
 	create_table(&engine, "default", "simple", "x: int4");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("simple").row(params! { x: 1 }).done(); // No namespace prefix, should use "default"
 	let result = builder.execute().unwrap();
 
@@ -249,7 +249,7 @@ fn test_empty_insert() {
 	create_namespace(&engine, "test");
 	create_table(&engine, "test", "empty", "id: int4");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.empty").done();
 	let result = builder.execute().unwrap();
 
@@ -268,7 +268,7 @@ fn test_single_row_insert() {
 	create_namespace(&engine, "test");
 	create_table(&engine, "test", "single", "id: int4, data: utf8");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.single").row(params! { id: 1, data: "only one" }).done();
 	let result = builder.execute().unwrap();
 
@@ -292,7 +292,7 @@ fn test_result_structure() {
 	create_table(&engine, "ns2", "t2", "b: int4");
 	create_ringbuffer(&engine, "ns1", "rb1", 10, "c: int4");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("ns1.t1").row(params! { a: 1 }).row(params! { a: 2 }).done();
 	builder.table("ns2.t2").row(params! { b: 3 }).done();
 	builder.ringbuffer("ns1.rb1").row(params! { c: 4 }).row(params! { c: 5 }).row(params! { c: 6 }).done();

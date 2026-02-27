@@ -4,6 +4,7 @@
 pub mod context;
 #[cfg(reifydb_target = "native")]
 pub mod ffi;
+pub mod identity_inject;
 #[cfg(reifydb_target = "native")]
 pub mod loader;
 pub mod registry;

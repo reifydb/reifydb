@@ -23,7 +23,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, r#type::Type},
+	value::{Value, identity::IdentityId, r#type::Type},
 };
 use tracing::instrument;
 
@@ -77,6 +77,7 @@ pub(crate) fn insert_table<'a>(
 		batch_size: 1024,
 		params: Params::None,
 		stack: stack.clone(),
+		identity: IdentityId::root(),
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());

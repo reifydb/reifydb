@@ -10,7 +10,11 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::AlterSequenceNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::{params::Params, return_error, value::Value};
+use reifydb_type::{
+	params::Params,
+	return_error,
+	value::{Value, identity::IdentityId},
+};
 
 use crate::{
 	expression::{context::EvalContext, eval::evaluate},
@@ -66,6 +70,7 @@ pub(crate) fn alter_table_sequence<'a>(
 			functions: &services.functions,
 			clock: &services.clock,
 			arena: None,
+			identity: IdentityId::root(),
 		},
 		&plan.value,
 		&services.functions,

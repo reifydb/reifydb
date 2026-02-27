@@ -12,7 +12,7 @@ use reifydb_runtime::clock::Clock;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, r#type::Type},
+	value::{Value, identity::IdentityId, r#type::Type},
 };
 
 use super::eval::evaluate;
@@ -87,6 +87,7 @@ pub(crate) fn call_eval(
 		columns: &arguments,
 		row_count,
 		clock,
+		identity: ctx.identity,
 	})?;
 
 	Ok(Column {
@@ -131,6 +132,7 @@ fn call_user_defined_function(
 			ctx.params,
 			functions,
 			clock,
+			ctx.identity,
 		)?;
 
 		while func_symbol_table.scope_depth() > base_depth {
@@ -156,6 +158,7 @@ fn execute_function_body_for_scalar(
 	params: &Params,
 	functions: &Functions,
 	clock: &Clock,
+	identity: IdentityId,
 ) -> crate::Result<Value> {
 	let mut ip = 0;
 	let mut stack: Vec<Value> = Vec::new();
@@ -382,6 +385,7 @@ fn execute_function_body_for_scalar(
 							functions,
 							clock,
 							arena: None,
+							identity,
 						};
 						let result_column = evaluate(
 							&evaluation_context,
@@ -435,6 +439,7 @@ fn execute_function_body_for_scalar(
 						params,
 						functions,
 						clock,
+						identity,
 					)?;
 					while symbol_table.scope_depth() > base_depth {
 						let _ = symbol_table.exit_scope();
@@ -453,6 +458,7 @@ fn execute_function_body_for_scalar(
 						columns: &columns,
 						row_count: 1,
 						clock,
+						identity,
 					})?;
 					if result_data.len() > 0 {
 						stack.push(result_data.get_value(0));
@@ -535,6 +541,7 @@ fn evaluate_arguments(
 		functions: ctx.functions,
 		clock: ctx.clock,
 		arena: None,
+		identity: ctx.identity,
 	};
 	let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
 

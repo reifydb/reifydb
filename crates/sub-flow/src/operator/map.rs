@@ -20,7 +20,11 @@ use reifydb_engine::{
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::clock::Clock;
-use reifydb_type::{fragment::Fragment, params::Params, value::row_number::RowNumber};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{identity::IdentityId, row_number::RowNumber},
+};
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
@@ -83,6 +87,7 @@ impl MapOperator {
 			functions: &self.functions,
 			clock: &self.clock,
 			arena: None,
+			identity: IdentityId::root(),
 		};
 
 		let mut result_columns = Vec::with_capacity(self.expressions.len());

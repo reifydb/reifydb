@@ -145,7 +145,7 @@ pub mod tests {
 	use reifydb_function::registry::Functions;
 	use reifydb_rql::expression::ColumnExpression;
 	use reifydb_runtime::clock::Clock;
-	use reifydb_type::{fragment::Fragment, params::Params};
+	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 	use crate::{expression::context::EvalContext, vm::stack::SymbolTable};
 
@@ -166,6 +166,7 @@ pub mod tests {
 			functions: &Functions::empty(),
 			clock: &Clock::default(),
 			arena: None,
+			identity: IdentityId::root(),
 		};
 
 		// Try to access a column that doesn't exist

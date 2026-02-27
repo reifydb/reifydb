@@ -20,7 +20,11 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::DeleteTableNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, identity::IdentityId},
+};
 
 use super::primary_key;
 use crate::{
@@ -95,6 +99,7 @@ pub(crate) fn delete<'a>(
 				batch_size: 1024,
 				params: params.clone(),
 				stack: SymbolTable::new(),
+				identity: IdentityId::root(),
 			}),
 		);
 
@@ -104,6 +109,7 @@ pub(crate) fn delete<'a>(
 			batch_size: 1024,
 			params: params.clone(),
 			stack: SymbolTable::new(),
+			identity: IdentityId::root(),
 		};
 
 		// Initialize the operator before execution

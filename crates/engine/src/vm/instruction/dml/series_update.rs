@@ -30,7 +30,7 @@ use reifydb_type::{
 	params::Params,
 	return_error,
 	util::{bitvec::BitVec, cowvec::CowVec},
-	value::{Value, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -190,6 +190,7 @@ pub(crate) fn update_series<'a>(
 					functions: &services.functions,
 					clock: &services.clock,
 					arena: None,
+					identity: IdentityId::root(),
 				};
 
 				let result = compiled_expr.execute(&exec_ctx)?;
@@ -247,6 +248,7 @@ pub(crate) fn update_series<'a>(
 				functions: &services.functions,
 				clock: &services.clock,
 				arena: None,
+				identity: IdentityId::root(),
 			};
 
 			// Set target column for type coercion

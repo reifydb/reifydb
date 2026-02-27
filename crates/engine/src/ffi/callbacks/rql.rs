@@ -10,9 +10,8 @@ use reifydb_abi::{
 	context::context::ContextFFI,
 	data::buffer::BufferFFI,
 };
-use reifydb_core::interface::auth::Identity;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::params::Params;
+use reifydb_type::{params::Params, value::identity::IdentityId};
 use tracing::error;
 
 use super::memory::host_alloc;
@@ -63,7 +62,7 @@ pub extern "C" fn host_rql(
 			let executor = &*(ctx_ref.executor_ptr as *const Executor);
 
 			// Execute RQL
-			let frames = match executor.rql(tx, &Identity::root(), rql_str, params) {
+			let frames = match executor.rql(tx, IdentityId::root(), rql_str, params) {
 				Ok(f) => f,
 				Err(e) => {
 					error!("host_rql: rql execution failed: {}", e);

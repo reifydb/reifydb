@@ -56,7 +56,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
-	value::{Value, blob::Blob, row_number::RowNumber, r#type::Type},
+	value::{Value, blob::Blob, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
 use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
@@ -241,6 +241,7 @@ impl WindowOperator {
 			functions: &self.functions,
 			clock: &self.clock,
 			arena: None,
+			identity: IdentityId::root(),
 		};
 
 		let mut group_columns: Vec<Column> = Vec::new();
@@ -423,6 +424,7 @@ impl WindowOperator {
 			functions: &self.functions,
 			clock: &self.clock,
 			arena: None,
+			identity: IdentityId::root(),
 		};
 
 		let (group_values, group_names) = self.extract_group_values(events)?;

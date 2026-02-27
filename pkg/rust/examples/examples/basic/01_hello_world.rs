@@ -11,7 +11,7 @@
 //!
 //! Run with: `make hello-world` or `cargo run --bin hello-world`
 
-use reifydb::{Identity, Params, Session, embedded};
+use reifydb::{IdentityId, Params, Session, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
@@ -47,7 +47,7 @@ fn main() {
 	// - Isolated execution context
 	// - User-specific permissions and state
 	info!("Creating a session for isolated operations");
-	let session = db.query_session(Identity::root()).unwrap();
+	let session = db.query_session(IdentityId::root()).unwrap();
 
 	// Execute a query within the session context
 	// Sessions can maintain state across multiple operations

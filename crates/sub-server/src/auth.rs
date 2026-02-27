@@ -12,7 +12,7 @@
 //! proper implementation of token validation before production use. The `validate_*`
 //! functions are stubs that should be connected to actual authentication services.
 
-use reifydb_core::interface::auth::Identity;
+use reifydb_type::value::identity::IdentityId;
 
 /// Authentication error types.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,7 +66,7 @@ pub type AuthResult<T> = std::result::Result<T, AuthError>;
 /// ```ignore
 /// let identity = extract_identity_from_auth_header("Bearer eyJ...")?;
 /// ```
-pub fn extract_identity_from_auth_header(auth_header: &str) -> AuthResult<Identity> {
+pub fn extract_identity_from_auth_header(auth_header: &str) -> AuthResult<IdentityId> {
 	if let Some(token) = auth_header.strip_prefix("Bearer ") {
 		validate_bearer_token(token.trim())
 	} else if let Some(credentials) = auth_header.strip_prefix("Basic ") {
@@ -86,7 +86,7 @@ pub fn extract_identity_from_auth_header(auth_header: &str) -> AuthResult<Identi
 ///
 /// * `Ok(Identity)` - The identity associated with the API key
 /// * `Err(AuthError)` - API key validation failed
-pub fn extract_identity_from_api_key(api_key: &str) -> AuthResult<Identity> {
+pub fn extract_identity_from_api_key(api_key: &str) -> AuthResult<IdentityId> {
 	validate_api_key(api_key)
 }
 
@@ -103,26 +103,11 @@ pub fn extract_identity_from_api_key(api_key: &str) -> AuthResult<Identity> {
 /// * `Ok(Identity)` - The authenticated user identity
 /// * `Err(AuthError::MissingCredentials)` - No token provided
 /// * `Err(AuthError)` - Token validation failed
-pub fn extract_identity_from_ws_auth(token: Option<&str>) -> AuthResult<Identity> {
+pub fn extract_identity_from_ws_auth(token: Option<&str>) -> AuthResult<IdentityId> {
 	match token {
 		Some(t) if !t.is_empty() => validate_bearer_token(t),
 		_ => Err(AuthError::MissingCredentials),
 	}
-}
-
-/// Create an anonymous identity for unauthenticated requests.
-///
-/// Use this when authentication is optional and the request has no credentials.
-pub fn anonymous_identity() -> Identity {
-	Identity::Anonymous {}
-}
-
-/// Create a root system identity.
-///
-/// **Warning**: This should only be used for internal operations, never for
-/// external request handling.
-pub fn root_identity() -> Identity {
-	Identity::root()
 }
 
 // ============================================================================
@@ -142,7 +127,7 @@ pub fn root_identity() -> Identity {
 /// 2. Check token expiration
 /// 3. Look up the user/identity from the token claims
 /// 4. Return the Identity
-fn validate_bearer_token(token: &str) -> AuthResult<Identity> {
+fn validate_bearer_token(token: &str) -> AuthResult<IdentityId> {
 	// TODO: Implement actual JWT or opaque token validation
 	//
 	// Example JWT implementation:
@@ -152,14 +137,12 @@ fn validate_bearer_token(token: &str) -> AuthResult<Identity> {
 	// 4. Look up user in database or cache
 	// 5. Return Identity::User { id, name }
 	//
-	// For now, accept any non-empty token and return a system identity
+	// For now, accept any non-empty token and return a root identity
 	if token.is_empty() {
 		Err(AuthError::InvalidToken)
 	} else {
-		Ok(Identity::System {
-			id: 1,
-			name: "authenticated".to_string(),
-		})
+		// TODO: Implement actual token validation and return real IdentityId
+		Ok(IdentityId::root())
 	}
 }
 
@@ -172,7 +155,7 @@ fn validate_bearer_token(token: &str) -> AuthResult<Identity> {
 /// 2. Split into username:password
 /// 3. Verify credentials against user store
 /// 4. Return the Identity
-fn validate_basic_auth(credentials: &str) -> AuthResult<Identity> {
+fn validate_basic_auth(credentials: &str) -> AuthResult<IdentityId> {
 	// TODO: Implement basic auth validation
 	//
 	// 1. Base64 decode credentials
@@ -191,7 +174,7 @@ fn validate_basic_auth(credentials: &str) -> AuthResult<Identity> {
 /// 1. Look up the API key in the database
 /// 2. Check if the key is active and not expired
 /// 3. Return the associated Identity
-fn validate_api_key(api_key: &str) -> AuthResult<Identity> {
+fn validate_api_key(api_key: &str) -> AuthResult<IdentityId> {
 	// TODO: Implement API key validation
 	//
 	// 1. Hash the API key
@@ -199,20 +182,18 @@ fn validate_api_key(api_key: &str) -> AuthResult<Identity> {
 	// 3. Verify key is active
 	// 4. Return the associated Identity
 	//
-	// For now, accept any non-empty API key and return a system identity
+	// For now, accept any non-empty API key and return a root identity
 	if api_key.is_empty() {
 		Err(AuthError::InvalidToken)
 	} else {
-		Ok(Identity::System {
-			id: 1,
-			name: "authenticated".to_string(),
-		})
+		// TODO: Implement actual token validation and return real IdentityId
+		Ok(IdentityId::root())
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::auth::Identity;
+	use reifydb_type::value::identity::IdentityId;
 
 	use super::*;
 
@@ -251,22 +232,13 @@ pub mod tests {
 
 	#[test]
 	fn test_anonymous_identity() {
-		let identity = anonymous_identity();
-		assert!(matches!(identity, Identity::Anonymous {}));
+		let identity = IdentityId::anonymous();
+		assert!(identity.is_anonymous());
 	}
 
 	#[test]
 	fn test_root_identity() {
-		let identity = root_identity();
-		match identity {
-			Identity::System {
-				id,
-				name,
-			} => {
-				assert_eq!(id, 0);
-				assert_eq!(name, "root");
-			}
-			_ => panic!("Expected System identity"),
-		}
+		let identity = IdentityId::root();
+		assert!(identity.is_root());
 	}
 }

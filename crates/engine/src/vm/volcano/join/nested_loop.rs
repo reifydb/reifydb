@@ -136,6 +136,7 @@ impl QueryNode for NestedLoopJoinNode {
 					functions: &ctx.services.functions,
 					clock: &ctx.services.clock,
 					arena: None,
+					identity: ctx.identity,
 				};
 
 				let all_true = self.context.compiled.iter().fold(true, |acc, compiled_expr| {

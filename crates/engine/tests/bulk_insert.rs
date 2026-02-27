@@ -6,9 +6,8 @@
 //! Tests cover all API paths, validation modes, error conditions, and edge cases
 //! for the fluent bulk insert API that bypasses RQL parsing for maximum performance.
 
-use reifydb_core::interface::auth::Identity;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_type::value::frame::frame::Frame;
+use reifydb_type::value::{frame::frame::Frame, identity::IdentityId};
 
 #[path = "bulk_insert/basic.rs"]
 mod basic;
@@ -25,19 +24,19 @@ mod trusted;
 
 pub fn create_namespace(engine: &StandardEngine, name: &str) {
 	let identity = test_identity();
-	engine.admin_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default()).unwrap();
+	engine.admin_as(identity, &format!("CREATE NAMESPACE {name}"), Default::default()).unwrap();
 }
 
 pub fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
 	let identity = test_identity();
-	engine.admin_as(&identity, &format!("CREATE TABLE {namespace}::{table} {{ {columns} }}"), Default::default())
+	engine.admin_as(identity, &format!("CREATE TABLE {namespace}::{table} {{ {columns} }}"), Default::default())
 		.unwrap();
 }
 
 pub fn create_ringbuffer(engine: &StandardEngine, namespace: &str, name: &str, capacity: u64, columns: &str) {
 	let identity = test_identity();
 	engine.admin_as(
-		&identity,
+		identity,
 		&format!("CREATE RINGBUFFER {namespace}::{name} {{ {columns} }} WITH {{ capacity: {capacity} }}"),
 		Default::default(),
 	)
@@ -46,16 +45,16 @@ pub fn create_ringbuffer(engine: &StandardEngine, namespace: &str, name: &str, c
 
 pub fn query_table(engine: &StandardEngine, table: &str) -> Vec<Frame> {
 	let identity = test_identity();
-	engine.query_as(&identity, &format!("FROM {table}"), Default::default()).unwrap()
+	engine.query_as(identity, &format!("FROM {table}"), Default::default()).unwrap()
 }
 
 pub fn query_ringbuffer(engine: &StandardEngine, ringbuffer: &str) -> Vec<Frame> {
 	let identity = test_identity();
-	engine.query_as(&identity, &format!("FROM {ringbuffer}"), Default::default()).unwrap()
+	engine.query_as(identity, &format!("FROM {ringbuffer}"), Default::default()).unwrap()
 }
 
-pub fn test_identity() -> Identity {
-	Identity::root()
+pub fn test_identity() -> IdentityId {
+	IdentityId::root()
 }
 
 pub fn row_count(frames: &[Frame]) -> usize {

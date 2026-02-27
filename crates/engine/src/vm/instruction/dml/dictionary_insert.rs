@@ -13,7 +13,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, dictionary::DictionaryEntryId, r#type::Type},
+	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type},
 };
 
 use crate::{
@@ -53,6 +53,7 @@ pub(crate) fn insert_dictionary<'a>(
 		batch_size: 1024,
 		params: Params::None,
 		stack: stack.clone(),
+		identity: IdentityId::root(),
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());

@@ -23,7 +23,7 @@ use reifydb_rql::expression::Expression;
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{
 	params::Params,
-	value::{Value, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 
 use crate::{
@@ -87,6 +87,7 @@ impl FilterOperator {
 			functions: &self.functions,
 			clock: &self.clock,
 			arena: None,
+			identity: IdentityId::root(),
 		};
 
 		// Start with all rows passing

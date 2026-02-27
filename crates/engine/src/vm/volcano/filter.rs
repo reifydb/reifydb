@@ -137,6 +137,7 @@ impl Transform for FilterNode {
 				functions: ctx.functions,
 				clock: ctx.clock,
 				arena: None,
+				identity: stored_ctx.identity,
 			};
 
 			let result = compiled_expr.execute(&exec_ctx)?;
@@ -216,6 +217,7 @@ impl FilterNode {
 				functions: &ctx.services.functions,
 				clock: &ctx.services.clock,
 				arena: None,
+				identity: ctx.identity,
 			};
 
 			let result = compiled_expr.execute(&exec_ctx)?;

@@ -7,12 +7,9 @@ use futures_util::{SinkExt, StreamExt};
 use reifydb_catalog::{drop_flow_by_name, drop_subscription};
 use reifydb_core::{
 	error::diagnostic::internal::internal,
-	interface::{
-		auth::Identity,
-		catalog::{
-			id::SubscriptionId as DbSubscriptionId,
-			subscription::{subscription_flow_name, subscription_flow_namespace},
-		},
+	interface::catalog::{
+		id::SubscriptionId as DbSubscriptionId,
+		subscription::{subscription_flow_name, subscription_flow_namespace},
 	},
 };
 use reifydb_sub_server::{
@@ -22,7 +19,11 @@ use reifydb_sub_server::{
 	state::AppState,
 };
 use reifydb_subscription::poller::SubscriptionPoller;
-use reifydb_type::{error::Error, params::Params, value::uuid::Uuid7};
+use reifydb_type::{
+	error::Error,
+	params::Params,
+	value::{identity::IdentityId, uuid::Uuid7},
+};
 use tokio::{
 	net::TcpStream,
 	select,
@@ -91,7 +92,7 @@ pub async fn handle_connection(
 	let (push_tx, mut push_rx) = mpsc::channel::<PushMessage>(100);
 
 	// Connection starts unauthenticated
-	let mut identity: Option<Identity> = None;
+	let mut identity: Option<IdentityId> = None;
 
 	loop {
 		select! {
@@ -228,7 +229,7 @@ type ConnectionId = Uuid7;
 async fn process_message(
 	text: &str,
 	state: &AppState,
-	identity: &mut Option<Identity>,
+	identity: &mut Option<IdentityId>,
 	connection_id: ConnectionId,
 	registry: &SubscriptionRegistry,
 	poller: &SubscriptionPoller,
@@ -251,8 +252,8 @@ async fn process_message(
 		},
 
 		RequestPayload::Admin(a) => {
-			let id = match identity.as_ref() {
-				Some(id) => id.clone(),
+			let id: IdentityId = match identity.as_ref() {
+				Some(id) => *id,
 				None => {
 					return Some(build_error(
 						&request.id,
@@ -290,8 +291,8 @@ async fn process_message(
 		}
 
 		RequestPayload::Query(q) => {
-			let id = match identity.as_ref() {
-				Some(id) => id.clone(),
+			let id: IdentityId = match identity.as_ref() {
+				Some(id) => *id,
 				None => {
 					return Some(build_error(
 						&request.id,
@@ -323,8 +324,8 @@ async fn process_message(
 		}
 
 		RequestPayload::Command(c) => {
-			let id = match identity.as_ref() {
-				Some(id) => id.clone(),
+			let id: IdentityId = match identity.as_ref() {
+				Some(id) => *id,
 				None => {
 					return Some(build_error(
 						&request.id,
@@ -362,17 +363,8 @@ async fn process_message(
 		}
 
 		RequestPayload::Subscribe(sub) => {
-			handle_subscribe(
-				&request.id,
-				sub,
-				identity.clone(),
-				connection_id,
-				state,
-				registry,
-				poller,
-				push_tx,
-			)
-			.await
+			handle_subscribe(&request.id, sub, *identity, connection_id, state, registry, poller, push_tx)
+				.await
 		}
 
 		RequestPayload::Unsubscribe(unsub) => {

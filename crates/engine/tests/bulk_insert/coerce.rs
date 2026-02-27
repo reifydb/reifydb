@@ -19,7 +19,7 @@ fn test_type_coercion_int_to_larger_int() {
 	// int8 (i64) column, insert int4 (i32) values
 	create_table(&engine, "test", "coerce", "val: int8");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.coerce").row(params! { val: 42i32 }).row(params! { val: -100i32 }).done();
 	let result = builder.execute().unwrap();
 
@@ -43,7 +43,7 @@ fn test_type_coercion_int_to_float() {
 	// float8 (f64) column, insert int4 (i32) values
 	create_table(&engine, "test", "coerce", "val: float8");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.coerce").row(params! { val: 42i32 }).row(params! { val: -100i32 }).done();
 	let result = builder.execute().unwrap();
 
@@ -67,7 +67,7 @@ fn test_missing_column_uses_undefined() {
 	// Two columns, but we only insert into one; b is Option to accept none
 	create_table(&engine, "test", "partial", "a: int4, b: Option(int4)");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder
 		.table("test.partial")
 		.row(params! { a: 1 }) // missing b
@@ -97,7 +97,7 @@ fn test_mixed_some_none_values() {
 	create_namespace(&engine, "test");
 	create_table(&engine, "test", "mixed", "a: Option(int4), b: Option(int4)");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder
 		.table("test.mixed")
 		.row(params! { a: 1, b: 10 }) // both defined
@@ -124,7 +124,7 @@ fn test_coercion_batch_multiple_rows() {
 	// Insert many rows to test batch coercion
 	let rows: Vec<_> = (1..=100).map(|n| params! { val: n as i32 }).collect();
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.batch").rows(rows).done();
 	let result = builder.execute().unwrap();
 
@@ -149,7 +149,7 @@ fn test_coercion_float4_to_float8() {
 	// float8 (f64) column, insert float4 (f32) values
 	create_table(&engine, "test", "floats", "val: float8");
 
-	let mut builder = engine.bulk_insert(&identity);
+	let mut builder = engine.bulk_insert(identity);
 	builder.table("test.floats").row(params! { val: 3.14f32 }).row(params! { val: 2.71f32 }).done();
 	let result = builder.execute().unwrap();
 

@@ -48,8 +48,10 @@ pub(crate) fn create_deferred_view(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::auth::Identity;
-	use reifydb_type::{params::Params, value::Value};
+	use reifydb_type::{
+		params::Params,
+		value::{Value, identity::IdentityId},
+	};
 
 	use crate::{
 		test_utils::create_test_admin_transaction_with_internal_schema,
@@ -60,14 +62,14 @@ pub mod tests {
 	fn test_create_view() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction_with_internal_schema();
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -78,7 +80,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM [] }",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();
@@ -95,7 +97,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM [] }",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap_err();
@@ -106,14 +108,14 @@ pub mod tests {
 	fn test_create_same_view_in_different_schema() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction_with_internal_schema();
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -122,7 +124,7 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE another_schema",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -133,7 +135,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM [] }",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();
@@ -149,7 +151,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DEFERRED VIEW another_schema::test_view { id: Int4 } AS { FROM [] }",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();

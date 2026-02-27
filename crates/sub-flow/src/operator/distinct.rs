@@ -31,7 +31,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
-	value::{Value, blob::Blob, row_number::RowNumber, r#type::Type},
+	value::{Value, blob::Blob, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 use serde::{Deserialize, Serialize};
 
@@ -238,6 +238,7 @@ impl DistinctOperator {
 				functions: &self.functions,
 				clock: &self.clock,
 				arena: None,
+				identity: IdentityId::root(),
 			};
 			let mut expr_columns = Vec::new();
 			for compiled_expr in &self.compiled_expressions {

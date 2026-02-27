@@ -4,7 +4,6 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	interface::auth::Identity,
 	internal_error,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
@@ -19,7 +18,7 @@ use reifydb_type::{
 	error::{ProcedureErrorKind, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
-	value::{Value, frame::frame::Frame, r#type::Type},
+	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
 };
 
 use super::{
@@ -69,11 +68,11 @@ pub struct Vm {
 	pub symbol_table: SymbolTable,
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
-	pub(crate) identity: Identity,
+	pub(crate) identity: IdentityId,
 }
 
 impl Vm {
-	pub fn new(symbol_table: SymbolTable, identity: Identity) -> Self {
+	pub fn new(symbol_table: SymbolTable, identity: IdentityId) -> Self {
 		Self {
 			ip: 0,
 			iteration_count: 0,
@@ -850,12 +849,12 @@ impl Vm {
 						{
 							// Runtime-registered native procedure (no catalog entry needed)
 							let call_params = Params::Positional(args);
-							let identity = self.identity.clone();
+							let identity = self.identity;
 							let executor = crate::vm::executor::Executor::from_services(
 								services.clone(),
 							);
 							let ctx = crate::procedure::context::ProcedureContext {
-								identity: &identity,
+								identity,
 								params: &call_params,
 								catalog: &services.catalog,
 								functions: &services.functions,
@@ -863,6 +862,18 @@ impl Vm {
 								executor: &executor,
 							};
 							let columns = proc_impl.call(&ctx, tx)?;
+
+							// Special handling: identity::inject updates the VM's identity
+							if func_name == "identity::inject" {
+								if let Some(col) = columns.get(0) {
+									if let Value::IdentityId(id) =
+										col.data().get_value(0)
+									{
+										self.identity = id;
+									}
+								}
+							}
+
 							self.stack.push(Variable::Columns(columns));
 						} else if is_procedure_call {
 							return Err(TypeError::Procedure {
@@ -886,6 +897,7 @@ impl Vm {
 								functions: &services.functions,
 								clock: &services.clock,
 								arena: None,
+								identity: self.identity,
 							};
 
 							let mut arg_exprs = Vec::with_capacity(arity);
@@ -1621,6 +1633,7 @@ impl Vm {
 						plan.clone(),
 						params.clone(),
 						&mut self.symbol_table,
+						self.identity,
 					)? {
 						self.stack.push(Variable::Columns(columns));
 					}
@@ -1846,6 +1859,7 @@ fn run_query_plan(
 	plan: QueryPlan,
 	params: Params,
 	symbol_table: &mut SymbolTable,
+	identity: IdentityId,
 ) -> crate::Result<Option<Columns>> {
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
@@ -1853,6 +1867,7 @@ fn run_query_plan(
 		batch_size: 1024,
 		params,
 		stack: symbol_table.clone(),
+		identity,
 	});
 
 	let mut query_node = compile(plan, txn, context.clone());

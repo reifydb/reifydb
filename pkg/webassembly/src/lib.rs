@@ -18,12 +18,12 @@ use reifydb_cdc::{
 	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
 	storage::CdcStore,
 };
-use reifydb_core::{event::transaction::PostCommitEvent, interface::auth::Identity};
+use reifydb_core::event::transaction::PostCommitEvent;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::Subsystem;
 use reifydb_sub_flow::{builder::FlowBuilderConfig, subsystem::FlowSubsystem};
-use reifydb_type::params::Params;
+use reifydb_type::{params::Params, value::identity::IdentityId};
 
 mod error;
 mod utils;
@@ -186,11 +186,11 @@ impl WasmDB {
 	/// ```
 	#[wasm_bindgen]
 	pub fn query(&self, rql: &str) -> Result<JsValue, JsValue> {
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 		let params = Params::None;
 
 		// Execute query
-		let frames = self.inner.query_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let frames = self.inner.query_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		// Convert frames to JavaScript array of objects
 		utils::frames_to_js(&frames)
@@ -213,10 +213,10 @@ impl WasmDB {
 	/// ```
 	#[wasm_bindgen]
 	pub fn admin(&self, rql: &str) -> Result<JsValue, JsValue> {
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 		let params = Params::None;
 
-		let frames = self.inner.admin_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let frames = self.inner.admin_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
 	}
@@ -227,10 +227,10 @@ impl WasmDB {
 	/// For DDL operations (CREATE, ALTER), use `admin()` instead.
 	#[wasm_bindgen]
 	pub fn command(&self, rql: &str) -> Result<JsValue, JsValue> {
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 		let params = Params::None;
 
-		let frames = self.inner.command_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let frames = self.inner.command_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
 	}
@@ -247,12 +247,12 @@ impl WasmDB {
 	/// ```
 	#[wasm_bindgen(js_name = queryWithParams)]
 	pub fn query_with_params(&self, rql: &str, params_js: JsValue) -> Result<JsValue, JsValue> {
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 
 		// Parse JavaScript params to Rust Params
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.query_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let frames = self.inner.query_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
 	}
@@ -260,11 +260,11 @@ impl WasmDB {
 	/// Execute admin with JSON parameters
 	#[wasm_bindgen(js_name = adminWithParams)]
 	pub fn admin_with_params(&self, rql: &str, params_js: JsValue) -> Result<JsValue, JsValue> {
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.admin_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let frames = self.inner.admin_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
 	}
@@ -272,11 +272,11 @@ impl WasmDB {
 	/// Execute command with JSON parameters
 	#[wasm_bindgen(js_name = commandWithParams)]
 	pub fn command_with_params(&self, rql: &str, params_js: JsValue) -> Result<JsValue, JsValue> {
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.command_as(&identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let frames = self.inner.command_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
 	}

@@ -4,8 +4,8 @@
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use crate::{
-	AggregateFunction, GeneratorFunction, ScalarFunction, blob, clock, date, datetime, duration, flow, is, math,
-	meta, series, subscription, text, time,
+	AggregateFunction, GeneratorFunction, ScalarFunction, blob, clock, date, datetime, duration, flow, identity,
+	is, math, meta, series, subscription, text, time,
 };
 
 #[derive(Clone)]
@@ -175,6 +175,7 @@ impl Functions {
 			.register_scalar("text::format_bytes", text::format_bytes::FormatBytes::new)
 			.register_scalar("text::format_bytes_si", text::format_bytes_si::FormatBytesSi::new)
 			.register_scalar("meta::type", meta::r#type::Type::new)
+			.register_scalar("identity::id", identity::id::Id::new)
 			.register_scalar("is::some", is::some::IsSome::new)
 			.register_scalar("is::none", is::none::IsNone::new)
 			.register_scalar("is::type", is::r#type::IsType::new)

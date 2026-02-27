@@ -33,7 +33,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
-	value::{Value, row_number::RowNumber, r#type::Type},
+	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
 use super::{
@@ -158,6 +158,7 @@ impl JoinOperator {
 			functions: &self.functions,
 			clock: &self.clock,
 			arena: None,
+			identity: IdentityId::root(),
 		};
 
 		// Evaluate all compiled expressions on the entire batch

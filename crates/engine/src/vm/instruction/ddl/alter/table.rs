@@ -61,25 +61,27 @@ pub(crate) fn execute_alter_table(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::auth::Identity;
-	use reifydb_type::{params::Params, value::Value};
+	use reifydb_type::{
+		params::Params,
+		value::{Value, identity::IdentityId},
+	};
 
 	use crate::{
 		test_utils::create_test_admin_transaction,
 		vm::{Admin, executor::Executor},
 	};
 
-	fn setup() -> (Executor, reifydb_transaction::transaction::admin::AdminTransaction, Identity) {
+	fn setup() -> (Executor, reifydb_transaction::transaction::admin::AdminTransaction, IdentityId) {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -89,7 +91,7 @@ mod tests {
 			Admin {
 				rql: "CREATE TABLE app::users { id: Int4, name: Utf8 }",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -107,7 +109,7 @@ mod tests {
 				Admin {
 					rql: "ALTER TABLE app::users ADD COLUMN email: Utf8",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();
@@ -128,7 +130,7 @@ mod tests {
 				Admin {
 					rql: "ALTER TABLE app::users DROP COLUMN name",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();
@@ -149,7 +151,7 @@ mod tests {
 				Admin {
 					rql: "ALTER TABLE app::users RENAME COLUMN name TO full_name",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();
@@ -170,7 +172,7 @@ mod tests {
 				Admin {
 					rql: "ALTER TABLE app::users DROP COLUMN nonexistent",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap_err();
@@ -187,7 +189,7 @@ mod tests {
 				Admin {
 					rql: "ALTER TABLE app::users RENAME COLUMN nonexistent TO new_name",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap_err();

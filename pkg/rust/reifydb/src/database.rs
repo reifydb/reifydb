@@ -10,7 +10,7 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId};
+use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
 use reifydb_sub_api::subsystem::HealthStatus;
@@ -22,7 +22,13 @@ use reifydb_sub_server_http::subsystem::HttpSubsystem;
 use reifydb_sub_server_ws::subsystem::WsSubsystem;
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
 use reifydb_subscription::cursor::SubscriptionCursor;
-use reifydb_type::{Result, error::Diagnostic, fragment::Fragment, params::Params, value::frame::frame::Frame};
+use reifydb_type::{
+	Result,
+	error::Diagnostic,
+	fragment::Fragment,
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 use tracing::{debug, error, instrument, warn};
 
 use crate::{
@@ -246,26 +252,23 @@ impl Database {
 
 	/// Execute an admin (DDL + DML + Query) operation as root user.
 	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		let identity = Identity::root();
-		self.engine.admin_as(&identity, rql, params.into())
+		self.engine.admin_as(IdentityId::root(), rql, params.into())
 	}
 
 	/// Execute a transactional command (DML + Query) as root user.
 	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		let identity = Identity::root();
-		self.engine.command_as(&identity, rql, params.into())
+		self.engine.command_as(IdentityId::root(), rql, params.into())
 	}
 
 	/// Execute a read-only query as root user.
 	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		let identity = Identity::root();
-		self.engine.query_as(&identity, rql, params.into())
+		self.engine.query_as(IdentityId::root(), rql, params.into())
 	}
 
 	/// Execute an admin (DDL + DML + Query) operation as a specific identity.
 	pub fn admin_as(
 		&self,
-		identity: &Identity,
+		identity: IdentityId,
 		rql: &str,
 		params: impl Into<Params>,
 	) -> reifydb_type::Result<Vec<Frame>> {
@@ -275,7 +278,7 @@ impl Database {
 	/// Execute a transactional command (DML + Query) as a specific identity.
 	pub fn command_as(
 		&self,
-		identity: &Identity,
+		identity: IdentityId,
 		rql: &str,
 		params: impl Into<Params>,
 	) -> reifydb_type::Result<Vec<Frame>> {
@@ -285,7 +288,7 @@ impl Database {
 	/// Execute a read-only query as a specific identity.
 	pub fn query_as(
 		&self,
-		identity: &Identity,
+		identity: IdentityId,
 		rql: &str,
 		params: impl Into<Params>,
 	) -> reifydb_type::Result<Vec<Frame>> {
@@ -297,15 +300,14 @@ impl Database {
 	/// `query` is the inner subscription query (e.g. `from test::events`).
 	/// The full `create subscription { } as { <query> };` statement is assembled internally.
 	pub fn subscribe_as_root(&self, query: &str, batch_size: usize) -> Result<SubscriptionCursor> {
-		let identity = Identity::root();
-		self.subscribe_as(&identity, query, batch_size)
+		self.subscribe_as(IdentityId::root(), query, batch_size)
 	}
 
 	/// Create a subscription as the given identity and return a cursor for consuming its data.
 	///
 	/// `query` is the inner subscription query (e.g. `from test::events`).
 	/// The full `create subscription { } as { <query> };` statement is assembled internally.
-	pub fn subscribe_as(&self, identity: &Identity, query: &str, batch_size: usize) -> Result<SubscriptionCursor> {
+	pub fn subscribe_as(&self, identity: IdentityId, query: &str, batch_size: usize) -> Result<SubscriptionCursor> {
 		let rql = format!("create subscription {{}} as {{ {} }};", query);
 		let frames = self.engine.admin_as(identity, &rql, Params::None)?;
 		let frame = &frames[0];

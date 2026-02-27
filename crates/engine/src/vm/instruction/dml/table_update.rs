@@ -23,7 +23,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, r#type::Type},
+	value::{Value, identity::IdentityId, r#type::Type},
 };
 
 use super::primary_key;
@@ -81,6 +81,7 @@ pub(crate) fn update_table<'a>(
 		batch_size: 1024,
 		params: params.clone(),
 		stack: SymbolTable::new(),
+		identity: IdentityId::root(),
 	};
 
 	let mut updated_count = 0;

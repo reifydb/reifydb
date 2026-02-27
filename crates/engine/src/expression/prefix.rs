@@ -32,6 +32,7 @@ pub(crate) fn prefix_eval(
 		functions: ctx.functions,
 		clock: ctx.clock,
 		arena: None,
+		identity: ctx.identity,
 	};
 	let column = super::eval::evaluate(&inner_ctx, &prefix.expression, functions, clock)?;
 

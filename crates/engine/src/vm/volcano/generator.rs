@@ -78,6 +78,7 @@ impl QueryNode for GeneratorNode {
 			functions: &stored_ctx.services.functions,
 			clock: &stored_ctx.services.clock,
 			arena: None,
+			identity: stored_ctx.identity,
 		};
 
 		// Evaluate all parameter expressions into columns
@@ -103,6 +104,7 @@ impl QueryNode for GeneratorNode {
 					&'a reifydb_catalog::catalog::Catalog,
 				>(&stored_ctx.services.catalog)
 			},
+			identity: stored_ctx.identity,
 		})?;
 
 		self.exhausted = true;

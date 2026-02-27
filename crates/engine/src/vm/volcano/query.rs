@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::params::Params;
+use reifydb_type::{params::Params, value::identity::IdentityId};
 
 use crate::vm::{services::Services, stack::SymbolTable};
 
@@ -47,6 +47,7 @@ pub struct QueryContext {
 	pub batch_size: u64,
 	pub params: Params,
 	pub stack: SymbolTable,
+	pub identity: IdentityId,
 }
 
 impl QueryNode for Box<dyn QueryNode> {

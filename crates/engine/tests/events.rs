@@ -3,38 +3,40 @@
 
 //! Integration tests for CREATE EVENT, CREATE HANDLER, and DISPATCH.
 
-use reifydb_core::interface::auth::Identity;
 use reifydb_engine::{engine::StandardEngine, test_utils::create_test_engine};
-use reifydb_type::{params::Params, value::frame::frame::Frame};
+use reifydb_type::{
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 
-fn root() -> Identity {
-	Identity::root()
+fn root() -> IdentityId {
+	IdentityId::root()
 }
 
 fn admin(engine: &StandardEngine, rql: &str) -> Vec<Frame> {
-	engine.admin_as(&root(), rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"))
+	engine.admin_as(root(), rql, Params::None).unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"))
 }
 
 fn admin_expect_err(engine: &StandardEngine, rql: &str) -> String {
-	match engine.admin_as(&root(), rql, Params::None) {
+	match engine.admin_as(root(), rql, Params::None) {
 		Err(e) => format!("{e:?}"),
 		Ok(_) => panic!("Expected error but admin succeeded\nrql: {rql}"),
 	}
 }
 
 fn command(engine: &StandardEngine, rql: &str) -> Vec<Frame> {
-	engine.command_as(&root(), rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"))
+	engine.command_as(root(), rql, Params::None).unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"))
 }
 
 fn command_expect_err(engine: &StandardEngine, rql: &str) -> String {
-	match engine.command_as(&root(), rql, Params::None) {
+	match engine.command_as(root(), rql, Params::None) {
 		Err(e) => format!("{e:?}"),
 		Ok(_) => panic!("Expected error but command succeeded\nrql: {rql}"),
 	}
 }
 
 fn query(engine: &StandardEngine, rql: &str) -> Vec<Frame> {
-	engine.query_as(&root(), rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"))
+	engine.query_as(root(), rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"))
 }
 
 fn row_count(frames: &[Frame]) -> usize {

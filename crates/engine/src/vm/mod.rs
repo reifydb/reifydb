@@ -1,28 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::auth::Identity;
-use reifydb_type::params::Params;
+use reifydb_type::{params::Params, value::identity::IdentityId};
 
 #[derive(Debug)]
 pub struct Admin<'a> {
 	pub rql: &'a str,
 	pub params: Params,
-	pub identity: &'a Identity,
+	pub identity: IdentityId,
 }
 
 #[derive(Debug)]
 pub struct Command<'a> {
 	pub rql: &'a str,
 	pub params: Params,
-	pub identity: &'a Identity,
+	pub identity: IdentityId,
 }
 
 #[derive(Debug)]
 pub struct Query<'a> {
 	pub rql: &'a str,
 	pub params: Params,
-	pub identity: &'a Identity,
+	pub identity: IdentityId,
 }
 
 pub mod executor;

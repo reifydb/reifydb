@@ -14,7 +14,12 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::UpdateRingBufferNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, return_error, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	return_error,
+	value::{Value, identity::IdentityId},
+};
 
 use super::coerce::coerce_value_to_column_type;
 use crate::{
@@ -70,6 +75,7 @@ pub(crate) fn update_ringbuffer<'a>(
 		batch_size: 1024,
 		params: params.clone(),
 		stack: SymbolTable::new(),
+		identity: IdentityId::root(),
 	};
 
 	let mut updated_count = 0;

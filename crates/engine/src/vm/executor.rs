@@ -4,7 +4,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::FlowOperatorStore};
-use reifydb_core::{interface::auth::Identity, util::ioc::IocContainer};
+use reifydb_core::util::ioc::IocContainer;
 use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::{CompilationResult, constrain_policy};
@@ -13,7 +13,10 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
 };
-use reifydb_type::{params::Params, value::frame::frame::Frame};
+use reifydb_type::{
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 use tracing::instrument;
 
 use crate::{
@@ -111,7 +114,7 @@ impl Executor {
 	pub fn rql(
 		&self,
 		tx: &mut Transaction<'_>,
-		identity: &Identity,
+		identity: IdentityId,
 		rql: &str,
 		params: Params,
 	) -> crate::Result<Vec<Frame>> {
@@ -119,9 +122,8 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &params)?;
 
-		let identity_ref = identity.clone();
 		let compiled = match self.compiler.compile_with_policy(tx, rql, |plans, bump, cat, tx| {
-			reifydb_policy::inject_read_policies(plans, bump, cat, tx, &identity_ref)
+			reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity)
 		})? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {
@@ -131,7 +133,7 @@ impl Executor {
 
 		for compiled in compiled.iter() {
 			result.clear();
-			let mut vm = Vm::new(symbol_table, identity.clone());
+			let mut vm = Vm::new(symbol_table, identity);
 			vm.run(&self.0, tx, &compiled.instructions, &params, &mut result)?;
 			symbol_table = vm.symbol_table;
 		}
@@ -146,17 +148,17 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
-		let identity = cmd.identity.clone();
+		let identity = cmd.identity;
 		match self.compiler.compile_with_policy(
 			&mut Transaction::Admin(txn),
 			cmd.rql,
-			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, &identity),
+			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity),
 		)? {
 			CompilationResult::Ready(compiled) => {
 				for compiled in compiled.iter() {
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
-					let mut vm = Vm::new(symbol_table, cmd.identity.clone());
+					let mut vm = Vm::new(symbol_table, identity);
 					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbol_table = vm.symbol_table;
 
@@ -167,7 +169,7 @@ impl Executor {
 			}
 			CompilationResult::Incremental(mut state) => {
 				let policy = constrain_policy(|plans, bump, cat, tx| {
-					reifydb_policy::inject_read_policies(plans, bump, cat, tx, &identity)
+					reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity)
 				});
 				while let Some(compiled) = self.compiler.compile_next_with_policy(
 					&mut Transaction::Admin(txn),
@@ -176,7 +178,7 @@ impl Executor {
 				)? {
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
-					let mut vm = Vm::new(symbol_table, cmd.identity.clone());
+					let mut vm = Vm::new(symbol_table, identity);
 					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbol_table = vm.symbol_table;
 
@@ -199,11 +201,11 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
-		let identity = cmd.identity.clone();
+		let identity = cmd.identity;
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Command(txn),
 			cmd.rql,
-			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, &identity),
+			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity),
 		)? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {
@@ -214,7 +216,7 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Command(txn);
-			let mut vm = Vm::new(symbol_table, cmd.identity.clone());
+			let mut vm = Vm::new(symbol_table, identity);
 			vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 			symbol_table = vm.symbol_table;
 
@@ -233,7 +235,7 @@ impl Executor {
 	pub fn call_procedure(
 		&self,
 		txn: &mut CommandTransaction,
-		identity: &Identity,
+		identity: IdentityId,
 		name: &str,
 		params: &Params,
 	) -> crate::Result<Vec<Frame>> {
@@ -253,7 +255,7 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Command(txn);
-			let mut vm = Vm::new(symbol_table, identity.clone());
+			let mut vm = Vm::new(symbol_table, identity);
 			vm.run(&self.0, &mut tx, &compiled.instructions, params, &mut result)?;
 			symbol_table = vm.symbol_table;
 		}
@@ -268,11 +270,11 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &qry.params)?;
 
-		let identity = qry.identity.clone();
+		let identity = qry.identity;
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Query(txn),
 			qry.rql,
-			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, &identity),
+			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity),
 		)? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {
@@ -283,7 +285,7 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Query(txn);
-			let mut vm = Vm::new(symbol_table, qry.identity.clone());
+			let mut vm = Vm::new(symbol_table, identity);
 			vm.run(&self.0, &mut tx, &compiled.instructions, &qry.params, &mut result)?;
 			symbol_table = vm.symbol_table;
 

@@ -18,7 +18,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 
 use crate::{
@@ -81,6 +81,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 					batch_size: 1024,
 					params: params.clone(),
 					stack: SymbolTable::new(),
+					identity: IdentityId::root(),
 				}),
 			);
 
@@ -90,6 +91,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 				batch_size: 1024,
 				params: params.clone(),
 				stack: SymbolTable::new(),
+				identity: IdentityId::root(),
 			};
 
 			// Initialize the operator before execution

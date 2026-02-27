@@ -222,6 +222,7 @@ pub(crate) fn eval_join_condition(
 		functions: &ctx.services.functions,
 		clock: &ctx.services.clock,
 		arena: None,
+		identity: ctx.identity,
 	};
 	compiled.iter().all(|compiled_expr| {
 		let col = compiled_expr.execute(&exec_ctx).unwrap();

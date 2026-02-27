@@ -914,6 +914,7 @@ impl ScalarFunction for Power {
 					columns: &promoted_columns,
 					row_count,
 					clock: ctx.clock,
+					identity: ctx.identity,
 				};
 				self.scalar(new_ctx)
 			}

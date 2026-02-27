@@ -137,6 +137,7 @@ impl Transform for PatchNode {
 				functions: ctx.functions,
 				clock: ctx.clock,
 				arena: None,
+				identity: stored_ctx.identity,
 			};
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {

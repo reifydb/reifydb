@@ -61,6 +61,7 @@ impl QueryNode for AssertNode {
 					functions: &stored_ctx.services.functions,
 					clock: &stored_ctx.services.clock,
 					arena: None,
+					identity: stored_ctx.identity,
 				};
 
 				let result = evaluate(
@@ -160,6 +161,7 @@ impl QueryNode for AssertWithoutInputNode {
 				functions: &stored_ctx.services.functions,
 				clock: &stored_ctx.services.clock,
 				arena: None,
+				identity: stored_ctx.identity,
 			};
 
 			let result = evaluate(

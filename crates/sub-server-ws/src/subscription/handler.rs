@@ -6,12 +6,12 @@
 //! Handles WebSocket subscription requests by creating database subscriptions
 //! and registering them with the registry and poller for real-time updates.
 
-use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId as DbSubscriptionId};
+use reifydb_core::interface::catalog::id::SubscriptionId as DbSubscriptionId;
 use reifydb_sub_server::{execute::execute_admin, state::AppState};
 use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{
 	params::Params,
-	value::{Value, uuid::Uuid7},
+	value::{Value, identity::IdentityId, uuid::Uuid7},
 };
 use tokio::sync::mpsc;
 use tracing::{debug, error};
@@ -44,7 +44,7 @@ type ConnectionId = Uuid7;
 pub(crate) async fn handle_subscribe(
 	request_id: &str,
 	sub: SubscribeRequest,
-	identity: Option<Identity>,
+	identity: Option<IdentityId>,
 	connection_id: ConnectionId,
 	state: &AppState,
 	registry: &SubscriptionRegistry,
@@ -52,11 +52,11 @@ pub(crate) async fn handle_subscribe(
 	push_tx: mpsc::Sender<PushMessage>,
 ) -> Option<String> {
 	// Authenticate if needed (subscriptions may require auth depending on your policy)
-	let id = match identity.as_ref() {
-		Some(id) => id.clone(),
+	let id: IdentityId = match identity {
+		Some(id) => id,
 		None => {
 			// For now, allow unauthenticated subscriptions using root identity
-			Identity::root()
+			IdentityId::root()
 		}
 	};
 

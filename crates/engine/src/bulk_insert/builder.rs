@@ -10,14 +10,14 @@ use reifydb_catalog::{
 use reifydb_core::{
 	encoded::schema::Schema,
 	error::CoreError,
-	interface::{auth::Identity, catalog::id::IndexId},
+	interface::catalog::id::IndexId,
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{
 	fragment::Fragment,
-	value::{Value, row_number::RowNumber, r#type::Type},
+	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
 use super::{
@@ -60,7 +60,7 @@ pub mod sealed {
 /// Type parameter `V` tracks the validation mode at compile time.
 pub struct BulkInsertBuilder<'e, V: ValidationMode = Validated> {
 	engine: &'e StandardEngine,
-	_identity: &'e Identity,
+	_identity: IdentityId,
 	pending_tables: Vec<PendingTableInsert>,
 	pending_ringbuffers: Vec<PendingRingBufferInsert>,
 	_validation: PhantomData<V>,
@@ -68,7 +68,7 @@ pub struct BulkInsertBuilder<'e, V: ValidationMode = Validated> {
 
 impl<'e> BulkInsertBuilder<'e, Validated> {
 	/// Create a new bulk insert builder with full validation enabled.
-	pub(crate) fn new(engine: &'e StandardEngine, identity: &'e Identity) -> Self {
+	pub(crate) fn new(engine: &'e StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
 			_identity: identity,
@@ -81,7 +81,7 @@ impl<'e> BulkInsertBuilder<'e, Validated> {
 
 impl<'e> BulkInsertBuilder<'e, Trusted> {
 	/// Create a new bulk insert builder with validation disabled (trusted mode).
-	pub(crate) fn new_trusted(engine: &'e StandardEngine, identity: &'e Identity) -> Self {
+	pub(crate) fn new_trusted(engine: &'e StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
 			_identity: identity,

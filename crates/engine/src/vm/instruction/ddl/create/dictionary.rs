@@ -50,8 +50,10 @@ pub(crate) fn create_dictionary(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::auth::Identity;
-	use reifydb_type::{params::Params, value::Value};
+	use reifydb_type::{
+		params::Params,
+		value::{Value, identity::IdentityId},
+	};
 
 	use crate::{
 		test_utils::create_test_admin_transaction,
@@ -62,14 +64,14 @@ pub mod tests {
 	fn test_create_dictionary() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -80,7 +82,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();
@@ -95,7 +97,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DICTIONARY IF NOT EXISTS test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();
@@ -110,7 +112,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap_err();
@@ -121,14 +123,14 @@ pub mod tests {
 	fn test_create_same_dictionary_in_different_schema() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -137,7 +139,7 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE another_schema",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -148,7 +150,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();
@@ -163,7 +165,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DICTIONARY another_schema::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();

@@ -3,19 +3,19 @@
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::{auth::Identity, catalog::policy::PolicyTargetType, resolved::ResolvedPrimitive};
+use reifydb_core::interface::{catalog::policy::PolicyTargetType, resolved::ResolvedPrimitive};
 use reifydb_rql::{
 	ast::parse_str,
 	expression::{ConstantExpression, Expression},
 	plan::logical::{FilterNode, LogicalPlan, PipelineNode, compile_logical},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, fragment::Fragment};
+use reifydb_type::{Result, fragment::Fragment, value::identity::IdentityId};
 
 /// Inject read policies into logical plans.
 ///
-/// - `Identity::System` bypasses all policies (returns plans unchanged).
-/// - For non-System identities, finds Pipeline nodes with PrimitiveScan(Table), looks up enabled read policies for that
+/// - Root identity bypasses all policies (returns plans unchanged).
+/// - For non-root identities, finds Pipeline nodes with PrimitiveScan(Table), looks up enabled read policies for that
 ///   table, compiles their body_source into logical plan steps, and inserts them after the scan.
 /// - If no policies match a table, inserts a `Filter(false)` for default-deny.
 /// - Multiple policies are chained sequentially (AND composition).
@@ -24,10 +24,10 @@ pub fn inject_read_policies<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	identity: &Identity,
+	identity: IdentityId,
 ) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
-	// System bypasses all policies
-	if matches!(identity, Identity::System { .. }) {
+	// Root bypasses all policies
+	if identity.is_root() {
 		return Ok(plans);
 	}
 

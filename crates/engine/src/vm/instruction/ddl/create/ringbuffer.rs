@@ -53,8 +53,10 @@ pub(crate) fn create_ringbuffer(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::auth::Identity;
-	use reifydb_type::{params::Params, value::Value};
+	use reifydb_type::{
+		params::Params,
+		value::{Value, identity::IdentityId},
+	};
 
 	use crate::{
 		test_utils::create_test_admin_transaction,
@@ -65,7 +67,7 @@ pub mod tests {
 	fn test_create_ringbuffer() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 
 		// Create namespace first
 		instance.admin(
@@ -73,7 +75,7 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -85,7 +87,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE RINGBUFFER test_namespace::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();
@@ -101,7 +103,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE RINGBUFFER test_namespace::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap_err();
@@ -112,7 +114,7 @@ pub mod tests {
 	fn test_create_same_ringbuffer_in_different_schema() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = Identity::root();
+		let identity = IdentityId::root();
 
 		// Create both namespaces
 		instance.admin(
@@ -120,7 +122,7 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -129,7 +131,7 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE another_schema",
 				params: Params::default(),
-				identity: &identity,
+				identity,
 			},
 		)
 		.unwrap();
@@ -141,7 +143,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE RINGBUFFER test_namespace::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();
@@ -157,7 +159,7 @@ pub mod tests {
 				Admin {
 					rql: "CREATE RINGBUFFER another_schema::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
-					identity: &identity,
+					identity,
 				},
 			)
 			.unwrap();

@@ -27,6 +27,32 @@ impl IdentityId {
 	pub fn value(&self) -> Uuid7 {
 		self.0
 	}
+
+	/// Sentinel for anonymous identity: minimum valid UUID v7
+	/// `00000000-0000-7000-8000-000000000000`
+	pub fn anonymous() -> Self {
+		let bytes = [
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		];
+		IdentityId(Uuid7(uuid::Uuid::from_bytes(bytes)))
+	}
+
+	/// Sentinel for root/system identity: maximum valid UUID v7
+	/// `ffffffff-ffff-7fff-bfff-ffffffffffff`
+	pub fn root() -> Self {
+		let bytes = [
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F, 0xFF, 0xBF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		];
+		IdentityId(Uuid7(uuid::Uuid::from_bytes(bytes)))
+	}
+
+	pub fn is_anonymous(&self) -> bool {
+		*self == Self::anonymous()
+	}
+
+	pub fn is_root(&self) -> bool {
+		*self == Self::root()
+	}
 }
 
 impl Deref for IdentityId {

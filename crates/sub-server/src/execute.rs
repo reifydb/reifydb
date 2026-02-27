@@ -9,13 +9,12 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_core::interface::auth::Identity;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_type::{
 	error::{Diagnostic, Error},
 	params::Params,
-	value::frame::frame::Frame,
+	value::{frame::frame::Frame, identity::IdentityId},
 };
 use tokio::time;
 
@@ -104,12 +103,12 @@ pub async fn execute_query(
 	system: ActorSystem,
 	engine: StandardEngine,
 	query: String,
-	identity: Identity,
+	identity: IdentityId,
 	params: Params,
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
 	// Execute synchronous query on actor system's compute pool with timeout
-	let task = system.compute(move || engine.query_as(&identity, &query, params));
+	let task = system.compute(move || engine.query_as(identity, &query, params));
 
 	let result = time::timeout(timeout, task).await;
 
@@ -144,14 +143,14 @@ pub async fn execute_admin(
 	system: ActorSystem,
 	engine: StandardEngine,
 	statements: Vec<String>,
-	identity: Identity,
+	identity: IdentityId,
 	params: Params,
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
 	let combined = statements.join("; ");
 
 	// Execute synchronous admin operation on actor system's compute pool with timeout
-	let task = system.compute(move || engine.admin_as(&identity, &combined, params));
+	let task = system.compute(move || engine.admin_as(identity, &combined, params));
 
 	let result = time::timeout(timeout, task).await;
 
@@ -186,14 +185,14 @@ pub async fn execute_command(
 	system: ActorSystem,
 	engine: StandardEngine,
 	statements: Vec<String>,
-	identity: Identity,
+	identity: IdentityId,
 	params: Params,
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
 	let combined = statements.join("; ");
 
 	// Execute synchronous command on actor system's compute pool with timeout
-	let task = system.compute(move || engine.command_as(&identity, &combined, params));
+	let task = system.compute(move || engine.command_as(identity, &combined, params));
 
 	let result = time::timeout(timeout, task).await;
 

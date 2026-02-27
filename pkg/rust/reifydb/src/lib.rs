@@ -24,7 +24,7 @@ pub use reifydb_auth as auth;
 pub use reifydb_catalog as catalog;
 pub use reifydb_cdc as cdc;
 pub use reifydb_core as core;
-pub use reifydb_core::{event::EventBus, interface::auth::Identity};
+pub use reifydb_core::event::EventBus;
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
@@ -74,6 +74,7 @@ pub use reifydb_type::{
 			from_frame::{FromFrame, FromFrameError},
 			row::{FrameRow, FrameRows},
 		},
+		identity::IdentityId,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		try_from::{FromValueError, TryFromValue, TryFromValueCoerce},

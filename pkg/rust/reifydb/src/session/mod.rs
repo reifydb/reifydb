@@ -16,9 +16,11 @@ mod query;
 pub use admin::AdminSession;
 pub use command::CommandSession;
 pub use query::QuerySession;
-use reifydb_core::interface::auth::Identity;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_type::{params::Params, value::frame::frame::Frame};
+use reifydb_type::{
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 use tracing::instrument;
 
 pub trait Session {
@@ -31,7 +33,7 @@ pub trait Session {
 
 impl AdminSession {
 	#[instrument(name = "api::session::admin::new", level = "debug", skip_all)]
-	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
+	pub(crate) fn new(engine: StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
 			identity,
@@ -40,13 +42,13 @@ impl AdminSession {
 
 	#[instrument(name = "api::session::admin", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::error::Error> {
-		self.engine.admin_as(&self.identity, rql, params.into())
+		self.engine.admin_as(self.identity, rql, params.into())
 	}
 }
 
 impl CommandSession {
 	#[instrument(name = "api::session::command::new", level = "debug", skip_all)]
-	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
+	pub(crate) fn new(engine: StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
 			identity,
@@ -55,13 +57,13 @@ impl CommandSession {
 
 	#[instrument(name = "api::session::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::error::Error> {
-		self.engine.command_as(&self.identity, rql, params.into())
+		self.engine.command_as(self.identity, rql, params.into())
 	}
 }
 
 impl QuerySession {
 	#[instrument(name = "api::session::query::new", level = "debug", skip_all)]
-	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
+	pub(crate) fn new(engine: StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
 			identity,
@@ -70,7 +72,7 @@ impl QuerySession {
 
 	#[instrument(name = "api::session::query", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn query(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::error::Error> {
-		self.engine.query_as(&self.identity, rql, params.into())
+		self.engine.query_as(self.identity, rql, params.into())
 	}
 }
 
@@ -86,19 +88,19 @@ pub trait IntoQuerySession {
 	fn into_query_session(self, engine: StandardEngine) -> crate::Result<QuerySession>;
 }
 
-impl IntoAdminSession for Identity {
+impl IntoAdminSession for IdentityId {
 	fn into_admin_session(self, engine: StandardEngine) -> crate::Result<AdminSession> {
 		Ok(AdminSession::new(engine, self))
 	}
 }
 
-impl IntoCommandSession for Identity {
+impl IntoCommandSession for IdentityId {
 	fn into_command_session(self, engine: StandardEngine) -> crate::Result<CommandSession> {
 		Ok(CommandSession::new(engine, self))
 	}
 }
 
-impl IntoQuerySession for Identity {
+impl IntoQuerySession for IdentityId {
 	fn into_query_session(self, engine: StandardEngine) -> crate::Result<QuerySession> {
 		Ok(QuerySession::new(engine, self))
 	}

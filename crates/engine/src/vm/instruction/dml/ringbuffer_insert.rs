@@ -15,7 +15,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -73,6 +73,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 		batch_size: 1024,
 		params: params.clone(),
 		stack: SymbolTable::new(),
+		identity: IdentityId::root(),
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
