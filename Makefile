@@ -59,6 +59,12 @@ help:
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "bench" "Run all performance benchmarks"
 	@echo ""
+	@echo "  🔬 Fuzz Testing"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "fuzz-list" "List all available fuzz targets"
+	@printf "  %-25s %s\n" "fuzz-run TARGET=<name>" "Run a fuzz target (DURATION=60)"
+	@printf "  %-25s %s\n" "fuzz-smoke" "Smoke-test all fuzz targets (10s each)"
+	@echo ""
 	@echo "  🏗️  Building"
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "build" "Build release version"
@@ -173,3 +179,4 @@ include mk/build.mk
 include mk/format.mk
 include mk/container.mk
 include mk/release.mk
+include mk/fuzz.mk

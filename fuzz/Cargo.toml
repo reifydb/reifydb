@@ -1,0 +1,61 @@
+[package]
+name = "reifydb-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+bumpalo = { version = "3", features = ["collections", "boxed"] }
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+
+reifydb-sql = { path = "../crates/sql" }
+reifydb-rql = { path = "../crates/rql" }
+reifydb-core = { path = "../crates/core" }
+reifydb-abi = { path = "../crates/abi" }
+reifydb-type = { path = "../crates/type" }
+
+[[bin]]
+name = "sql_transpile"
+path = "fuzz_targets/sql_transpile.rs"
+doc = false
+
+[[bin]]
+name = "sql_tokenize"
+path = "fuzz_targets/sql_tokenize.rs"
+doc = false
+
+[[bin]]
+name = "keycode_deserialize"
+path = "fuzz_targets/keycode_deserialize.rs"
+doc = false
+
+[[bin]]
+name = "keycode_roundtrip"
+path = "fuzz_targets/keycode_roundtrip.rs"
+doc = false
+
+[[bin]]
+name = "abi_buffer"
+path = "fuzz_targets/abi_buffer.rs"
+doc = false
+
+[[bin]]
+name = "abi_layout"
+path = "fuzz_targets/abi_layout.rs"
+doc = false
+
+[[bin]]
+name = "rql_parse"
+path = "fuzz_targets/rql_parse.rs"
+doc = false
+
+[[bin]]
+name = "rql_tokenize"
+path = "fuzz_targets/rql_tokenize.rs"
+doc = false

@@ -97,14 +97,29 @@ impl<'bump> Parser<'bump> {
 			return self.parse_alter_policy(token, AstPolicyTargetType::Feature);
 		}
 
-		unimplemented!("Only ALTER SEQUENCE, ALTER FLOW, ALTER TABLE, and ALTER <TYPE> POLICY are supported");
+		let fragment = self.current()?.fragment.to_owned();
+		return Err(Error::from(TypeError::Ast {
+			kind: AstErrorKind::UnexpectedToken {
+				expected: "SEQUENCE, FLOW, TABLE, or a policy target type after ALTER".to_string(),
+			},
+			message: format!("Unexpected token after ALTER: {}", fragment.text()),
+			fragment,
+		}));
 	}
 
 	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
 		// Parse [namespace...].table.column (at least 2 segments required)
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		if segments.len() < 2 {
-			unimplemented!("ALTER SEQUENCE requires table.column or namespace.table.column");
+			let fragment = token.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "table.column or namespace.table.column after ALTER SEQUENCE"
+						.to_string(),
+				},
+				message: "ALTER SEQUENCE requires at least table.column".to_string(),
+				fragment,
+			}));
 		}
 
 		let column_token = segments.pop().unwrap();

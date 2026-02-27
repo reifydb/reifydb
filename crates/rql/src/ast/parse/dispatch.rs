@@ -9,6 +9,7 @@ use crate::{
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
+	diagnostic::AstError,
 	token::{keyword::Keyword, operator::Operator, separator::Separator, token::TokenKind},
 };
 
@@ -18,6 +19,13 @@ impl<'bump> Parser<'bump> {
 
 		// Parse event type and variant: ns::EventType::Variant (all :: separated)
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		if segments.len() < 2 {
+			return Err(AstError::UnexpectedToken {
+				expected: "qualified event type (e.g. EventType::Variant)".to_string(),
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
+		}
 		// Last segment is the variant name
 		let variant = segments.pop().unwrap().into_fragment();
 		// Second-to-last is the event type name

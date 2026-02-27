@@ -111,11 +111,15 @@ pub fn parse<'bump>(
 	parser.parse()
 }
 
+/// Maximum nesting depth to prevent stack overflow on deeply nested input.
+const MAX_PARSE_DEPTH: usize = 128;
+
 pub(crate) struct Parser<'bump> {
 	bump: &'bump Bump,
 	source: &'bump str,
 	tokens: Vec<Token<'bump>>,
 	position: usize,
+	depth: usize,
 }
 
 impl<'bump> Parser<'bump> {
@@ -125,6 +129,7 @@ impl<'bump> Parser<'bump> {
 			source,
 			tokens,
 			position: 0,
+			depth: 0,
 		}
 	}
 
@@ -242,6 +247,20 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> Result<Ast<'bump>> {
+		self.depth += 1;
+		if self.depth > MAX_PARSE_DEPTH {
+			self.depth -= 1;
+			return Err(AstError::MaxDepthExceeded {
+				fragment: self.current()?.fragment.to_owned(),
+			}
+			.into());
+		}
+		let result = self.parse_node_inner(precedence);
+		self.depth -= 1;
+		result
+	}
+
+	fn parse_node_inner(&mut self, precedence: Precedence) -> Result<Ast<'bump>> {
 		let mut left = self.parse_primary()?;
 
 		// DDL statements (CREATE, ALTER, DROP, GRANT, REVOKE) cannot be used in infix expressions
@@ -304,14 +323,40 @@ impl<'bump> Parser<'bump> {
 				_ => {
 					let infix = self.parse_infix(left)?;
 					if matches!(infix.operator, InfixOperator::AccessNamespace(_)) {
-						if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
+						if !self.is_eof()
+							&& self.current()?.is_operator(Operator::OpenCurly)
+							&& infix.right.is_identifier() && match infix.left.as_ref() {
+							Ast::Infix(inner)
+								if matches!(
+									inner.operator,
+									InfixOperator::AccessTable(_)
+										| InfixOperator::AccessNamespace(_)
+								) =>
+							{
+								inner.left.is_identifier()
+									&& inner.right.is_identifier()
+							}
+							other => other.is_identifier(),
+						} {
 							left = self.parse_sumtype_constructor(infix)?;
 							continue;
 						}
-						if matches!(infix.left.as_ref(), Ast::Infix(inner) if matches!(inner.operator, InfixOperator::AccessTable(_) | InfixOperator::AccessNamespace(_)))
-						{
-							left = self.parse_sumtype_unit_constructor(infix)?;
-							continue;
+						if infix.right.is_identifier() {
+							if let Ast::Infix(inner) = infix.left.as_ref() {
+								if matches!(
+									inner.operator,
+									InfixOperator::AccessTable(_)
+										| InfixOperator::AccessNamespace(_)
+								) && inner.left.is_identifier() && inner
+									.right
+									.is_identifier()
+								{
+									left = self.parse_sumtype_unit_constructor(
+										infix,
+									)?;
+									continue;
+								}
+							}
 						}
 					}
 					left = Ast::Infix(infix);

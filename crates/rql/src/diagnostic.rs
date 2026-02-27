@@ -47,6 +47,11 @@ pub enum AstError {
 		node_type: String,
 		fragment: Fragment,
 	},
+
+	#[error("maximum nesting depth exceeded")]
+	MaxDepthExceeded {
+		fragment: Fragment,
+	},
 }
 
 impl IntoDiagnostic for AstError {
@@ -183,6 +188,20 @@ impl IntoDiagnostic for AstError {
 				label: Some("not supported in this context".to_string()),
 				help: Some("This syntax is not yet supported or may be invalid in this context"
 					.to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AstError::MaxDepthExceeded {
+				fragment,
+			} => Diagnostic {
+				code: "AST_010".to_string(),
+				statement: None,
+				message: "maximum nesting depth exceeded".to_string(),
+				fragment,
+				label: Some("expression is too deeply nested".to_string()),
+				help: Some("Reduce the nesting depth of your expression".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

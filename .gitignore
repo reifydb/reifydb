@@ -5,6 +5,11 @@
 /pkg/rust/*/target/
 /pkg/rust/tests/*/target/
 
+# Fuzz testing artifacts
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+
 # Ignore workspace member lock files - only root Cargo.lock should exist
 /bin/*/Cargo.lock
 /crates/*/Cargo.lock
