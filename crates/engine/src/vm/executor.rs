@@ -7,7 +7,7 @@ use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::Flo
 use reifydb_core::{interface::auth::Identity, util::ioc::IocContainer};
 use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
-use reifydb_rql::compiler::CompilationResult;
+use reifydb_rql::compiler::{CompilationResult, constrain_policy};
 use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
@@ -119,7 +119,10 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &params)?;
 
-		let compiled = match self.compiler.compile(tx, rql)? {
+		let identity_ref = identity.clone();
+		let compiled = match self.compiler.compile_with_policy(tx, rql, |plans, bump, cat, tx| {
+			reifydb_policy::inject_read_policies(plans, bump, cat, tx, &identity_ref)
+		})? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {
 				unreachable!("incremental compilation not supported in rql()")
@@ -143,7 +146,12 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
-		match self.compiler.compile(&mut Transaction::Admin(txn), cmd.rql)? {
+		let identity = cmd.identity.clone();
+		match self.compiler.compile_with_policy(
+			&mut Transaction::Admin(txn),
+			cmd.rql,
+			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, &identity),
+		)? {
 			CompilationResult::Ready(compiled) => {
 				for compiled in compiled.iter() {
 					result.clear();
@@ -158,9 +166,14 @@ impl Executor {
 				}
 			}
 			CompilationResult::Incremental(mut state) => {
-				while let Some(compiled) =
-					self.compiler.compile_next(&mut Transaction::Admin(txn), &mut state)?
-				{
+				let policy = constrain_policy(|plans, bump, cat, tx| {
+					reifydb_policy::inject_read_policies(plans, bump, cat, tx, &identity)
+				});
+				while let Some(compiled) = self.compiler.compile_next_with_policy(
+					&mut Transaction::Admin(txn),
+					&mut state,
+					&policy,
+				)? {
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
 					let mut vm = Vm::new(symbol_table, cmd.identity.clone());
@@ -186,7 +199,12 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
-		let compiled = match self.compiler.compile(&mut Transaction::Command(txn), cmd.rql)? {
+		let identity = cmd.identity.clone();
+		let compiled = match self.compiler.compile_with_policy(
+			&mut Transaction::Command(txn),
+			cmd.rql,
+			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, &identity),
+		)? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {
 				unreachable!("DDL statements require admin transactions, not command transactions")
@@ -250,7 +268,12 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &qry.params)?;
 
-		let compiled = match self.compiler.compile(&mut Transaction::Query(txn), qry.rql)? {
+		let identity = qry.identity.clone();
+		let compiled = match self.compiler.compile_with_policy(
+			&mut Transaction::Query(txn),
+			qry.rql,
+			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, &identity),
+		)? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {
 				unreachable!("DDL statements require admin transactions, not query transactions")

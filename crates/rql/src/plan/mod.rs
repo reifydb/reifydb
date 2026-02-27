@@ -7,10 +7,10 @@ use tracing::instrument;
 
 use crate::{
 	ast::ast::AstStatement,
-	bump::Bump,
+	bump::{Bump, BumpVec},
 	expression::Expression,
 	plan::{
-		logical::compile_logical,
+		logical::{LogicalPlan, compile_logical},
 		physical::{PhysicalPlan, compile_physical},
 	},
 };
@@ -28,6 +28,25 @@ pub fn plan<'a>(
 	statement: AstStatement<'a>,
 ) -> crate::Result<Option<PhysicalPlan<'a>>> {
 	let logical = compile_logical(bump, catalog, rx, statement)?;
+	let physical = compile_physical(bump, catalog, rx, logical)?;
+	Ok(physical)
+}
+
+#[instrument(name = "rql::plan_with_policy", level = "trace", skip(bump, catalog, rx, statement, policy))]
+pub fn plan_with_policy<'a>(
+	bump: &'a Bump,
+	catalog: &Catalog,
+	rx: &mut Transaction<'_>,
+	statement: AstStatement<'a>,
+	policy: impl Fn(
+		BumpVec<'a, LogicalPlan<'a>>,
+		&'a Bump,
+		&Catalog,
+		&mut Transaction<'_>,
+	) -> crate::Result<BumpVec<'a, LogicalPlan<'a>>>,
+) -> crate::Result<Option<PhysicalPlan<'a>>> {
+	let logical = compile_logical(bump, catalog, rx, statement)?;
+	let logical = policy(logical, bump, catalog, rx)?;
 	let physical = compile_physical(bump, catalog, rx, logical)?;
 	Ok(physical)
 }

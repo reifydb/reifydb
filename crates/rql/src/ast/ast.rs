@@ -1909,6 +1909,7 @@ pub enum AstPolicyScope<'bump> {
 pub struct AstPolicyOperationEntry<'bump> {
 	pub operation: BumpFragment<'bump>,
 	pub body: Vec<Ast<'bump>>,
+	pub body_source: String,
 }
 
 #[derive(Debug)]

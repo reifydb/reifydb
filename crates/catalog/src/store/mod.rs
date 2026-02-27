@@ -10,6 +10,7 @@ pub(crate) mod flow_node;
 pub(crate) mod handler;
 pub(crate) mod migration;
 pub(crate) mod namespace;
+pub(crate) mod policy;
 #[allow(dead_code)]
 pub(crate) mod primary_key;
 pub(crate) mod primitive;
@@ -18,7 +19,6 @@ pub(crate) mod retention_policy;
 pub(crate) mod ringbuffer;
 pub(crate) mod role;
 pub(crate) mod schema;
-pub(crate) mod security_policy;
 pub(crate) mod sequence;
 pub(crate) mod series;
 pub(crate) mod subscription;

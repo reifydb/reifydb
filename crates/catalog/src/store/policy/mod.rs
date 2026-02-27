@@ -2,11 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::{
-	catalog::security_policy::{PolicyTargetType, SecurityPolicyDef, SecurityPolicyOperationDef},
+	catalog::policy::{PolicyTargetType, SecurityPolicyDef, SecurityPolicyOperationDef},
 	store::MultiVersionValues,
 };
 
-use crate::store::security_policy::schema::{security_policy, security_policy_op};
+use crate::store::policy::schema::{security_policy, security_policy_op};
 
 pub mod alter;
 pub mod create;

@@ -4,7 +4,7 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::security_policy::SecurityPolicyId,
+	interface::catalog::policy::SecurityPolicyId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
@@ -39,11 +39,12 @@ impl SecurityPolicyOpKey {
 	pub fn policy_scan(policy: SecurityPolicyId) -> EncodedKeyRange {
 		let mut start = KeySerializer::with_capacity(10);
 		start.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(policy);
-		let mut end = KeySerializer::with_capacity(10);
+		let mut end = KeySerializer::with_capacity(18);
 		end.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(policy);
 		let start_key = start.to_encoded_key();
 		let mut end_bytes = end.to_encoded_key().to_vec();
-		end_bytes.push(0xFF);
+		// Append 8 0xFF bytes to cover the full op_index field range
+		end_bytes.extend_from_slice(&[0xFF; 8]);
 		EncodedKeyRange::start_end(Some(start_key), Some(EncodedKey::new(end_bytes)))
 	}
 }

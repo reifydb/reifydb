@@ -8,12 +8,12 @@ pub mod load;
 pub mod migration;
 pub mod namespace;
 pub mod operator_retention_policy;
+pub mod policy;
 pub mod primary_key;
 pub mod primitive_retention_policy;
 pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
-pub mod security_policy;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
@@ -36,10 +36,10 @@ use reifydb_core::{
 		key::PrimaryKeyDef,
 		migration::{MigrationDef, MigrationEvent},
 		namespace::NamespaceDef,
+		policy::{SecurityPolicyDef, SecurityPolicyId},
 		primitive::PrimitiveId,
 		procedure::ProcedureDef,
 		ringbuffer::RingBufferDef,
-		security_policy::{SecurityPolicyDef, SecurityPolicyId},
 		subscription::SubscriptionDef,
 		sumtype::SumTypeDef,
 		table::TableDef,

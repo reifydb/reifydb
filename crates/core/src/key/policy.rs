@@ -4,7 +4,7 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::security_policy::SecurityPolicyId,
+	interface::catalog::policy::SecurityPolicyId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 

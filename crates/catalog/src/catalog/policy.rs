@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackSecurityPolicyChangeOperations,
-	security_policy::{SecurityPolicyDef, SecurityPolicyId, SecurityPolicyOperationDef, SecurityPolicyToCreate},
+	policy::{SecurityPolicyDef, SecurityPolicyId, SecurityPolicyOperationDef, SecurityPolicyToCreate},
 };
 use reifydb_transaction::{
 	change::TransactionalSecurityPolicyChanges,
@@ -166,5 +166,17 @@ impl Catalog {
 			}
 			.into()
 		})
+	}
+
+	pub fn list_all_security_policies(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<SecurityPolicyDef>> {
+		CatalogStore::list_all_security_policies(txn)
+	}
+
+	pub fn list_security_policy_operations(
+		&self,
+		txn: &mut Transaction<'_>,
+		policy_id: SecurityPolicyId,
+	) -> crate::Result<Vec<SecurityPolicyOperationDef>> {
+		CatalogStore::list_security_policy_operations(txn, policy_id)
 	}
 }

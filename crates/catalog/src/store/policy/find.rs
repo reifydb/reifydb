@@ -2,14 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::security_policy::{SecurityPolicyDef, SecurityPolicyId},
-	key::security_policy::SecurityPolicyKey,
+	interface::catalog::policy::{SecurityPolicyDef, SecurityPolicyId},
+	key::policy::SecurityPolicyKey,
 };
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore,
-	store::security_policy::{convert_security_policy, schema::security_policy},
+	store::policy::{convert_security_policy, schema::security_policy},
 };
 
 impl CatalogStore {
@@ -40,7 +40,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::catalog::security_policy::{PolicyTargetType, SecurityPolicyToCreate};
+	use reifydb_core::interface::catalog::policy::{PolicyTargetType, SecurityPolicyToCreate};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 

@@ -26,7 +26,6 @@ pub mod primary_key;
 pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
-pub mod security_policy;
 pub mod series;
 pub mod subscription;
 pub mod sumtype;

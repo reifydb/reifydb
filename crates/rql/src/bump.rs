@@ -3,10 +3,10 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-pub(crate) use bumpalo::{Bump, collections::Vec as BumpVec};
+pub use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_type::fragment::{Fragment, StatementColumn, StatementLine};
 
-pub(crate) type BumpBox<'b, T> = bumpalo::boxed::Box<'b, T>;
+pub type BumpBox<'b, T> = bumpalo::boxed::Box<'b, T>;
 
 /// A bump-allocated fragment that avoids heap allocation during the transient pipeline.
 ///

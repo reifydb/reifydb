@@ -802,12 +802,9 @@ impl<'bump> Compiler<'bump> {
 					let operations = node
 						.operations
 						.iter()
-						.map(|op| {
-							nodes::SecurityPolicyOperationNode {
-								operation: op.operation.text().to_string(),
-								body_source: String::new(), /* Body source captured
-								                             * separately */
-							}
+						.map(|op| nodes::SecurityPolicyOperationNode {
+							operation: op.operation.text().to_string(),
+							body_source: op.body_source.clone(),
 						})
 						.collect();
 					stack.push(PhysicalPlan::CreateSecurityPolicy(

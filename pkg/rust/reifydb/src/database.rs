@@ -262,6 +262,36 @@ impl Database {
 		self.engine.query_as(&identity, rql, params.into())
 	}
 
+	/// Execute an admin (DDL + DML + Query) operation as a specific identity.
+	pub fn admin_as(
+		&self,
+		identity: &Identity,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> reifydb_type::Result<Vec<Frame>> {
+		self.engine.admin_as(identity, rql, params.into())
+	}
+
+	/// Execute a transactional command (DML + Query) as a specific identity.
+	pub fn command_as(
+		&self,
+		identity: &Identity,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> reifydb_type::Result<Vec<Frame>> {
+		self.engine.command_as(identity, rql, params.into())
+	}
+
+	/// Execute a read-only query as a specific identity.
+	pub fn query_as(
+		&self,
+		identity: &Identity,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> reifydb_type::Result<Vec<Frame>> {
+		self.engine.query_as(identity, rql, params.into())
+	}
+
 	/// Create a subscription as root and return a cursor for consuming its data.
 	///
 	/// `query` is the inner subscription query (e.g. `from test::events`).

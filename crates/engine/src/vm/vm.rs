@@ -36,14 +36,14 @@ use crate::{
 	expression::{context::EvalContext, eval::evaluate},
 	vm::instruction::{
 		ddl::{
-			alter::security_policy::alter_security_policy,
+			alter::policy::alter_security_policy,
 			create::{
-				authentication::create_authentication, event::create_event, role::create_role,
-				security_policy::create_security_policy, user::create_user,
+				authentication::create_authentication, event::create_event,
+				policy::create_security_policy, role::create_role, user::create_user,
 			},
 			drop::{
-				authentication::drop_authentication, role::drop_role,
-				security_policy::drop_security_policy, user::drop_user,
+				authentication::drop_authentication, policy::drop_security_policy, role::drop_role,
+				user::drop_user,
 			},
 			grant::grant,
 			revoke::revoke,
@@ -850,7 +850,7 @@ impl Vm {
 						{
 							// Runtime-registered native procedure (no catalog entry needed)
 							let call_params = Params::Positional(args);
-							let identity = Identity::Anonymous {};
+							let identity = self.identity.clone();
 							let executor = crate::vm::executor::Executor::from_services(
 								services.clone(),
 							);

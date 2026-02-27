@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackSecurityPolicyChangeOperations,
-	security_policy::{SecurityPolicyDef, SecurityPolicyId},
+	policy::{SecurityPolicyDef, SecurityPolicyId},
 };
 
 use crate::{

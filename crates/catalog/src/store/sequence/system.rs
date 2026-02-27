@@ -9,7 +9,7 @@ use reifydb_core::{
 			ColumnId, ColumnPolicyId, HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId,
 			ProcedureId, RingBufferId, SeriesId, TableId, ViewId,
 		},
-		security_policy::SecurityPolicyId,
+		policy::SecurityPolicyId,
 		user::{RoleId, UserId},
 		user_authentication::UserAuthenticationId,
 	},

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::security_policy::{SecurityPolicyDef, SecurityPolicyId},
+	interface::catalog::policy::{SecurityPolicyDef, SecurityPolicyId},
 };
 
 use crate::materialized::{MaterializedCatalog, MultiVersionSecurityPolicyDef};

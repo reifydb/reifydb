@@ -11,19 +11,35 @@ use reifydb_type::{Result, fragment::Fragment, value::Value};
 
 use crate::{
 	ast::parse_str,
-	bump::Bump,
+	bump::{Bump, BumpVec},
 	error::RqlError,
 	expression::{Expression, ParameterExpression, PrefixOperator},
 	instruction::{Addr, CompiledClosureDef, CompiledFunctionDef, Instruction, ScopeType},
 	nodes,
 	plan::{
+		logical::LogicalPlan,
 		physical::{self, PhysicalPlan},
-		plan,
+		plan, plan_with_policy,
 	},
 	query::QueryPlan,
 };
 
 const DEFAULT_CAPACITY: usize = 1024 * 8;
+
+/// Identity function that constrains a closure to satisfy the HRTB bound required by
+/// `compile_with_policy` / `compile_next_with_policy`. Use this when storing the policy
+/// closure in a variable before passing it, since Rust cannot infer `for<'a>` on bindings.
+pub fn constrain_policy<F>(f: F) -> F
+where
+	F: for<'a> Fn(
+		BumpVec<'a, LogicalPlan<'a>>,
+		&'a Bump,
+		&Catalog,
+		&mut Transaction<'_>,
+	) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
+{
+	f
+}
 
 #[derive(Debug, Clone)]
 pub struct Compiled {
@@ -135,6 +151,88 @@ impl Compiler {
 			}))
 		} else {
 			self.compile_next(tx, state)
+		}
+	}
+
+	/// Compile with a policy closure that can modify logical plans before physical compilation.
+	/// Results are NOT cached since plans are identity-specific.
+	pub fn compile_with_policy<F>(
+		&self,
+		tx: &mut Transaction<'_>,
+		query: &str,
+		policy: F,
+	) -> Result<CompilationResult>
+	where
+		F: for<'a> Fn(
+			BumpVec<'a, LogicalPlan<'a>>,
+			&'a Bump,
+			&Catalog,
+			&mut Transaction<'_>,
+		) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
+	{
+		let bump = Bump::new();
+		let statements = parse_str(&bump, query)?;
+
+		let has_ddl = statements.iter().any(|s| s.contains_ddl());
+		let total_statements = statements.len();
+		let needs_incremental = total_statements > 1 && has_ddl;
+
+		if needs_incremental {
+			return Ok(CompilationResult::Incremental(IncrementalCompilation {
+				query: query.to_string(),
+				total_statements,
+				current: 0,
+			}));
+		}
+
+		let mut plans = Vec::new();
+		for statement in statements {
+			let is_output = statement.is_output;
+			if let Some(physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, &policy)? {
+				plans.push(Compiled {
+					instructions: compile_instructions(physical)?,
+					is_output,
+				});
+			}
+		}
+
+		Ok(CompilationResult::Ready(Arc::new(plans)))
+	}
+
+	/// Compile the next statement in an incremental compilation with a policy closure.
+	/// Returns `None` when all statements have been compiled.
+	pub fn compile_next_with_policy<F>(
+		&self,
+		tx: &mut Transaction<'_>,
+		state: &mut IncrementalCompilation,
+		policy: &F,
+	) -> Result<Option<Compiled>>
+	where
+		F: for<'a> Fn(
+			BumpVec<'a, LogicalPlan<'a>>,
+			&'a Bump,
+			&Catalog,
+			&mut Transaction<'_>,
+		) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
+	{
+		if state.current >= state.total_statements {
+			return Ok(None);
+		}
+
+		let bump = Bump::new();
+		let statements = parse_str(&bump, &state.query)?;
+		let idx = state.current;
+		state.current += 1;
+
+		let statement = statements.into_iter().nth(idx).unwrap();
+		let is_output = statement.is_output;
+		if let Some(physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, policy)? {
+			Ok(Some(Compiled {
+				instructions: compile_instructions(physical)?,
+				is_output,
+			}))
+		} else {
+			self.compile_next_with_policy(tx, state, policy)
 		}
 	}
 

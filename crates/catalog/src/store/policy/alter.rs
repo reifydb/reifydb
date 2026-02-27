@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::security_policy::SecurityPolicyId, key::security_policy::SecurityPolicyKey};
+use reifydb_core::{interface::catalog::policy::SecurityPolicyId, key::policy::SecurityPolicyKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::{
 	CatalogStore,
-	store::security_policy::schema::security_policy::{
+	store::policy::schema::security_policy::{
 		ENABLED, ID, NAME, SCHEMA, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE,
 	},
 };
@@ -35,7 +35,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::catalog::security_policy::{PolicyTargetType, SecurityPolicyToCreate};
+	use reifydb_core::interface::catalog::policy::{PolicyTargetType, SecurityPolicyToCreate};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
