@@ -50,7 +50,7 @@ use reifydb_core::{
 	retention::RetentionPolicy,
 	util::multi::MultiVersionContainer,
 };
-use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
+use reifydb_type::value::{dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId};
 
 use crate::error::{CatalogError, CatalogObjectKind};
 
@@ -134,6 +134,8 @@ pub struct MaterializedCatalogInner {
 	pub(crate) users: SkipMap<UserId, MultiVersionUserDef>,
 	/// Index from user name to user ID for fast name lookups
 	pub(crate) users_by_name: SkipMap<String, UserId>,
+	/// Index from identity ID to user ID for fast identity lookups
+	pub(crate) users_by_identity: SkipMap<IdentityId, UserId>,
 	/// MultiVersion role definitions indexed by role ID
 	pub(crate) roles: SkipMap<RoleId, MultiVersionRoleDef>,
 	/// Index from role name to role ID for fast name lookups
@@ -217,6 +219,7 @@ impl MaterializedCatalog {
 			handlers_by_variant: SkipMap::new(),
 			users: SkipMap::new(),
 			users_by_name: SkipMap::new(),
+			users_by_identity: SkipMap::new(),
 			roles: SkipMap::new(),
 			roles_by_name: SkipMap::new(),
 			user_roles: SkipMap::new(),

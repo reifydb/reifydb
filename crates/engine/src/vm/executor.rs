@@ -4,7 +4,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::FlowOperatorStore};
-use reifydb_core::util::ioc::IocContainer;
+use reifydb_core::{util::ioc::IocContainer, value::column::columns::Columns};
 use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::{CompilationResult, constrain_policy};
@@ -15,7 +15,7 @@ use reifydb_transaction::transaction::{
 };
 use reifydb_type::{
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId},
+	value::{Value, frame::frame::Frame, identity::IdentityId},
 };
 use tracing::instrument;
 
@@ -105,6 +105,25 @@ fn populate_stack(stack: &mut SymbolTable, params: &Params) -> crate::Result<()>
 	Ok(())
 }
 
+/// Populate the `$identity` variable in the symbol table so policy bodies
+/// (and user RQL) can reference `$identity.id` and `$identity.name`.
+fn populate_identity(
+	stack: &mut SymbolTable,
+	catalog: &Catalog,
+	tx: &mut Transaction<'_>,
+	identity: IdentityId,
+) -> crate::Result<()> {
+	if identity.is_root() || identity.is_anonymous() {
+		return Ok(());
+	}
+	if let Some(user) = catalog.find_user_by_identity(tx, identity)? {
+		let columns =
+			Columns::single_row([("id", Value::IdentityId(identity)), ("name", Value::Utf8(user.name))]);
+		stack.set("identity".to_string(), Variable::Columns(columns), false)?;
+	}
+	Ok(())
+}
+
 impl Executor {
 	/// Execute RQL against an existing open transaction.
 	///
@@ -121,6 +140,7 @@ impl Executor {
 		let mut result = vec![];
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &params)?;
+		populate_identity(&mut symbol_table, &self.catalog, tx, identity)?;
 
 		let compiled = match self.compiler.compile_with_policy(tx, rql, |plans, bump, cat, tx| {
 			reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity)
@@ -149,6 +169,7 @@ impl Executor {
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
 		let identity = cmd.identity;
+		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Admin(&mut *txn), identity)?;
 		match self.compiler.compile_with_policy(
 			&mut Transaction::Admin(txn),
 			cmd.rql,
@@ -202,6 +223,7 @@ impl Executor {
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
 		let identity = cmd.identity;
+		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Command(&mut *txn), identity)?;
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Command(txn),
 			cmd.rql,
@@ -244,6 +266,7 @@ impl Executor {
 		let mut result = vec![];
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, params)?;
+		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Command(&mut *txn), identity)?;
 
 		let compiled = match self.compiler.compile(&mut Transaction::Command(txn), &rql)? {
 			CompilationResult::Ready(compiled) => compiled,
@@ -271,6 +294,7 @@ impl Executor {
 		populate_stack(&mut symbol_table, &qry.params)?;
 
 		let identity = qry.identity;
+		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Query(&mut *txn), identity)?;
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Query(txn),
 			qry.rql,

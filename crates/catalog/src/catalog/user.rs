@@ -12,6 +12,7 @@ use reifydb_transaction::{
 	change::{TransactionalRoleChanges, TransactionalUserChanges},
 	transaction::{Transaction, admin::AdminTransaction},
 };
+use reifydb_type::value::identity::IdentityId;
 use tracing::{instrument, warn};
 
 use crate::{
@@ -73,6 +74,74 @@ impl Catalog {
 					CatalogStore::find_user_by_name(&mut Transaction::Query(&mut *qry), name)?
 				{
 					warn!("User '{}' found in storage but not in MaterializedCatalog", name);
+					return Ok(Some(user));
+				}
+
+				Ok(None)
+			}
+		}
+	}
+
+	#[instrument(name = "catalog::user::find_by_identity", level = "trace", skip(self, txn))]
+	pub fn find_user_by_identity(
+		&self,
+		txn: &mut Transaction<'_>,
+		identity: IdentityId,
+	) -> crate::Result<Option<UserDef>> {
+		match txn.reborrow() {
+			Transaction::Admin(admin) => {
+				if let Some(user) =
+					self.materialized.find_user_by_identity_at(identity, admin.version())
+				{
+					return Ok(Some(user));
+				}
+
+				if let Some(user) = CatalogStore::find_user_by_identity(
+					&mut Transaction::Admin(&mut *admin),
+					identity,
+				)? {
+					warn!(
+						"User with identity '{}' found in storage but not in MaterializedCatalog",
+						identity
+					);
+					return Ok(Some(user));
+				}
+
+				Ok(None)
+			}
+			Transaction::Command(cmd) => {
+				if let Some(user) = self.materialized.find_user_by_identity_at(identity, cmd.version())
+				{
+					return Ok(Some(user));
+				}
+
+				if let Some(user) = CatalogStore::find_user_by_identity(
+					&mut Transaction::Command(&mut *cmd),
+					identity,
+				)? {
+					warn!(
+						"User with identity '{}' found in storage but not in MaterializedCatalog",
+						identity
+					);
+					return Ok(Some(user));
+				}
+
+				Ok(None)
+			}
+			Transaction::Query(qry) => {
+				if let Some(user) = self.materialized.find_user_by_identity_at(identity, qry.version())
+				{
+					return Ok(Some(user));
+				}
+
+				if let Some(user) = CatalogStore::find_user_by_identity(
+					&mut Transaction::Query(&mut *qry),
+					identity,
+				)? {
+					warn!(
+						"User with identity '{}' found in storage but not in MaterializedCatalog",
+						identity
+					);
 					return Ok(Some(user));
 				}
 

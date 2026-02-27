@@ -50,6 +50,15 @@ pub fn users() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
+				ColumnDef {
+					id: IDENTITY,
+					name: "identity".to_string(),
+					constraint: TypeConstraint::unconstrained(Type::IdentityId),
+					properties: vec![],
+					index: ColumnIndex(3),
+					auto_increment: false,
+					dictionary_id: None,
+				},
 			],
 		})
 	})

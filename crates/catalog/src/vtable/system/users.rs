@@ -47,11 +47,13 @@ impl VTable for Users {
 		let mut ids = ColumnData::uint8_with_capacity(users.len());
 		let mut names = ColumnData::utf8_with_capacity(users.len());
 		let mut enabled_flags = ColumnData::bool_with_capacity(users.len());
+		let mut identities = ColumnData::identity_id_with_capacity(users.len());
 
 		for u in users {
 			ids.push(u.id);
 			names.push(u.name.as_str());
 			enabled_flags.push(u.enabled);
+			identities.push(u.identity);
 		}
 
 		let columns = vec![
@@ -66,6 +68,10 @@ impl VTable for Users {
 			Column {
 				name: Fragment::internal("enabled"),
 				data: enabled_flags,
+			},
+			Column {
+				name: Fragment::internal("identity"),
+				data: identities,
 			},
 		];
 

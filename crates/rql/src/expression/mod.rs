@@ -1130,6 +1130,9 @@ impl ExpressionCompiler {
 				}))
 			}
 			Ast::Match(match_ast) => Self::compile_match(match_ast),
+			Ast::Identity(ident) => Ok(Expression::Variable(VariableExpression {
+				fragment: ident.token.fragment.to_owned(),
+			})),
 			ast => unimplemented!("{:?}", ast),
 		}
 	}

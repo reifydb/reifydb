@@ -3,13 +3,14 @@
 
 use reifydb_core::{interface::catalog::user::UserDef, key::user::UserKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_type::value::identity::IdentityId;
 
 use crate::{
 	CatalogStore,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		sequence::system::SystemSequence,
-		user::schema::user::{ENABLED, ID, NAME, SCHEMA},
+		user::schema::user::{ENABLED, ID, IDENTITY, NAME, SCHEMA},
 	},
 };
 
@@ -26,16 +27,19 @@ impl CatalogStore {
 		}
 
 		let user_id = SystemSequence::next_user_id(txn)?;
+		let identity = IdentityId::generate();
 
 		let mut row = SCHEMA.allocate();
 		SCHEMA.set_u64(&mut row, ID, user_id);
 		SCHEMA.set_utf8(&mut row, NAME, name);
 		SCHEMA.set_bool(&mut row, ENABLED, true);
+		SCHEMA.set_identity_id(&mut row, IDENTITY, identity);
 
 		txn.set(&UserKey::encoded(user_id), row)?;
 
 		Ok(UserDef {
 			id: user_id,
+			identity,
 			name: name.to_string(),
 			enabled: true,
 		})

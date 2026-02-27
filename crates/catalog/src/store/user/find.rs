@@ -6,6 +6,7 @@ use reifydb_core::{
 	key::user::UserKey,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::value::identity::IdentityId;
 
 use crate::{
 	CatalogStore,
@@ -25,6 +26,23 @@ impl CatalogStore {
 			let multi = entry?;
 			let user_name = user::SCHEMA.get_utf8(&multi.values, user::NAME);
 			if name == user_name {
+				return Ok(Some(convert_user(multi)));
+			}
+		}
+
+		Ok(None)
+	}
+
+	pub(crate) fn find_user_by_identity(
+		rx: &mut Transaction<'_>,
+		identity: IdentityId,
+	) -> crate::Result<Option<UserDef>> {
+		let mut stream = rx.range(UserKey::full_scan(), 1024)?;
+
+		while let Some(entry) = stream.next() {
+			let multi = entry?;
+			let user_identity = user::SCHEMA.get_identity_id(&multi.values, user::IDENTITY);
+			if identity == user_identity {
 				return Ok(Some(convert_user(multi)));
 			}
 		}
