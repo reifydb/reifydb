@@ -160,29 +160,29 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				),
 			);
 		}
-		PhysicalPlan::CreateSecurityPolicy(n) => {
+		PhysicalPlan::CreatePolicy(n) => {
 			let name = n.name.as_ref().map(|f| f.text()).unwrap_or("<unnamed>");
 			write_node_header(
 				output,
 				prefix,
 				is_last,
-				&format!("CreateSecurityPolicy name={} type={}", name, n.target_type),
+				&format!("CreatePolicy name={} type={}", name, n.target_type),
 			);
 		}
-		PhysicalPlan::AlterSecurityPolicy(n) => {
+		PhysicalPlan::AlterPolicy(n) => {
 			write_node_header(
 				output,
 				prefix,
 				is_last,
-				&format!("AlterSecurityPolicy name={} enabled={}", n.name.text(), n.enable),
+				&format!("AlterPolicy name={} enabled={}", n.name.text(), n.enable),
 			);
 		}
-		PhysicalPlan::DropSecurityPolicy(n) => {
+		PhysicalPlan::DropPolicy(n) => {
 			write_node_header(
 				output,
 				prefix,
 				is_last,
-				&format!("DropSecurityPolicy name={} if_exists={}", n.name.text(), n.if_exists),
+				&format!("DropPolicy name={} if_exists={}", n.name.text(), n.if_exists),
 			);
 		}
 		PhysicalPlan::CreateFlow(create_flow) => {

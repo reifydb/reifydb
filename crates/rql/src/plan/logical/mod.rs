@@ -449,9 +449,9 @@ pub enum LogicalPlan<'bump> {
 	DropRole(DropRoleNode<'bump>),
 	CreateAuthentication(CreateAuthenticationNode<'bump>),
 	DropAuthentication(DropAuthenticationNode<'bump>),
-	CreateSecurityPolicy(CreateSecurityPolicyNode<'bump>),
-	AlterSecurityPolicy(AlterSecurityPolicyNode<'bump>),
-	DropSecurityPolicy(DropSecurityPolicyNode<'bump>),
+	CreatePolicy(CreatePolicyNode<'bump>),
+	AlterPolicy(AlterPolicyNode<'bump>),
+	DropPolicy(DropPolicyNode<'bump>),
 }
 
 #[derive(Debug)]
@@ -959,7 +959,7 @@ pub struct DropAuthenticationNode<'bump> {
 }
 
 #[derive(Debug)]
-pub struct CreateSecurityPolicyNode<'bump> {
+pub struct CreatePolicyNode<'bump> {
 	pub name: Option<BumpFragment<'bump>>,
 	pub target_type: crate::ast::ast::AstPolicyTargetType,
 	pub scope: crate::ast::ast::AstPolicyScope<'bump>,
@@ -967,14 +967,14 @@ pub struct CreateSecurityPolicyNode<'bump> {
 }
 
 #[derive(Debug)]
-pub struct AlterSecurityPolicyNode<'bump> {
+pub struct AlterPolicyNode<'bump> {
 	pub target_type: crate::ast::ast::AstPolicyTargetType,
 	pub name: BumpFragment<'bump>,
 	pub action: crate::ast::ast::AstAlterPolicyAction,
 }
 
 #[derive(Debug)]
-pub struct DropSecurityPolicyNode<'bump> {
+pub struct DropPolicyNode<'bump> {
 	pub target_type: crate::ast::ast::AstPolicyTargetType,
 	pub name: BumpFragment<'bump>,
 	pub if_exists: bool,

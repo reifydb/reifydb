@@ -4,25 +4,25 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::policy::SecurityPolicyId,
+	interface::catalog::policy::PolicyId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
 const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SecurityPolicyKey {
-	pub policy: SecurityPolicyId,
+pub struct PolicyKey {
+	pub policy: PolicyId,
 }
 
-impl SecurityPolicyKey {
-	pub fn new(policy: SecurityPolicyId) -> Self {
+impl PolicyKey {
+	pub fn new(policy: PolicyId) -> Self {
 		Self {
 			policy,
 		}
 	}
 
-	pub fn encoded(policy: SecurityPolicyId) -> EncodedKey {
+	pub fn encoded(policy: PolicyId) -> EncodedKey {
 		Self::new(policy).encode()
 	}
 
@@ -35,8 +35,8 @@ impl SecurityPolicyKey {
 	}
 }
 
-impl EncodableKey for SecurityPolicyKey {
-	const KIND: KeyKind = KeyKind::SecurityPolicy;
+impl EncodableKey for PolicyKey {
+	const KIND: KeyKind = KeyKind::Policy;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);

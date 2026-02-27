@@ -23,6 +23,8 @@ pub mod handlers;
 pub mod migrations;
 pub mod namespaces;
 pub mod operator_retention_policies;
+pub mod policies;
+pub mod policy_operations;
 pub mod primary_key_columns;
 pub mod primary_keys;
 pub mod primitive_retention_policies;
@@ -31,8 +33,6 @@ pub mod ringbuffers;
 pub mod roles;
 pub mod schema_fields;
 pub mod schemas;
-pub mod security_policies;
-pub mod security_policy_operations;
 pub mod sequence;
 pub mod series;
 pub mod storage_stats_dictionary;
@@ -70,6 +70,8 @@ use handlers::handlers;
 use migrations::migrations;
 use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
+use policies::policies;
+use policy_operations::policy_operations;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
 use primitive_retention_policies::primitive_retention_policies;
@@ -77,8 +79,6 @@ use procedures::procedures;
 use roles::roles;
 use schema_fields::schema_fields;
 use schemas::schemas;
-use security_policies::security_policies;
-use security_policy_operations::security_policy_operations;
 use sequence::sequences;
 use series::series;
 use storage_stats_dictionary::dictionary_storage_stats;
@@ -503,7 +503,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 2] = [USER_ID, ROLE_ID];
 		}
 
-		pub mod security_policies {
+		pub mod policies {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
@@ -527,7 +527,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 3] = [ID, USER_ID, METHOD];
 		}
 
-		pub mod security_policy_operations {
+		pub mod policy_operations {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const POLICY_ID: ColumnId = ColumnId(1);
@@ -553,7 +553,7 @@ pub mod ids {
 		pub const HANDLER: SequenceId = SequenceId(10);
 		pub const USER: SequenceId = SequenceId(11);
 		pub const ROLE: SequenceId = SequenceId(12);
-		pub const SECURITY_POLICY: SequenceId = SequenceId(13);
+		pub const POLICY: SequenceId = SequenceId(13);
 		pub const MIGRATION: SequenceId = SequenceId(14);
 		pub const MIGRATION_EVENT: SequenceId = SequenceId(15);
 		pub const USER_AUTHENTICATION: SequenceId = SequenceId(16);
@@ -571,7 +571,7 @@ pub mod ids {
 			HANDLER,
 			USER,
 			ROLE,
-			SECURITY_POLICY,
+			POLICY,
 			MIGRATION,
 			MIGRATION_EVENT,
 			USER_AUTHENTICATION,
@@ -623,8 +623,8 @@ pub mod ids {
 		pub const USERS: VTableId = VTableId(40);
 		pub const ROLES: VTableId = VTableId(41);
 		pub const USER_ROLES: VTableId = VTableId(42);
-		pub const SECURITY_POLICIES: VTableId = VTableId(43);
-		pub const SECURITY_POLICY_OPERATIONS: VTableId = VTableId(44);
+		pub const POLICIES: VTableId = VTableId(43);
+		pub const POLICY_OPERATIONS: VTableId = VTableId(44);
 		pub const MIGRATIONS: VTableId = VTableId(45);
 		pub const USER_AUTHENTICATIONS: VTableId = VTableId(46);
 
@@ -671,8 +671,8 @@ pub mod ids {
 			USERS,
 			ROLES,
 			USER_ROLES,
-			SECURITY_POLICIES,
-			SECURITY_POLICY_OPERATIONS,
+			POLICIES,
+			POLICY_OPERATIONS,
 			MIGRATIONS,
 			USER_AUTHENTICATIONS,
 		];
@@ -911,14 +911,14 @@ impl SystemCatalog {
 		user_roles()
 	}
 
-	/// Get the security_policies virtual table definition
-	pub fn get_system_security_policies_table_def() -> Arc<VTableDef> {
-		security_policies()
+	/// Get the policies virtual table definition
+	pub fn get_system_policies_table_def() -> Arc<VTableDef> {
+		policies()
 	}
 
-	/// Get the security_policy_operations virtual table definition
-	pub fn get_system_security_policy_operations_table_def() -> Arc<VTableDef> {
-		security_policy_operations()
+	/// Get the policy_operations virtual table definition
+	pub fn get_system_policy_operations_table_def() -> Arc<VTableDef> {
+		policy_operations()
 	}
 
 	/// Get the migrations virtual table definition

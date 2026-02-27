@@ -2,19 +2,19 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::policy::{PolicyTargetType, SecurityPolicyOpToCreate, SecurityPolicyToCreate},
+	interface::catalog::policy::{PolicyOpToCreate, PolicyTargetType, PolicyToCreate},
 	value::column::columns::Columns,
 };
-use reifydb_rql::nodes::CreateSecurityPolicyNode;
+use reifydb_rql::nodes::CreatePolicyNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
 use crate::vm::services::Services;
 
-pub(crate) fn create_security_policy(
+pub(crate) fn create_policy(
 	services: &Services,
 	txn: &mut AdminTransaction,
-	plan: CreateSecurityPolicyNode,
+	plan: CreatePolicyNode,
 ) -> crate::Result<Columns> {
 	let target_type = match plan.target_type.as_str() {
 		"table" => PolicyTargetType::Table,
@@ -34,13 +34,13 @@ pub(crate) fn create_security_policy(
 	let operations = plan
 		.operations
 		.iter()
-		.map(|op| SecurityPolicyOpToCreate {
+		.map(|op| PolicyOpToCreate {
 			operation: op.operation.clone(),
 			body_source: op.body_source.clone(),
 		})
 		.collect();
 
-	let to_create = SecurityPolicyToCreate {
+	let to_create = PolicyToCreate {
 		name: plan.name.as_ref().map(|f| f.text().to_string()),
 		target_type,
 		target_namespace: plan.scope_namespace.as_ref().map(|f| f.text().to_string()),
@@ -48,7 +48,7 @@ pub(crate) fn create_security_policy(
 		operations,
 	};
 
-	let (def, _ops) = services.catalog.create_security_policy(txn, to_create)?;
+	let (def, _ops) = services.catalog.create_policy(txn, to_create)?;
 
 	let display_name = def.name.unwrap_or_else(|| format!("policy_{}", def.id));
 

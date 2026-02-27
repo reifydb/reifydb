@@ -2,58 +2,54 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	change::CatalogTrackSecurityPolicyChangeOperations,
-	policy::{SecurityPolicyDef, SecurityPolicyId},
+	change::CatalogTrackPolicyChangeOperations,
+	policy::{PolicyDef, PolicyId},
 };
 
 use crate::{
 	change::{
 		Change,
 		OperationType::{Create, Delete, Update},
-		TransactionalSecurityPolicyChanges,
+		TransactionalPolicyChanges,
 	},
 	transaction::admin::AdminTransaction,
 };
 
-impl CatalogTrackSecurityPolicyChangeOperations for AdminTransaction {
-	fn track_security_policy_def_created(&mut self, policy: SecurityPolicyDef) -> reifydb_type::Result<()> {
+impl CatalogTrackPolicyChangeOperations for AdminTransaction {
+	fn track_policy_def_created(&mut self, policy: PolicyDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(policy),
 			op: Create,
 		};
-		self.changes.add_security_policy_def_change(change);
+		self.changes.add_policy_def_change(change);
 		Ok(())
 	}
 
-	fn track_security_policy_def_updated(
-		&mut self,
-		pre: SecurityPolicyDef,
-		post: SecurityPolicyDef,
-	) -> reifydb_type::Result<()> {
+	fn track_policy_def_updated(&mut self, pre: PolicyDef, post: PolicyDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
 			op: Update,
 		};
-		self.changes.add_security_policy_def_change(change);
+		self.changes.add_policy_def_change(change);
 		Ok(())
 	}
 
-	fn track_security_policy_def_deleted(&mut self, policy: SecurityPolicyDef) -> reifydb_type::Result<()> {
+	fn track_policy_def_deleted(&mut self, policy: PolicyDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(policy),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_security_policy_def_change(change);
+		self.changes.add_policy_def_change(change);
 		Ok(())
 	}
 }
 
-impl TransactionalSecurityPolicyChanges for AdminTransaction {
-	fn find_security_policy(&self, id: SecurityPolicyId) -> Option<&SecurityPolicyDef> {
-		for change in self.changes.security_policy_def.iter().rev() {
+impl TransactionalPolicyChanges for AdminTransaction {
+	fn find_policy(&self, id: PolicyId) -> Option<&PolicyDef> {
+		for change in self.changes.policy_def.iter().rev() {
 			if let Some(policy) = &change.post {
 				if policy.id == id {
 					return Some(policy);
@@ -67,24 +63,24 @@ impl TransactionalSecurityPolicyChanges for AdminTransaction {
 		None
 	}
 
-	fn find_security_policy_by_name(&self, name: &str) -> Option<&SecurityPolicyDef> {
+	fn find_policy_by_name(&self, name: &str) -> Option<&PolicyDef> {
 		self.changes
-			.security_policy_def
+			.policy_def
 			.iter()
 			.rev()
 			.find_map(|change| change.post.as_ref().filter(|p| p.name.as_deref() == Some(name)))
 	}
 
-	fn is_security_policy_deleted(&self, id: SecurityPolicyId) -> bool {
+	fn is_policy_deleted(&self, id: PolicyId) -> bool {
 		self.changes
-			.security_policy_def
+			.policy_def
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|p| p.id) == Some(id))
 	}
 
-	fn is_security_policy_deleted_by_name(&self, name: &str) -> bool {
-		self.changes.security_policy_def.iter().rev().any(|change| {
+	fn is_policy_deleted_by_name(&self, name: &str) -> bool {
+		self.changes.policy_def.iter().rev().any(|change| {
 			change.op == Delete
 				&& change.pre.as_ref().map(|p| p.name.as_deref() == Some(name)).unwrap_or(false)
 		})

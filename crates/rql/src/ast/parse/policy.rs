@@ -4,8 +4,8 @@
 use crate::{
 	ast::{
 		ast::{
-			AstAlter, AstAlterPolicyAction, AstAlterSecurityPolicy, AstCreate, AstCreateSecurityPolicy,
-			AstDrop, AstDropSecurityPolicy, AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType,
+			AstAlter, AstAlterPolicy, AstAlterPolicyAction, AstCreate, AstCreatePolicy, AstDrop,
+			AstDropPolicy, AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType,
 		},
 		parse::Parser,
 	},
@@ -19,7 +19,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	/// Parse `CREATE <TYPE> POLICY [name] [ON scope] { operations }`
-	pub(crate) fn parse_create_security_policy(
+	pub(crate) fn parse_create_policy(
 		&mut self,
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
@@ -99,7 +99,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
-		Ok(AstCreate::SecurityPolicy(AstCreateSecurityPolicy {
+		Ok(AstCreate::Policy(AstCreatePolicy {
 			token,
 			name,
 			target_type,
@@ -144,7 +144,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse `ALTER <TYPE> POLICY name ENABLE|DISABLE`
-	pub(crate) fn parse_alter_security_policy(
+	pub(crate) fn parse_alter_policy(
 		&mut self,
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
@@ -158,7 +158,7 @@ impl<'bump> Parser<'bump> {
 			AstAlterPolicyAction::Disable
 		};
 
-		Ok(AstAlter::SecurityPolicy(AstAlterSecurityPolicy {
+		Ok(AstAlter::Policy(AstAlterPolicy {
 			token,
 			target_type,
 			name: name_token.fragment,
@@ -167,7 +167,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse `DROP <TYPE> POLICY [IF EXISTS] name`
-	pub(crate) fn parse_drop_security_policy(
+	pub(crate) fn parse_drop_policy(
 		&mut self,
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
@@ -175,7 +175,7 @@ impl<'bump> Parser<'bump> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume(TokenKind::Identifier)?;
 
-		Ok(AstDrop::SecurityPolicy(AstDropSecurityPolicy {
+		Ok(AstDrop::Policy(AstDropPolicy {
 			token,
 			target_type,
 			name: name_token.fragment,
@@ -206,8 +206,8 @@ mod tests {
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
-		let AstCreate::SecurityPolicy(policy) = node.as_create() else {
-			panic!("expected SecurityPolicy")
+		let AstCreate::Policy(policy) = node.as_create() else {
+			panic!("expected Policy")
 		};
 		assert_eq!(policy.target_type, AstPolicyTargetType::Table);
 		assert_eq!(policy.name.unwrap().text(), "tenant_isolation");
@@ -226,8 +226,8 @@ mod tests {
 		let mut parser = Parser::new(&bump, src, tokens);
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
-		let AstCreate::SecurityPolicy(policy) = node.as_create() else {
-			panic!("expected SecurityPolicy")
+		let AstCreate::Policy(policy) = node.as_create() else {
+			panic!("expected Policy")
 		};
 		assert_eq!(policy.target_type, AstPolicyTargetType::Namespace);
 		assert_eq!(policy.name.unwrap().text(), "finance_access");
@@ -243,8 +243,8 @@ mod tests {
 		let mut parser = Parser::new(&bump, src, tokens);
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
-		let AstCreate::SecurityPolicy(policy) = node.as_create() else {
-			panic!("expected SecurityPolicy")
+		let AstCreate::Policy(policy) = node.as_create() else {
+			panic!("expected Policy")
 		};
 		assert_eq!(policy.target_type, AstPolicyTargetType::Session);
 	}
@@ -259,8 +259,8 @@ mod tests {
 		let mut parser = Parser::new(&bump, src, tokens);
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
-		let AstCreate::SecurityPolicy(policy) = node.as_create() else {
-			panic!("expected SecurityPolicy")
+		let AstCreate::Policy(policy) = node.as_create() else {
+			panic!("expected Policy")
 		};
 		assert_eq!(policy.target_type, AstPolicyTargetType::Procedure);
 		assert!(policy.name.is_none());
@@ -277,8 +277,8 @@ mod tests {
 			crate::ast::ast::Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
 		};
-		let AstDrop::SecurityPolicy(sp) = drop else {
-			panic!("expected SecurityPolicy")
+		let AstDrop::Policy(sp) = drop else {
+			panic!("expected Policy")
 		};
 		assert_eq!(sp.target_type, AstPolicyTargetType::Table);
 		assert_eq!(sp.name.text(), "tenant_isolation");
@@ -297,8 +297,8 @@ mod tests {
 			crate::ast::ast::Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
 		};
-		let AstDrop::SecurityPolicy(sp) = drop else {
-			panic!("expected SecurityPolicy")
+		let AstDrop::Policy(sp) = drop else {
+			panic!("expected Policy")
 		};
 		assert!(sp.if_exists);
 	}

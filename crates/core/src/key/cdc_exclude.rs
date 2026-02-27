@@ -119,8 +119,8 @@ pub mod tests {
 			KeyKind::User => {}
 			KeyKind::Role => {}
 			KeyKind::UserRole => {}
-			KeyKind::SecurityPolicy => {}
-			KeyKind::SecurityPolicyOp => {}
+			KeyKind::Policy => {}
+			KeyKind::PolicyOp => {}
 			KeyKind::Migration => {}
 			KeyKind::UserAuthentication => {}
 			KeyKind::MigrationEvent => {} /* When adding a new variant, add it here.
@@ -412,13 +412,13 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_security_policy() {
-		assert!(!should_exclude_from_cdc(KeyKind::SecurityPolicy));
+	fn test_include_policy() {
+		assert!(!should_exclude_from_cdc(KeyKind::Policy));
 	}
 
 	#[test]
-	fn test_include_security_policy_op() {
-		assert!(!should_exclude_from_cdc(KeyKind::SecurityPolicyOp));
+	fn test_include_policy_op() {
+		assert!(!should_exclude_from_cdc(KeyKind::PolicyOp));
 	}
 
 	#[test]

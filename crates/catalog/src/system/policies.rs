@@ -10,18 +10,18 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-use super::ids::{columns::security_policies::*, vtable::SECURITY_POLICIES};
+use super::ids::{columns::policies::*, vtable::POLICIES};
 
-/// Returns the static definition for the system.security_policies virtual table
+/// Returns the static definition for the system.policies virtual table
 /// This table exposes information about all security policies in the database
-pub fn security_policies() -> Arc<VTableDef> {
+pub fn policies() -> Arc<VTableDef> {
 	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
-			id: SECURITY_POLICIES,
+			id: POLICIES,
 			namespace: NamespaceId(1),
-			name: "security_policies".to_string(),
+			name: "policies".to_string(),
 			columns: vec![
 				ColumnDef {
 					id: ID,

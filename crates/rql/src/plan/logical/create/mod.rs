@@ -25,8 +25,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{
 	ast::ast::AstCreate,
 	plan::logical::{
-		Compiler, CreateAuthenticationNode, CreateRoleNode, CreateSecurityPolicyNode, CreateUserNode,
-		LogicalPlan,
+		Compiler, CreateAuthenticationNode, CreatePolicyNode, CreateRoleNode, CreateUserNode, LogicalPlan,
 	},
 };
 
@@ -66,14 +65,12 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Role(node) => Ok(LogicalPlan::CreateRole(CreateRoleNode {
 				name: node.name,
 			})),
-			AstCreate::SecurityPolicy(node) => {
-				Ok(LogicalPlan::CreateSecurityPolicy(CreateSecurityPolicyNode {
-					name: node.name,
-					target_type: node.target_type,
-					scope: node.scope,
-					operations: node.operations,
-				}))
-			}
+			AstCreate::Policy(node) => Ok(LogicalPlan::CreatePolicy(CreatePolicyNode {
+				name: node.name,
+				target_type: node.target_type,
+				scope: node.scope,
+				operations: node.operations,
+			})),
 			AstCreate::Migration(node) => self.compile_create_migration(node),
 		}
 	}

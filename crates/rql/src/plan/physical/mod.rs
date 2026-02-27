@@ -170,9 +170,9 @@ pub enum PhysicalPlan<'bump> {
 	DropRole(nodes::DropRoleNode),
 	CreateAuthentication(nodes::CreateAuthenticationNode),
 	DropAuthentication(nodes::DropAuthenticationNode),
-	CreateSecurityPolicy(nodes::CreateSecurityPolicyNode),
-	AlterSecurityPolicy(nodes::AlterSecurityPolicyNode),
-	DropSecurityPolicy(nodes::DropSecurityPolicyNode),
+	CreatePolicy(nodes::CreatePolicyNode),
+	AlterPolicy(nodes::AlterPolicyNode),
+	DropPolicy(nodes::DropPolicyNode),
 }
 
 // --- Nodes with recursive children (bump-allocated) ---
@@ -769,7 +769,7 @@ impl<'bump> Compiler<'bump> {
 						if_exists: node.if_exists,
 					}));
 				}
-				LogicalPlan::CreateSecurityPolicy(node) => {
+				LogicalPlan::CreatePolicy(node) => {
 					let name = node.name.map(|n| self.interner.intern_fragment(&n));
 					let target_type = format!("{:?}", node.target_type);
 					let (scope_namespace, scope_object) = match &node.scope {
@@ -802,31 +802,29 @@ impl<'bump> Compiler<'bump> {
 					let operations = node
 						.operations
 						.iter()
-						.map(|op| nodes::SecurityPolicyOperationNode {
+						.map(|op| nodes::PolicyOperationNode {
 							operation: op.operation.text().to_string(),
 							body_source: op.body_source.clone(),
 						})
 						.collect();
-					stack.push(PhysicalPlan::CreateSecurityPolicy(
-						nodes::CreateSecurityPolicyNode {
-							name,
-							target_type,
-							scope_namespace,
-							scope_object,
-							operations,
-						},
-					));
+					stack.push(PhysicalPlan::CreatePolicy(nodes::CreatePolicyNode {
+						name,
+						target_type,
+						scope_namespace,
+						scope_object,
+						operations,
+					}));
 				}
-				LogicalPlan::AlterSecurityPolicy(node) => {
+				LogicalPlan::AlterPolicy(node) => {
 					let enable = node.action == crate::ast::ast::AstAlterPolicyAction::Enable;
-					stack.push(PhysicalPlan::AlterSecurityPolicy(nodes::AlterSecurityPolicyNode {
+					stack.push(PhysicalPlan::AlterPolicy(nodes::AlterPolicyNode {
 						target_type: format!("{:?}", node.target_type),
 						name: self.interner.intern_fragment(&node.name),
 						enable,
 					}));
 				}
-				LogicalPlan::DropSecurityPolicy(node) => {
-					stack.push(PhysicalPlan::DropSecurityPolicy(nodes::DropSecurityPolicyNode {
+				LogicalPlan::DropPolicy(node) => {
+					stack.push(PhysicalPlan::DropPolicy(nodes::DropPolicyNode {
 						target_type: format!("{:?}", node.target_type),
 						name: self.interner.intern_fragment(&node.name),
 						if_exists: node.if_exists,

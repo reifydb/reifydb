@@ -93,10 +93,8 @@ impl VTableRegistry {
 			USERS => Some(SystemCatalog::get_system_users_table_def()),
 			ROLES => Some(SystemCatalog::get_system_roles_table_def()),
 			USER_ROLES => Some(SystemCatalog::get_system_user_roles_table_def()),
-			SECURITY_POLICIES => Some(SystemCatalog::get_system_security_policies_table_def()),
-			SECURITY_POLICY_OPERATIONS => {
-				Some(SystemCatalog::get_system_security_policy_operations_table_def())
-			}
+			POLICIES => Some(SystemCatalog::get_system_policies_table_def()),
+			POLICY_OPERATIONS => Some(SystemCatalog::get_system_policy_operations_table_def()),
 			_ => None,
 		})
 	}
@@ -130,8 +128,8 @@ impl VTableRegistry {
 			SystemCatalog::get_system_users_table_def(),
 			SystemCatalog::get_system_roles_table_def(),
 			SystemCatalog::get_system_user_roles_table_def(),
-			SystemCatalog::get_system_security_policies_table_def(),
-			SystemCatalog::get_system_security_policy_operations_table_def(),
+			SystemCatalog::get_system_policies_table_def(),
+			SystemCatalog::get_system_policy_operations_table_def(),
 		])
 	}
 }

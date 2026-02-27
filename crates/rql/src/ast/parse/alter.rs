@@ -34,10 +34,7 @@ impl<'bump> Parser<'bump> {
 		if self.current()?.is_keyword(Keyword::Flow) {
 			self.consume_keyword(Keyword::Flow)?;
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_alter_security_policy(
-					token,
-					crate::ast::ast::AstPolicyTargetType::Flow,
-				);
+				return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Flow);
 			}
 			return self.parse_alter_flow(token);
 		}
@@ -46,10 +43,7 @@ impl<'bump> Parser<'bump> {
 			self.consume_keyword(Keyword::Table)?;
 			if self.current()?.is_keyword(Keyword::Policy) {
 				self.consume_keyword(Keyword::Policy)?;
-				return self.parse_alter_security_policy(
-					token,
-					crate::ast::ast::AstPolicyTargetType::Table,
-				);
+				return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Table);
 			}
 			return self.parse_alter_table(token);
 		}
@@ -57,55 +51,49 @@ impl<'bump> Parser<'bump> {
 		if self.current()?.is_keyword(Keyword::Namespace) {
 			self.consume_keyword(Keyword::Namespace)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self
-				.parse_alter_security_policy(token, crate::ast::ast::AstPolicyTargetType::Namespace);
+			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Namespace);
 		}
 
 		if self.current()?.is_keyword(Keyword::Procedure) {
 			self.consume_keyword(Keyword::Procedure)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self
-				.parse_alter_security_policy(token, crate::ast::ast::AstPolicyTargetType::Procedure);
+			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Procedure);
 		}
 
 		if self.current()?.is_keyword(Keyword::Function) {
 			self.consume_keyword(Keyword::Function)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_security_policy(token, crate::ast::ast::AstPolicyTargetType::Function);
+			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Function);
 		}
 
 		if self.current()?.is_keyword(Keyword::Session) {
 			self.consume_keyword(Keyword::Session)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_security_policy(token, crate::ast::ast::AstPolicyTargetType::Session);
+			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Session);
 		}
 
 		if self.current()?.is_keyword(Keyword::Series) {
 			self.consume_keyword(Keyword::Series)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_security_policy(token, crate::ast::ast::AstPolicyTargetType::Series);
+			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Series);
 		}
 
 		if self.current()?.is_keyword(Keyword::Dictionary) {
 			self.consume_keyword(Keyword::Dictionary)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self
-				.parse_alter_security_policy(token, crate::ast::ast::AstPolicyTargetType::Dictionary);
+			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Dictionary);
 		}
 
 		if self.current()?.is_keyword(Keyword::Subscription) {
 			self.consume_keyword(Keyword::Subscription)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_security_policy(
-				token,
-				crate::ast::ast::AstPolicyTargetType::Subscription,
-			);
+			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Subscription);
 		}
 
 		if self.current()?.is_keyword(Keyword::Feature) {
 			self.consume_keyword(Keyword::Feature)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_security_policy(token, crate::ast::ast::AstPolicyTargetType::Feature);
+			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Feature);
 		}
 
 		unimplemented!("Only ALTER SEQUENCE, ALTER FLOW, ALTER TABLE, and ALTER <TYPE> POLICY are supported");

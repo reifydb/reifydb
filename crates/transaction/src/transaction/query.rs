@@ -15,7 +15,7 @@ use reifydb_core::{
 			},
 			migration::MigrationDef,
 			namespace::NamespaceDef,
-			policy::{SecurityPolicyDef, SecurityPolicyId},
+			policy::{PolicyDef, PolicyId},
 			procedure::ProcedureDef,
 			ringbuffer::RingBufferDef,
 			series::SeriesDef,
@@ -40,8 +40,8 @@ use crate::{
 	change::{
 		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalHandlerChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
-		TransactionalProcedureChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
-		TransactionalSecurityPolicyChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
+		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
+		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
 		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalUserAuthenticationChanges,
 		TransactionalUserChanges, TransactionalUserRoleChanges, TransactionalViewChanges,
 	},
@@ -395,20 +395,20 @@ impl TransactionalUserRoleChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalSecurityPolicyChanges for QueryTransaction {
-	fn find_security_policy(&self, _id: SecurityPolicyId) -> Option<&SecurityPolicyDef> {
+impl TransactionalPolicyChanges for QueryTransaction {
+	fn find_policy(&self, _id: PolicyId) -> Option<&PolicyDef> {
 		None
 	}
 
-	fn find_security_policy_by_name(&self, _name: &str) -> Option<&SecurityPolicyDef> {
+	fn find_policy_by_name(&self, _name: &str) -> Option<&PolicyDef> {
 		None
 	}
 
-	fn is_security_policy_deleted(&self, _id: SecurityPolicyId) -> bool {
+	fn is_policy_deleted(&self, _id: PolicyId) -> bool {
 		false
 	}
 
-	fn is_security_policy_deleted_by_name(&self, _name: &str) -> bool {
+	fn is_policy_deleted_by_name(&self, _name: &str) -> bool {
 		false
 	}
 }

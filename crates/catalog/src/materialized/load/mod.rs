@@ -21,7 +21,7 @@ use dictionary::load_dictionaries;
 use flow::load_flows;
 use namespace::load_namespaces;
 use operator_retention_policy::load_operator_retention_policies;
-use policy::load_security_policies;
+use policy::load_policies;
 use primary_key::load_primary_keys;
 use primitive_retention_policy::load_source_retention_policies;
 use reifydb_transaction::transaction::Transaction;
@@ -67,7 +67,7 @@ impl MaterializedCatalogLoader {
 		load_users(rx, catalog)?;
 		load_roles(rx, catalog)?;
 		load_user_roles(rx, catalog)?;
-		load_security_policies(rx, catalog)?;
+		load_policies(rx, catalog)?;
 
 		Ok(())
 	}

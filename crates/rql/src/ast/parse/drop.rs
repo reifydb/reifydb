@@ -30,13 +30,13 @@ impl<'bump> Parser<'bump> {
 		// Check what we're dropping
 		if (self.consume_if(TokenKind::Keyword(Keyword::Flow))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_drop_security_policy(token, AstPolicyTargetType::Flow);
+				return self.parse_drop_policy(token, AstPolicyTargetType::Flow);
 			}
 			return self.parse_drop_flow(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Table))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_drop_security_policy(token, AstPolicyTargetType::Table);
+				return self.parse_drop_policy(token, AstPolicyTargetType::Table);
 			}
 			return self.parse_drop_table(token);
 		}
@@ -48,13 +48,13 @@ impl<'bump> Parser<'bump> {
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Namespace))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_drop_security_policy(token, AstPolicyTargetType::Namespace);
+				return self.parse_drop_policy(token, AstPolicyTargetType::Namespace);
 			}
 			return self.parse_drop_namespace(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Dictionary))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_drop_security_policy(token, AstPolicyTargetType::Dictionary);
+				return self.parse_drop_policy(token, AstPolicyTargetType::Dictionary);
 			}
 			return self.parse_drop_dictionary(token);
 		}
@@ -63,13 +63,13 @@ impl<'bump> Parser<'bump> {
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Subscription))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_drop_security_policy(token, AstPolicyTargetType::Subscription);
+				return self.parse_drop_policy(token, AstPolicyTargetType::Subscription);
 			}
 			return self.parse_drop_subscription(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Series))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_drop_security_policy(token, AstPolicyTargetType::Series);
+				return self.parse_drop_policy(token, AstPolicyTargetType::Series);
 			}
 			return self.parse_drop_series(token);
 		}
@@ -84,19 +84,19 @@ impl<'bump> Parser<'bump> {
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Session))?).is_some() {
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_drop_security_policy(token, AstPolicyTargetType::Session);
+			return self.parse_drop_policy(token, AstPolicyTargetType::Session);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Feature))?).is_some() {
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_drop_security_policy(token, AstPolicyTargetType::Feature);
+			return self.parse_drop_policy(token, AstPolicyTargetType::Feature);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Function))?).is_some() {
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_drop_security_policy(token, AstPolicyTargetType::Function);
+			return self.parse_drop_policy(token, AstPolicyTargetType::Function);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_drop_security_policy(token, AstPolicyTargetType::Procedure);
+			return self.parse_drop_policy(token, AstPolicyTargetType::Procedure);
 		}
 
 		let fragment = self.current()?.fragment.to_owned();

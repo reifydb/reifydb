@@ -818,7 +818,7 @@ pub enum AstCreate<'bump> {
 	User(AstCreateUser<'bump>),
 	Role(AstCreateRole<'bump>),
 	Authentication(AstCreateAuthentication<'bump>),
-	SecurityPolicy(AstCreateSecurityPolicy<'bump>),
+	Policy(AstCreatePolicy<'bump>),
 	Migration(AstCreateMigration<'bump>),
 }
 
@@ -826,7 +826,7 @@ pub enum AstCreate<'bump> {
 pub enum AstAlter<'bump> {
 	Sequence(AstAlterSequence<'bump>),
 	Flow(AstAlterFlow<'bump>),
-	SecurityPolicy(AstAlterSecurityPolicy<'bump>),
+	Policy(AstAlterPolicy<'bump>),
 	Table(AstAlterTable<'bump>),
 }
 
@@ -865,7 +865,7 @@ pub enum AstDrop<'bump> {
 	User(AstDropUser<'bump>),
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
-	SecurityPolicy(AstDropSecurityPolicy<'bump>),
+	Policy(AstDropPolicy<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1256,7 +1256,7 @@ impl<'bump> AstCreate<'bump> {
 				token,
 				..
 			}) => token,
-			AstCreate::SecurityPolicy(AstCreateSecurityPolicy {
+			AstCreate::Policy(AstCreatePolicy {
 				token,
 				..
 			}) => token,
@@ -1279,7 +1279,7 @@ impl<'bump> AstAlter<'bump> {
 				token,
 				..
 			}) => token,
-			AstAlter::SecurityPolicy(AstAlterSecurityPolicy {
+			AstAlter::Policy(AstAlterPolicy {
 				token,
 				..
 			}) => token,
@@ -1342,7 +1342,7 @@ impl<'bump> AstDrop<'bump> {
 				token,
 				..
 			}) => token,
-			AstDrop::SecurityPolicy(AstDropSecurityPolicy {
+			AstDrop::Policy(AstDropPolicy {
 				token,
 				..
 			}) => token,
@@ -1913,7 +1913,7 @@ pub struct AstPolicyOperationEntry<'bump> {
 }
 
 #[derive(Debug)]
-pub struct AstCreateSecurityPolicy<'bump> {
+pub struct AstCreatePolicy<'bump> {
 	pub token: Token<'bump>,
 	pub name: Option<BumpFragment<'bump>>,
 	pub target_type: AstPolicyTargetType,
@@ -1928,7 +1928,7 @@ pub enum AstAlterPolicyAction {
 }
 
 #[derive(Debug)]
-pub struct AstAlterSecurityPolicy<'bump> {
+pub struct AstAlterPolicy<'bump> {
 	pub token: Token<'bump>,
 	pub target_type: AstPolicyTargetType,
 	pub name: BumpFragment<'bump>,
@@ -1936,7 +1936,7 @@ pub struct AstAlterSecurityPolicy<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstDropSecurityPolicy<'bump> {
+pub struct AstDropPolicy<'bump> {
 	pub token: Token<'bump>,
 	pub target_type: AstPolicyTargetType,
 	pub name: BumpFragment<'bump>,

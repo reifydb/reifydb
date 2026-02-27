@@ -2020,6 +2020,7 @@ dependencies = [
 name = "reifydb-policy"
 version = "0.3.0"
 dependencies = [
+ "bumpalo",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-rql",

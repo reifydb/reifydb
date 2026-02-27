@@ -36,13 +36,13 @@ use crate::{
 	expression::{context::EvalContext, eval::evaluate},
 	vm::instruction::{
 		ddl::{
-			alter::policy::alter_security_policy,
+			alter::policy::alter_policy,
 			create::{
-				authentication::create_authentication, event::create_event,
-				policy::create_security_policy, role::create_role, user::create_user,
+				authentication::create_authentication, event::create_event, policy::create_policy,
+				role::create_role, user::create_user,
 			},
 			drop::{
-				authentication::drop_authentication, policy::drop_security_policy, role::drop_role,
+				authentication::drop_authentication, policy::drop_policy, role::drop_role,
 				user::drop_user,
 			},
 			grant::grant,
@@ -1745,7 +1745,7 @@ impl Vm {
 					let columns = drop_role(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::CreateSecurityPolicy(plan) => {
+				Instruction::CreatePolicy(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
@@ -1754,10 +1754,10 @@ impl Vm {
 							));
 						}
 					};
-					let columns = create_security_policy(services, txn, plan.clone())?;
+					let columns = create_policy(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::AlterSecurityPolicy(plan) => {
+				Instruction::AlterPolicy(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
@@ -1766,10 +1766,10 @@ impl Vm {
 							));
 						}
 					};
-					let columns = alter_security_policy(services, txn, plan.clone())?;
+					let columns = alter_policy(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::DropSecurityPolicy(plan) => {
+				Instruction::DropPolicy(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
@@ -1778,7 +1778,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = drop_security_policy(services, txn, plan.clone())?;
+					let columns = drop_policy(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateAuthentication(plan) => {

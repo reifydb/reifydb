@@ -16,22 +16,22 @@ use crate::{
 	vtable::{Batch, VTable, VTableContext},
 };
 
-/// Virtual table that exposes system security policy information
-pub struct SecurityPolicies {
+/// Virtual table that exposes system policy information
+pub struct Policies {
 	pub(crate) definition: Arc<VTableDef>,
 	exhausted: bool,
 }
 
-impl SecurityPolicies {
+impl Policies {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_security_policies_table_def().clone(),
+			definition: SystemCatalog::get_system_policies_table_def().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for SecurityPolicies {
+impl VTable for Policies {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -42,7 +42,7 @@ impl VTable for SecurityPolicies {
 			return Ok(None);
 		}
 
-		let policies = CatalogStore::list_all_security_policies(txn)?;
+		let policies = CatalogStore::list_all_policies(txn)?;
 
 		let mut ids = ColumnData::uint8_with_capacity(policies.len());
 		let mut names = ColumnData::utf8_with_capacity(policies.len());

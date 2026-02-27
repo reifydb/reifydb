@@ -16,22 +16,22 @@ use crate::{
 	vtable::{Batch, VTable, VTableContext},
 };
 
-/// Virtual table that exposes system security policy operation information
-pub struct SecurityPolicyOperations {
+/// Virtual table that exposes system policy operation information
+pub struct PolicyOperations {
 	pub(crate) definition: Arc<VTableDef>,
 	exhausted: bool,
 }
 
-impl SecurityPolicyOperations {
+impl PolicyOperations {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_security_policy_operations_table_def().clone(),
+			definition: SystemCatalog::get_system_policy_operations_table_def().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for SecurityPolicyOperations {
+impl VTable for PolicyOperations {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -42,7 +42,7 @@ impl VTable for SecurityPolicyOperations {
 			return Ok(None);
 		}
 
-		let ops = CatalogStore::list_all_security_policy_operations(txn)?;
+		let ops = CatalogStore::list_all_policy_operations(txn)?;
 
 		let mut policy_ids = ColumnData::uint8_with_capacity(ops.len());
 		let mut operations = ColumnData::utf8_with_capacity(ops.len());

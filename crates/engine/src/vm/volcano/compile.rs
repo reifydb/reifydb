@@ -13,11 +13,11 @@ use reifydb_catalog::vtable::{
 		flow_operator_inputs::FlowOperatorInputs, flow_operator_outputs::FlowOperatorOutputs,
 		flow_operators::FlowOperators, flow_storage_stats::FlowStorageStats, flows::Flows, handlers::Handlers,
 		index_storage_stats::IndexStorageStats, migrations::Migrations, namespaces::Namespaces,
-		operator_retention_policies::OperatorRetentionPolicies, primary_key_columns::PrimaryKeyColumns,
-		primary_keys::PrimaryKeys, primitive_retention_policies::PrimitiveRetentionPolicies,
-		procedures::Procedures, ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers,
-		roles::Roles, schema_fields::SchemaFields, schemas::Schemas, security_policies::SecurityPolicies,
-		security_policy_operations::SecurityPolicyOperations, sequences::Sequences, series::Series,
+		operator_retention_policies::OperatorRetentionPolicies, policies::Policies,
+		policy_operations::PolicyOperations, primary_key_columns::PrimaryKeyColumns, primary_keys::PrimaryKeys,
+		primitive_retention_policies::PrimitiveRetentionPolicies, procedures::Procedures,
+		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, roles::Roles,
+		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences, series::Series,
 		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, tags::Tags,
 		types::Types, user_roles::UserRoles, users::Users, versions::Versions,
 		view_storage_stats::ViewStorageStats, views::Views,
@@ -589,10 +589,8 @@ pub(crate) fn compile<'a>(
 					"users" => VTables::Users(Users::new()),
 					"roles" => VTables::Roles(Roles::new()),
 					"user_roles" => VTables::UserRoles(UserRoles::new()),
-					"security_policies" => VTables::SecurityPolicies(SecurityPolicies::new()),
-					"security_policy_operations" => {
-						VTables::SecurityPolicyOperations(SecurityPolicyOperations::new())
-					}
+					"policies" => VTables::Policies(Policies::new()),
+					"policy_operations" => VTables::PolicyOperations(PolicyOperations::new()),
 					"migrations" => VTables::Migrations(Migrations::new()),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}

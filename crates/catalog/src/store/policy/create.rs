@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::policy::{SecurityPolicyDef, SecurityPolicyOperationDef, SecurityPolicyToCreate},
-	key::{policy::SecurityPolicyKey, security_policy_op::SecurityPolicyOpKey},
+	interface::catalog::policy::{PolicyDef, PolicyOperationDef, PolicyToCreate},
+	key::{policy::PolicyKey, policy_op::PolicyOpKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
@@ -12,23 +12,23 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		policy::schema::{
-			security_policy::{ENABLED, ID, NAME, SCHEMA, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
-			security_policy_op,
+			policy::{ENABLED, ID, NAME, SCHEMA, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
+			policy_op,
 		},
 		sequence::system::SystemSequence,
 	},
 };
 
 impl CatalogStore {
-	pub(crate) fn create_security_policy(
+	pub(crate) fn create_policy(
 		txn: &mut AdminTransaction,
-		to_create: SecurityPolicyToCreate,
-	) -> crate::Result<(SecurityPolicyDef, Vec<SecurityPolicyOperationDef>)> {
+		to_create: PolicyToCreate,
+	) -> crate::Result<(PolicyDef, Vec<PolicyOperationDef>)> {
 		// Check duplicate by name if named
 		if let Some(ref name) = to_create.name {
-			if let Some(_) = Self::find_security_policy_by_name(&mut Transaction::Admin(&mut *txn), name)? {
+			if let Some(_) = Self::find_policy_by_name(&mut Transaction::Admin(&mut *txn), name)? {
 				return Err(CatalogError::AlreadyExists {
-					kind: CatalogObjectKind::SecurityPolicy,
+					kind: CatalogObjectKind::Policy,
 					namespace: "system".to_string(),
 					name: name.clone(),
 					fragment: reifydb_type::fragment::Fragment::None,
@@ -37,7 +37,7 @@ impl CatalogStore {
 			}
 		}
 
-		let policy_id = SystemSequence::next_security_policy_id(txn)?;
+		let policy_id = SystemSequence::next_policy_id(txn)?;
 
 		let mut row = SCHEMA.allocate();
 		SCHEMA.set_u64(&mut row, ID, policy_id);
@@ -47,30 +47,26 @@ impl CatalogStore {
 		SCHEMA.set_utf8(&mut row, TARGET_OBJECT, to_create.target_object.as_deref().unwrap_or(""));
 		SCHEMA.set_bool(&mut row, ENABLED, true);
 
-		txn.set(&SecurityPolicyKey::encoded(policy_id), row)?;
+		txn.set(&PolicyKey::encoded(policy_id), row)?;
 
 		// Write operation rows
 		let mut ops = Vec::new();
 		for (i, op) in to_create.operations.iter().enumerate() {
-			let mut op_row = security_policy_op::SCHEMA.allocate();
-			security_policy_op::SCHEMA.set_u64(&mut op_row, security_policy_op::POLICY_ID, policy_id);
-			security_policy_op::SCHEMA.set_utf8(&mut op_row, security_policy_op::OPERATION, &op.operation);
-			security_policy_op::SCHEMA.set_utf8(
-				&mut op_row,
-				security_policy_op::BODY_SOURCE,
-				&op.body_source,
-			);
+			let mut op_row = policy_op::SCHEMA.allocate();
+			policy_op::SCHEMA.set_u64(&mut op_row, policy_op::POLICY_ID, policy_id);
+			policy_op::SCHEMA.set_utf8(&mut op_row, policy_op::OPERATION, &op.operation);
+			policy_op::SCHEMA.set_utf8(&mut op_row, policy_op::BODY_SOURCE, &op.body_source);
 
-			txn.set(&SecurityPolicyOpKey::encoded(policy_id, i as u64), op_row)?;
+			txn.set(&PolicyOpKey::encoded(policy_id, i as u64), op_row)?;
 
-			ops.push(SecurityPolicyOperationDef {
+			ops.push(PolicyOperationDef {
 				policy_id,
 				operation: op.operation.clone(),
 				body_source: op.body_source.clone(),
 			});
 		}
 
-		let def = SecurityPolicyDef {
+		let def = PolicyDef {
 			id: policy_id,
 			name: to_create.name,
 			target_type: to_create.target_type,
@@ -85,27 +81,25 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::catalog::policy::{
-		PolicyTargetType, SecurityPolicyOpToCreate, SecurityPolicyToCreate,
-	};
+	use reifydb_core::interface::catalog::policy::{PolicyOpToCreate, PolicyTargetType, PolicyToCreate};
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 
 	use crate::CatalogStore;
 
 	#[test]
-	fn test_create_security_policy() {
+	fn test_create_policy() {
 		let mut txn = create_test_admin_transaction();
-		let to_create = SecurityPolicyToCreate {
+		let to_create = PolicyToCreate {
 			name: Some("read_only".to_string()),
 			target_type: PolicyTargetType::Table,
 			target_namespace: None,
 			target_object: None,
-			operations: vec![SecurityPolicyOpToCreate {
+			operations: vec![PolicyOpToCreate {
 				operation: "SELECT".to_string(),
 				body_source: "ALLOW".to_string(),
 			}],
 		};
-		let (def, ops) = CatalogStore::create_security_policy(&mut txn, to_create).unwrap();
+		let (def, ops) = CatalogStore::create_policy(&mut txn, to_create).unwrap();
 		assert_eq!(def.name, Some("read_only".to_string()));
 		assert_eq!(def.target_type, PolicyTargetType::Table);
 		assert!(def.enabled);
@@ -114,11 +108,11 @@ mod tests {
 	}
 
 	#[test]
-	fn test_create_security_policy_duplicate() {
+	fn test_create_policy_duplicate() {
 		let mut txn = create_test_admin_transaction();
-		CatalogStore::create_security_policy(
+		CatalogStore::create_policy(
 			&mut txn,
-			SecurityPolicyToCreate {
+			PolicyToCreate {
 				name: Some("read_only".to_string()),
 				target_type: PolicyTargetType::Table,
 				target_namespace: None,
@@ -127,9 +121,9 @@ mod tests {
 			},
 		)
 		.unwrap();
-		let err = CatalogStore::create_security_policy(
+		let err = CatalogStore::create_policy(
 			&mut txn,
-			SecurityPolicyToCreate {
+			PolicyToCreate {
 				name: Some("read_only".to_string()),
 				target_type: PolicyTargetType::Table,
 				target_namespace: None,

@@ -25,7 +25,7 @@ pub enum CatalogObjectKind {
 	Tag,
 	User,
 	Role,
-	SecurityPolicy,
+	Policy,
 	Migration,
 }
 
@@ -46,7 +46,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Tag => f.write_str("tag"),
 			CatalogObjectKind::User => f.write_str("user"),
 			CatalogObjectKind::Role => f.write_str("role"),
-			CatalogObjectKind::SecurityPolicy => f.write_str("security policy"),
+			CatalogObjectKind::Policy => f.write_str("policy"),
 			CatalogObjectKind::Migration => f.write_str("migration"),
 		}
 	}
@@ -255,10 +255,10 @@ impl IntoDiagnostic for CatalogError {
 						"role",
 						"choose a different name or drop the existing role first",
 					),
-					CatalogObjectKind::SecurityPolicy => (
+					CatalogObjectKind::Policy => (
 						"CA_042",
-						"security policy",
-						"choose a different name or drop the existing security policy first",
+						"policy",
+						"choose a different name or drop the existing policy first",
 					),
 					CatalogObjectKind::Migration => {
 						("CA_046", "migration", "choose a different name for the migration")
@@ -363,10 +363,10 @@ impl IntoDiagnostic for CatalogError {
 						"role",
 						"ensure the role exists or create it first using `CREATE ROLE`".to_string(),
 					),
-					CatalogObjectKind::SecurityPolicy => (
+					CatalogObjectKind::Policy => (
 						"CA_045",
-						"security policy",
-						"ensure the security policy exists or create it first".to_string(),
+						"policy",
+						"ensure the policy exists or create it first".to_string(),
 					),
 					CatalogObjectKind::Migration => (
 						"CA_047",

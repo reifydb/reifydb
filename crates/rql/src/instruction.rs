@@ -196,9 +196,9 @@ pub enum Instruction {
 	DropUser(nodes::DropUserNode),
 	DropRole(nodes::DropRoleNode),
 	DropAuthentication(nodes::DropAuthenticationNode),
-	CreateSecurityPolicy(nodes::CreateSecurityPolicyNode),
-	AlterSecurityPolicy(nodes::AlterSecurityPolicyNode),
-	DropSecurityPolicy(nodes::DropSecurityPolicyNode),
+	CreatePolicy(nodes::CreatePolicyNode),
+	AlterPolicy(nodes::AlterPolicyNode),
+	DropPolicy(nodes::DropPolicyNode),
 
 	// === DML ===
 	Delete(DeleteTableNode),

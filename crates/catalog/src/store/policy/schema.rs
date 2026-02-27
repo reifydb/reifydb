@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-pub(crate) mod security_policy {
+pub(crate) mod policy {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::schema::{Schema, SchemaField};
 	use reifydb_type::value::r#type::Type;
@@ -25,7 +25,7 @@ pub(crate) mod security_policy {
 	});
 }
 
-pub(crate) mod security_policy_op {
+pub(crate) mod policy_op {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::schema::{Schema, SchemaField};
 	use reifydb_type::value::r#type::Type;

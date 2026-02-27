@@ -142,9 +142,9 @@ pub enum PhysicalPlan {
 	DropRole(DropRoleNode),
 	CreateAuthentication(CreateAuthenticationNode),
 	DropAuthentication(DropAuthenticationNode),
-	CreateSecurityPolicy(CreateSecurityPolicyNode),
-	AlterSecurityPolicy(AlterSecurityPolicyNode),
-	DropSecurityPolicy(DropSecurityPolicyNode),
+	CreatePolicy(CreatePolicyNode),
+	AlterPolicy(AlterPolicyNode),
+	DropPolicy(DropPolicyNode),
 }
 
 #[derive(Debug, Clone)]
@@ -898,29 +898,29 @@ pub struct DropAuthenticationNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateSecurityPolicyNode {
+pub struct CreatePolicyNode {
 	pub name: Option<Fragment>,
 	pub target_type: String,
 	pub scope_namespace: Option<Fragment>,
 	pub scope_object: Option<Fragment>,
-	pub operations: Vec<SecurityPolicyOperationNode>,
+	pub operations: Vec<PolicyOperationNode>,
 }
 
 #[derive(Debug, Clone)]
-pub struct SecurityPolicyOperationNode {
+pub struct PolicyOperationNode {
 	pub operation: String,
 	pub body_source: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct AlterSecurityPolicyNode {
+pub struct AlterPolicyNode {
 	pub target_type: String,
 	pub name: Fragment,
 	pub enable: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct DropSecurityPolicyNode {
+pub struct DropPolicyNode {
 	pub target_type: String,
 	pub name: Fragment,
 	pub if_exists: bool,

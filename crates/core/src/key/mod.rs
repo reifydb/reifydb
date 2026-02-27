@@ -22,7 +22,8 @@ use namespace_series::NamespaceSeriesKey;
 use namespace_sumtype::NamespaceSumTypeKey;
 use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
-use policy::SecurityPolicyKey;
+use policy::PolicyKey;
+use policy_op::PolicyOpKey;
 use primary_key::PrimaryKeyKey;
 use property::ColumnPropertyKey;
 use retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey};
@@ -30,7 +31,6 @@ use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use role::RoleKey;
 use row::RowKey;
 use row_sequence::RowSequenceKey;
-use security_policy_op::SecurityPolicyOpKey;
 use series::{SeriesKey, SeriesMetadataKey};
 use subscription::SubscriptionKey;
 use subscription_column::SubscriptionColumnKey;
@@ -78,6 +78,7 @@ pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
 pub mod policy;
+pub mod policy_op;
 pub mod primary_key;
 pub mod property;
 pub mod retention_policy;
@@ -86,7 +87,6 @@ pub mod role;
 pub mod row;
 pub mod row_sequence;
 pub mod schema;
-pub mod security_policy_op;
 pub mod series;
 pub mod series_row;
 pub mod subscription;
@@ -150,8 +150,8 @@ pub enum Key {
 	UserAuthentication(UserAuthenticationKey),
 	Role(RoleKey),
 	UserRole(UserRoleKey),
-	SecurityPolicy(SecurityPolicyKey),
-	SecurityPolicyOp(SecurityPolicyOpKey),
+	Policy(PolicyKey),
+	PolicyOp(PolicyOpKey),
 }
 
 impl Key {
@@ -203,8 +203,8 @@ impl Key {
 			Key::UserAuthentication(key) => key.encode(),
 			Key::Role(key) => key.encode(),
 			Key::UserRole(key) => key.encode(),
-			Key::SecurityPolicy(key) => key.encode(),
-			Key::SecurityPolicyOp(key) => key.encode(),
+			Key::Policy(key) => key.encode(),
+			Key::PolicyOp(key) => key.encode(),
 		}
 	}
 }
@@ -336,8 +336,8 @@ impl Key {
 			}
 			KeyKind::Role => RoleKey::decode(&key).map(Self::Role),
 			KeyKind::UserRole => UserRoleKey::decode(&key).map(Self::UserRole),
-			KeyKind::SecurityPolicy => SecurityPolicyKey::decode(&key).map(Self::SecurityPolicy),
-			KeyKind::SecurityPolicyOp => SecurityPolicyOpKey::decode(&key).map(Self::SecurityPolicyOp),
+			KeyKind::Policy => PolicyKey::decode(&key).map(Self::Policy),
+			KeyKind::PolicyOp => PolicyOpKey::decode(&key).map(Self::PolicyOp),
 			KeyKind::Migration | KeyKind::MigrationEvent => {
 				// Migration keys are used directly via EncodableKey trait, not through Key enum
 				None

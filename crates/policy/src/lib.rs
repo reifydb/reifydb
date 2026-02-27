@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{auth::Identity, catalog::policy::PolicyTargetType, resolved::ResolvedPrimitive};
 use reifydb_rql::{
 	ast::parse_str,
-	bump::{Bump, BumpVec},
 	expression::{ConstantExpression, Expression},
 	plan::logical::{FilterNode, LogicalPlan, PipelineNode, compile_logical},
 };
@@ -90,7 +90,7 @@ fn inject_pipeline<'a>(
 				result.push(step);
 
 				// Look up policies for this table
-				let policies = catalog.list_all_security_policies(tx)?;
+				let policies = catalog.list_all_policies(tx)?;
 				let mut found_policy = false;
 
 				for policy in &policies {
@@ -111,7 +111,7 @@ fn inject_pipeline<'a>(
 					}
 
 					// Get read operations for this policy
-					let ops = catalog.list_security_policy_operations(tx, policy.id)?;
+					let ops = catalog.list_policy_operations(tx, policy.id)?;
 					for op in &ops {
 						if op.operation != "read" {
 							continue;

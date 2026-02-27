@@ -921,16 +921,16 @@ impl InstructionCompiler {
 				self.emit(Instruction::DropAuthentication(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::CreateSecurityPolicy(node) => {
-				self.emit(Instruction::CreateSecurityPolicy(node));
+			PhysicalPlan::CreatePolicy(node) => {
+				self.emit(Instruction::CreatePolicy(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::AlterSecurityPolicy(node) => {
-				self.emit(Instruction::AlterSecurityPolicy(node));
+			PhysicalPlan::AlterPolicy(node) => {
+				self.emit(Instruction::AlterPolicy(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::DropSecurityPolicy(node) => {
-				self.emit(Instruction::DropSecurityPolicy(node));
+			PhysicalPlan::DropPolicy(node) => {
+				self.emit(Instruction::DropPolicy(node));
 				self.emit(Instruction::Emit);
 			}
 

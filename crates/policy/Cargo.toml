@@ -11,6 +11,7 @@ description = "Policy engine for ReifyDB — compiles, caches, and evaluates sec
 default = []
 
 [dependencies]
+bumpalo = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-rql = { workspace = true }

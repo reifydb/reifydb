@@ -2,24 +2,24 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_rql::nodes::DropSecurityPolicyNode;
+use reifydb_rql::nodes::DropPolicyNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
 use crate::vm::services::Services;
 
-pub(crate) fn drop_security_policy(
+pub(crate) fn drop_policy(
 	services: &Services,
 	txn: &mut AdminTransaction,
-	plan: DropSecurityPolicyNode,
+	plan: DropPolicyNode,
 ) -> crate::Result<Columns> {
 	let name = plan.name.text();
 
-	let policy = services.catalog.find_security_policy_by_name(&mut Transaction::Admin(&mut *txn), name)?;
+	let policy = services.catalog.find_policy_by_name(&mut Transaction::Admin(&mut *txn), name)?;
 
 	match policy {
 		Some(policy) => {
-			services.catalog.drop_security_policy(txn, policy.id)?;
+			services.catalog.drop_policy(txn, policy.id)?;
 			Ok(Columns::single_row([
 				("policy", Value::Utf8(name.to_string())),
 				("dropped", Value::Boolean(true)),
@@ -33,7 +33,7 @@ pub(crate) fn drop_security_policy(
 				]))
 			} else {
 				Err(reifydb_catalog::error::CatalogError::NotFound {
-					kind: reifydb_catalog::error::CatalogObjectKind::SecurityPolicy,
+					kind: reifydb_catalog::error::CatalogObjectKind::Policy,
 					namespace: "system".to_string(),
 					name: name.to_string(),
 					fragment: plan.name.clone(),

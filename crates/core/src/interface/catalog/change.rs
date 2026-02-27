@@ -12,7 +12,7 @@ use crate::interface::catalog::{
 	handler::HandlerDef,
 	migration::{MigrationDef, MigrationEvent},
 	namespace::NamespaceDef,
-	policy::SecurityPolicyDef,
+	policy::PolicyDef,
 	procedure::ProcedureDef,
 	ringbuffer::RingBufferDef,
 	series::SeriesDef,
@@ -152,17 +152,13 @@ pub trait CatalogTrackUserRoleChangeOperations {
 	fn track_user_role_def_deleted(&mut self, user_role: UserRoleDef) -> reifydb_type::Result<()>;
 }
 
-/// Trait for tracking security policy definition changes during a transaction.
-pub trait CatalogTrackSecurityPolicyChangeOperations {
-	fn track_security_policy_def_created(&mut self, policy: SecurityPolicyDef) -> reifydb_type::Result<()>;
+/// Trait for tracking policy definition changes during a transaction.
+pub trait CatalogTrackPolicyChangeOperations {
+	fn track_policy_def_created(&mut self, policy: PolicyDef) -> reifydb_type::Result<()>;
 
-	fn track_security_policy_def_updated(
-		&mut self,
-		pre: SecurityPolicyDef,
-		post: SecurityPolicyDef,
-	) -> reifydb_type::Result<()>;
+	fn track_policy_def_updated(&mut self, pre: PolicyDef, post: PolicyDef) -> reifydb_type::Result<()>;
 
-	fn track_security_policy_def_deleted(&mut self, policy: SecurityPolicyDef) -> reifydb_type::Result<()>;
+	fn track_policy_def_deleted(&mut self, policy: PolicyDef) -> reifydb_type::Result<()>;
 }
 
 /// Trait for tracking migration definition changes during a transaction.
@@ -195,7 +191,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackProcedureChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
 	+ CatalogTrackRoleChangeOperations
-	+ CatalogTrackSecurityPolicyChangeOperations
+	+ CatalogTrackPolicyChangeOperations
 	+ CatalogTrackSeriesChangeOperations
 	+ CatalogTrackSubscriptionChangeOperations
 	+ CatalogTrackSumTypeChangeOperations

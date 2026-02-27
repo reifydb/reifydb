@@ -2,11 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::{
-	catalog::policy::{PolicyTargetType, SecurityPolicyDef, SecurityPolicyOperationDef},
+	catalog::policy::{PolicyDef, PolicyOperationDef, PolicyTargetType},
 	store::MultiVersionValues,
 };
 
-use crate::store::policy::schema::{security_policy, security_policy_op};
+use crate::store::policy::schema::{policy, policy_op};
 
 pub mod alter;
 pub mod create;
@@ -15,16 +15,16 @@ pub mod find;
 pub mod list;
 pub mod schema;
 
-pub(crate) fn convert_security_policy(multi: MultiVersionValues) -> SecurityPolicyDef {
+pub(crate) fn convert_policy(multi: MultiVersionValues) -> PolicyDef {
 	let row = multi.values;
-	let id = security_policy::SCHEMA.get_u64(&row, security_policy::ID);
-	let name_str = security_policy::SCHEMA.get_utf8(&row, security_policy::NAME).to_string();
+	let id = policy::SCHEMA.get_u64(&row, policy::ID);
+	let name_str = policy::SCHEMA.get_utf8(&row, policy::NAME).to_string();
 	let name = if name_str.is_empty() {
 		None
 	} else {
 		Some(name_str)
 	};
-	let target_type_str = security_policy::SCHEMA.get_utf8(&row, security_policy::TARGET_TYPE);
+	let target_type_str = policy::SCHEMA.get_utf8(&row, policy::TARGET_TYPE);
 	let target_type = match target_type_str {
 		"table" => PolicyTargetType::Table,
 		"column" => PolicyTargetType::Column,
@@ -39,21 +39,21 @@ pub(crate) fn convert_security_policy(multi: MultiVersionValues) -> SecurityPoli
 		"feature" => PolicyTargetType::Feature,
 		_ => PolicyTargetType::Table,
 	};
-	let target_ns_str = security_policy::SCHEMA.get_utf8(&row, security_policy::TARGET_NAMESPACE).to_string();
+	let target_ns_str = policy::SCHEMA.get_utf8(&row, policy::TARGET_NAMESPACE).to_string();
 	let target_namespace = if target_ns_str.is_empty() {
 		None
 	} else {
 		Some(target_ns_str)
 	};
-	let target_obj_str = security_policy::SCHEMA.get_utf8(&row, security_policy::TARGET_OBJECT).to_string();
+	let target_obj_str = policy::SCHEMA.get_utf8(&row, policy::TARGET_OBJECT).to_string();
 	let target_object = if target_obj_str.is_empty() {
 		None
 	} else {
 		Some(target_obj_str)
 	};
-	let enabled = security_policy::SCHEMA.get_bool(&row, security_policy::ENABLED);
+	let enabled = policy::SCHEMA.get_bool(&row, policy::ENABLED);
 
-	SecurityPolicyDef {
+	PolicyDef {
 		id,
 		name,
 		target_type,
@@ -63,13 +63,13 @@ pub(crate) fn convert_security_policy(multi: MultiVersionValues) -> SecurityPoli
 	}
 }
 
-pub(crate) fn convert_security_policy_op(multi: MultiVersionValues) -> SecurityPolicyOperationDef {
+pub(crate) fn convert_policy_op(multi: MultiVersionValues) -> PolicyOperationDef {
 	let row = multi.values;
-	let policy_id = security_policy_op::SCHEMA.get_u64(&row, security_policy_op::POLICY_ID);
-	let operation = security_policy_op::SCHEMA.get_utf8(&row, security_policy_op::OPERATION).to_string();
-	let body_source = security_policy_op::SCHEMA.get_utf8(&row, security_policy_op::BODY_SOURCE).to_string();
+	let policy_id = policy_op::SCHEMA.get_u64(&row, policy_op::POLICY_ID);
+	let operation = policy_op::SCHEMA.get_utf8(&row, policy_op::OPERATION).to_string();
+	let body_source = policy_op::SCHEMA.get_utf8(&row, policy_op::BODY_SOURCE).to_string();
 
-	SecurityPolicyOperationDef {
+	PolicyOperationDef {
 		policy_id,
 		operation,
 		body_source,

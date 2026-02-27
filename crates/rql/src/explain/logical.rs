@@ -147,26 +147,26 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				n.if_exists
 			));
 		}
-		LogicalPlan::CreateSecurityPolicy(n) => {
+		LogicalPlan::CreatePolicy(n) => {
 			let name = n.name.as_ref().map(|f| f.text()).unwrap_or("<unnamed>");
 			output.push_str(&format!(
-				"{}{} CreateSecurityPolicy name={} type={:?}\n",
+				"{}{} CreatePolicy name={} type={:?}\n",
 				prefix, branch, name, n.target_type
 			));
 		}
-		LogicalPlan::AlterSecurityPolicy(n) => {
+		LogicalPlan::AlterPolicy(n) => {
 			let enabled = n.action == crate::ast::ast::AstAlterPolicyAction::Enable;
 			output.push_str(&format!(
-				"{}{} AlterSecurityPolicy name={} enabled={}\n",
+				"{}{} AlterPolicy name={} enabled={}\n",
 				prefix,
 				branch,
 				n.name.text(),
 				enabled
 			));
 		}
-		LogicalPlan::DropSecurityPolicy(n) => {
+		LogicalPlan::DropPolicy(n) => {
 			output.push_str(&format!(
-				"{}{} DropSecurityPolicy name={} if_exists={}\n",
+				"{}{} DropPolicy name={} if_exists={}\n",
 				prefix,
 				branch,
 				n.name.text(),

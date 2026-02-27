@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 // Security policy types
 
-pub type SecurityPolicyId = u64;
+pub type PolicyId = u64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PolicyTargetType {
@@ -41,8 +41,8 @@ impl PolicyTargetType {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SecurityPolicyDef {
-	pub id: SecurityPolicyId,
+pub struct PolicyDef {
+	pub id: PolicyId,
 	pub name: Option<String>,
 	pub target_type: PolicyTargetType,
 	pub target_namespace: Option<String>,
@@ -51,21 +51,21 @@ pub struct SecurityPolicyDef {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SecurityPolicyOperationDef {
-	pub policy_id: SecurityPolicyId,
+pub struct PolicyOperationDef {
+	pub policy_id: PolicyId,
 	pub operation: String,
 	pub body_source: String,
 }
 
-pub struct SecurityPolicyToCreate {
+pub struct PolicyToCreate {
 	pub name: Option<String>,
 	pub target_type: PolicyTargetType,
 	pub target_namespace: Option<String>,
 	pub target_object: Option<String>,
-	pub operations: Vec<SecurityPolicyOpToCreate>,
+	pub operations: Vec<PolicyOpToCreate>,
 }
 
-pub struct SecurityPolicyOpToCreate {
+pub struct PolicyOpToCreate {
 	pub operation: String,
 	pub body_source: String,
 }

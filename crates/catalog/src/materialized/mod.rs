@@ -36,7 +36,7 @@ use reifydb_core::{
 		key::PrimaryKeyDef,
 		migration::{MigrationDef, MigrationEvent},
 		namespace::NamespaceDef,
-		policy::{SecurityPolicyDef, SecurityPolicyId},
+		policy::{PolicyDef, PolicyId},
 		primitive::PrimitiveId,
 		procedure::ProcedureDef,
 		ringbuffer::RingBufferDef,
@@ -71,7 +71,7 @@ pub type MultiVersionSubscriptionDef = MultiVersionContainer<SubscriptionDef>;
 pub type MultiVersionUserDef = MultiVersionContainer<UserDef>;
 pub type MultiVersionRoleDef = MultiVersionContainer<RoleDef>;
 pub type MultiVersionUserRoleDef = MultiVersionContainer<UserRoleDef>;
-pub type MultiVersionSecurityPolicyDef = MultiVersionContainer<SecurityPolicyDef>;
+pub type MultiVersionPolicyDef = MultiVersionContainer<PolicyDef>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -140,10 +140,10 @@ pub struct MaterializedCatalogInner {
 	pub(crate) roles_by_name: SkipMap<String, RoleId>,
 	/// MultiVersion user-role definitions indexed by (user_id, role_id)
 	pub(crate) user_roles: SkipMap<(UserId, RoleId), MultiVersionUserRoleDef>,
-	/// MultiVersion security policy definitions indexed by security policy ID
-	pub(crate) security_policies: SkipMap<SecurityPolicyId, MultiVersionSecurityPolicyDef>,
-	/// Index from security policy name to security policy ID for fast name lookups
-	pub(crate) security_policies_by_name: SkipMap<String, SecurityPolicyId>,
+	/// MultiVersion policy definitions indexed by policy ID
+	pub(crate) policies: SkipMap<PolicyId, MultiVersionPolicyDef>,
+	/// Index from policy name to policy ID for fast name lookups
+	pub(crate) policies_by_name: SkipMap<String, PolicyId>,
 	/// MultiVersion migration definitions indexed by migration ID
 	pub(crate) migrations: SkipMap<MigrationId, MultiVersionMigrationDef>,
 	/// Index from migration name to migration ID for fast name lookups
@@ -220,8 +220,8 @@ impl MaterializedCatalog {
 			roles: SkipMap::new(),
 			roles_by_name: SkipMap::new(),
 			user_roles: SkipMap::new(),
-			security_policies: SkipMap::new(),
-			security_policies_by_name: SkipMap::new(),
+			policies: SkipMap::new(),
+			policies_by_name: SkipMap::new(),
 			migrations: SkipMap::new(),
 			migrations_by_name: SkipMap::new(),
 			migration_events: SkipMap::new(),
