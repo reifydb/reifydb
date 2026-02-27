@@ -37,7 +37,7 @@ impl IdentityId {
 		IdentityId(Uuid7(uuid::Uuid::from_bytes(bytes)))
 	}
 
-	/// Sentinel for root/system identity: maximum valid UUID v7
+	/// Sentinel for root identity: maximum valid UUID v7
 	/// `ffffffff-ffff-7fff-bfff-ffffffffffff`
 	pub fn root() -> Self {
 		let bytes = [
