@@ -750,6 +750,21 @@ impl ResolvedPrimitive {
 		}
 	}
 
+	/// Get the primitive name
+	pub fn name(&self) -> &str {
+		match self {
+			Self::Table(t) => t.name(),
+			Self::TableVirtual(t) => t.name(),
+			Self::View(v) => v.name(),
+			Self::DeferredView(v) => v.name(),
+			Self::TransactionalView(v) => v.name(),
+			Self::RingBuffer(r) => r.name(),
+			Self::Flow(f) => f.name(),
+			Self::Dictionary(d) => d.name(),
+			Self::Series(s) => s.name(),
+		}
+	}
+
 	/// Get the namespace if this primitive has one
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
 		match self {

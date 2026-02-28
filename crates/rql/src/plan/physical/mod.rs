@@ -771,7 +771,7 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::CreatePolicy(node) => {
 					let name = node.name.map(|n| self.interner.intern_fragment(&n));
-					let target_type = format!("{:?}", node.target_type);
+					let target_type = node.target_type.as_str().to_string();
 					let (scope_namespace, scope_object) = match &node.scope {
 						crate::ast::ast::AstPolicyScope::Specific(segments) => {
 							if segments.len() >= 2 {
@@ -818,14 +818,14 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::AlterPolicy(node) => {
 					let enable = node.action == crate::ast::ast::AstAlterPolicyAction::Enable;
 					stack.push(PhysicalPlan::AlterPolicy(nodes::AlterPolicyNode {
-						target_type: format!("{:?}", node.target_type),
+						target_type: node.target_type.as_str().to_string(),
 						name: self.interner.intern_fragment(&node.name),
 						enable,
 					}));
 				}
 				LogicalPlan::DropPolicy(node) => {
 					stack.push(PhysicalPlan::DropPolicy(nodes::DropPolicyNode {
-						target_type: format!("{:?}", node.target_type),
+						target_type: node.target_type.as_str().to_string(),
 						name: self.interner.intern_fragment(&node.name),
 						if_exists: node.if_exists,
 					}));

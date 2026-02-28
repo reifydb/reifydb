@@ -41,9 +41,15 @@ impl<'bump> Parser<'bump> {
 			return self.parse_drop_table(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::View))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_drop_policy(token, AstPolicyTargetType::View);
+			}
 			return self.parse_drop_view(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Ringbuffer))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_drop_policy(token, AstPolicyTargetType::RingBuffer);
+			}
 			return self.parse_drop_ringbuffer(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Namespace))?).is_some() {

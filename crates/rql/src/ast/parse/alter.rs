@@ -48,6 +48,18 @@ impl<'bump> Parser<'bump> {
 			return self.parse_alter_table(token);
 		}
 
+		if self.current()?.is_keyword(Keyword::View) {
+			self.consume_keyword(Keyword::View)?;
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::View);
+		}
+
+		if self.current()?.is_keyword(Keyword::Ringbuffer) {
+			self.consume_keyword(Keyword::Ringbuffer)?;
+			self.consume_keyword(Keyword::Policy)?;
+			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::RingBuffer);
+		}
+
 		if self.current()?.is_keyword(Keyword::Namespace) {
 			self.consume_keyword(Keyword::Namespace)?;
 			self.consume_keyword(Keyword::Policy)?;

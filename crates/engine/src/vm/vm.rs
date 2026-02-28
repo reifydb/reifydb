@@ -1459,6 +1459,8 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
+						self.identity,
+						&self.symbol_table,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1477,6 +1479,8 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
+						self.identity,
+						&self.symbol_table,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1495,6 +1499,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						&mut self.symbol_table,
+						self.identity,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1513,6 +1518,8 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
+						self.identity,
+						&self.symbol_table,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1531,6 +1538,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						&mut self.symbol_table,
+						self.identity,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1549,6 +1557,8 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
+						self.identity,
+						&self.symbol_table,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1567,6 +1577,8 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
+						self.identity,
+						&self.symbol_table,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1585,6 +1597,8 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
+						self.identity,
+						&self.symbol_table,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1603,6 +1617,8 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
+						self.identity,
+						&self.symbol_table,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1621,6 +1637,8 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
+						self.identity,
+						&self.symbol_table,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}

@@ -15,6 +15,7 @@ pub mod expression;
 pub mod ffi;
 pub mod flow;
 pub(crate) mod interceptor;
+pub mod policy;
 pub mod procedure;
 #[allow(unused)]
 pub mod test_utils;

@@ -8,7 +8,7 @@ use reifydb_core::{
 	encoded::{encoded::EncodedValues, key::EncodedKey},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
-		catalog::primitive::PrimitiveId,
+		catalog::{policy::PolicyTargetType, primitive::PrimitiveId},
 		change::{Change, ChangeOrigin, Diff},
 		evaluate::TargetColumn,
 		resolved::{ResolvedColumn, ResolvedPrimitive},
@@ -49,6 +49,8 @@ pub(crate) fn update_series<'a>(
 	txn: &mut Transaction<'_>,
 	plan: UpdateSeriesNode,
 	params: Params,
+	identity: IdentityId,
+	symbol_table_ref: &SymbolTable,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -301,6 +303,36 @@ pub(crate) fn update_series<'a>(
 			}
 		}
 		let patched_columns = Columns::new(patched);
+
+		// Enforce write policies only on rows that match the filter
+		let matching_count = (0..row_count).filter(|&i| filter_mask.get(i)).count();
+		if matching_count > 0 {
+			let mut filtered_cols = Vec::new();
+			for col in patched_columns.iter() {
+				let mut data = ColumnData::with_capacity(col.data().get_type(), matching_count);
+				for i in 0..row_count {
+					if filter_mask.get(i) {
+						data.push_value(col.data().get_value(i));
+					}
+				}
+				filtered_cols.push(Column {
+					name: col.name().clone(),
+					data,
+				});
+			}
+			let filtered = Columns::new(filtered_cols);
+			crate::policy::enforce_write_policies(
+				services,
+				txn,
+				identity,
+				namespace_name,
+				series_name,
+				"update",
+				&filtered,
+				symbol_table_ref,
+				PolicyTargetType::Series,
+			)?;
+		}
 
 		// Write updated values back to storage for matching rows
 		for row_idx in 0..row_count {

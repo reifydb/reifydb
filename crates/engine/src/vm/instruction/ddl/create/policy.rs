@@ -28,6 +28,8 @@ pub(crate) fn create_policy(
 		"dictionary" => PolicyTargetType::Dictionary,
 		"session" => PolicyTargetType::Session,
 		"feature" => PolicyTargetType::Feature,
+		"view" => PolicyTargetType::View,
+		"ringbuffer" => PolicyTargetType::RingBuffer,
 		_ => PolicyTargetType::Table,
 	};
 

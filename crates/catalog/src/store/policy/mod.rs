@@ -37,6 +37,8 @@ pub(crate) fn convert_policy(multi: MultiVersionValues) -> PolicyDef {
 		"dictionary" => PolicyTargetType::Dictionary,
 		"session" => PolicyTargetType::Session,
 		"feature" => PolicyTargetType::Feature,
+		"view" => PolicyTargetType::View,
+		"ringbuffer" => PolicyTargetType::RingBuffer,
 		_ => PolicyTargetType::Table,
 	};
 	let target_ns_str = policy::SCHEMA.get_utf8(&row, policy::TARGET_NAMESPACE).to_string();

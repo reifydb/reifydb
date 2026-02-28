@@ -7,7 +7,7 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{
 	encoded::key::EncodedKeyRange,
 	interface::{
-		catalog::id::IndexId,
+		catalog::{id::IndexId, policy::PolicyTargetType},
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
 	internal_error,
@@ -45,6 +45,8 @@ pub(crate) fn delete<'a>(
 	txn: &mut Transaction<'_>,
 	plan: DeleteTableNode,
 	params: Params,
+	identity: IdentityId,
+	symbol_table_ref: &crate::vm::stack::SymbolTable,
 ) -> crate::Result<Columns> {
 	// Get table from plan or infer from input pipeline
 	let (namespace, table) = if let Some(target) = &plan.target {
@@ -117,6 +119,19 @@ pub(crate) fn delete<'a>(
 
 		let mut mutable_context = context.clone();
 		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+			// Enforce write policies before processing rows
+			crate::policy::enforce_write_policies(
+				services,
+				txn,
+				identity,
+				&namespace.name,
+				&table.name,
+				"delete",
+				&columns,
+				symbol_table_ref,
+				PolicyTargetType::Table,
+			)?;
+
 			// Get encoded numbers from the Columns structure
 			if columns.row_numbers.is_empty() {
 				return Err(EngineError::MissingRowNumberColumn.into());

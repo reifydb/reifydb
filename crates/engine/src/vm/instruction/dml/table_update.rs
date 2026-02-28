@@ -10,7 +10,7 @@ use reifydb_core::{
 		engine,
 	},
 	interface::{
-		catalog::id::IndexId,
+		catalog::{id::IndexId, policy::PolicyTargetType},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
 	internal_error,
@@ -45,6 +45,8 @@ pub(crate) fn update_table<'a>(
 	txn: &mut Transaction<'_>,
 	plan: UpdateTableNode,
 	params: Params,
+	identity: IdentityId,
+	symbol_table_ref: &crate::vm::stack::SymbolTable,
 ) -> crate::Result<Columns> {
 	// Get table from plan or infer from input pipeline
 	let (namespace, table) = if let Some(target) = &plan.target {
@@ -93,6 +95,19 @@ pub(crate) fn update_table<'a>(
 
 		let mut mutable_context = context.clone();
 		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+			// Enforce write policies before processing rows
+			crate::policy::enforce_write_policies(
+				services,
+				txn,
+				identity,
+				&namespace.name,
+				&table.name,
+				"update",
+				&columns,
+				symbol_table_ref,
+				PolicyTargetType::Table,
+			)?;
+
 			if columns.row_numbers.is_empty() {
 				return_error!(engine::missing_row_number_column());
 			}

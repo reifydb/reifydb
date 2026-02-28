@@ -8,7 +8,10 @@ use reifydb_core::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		engine,
 	},
-	interface::resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+	interface::{
+		catalog::policy::PolicyTargetType,
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+	},
 	internal_error,
 	value::column::columns::Columns,
 };
@@ -39,6 +42,8 @@ pub(crate) fn update_ringbuffer<'a>(
 	txn: &mut Transaction<'_>,
 	plan: UpdateRingBufferNode,
 	params: Params,
+	identity: IdentityId,
+	symbol_table_ref: &SymbolTable,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -89,6 +94,19 @@ pub(crate) fn update_ringbuffer<'a>(
 
 		let mut mutable_context = context.clone();
 		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+			// Enforce write policies before processing rows
+			crate::policy::enforce_write_policies(
+				services,
+				txn,
+				identity,
+				&namespace.name,
+				&ringbuffer.name,
+				"update",
+				&columns,
+				symbol_table_ref,
+				PolicyTargetType::RingBuffer,
+			)?;
+
 			// Get encoded numbers from the Columns structure
 			if columns.row_numbers.is_empty() {
 				return_error!(engine::missing_row_number_column());
@@ -180,17 +198,10 @@ pub(crate) fn update_ringbuffer<'a>(
 					continue;
 				}
 
-				// Calculate if this position is currently occupied
-				let is_occupied = if !metadata.is_full() {
-					// Not full: occupied positions are from 0 to current_size-1
-					row_number.0 < metadata.count
-				} else {
-					// Full: all positions from 0 to capacity-1 are occupied
-					true
-				};
+				// Check if row is in the valid occupied range [head, tail)
+				let is_occupied = row_number.0 >= metadata.head && row_number.0 < metadata.tail;
 
 				if !is_occupied {
-					// Position not occupied, skip
 					continue;
 				}
 

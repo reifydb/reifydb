@@ -10,7 +10,7 @@ use reifydb_core::{
 		index::primary_key_violation,
 	},
 	interface::{
-		catalog::id::IndexId,
+		catalog::{id::IndexId, policy::PolicyTargetType},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
 	internal_error,
@@ -47,6 +47,7 @@ pub(crate) fn insert_table<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertTableNode,
 	stack: &mut SymbolTable,
+	identity: IdentityId,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 
@@ -91,6 +92,19 @@ pub(crate) fn insert_table<'a>(
 	let mut mutable_context = (*execution_context).clone();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+		// Enforce write policies before processing rows
+		crate::policy::enforce_write_policies(
+			services,
+			txn,
+			identity,
+			namespace_name,
+			table_name,
+			"insert",
+			&columns,
+			stack,
+			PolicyTargetType::Table,
+		)?;
+
 		let row_count = columns.row_count();
 
 		let mut column_map: HashMap<&str, usize> = HashMap::new();

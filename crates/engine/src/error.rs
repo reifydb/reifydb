@@ -193,6 +193,13 @@ pub enum EngineError {
 	VariableIsImmutable {
 		name: String,
 	},
+
+	#[error("Policy '{policy_name}' denied {operation} on {target}")]
+	PolicyDenied {
+		policy_name: String,
+		operation: String,
+		target: String,
+	},
 }
 
 impl IntoDiagnostic for EngineError {
@@ -336,6 +343,22 @@ impl IntoDiagnostic for EngineError {
 					"Define the variable using 'let {} = <value>' before using it",
 					name
 				)),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			EngineError::PolicyDenied {
+				policy_name,
+				operation,
+				target,
+			} => Diagnostic {
+				code: "POLICY_001".to_string(),
+				statement: None,
+				message: format!("Policy '{}' denied {} on {}", policy_name, operation, target),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("The write operation violates a policy constraint".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

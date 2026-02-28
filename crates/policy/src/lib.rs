@@ -3,7 +3,10 @@
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::{catalog::policy::PolicyTargetType, resolved::ResolvedPrimitive};
+use reifydb_core::interface::{
+	catalog::policy::{PolicyDef, PolicyOperationDef, PolicyTargetType},
+	resolved::ResolvedPrimitive,
+};
 use reifydb_rql::{
 	ast::parse_str,
 	expression::{ConstantExpression, Expression},
@@ -75,21 +78,26 @@ fn inject_pipeline<'a>(
 	for step in steps {
 		match &step {
 			LogicalPlan::PrimitiveScan(scan) => {
-				// Check if this is a table scan
-				let (target_ns, target_obj) = match &scan.source {
-					ResolvedPrimitive::Table(t) => {
-						(t.namespace().name().to_string(), t.name().to_string())
+				// Determine target type, namespace, and object name
+				let target_type = match &scan.source {
+					ResolvedPrimitive::Table(_) | ResolvedPrimitive::TableVirtual(_) => {
+						PolicyTargetType::Table
 					}
-					_ => {
-						result.push(step);
-						continue;
-					}
+					ResolvedPrimitive::View(_)
+					| ResolvedPrimitive::DeferredView(_)
+					| ResolvedPrimitive::TransactionalView(_) => PolicyTargetType::View,
+					ResolvedPrimitive::RingBuffer(_) => PolicyTargetType::RingBuffer,
+					ResolvedPrimitive::Series(_) => PolicyTargetType::Series,
+					ResolvedPrimitive::Dictionary(_) => PolicyTargetType::Dictionary,
+					ResolvedPrimitive::Flow(_) => PolicyTargetType::Flow,
 				};
+				let target_ns = scan.source.namespace().unwrap().name().to_string();
+				let target_obj = scan.source.name().to_string();
 
 				// Push the scan node first
 				result.push(step);
 
-				// Look up policies for this table
+				// Look up policies for this primitive
 				let policies = catalog.list_all_policies(tx)?;
 				let mut found_policy = false;
 
@@ -97,16 +105,10 @@ fn inject_pipeline<'a>(
 					if !policy.enabled {
 						continue;
 					}
-					if policy.target_type != PolicyTargetType::Table {
+					if policy.target_type != target_type {
 						continue;
 					}
-					// Match target: namespace and object must match
-					let ns_matches =
-						policy.target_namespace.as_ref().is_some_and(|ns| ns == &target_ns);
-					let obj_matches =
-						policy.target_object.as_ref().is_some_and(|obj| obj == &target_obj);
-
-					if !ns_matches || !obj_matches {
+					if !scope_matches(policy, &target_ns, &target_obj) {
 						continue;
 					}
 
@@ -145,6 +147,63 @@ fn inject_pipeline<'a>(
 			_ => {
 				result.push(step);
 			}
+		}
+	}
+
+	Ok(result)
+}
+
+/// Check if a policy's scope matches a given target namespace and object.
+fn scope_matches(policy: &PolicyDef, target_ns: &str, target_obj: &str) -> bool {
+	match (&policy.target_namespace, &policy.target_object) {
+		(None, None) => true,                                          // Global
+		(Some(ns), None) => ns == target_ns,                           // Namespace-wide
+		(Some(ns), Some(obj)) => ns == target_ns && obj == target_obj, // Specific
+		(None, Some(_)) => false,                                      // Invalid (defensive)
+	}
+}
+
+/// Resolve write policies for a given operation on a target object.
+///
+/// - Root identity bypasses all policies (returns empty vec).
+/// - Returns matching enabled policies and their operation definitions for the given operation.
+/// - Writes are default-allow: empty result means the write is permitted.
+pub fn resolve_write_policies(
+	catalog: &Catalog,
+	tx: &mut Transaction<'_>,
+	identity: IdentityId,
+	target_namespace: &str,
+	target_object: &str,
+	operation: &str,
+	target_type: PolicyTargetType,
+) -> Result<Vec<(PolicyDef, PolicyOperationDef)>> {
+	if identity.is_root() {
+		return Ok(vec![]);
+	}
+
+	let policies = catalog.list_all_policies(tx)?;
+	let mut result = Vec::new();
+
+	for policy in policies {
+		if !policy.enabled {
+			continue;
+		}
+		if policy.target_type != target_type {
+			continue;
+		}
+		if !scope_matches(&policy, target_namespace, target_object) {
+			continue;
+		}
+
+		let ops = catalog.list_policy_operations(tx, policy.id)?;
+		for op in ops {
+			if op.operation != operation {
+				continue;
+			}
+			if op.body_source.is_empty() {
+				continue;
+			}
+			result.push((policy.clone(), op));
 		}
 	}
 

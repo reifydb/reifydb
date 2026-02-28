@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
-		catalog::{primitive::PrimitiveId, series::TimestampPrecision},
+		catalog::{policy::PolicyTargetType, primitive::PrimitiveId, series::TimestampPrecision},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedSeries},
 	},
@@ -40,6 +40,8 @@ pub(crate) fn insert_series<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertSeriesNode,
 	params: Params,
+	identity: IdentityId,
+	symbol_table: &SymbolTable,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -92,6 +94,19 @@ pub(crate) fn insert_series<'a>(
 	// Process all input batches
 	let mut mutable_context = (*execution_context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+		// Enforce write policies before processing rows
+		crate::policy::enforce_write_policies(
+			services,
+			txn,
+			identity,
+			namespace_name,
+			series_name,
+			"insert",
+			&columns,
+			symbol_table,
+			PolicyTargetType::Series,
+		)?;
+
 		let row_count = columns.row_count();
 
 		for row_idx in 0..row_count {

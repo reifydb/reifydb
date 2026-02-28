@@ -20,6 +20,8 @@ pub enum PolicyTargetType {
 	Dictionary,
 	Session,
 	Feature,
+	View,
+	RingBuffer,
 }
 
 impl PolicyTargetType {
@@ -36,6 +38,8 @@ impl PolicyTargetType {
 			Self::Dictionary => "dictionary",
 			Self::Session => "session",
 			Self::Feature => "feature",
+			Self::View => "view",
+			Self::RingBuffer => "ringbuffer",
 		}
 	}
 }

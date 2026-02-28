@@ -8,7 +8,10 @@ use reifydb_core::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		engine,
 	},
-	interface::resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+	interface::{
+		catalog::policy::PolicyTargetType,
+		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+	},
 	key::row::RowKey,
 	value::column::columns::Columns,
 };
@@ -38,6 +41,8 @@ pub(crate) fn delete_ringbuffer<'a>(
 	txn: &mut Transaction<'_>,
 	plan: DeleteRingBufferNode,
 	params: Params,
+	identity: IdentityId,
+	symbol_table: &SymbolTable,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -99,6 +104,19 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 			let mut mutable_context = context.clone();
 			while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+				// Enforce write policies before processing rows
+				crate::policy::enforce_write_policies(
+					services,
+					txn,
+					identity,
+					&namespace.name,
+					&ringbuffer.name,
+					"delete",
+					&columns,
+					symbol_table,
+					PolicyTargetType::RingBuffer,
+				)?;
+
 				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {
 					return_error!(engine::missing_row_number_column());

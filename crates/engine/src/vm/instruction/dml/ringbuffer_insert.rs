@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
-	interface::resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+	interface::{
+		catalog::policy::PolicyTargetType,
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+	},
 	internal_error,
 	value::column::columns::Columns,
 };
@@ -38,6 +41,8 @@ pub(crate) fn insert_ringbuffer<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertRingBufferNode,
 	params: Params,
+	identity: IdentityId,
+	symbol_table: &SymbolTable,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -86,6 +91,19 @@ pub(crate) fn insert_ringbuffer<'a>(
 	// Process all input batches
 	let mut mutable_context = (*execution_context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+		// Enforce write policies before processing rows
+		crate::policy::enforce_write_policies(
+			services,
+			txn,
+			identity,
+			namespace_name,
+			ringbuffer_name,
+			"insert",
+			&columns,
+			symbol_table,
+			PolicyTargetType::RingBuffer,
+		)?;
+
 		let row_count = columns.row_count();
 
 		for row_idx in 0..row_count {

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, namespace_not_found},
+	interface::catalog::policy::PolicyTargetType,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertDictionaryNode;
@@ -33,6 +34,7 @@ pub(crate) fn insert_dictionary<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertDictionaryNode,
 	stack: &mut SymbolTable,
+	identity: IdentityId,
 ) -> crate::Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 
@@ -67,6 +69,19 @@ pub(crate) fn insert_dictionary<'a>(
 	let mut mutable_context = (*execution_context).clone();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+		// Enforce write policies before processing rows
+		crate::policy::enforce_write_policies(
+			services,
+			txn,
+			identity,
+			namespace_name,
+			dictionary_name,
+			"insert",
+			&columns,
+			stack,
+			PolicyTargetType::Dictionary,
+		)?;
+
 		let row_count = columns.row_count();
 
 		for row_idx in 0..row_count {

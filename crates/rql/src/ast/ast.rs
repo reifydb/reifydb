@@ -1893,6 +1893,28 @@ pub enum AstPolicyTargetType {
 	Dictionary,
 	Session,
 	Feature,
+	View,
+	RingBuffer,
+}
+
+impl AstPolicyTargetType {
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			Self::Table => "table",
+			Self::Column => "column",
+			Self::Namespace => "namespace",
+			Self::Procedure => "procedure",
+			Self::Function => "function",
+			Self::Flow => "flow",
+			Self::Subscription => "subscription",
+			Self::Series => "series",
+			Self::Dictionary => "dictionary",
+			Self::Session => "session",
+			Self::Feature => "feature",
+			Self::View => "view",
+			Self::RingBuffer => "ringbuffer",
+		}
+	}
 }
 
 #[derive(Debug)]

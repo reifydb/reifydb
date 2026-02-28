@@ -85,8 +85,11 @@ impl<'bump> Parser<'bump> {
 			return self.parse_namespace(token);
 		}
 
-		// CREATE VIEW (transactional — synchronous inline execution)
+		// CREATE VIEW / CREATE VIEW POLICY
 		if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::View);
+			}
 			return self.parse_transactional_view(token);
 		}
 
@@ -112,6 +115,10 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self
+					.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::RingBuffer);
+			}
 			return self.parse_ringbuffer(token);
 		}
 
