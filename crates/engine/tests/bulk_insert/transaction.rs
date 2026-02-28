@@ -20,7 +20,10 @@ fn test_commit_on_success() {
 
 	// Insert some rows
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.commits").row(params! { id: 1, val: "first" }).row(params! { id: 2, val: "second" }).done();
+	builder.table("test::commits")
+		.row(params! { id: 1, val: "first" })
+		.row(params! { id: 2, val: "second" })
+		.done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
@@ -48,8 +51,8 @@ fn test_rollback_on_error_namespace_not_found() {
 
 	// Insert into valid table first, then invalid namespace (should fail entire batch)
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.data").row(params! { id: 1 }).done();
-	builder.table("nonexistent.table").row(params! { id: 2 }).done(); // This should fail
+	builder.table("test::data").row(params! { id: 1 }).done();
+	builder.table("nonexistent::table").row(params! { id: 2 }).done(); // This should fail
 	let result = builder.execute();
 
 	assert!(result.is_err());
@@ -68,8 +71,8 @@ fn test_rollback_on_error_table_not_found() {
 
 	// Insert into valid table, then nonexistent table
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.real").row(params! { x: 100 }).done();
-	builder.table("test.fake").row(params! { x: 200 }).done(); // This should fail
+	builder.table("test::real").row(params! { x: 100 }).done();
+	builder.table("test::fake").row(params! { x: 200 }).done(); // This should fail
 	let result = builder.execute();
 
 	assert!(result.is_err());
@@ -91,9 +94,9 @@ fn test_multiple_tables_all_succeed() {
 
 	// Insert into multiple tables in one batch
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.t1").row(params! { a: 1 }).done();
-	builder.table("test.t2").row(params! { b: 2 }).row(params! { b: 3 }).done();
-	builder.table("test.t3").row(params! { c: 4 }).row(params! { c: 5 }).row(params! { c: 6 }).done();
+	builder.table("test::t1").row(params! { a: 1 }).done();
+	builder.table("test::t2").row(params! { b: 2 }).row(params! { b: 3 }).done();
+	builder.table("test::t3").row(params! { c: 4 }).row(params! { c: 5 }).row(params! { c: 6 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables.len(), 3);
@@ -121,8 +124,8 @@ fn test_mixed_tables_and_ringbuffers_atomic() {
 
 	// Insert into both table and ringbuffer in one batch
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.atomic_table").row(params! { id: 10 }).row(params! { id: 20 }).done();
-	builder.ringbuffer("test.atomic_rb").row(params! { seq: 100 }).done();
+	builder.table("test::atomic_table").row(params! { id: 10 }).row(params! { id: 20 }).done();
+	builder.ringbuffer("test::atomic_rb").row(params! { seq: 100 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
@@ -146,9 +149,9 @@ fn test_rollback_mixed_batch_on_error() {
 
 	// Insert into valid table and ringbuffer, then fail on invalid namespace
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.rollback_tbl").row(params! { val: 1 }).done();
-	builder.ringbuffer("test.rollback_rb").row(params! { data: 2 }).done();
-	builder.table("invalid.namespace").row(params! { x: 3 }).done(); // This should fail
+	builder.table("test::rollback_tbl").row(params! { val: 1 }).done();
+	builder.ringbuffer("test::rollback_rb").row(params! { data: 2 }).done();
+	builder.table("invalid::namespace").row(params! { x: 3 }).done(); // This should fail
 	let result = builder.execute();
 
 	assert!(result.is_err());

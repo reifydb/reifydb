@@ -13,11 +13,11 @@
 //! use reifydb_type::params;
 //!
 //! engine.bulk_insert(&identity)
-//!     .table("namespace.users")
+//!     .table("namespace::users")
 //!         .row(params!{ id: 1, name: "Alice" })
 //!         .row(params!{ id: 2, name: "Bob" })
 //!         .done()
-//!     .ringbuffer("namespace.events")
+//!     .ringbuffer("namespace::events")
 //!         .row(params!{ timestamp: 12345, event_type: "login" })
 //!         .done()
 //!     .execute()?;

@@ -95,7 +95,7 @@ impl<'e> BulkInsertBuilder<'e, Trusted> {
 impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	/// Begin inserting into a table.
 	///
-	/// The qualified name can be either "namespace.table" or just "table"
+	/// The qualified name can be either "namespace::table" or just "table"
 	/// (which uses the default namespace).
 	pub fn table<'a>(&'a mut self, qualified_name: &str) -> TableInsertBuilder<'a, 'e, V> {
 		let (namespace, table) = parse_qualified_name(qualified_name);
@@ -104,7 +104,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 
 	/// Begin inserting into a ring buffer.
 	///
-	/// The qualified name can be either "namespace.ringbuffer" or just "ringbuffer"
+	/// The qualified name can be either "namespace::ringbuffer" or just "ringbuffer"
 	/// (which uses the default namespace).
 	pub fn ringbuffer<'a>(&'a mut self, qualified_name: &str) -> RingBufferInsertBuilder<'a, 'e, V> {
 		let (namespace, ringbuffer) = parse_qualified_name(qualified_name);
@@ -403,10 +403,10 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	})
 }
 
-/// Parse a qualified name like "namespace.table" into (namespace, name).
+/// Parse a qualified name like "namespace::table" into (namespace, name).
 /// If no namespace is provided, uses "default".
 fn parse_qualified_name(qualified_name: &str) -> (String, String) {
-	if let Some((ns, name)) = qualified_name.split_once('.') {
+	if let Some((ns, name)) = qualified_name.split_once("::") {
 		(ns.to_string(), name.to_string())
 	} else {
 		("default".to_string(), qualified_name.to_string())

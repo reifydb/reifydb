@@ -20,7 +20,7 @@ fn test_trusted_mode_basic_insert() {
 
 	// Use bulk_insert_trusted instead of bulk_insert
 	let mut builder = engine.bulk_insert_trusted(identity);
-	builder.table("test.trusted_tbl")
+	builder.table("test::trusted_tbl")
 		.row(params! { id: 1i32, name: "Alice" })
 		.row(params! { id: 2i32, name: "Bob" })
 		.done();
@@ -48,7 +48,7 @@ fn test_trusted_mode_ringbuffer() {
 	crate::create_ringbuffer(&engine, "test", "trusted_rb", 100, "seq: int4, data: utf8");
 
 	let mut builder = engine.bulk_insert_trusted(identity);
-	builder.ringbuffer("test.trusted_rb")
+	builder.ringbuffer("test::trusted_rb")
 		.row(params! { seq: 1i32, data: "first" })
 		.row(params! { seq: 2i32, data: "second" })
 		.done();
@@ -79,9 +79,9 @@ fn test_trusted_mode_mixed_batch() {
 	crate::create_ringbuffer(&engine, "test", "rb1", 50, "c: int4");
 
 	let mut builder = engine.bulk_insert_trusted(identity);
-	builder.table("test.t1").row(params! { a: 10i32 }).done();
-	builder.table("test.t2").row(params! { b: 20i32 }).row(params! { b: 30i32 }).done();
-	builder.ringbuffer("test.rb1").row(params! { c: 100i32 }).done();
+	builder.table("test::t1").row(params! { a: 10i32 }).done();
+	builder.table("test::t2").row(params! { b: 20i32 }).row(params! { b: 30i32 }).done();
+	builder.ringbuffer("test::rb1").row(params! { c: 100i32 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables.len(), 2);
@@ -103,7 +103,7 @@ fn test_trusted_mode_large_batch() {
 	let rows: Vec<_> = (1..=1000).map(|n| params! { n: n as i32 }).collect();
 
 	let mut builder = engine.bulk_insert_trusted(identity);
-	builder.table("test.large").rows(rows).done();
+	builder.table("test::large").rows(rows).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 1000);

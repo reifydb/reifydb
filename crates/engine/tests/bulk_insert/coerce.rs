@@ -20,7 +20,7 @@ fn test_type_coercion_int_to_larger_int() {
 	create_table(&engine, "test", "coerce", "val: int8");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.coerce").row(params! { val: 42i32 }).row(params! { val: -100i32 }).done();
+	builder.table("test::coerce").row(params! { val: 42i32 }).row(params! { val: -100i32 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
@@ -44,7 +44,7 @@ fn test_type_coercion_int_to_float() {
 	create_table(&engine, "test", "coerce", "val: float8");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.coerce").row(params! { val: 42i32 }).row(params! { val: -100i32 }).done();
+	builder.table("test::coerce").row(params! { val: 42i32 }).row(params! { val: -100i32 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
@@ -69,7 +69,7 @@ fn test_missing_column_uses_undefined() {
 
 	let mut builder = engine.bulk_insert(identity);
 	builder
-		.table("test.partial")
+		.table("test::partial")
 		.row(params! { a: 1 }) // missing b
 		.row(params! { a: 2 }) // missing b
 		.done();
@@ -99,7 +99,7 @@ fn test_mixed_some_none_values() {
 
 	let mut builder = engine.bulk_insert(identity);
 	builder
-		.table("test.mixed")
+		.table("test::mixed")
 		.row(params! { a: 1, b: 10 }) // both defined
 		.row(params! { a: 2 }) // only a defined
 		.row(params! { b: 30 }) // only b defined
@@ -125,7 +125,7 @@ fn test_coercion_batch_multiple_rows() {
 	let rows: Vec<_> = (1..=100).map(|n| params! { val: n as i32 }).collect();
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.batch").rows(rows).done();
+	builder.table("test::batch").rows(rows).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 100);
@@ -150,7 +150,7 @@ fn test_coercion_float4_to_float8() {
 	create_table(&engine, "test", "floats", "val: float8");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.floats").row(params! { val: 3.14f32 }).row(params! { val: 2.71f32 }).done();
+	builder.table("test::floats").row(params! { val: 3.14f32 }).row(params! { val: 2.71f32 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);

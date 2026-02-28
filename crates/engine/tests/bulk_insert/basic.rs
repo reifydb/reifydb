@@ -22,7 +22,7 @@ fn test_table_insert_named_params() {
 	create_table(&engine, "test", "users", "id: int4, name: utf8");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.users").row(params! { id: 1, name: "Alice" }).row(params! { id: 2, name: "Bob" }).done();
+	builder.table("test::users").row(params! { id: 1, name: "Alice" }).row(params! { id: 2, name: "Bob" }).done();
 
 	let result = builder.execute().unwrap();
 
@@ -51,7 +51,7 @@ fn test_table_insert_positional_params() {
 	create_table(&engine, "test", "items", "id: int4, value: float8");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.items").row(params![1, 10.5]).row(params![2, 20.5]).row(params![3, 30.5]).done();
+	builder.table("test::items").row(params![1, 10.5]).row(params![2, 20.5]).row(params![3, 30.5]).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 3);
@@ -80,7 +80,7 @@ fn test_table_insert_multiple_rows_chained() {
 	create_table(&engine, "test", "data", "x: int4");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.data")
+	builder.table("test::data")
 		.row(params! { x: 1 })
 		.row(params! { x: 2 })
 		.row(params! { x: 3 })
@@ -103,7 +103,7 @@ fn test_table_insert_rows_iterator() {
 	let rows: Vec<_> = (1..=10).map(|n| params! { n: n }).collect();
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.batch").rows(rows).done();
+	builder.table("test::batch").rows(rows).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 10);
@@ -118,7 +118,7 @@ fn test_ringbuffer_insert_basic() {
 	create_ringbuffer(&engine, "test", "events", 100, "id: int4, msg: utf8");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.ringbuffer("test.events")
+	builder.ringbuffer("test::events")
 		.row(params! { id: 1, msg: "event1" })
 		.row(params! { id: 2, msg: "event2" })
 		.done();
@@ -150,8 +150,8 @@ fn test_mixed_table_and_ringbuffer() {
 	create_ringbuffer(&engine, "test", "stream", 50, "seq: int4");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.logs").row(params! { id: 1 }).row(params! { id: 2 }).done();
-	builder.ringbuffer("test.stream")
+	builder.table("test::logs").row(params! { id: 1 }).row(params! { id: 2 }).done();
+	builder.ringbuffer("test::stream")
 		.row(params! { seq: 100 })
 		.row(params! { seq: 101 })
 		.row(params! { seq: 102 })
@@ -186,8 +186,8 @@ fn test_multiple_tables() {
 	create_table(&engine, "test", "table_b", "b: int4");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.table_a").row(params! { a: 1 }).done();
-	builder.table("test.table_b").row(params! { b: 2 }).row(params! { b: 3 }).done();
+	builder.table("test::table_a").row(params! { a: 1 }).done();
+	builder.table("test::table_b").row(params! { b: 2 }).row(params! { b: 3 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables.len(), 2);
@@ -217,7 +217,7 @@ fn test_qualified_name_with_namespace() {
 	create_table(&engine, "myns", "mytable", "val: int4");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("myns.mytable").row(params! { val: 42 }).done();
+	builder.table("myns::mytable").row(params! { val: 42 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].namespace, "myns");
@@ -250,7 +250,7 @@ fn test_empty_insert() {
 	create_table(&engine, "test", "empty", "id: int4");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.empty").done();
+	builder.table("test::empty").done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables.len(), 1);
@@ -269,7 +269,7 @@ fn test_single_row_insert() {
 	create_table(&engine, "test", "single", "id: int4, data: utf8");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("test.single").row(params! { id: 1, data: "only one" }).done();
+	builder.table("test::single").row(params! { id: 1, data: "only one" }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 1);
@@ -293,9 +293,9 @@ fn test_result_structure() {
 	create_ringbuffer(&engine, "ns1", "rb1", 10, "c: int4");
 
 	let mut builder = engine.bulk_insert(identity);
-	builder.table("ns1.t1").row(params! { a: 1 }).row(params! { a: 2 }).done();
-	builder.table("ns2.t2").row(params! { b: 3 }).done();
-	builder.ringbuffer("ns1.rb1").row(params! { c: 4 }).row(params! { c: 5 }).row(params! { c: 6 }).done();
+	builder.table("ns1::t1").row(params! { a: 1 }).row(params! { a: 2 }).done();
+	builder.table("ns2::t2").row(params! { b: 3 }).done();
+	builder.ringbuffer("ns1::rb1").row(params! { c: 4 }).row(params! { c: 5 }).row(params! { c: 6 }).done();
 	let result = builder.execute().unwrap();
 
 	// Verify tables result
