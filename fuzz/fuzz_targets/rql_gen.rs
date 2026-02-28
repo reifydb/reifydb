@@ -1,6 +1,27 @@
 use arbitrary::Arbitrary;
 use std::fmt;
 
+pub struct LimitedWriter {
+    pub buf: String,
+    limit: usize,
+}
+
+impl LimitedWriter {
+    pub fn new(limit: usize) -> Self {
+        Self { buf: String::with_capacity(1024), limit }
+    }
+}
+
+impl fmt::Write for LimitedWriter {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        if self.buf.len() + s.len() > self.limit {
+            return Err(fmt::Error);
+        }
+        self.buf.push_str(s);
+        Ok(())
+    }
+}
+
 #[derive(Debug, Arbitrary)]
 pub struct RqlInput {
     pub stmts: Vec<RqlStatement>,
