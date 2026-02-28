@@ -22,8 +22,9 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use super::coerce::coerce_value_to_column_type;
+use super::{coerce::coerce_value_to_column_type, schema::get_or_create_ringbuffer_schema};
 use crate::{
+	Result,
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
 	vm::{
@@ -44,7 +45,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 	params: Params,
 	identity: IdentityId,
 	symbol_table: &SymbolTable,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -63,7 +64,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 	};
 
 	// Get or create schema with proper field names and constraints
-	let schema = super::schema::get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
+	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
 
 	// Create resolved source for the ring buffer
 	let namespace_ident = Fragment::internal(namespace.name.clone());

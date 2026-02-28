@@ -5,6 +5,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{err, error::Diagnostic, fragment::Fragment};
 
 use crate::{
+	Result,
 	ast::ast::{Ast, AstFrom},
 	bump::BumpBox,
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
@@ -17,11 +18,7 @@ use crate::{
 // Note: Fragment is still imported for use at materialization boundaries (Expression types use owned Fragment)
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_from(
-		&self,
-		ast: AstFrom<'bump>,
-		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_from(&self, ast: AstFrom<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		match ast {
 			AstFrom::Source {
 				source,
@@ -87,7 +84,7 @@ impl<'bump> Compiler<'bump> {
 					.nodes
 					.into_iter()
 					.map(ExpressionCompiler::compile)
-					.collect::<crate::Result<Vec<_>>>()?;
+					.collect::<Result<Vec<_>>>()?;
 
 				Ok(LogicalPlan::Generator(GeneratorNode {
 					name: generator.name,

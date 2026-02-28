@@ -8,6 +8,7 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
+use reifydb_type::Result;
 
 use super::utils;
 use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
@@ -25,27 +26,18 @@ pub trait WindowStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a window
-	fn load_state(
-		&self,
-		txn: &mut FlowTransaction,
-		window_key: &EncodedKey,
-	) -> reifydb_type::Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> Result<EncodedValues> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
 	/// Save state for a window
-	fn save_state(
-		&self,
-		txn: &mut FlowTransaction,
-		window_key: &EncodedKey,
-		row: EncodedValues,
-	) -> reifydb_type::Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey, row: EncodedValues) -> Result<()> {
 		utils::save_row(self.id(), txn, window_key, row)
 	}
 
 	/// Expire windows within a given range
 	/// The range should be constructed by the caller based on their window ordering semantics
-	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> reifydb_type::Result<u32> {
+	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<u32> {
 		// Add the operator state prefix to the range
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
 

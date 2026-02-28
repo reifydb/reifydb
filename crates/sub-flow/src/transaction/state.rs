@@ -10,6 +10,7 @@ use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
+use reifydb_type::Result;
 use tracing::{Span, instrument};
 
 use super::FlowTransaction;
@@ -21,7 +22,7 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		found = tracing::field::Empty
 	))]
-	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> reifydb_type::Result<Option<EncodedValues>> {
+	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedValues>> {
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
 		let result = self.get(&encoded_key)?;
@@ -35,12 +36,7 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		value_len = value.as_ref().len()
 	))]
-	pub fn state_set(
-		&mut self,
-		id: FlowNodeId,
-		key: &EncodedKey,
-		value: EncodedValues,
-	) -> reifydb_type::Result<()> {
+	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedValues) -> Result<()> {
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
 		self.set(&encoded_key, value)
@@ -51,7 +47,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		key_len = key.as_bytes().len()
 	))]
-	pub fn state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> reifydb_type::Result<()> {
+	pub fn state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
 		self.remove(&encoded_key)
@@ -62,7 +58,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		result_count = tracing::field::Empty
 	))]
-	pub fn state_scan(&mut self, id: FlowNodeId) -> reifydb_type::Result<MultiVersionBatch> {
+	pub fn state_scan(&mut self, id: FlowNodeId) -> Result<MultiVersionBatch> {
 		let range = FlowNodeStateKey::node_range(id);
 		let mut iter = self.range(range, 1024);
 		let mut items = Vec::new();
@@ -80,11 +76,7 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
 		node_id = id.0
 	))]
-	pub fn state_range(
-		&mut self,
-		id: FlowNodeId,
-		range: EncodedKeyRange,
-	) -> reifydb_type::Result<MultiVersionBatch> {
+	pub fn state_range(&mut self, id: FlowNodeId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
 		let mut iter = self.range(prefixed_range, 1024);
 		let mut items = Vec::new();
@@ -102,7 +94,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		keys_removed = tracing::field::Empty
 	))]
-	pub fn state_clear(&mut self, id: FlowNodeId) -> reifydb_type::Result<()> {
+	pub fn state_clear(&mut self, id: FlowNodeId) -> Result<()> {
 		// Phase 1: Scan to collect all keys
 		let keys_to_remove = self.scan_keys_for_clear(id)?;
 
@@ -117,7 +109,7 @@ impl FlowTransaction {
 	/// Scan and collect all keys for a node (used by state_clear)
 	#[inline]
 	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(node_id = id.0))]
-	fn scan_keys_for_clear(&mut self, id: FlowNodeId) -> reifydb_type::Result<Vec<EncodedKey>> {
+	fn scan_keys_for_clear(&mut self, id: FlowNodeId) -> Result<Vec<EncodedKey>> {
 		let range = FlowNodeStateKey::node_range(id);
 		let mut iter = self.range(range, 1024);
 		let mut keys = Vec::new();
@@ -131,7 +123,7 @@ impl FlowTransaction {
 	/// Remove a list of keys (used by state_clear)
 	#[inline]
 	#[instrument(name = "flow::state::clear::remove", level = "trace", skip(self, keys), fields(count = keys.len()))]
-	fn remove_keys(&mut self, keys: Vec<EncodedKey>) -> reifydb_type::Result<()> {
+	fn remove_keys(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 		for key in keys {
 			self.remove(&key)?;
 		}
@@ -149,7 +141,7 @@ impl FlowTransaction {
 		id: FlowNodeId,
 		key: &EncodedKey,
 		schema: &Schema,
-	) -> reifydb_type::Result<EncodedValues> {
+	) -> Result<EncodedValues> {
 		match self.state_get(id, key)? {
 			Some(row) => {
 				Span::current().record("created", false);
@@ -167,7 +159,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		key_len = key.as_bytes().len()
 	))]
-	pub fn save_row(&mut self, id: FlowNodeId, key: &EncodedKey, row: EncodedValues) -> reifydb_type::Result<()> {
+	pub fn save_row(&mut self, id: FlowNodeId, key: &EncodedKey, row: EncodedValues) -> Result<()> {
 		self.state_set(id, key, row)
 	}
 }

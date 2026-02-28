@@ -9,13 +9,13 @@ use reifydb_rql::nodes::CreateDictionaryNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_dictionary(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateDictionaryNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	if let Some(_) = services.catalog.find_dictionary_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id,

@@ -8,10 +8,10 @@ use reifydb_type::{
 	value::{Value, try_from::TryFromValueCoerce, r#type::Type as ValueType},
 };
 
-use crate::error::CastError;
+use crate::{Result, error::CastError};
 
 /// Convert a Value to the given target type (widening/promotion).
-pub fn convert_to(value: Value, target: ValueType) -> crate::Result<Value> {
+pub fn convert_to(value: Value, target: ValueType) -> Result<Value> {
 	if value.get_type() == target {
 		return Ok(value);
 	}
@@ -85,7 +85,7 @@ pub fn convert_to(value: Value, target: ValueType) -> crate::Result<Value> {
 }
 
 /// Arithmetic: add two scalar values.
-pub fn scalar_add(left: Value, right: Value) -> crate::Result<Value> {
+pub fn scalar_add(left: Value, right: Value) -> Result<Value> {
 	match (&left, &right) {
 		(
 			Value::None {
@@ -125,7 +125,7 @@ pub fn scalar_add(left: Value, right: Value) -> crate::Result<Value> {
 }
 
 /// Arithmetic: subtract two scalar values.
-pub fn scalar_sub(left: Value, right: Value) -> crate::Result<Value> {
+pub fn scalar_sub(left: Value, right: Value) -> Result<Value> {
 	match (&left, &right) {
 		(
 			Value::None {
@@ -161,7 +161,7 @@ pub fn scalar_sub(left: Value, right: Value) -> crate::Result<Value> {
 }
 
 /// Arithmetic: multiply two scalar values.
-pub fn scalar_mul(left: Value, right: Value) -> crate::Result<Value> {
+pub fn scalar_mul(left: Value, right: Value) -> Result<Value> {
 	match (&left, &right) {
 		(
 			Value::None {
@@ -198,7 +198,7 @@ pub fn scalar_mul(left: Value, right: Value) -> crate::Result<Value> {
 }
 
 /// Arithmetic: divide two scalar values.
-pub fn scalar_div(left: Value, right: Value) -> crate::Result<Value> {
+pub fn scalar_div(left: Value, right: Value) -> Result<Value> {
 	match (&left, &right) {
 		(
 			Value::None {
@@ -243,7 +243,7 @@ pub fn scalar_div(left: Value, right: Value) -> crate::Result<Value> {
 }
 
 /// Arithmetic: remainder of two scalar values.
-pub fn scalar_rem(left: Value, right: Value) -> crate::Result<Value> {
+pub fn scalar_rem(left: Value, right: Value) -> Result<Value> {
 	match (&left, &right) {
 		(
 			Value::None {
@@ -279,7 +279,7 @@ pub fn scalar_rem(left: Value, right: Value) -> crate::Result<Value> {
 }
 
 /// Unary negate.
-pub fn scalar_negate(value: Value) -> crate::Result<Value> {
+pub fn scalar_negate(value: Value) -> Result<Value> {
 	Ok(match value {
 		Value::None {
 			inner,
@@ -540,7 +540,7 @@ pub fn scalar_and(left: &Value, right: &Value) -> Value {
 }
 
 /// Cast a scalar value to the given target type.
-pub fn scalar_cast(value: Value, target: ValueType) -> crate::Result<Value> {
+pub fn scalar_cast(value: Value, target: ValueType) -> Result<Value> {
 	if value.get_type() == target {
 		return Ok(value);
 	}

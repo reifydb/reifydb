@@ -11,7 +11,10 @@
 
 use std::{env::temp_dir, error::Error, io::Write as _};
 
-use crate::testscript::{command::Command, parser::parse};
+use crate::{
+	goldenfile::Mint,
+	testscript::{command::Command, parser::parse},
+};
 
 /// Runs testscript commands, returning their output.
 pub trait Runner {
@@ -92,7 +95,7 @@ pub fn run_path<R: Runner, P: AsRef<std::path::Path>>(runner: &mut R, path: P) -
 	let input = std::fs::read_to_string(dir.join(filename))?;
 	let output = generate(runner, &input)?;
 
-	crate::goldenfile::Mint::new(dir).new_goldenfile(filename)?.write_all(output.as_bytes())
+	Mint::new(dir).new_goldenfile(filename)?.write_all(output.as_bytes())
 }
 
 pub fn run<R: Runner, S: Into<String>>(runner: R, test: S) {
@@ -114,7 +117,7 @@ pub fn try_run<R: Runner, S: Into<String>>(mut runner: R, test: S) -> std::io::R
 	file.write_all(input.as_bytes())?;
 
 	let output = generate(&mut runner, &input)?;
-	crate::goldenfile::Mint::new(dir).new_goldenfile(&file_name)?.write_all(output.as_bytes())
+	Mint::new(dir).new_goldenfile(&file_name)?.write_all(output.as_bytes())
 }
 
 /// Generates output for a testscript input, without comparing them.

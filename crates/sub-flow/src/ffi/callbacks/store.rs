@@ -20,7 +20,7 @@ use reifydb_core::{
 	interface::store::MultiVersionBatch,
 };
 use reifydb_engine::ffi::callbacks::memory::{host_alloc, host_free};
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_type::{error::Error, util::cowvec::CowVec};
 
 use super::store_iterator::{self, StoreIteratorHandle};
 use crate::ffi::context::get_transaction_mut;
@@ -232,7 +232,7 @@ pub(super) extern "C" fn host_store_range(
 
 		// Create range from decoded bounds
 		let range = EncodedKeyRange::new(start_bound, end_bound);
-		let result: Result<MultiVersionBatch, _> = (|| -> Result<_, reifydb_type::error::Error> {
+		let result: Result<MultiVersionBatch, _> = (|| -> Result<_, Error> {
 			let mut iter = flow_txn.range(range, 1024);
 			let mut items = Vec::new();
 			while let Some(res) = iter.next() {

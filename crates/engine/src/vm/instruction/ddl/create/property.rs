@@ -14,13 +14,13 @@ use reifydb_rql::nodes::CreateColumnPropertyNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{return_error, value::Value};
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_column_property(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateColumnPropertyNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let namespace_id = plan.namespace.def().id;
 	let table_name = plan.table.text();
 

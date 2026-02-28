@@ -11,13 +11,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_ringbuffer(
-		rx: &mut Transaction<'_>,
-		ringbuffer: RingBufferId,
-	) -> crate::Result<RingBufferDef> {
+	pub(crate) fn get_ringbuffer(rx: &mut Transaction<'_>, ringbuffer: RingBufferId) -> Result<RingBufferDef> {
 		Self::find_ringbuffer(rx, ringbuffer)?.ok_or_else(|| {
 			Error(internal!(
 				"Ring buffer with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -29,7 +26,7 @@ impl CatalogStore {
 	pub(crate) fn get_ringbuffer_metadata(
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
-	) -> crate::Result<RingBufferMetadata> {
+	) -> Result<RingBufferMetadata> {
 		Self::find_ringbuffer_metadata(rx, ringbuffer)?.ok_or_else(|| {
 			Error(internal!(
 				"Ring buffer metadata for ID {:?} not found. This indicates a critical catalog inconsistency.",

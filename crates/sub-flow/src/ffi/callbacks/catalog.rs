@@ -12,13 +12,20 @@ use reifydb_abi::{
 	catalog::{column::ColumnDefFFI, namespace::NamespaceFFI, primary_key::PrimaryKeyFFI, table::TableFFI},
 	constants::{FFI_ERROR_INVALID_UTF8, FFI_ERROR_MARSHAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
 	context::context::ContextFFI,
+	data::buffer::BufferFFI,
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::id::{NamespaceId, TableId},
+	interface::catalog::{
+		column::ColumnDef,
+		id::{NamespaceId, TableId},
+		key::PrimaryKeyDef,
+		namespace::NamespaceDef,
+		table::TableDef,
+	},
 };
 use reifydb_engine::ffi::callbacks::memory::{host_alloc, host_free};
-use reifydb_type::value::constraint::TypeConstraint;
+use reifydb_type::value::constraint::{Constraint, TypeConstraint};
 
 use crate::ffi::context::get_transaction_mut;
 
@@ -236,7 +243,7 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 }
 
 /// Marshal a NamespaceDef to FFI
-fn marshal_namespace(namespace: &reifydb_core::interface::catalog::namespace::NamespaceDef) -> NamespaceFFI {
+fn marshal_namespace(namespace: &NamespaceDef) -> NamespaceFFI {
 	// Allocate and copy name
 	let name_bytes = namespace.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
@@ -248,7 +255,7 @@ fn marshal_namespace(namespace: &reifydb_core::interface::catalog::namespace::Na
 
 	NamespaceFFI {
 		id: namespace.id.0,
-		name: reifydb_abi::data::buffer::BufferFFI {
+		name: BufferFFI {
 			ptr: name_ptr,
 			len: name_bytes.len(),
 			cap: name_bytes.len(),
@@ -258,7 +265,7 @@ fn marshal_namespace(namespace: &reifydb_core::interface::catalog::namespace::Na
 }
 
 /// Marshal a TableDef to FFI
-fn marshal_table(table: &reifydb_core::interface::catalog::table::TableDef) -> Result<TableFFI, &'static str> {
+fn marshal_table(table: &TableDef) -> Result<TableFFI, &'static str> {
 	// Allocate and copy table name
 	let name_bytes = table.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
@@ -316,7 +323,7 @@ fn marshal_table(table: &reifydb_core::interface::catalog::table::TableDef) -> R
 	Ok(TableFFI {
 		id: table.id.0,
 		namespace_id: table.namespace.0,
-		name: reifydb_abi::data::buffer::BufferFFI {
+		name: BufferFFI {
 			ptr: name_ptr,
 			len: name_bytes.len(),
 			cap: name_bytes.len(),
@@ -329,7 +336,7 @@ fn marshal_table(table: &reifydb_core::interface::catalog::table::TableDef) -> R
 }
 
 /// Marshal a ColumnDef to FFI
-fn marshal_column(column: &reifydb_core::interface::catalog::column::ColumnDef) -> Result<ColumnDefFFI, &'static str> {
+fn marshal_column(column: &ColumnDef) -> Result<ColumnDefFFI, &'static str> {
 	// Allocate and copy column name
 	let name_bytes = column.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
@@ -345,7 +352,7 @@ fn marshal_column(column: &reifydb_core::interface::catalog::column::ColumnDef) 
 
 	Ok(ColumnDefFFI {
 		id: column.id.0,
-		name: reifydb_abi::data::buffer::BufferFFI {
+		name: BufferFFI {
 			ptr: name_ptr,
 			len: name_bytes.len(),
 			cap: name_bytes.len(),
@@ -364,9 +371,7 @@ fn marshal_column(column: &reifydb_core::interface::catalog::column::ColumnDef) 
 }
 
 /// Marshal a PrimaryKeyDef to FFI
-fn marshal_primary_key(
-	pk: &reifydb_core::interface::catalog::key::PrimaryKeyDef,
-) -> Result<PrimaryKeyFFI, &'static str> {
+fn marshal_primary_key(pk: &PrimaryKeyDef) -> Result<PrimaryKeyFFI, &'static str> {
 	// Allocate column IDs array
 	let column_count = pk.columns.len();
 	let column_ids_ptr = if column_count > 0 {
@@ -404,14 +409,14 @@ fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
 
 	match constraint.constraint() {
 		None => (base_type, 0, 0, 0),
-		Some(reifydb_type::value::constraint::Constraint::MaxBytes(max)) => (base_type, 1, max.value(), 0),
-		Some(reifydb_type::value::constraint::Constraint::PrecisionScale(precision, scale)) => {
+		Some(Constraint::MaxBytes(max)) => (base_type, 1, max.value(), 0),
+		Some(Constraint::PrecisionScale(precision, scale)) => {
 			(base_type, 2, precision.value() as u32, scale.value() as u32)
 		}
-		Some(reifydb_type::value::constraint::Constraint::Dictionary(_, _)) => {
+		Some(Constraint::Dictionary(_, _)) => {
 			// Dictionary constraint: encode as type 3
 			(base_type, 3, 0, 0)
 		}
-		Some(reifydb_type::value::constraint::Constraint::SumType(id)) => (base_type, 4, id.to_u64() as u32, 0),
+		Some(Constraint::SumType(id)) => (base_type, 4, id.to_u64() as u32, 0),
 	}
 }

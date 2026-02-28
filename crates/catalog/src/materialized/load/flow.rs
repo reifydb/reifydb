@@ -14,12 +14,15 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
-use crate::store::flow::schema::{
-	flow,
-	flow::{ID, NAME, NAMESPACE, STATUS},
+use crate::{
+	Result,
+	store::flow::schema::{
+		flow,
+		flow::{ID, NAME, NAMESPACE, STATUS},
+	},
 };
 
-pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = FlowKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 

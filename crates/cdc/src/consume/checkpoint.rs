@@ -3,12 +3,12 @@
 
 use reifydb_core::{common::CommitVersion, encoded::encoded::EncodedValues, key::cdc_consumer::ToConsumerKey};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_type::{Result, util::cowvec::CowVec};
 
 pub struct CdcCheckpoint {}
 
 impl CdcCheckpoint {
-	pub fn fetch<K: ToConsumerKey>(txn: &mut Transaction<'_>, consumer: &K) -> reifydb_type::Result<CommitVersion> {
+	pub fn fetch<K: ToConsumerKey>(txn: &mut Transaction<'_>, consumer: &K) -> Result<CommitVersion> {
 		let key = consumer.to_consumer_key();
 
 		txn.get(&key)?
@@ -29,7 +29,7 @@ impl CdcCheckpoint {
 		txn: &mut CommandTransaction,
 		consumer: &K,
 		version: CommitVersion,
-	) -> reifydb_type::Result<()> {
+	) -> Result<()> {
 		let key = consumer.to_consumer_key();
 		let version_bytes = version.0.to_be_bytes().to_vec();
 		txn.set(&key, EncodedValues(CowVec::new(version_bytes)))

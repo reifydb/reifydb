@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstUpdate},
 		identifier::UnresolvedPrimitiveIdentifier,
@@ -13,7 +14,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_update(&mut self) -> crate::Result<AstUpdate<'bump>> {
+	pub(crate) fn parse_update(&mut self) -> Result<AstUpdate<'bump>> {
 		let token = self.consume_keyword(Keyword::Update)?;
 
 		// 1. Parse target (REQUIRED) - namespace.table or just table

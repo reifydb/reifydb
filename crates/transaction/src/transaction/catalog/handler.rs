@@ -6,6 +6,7 @@ use reifydb_core::interface::catalog::{
 	handler::HandlerDef,
 	id::{HandlerId, NamespaceId},
 };
+use reifydb_type::Result;
 
 use crate::{
 	change::{
@@ -17,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackHandlerChangeOperations for AdminTransaction {
-	fn track_handler_def_created(&mut self, handler: HandlerDef) -> reifydb_type::Result<()> {
+	fn track_handler_def_created(&mut self, handler: HandlerDef) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(handler),
@@ -27,7 +28,7 @@ impl CatalogTrackHandlerChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_handler_def_deleted(&mut self, handler: HandlerDef) -> reifydb_type::Result<()> {
+	fn track_handler_def_deleted(&mut self, handler: HandlerDef) -> Result<()> {
 		let change = Change {
 			pre: Some(handler),
 			post: None,

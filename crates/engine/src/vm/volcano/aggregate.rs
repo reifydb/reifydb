@@ -19,7 +19,10 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 enum Projection {
 	Aggregate {
@@ -61,14 +64,14 @@ impl AggregateNode {
 
 impl QueryNode for AggregateNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.input.initialize(rx, ctx)?;
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -168,7 +171,7 @@ fn parse_keys_and_aggregates<'a>(
 	by: &'a [Expression],
 	project: &'a [Expression],
 	functions: &'a Functions,
-) -> crate::Result<(Vec<&'a str>, Vec<Projection>)> {
+) -> Result<(Vec<&'a str>, Vec<Projection>)> {
 	let mut keys = Vec::new();
 	let mut projections = Vec::new();
 
@@ -253,7 +256,7 @@ fn parse_keys_and_aggregates<'a>(
 	Ok((keys, projections))
 }
 
-fn align_column_data(group_key_order: &[Vec<Value>], keys: &[Vec<Value>], data: &mut ColumnData) -> crate::Result<()> {
+fn align_column_data(group_key_order: &[Vec<Value>], keys: &[Vec<Value>], data: &mut ColumnData) -> Result<()> {
 	let mut key_to_index = HashMap::new();
 	for (i, key) in keys.iter().enumerate() {
 		key_to_index.insert(key, i);
@@ -269,7 +272,7 @@ fn align_column_data(group_key_order: &[Vec<Value>], keys: &[Vec<Value>], data: 
 				.into()
 			})
 		})
-		.collect::<crate::Result<Vec<_>>>()?;
+		.collect::<Result<Vec<_>>>()?;
 
 	data.reorder(&reorder_indices);
 	Ok(())

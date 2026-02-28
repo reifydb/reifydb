@@ -6,6 +6,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
+use reifydb_type::Result;
 
 use super::{WindowEvent, WindowOperator};
 use crate::transaction::FlowTransaction;
@@ -133,7 +134,7 @@ fn process_sliding_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
-) -> reifydb_type::Result<Vec<Diff>> {
+) -> Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -158,7 +159,7 @@ fn process_sliding_group_insert(
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	group_hash: Hash128,
-) -> reifydb_type::Result<Vec<Diff>> {
+) -> Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -241,11 +242,7 @@ fn process_sliding_group_insert(
 }
 
 /// Apply changes for sliding windows
-pub fn apply_sliding_window(
-	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
-	change: Change,
-) -> reifydb_type::Result<Change> {
+pub fn apply_sliding_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let mut result = Vec::new();
 	let current_timestamp = operator.current_timestamp();
 

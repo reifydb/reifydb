@@ -8,9 +8,9 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
 use super::dependent::find_flow_dependents;
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
-pub(crate) fn drop_flow(services: &Services, txn: &mut AdminTransaction, plan: DropFlowNode) -> crate::Result<Columns> {
+pub(crate) fn drop_flow(services: &Services, txn: &mut AdminTransaction, plan: DropFlowNode) -> Result<Columns> {
 	let Some(flow_id) = plan.flow_id else {
 		return Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),

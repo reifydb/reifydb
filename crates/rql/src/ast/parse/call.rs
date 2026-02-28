@@ -2,19 +2,20 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{AstCall, AstCallFunction},
 		identifier::MaybeQualifiedFunctionIdentifier,
 		parse::Parser,
 	},
-	token::{keyword::Keyword, operator::Operator},
+	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_call(&mut self) -> crate::Result<AstCall<'bump>> {
+	pub(crate) fn parse_call(&mut self) -> Result<AstCall<'bump>> {
 		let token = self.consume_keyword(Keyword::Call)?;
 
-		let first_ident = self.consume(crate::token::token::TokenKind::Identifier)?;
+		let first_ident = self.consume(TokenKind::Identifier)?;
 		let mut namespace_fragments = Vec::new();
 
 		// Parse optional namespace chain: ident::ident::...::ident
@@ -23,7 +24,7 @@ impl<'bump> Parser<'bump> {
 			namespace_fragments.push(current.fragment);
 			self.advance()?; // consume ::
 			current = if self.current()?.is_identifier() {
-				self.consume(crate::token::token::TokenKind::Identifier)?
+				self.consume(TokenKind::Identifier)?
 			} else {
 				self.consume_keyword_as_ident()?
 			};
@@ -44,8 +45,8 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_function_call(&mut self) -> crate::Result<AstCallFunction<'bump>> {
-		let first_ident_token = self.consume(crate::token::token::TokenKind::Identifier)?;
+	pub(crate) fn parse_function_call(&mut self) -> Result<AstCallFunction<'bump>> {
+		let first_ident_token = self.consume(TokenKind::Identifier)?;
 		let start_token = first_ident_token;
 
 		// Check if this is a simple function call: identifier(
@@ -80,7 +81,7 @@ impl<'bump> Parser<'bump> {
 
 			self.advance()?; // consume ::
 			let next_ident_token = if self.current()?.is_identifier() {
-				self.consume(crate::token::token::TokenKind::Identifier)?
+				self.consume(TokenKind::Identifier)?
 			} else {
 				self.consume_keyword_as_ident()?
 			};

@@ -2,19 +2,20 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstAlter, AstCreate, AstFrom, AstJoin},
 		identifier::UnqualifiedIdentifier,
 		parse::parse,
 	},
-	bump::Bump,
+	bump::{Bump, BumpFragment},
 	token::{
 		token::{Token, TokenKind},
 		tokenize,
 	},
 };
 
-pub fn explain_ast(query: &str) -> crate::Result<String> {
+pub fn explain_ast(query: &str) -> Result<String> {
 	let bump = Bump::new();
 	let token = tokenize(&bump, query)?;
 	let statements = parse(&bump, query, token.into_iter().collect())?;
@@ -243,7 +244,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 					// Create an Identifier AST for the environment
 					let env_token = Token {
 						kind: TokenKind::Variable,
-						fragment: crate::bump::BumpFragment::Internal {
+						fragment: BumpFragment::Internal {
 							text: "env",
 						},
 					};

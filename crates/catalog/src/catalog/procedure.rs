@@ -16,7 +16,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::{catalog::Catalog, store::sequence::system::SystemSequence};
+use crate::{Result, catalog::Catalog, store::sequence::system::SystemSequence};
 
 /// Procedure creation specification for the Catalog API.
 #[derive(Debug, Clone)]
@@ -31,11 +31,7 @@ pub struct ProcedureToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::procedure::find", level = "trace", skip(self, txn))]
-	pub fn find_procedure(
-		&self,
-		txn: &mut Transaction<'_>,
-		id: ProcedureId,
-	) -> crate::Result<Option<ProcedureDef>> {
+	pub fn find_procedure(&self, txn: &mut Transaction<'_>, id: ProcedureId) -> Result<Option<ProcedureDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(procedure) = self.materialized.find_procedure_at(id, cmd.version()) {
@@ -76,7 +72,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> crate::Result<Option<ProcedureDef>> {
+	) -> Result<Option<ProcedureDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(procedure) =
@@ -132,7 +128,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		qualified_name: &str,
-	) -> crate::Result<Option<ProcedureDef>> {
+	) -> Result<Option<ProcedureDef>> {
 		if let Some((ns_name, proc_name)) = Self::split_qualified_name(qualified_name) {
 			if let Some(ns) = self.find_namespace_by_name(txn, &ns_name)? {
 				return self.find_procedure_by_name(txn, ns.id, proc_name);
@@ -151,7 +147,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		sumtype_id: SumTypeId,
 		variant_tag: u8,
-	) -> crate::Result<Vec<ProcedureDef>> {
+	) -> Result<Vec<ProcedureDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.materialized.list_procedures_for_variant_at(
 				sumtype_id,
@@ -200,7 +196,7 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: ProcedureToCreate,
-	) -> crate::Result<ProcedureDef> {
+	) -> Result<ProcedureDef> {
 		let id = SystemSequence::next_procedure_id(txn)?;
 
 		let procedure = ProcedureDef {

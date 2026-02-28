@@ -10,10 +10,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, store::primitive::drop::drop_primitive_metadata};
+use crate::{CatalogStore, Result, store::primitive::drop::drop_primitive_metadata};
 
 impl CatalogStore {
-	pub(crate) fn drop_ringbuffer(txn: &mut AdminTransaction, ringbuffer: RingBufferId) -> crate::Result<()> {
+	pub(crate) fn drop_ringbuffer(txn: &mut AdminTransaction, ringbuffer: RingBufferId) -> Result<()> {
 		// First, find the ringbuffer to get its namespace and primary key
 		let pk_id = if let Some(ringbuffer_def) =
 			Self::find_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer)?

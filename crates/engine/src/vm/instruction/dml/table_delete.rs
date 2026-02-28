@@ -28,6 +28,7 @@ use reifydb_type::{
 
 use super::primary_key;
 use crate::{
+	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
 	transaction::operation::table::TableOperations,
@@ -47,8 +48,8 @@ pub(crate) fn delete<'a>(
 	plan: DeleteTableNode,
 	params: Params,
 	identity: IdentityId,
-	symbol_table_ref: &crate::vm::stack::SymbolTable,
-) -> crate::Result<Columns> {
+	symbol_table_ref: &SymbolTable,
+) -> Result<Columns> {
 	// Get table from plan or infer from input pipeline
 	let (namespace, table) = if let Some(target) = &plan.target {
 		// Namespace and table explicitly specified
@@ -193,7 +194,7 @@ pub(crate) fn delete<'a>(
 				EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap())),
 				1024,
 			)?
-			.collect::<Result<Vec<_>, _>>()?;
+			.collect::<Result<Vec<_>>>()?;
 
 		for multi in rows {
 			if let Some(ref pk_def) = pk_def {

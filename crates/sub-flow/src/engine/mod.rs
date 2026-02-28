@@ -27,7 +27,7 @@ use reifydb_rql::flow::{
 	flow::FlowDag,
 };
 use reifydb_runtime::clock::Clock;
-use reifydb_type::{error::Error, value::Value};
+use reifydb_type::{Result, error::Error, value::Value};
 use tracing::instrument;
 
 #[cfg(reifydb_target = "native")]
@@ -73,7 +73,7 @@ impl FlowEngine {
 		operator: &str,
 		node_id: FlowNodeId,
 		config: &HashMap<String, Value>,
-	) -> reifydb_type::Result<BoxedOperator> {
+	) -> Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
 		let mut loader_write = loader.write().unwrap();
 

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::namespace::NamespaceDef;
+use reifydb_type::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 
@@ -20,11 +21,11 @@ impl<'a> NamespaceDefPostCreateContext<'a> {
 }
 
 pub trait NamespaceDefPostCreateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut NamespaceDefPostCreateContext<'a>) -> reifydb_type::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut NamespaceDefPostCreateContext<'a>) -> Result<()>;
 }
 
 impl InterceptorChain<dyn NamespaceDefPostCreateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: NamespaceDefPostCreateContext) -> reifydb_type::Result<()> {
+	pub fn execute(&self, mut ctx: NamespaceDefPostCreateContext) -> Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -34,14 +35,14 @@ impl InterceptorChain<dyn NamespaceDefPostCreateInterceptor + Send + Sync> {
 
 pub struct ClosureNamespaceDefPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPostCreateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPostCreateContext<'a>) -> Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureNamespaceDefPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPostCreateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPostCreateContext<'a>) -> Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -52,7 +53,7 @@ where
 
 impl<F> Clone for ClosureNamespaceDefPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPostCreateContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut NamespaceDefPostCreateContext<'a>) -> Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -63,20 +64,16 @@ where
 
 impl<F> NamespaceDefPostCreateInterceptor for ClosureNamespaceDefPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPostCreateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPostCreateContext<'a>) -> Result<()> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut NamespaceDefPostCreateContext<'a>) -> reifydb_type::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut NamespaceDefPostCreateContext<'a>) -> Result<()> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn namespace_def_post_create<F>(f: F) -> ClosureNamespaceDefPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPostCreateContext<'a>) -> reifydb_type::Result<()>
-		+ Send
-		+ Sync
-		+ Clone
-		+ 'static,
+	F: for<'a> Fn(&mut NamespaceDefPostCreateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosureNamespaceDefPostCreateInterceptor::new(f)
 }
@@ -96,11 +93,11 @@ impl<'a> NamespaceDefPreUpdateContext<'a> {
 }
 
 pub trait NamespaceDefPreUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut NamespaceDefPreUpdateContext<'a>) -> reifydb_type::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut NamespaceDefPreUpdateContext<'a>) -> Result<()>;
 }
 
 impl InterceptorChain<dyn NamespaceDefPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: NamespaceDefPreUpdateContext) -> reifydb_type::Result<()> {
+	pub fn execute(&self, mut ctx: NamespaceDefPreUpdateContext) -> Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -110,14 +107,14 @@ impl InterceptorChain<dyn NamespaceDefPreUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureNamespaceDefPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPreUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPreUpdateContext<'a>) -> Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureNamespaceDefPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPreUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPreUpdateContext<'a>) -> Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -128,7 +125,7 @@ where
 
 impl<F> Clone for ClosureNamespaceDefPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPreUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut NamespaceDefPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -139,20 +136,16 @@ where
 
 impl<F> NamespaceDefPreUpdateInterceptor for ClosureNamespaceDefPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPreUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPreUpdateContext<'a>) -> Result<()> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut NamespaceDefPreUpdateContext<'a>) -> reifydb_type::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut NamespaceDefPreUpdateContext<'a>) -> Result<()> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn namespace_def_pre_update<F>(f: F) -> ClosureNamespaceDefPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPreUpdateContext<'a>) -> reifydb_type::Result<()>
-		+ Send
-		+ Sync
-		+ Clone
-		+ 'static,
+	F: for<'a> Fn(&mut NamespaceDefPreUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosureNamespaceDefPreUpdateInterceptor::new(f)
 }
@@ -174,11 +167,11 @@ impl<'a> NamespaceDefPostUpdateContext<'a> {
 }
 
 pub trait NamespaceDefPostUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut NamespaceDefPostUpdateContext<'a>) -> reifydb_type::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut NamespaceDefPostUpdateContext<'a>) -> Result<()>;
 }
 
 impl InterceptorChain<dyn NamespaceDefPostUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: NamespaceDefPostUpdateContext) -> reifydb_type::Result<()> {
+	pub fn execute(&self, mut ctx: NamespaceDefPostUpdateContext) -> Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -188,14 +181,14 @@ impl InterceptorChain<dyn NamespaceDefPostUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureNamespaceDefPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPostUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPostUpdateContext<'a>) -> Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureNamespaceDefPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPostUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPostUpdateContext<'a>) -> Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -206,7 +199,7 @@ where
 
 impl<F> Clone for ClosureNamespaceDefPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPostUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut NamespaceDefPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -217,20 +210,16 @@ where
 
 impl<F> NamespaceDefPostUpdateInterceptor for ClosureNamespaceDefPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPostUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPostUpdateContext<'a>) -> Result<()> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut NamespaceDefPostUpdateContext<'a>) -> reifydb_type::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut NamespaceDefPostUpdateContext<'a>) -> Result<()> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn namespace_def_post_update<F>(f: F) -> ClosureNamespaceDefPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPostUpdateContext<'a>) -> reifydb_type::Result<()>
-		+ Send
-		+ Sync
-		+ Clone
-		+ 'static,
+	F: for<'a> Fn(&mut NamespaceDefPostUpdateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosureNamespaceDefPostUpdateInterceptor::new(f)
 }
@@ -250,11 +239,11 @@ impl<'a> NamespaceDefPreDeleteContext<'a> {
 }
 
 pub trait NamespaceDefPreDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut NamespaceDefPreDeleteContext<'a>) -> reifydb_type::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut NamespaceDefPreDeleteContext<'a>) -> Result<()>;
 }
 
 impl InterceptorChain<dyn NamespaceDefPreDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: NamespaceDefPreDeleteContext) -> reifydb_type::Result<()> {
+	pub fn execute(&self, mut ctx: NamespaceDefPreDeleteContext) -> Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -264,14 +253,14 @@ impl InterceptorChain<dyn NamespaceDefPreDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureNamespaceDefPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPreDeleteContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPreDeleteContext<'a>) -> Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureNamespaceDefPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPreDeleteContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPreDeleteContext<'a>) -> Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -282,7 +271,7 @@ where
 
 impl<F> Clone for ClosureNamespaceDefPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPreDeleteContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut NamespaceDefPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -293,20 +282,16 @@ where
 
 impl<F> NamespaceDefPreDeleteInterceptor for ClosureNamespaceDefPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPreDeleteContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut NamespaceDefPreDeleteContext<'a>) -> Result<()> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut NamespaceDefPreDeleteContext<'a>) -> reifydb_type::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut NamespaceDefPreDeleteContext<'a>) -> Result<()> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn namespace_def_pre_delete<F>(f: F) -> ClosureNamespaceDefPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut NamespaceDefPreDeleteContext<'a>) -> reifydb_type::Result<()>
-		+ Send
-		+ Sync
-		+ Clone
-		+ 'static,
+	F: for<'a> Fn(&mut NamespaceDefPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosureNamespaceDefPreDeleteInterceptor::new(f)
 }

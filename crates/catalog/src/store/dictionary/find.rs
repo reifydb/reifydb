@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::dictionary::schema::{dictionary, dictionary_namespace},
 };
 
@@ -17,7 +17,7 @@ impl CatalogStore {
 	pub(crate) fn find_dictionary(
 		rx: &mut Transaction<'_>,
 		dictionary_id: DictionaryId,
-	) -> crate::Result<Option<DictionaryDef>> {
+	) -> Result<Option<DictionaryDef>> {
 		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id))? else {
 			return Ok(None);
 		};
@@ -42,7 +42,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<DictionaryDef>> {
+	) -> Result<Option<DictionaryDef>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
 

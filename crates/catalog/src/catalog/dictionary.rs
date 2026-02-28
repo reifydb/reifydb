@@ -14,7 +14,10 @@ use reifydb_type::{
 };
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, catalog::Catalog, store::dictionary::create::DictionaryToCreate as StoreDictionaryToCreate};
+use crate::{
+	CatalogStore, Result, catalog::Catalog,
+	store::dictionary::create::DictionaryToCreate as StoreDictionaryToCreate,
+};
 
 #[derive(Debug, Clone)]
 pub struct DictionaryToCreate {
@@ -37,11 +40,7 @@ impl From<DictionaryToCreate> for StoreDictionaryToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self, txn))]
-	pub fn find_dictionary(
-		&self,
-		txn: &mut Transaction<'_>,
-		id: DictionaryId,
-	) -> crate::Result<Option<DictionaryDef>> {
+	pub fn find_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> Result<Option<DictionaryDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -119,7 +118,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> crate::Result<Option<DictionaryDef>> {
+	) -> Result<Option<DictionaryDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -207,7 +206,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::dictionary::get", level = "trace", skip(self, txn))]
-	pub fn get_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> crate::Result<DictionaryDef> {
+	pub fn get_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> Result<DictionaryDef> {
 		CatalogStore::get_dictionary(txn, id)
 	}
 
@@ -216,14 +215,14 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: DictionaryToCreate,
-	) -> crate::Result<DictionaryDef> {
+	) -> Result<DictionaryDef> {
 		let dictionary = CatalogStore::create_dictionary(txn, to_create.into())?;
 		txn.track_dictionary_def_created(dictionary.clone())?;
 		Ok(dictionary)
 	}
 
 	#[instrument(name = "catalog::dictionary::drop", level = "debug", skip(self, txn))]
-	pub fn drop_dictionary(&self, txn: &mut AdminTransaction, dictionary: DictionaryDef) -> crate::Result<()> {
+	pub fn drop_dictionary(&self, txn: &mut AdminTransaction, dictionary: DictionaryDef) -> Result<()> {
 		CatalogStore::drop_dictionary(txn, dictionary.id)?;
 		txn.track_dictionary_def_deleted(dictionary)?;
 		Ok(())
@@ -234,12 +233,12 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
-	) -> crate::Result<Vec<DictionaryDef>> {
+	) -> Result<Vec<DictionaryDef>> {
 		CatalogStore::list_dictionaries(txn, namespace)
 	}
 
 	#[instrument(name = "catalog::dictionary::list_all", level = "debug", skip(self, txn))]
-	pub fn list_all_dictionaries(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<DictionaryDef>> {
+	pub fn list_all_dictionaries(&self, txn: &mut Transaction<'_>) -> Result<Vec<DictionaryDef>> {
 		CatalogStore::list_all_dictionaries(txn)
 	}
 }

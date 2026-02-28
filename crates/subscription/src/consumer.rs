@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 
+use reifydb_catalog::find_subscription;
 use reifydb_core::{
 	encoded::key::EncodedKey,
 	error::diagnostic::internal::internal,
@@ -19,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::Error, fragment::Fragment};
+use reifydb_type::{Result, error::Error, fragment::Fragment};
 use tracing::debug;
 
 /// Static methods for consuming subscription data.
@@ -34,14 +35,11 @@ impl SubscriptionConsumer {
 		db_subscription_id: SubscriptionId,
 		last_consumed_key: Option<&EncodedKey>,
 		batch_size: usize,
-	) -> reifydb_type::Result<(Columns, Vec<EncodedKey>)> {
+	) -> Result<(Columns, Vec<EncodedKey>)> {
 		let mut cmd_txn = engine.begin_command()?;
 
 		// Get subscription definition using catalog function
-		let _sub_def = match reifydb_catalog::find_subscription(
-			&mut Transaction::Command(&mut cmd_txn),
-			db_subscription_id,
-		)? {
+		let _sub_def = match find_subscription(&mut Transaction::Command(&mut cmd_txn), db_subscription_id)? {
 			Some(def) => def,
 			None => {
 				tracing::warn!("Subscription {} not found", db_subscription_id);
@@ -121,7 +119,7 @@ impl SubscriptionConsumer {
 	}
 
 	/// Delete consumed rows from subscription storage.
-	pub fn delete_rows(engine: &StandardEngine, row_keys: &[EncodedKey]) -> reifydb_type::Result<()> {
+	pub fn delete_rows(engine: &StandardEngine, row_keys: &[EncodedKey]) -> Result<()> {
 		if row_keys.is_empty() {
 			return Ok(());
 		}

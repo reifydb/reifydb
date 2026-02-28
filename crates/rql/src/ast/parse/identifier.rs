@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		identifier::{MaybeQualifiedColumnIdentifier, UnqualifiedIdentifier},
 		parse::Parser,
@@ -15,14 +16,14 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier<'bump>> {
+	pub(crate) fn parse_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
 		let token = self.consume(TokenKind::Identifier)?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
 	/// Parse an identifier or keyword as an identifier (simple, no hyphen handling)
 	/// Used in expression contexts where hyphens should remain as operators
-	pub(crate) fn parse_as_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier<'bump>> {
+	pub(crate) fn parse_as_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
 		let token = self.advance()?;
 		debug_assert!(matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)));
 		Ok(UnqualifiedIdentifier::new(token))
@@ -32,7 +33,7 @@ impl<'bump> Parser<'bump> {
 	/// Used in DDL contexts where hyphenated identifiers are supported
 	/// Consumes: (identifier|keyword) [-(identifier|keyword)]*
 	/// Returns: UnqualifiedIdentifier with combined text
-	pub(crate) fn parse_identifier_with_hyphens(&mut self) -> crate::Result<UnqualifiedIdentifier<'bump>> {
+	pub(crate) fn parse_identifier_with_hyphens(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
 		let first_token = self.advance()?;
 
 		// Helper to check if a token can be used as an identifier part
@@ -133,9 +134,7 @@ impl<'bump> Parser<'bump> {
 
 	/// Parse a double-colon-separated chain of identifiers: `a::b::c::d`
 	/// Returns all segments. Caller splits namespace vs. name.
-	pub(crate) fn parse_double_colon_separated_identifiers(
-		&mut self,
-	) -> crate::Result<Vec<UnqualifiedIdentifier<'bump>>> {
+	pub(crate) fn parse_double_colon_separated_identifiers(&mut self) -> Result<Vec<UnqualifiedIdentifier<'bump>>> {
 		let mut segments = vec![self.parse_identifier_with_hyphens()?];
 		while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {
 			self.consume_operator(Operator::DoubleColon)?;
@@ -147,7 +146,7 @@ impl<'bump> Parser<'bump> {
 	/// Parse a potentially qualified column identifier
 	/// Handles patterns like: column, table.column, ns::table.column, ns1::ns2::table.column
 	/// Supports hyphenated identifiers like: my-column, my-table.my-column
-	pub(crate) fn parse_column_identifier(&mut self) -> crate::Result<MaybeQualifiedColumnIdentifier<'bump>> {
+	pub(crate) fn parse_column_identifier(&mut self) -> Result<MaybeQualifiedColumnIdentifier<'bump>> {
 		// Parse :: separated identifiers for namespace::table qualification
 		let mut ns_table_segments = self.parse_double_colon_separated_identifiers()?;
 
@@ -173,7 +172,7 @@ impl<'bump> Parser<'bump> {
 
 	fn segments_to_column_identifier(
 		mut segments: Vec<UnqualifiedIdentifier<'bump>>,
-	) -> crate::Result<MaybeQualifiedColumnIdentifier<'bump>> {
+	) -> Result<MaybeQualifiedColumnIdentifier<'bump>> {
 		match segments.len() {
 			1 => {
 				let col = segments.remove(0);
@@ -202,9 +201,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse a column identifier, but also accept keywords as column names
-	pub(crate) fn parse_column_identifier_or_keyword(
-		&mut self,
-	) -> crate::Result<MaybeQualifiedColumnIdentifier<'bump>> {
+	pub(crate) fn parse_column_identifier_or_keyword(&mut self) -> Result<MaybeQualifiedColumnIdentifier<'bump>> {
 		// Parse :: separated identifiers for namespace::table qualification
 		let mut ns_table_segments = vec![self.advance()?];
 		while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {

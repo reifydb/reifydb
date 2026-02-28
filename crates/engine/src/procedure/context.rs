@@ -10,7 +10,7 @@ use reifydb_type::{
 	value::{frame::frame::Frame, identity::IdentityId},
 };
 
-use crate::vm::executor::Executor;
+use crate::{Result, vm::executor::Executor};
 
 pub struct ProcedureContext<'a> {
 	pub identity: IdentityId,
@@ -23,7 +23,7 @@ pub struct ProcedureContext<'a> {
 
 impl ProcedureContext<'_> {
 	/// Execute RQL within the current transaction.
-	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
+	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		self.executor.rql(tx, self.identity, rql, params)
 	}
 }

@@ -7,12 +7,12 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::view::schema::view};
+use crate::{CatalogStore, Result, store::view::schema::view};
 
 impl CatalogStore {
 	/// Get the primary key ID for a view
 	/// Returns None if the view doesn't exist or has no primary key
-	pub(crate) fn get_view_pk_id(rx: &mut Transaction<'_>, view_id: ViewId) -> crate::Result<Option<PrimaryKeyId>> {
+	pub(crate) fn get_view_pk_id(rx: &mut Transaction<'_>, view_id: ViewId) -> Result<Option<PrimaryKeyId>> {
 		let multi = match rx.get(&ViewKey::encoded(view_id))? {
 			Some(v) => v,
 			None => return Ok(None),

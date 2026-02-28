@@ -22,6 +22,7 @@ use reifydb_core::{
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
+use reifydb_type::{Result, error::Error};
 use tokio::{net::TcpListener, sync::oneshot};
 
 use crate::routes::router;
@@ -120,7 +121,7 @@ impl Subsystem for HttpSubsystem {
 		"Http"
 	}
 
-	fn start(&mut self) -> reifydb_type::Result<()> {
+	fn start(&mut self) -> Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
@@ -129,7 +130,7 @@ impl Subsystem for HttpSubsystem {
 		let addr = self.bind_addr.clone();
 		let runtime = self.runtime.clone();
 		let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| {
-			let err: reifydb_type::error::Error = CoreError::SubsystemBindFailed {
+			let err: Error = CoreError::SubsystemBindFailed {
 				addr: addr.clone(),
 				reason: e.to_string(),
 			}
@@ -138,7 +139,7 @@ impl Subsystem for HttpSubsystem {
 		})?;
 
 		let actual_addr = listener.local_addr().map_err(|e| {
-			let err: reifydb_type::error::Error = CoreError::SubsystemAddressUnavailable {
+			let err: Error = CoreError::SubsystemAddressUnavailable {
 				reason: e.to_string(),
 			}
 			.into();
@@ -181,7 +182,7 @@ impl Subsystem for HttpSubsystem {
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> reifydb_type::Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}

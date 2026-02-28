@@ -34,7 +34,7 @@ use reifydb_runtime::{
 		system::ActorConfig,
 		traits::{Actor, Directive},
 	},
-	clock::Clock,
+	clock::{Clock, Instant},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, error::Error};
@@ -103,7 +103,7 @@ struct ConsumeContext {
 	checkpoints: Vec<(FlowId, CommitVersion)>,
 	consumer_key: EncodedKey,
 	original_reply: Box<dyn FnOnce(Result<()>) + Send>,
-	consume_start: reifydb_runtime::clock::Instant,
+	consume_start: Instant,
 	/// All flow changes derived from CDCs (computed once during Consume)
 	all_changes: Vec<Change>,
 	/// Latest CDC version

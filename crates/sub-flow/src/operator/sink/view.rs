@@ -14,7 +14,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_transaction::interceptor::view::ViewInterceptor;
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_type::{Result, value::row_number::RowNumber};
 
 use super::{coerce_columns, encode_row_at_index};
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
@@ -41,7 +41,7 @@ impl Operator for SinkViewOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view_def = self.view.def().clone();
 		let schema: Schema = (&view_def.columns).into();
 
@@ -162,7 +162,7 @@ impl Operator for SinkViewOperator {
 		Ok(Change::from_flow(self.node, change.version, Vec::new()))
 	}
 
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
 		unreachable!()
 	}
 }

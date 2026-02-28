@@ -7,15 +7,12 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::table::schema::table};
+use crate::{CatalogStore, Result, store::table::schema::table};
 
 impl CatalogStore {
 	/// Get the primary key ID for a table
 	/// Returns None if the table doesn't exist or has no primary key
-	pub(crate) fn get_table_pk_id(
-		rx: &mut Transaction<'_>,
-		table_id: TableId,
-	) -> crate::Result<Option<PrimaryKeyId>> {
+	pub(crate) fn get_table_pk_id(rx: &mut Transaction<'_>, table_id: TableId) -> Result<Option<PrimaryKeyId>> {
 		let multi = match rx.get(&TableKey::encoded(table_id))? {
 			Some(v) => v,
 			None => return Ok(None),

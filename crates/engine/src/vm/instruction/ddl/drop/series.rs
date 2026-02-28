@@ -6,13 +6,9 @@ use reifydb_rql::nodes::DropSeriesNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
-pub(crate) fn drop_series(
-	services: &Services,
-	txn: &mut AdminTransaction,
-	plan: DropSeriesNode,
-) -> crate::Result<Columns> {
+pub(crate) fn drop_series(services: &Services, txn: &mut AdminTransaction, plan: DropSeriesNode) -> Result<Columns> {
 	let Some(series_id) = plan.series_id else {
 		return Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),

@@ -4,6 +4,7 @@
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::ast::AstCreatePrimaryKey,
 	plan::logical::{Compiler, CreatePrimaryKeyNode, LogicalPlan, PrimaryKeyColumn},
 };
@@ -13,7 +14,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreatePrimaryKey<'bump>,
 		_tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let columns = ast
 			.columns
 			.into_iter()

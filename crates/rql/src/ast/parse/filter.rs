@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstFilter},
 		parse::{Parser, Precedence},
@@ -11,7 +12,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_filter(&mut self) -> crate::Result<AstFilter<'bump>> {
+	pub(crate) fn parse_filter(&mut self) -> Result<AstFilter<'bump>> {
 		let token = self.consume_keyword(Keyword::Filter)?;
 
 		// Check if braces are used (optional)

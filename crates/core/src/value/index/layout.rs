@@ -3,7 +3,7 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
+use reifydb_type::{Result, util::cowvec::CowVec, value::r#type::Type};
 
 use crate::{error::CoreError, sort::SortDirection, value::index::encoded::EncodedIndexKey};
 
@@ -19,7 +19,7 @@ impl Deref for EncodedIndexLayout {
 }
 
 impl EncodedIndexLayout {
-	pub fn new(types: &[Type], directions: &[SortDirection]) -> reifydb_type::Result<Self> {
+	pub fn new(types: &[Type], directions: &[SortDirection]) -> Result<Self> {
 		if types.len() != directions.len() {
 			return Err(CoreError::IndexTypesDirectionsMismatch {
 				types_len: types.len(),

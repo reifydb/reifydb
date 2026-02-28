@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::store::SingleVersionStore;
+use reifydb_type::Result;
 
 use crate::{
 	MetricId,
@@ -69,7 +70,7 @@ impl<S: SingleVersionStore> MetricReader<S> {
 	/// Scan all objects for a specific tier, returning combined stats.
 	///
 	/// Returns storage stats for the tier merged with CDC stats (which are not tiered).
-	pub fn scan_tier(&self, tier: Tier) -> reifydb_type::Result<Vec<(MetricId, CombinedStats)>> {
+	pub fn scan_tier(&self, tier: Tier) -> Result<Vec<(MetricId, CombinedStats)>> {
 		// Get storage stats for this tier
 		let storage_stats = self.storage_reader.scan_tier(tier)?;
 
@@ -95,7 +96,7 @@ impl<S: SingleVersionStore> MetricReader<S> {
 	}
 
 	/// Get combined stats for a specific object and tier.
-	pub fn get(&self, tier: Tier, id: MetricId) -> reifydb_type::Result<Option<CombinedStats>> {
+	pub fn get(&self, tier: Tier, id: MetricId) -> Result<Option<CombinedStats>> {
 		let storage = self.storage_reader.get(tier, id)?;
 		let cdc = self.cdc_reader.get(id)?;
 

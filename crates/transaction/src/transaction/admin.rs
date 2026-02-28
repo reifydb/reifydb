@@ -5,6 +5,7 @@ use std::mem::take;
 
 use reifydb_core::{
 	common::CommitVersion,
+	delta::Delta,
 	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
@@ -22,6 +23,7 @@ use tracing::instrument;
 use crate::{
 	TransactionId,
 	change::{RowChange, TransactionalChanges, TransactionalDefChanges},
+	error::TransactionError,
 	interceptor::{
 		WithInterceptors,
 		chain::InterceptorChain as Chain,
@@ -131,10 +133,10 @@ impl AdminTransaction {
 		match self.state {
 			TransactionState::Active => Ok(()),
 			TransactionState::Committed => {
-				return Err(crate::error::TransactionError::AlreadyCommitted.into());
+				return Err(TransactionError::AlreadyCommitted.into());
 			}
 			TransactionState::RolledBack => {
-				return Err(crate::error::TransactionError::AlreadyRolledBack.into());
+				return Err(TransactionError::AlreadyRolledBack.into());
 			}
 		}
 	}
@@ -150,7 +152,7 @@ impl AdminTransaction {
 			.pending_writes()
 			.iter()
 			.map(|(key, pending)| match &pending.delta {
-				reifydb_core::delta::Delta::Set {
+				Delta::Set {
 					values,
 					..
 				} => (key.clone(), Some(values.clone())),

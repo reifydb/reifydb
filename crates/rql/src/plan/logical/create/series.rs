@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::series::SeriesColumnToCreate;
+use reifydb_catalog::{
+	catalog::series::SeriesColumnToCreate,
+	error::{CatalogError, CatalogObjectKind},
+};
 use reifydb_core::interface::catalog::series::TimestampPrecision;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
+	Result,
 	ast::ast::{AstColumnProperty, AstCreateSeries, AstTimestampPrecision},
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateSeriesNode, LogicalPlan},
@@ -17,7 +21,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateSeries<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<SeriesColumnToCreate> = vec![];
 
 		let series_namespace_name = ast.series.namespace.first().map(|n| n.text()).unwrap_or("default");
@@ -47,8 +51,8 @@ impl<'bump> Compiler<'bump> {
 						let Some(namespace) =
 							self.catalog.find_namespace_by_name(tx, dict_namespace_name)?
 						else {
-							return Err(reifydb_catalog::error::CatalogError::NotFound {
-								kind: reifydb_catalog::error::CatalogObjectKind::Dictionary,
+							return Err(CatalogError::NotFound {
+								kind: CatalogObjectKind::Dictionary,
 								namespace: dict_namespace_name.to_string(),
 								name: dict_name.to_string(),
 								fragment: dict_ident.name.to_owned(),
@@ -62,8 +66,8 @@ impl<'bump> Compiler<'bump> {
 							dict_name,
 						)?
 						else {
-							return Err(reifydb_catalog::error::CatalogError::NotFound {
-								kind: reifydb_catalog::error::CatalogObjectKind::Dictionary,
+							return Err(CatalogError::NotFound {
+								kind: CatalogObjectKind::Dictionary,
 								namespace: dict_namespace_name.to_string(),
 								name: dict_name.to_string(),
 								fragment: dict_ident.name.to_owned(),

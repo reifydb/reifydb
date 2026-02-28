@@ -3,10 +3,10 @@
 
 use reifydb_core::{interface::catalog::user::UserDef, key::user::UserKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::identity::IdentityId;
+use reifydb_type::{fragment::Fragment, value::identity::IdentityId};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		sequence::system::SystemSequence,
@@ -15,13 +15,13 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn create_user(txn: &mut AdminTransaction, name: &str) -> crate::Result<UserDef> {
+	pub(crate) fn create_user(txn: &mut AdminTransaction, name: &str) -> Result<UserDef> {
 		if let Some(_) = Self::find_user_by_name(&mut Transaction::Admin(&mut *txn), name)? {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::User,
 				namespace: "system".to_string(),
 				name: name.to_string(),
-				fragment: reifydb_type::fragment::Fragment::None,
+				fragment: Fragment::None,
 			}
 			.into());
 		}

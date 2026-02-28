@@ -8,13 +8,13 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
 use super::dependent::find_column_dependents;
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn drop_dictionary(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropDictionaryNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let Some(dictionary_id) = plan.dictionary_id else {
 		return Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),

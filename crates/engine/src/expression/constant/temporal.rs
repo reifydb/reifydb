@@ -13,18 +13,20 @@ use reifydb_type::{
 	},
 };
 
+use crate::Result;
+
 pub struct TemporalParser;
 
 impl TemporalParser {
 	/// Parse temporal expression to a specific target type with detailed
 	/// error handling
-	pub fn from_temporal<'a>(fragment: Fragment, target: Type, row_count: usize) -> crate::Result<ColumnData> {
+	pub fn from_temporal<'a>(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnData> {
 		Self::parse_temporal_type(fragment, target, row_count)
 	}
 
 	/// Parse a temporal constant expression and create a column with the
 	/// specified encoded count
-	pub fn parse_temporal<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+	pub fn parse_temporal<'a>(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
 		let value = fragment.text();
 
 		// Route based on character patterns
@@ -56,11 +58,7 @@ impl TemporalParser {
 	}
 
 	/// Parse temporal to specific target type with detailed error handling
-	pub fn parse_temporal_type<'a>(
-		fragment: Fragment,
-		target: Type,
-		row_count: usize,
-	) -> crate::Result<ColumnData> {
+	pub fn parse_temporal_type<'a>(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnData> {
 		match target {
 			Type::Date => {
 				let date = parse_date(fragment.clone()).map_err(|e| e)?;

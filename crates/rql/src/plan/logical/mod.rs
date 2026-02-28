@@ -34,8 +34,13 @@ use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
 use crate::{
+	Result,
 	ast::{
-		ast::{Ast, AstInfix, AstProcedureParam, AstStatement, AstType, AstVariantDef, InfixOperator},
+		ast::{
+			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstInfix, AstPolicyOperationEntry,
+			AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstStatement, AstType, AstVariantDef,
+			InfixOperator,
+		},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
@@ -63,7 +68,7 @@ pub fn compile_logical<'b>(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	ast: AstStatement<'b>,
-) -> crate::Result<BumpVec<'b, LogicalPlan<'b>>> {
+) -> Result<BumpVec<'b, LogicalPlan<'b>>> {
 	Compiler {
 		catalog: catalog.clone(),
 		bump,
@@ -77,7 +82,7 @@ pub fn compile_logical_query<'b>(
 	catalog: &Catalog,
 	tx: &mut QueryTransaction,
 	ast: AstStatement<'b>,
-) -> crate::Result<BumpVec<'b, LogicalPlan<'b>>> {
+) -> Result<BumpVec<'b, LogicalPlan<'b>>> {
 	compile_logical(bump, catalog, &mut Transaction::Query(tx), ast)
 }
 
@@ -87,7 +92,7 @@ pub fn compile_logical_command<'b>(
 	catalog: &Catalog,
 	tx: &mut CommandTransaction,
 	ast: AstStatement<'b>,
-) -> crate::Result<BumpVec<'b, LogicalPlan<'b>>> {
+) -> Result<BumpVec<'b, LogicalPlan<'b>>> {
 	compile_logical(bump, catalog, &mut Transaction::Command(tx), ast)
 }
 
@@ -96,7 +101,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstStatement<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<BumpVec<'bump, LogicalPlan<'bump>>> {
+	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
 		if ast.is_empty() {
 			return Ok(BumpVec::new_in(self.bump));
 		}
@@ -131,7 +136,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	// Helper to compile a single AST operator
-	pub fn compile_single(&self, node: Ast<'bump>, tx: &mut Transaction<'_>) -> crate::Result<LogicalPlan<'bump>> {
+	pub fn compile_single(&self, node: Ast<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		match node {
 			Ast::Create(node) => self.compile_create(node, tx),
 			Ast::Drop(node) => self.compile_drop(node),
@@ -290,7 +295,7 @@ impl<'bump> Compiler<'bump> {
 	// Helper to wrap a scalar expression in a MAP { "value": expression }
 	// Instead of creating synthetic AST nodes (which would require a bump allocator),
 	// this directly compiles the scalar and wraps the result in a MapNode.
-	fn compile_scalar_as_map(&self, scalar_node: Ast<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	fn compile_scalar_as_map(&self, scalar_node: Ast<'bump>) -> Result<LogicalPlan<'bump>> {
 		let fragment = scalar_node.token().fragment.to_owned();
 		let expr = ExpressionCompiler::compile(scalar_node)?;
 		let alias_expr = AliasExpression {
@@ -300,17 +305,17 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		Ok(LogicalPlan::Map(MapNode {
-			map: vec![crate::expression::Expression::Alias(alias_expr)],
+			map: vec![Expression::Alias(alias_expr)],
 		}))
 	}
 
-	fn compile_infix(&self, node: AstInfix<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	fn compile_infix(&self, node: AstInfix<'bump>) -> Result<LogicalPlan<'bump>> {
 		match node.operator {
 			InfixOperator::Assign(_token) => {
 				// This is a variable assignment statement
 				// Extract the variable name from the left side
 				let variable = match BumpBox::into_inner(node.left) {
-					crate::ast::ast::Ast::Variable(var) => var,
+					Ast::Variable(var) => var,
 					_ => {
 						return Err(AstError::UnsupportedAstNode {
 							node_type: "assignment to non-variable".to_string(),
@@ -321,9 +326,7 @@ impl<'bump> Compiler<'bump> {
 				};
 
 				// Convert the right side to an expression
-				let expr = crate::expression::ExpressionCompiler::compile(BumpBox::into_inner(
-					node.right,
-				))?;
+				let expr = ExpressionCompiler::compile(BumpBox::into_inner(node.right))?;
 				let value = AssignValue::Expression(expr);
 
 				// Extract variable name (remove $ prefix if present)
@@ -847,7 +850,7 @@ pub struct CreateProcedureNode<'bump> {
 	pub params: Vec<AstProcedureParam<'bump>>,
 	pub body_source: String,
 	/// Set when this procedure is created via CREATE HANDLER (event binding)
-	pub on_event: Option<crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>>,
+	pub on_event: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	/// Variant name for event-triggered procedures
 	pub on_variant: Option<BumpFragment<'bump>>,
 }
@@ -949,7 +952,7 @@ pub struct DropRoleNode<'bump> {
 #[derive(Debug)]
 pub struct CreateAuthenticationNode<'bump> {
 	pub user: BumpFragment<'bump>,
-	pub entries: Vec<crate::ast::ast::AstAuthenticationEntry<'bump>>,
+	pub entries: Vec<AstAuthenticationEntry<'bump>>,
 }
 
 #[derive(Debug)]
@@ -962,21 +965,21 @@ pub struct DropAuthenticationNode<'bump> {
 #[derive(Debug)]
 pub struct CreatePolicyNode<'bump> {
 	pub name: Option<BumpFragment<'bump>>,
-	pub target_type: crate::ast::ast::AstPolicyTargetType,
-	pub scope: crate::ast::ast::AstPolicyScope<'bump>,
-	pub operations: Vec<crate::ast::ast::AstPolicyOperationEntry<'bump>>,
+	pub target_type: AstPolicyTargetType,
+	pub scope: AstPolicyScope<'bump>,
+	pub operations: Vec<AstPolicyOperationEntry<'bump>>,
 }
 
 #[derive(Debug)]
 pub struct AlterPolicyNode<'bump> {
-	pub target_type: crate::ast::ast::AstPolicyTargetType,
+	pub target_type: AstPolicyTargetType,
 	pub name: BumpFragment<'bump>,
-	pub action: crate::ast::ast::AstAlterPolicyAction,
+	pub action: AstAlterPolicyAction,
 }
 
 #[derive(Debug)]
 pub struct DropPolicyNode<'bump> {
-	pub target_type: crate::ast::ast::AstPolicyTargetType,
+	pub target_type: AstPolicyTargetType,
 	pub name: BumpFragment<'bump>,
 	pub if_exists: bool,
 }

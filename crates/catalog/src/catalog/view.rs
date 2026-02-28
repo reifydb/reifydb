@@ -18,7 +18,7 @@ use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint}
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	catalog::Catalog,
 	store::view::create::{ViewColumnToCreate as StoreViewColumnToCreate, ViewToCreate as StoreViewToCreate},
 };
@@ -59,7 +59,7 @@ impl From<ViewToCreate> for StoreViewToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::view::find", level = "trace", skip(self, txn))]
-	pub fn find_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> crate::Result<Option<ViewDef>> {
+	pub fn find_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<Option<ViewDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -122,7 +122,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> crate::Result<Option<ViewDef>> {
+	) -> Result<Option<ViewDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -208,7 +208,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::get", level = "trace", skip(self, txn))]
-	pub fn get_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> crate::Result<ViewDef> {
+	pub fn get_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<ViewDef> {
 		self.find_view(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -218,11 +218,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::create_deferred", level = "debug", skip(self, txn, to_create))]
-	pub fn create_deferred_view(
-		&self,
-		txn: &mut AdminTransaction,
-		to_create: ViewToCreate,
-	) -> crate::Result<ViewDef> {
+	pub fn create_deferred_view(&self, txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<ViewDef> {
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
 		txn.track_view_def_created(view.clone())?;
 
@@ -237,7 +233,7 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: ViewToCreate,
-	) -> crate::Result<ViewDef> {
+	) -> Result<ViewDef> {
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
 		txn.track_view_def_created(view.clone())?;
 
@@ -248,14 +244,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::drop", level = "debug", skip(self, txn))]
-	pub fn drop_view(&self, txn: &mut AdminTransaction, view: ViewDef) -> crate::Result<()> {
+	pub fn drop_view(&self, txn: &mut AdminTransaction, view: ViewDef) -> Result<()> {
 		CatalogStore::drop_view(txn, view.id)?;
 		txn.track_view_def_deleted(view)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::view::list_all", level = "debug", skip(self, txn))]
-	pub fn list_views_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<ViewDef>> {
+	pub fn list_views_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<ViewDef>> {
 		CatalogStore::list_views_all(txn)
 	}
 
@@ -265,16 +261,12 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		CatalogStore::set_view_primary_key(txn, view_id, primary_key_id)
 	}
 
 	#[instrument(name = "catalog::view::get_pk_id", level = "trace", skip(self, txn))]
-	pub fn get_view_pk_id(
-		&self,
-		txn: &mut Transaction<'_>,
-		view_id: ViewId,
-	) -> crate::Result<Option<PrimaryKeyId>> {
+	pub fn get_view_pk_id(&self, txn: &mut Transaction<'_>, view_id: ViewId) -> Result<Option<PrimaryKeyId>> {
 		CatalogStore::get_view_pk_id(txn, view_id)
 	}
 }

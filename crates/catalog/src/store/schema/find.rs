@@ -19,6 +19,7 @@ use reifydb_type::{
 use tracing::{Span, instrument};
 
 use super::schema::{schema_field, schema_header};
+use crate::Result;
 
 /// Find a schema by its fingerprint.
 ///
@@ -36,7 +37,7 @@ use super::schema::{schema_field, schema_header};
 pub(crate) fn find_schema_by_fingerprint(
 	txn: &mut SingleWriteTransaction,
 	fingerprint: SchemaFingerprint,
-) -> crate::Result<Option<Schema>> {
+) -> Result<Option<Schema>> {
 	// Read schema header
 	let header_key = SchemaKey::encoded(fingerprint);
 	let header_entry = match txn.get(&header_key)? {
@@ -98,7 +99,7 @@ pub(crate) fn find_schema_by_fingerprint(
 		total_fields = tracing::field::Empty
 	)
 )]
-pub fn load_all_schemas(rx: &mut Transaction<'_>) -> crate::Result<Vec<Schema>> {
+pub fn load_all_schemas(rx: &mut Transaction<'_>) -> Result<Vec<Schema>> {
 	// First pass: collect all schema headers (fingerprint, field_count)
 	let mut schema_headers: Vec<(SchemaFingerprint, usize)> = Vec::new();
 

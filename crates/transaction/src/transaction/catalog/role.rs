@@ -5,6 +5,7 @@ use reifydb_core::interface::catalog::{
 	change::CatalogTrackRoleChangeOperations,
 	user::{RoleDef, RoleId},
 };
+use reifydb_type::Result;
 
 use crate::{
 	change::{
@@ -16,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackRoleChangeOperations for AdminTransaction {
-	fn track_role_def_created(&mut self, role: RoleDef) -> reifydb_type::Result<()> {
+	fn track_role_def_created(&mut self, role: RoleDef) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(role),
@@ -26,7 +27,7 @@ impl CatalogTrackRoleChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_role_def_updated(&mut self, pre: RoleDef, post: RoleDef) -> reifydb_type::Result<()> {
+	fn track_role_def_updated(&mut self, pre: RoleDef, post: RoleDef) -> Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -36,7 +37,7 @@ impl CatalogTrackRoleChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_role_def_deleted(&mut self, role: RoleDef) -> reifydb_type::Result<()> {
+	fn track_role_def_deleted(&mut self, role: RoleDef) -> Result<()> {
 		let change = Change {
 			pre: Some(role),
 			post: None,

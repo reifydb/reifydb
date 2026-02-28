@@ -4,10 +4,10 @@
 use reifydb_core::{interface::catalog::user::UserDef, key::user::UserKey};
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::user::convert_user};
+use crate::{CatalogStore, Result, store::user::convert_user};
 
 impl CatalogStore {
-	pub(crate) fn list_all_users(rx: &mut Transaction<'_>) -> crate::Result<Vec<UserDef>> {
+	pub(crate) fn list_all_users(rx: &mut Transaction<'_>) -> Result<Vec<UserDef>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(UserKey::full_scan(), 1024)?;
 

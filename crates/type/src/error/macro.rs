@@ -190,8 +190,7 @@ pub mod tests {
 
 		// Test that err! macro with fragment creates correct Result
 		// type with Err
-		let result: Result<(), Error> =
-			err!(TypeError::NanNotAllowed.into_diagnostic(), fragment);
+		let result: Result<(), Error> = err!(TypeError::NanNotAllowed.into_diagnostic(), fragment);
 
 		assert!(result.is_err());
 

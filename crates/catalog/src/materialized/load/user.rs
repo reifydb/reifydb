@@ -5,9 +5,9 @@ use reifydb_core::key::user::UserKey;
 use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
-use crate::store::user::convert_user;
+use crate::{Result, store::user::convert_user};
 
-pub(crate) fn load_users(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub(crate) fn load_users(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = UserKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 

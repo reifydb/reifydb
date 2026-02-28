@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
+use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer};
 
 impl CatalogStore {
 	/// Set the primary key ID for a ring buffer
@@ -17,7 +17,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let multi = match txn.get(&RingBufferKey::encoded(ringbuffer_id))? {
 			Some(v) => v,
 			None => return_internal_error!(format!(

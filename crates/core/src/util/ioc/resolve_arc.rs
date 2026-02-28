@@ -6,6 +6,8 @@ use std::{
 	sync::{Arc, OnceLock},
 };
 
+use reifydb_type::Result;
+
 use super::IocContainer;
 use crate::internal_error;
 
@@ -34,7 +36,7 @@ impl<T: Clone> LazyResolveArc<T> {
 	/// Get or resolve the value from the IoC container
 	/// The resolution happens exactly once, subsequent calls return the
 	/// cached value
-	pub fn get_or_resolve(&self, ioc: &IocContainer) -> reifydb_type::Result<&T>
+	pub fn get_or_resolve(&self, ioc: &IocContainer) -> Result<&T>
 	where
 		T: Clone + Any + Send + Sync + 'static,
 	{
@@ -96,7 +98,7 @@ impl<T: Clone> Default for LazyResolveArc<T> {
 
 /// Helper function to create a resolve closure for a specific type
 #[allow(dead_code)]
-pub fn resolver<T>(ioc: &IocContainer) -> impl FnOnce() -> reifydb_type::Result<T> + '_
+pub fn resolver<T>(ioc: &IocContainer) -> impl FnOnce() -> Result<T> + '_
 where
 	T: Clone + Any + Send + Sync + 'static,
 {

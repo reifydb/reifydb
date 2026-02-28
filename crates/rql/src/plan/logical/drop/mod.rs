@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::ast::AstDrop,
 	plan::logical::{
 		Compiler, DropAuthenticationNode, DropDictionaryNode, DropFlowNode, DropNamespaceNode, DropPolicyNode,
@@ -11,7 +12,7 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_drop(&self, ast: AstDrop<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_drop(&self, ast: AstDrop<'bump>) -> Result<LogicalPlan<'bump>> {
 		match ast {
 			AstDrop::Namespace(node) => Ok(LogicalPlan::DropNamespace(DropNamespaceNode {
 				segments: node.namespace.segments,

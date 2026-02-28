@@ -7,14 +7,14 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::column::schema::primitive_column};
+use crate::{CatalogStore, Result, store::column::schema::primitive_column};
 
 impl CatalogStore {
 	pub(crate) fn find_column_by_name(
 		rx: &mut Transaction<'_>,
 		source: impl Into<PrimitiveId>,
 		column_name: &str,
-	) -> crate::Result<Option<ColumnDef>> {
+	) -> Result<Option<ColumnDef>> {
 		let mut stream = rx.range(ColumnKey::full_scan(source), 1024)?;
 
 		let mut found_id = None;

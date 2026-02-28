@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::primary_key::schema::{
 		primary_key,
 		primary_key::{COLUMN_IDS, ID, deserialize_column_ids},
@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// Load all primary keys from storage
-pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = PrimaryKeyKey::full_scan();
 
 	// Collect entries first to avoid borrow issues with nested async calls

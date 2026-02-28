@@ -2,11 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::interface::catalog::{procedure::ProcedureTrigger, sumtype::SumTypeKind};
+use reifydb_core::{
+	interface::catalog::{procedure::ProcedureTrigger, sumtype::SumTypeKind},
+	internal_error,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
+	Result,
 	nodes::CreateProcedureNode,
 	plan::{
 		logical,
@@ -19,7 +23,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateProcedureNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		// Handler-style procedures always have on_event/on_variant set
 		let on_event = create.on_event.expect("handler must have on_event");
 		let on_variant = create.on_variant.expect("handler must have on_variant");
@@ -77,7 +81,7 @@ impl<'bump> Compiler<'bump> {
 
 		// Verify it's an event type
 		if sumtype_def.kind != SumTypeKind::Event {
-			return Err(reifydb_core::internal_error!(
+			return Err(internal_error!(
 				"'{}' is not an EVENT type. Use CREATE EVENT to declare event types.",
 				event_name
 			));
@@ -86,7 +90,7 @@ impl<'bump> Compiler<'bump> {
 		// Find variant by name → get tag
 		let variant_name = on_variant.text().to_lowercase();
 		let Some(variant_def) = sumtype_def.variants.iter().find(|v| v.name == variant_name) else {
-			return Err(reifydb_core::internal_error!(
+			return Err(internal_error!(
 				"Variant '{}' not found in event type '{}'",
 				on_variant.text(),
 				event_name

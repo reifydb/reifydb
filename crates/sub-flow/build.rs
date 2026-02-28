@@ -1,3 +1,4 @@
+use reifydb_build::emit_target_cfg;
 fn main() {
-	reifydb_build::emit_target_cfg();
+	emit_target_cfg();
 }

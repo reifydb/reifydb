@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use argon2::{Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version};
 use reifydb_core::interface::auth::AuthenticationProvider;
+use reifydb_type::{Result, error::Error};
 
 use crate::error::AuthError;
 
@@ -22,17 +23,15 @@ impl AuthenticationProvider for PasswordProvider {
 		"password"
 	}
 
-	fn create(&self, config: &HashMap<String, String>) -> reifydb_type::Result<HashMap<String, String>> {
-		let password = config
-			.get("password")
-			.ok_or_else(|| reifydb_type::error::Error::from(AuthError::PasswordRequired))?;
+	fn create(&self, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
+		let password = config.get("password").ok_or_else(|| Error::from(AuthError::PasswordRequired))?;
 
 		let argon2 = argon2_instance();
 
 		let phc = argon2
 			.hash_password(password.as_bytes())
 			.map_err(|e| {
-				reifydb_type::error::Error::from(AuthError::HashingFailed {
+				Error::from(AuthError::HashingFailed {
 					reason: e.to_string(),
 				})
 			})?
@@ -41,15 +40,15 @@ impl AuthenticationProvider for PasswordProvider {
 		Ok(HashMap::from([("phc".into(), phc), ("algorithm_version".into(), "1".into())]))
 	}
 
-	fn validate(&self, stored: &HashMap<String, String>, credential: &str) -> reifydb_type::Result<bool> {
+	fn validate(&self, stored: &HashMap<String, String>, credential: &str) -> Result<bool> {
 		let phc_str = stored.get("phc").ok_or_else(|| {
-			reifydb_type::error::Error::from(AuthError::InvalidHash {
+			Error::from(AuthError::InvalidHash {
 				reason: "missing 'phc' field".to_string(),
 			})
 		})?;
 
 		let parsed_hash = PasswordHash::new(phc_str).map_err(|e| {
-			reifydb_type::error::Error::from(AuthError::InvalidHash {
+			Error::from(AuthError::InvalidHash {
 				reason: e.to_string(),
 			})
 		})?;
@@ -59,7 +58,7 @@ impl AuthenticationProvider for PasswordProvider {
 		match argon2.verify_password(credential.as_bytes(), &parsed_hash) {
 			Ok(()) => Ok(true),
 			Err(argon2::password_hash::Error::PasswordInvalid) => Ok(false),
-			Err(e) => Err(reifydb_type::error::Error::from(AuthError::VerificationFailed {
+			Err(e) => Err(Error::from(AuthError::VerificationFailed {
 				reason: e.to_string(),
 			})),
 		}

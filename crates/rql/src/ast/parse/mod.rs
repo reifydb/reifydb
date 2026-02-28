@@ -54,8 +54,12 @@ use Operator::*;
 use Separator::NewLine;
 
 use crate::{
+	Result,
 	ast::{
-		ast::{Ast, AstInfix, AstInline, AstIsVariant, AstStatement, AstSumTypeConstructor, InfixOperator},
+		ast::{
+			Ast, AstBetween, AstInfix, AstInline, AstIsVariant, AstStatement, AstSumTypeConstructor,
+			InfixOperator,
+		},
 		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
 	},
 	bump::{Bump, BumpBox},
@@ -102,7 +106,7 @@ pub fn parse<'bump>(
 	bump: &'bump Bump,
 	source: &'bump str,
 	tokens: Vec<Token<'bump>>,
-) -> crate::Result<Vec<AstStatement<'bump>>> {
+) -> Result<Vec<AstStatement<'bump>>> {
 	let mut parser = Parser::new(bump, source, tokens);
 	parser.parse()
 }
@@ -129,7 +133,7 @@ impl<'bump> Parser<'bump> {
 		self.bump
 	}
 
-	fn parse(&mut self) -> crate::Result<Vec<AstStatement<'bump>>> {
+	fn parse(&mut self) -> Result<Vec<AstStatement<'bump>>> {
 		let mut result = Vec::with_capacity(4);
 		loop {
 			if self.is_eof() {
@@ -142,7 +146,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse a single statement (possibly with pipes)
-	pub(crate) fn parse_statement(&mut self) -> crate::Result<AstStatement<'bump>> {
+	pub(crate) fn parse_statement(&mut self) -> Result<AstStatement<'bump>> {
 		// Check for OUTPUT prefix
 		let is_output = if !self.is_eof() && self.current()?.is_keyword(Keyword::Output) {
 			self.advance()?;
@@ -202,7 +206,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse statement content without handling termination (for use within other constructs)
-	pub(crate) fn parse_statement_content(&mut self) -> crate::Result<AstStatement<'bump>> {
+	pub(crate) fn parse_statement_content(&mut self) -> Result<AstStatement<'bump>> {
 		let mut nodes = Vec::with_capacity(8);
 		let mut has_pipes = false;
 		loop {
@@ -237,7 +241,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> crate::Result<Ast<'bump>> {
+	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> Result<Ast<'bump>> {
 		let mut left = self.parse_primary()?;
 
 		// DDL statements (CREATE, ALTER, DROP, GRANT, REVOKE) cannot be used in infix expressions
@@ -317,7 +321,7 @@ impl<'bump> Parser<'bump> {
 		Ok(left)
 	}
 
-	fn parse_sumtype_constructor(&mut self, infix: AstInfix<'bump>) -> crate::Result<Ast<'bump>> {
+	fn parse_sumtype_constructor(&mut self, infix: AstInfix<'bump>) -> Result<Ast<'bump>> {
 		let variant_name = *infix.right.as_identifier().fragment();
 		let (namespace, sumtype_name) = match infix.left.as_ref() {
 			Ast::Infix(inner)
@@ -345,7 +349,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_sumtype_unit_constructor(&mut self, infix: AstInfix<'bump>) -> crate::Result<Ast<'bump>> {
+	fn parse_sumtype_unit_constructor(&mut self, infix: AstInfix<'bump>) -> Result<Ast<'bump>> {
 		let variant_name = *infix.right.as_identifier().fragment();
 		let Ast::Infix(inner) = infix.left.as_ref() else {
 			unreachable!()
@@ -364,7 +368,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn advance(&mut self) -> crate::Result<Token<'bump>> {
+	pub(crate) fn advance(&mut self) -> Result<Token<'bump>> {
 		if self.position >= self.tokens.len() {
 			return Err(AstError::UnexpectedEof.into());
 		}
@@ -373,12 +377,12 @@ impl<'bump> Parser<'bump> {
 		Ok(token)
 	}
 
-	pub(crate) fn consume(&mut self, expected: TokenKind) -> crate::Result<Token<'bump>> {
+	pub(crate) fn consume(&mut self, expected: TokenKind) -> Result<Token<'bump>> {
 		self.current_expect(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_if(&mut self, expected: TokenKind) -> crate::Result<Option<Token<'bump>>> {
+	pub(crate) fn consume_if(&mut self, expected: TokenKind) -> Result<Option<Token<'bump>>> {
 		if self.is_eof() || self.current()?.kind != expected {
 			return Ok(None);
 		}
@@ -386,7 +390,7 @@ impl<'bump> Parser<'bump> {
 		Ok(Some(self.consume(expected)?))
 	}
 
-	pub(crate) fn consume_while(&mut self, expected: TokenKind) -> crate::Result<()> {
+	pub(crate) fn consume_while(&mut self, expected: TokenKind) -> Result<()> {
 		loop {
 			if self.is_eof() || self.current()?.kind != expected {
 				return Ok(());
@@ -395,24 +399,24 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn consume_literal(&mut self, expected: Literal) -> crate::Result<Token<'bump>> {
+	pub(crate) fn consume_literal(&mut self, expected: Literal) -> Result<Token<'bump>> {
 		self.current_expect_literal(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_operator(&mut self, expected: Operator) -> crate::Result<Token<'bump>> {
+	pub(crate) fn consume_operator(&mut self, expected: Operator) -> Result<Token<'bump>> {
 		self.current_expect_operator(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_keyword(&mut self, expected: Keyword) -> crate::Result<Token<'bump>> {
+	pub(crate) fn consume_keyword(&mut self, expected: Keyword) -> Result<Token<'bump>> {
 		self.current_expect_keyword(expected)?;
 		self.advance()
 	}
 
 	/// Consume a token that is either an Identifier or a Keyword, returning it as an Identifier.
 	/// Used in contexts where a keyword-colliding name (e.g. enum variant `Pending`) should be accepted.
-	pub(crate) fn consume_name(&mut self) -> crate::Result<Token<'bump>> {
+	pub(crate) fn consume_name(&mut self) -> Result<Token<'bump>> {
 		let token = self.advance()?;
 		if matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
 			Ok(Token {
@@ -427,7 +431,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn consume_keyword_as_ident(&mut self) -> crate::Result<Token<'bump>> {
+	pub(crate) fn consume_keyword_as_ident(&mut self) -> Result<Token<'bump>> {
 		let token = self.advance()?;
 		if matches!(token.kind, TokenKind::Keyword(_)) {
 			Ok(Token {
@@ -442,7 +446,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn current(&self) -> crate::Result<Token<'bump>> {
+	pub(crate) fn current(&self) -> Result<Token<'bump>> {
 		if self.position >= self.tokens.len() {
 			return Err(AstError::UnexpectedEof.into());
 		}
@@ -457,7 +461,7 @@ impl<'bump> Parser<'bump> {
 		matches!(self.tokens[self.position + 1].kind, TokenKind::Keyword(k) if k == keyword)
 	}
 
-	pub(crate) fn current_expect(&self, expected: TokenKind) -> crate::Result<()> {
+	pub(crate) fn current_expect(&self, expected: TokenKind) -> Result<()> {
 		let got = self.current()?;
 		if got.kind == expected {
 			Ok(())
@@ -479,19 +483,19 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn current_expect_literal(&self, literal: Literal) -> crate::Result<()> {
+	pub(crate) fn current_expect_literal(&self, literal: Literal) -> Result<()> {
 		self.current_expect(TokenKind::Literal(literal))
 	}
 
-	pub(crate) fn current_expect_operator(&self, operator: Operator) -> crate::Result<()> {
+	pub(crate) fn current_expect_operator(&self, operator: Operator) -> Result<()> {
 		self.current_expect(TokenKind::Operator(operator))
 	}
 
-	pub(crate) fn current_expect_keyword(&self, keyword: Keyword) -> crate::Result<()> {
+	pub(crate) fn current_expect_keyword(&self, keyword: Keyword) -> Result<()> {
 		self.current_expect(TokenKind::Keyword(keyword))
 	}
 
-	pub(crate) fn current_precedence(&self) -> crate::Result<Precedence> {
+	pub(crate) fn current_precedence(&self) -> Result<Precedence> {
 		if self.is_eof() {
 			return Ok(Precedence::None);
 		};
@@ -552,18 +556,18 @@ impl<'bump> Parser<'bump> {
 		false
 	}
 
-	pub(crate) fn skip_new_line(&mut self) -> crate::Result<()> {
+	pub(crate) fn skip_new_line(&mut self) -> Result<()> {
 		self.consume_while(TokenKind::Separator(NewLine))?;
 		Ok(())
 	}
 
-	pub(crate) fn parse_between(&mut self, value: Ast<'bump>) -> crate::Result<crate::ast::ast::AstBetween<'bump>> {
+	pub(crate) fn parse_between(&mut self, value: Ast<'bump>) -> Result<AstBetween<'bump>> {
 		let token = self.consume_keyword(Keyword::Between)?;
 		let lower = BumpBox::new_in(self.parse_node(Precedence::Comparison)?, self.bump());
 		self.consume_operator(Operator::And)?;
 		let upper = BumpBox::new_in(self.parse_node(Precedence::Comparison)?, self.bump());
 
-		Ok(crate::ast::ast::AstBetween {
+		Ok(AstBetween {
 			token,
 			value: BumpBox::new_in(value, self.bump()),
 			lower,
@@ -572,7 +576,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse an IN expression: `value IN [list]` or `value NOT IN [list]`
-	pub(crate) fn parse_in(&mut self, value: Ast<'bump>, negated: bool) -> crate::Result<AstInfix<'bump>> {
+	pub(crate) fn parse_in(&mut self, value: Ast<'bump>, negated: bool) -> Result<AstInfix<'bump>> {
 		// For NOT IN, consume NOT first
 		if negated {
 			self.consume_operator(Operator::Not)?;
@@ -595,7 +599,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse a CONTAINS expression: `value CONTAINS (list)`
-	pub(crate) fn parse_contains(&mut self, value: Ast<'bump>) -> crate::Result<AstInfix<'bump>> {
+	pub(crate) fn parse_contains(&mut self, value: Ast<'bump>) -> Result<AstInfix<'bump>> {
 		let contains_token = self.consume_keyword(Keyword::Contains)?;
 		let right = Ast::List(self.parse_list()?);
 
@@ -608,7 +612,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse an IS expression: `value IS [namespace.]SumType::Variant`
-	pub(crate) fn parse_is(&mut self, left: Ast<'bump>) -> crate::Result<Ast<'bump>> {
+	pub(crate) fn parse_is(&mut self, left: Ast<'bump>) -> Result<Ast<'bump>> {
 		let is_token = self.consume_keyword(Keyword::Is)?;
 
 		let first = self.consume_name()?;
@@ -643,7 +647,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		allow_colon_alias: bool,
 		allow_as_keyword: bool,
-	) -> crate::Result<(Vec<Ast<'bump>>, bool)> {
+	) -> Result<(Vec<Ast<'bump>>, bool)> {
 		let has_braces = self.current()?.is_operator(Operator::OpenCurly);
 
 		if has_braces {
@@ -691,7 +695,7 @@ impl<'bump> Parser<'bump> {
 
 	/// Try to parse "key: expression" syntax and convert it to
 	/// "expression AS key" where key can be identifier, keyword, or string literal
-	pub(crate) fn try_parse_colon_alias(&mut self) -> crate::Result<Ast<'bump>> {
+	pub(crate) fn try_parse_colon_alias(&mut self) -> Result<Ast<'bump>> {
 		// Check if we have enough tokens from current position
 		if self.position + 1 >= self.tokens.len() {
 			return Err(AstError::UnsupportedToken {
@@ -763,8 +767,8 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::Ast,
-			parse::{Parser, Precedence, Precedence::Term},
+			ast::{Ast, AstFrom},
+			parse::{Parser, Precedence, Precedence::Term, parse},
 		},
 		bump::Bump,
 		diagnostic::AstError,
@@ -891,12 +895,12 @@ pub mod tests {
 		// First statement should be the let assignment
 		let first_stmt = &statements[0];
 		assert_eq!(first_stmt.nodes.len(), 1);
-		assert!(matches!(first_stmt.nodes[0], crate::ast::ast::Ast::Let(_)));
+		assert!(matches!(first_stmt.nodes[0], Ast::Let(_)));
 
 		// Second statement should be the FROM
 		let second_stmt = &statements[1];
 		assert_eq!(second_stmt.nodes.len(), 1);
-		assert!(matches!(second_stmt.nodes[0], crate::ast::ast::Ast::From(_)));
+		assert!(matches!(second_stmt.nodes[0], Ast::From(_)));
 	}
 
 	#[test]
@@ -913,12 +917,12 @@ pub mod tests {
 
 		let first_stmt = &statements[0];
 		assert_eq!(first_stmt.nodes.len(), 1);
-		assert!(matches!(first_stmt.nodes[0], crate::ast::ast::Ast::Let(_)));
+		assert!(matches!(first_stmt.nodes[0], Ast::Let(_)));
 
 		let second_stmt = &statements[1];
 		assert_eq!(second_stmt.nodes.len(), 1);
-		if let crate::ast::ast::Ast::From(from_ast) = &second_stmt.nodes[0] {
-			assert!(matches!(from_ast, crate::ast::ast::AstFrom::Variable { .. }));
+		if let Ast::From(from_ast) = &second_stmt.nodes[0] {
+			assert!(matches!(from_ast, AstFrom::Variable { .. }));
 		} else {
 			panic!("Expected FROM statement with variable");
 		}
@@ -1008,7 +1012,7 @@ pub mod tests {
 	fn test_parse_between_expression() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "x BETWEEN 1 AND 10").unwrap().into_iter().collect();
-		let result = crate::ast::parse::parse(&bump, "", tokens).unwrap();
+		let result = parse(&bump, "", tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let between = result[0].first_unchecked().as_between();

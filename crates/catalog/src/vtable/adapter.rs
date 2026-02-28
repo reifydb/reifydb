@@ -16,6 +16,7 @@ use super::{VTable, VTableContext};
 use crate::vtable::user::{
 	UserVTable, UserVTableColumnDef, UserVTableIterator, UserVTablePushdownContext,
 };
+use crate::Result;
 
 /// Adapter that wraps a `UserVTable` into the internal `VTable` trait.
 pub struct UserVTableAdapter<U: UserVTable> {
@@ -36,12 +37,12 @@ impl<U: UserVTable> UserVTableAdapter<U> {
 }
 
 impl<U: UserVTable> VTable for UserVTableAdapter<U> {
-	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -89,7 +90,7 @@ impl<U: UserVTableIterator> UserVTableIteratorAdapter<U> {
 }
 
 impl<U: UserVTableIterator> VTable for UserVTableIteratorAdapter<U> {
-	fn initialize(&mut self, _txn: &mut Transaction<'_>, ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<()> {
 		// Convert internal context to user pushdown context
 		let user_ctx = match ctx {
 			VTableContext::Basic {
@@ -108,7 +109,7 @@ impl<U: UserVTableIterator> VTable for UserVTableIteratorAdapter<U> {
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
 		if !self.initialized {
 			return Ok(None);
 		}

@@ -17,7 +17,10 @@ pub mod deserializer;
 pub mod serialize;
 pub mod serializer;
 
-use reifydb_type::error::{Error, TypeError};
+use reifydb_type::{
+	Result,
+	error::{Error, TypeError},
+};
 
 use crate::util::encoding::keycode::{deserialize::Deserializer, serialize::Serializer};
 
@@ -179,7 +182,7 @@ pub fn serialize<T: Serialize>(key: &T) -> Vec<u8> {
 }
 
 /// Deserializes a key from a binary Keycode representation (Descending order)
-pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> reifydb_type::Result<T> {
+pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> Result<T> {
 	let mut deserializer = Deserializer::from_bytes(input);
 	let t = T::deserialize(&mut deserializer)?;
 	if !deserializer.input.is_empty() {
@@ -200,7 +203,10 @@ pub mod tests {
 	const PI_F32: f32 = std::f32::consts::PI;
 	const PI_F64: f64 = std::f64::consts::PI;
 
-	use reifydb_type::value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64};
+	use reifydb_type::{
+		util::hex::encode,
+		value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64},
+	};
 	use serde_bytes::ByteBuf;
 
 	use super::*;
@@ -228,7 +234,7 @@ pub mod tests {
                 let mut input = $input;
                 let expect = $expect;
                 let output = serialize(&input);
-                assert_eq!(reifydb_type::util::hex::encode(&output), expect, "encode failed");
+                assert_eq!(encode(&output), expect, "encode failed");
 
                 let expect = input;
                 input = deserialize(&output).unwrap();

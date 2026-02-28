@@ -15,6 +15,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	materialized::MaterializedCatalog,
 	store::view::schema::{
 		view,
@@ -22,7 +23,7 @@ use crate::{
 	},
 };
 
-pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = ViewKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 

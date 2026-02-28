@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::{
 		sequence::system::SystemSequence,
 		user_authentication::schema::user_authentication::{ID, METHOD, PROPERTIES, SCHEMA, USER_ID},
@@ -24,7 +24,7 @@ impl CatalogStore {
 		user_id: UserId,
 		method: &str,
 		properties: HashMap<String, String>,
-	) -> crate::Result<UserAuthenticationDef> {
+	) -> Result<UserAuthenticationDef> {
 		let id = SystemSequence::next_user_authentication_id(txn)?;
 
 		// Serialize properties as JSON

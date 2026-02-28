@@ -12,6 +12,7 @@ use reifydb_abi::data::{
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::{
 	fragment::Fragment,
+	util::bitvec::BitVec,
 	value::{
 		blob::Blob,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
@@ -619,7 +620,7 @@ impl Arena {
 	}
 
 	/// Marshal a BitVec (definedness bitmap) to FFI
-	pub(super) fn marshal_bitvec(&mut self, bitvec: &reifydb_type::util::bitvec::BitVec, len: usize) -> BufferFFI {
+	pub(super) fn marshal_bitvec(&mut self, bitvec: &BitVec, len: usize) -> BufferFFI {
 		let byte_count = (len + 7) / 8;
 		let ptr = self.alloc(byte_count);
 		if !ptr.is_null() {
@@ -642,13 +643,13 @@ impl Arena {
 	}
 
 	/// Unmarshal a BitVec (definedness bitmap) from FFI
-	pub(super) fn unmarshal_bitvec(&self, ffi: &BufferFFI, row_count: usize) -> reifydb_type::util::bitvec::BitVec {
+	pub(super) fn unmarshal_bitvec(&self, ffi: &BufferFFI, row_count: usize) -> BitVec {
 		if ffi.is_empty() {
-			return reifydb_type::util::bitvec::BitVec::empty();
+			return BitVec::empty();
 		}
 		unsafe {
 			let bytes = std::slice::from_raw_parts(ffi.ptr, ffi.len);
-			reifydb_type::util::bitvec::BitVec::from_raw(bytes.to_vec(), row_count)
+			BitVec::from_raw(bytes.to_vec(), row_count)
 		}
 	}
 }

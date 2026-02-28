@@ -5,10 +5,10 @@ use reifydb_core::key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumType
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::sumtype::SumTypeId;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_sumtype(txn: &mut AdminTransaction, sumtype: SumTypeId) -> crate::Result<()> {
+	pub(crate) fn drop_sumtype(txn: &mut AdminTransaction, sumtype: SumTypeId) -> Result<()> {
 		// First, find the sumtype to get its namespace
 		if let Some(sumtype_def) = Self::find_sumtype(&mut Transaction::Admin(&mut *txn), sumtype)? {
 			// Remove the namespace-sumtype link (secondary index)

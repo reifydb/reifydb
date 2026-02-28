@@ -4,8 +4,10 @@
 use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
+	Result,
 	ast::{
 		ast::{AstLet, LetValue},
+		identifier::UnqualifiedIdentifier,
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
@@ -13,7 +15,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_let(&mut self) -> crate::Result<AstLet<'bump>> {
+	pub(crate) fn parse_let(&mut self) -> Result<AstLet<'bump>> {
 		let token = self.current()?;
 
 		// Expect 'let' keyword
@@ -54,7 +56,7 @@ impl<'bump> Parser<'bump> {
 
 		// Use the variable token directly but create an identifier with the '$' prefix
 		// The UnqualifiedIdentifier will store the full token but we'll extract the name later
-		let name = crate::ast::identifier::UnqualifiedIdentifier::new(var_token);
+		let name = UnqualifiedIdentifier::new(var_token);
 
 		// Consume the '=' operator
 		self.consume_operator(Operator::Equal)?;
@@ -77,7 +79,7 @@ impl<'bump> Parser<'bump> {
 
 	/// Check if the current token starts a statement (FROM, MAP, EXTEND, etc.)
 	/// Also checks for variables followed by pipes ($var | ...)
-	fn is_statement(&self) -> crate::Result<bool> {
+	fn is_statement(&self) -> Result<bool> {
 		if let Ok(token) = self.current() {
 			Ok(matches!(
 				token.kind,

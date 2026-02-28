@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstAlterSequence},
 		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedColumnPrimitive},
@@ -12,7 +13,7 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_alter_sequence(&self, ast: AstAlterSequence<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_alter_sequence(&self, ast: AstAlterSequence<'bump>) -> Result<LogicalPlan<'bump>> {
 		let namespace = if ast.sequence.namespace.is_empty() {
 			vec![BumpFragment::internal(self.bump, resolver::DEFAULT_NAMESPACE)]
 		} else {

@@ -4,10 +4,10 @@
 use reifydb_transaction::transaction::Transaction;
 use system::ids::sequences::ALL;
 
-use crate::{CatalogStore, store::sequence::Sequence, system};
+use crate::{CatalogStore, Result, store::sequence::Sequence, system};
 
 impl CatalogStore {
-	pub(crate) fn list_sequences(rx: &mut Transaction<'_>) -> crate::Result<Vec<Sequence>> {
+	pub(crate) fn list_sequences(rx: &mut Transaction<'_>) -> Result<Vec<Sequence>> {
 		let mut result = Vec::with_capacity(ALL.len());
 
 		for seq_id in ALL {

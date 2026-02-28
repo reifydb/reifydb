@@ -59,7 +59,7 @@ impl FFIProcedureContext {
 
 	/// Execute an RQL statement within the current transaction
 	pub fn rql(&self, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		crate::procedure::raw_procedure_rql(self, rql, params)
+		raw_procedure_rql(self, rql, params)
 	}
 }
 

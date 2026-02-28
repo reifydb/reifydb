@@ -29,6 +29,7 @@ use reifydb_type::{
 use tracing::instrument;
 
 use crate::{
+	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
@@ -48,7 +49,7 @@ pub(crate) fn delete_series<'a>(
 	params: Params,
 	identity: IdentityId,
 	symbol_table: &SymbolTable,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));

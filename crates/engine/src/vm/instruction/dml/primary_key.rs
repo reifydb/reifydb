@@ -11,13 +11,15 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::r#type::Type;
 
+use crate::Result;
+
 /// Extract primary key values from a encoded and encode them as an index key
 pub fn encode_primary_key(
 	pk_def: &PrimaryKeyDef,
 	row: &EncodedValues,
 	table: &TableDef,
 	schema: &Schema,
-) -> crate::Result<EncodedIndexKey> {
+) -> Result<EncodedIndexKey> {
 	// Create index layout for PK columns
 	let types: Vec<Type> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
 	let directions = vec![SortDirection::Asc; types.len()];
@@ -174,7 +176,7 @@ pub fn get_primary_key(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	table: &TableDef,
-) -> crate::Result<Option<PrimaryKeyDef>> {
+) -> Result<Option<PrimaryKeyDef>> {
 	if let Some(_pk_id) = catalog.get_table_pk_id(txn, table.id)? {
 		catalog.find_primary_key(txn, table.id)
 	} else {

@@ -20,6 +20,8 @@ pub(crate) mod hash;
 pub mod hash_inner;
 pub mod hash_left;
 
+use reifydb_type::Result;
+
 use crate::operator::join::strategy::{hash_inner::InnerHashJoin, hash_left::LeftHashJoin};
 
 pub(crate) enum JoinStrategy {
@@ -44,7 +46,7 @@ impl JoinStrategy {
 		side: JoinSide,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
 				s.handle_insert_undefined(txn, post, row_idx, side, state, operator)
@@ -65,7 +67,7 @@ impl JoinStrategy {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
 				s.handle_remove_undefined(txn, pre, row_idx, side, state, operator, version)
@@ -87,7 +89,7 @@ impl JoinStrategy {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
 				s.handle_update_undefined(txn, pre, post, row_idx, side, state, operator, version)
@@ -108,7 +110,7 @@ impl JoinStrategy {
 		key_hash: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
 				s.handle_insert(txn, post, indices, side, key_hash, state, operator)
@@ -130,7 +132,7 @@ impl JoinStrategy {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
 				s.handle_remove(txn, pre, indices, side, key_hash, state, operator, version)
@@ -154,7 +156,7 @@ impl JoinStrategy {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => s.handle_update(
 				txn, pre, post, indices, side, old_key, new_key, state, operator, version,

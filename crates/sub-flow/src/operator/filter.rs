@@ -22,6 +22,7 @@ use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{
+	Result,
 	params::Params,
 	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
@@ -70,7 +71,7 @@ impl FilterOperator {
 
 	/// Evaluate filter on all rows in Columns
 	/// Returns a boolean mask indicating which rows pass the filter
-	fn evaluate(&self, columns: &Columns) -> reifydb_type::Result<Vec<bool>> {
+	fn evaluate(&self, columns: &Columns) -> Result<Vec<bool>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -145,7 +146,7 @@ impl Operator for FilterOperator {
 		self.node
 	}
 
-	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
@@ -214,7 +215,7 @@ impl Operator for FilterOperator {
 		Ok(Change::from_flow(self.node, change.version, result))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		self.parent.pull(txn, rows)
 	}
 }

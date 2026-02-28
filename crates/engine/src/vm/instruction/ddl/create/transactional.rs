@@ -11,13 +11,13 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{return_error, value::Value};
 
 use super::create_deferred_view_flow;
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_transactional_view(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateTransactionalViewNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	if let Some(view) =
 		services.catalog.find_view_by_name(&mut Transaction::Admin(txn), plan.namespace.id, plan.view.text())?
 	{

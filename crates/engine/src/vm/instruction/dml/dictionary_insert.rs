@@ -18,6 +18,7 @@ use reifydb_type::{
 };
 
 use crate::{
+	Result,
 	policy::PolicyEvaluator,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
@@ -36,7 +37,7 @@ pub(crate) fn insert_dictionary<'a>(
 	plan: InsertDictionaryNode,
 	stack: &mut SymbolTable,
 	identity: IdentityId,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -159,7 +160,7 @@ pub(crate) fn insert_dictionary<'a>(
 }
 
 /// Coerce a value to the dictionary's value_type
-fn coerce_value_to_dictionary_type(value: Value, target_type: Type) -> crate::Result<Value> {
+fn coerce_value_to_dictionary_type(value: Value, target_type: Type) -> Result<Value> {
 	// Simple coercion - for now just validate type matches or do basic conversions
 	match (&value, target_type) {
 		// Exact type match
@@ -194,7 +195,7 @@ fn coerce_value_to_dictionary_type(value: Value, target_type: Type) -> crate::Re
 }
 
 /// Build the ID column based on the dictionary's id_type
-fn build_id_column(ids: &[Value], id_type: Type) -> crate::Result<Column> {
+fn build_id_column(ids: &[Value], id_type: Type) -> Result<Column> {
 	let data = match id_type {
 		Type::Uint1 => {
 			let vals: Vec<u8> = ids
@@ -266,7 +267,7 @@ fn build_id_column(ids: &[Value], id_type: Type) -> crate::Result<Column> {
 }
 
 /// Build the value column based on the dictionary's value_type
-fn build_value_column(values: &[Value], value_type: Type) -> crate::Result<Column> {
+fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 	let data = match value_type {
 		Type::Utf8 => {
 			let vals: Vec<String> = values

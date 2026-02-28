@@ -20,7 +20,7 @@ use reifydb_type::{
 use tracing::instrument;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	catalog::Catalog,
 	store::series::create::{
 		SeriesColumnToCreate as StoreSeriesColumnToCreate, SeriesToCreate as StoreSeriesToCreate,
@@ -73,7 +73,7 @@ impl From<SeriesToCreate> for StoreSeriesToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::series::find", level = "trace", skip(self, txn))]
-	pub fn find_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> crate::Result<Option<SeriesDef>> {
+	pub fn find_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Option<SeriesDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				CatalogStore::find_series(&mut Transaction::Command(&mut *cmd), id)
@@ -91,7 +91,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> crate::Result<Option<SeriesDef>> {
+	) -> Result<Option<SeriesDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				CatalogStore::find_series_by_name(&mut Transaction::Command(&mut *cmd), namespace, name)
@@ -106,7 +106,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::series::get", level = "trace", skip(self, txn))]
-	pub fn get_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> crate::Result<SeriesDef> {
+	pub fn get_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<SeriesDef> {
 		self.find_series(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Series with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -116,7 +116,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::series::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_series(&self, txn: &mut AdminTransaction, to_create: SeriesToCreate) -> crate::Result<SeriesDef> {
+	pub fn create_series(&self, txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<SeriesDef> {
 		let series = CatalogStore::create_series(txn, to_create.into())?;
 		txn.track_series_def_created(series.clone())?;
 
@@ -127,32 +127,24 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::series::drop", level = "debug", skip(self, txn))]
-	pub fn drop_series(&self, txn: &mut AdminTransaction, series: SeriesDef) -> crate::Result<()> {
+	pub fn drop_series(&self, txn: &mut AdminTransaction, series: SeriesDef) -> Result<()> {
 		CatalogStore::drop_series(txn, series.id)?;
 		txn.track_series_def_deleted(series)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::series::list_all", level = "debug", skip(self, txn))]
-	pub fn list_series_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<SeriesDef>> {
+	pub fn list_series_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<SeriesDef>> {
 		CatalogStore::list_series_all(txn)
 	}
 
 	#[instrument(name = "catalog::series::find_metadata", level = "trace", skip(self, txn))]
-	pub fn find_series_metadata(
-		&self,
-		txn: &mut Transaction<'_>,
-		id: SeriesId,
-	) -> crate::Result<Option<SeriesMetadata>> {
+	pub fn find_series_metadata(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Option<SeriesMetadata>> {
 		CatalogStore::find_series_metadata(txn, id)
 	}
 
 	#[instrument(name = "catalog::series::update_metadata_txn", level = "debug", skip(self, txn))]
-	pub fn update_series_metadata_txn(
-		&self,
-		txn: &mut Transaction<'_>,
-		metadata: SeriesMetadata,
-	) -> crate::Result<()> {
+	pub fn update_series_metadata_txn(&self, txn: &mut Transaction<'_>, metadata: SeriesMetadata) -> Result<()> {
 		CatalogStore::update_series_metadata_txn(txn, metadata)
 	}
 }

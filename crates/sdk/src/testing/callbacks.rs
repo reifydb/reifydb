@@ -482,7 +482,7 @@ use reifydb_abi::{
 		rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 	},
 	catalog::{namespace::NamespaceFFI, table::TableFFI},
-	constants::{FFI_END_OF_ITERATION, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
+	constants::{FFI_END_OF_ITERATION, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
 	context::{
 		context::ContextFFI,
 		iterators::{StateIteratorFFI, StoreIteratorFFI},
@@ -558,7 +558,7 @@ extern "C" fn test_rql(
 	_params_len: usize,
 	_result_out: *mut BufferFFI,
 ) -> i32 {
-	reifydb_abi::constants::FFI_ERROR_INTERNAL
+	FFI_ERROR_INTERNAL
 }
 
 // ============================================================================

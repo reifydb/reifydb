@@ -9,6 +9,7 @@ use reifydb_core::{
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
 
+use super::helpers::get_values;
 use crate::testing::state::TestStateStore;
 
 /// Assertions for Change outputs
@@ -209,14 +210,14 @@ impl<'a> RowAssertion<'a> {
 
 	/// Assert the row values match (using the row's layout)
 	pub fn has_values(&self, expected: &[Value]) -> &Self {
-		let actual = super::helpers::get_values(&self.row.schema, &self.row.encoded);
+		let actual = get_values(&self.row.schema, &self.row.encoded);
 		assert_eq!(actual, expected, "Row values mismatch. Expected: {:?}, Actual: {:?}", expected, actual);
 		self
 	}
 
 	/// Assert a specific field value (for named layouts)
 	pub fn has_field(&self, field_name: &str, expected: Value) -> &Self {
-		let values = super::helpers::get_values(&self.row.schema, &self.row.encoded);
+		let values = get_values(&self.row.schema, &self.row.encoded);
 		let field_index =
 			self.row.schema
 				.find_field_index(field_name)
@@ -232,7 +233,7 @@ impl<'a> RowAssertion<'a> {
 
 	/// Get the values from the row
 	pub fn values(&self) -> Vec<Value> {
-		super::helpers::get_values(&self.row.schema, &self.row.encoded)
+		get_values(&self.row.schema, &self.row.encoded)
 	}
 }
 

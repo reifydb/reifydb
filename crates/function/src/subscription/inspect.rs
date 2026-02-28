@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_catalog::find_subscription;
 use reifydb_core::{
 	error::diagnostic::internal::internal,
 	interface::catalog::id::SubscriptionId,
@@ -9,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_type::{error::Error, fragment::Fragment};
 
-use crate::{GeneratorContext, GeneratorFunction};
+use crate::{GeneratorContext, GeneratorFunction, error::GeneratorFunctionResult};
 
 pub struct InspectSubscription;
 
@@ -20,7 +21,7 @@ impl InspectSubscription {
 }
 
 impl GeneratorFunction for InspectSubscription {
-	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::error::GeneratorFunctionResult<Columns> {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
 		let txn = ctx.txn;
 
 		let params = &ctx.params;
@@ -46,7 +47,7 @@ impl GeneratorFunction for InspectSubscription {
 		let subscription_id = SubscriptionId(subscription_id_value);
 
 		// Use catalog function to get subscription definition
-		let subscription_def = reifydb_catalog::find_subscription(txn, subscription_id)?
+		let subscription_def = find_subscription(txn, subscription_id)?
 			.unwrap_or_else(|| panic!("Subscription {} not found", subscription_id));
 
 		// Scan subscription rows

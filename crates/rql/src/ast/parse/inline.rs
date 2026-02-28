@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstInline, AstInlineKeyedValue, AstSumTypeConstructor},
 		parse::{Parser, Precedence},
@@ -18,7 +19,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_inline(&mut self) -> crate::Result<AstInline<'bump>> {
+	pub(crate) fn parse_inline(&mut self) -> Result<AstInline<'bump>> {
 		let token = self.consume_operator(Operator::OpenCurly)?;
 
 		let mut keyed_values = Vec::with_capacity(4);

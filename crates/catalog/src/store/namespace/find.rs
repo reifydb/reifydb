@@ -9,7 +9,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::namespace::{convert_namespace, schema::namespace},
 };
 
@@ -17,7 +17,7 @@ impl CatalogStore {
 	pub(crate) fn find_namespace_by_name(
 		rx: &mut Transaction<'_>,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<NamespaceDef>> {
+	) -> Result<Option<NamespaceDef>> {
 		let name = name.as_ref();
 
 		// Special case for system namespace - hardcoded with fixed ID
@@ -43,7 +43,7 @@ impl CatalogStore {
 		Ok(None)
 	}
 
-	pub(crate) fn find_namespace(rx: &mut Transaction<'_>, id: NamespaceId) -> crate::Result<Option<NamespaceDef>> {
+	pub(crate) fn find_namespace(rx: &mut Transaction<'_>, id: NamespaceId) -> Result<Option<NamespaceDef>> {
 		// Special case for system namespace - hardcoded with fixed ID
 		if id == NamespaceId(1) {
 			return Ok(Some(NamespaceDef::system()));

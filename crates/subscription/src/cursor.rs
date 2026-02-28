@@ -6,6 +6,7 @@
 use reifydb_core::{encoded::key::EncodedKey, interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_type::Result;
 
 use crate::consumer::SubscriptionConsumer;
 
@@ -41,7 +42,7 @@ impl SubscriptionCursor {
 	/// Fetch the next batch of subscription data.
 	///
 	/// Returns `None` if there is no new data available.
-	pub fn next(&mut self) -> reifydb_type::Result<Option<Columns>> {
+	pub fn next(&mut self) -> Result<Option<Columns>> {
 		let sub_id = self.subscription_id;
 		let last_key = self.last_consumed_key.clone();
 		let batch_size = self.batch_size;

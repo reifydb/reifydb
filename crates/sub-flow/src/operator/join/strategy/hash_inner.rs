@@ -3,6 +3,7 @@
 
 use reifydb_core::{common::CommitVersion, interface::change::Diff, value::column::columns::Columns};
 use reifydb_runtime::hash::Hash128;
+use reifydb_type::Result;
 
 use super::hash::{
 	add_to_state_entry_batch, emit_joined_columns_batch, emit_remove_joined_columns_batch,
@@ -28,7 +29,7 @@ impl InnerHashJoin {
 		_side: JoinSide,
 		_state: &mut JoinState,
 		_operator: &JoinOperator,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		// Undefined keys produce no output in inner join
 		Ok(Vec::new())
 	}
@@ -43,7 +44,7 @@ impl InnerHashJoin {
 		_state: &mut JoinState,
 		_operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		// Undefined keys produce no output in inner join
 		Ok(Vec::new())
 	}
@@ -59,7 +60,7 @@ impl InnerHashJoin {
 		_state: &mut JoinState,
 		_operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		// Undefined keys produce no output in inner join
 		Ok(Vec::new())
 	}
@@ -74,7 +75,7 @@ impl InnerHashJoin {
 		key_hash: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -128,7 +129,7 @@ impl InnerHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -195,7 +196,7 @@ impl InnerHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}

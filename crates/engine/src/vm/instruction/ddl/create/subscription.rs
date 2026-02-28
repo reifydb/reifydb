@@ -10,13 +10,13 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
 use super::create_subscription_flow;
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_subscription(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateSubscriptionNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let result = services.catalog.create_subscription(
 		txn,
 		SubscriptionToCreate {

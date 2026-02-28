@@ -14,14 +14,14 @@ use reifydb_type::{
 	error::TypeError, fragment::LazyFragment, storage::DataBitVec, util::bitvec::BitVec, value::r#type::Type,
 };
 
-use crate::expression::context::EvalContext;
+use crate::{Result, expression::context::EvalContext};
 
 pub fn cast_column_data(
 	ctx: &EvalContext,
 	data: &ColumnData,
 	target: Type,
 	lazy_fragment: impl LazyFragment + Clone,
-) -> crate::Result<ColumnData> {
+) -> Result<ColumnData> {
 	// Handle Option-wrapped data: cast the inner data, then re-wrap with the bitvec
 	if let ColumnData::Option {
 		inner,

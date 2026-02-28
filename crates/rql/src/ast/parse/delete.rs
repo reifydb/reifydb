@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstDelete},
 		identifier::UnresolvedPrimitiveIdentifier,
@@ -13,7 +14,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_delete(&mut self) -> crate::Result<AstDelete<'bump>> {
+	pub(crate) fn parse_delete(&mut self) -> Result<AstDelete<'bump>> {
 		let token = self.consume_keyword(Keyword::Delete)?;
 
 		// 1. Parse target (REQUIRED) - namespace.table or just table

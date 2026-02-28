@@ -4,6 +4,8 @@
 use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_type::{fragment::Fragment, util::bitvec::BitVec, value::r#type::Type};
 
+use crate::Result;
+
 /// Returns true if the bitvec is Some and has zero ones (all false = all None).
 fn is_all_none(bv: Option<&BitVec>) -> bool {
 	match bv {
@@ -44,8 +46,8 @@ pub(crate) fn binary_op_unwrap_option(
 	left: &Column,
 	right: &Column,
 	fragment: Fragment,
-	inner: impl FnOnce(&Column, &Column) -> crate::Result<Column>,
-) -> crate::Result<Column> {
+	inner: impl FnOnce(&Column, &Column) -> Result<Column>,
+) -> Result<Column> {
 	let (left_data, left_bv) = left.data().unwrap_option();
 	let (right_data, right_bv) = right.data().unwrap_option();
 
@@ -68,10 +70,7 @@ pub(crate) fn binary_op_unwrap_option(
 	})
 }
 
-pub(crate) fn unary_op_unwrap_option(
-	col: &Column,
-	inner: impl FnOnce(&Column) -> crate::Result<Column>,
-) -> crate::Result<Column> {
+pub(crate) fn unary_op_unwrap_option(col: &Column, inner: impl FnOnce(&Column) -> Result<Column>) -> Result<Column> {
 	let (inner_data, bv) = col.data().unwrap_option();
 
 	// Short-circuit: if all-None, return an all-None result

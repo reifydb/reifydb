@@ -4,6 +4,7 @@
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::ast::AstClosure,
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, DefineClosureNode, LogicalPlan, function::FunctionParameter},
@@ -15,7 +16,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstClosure<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let mut parameters = Vec::new();
 		for param in ast.parameters {
 			let param_name = param.variable.token.fragment;

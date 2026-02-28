@@ -7,10 +7,13 @@ use reifydb_core::{
 	interface::catalog::policy::PolicyTargetType,
 	value::column::{columns::Columns, data::ColumnData},
 };
-use reifydb_policy::evaluate::PolicyEvaluator as PolicyEvaluatorTrait;
+use reifydb_policy::{
+	enforce::{enforce_identity_policy, enforce_session_policy, enforce_write_policies},
+	evaluate::PolicyEvaluator as PolicyEvaluatorTrait,
+};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, value::identity::IdentityId};
+use reifydb_type::{Result, params::Params, value::identity::IdentityId};
 
 use crate::{
 	expression::{
@@ -47,7 +50,7 @@ impl<'a> PolicyEvaluator<'a> {
 		row_columns: &Columns,
 		target_type: PolicyTargetType,
 	) -> Result<()> {
-		reifydb_policy::enforce::enforce_write_policies(
+		enforce_write_policies(
 			&self.services.catalog,
 			tx,
 			identity,
@@ -67,14 +70,7 @@ impl<'a> PolicyEvaluator<'a> {
 		session_type: &str,
 		default_deny: bool,
 	) -> Result<()> {
-		reifydb_policy::enforce::enforce_session_policy(
-			&self.services.catalog,
-			tx,
-			identity,
-			session_type,
-			default_deny,
-			self,
-		)
+		enforce_session_policy(&self.services.catalog, tx, identity, session_type, default_deny, self)
 	}
 
 	pub fn enforce_identity_policy(
@@ -86,7 +82,7 @@ impl<'a> PolicyEvaluator<'a> {
 		operation: &str,
 		target_type: PolicyTargetType,
 	) -> Result<()> {
-		reifydb_policy::enforce::enforce_identity_policy(
+		enforce_identity_policy(
 			&self.services.catalog,
 			tx,
 			identity,
@@ -118,7 +114,7 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 			columns: columns.clone(),
 			row_count,
 			take: None,
-			params: &reifydb_type::params::Params::None,
+			params: &Params::None,
 			symbol_table: self.symbol_table,
 			is_aggregate_context: false,
 			functions: &self.services.functions,

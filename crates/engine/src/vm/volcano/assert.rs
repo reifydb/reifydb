@@ -9,6 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
 use crate::{
+	Result,
 	error::EngineError,
 	expression::{context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -34,14 +35,14 @@ impl AssertNode {
 
 impl QueryNode for AssertNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "AssertNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -134,13 +135,13 @@ impl AssertWithoutInputNode {
 
 impl QueryNode for AssertWithoutInputNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::next")]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		if self.done {
 			return Ok(None);
 		}

@@ -91,12 +91,12 @@ impl RowNumberProvider {
 		&self,
 		ctx: &mut OperatorContext,
 		key: &EncodedKey,
-	) -> reifydb_type::Result<(RowNumber, bool)> {
+	) -> Result<(RowNumber, bool)> {
 		Ok(self.get_or_create_row_numbers_batch(ctx, std::iter::once(key))?.into_iter().next().unwrap())
 	}
 
 	/// Load the current counter value
-	fn load_counter(&self, ctx: &mut OperatorContext) -> reifydb_type::Result<u64> {
+	fn load_counter(&self, ctx: &mut OperatorContext) -> Result<u64> {
 		let key = self.make_counter_key();
 		let internal_key = FlowNodeInternalStateKey::new(self.node, key.as_ref().to_vec());
 		match ctx.state().get(&internal_key.encode())? {

@@ -12,10 +12,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_flow_node(txn: &mut AdminTransaction, node_id: FlowNodeId) -> crate::Result<()> {
+	pub(crate) fn drop_flow_node(txn: &mut AdminTransaction, node_id: FlowNodeId) -> Result<()> {
 		// First, get the node to find the flow ID for index deletion
 		let node = CatalogStore::find_flow_node(&mut Transaction::Admin(&mut *txn), node_id)?;
 

@@ -18,6 +18,7 @@ use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
 use super::Catalog;
+use crate::Result;
 
 impl Catalog {
 	/// Resolve a namespace ID to a fully resolved namespace with identifier
@@ -26,7 +27,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		namespace_id: NamespaceId,
-	) -> crate::Result<ResolvedNamespace> {
+	) -> Result<ResolvedNamespace> {
 		let def = self.get_namespace(txn, namespace_id)?;
 		let ident = Fragment::internal(def.name.clone());
 		Ok(ResolvedNamespace::new(ident, def))
@@ -34,7 +35,7 @@ impl Catalog {
 
 	/// Resolve a table ID to a fully resolved table with namespace and identifiers
 	#[instrument(name = "catalog::resolve::table", level = "trace", skip(self, txn))]
-	pub fn resolve_table(&self, txn: &mut Transaction<'_>, table_id: TableId) -> crate::Result<ResolvedTable> {
+	pub fn resolve_table(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<ResolvedTable> {
 		let table_def = self.get_table(txn, table_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, table_def.namespace)?;
 		let table_ident = Fragment::internal(table_def.name.clone());
@@ -44,7 +45,7 @@ impl Catalog {
 
 	/// Resolve a view ID to a fully resolved view with namespace and identifiers
 	#[instrument(name = "catalog::resolve::view", level = "trace", skip(self, txn))]
-	pub fn resolve_view(&self, txn: &mut Transaction<'_>, view_id: ViewId) -> crate::Result<ResolvedView> {
+	pub fn resolve_view(&self, txn: &mut Transaction<'_>, view_id: ViewId) -> Result<ResolvedView> {
 		let view_def = self.get_view(txn, view_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, view_def.namespace)?;
 		let view_ident = Fragment::internal(view_def.name.clone());
@@ -54,7 +55,7 @@ impl Catalog {
 
 	/// Resolve a flow ID to a fully resolved flow with namespace and identifiers
 	#[instrument(name = "catalog::resolve::flow", level = "trace", skip(self, txn))]
-	pub fn resolve_flow(&self, txn: &mut Transaction<'_>, flow_id: FlowId) -> crate::Result<ResolvedFlow> {
+	pub fn resolve_flow(&self, txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<ResolvedFlow> {
 		let flow_def = self.get_flow(txn, flow_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, flow_def.namespace)?;
 		let flow_ident = Fragment::internal(flow_def.name.clone());
@@ -68,7 +69,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		ringbuffer_id: RingBufferId,
-	) -> crate::Result<ResolvedRingBuffer> {
+	) -> Result<ResolvedRingBuffer> {
 		let ringbuffer_def = self.get_ringbuffer(txn, ringbuffer_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, ringbuffer_def.namespace)?;
 		let ringbuffer_ident = Fragment::internal(ringbuffer_def.name.clone());
@@ -82,7 +83,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace_name: &str,
 		target_name: &str,
-	) -> crate::Result<Vec<String>> {
+	) -> Result<Vec<String>> {
 		let namespace_id = if let Some(ns) = self.find_namespace_by_name(txn, namespace_name)? {
 			ns.id
 		} else {

@@ -53,16 +53,16 @@ impl fmt::Display for FFIError {
 
 impl std::error::Error for FFIError {}
 
-/// Convert FFIError to reifydb_type::error::Error
-impl From<FFIError> for reifydb_type::error::Error {
+/// Convert FFIError to Error
+impl From<FFIError> for Error {
 	fn from(err: FFIError) -> Self {
 		Error(internal!(format!("{}", err)))
 	}
 }
 
-/// Convert reifydb_type::error::Error to FFIError
-impl From<reifydb_type::error::Error> for FFIError {
-	fn from(err: reifydb_type::error::Error) -> Self {
+/// Convert Error to FFIError
+impl From<Error> for FFIError {
+	fn from(err: Error) -> Self {
 		FFIError::Other(err.to_string())
 	}
 }

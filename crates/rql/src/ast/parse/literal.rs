@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{
 			AstLiteral, AstLiteralBoolean, AstLiteralNone, AstLiteralNumber, AstLiteralTemporal,
@@ -13,32 +14,32 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_literal_number(&mut self) -> crate::Result<AstLiteral<'bump>> {
+	pub(crate) fn parse_literal_number(&mut self) -> Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::Number)?;
 		Ok(AstLiteral::Number(AstLiteralNumber(token)))
 	}
 
-	pub(crate) fn parse_literal_text(&mut self) -> crate::Result<AstLiteral<'bump>> {
+	pub(crate) fn parse_literal_text(&mut self) -> Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::Text)?;
 		Ok(AstLiteral::Text(AstLiteralText(token)))
 	}
 
-	pub(crate) fn parse_literal_true(&mut self) -> crate::Result<AstLiteral<'bump>> {
+	pub(crate) fn parse_literal_true(&mut self) -> Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::True)?;
 		Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
 	}
 
-	pub(crate) fn parse_literal_false(&mut self) -> crate::Result<AstLiteral<'bump>> {
+	pub(crate) fn parse_literal_false(&mut self) -> Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::False)?;
 		Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
 	}
 
-	pub(crate) fn parse_literal_none(&mut self) -> crate::Result<AstLiteral<'bump>> {
+	pub(crate) fn parse_literal_none(&mut self) -> Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::None)?;
 		Ok(AstLiteral::None(AstLiteralNone(token)))
 	}
 
-	pub(crate) fn parse_literal_temporal(&mut self) -> crate::Result<AstLiteral<'bump>> {
+	pub(crate) fn parse_literal_temporal(&mut self) -> Result<AstLiteral<'bump>> {
 		let token = self.consume_literal(Literal::Temporal)?;
 		Ok(AstLiteral::Temporal(AstLiteralTemporal(token)))
 	}

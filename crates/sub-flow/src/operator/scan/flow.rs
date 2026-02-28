@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_type::{Result, value::row_number::RowNumber};
 
 use crate::{Operator, transaction::FlowTransaction};
 
@@ -32,11 +32,11 @@ impl Operator for PrimitiveFlowOperator {
 		self.node
 	}
 
-	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		Ok(change)
 	}
 
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
 		// TODO: Implement flow pull
 		unimplemented!()
 	}

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::value::column::columns::Columns;
 
 impl Columns {
-	pub fn take(&mut self, n: usize) -> reifydb_type::Result<()> {
+	pub fn take(&mut self, n: usize) -> Result<()> {
 		// Take the first n encoded numbers
 		if !self.row_numbers.is_empty() {
 			let actual_n = n.min(self.row_numbers.len());
@@ -30,7 +30,7 @@ impl Columns {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_type::value::{Value, r#type::Type};
 
 	use super::*;
 	use crate::value::column::{Column, ColumnData};
@@ -187,8 +187,8 @@ pub mod tests {
 		test_instance.take(2).unwrap();
 
 		assert_eq!(test_instance[0].data().len(), 2);
-		assert_eq!(test_instance[0].data().get_value(0), reifydb_type::value::Value::none());
-		assert_eq!(test_instance[0].data().get_value(1), reifydb_type::value::Value::none());
+		assert_eq!(test_instance[0].data().get_value(0), Value::none());
+		assert_eq!(test_instance[0].data().get_value(1), Value::none());
 	}
 
 	#[test]
@@ -198,7 +198,7 @@ pub mod tests {
 		test_instance.take(3).unwrap();
 
 		assert_eq!(test_instance[0].data().len(), 3);
-		assert_eq!(test_instance[0].data().get_value(0), reifydb_type::value::Value::none());
+		assert_eq!(test_instance[0].data().get_value(0), Value::none());
 	}
 
 	#[test]

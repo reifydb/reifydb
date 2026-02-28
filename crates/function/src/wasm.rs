@@ -4,6 +4,7 @@
 //! WASM scalar function implementation that executes WebAssembly modules as scalar functions
 
 use reifydb_core::value::column::data::ColumnData;
+use reifydb_sdk::marshal::wasm::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 use reifydb_wasm::{Engine, SpawnBinary, module::value::Value, source};
 
@@ -57,7 +58,7 @@ impl ScalarFunction for WasmScalarFunction {
 	}
 
 	fn scalar<'a>(&'a self, ctx: ScalarFunctionContext<'a>) -> ScalarFunctionResult<ColumnData> {
-		let input_bytes = reifydb_sdk::marshal::wasm::marshal_columns_to_bytes(ctx.columns);
+		let input_bytes = marshal_columns_to_bytes(ctx.columns);
 
 		let mut engine = Engine::default();
 		engine.spawn(source::binary::bytes(&self.wasm_bytes))
@@ -100,7 +101,7 @@ impl ScalarFunction for WasmScalarFunction {
 			.map_err(|e| self.err(format!("read output data failed: {:?}", e)))?;
 
 		// Unmarshal as Columns and extract the first column's data
-		let output_columns = reifydb_sdk::marshal::wasm::unmarshal_columns_from_bytes(&output_bytes);
+		let output_columns = unmarshal_columns_from_bytes(&output_bytes);
 
 		match output_columns.first() {
 			Some(col) => Ok(col.data().clone()),

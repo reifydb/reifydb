@@ -28,7 +28,10 @@ use super::{
 	version::{VersionedGetResult, get_at_version},
 	worker::{DropMessage, DropRequest},
 };
-use crate::tier::{EntryKind, EntryKind::Multi, RangeCursor, TierStorage};
+use crate::{
+	Result,
+	tier::{EntryKind, EntryKind::Multi, RangeCursor, TierStorage},
+};
 
 /// Fixed chunk size for internal tier scans.
 /// This is the number of versioned entries fetched per tier per iteration.
@@ -36,7 +39,7 @@ const TIER_SCAN_CHUNK_SIZE: usize = 4096;
 
 impl MultiVersionGet for StandardMultiStore {
 	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>> {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>> {
 		let table = classify_key(key);
 
 		// Try hot tier first
@@ -99,14 +102,14 @@ impl MultiVersionGet for StandardMultiStore {
 
 impl MultiVersionContains for StandardMultiStore {
 	#[instrument(name = "store::multi::contains", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0), ret)]
-	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool> {
+	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
 		Ok(MultiVersionGet::get(self, key, version)?.is_some())
 	}
 }
 
 impl MultiVersionCommit for StandardMultiStore {
 	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
-	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()> {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		// Get the hot storage tier (warm and cold are placeholders for now)
 		let Some(storage) = &self.hot else {
 			return Ok(());
@@ -262,7 +265,7 @@ impl StandardMultiStore {
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch> {
+	) -> Result<MultiVersionBatch> {
 		if cursor.exhausted {
 			return Ok(MultiVersionBatch {
 				items: Vec::new(),
@@ -371,7 +374,7 @@ impl StandardMultiStore {
 		version: CommitVersion,
 		range: &EncodedKeyRange,
 		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
-	) -> crate::Result<bool> {
+	) -> Result<bool> {
 		let batch = storage.range_next(
 			table,
 			cursor,
@@ -464,7 +467,7 @@ impl StandardMultiStore {
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch> {
+	) -> Result<MultiVersionBatch> {
 		if cursor.exhausted {
 			return Ok(MultiVersionBatch {
 				items: Vec::new(),
@@ -574,7 +577,7 @@ impl StandardMultiStore {
 		version: CommitVersion,
 		range: &EncodedKeyRange,
 		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
-	) -> crate::Result<bool> {
+	) -> Result<bool> {
 		let batch = storage.range_rev_next(
 			table,
 			cursor,
@@ -619,7 +622,7 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 		&self,
 		key: &EncodedKey,
 		before_version: CommitVersion,
-	) -> crate::Result<Option<MultiVersionValues>> {
+	) -> Result<Option<MultiVersionValues>> {
 		if before_version.0 == 0 {
 			return Ok(None);
 		}
@@ -659,7 +662,7 @@ pub struct MultiVersionRangeIter {
 }
 
 impl Iterator for MultiVersionRangeIter {
-	type Item = crate::Result<MultiVersionValues>;
+	type Item = Result<MultiVersionValues>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// If we have items in the current batch, return them
@@ -702,7 +705,7 @@ pub struct MultiVersionRangeRevIter {
 }
 
 impl Iterator for MultiVersionRangeRevIter {
-	type Item = crate::Result<MultiVersionValues>;
+	type Item = Result<MultiVersionValues>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// If we have items in the current batch, return them

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::{
+	Result,
 	storage::DataBitVec,
 	util::bitvec::BitVec,
 	value::{
@@ -28,7 +29,7 @@ use crate::{
 };
 
 impl Columns {
-	pub fn append_columns(&mut self, other: Columns) -> reifydb_type::Result<()> {
+	pub fn append_columns(&mut self, other: Columns) -> Result<()> {
 		if self.len() != other.len() {
 			return Err(CoreError::FrameError {
 				message: "mismatched column count".to_string(),
@@ -66,7 +67,7 @@ impl Columns {
 		schema: &Schema,
 		rows: impl IntoIterator<Item = EncodedValues>,
 		row_numbers: Vec<RowNumber>,
-	) -> reifydb_type::Result<()> {
+	) -> Result<()> {
 		if self.len() != schema.field_count() {
 			return Err(CoreError::FrameError {
 				message: format!(
@@ -265,7 +266,7 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_all_defined_from_schema(&mut self, schema: &Schema, row: &EncodedValues) -> reifydb_type::Result<()> {
+	fn append_all_defined_from_schema(&mut self, schema: &Schema, row: &EncodedValues) -> Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = schema.get_field(index).unwrap();
@@ -413,7 +414,7 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_fallback_from_schema(&mut self, schema: &Schema, row: &EncodedValues) -> reifydb_type::Result<()> {
+	fn append_fallback_from_schema(&mut self, schema: &Schema, row: &EncodedValues) -> Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = schema.get_field(index).unwrap();

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackFlowChangeOperations,
-		flow::{FlowDef, FlowId, FlowStatus},
+		flow::{FlowDef, FlowEdgeId, FlowId, FlowNodeId, FlowStatus},
 		id::NamespaceId,
 	},
 	internal,
@@ -17,7 +17,7 @@ use reifydb_type::{error, fragment::Fragment};
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	catalog::Catalog,
 	store::{flow::create::FlowToCreate as StoreFlowToCreate, sequence::flow as flow_sequence},
 };
@@ -41,7 +41,7 @@ impl From<FlowToCreate> for StoreFlowToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::flow::find", level = "trace", skip(self, txn))]
-	pub fn find_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> crate::Result<Option<FlowDef>> {
+	pub fn find_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Option<FlowDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -104,7 +104,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> crate::Result<Option<FlowDef>> {
+	) -> Result<Option<FlowDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -190,7 +190,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::get", level = "trace", skip(self, txn))]
-	pub fn get_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> crate::Result<FlowDef> {
+	pub fn get_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<FlowDef> {
 		self.find_flow(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Flow with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -200,7 +200,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_flow(&self, txn: &mut AdminTransaction, to_create: FlowToCreate) -> crate::Result<FlowDef> {
+	pub fn create_flow(&self, txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<FlowDef> {
 		let flow = CatalogStore::create_flow(txn, to_create.into())?;
 		txn.track_flow_def_created(flow.clone())?;
 		Ok(flow)
@@ -214,31 +214,26 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		to_create: FlowToCreate,
-	) -> crate::Result<FlowDef> {
+	) -> Result<FlowDef> {
 		let flow = CatalogStore::create_flow_with_id(txn, flow_id, to_create.into())?;
 		txn.track_flow_def_created(flow.clone())?;
 		Ok(flow)
 	}
 
 	#[instrument(name = "catalog::flow::drop", level = "debug", skip(self, txn))]
-	pub fn drop_flow(&self, txn: &mut AdminTransaction, flow: FlowDef) -> crate::Result<()> {
+	pub fn drop_flow(&self, txn: &mut AdminTransaction, flow: FlowDef) -> Result<()> {
 		CatalogStore::drop_flow(txn, flow.id)?;
 		txn.track_flow_def_deleted(flow)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::flow::list_all", level = "debug", skip(self, txn))]
-	pub fn list_flows_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<FlowDef>> {
+	pub fn list_flows_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<FlowDef>> {
 		CatalogStore::list_flows_all(txn)
 	}
 
 	#[instrument(name = "catalog::flow::update_name", level = "debug", skip(self, txn))]
-	pub fn update_flow_name(
-		&self,
-		txn: &mut AdminTransaction,
-		flow_id: FlowId,
-		new_name: String,
-	) -> crate::Result<()> {
+	pub fn update_flow_name(&self, txn: &mut AdminTransaction, flow_id: FlowId, new_name: String) -> Result<()> {
 		CatalogStore::update_flow_name(txn, flow_id, new_name)
 	}
 
@@ -248,28 +243,22 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		status: FlowStatus,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		CatalogStore::update_flow_status(txn, flow_id, status)
 	}
 
 	#[instrument(name = "catalog::flow::next_id", level = "trace", skip(self, txn))]
-	pub fn next_flow_id(&self, txn: &mut AdminTransaction) -> crate::Result<FlowId> {
+	pub fn next_flow_id(&self, txn: &mut AdminTransaction) -> Result<FlowId> {
 		flow_sequence::next_flow_id(txn)
 	}
 
 	#[instrument(name = "catalog::flow::next_node_id", level = "trace", skip(self, txn))]
-	pub fn next_flow_node_id(
-		&self,
-		txn: &mut AdminTransaction,
-	) -> crate::Result<reifydb_core::interface::catalog::flow::FlowNodeId> {
+	pub fn next_flow_node_id(&self, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
 		flow_sequence::next_flow_node_id(txn)
 	}
 
 	#[instrument(name = "catalog::flow::next_edge_id", level = "trace", skip(self, txn))]
-	pub fn next_flow_edge_id(
-		&self,
-		txn: &mut AdminTransaction,
-	) -> crate::Result<reifydb_core::interface::catalog::flow::FlowEdgeId> {
+	pub fn next_flow_edge_id(&self, txn: &mut AdminTransaction) -> Result<FlowEdgeId> {
 		flow_sequence::next_flow_edge_id(txn)
 	}
 }

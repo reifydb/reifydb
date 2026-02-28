@@ -12,10 +12,11 @@ use reifydb_core::{
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error, util::cowvec::CowVec};
+use reifydb_type::{error, error::Error, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::{
+	Result,
 	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -38,14 +39,14 @@ impl<'a> SortNode {
 
 impl QueryNode for SortNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 
 		let mut columns_opt: Option<Columns> = None;
@@ -79,7 +80,7 @@ impl QueryNode for SortNode {
 }
 
 impl Transform for SortNode {
-	fn apply(&self, _ctx: &TransformContext, mut columns: Columns) -> reifydb_type::Result<Columns> {
+	fn apply(&self, _ctx: &TransformContext, mut columns: Columns) -> Result<Columns> {
 		let key_refs =
 			self.by.iter()
 				.map(|key| {
@@ -87,9 +88,9 @@ impl Transform for SortNode {
 						.iter()
 						.find(|c| c.name() == key.column.fragment())
 						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-					Ok::<_, reifydb_type::error::Error>((col.data().clone(), key.direction.clone()))
+					Ok::<_, Error>((col.data().clone(), key.direction.clone()))
 				})
-				.collect::<crate::Result<Vec<_>>>()?;
+				.collect::<Result<Vec<_>>>()?;
 
 		let row_count = columns.row_count();
 		let mut indices: Vec<usize> = (0..row_count).collect();

@@ -7,13 +7,13 @@ use reifydb_rql::nodes::CreateSeriesNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_series(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateSeriesNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	services.catalog.create_series(
 		txn,
 		SeriesToCreate {

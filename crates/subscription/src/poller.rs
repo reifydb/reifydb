@@ -9,6 +9,7 @@
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{actor::system::ActorSystem, sync::map::Map};
+use reifydb_type::Result;
 use tracing::{debug, error};
 
 use crate::{
@@ -79,7 +80,7 @@ impl SubscriptionPoller {
 		engine: &StandardEngine,
 		system: &ActorSystem,
 		delivery: &dyn SubscriptionDelivery,
-	) -> reifydb_type::Result<()> {
+	) -> Result<()> {
 		// Get consumption state
 		let consumption_state = match self.states.get(&subscription_id) {
 			Some(state) => state,

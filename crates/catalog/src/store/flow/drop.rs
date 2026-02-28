@@ -13,18 +13,14 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	/// Drop a flow by its name within a namespace.
 	///
 	/// This is useful for cleaning up flows associated with subscriptions,
 	/// where the flow name is derived from the subscription ID.
-	pub(crate) fn drop_flow_by_name(
-		txn: &mut AdminTransaction,
-		namespace: NamespaceId,
-		name: &str,
-	) -> crate::Result<()> {
+	pub(crate) fn drop_flow_by_name(txn: &mut AdminTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
 		// Find the flow by name
 		if let Some(flow) =
 			CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut *txn), namespace, name)?
@@ -34,7 +30,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	pub(crate) fn drop_flow(txn: &mut AdminTransaction, flow_id: FlowId) -> crate::Result<()> {
+	pub(crate) fn drop_flow(txn: &mut AdminTransaction, flow_id: FlowId) -> Result<()> {
 		// Get the flow to find namespace for index deletion
 		let flow_def = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 

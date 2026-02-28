@@ -13,15 +13,18 @@ use reifydb_type::{
 	},
 };
 
-use crate::expression::context::EvalContext;
+use crate::{
+	Result,
+	expression::{context::EvalContext, option::binary_op_unwrap_option},
+};
 
 pub(crate) fn sub_columns(
 	ctx: &EvalContext,
 	left: &Column,
 	right: &Column,
 	fragment: impl LazyFragment + Copy,
-) -> crate::Result<Column> {
-	crate::expression::option::binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
+) -> Result<Column> {
+	binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let target = Type::promote(left.get_type(), right.get_type());
 
 		dispatch_arith!(
@@ -59,7 +62,7 @@ fn sub_numeric<'a, L, R>(
 	r: &NumberContainer<R>,
 	target: Type,
 	fragment: impl LazyFragment + Copy,
-) -> crate::Result<Column>
+) -> Result<Column>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -91,7 +94,7 @@ fn sub_numeric_clone<'a, L, R>(
 	r: &NumberContainer<R>,
 	target: Type,
 	fragment: impl LazyFragment + Copy,
-) -> crate::Result<Column>
+) -> Result<Column>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,

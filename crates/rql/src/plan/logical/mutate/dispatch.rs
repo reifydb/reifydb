@@ -4,6 +4,7 @@
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::ast::AstDispatch,
 	bump::BumpBox,
 	expression::ExpressionCompiler,
@@ -15,7 +16,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstDispatch<'bump>,
 		_tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let mut fields = Vec::with_capacity(ast.fields.len());
 		for (name, expr_box) in ast.fields {
 			let expr = ExpressionCompiler::compile(BumpBox::into_inner(expr_box))?;

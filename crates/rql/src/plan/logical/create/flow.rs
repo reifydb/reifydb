@@ -4,6 +4,7 @@
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::ast::AstCreateFlow,
 	plan::logical::{Compiler, CreateFlowNode, LogicalPlan},
 };
@@ -13,7 +14,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateFlow<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		// Use the flow identifier directly from AST
 		let flow = ast.flow;
 

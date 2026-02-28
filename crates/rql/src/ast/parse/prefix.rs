@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator},
 		parse::{Parser, Precedence},
@@ -15,7 +16,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_prefix(&mut self) -> crate::Result<Ast<'bump>> {
+	pub(crate) fn parse_prefix(&mut self) -> Result<Ast<'bump>> {
 		let operator = self.parse_prefix_operator()?;
 
 		// Determine precedence based on operator type
@@ -47,7 +48,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_prefix_operator(&mut self) -> crate::Result<AstPrefixOperator<'bump>> {
+	fn parse_prefix_operator(&mut self) -> Result<AstPrefixOperator<'bump>> {
 		let token = self.advance()?;
 		match token.kind {
 			TokenKind::Operator(operator) => match operator {

@@ -4,10 +4,11 @@
 use std::fmt::Write;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::common::JoinType;
+use reifydb_core::{common::JoinType, interface::resolved::ResolvedPrimitive};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::parse_str,
 	bump::Bump,
 	nodes::AlterSequenceNode,
@@ -21,7 +22,7 @@ use crate::{
 	},
 };
 
-pub fn explain_physical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query: &str) -> crate::Result<String> {
+pub fn explain_physical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query: &str) -> Result<String> {
 	let bump = Bump::new();
 	let statements = parse_str(&bump, query)?;
 
@@ -684,18 +685,10 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 
 		PhysicalPlan::RowPointLookup(lookup) => {
 			let source_name = match &lookup.source {
-				reifydb_core::interface::resolved::ResolvedPrimitive::Table(t) => {
-					t.identifier().text().to_string()
-				}
-				reifydb_core::interface::resolved::ResolvedPrimitive::View(v) => {
-					v.identifier().text().to_string()
-				}
-				reifydb_core::interface::resolved::ResolvedPrimitive::RingBuffer(rb) => {
-					rb.identifier().text().to_string()
-				}
-				reifydb_core::interface::resolved::ResolvedPrimitive::Flow(f) => {
-					f.identifier().text().to_string()
-				}
+				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
+				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
+				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
+				ResolvedPrimitive::Flow(f) => f.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			write_node_header(
@@ -708,18 +701,10 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 
 		PhysicalPlan::RowListLookup(lookup) => {
 			let source_name = match &lookup.source {
-				reifydb_core::interface::resolved::ResolvedPrimitive::Table(t) => {
-					t.identifier().text().to_string()
-				}
-				reifydb_core::interface::resolved::ResolvedPrimitive::View(v) => {
-					v.identifier().text().to_string()
-				}
-				reifydb_core::interface::resolved::ResolvedPrimitive::RingBuffer(rb) => {
-					rb.identifier().text().to_string()
-				}
-				reifydb_core::interface::resolved::ResolvedPrimitive::Flow(f) => {
-					f.identifier().text().to_string()
-				}
+				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
+				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
+				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
+				ResolvedPrimitive::Flow(f) => f.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			let rows_str = lookup.row_numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ");
@@ -733,18 +718,10 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 
 		PhysicalPlan::RowRangeScan(scan) => {
 			let source_name = match &scan.source {
-				reifydb_core::interface::resolved::ResolvedPrimitive::Table(t) => {
-					t.identifier().text().to_string()
-				}
-				reifydb_core::interface::resolved::ResolvedPrimitive::View(v) => {
-					v.identifier().text().to_string()
-				}
-				reifydb_core::interface::resolved::ResolvedPrimitive::RingBuffer(rb) => {
-					rb.identifier().text().to_string()
-				}
-				reifydb_core::interface::resolved::ResolvedPrimitive::Flow(f) => {
-					f.identifier().text().to_string()
-				}
+				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
+				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
+				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
+				ResolvedPrimitive::Flow(f) => f.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			write_node_header(

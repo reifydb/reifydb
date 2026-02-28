@@ -8,6 +8,7 @@ use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
 use crate::{
+	Result,
 	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -30,14 +31,14 @@ impl ApplyTransformNode {
 
 impl QueryNode for ApplyTransformNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::apply_transform::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::apply_transform::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "ApplyTransformNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 

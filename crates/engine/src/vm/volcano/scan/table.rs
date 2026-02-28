@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, schema::Schema},
+	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
 	error::diagnostic,
 	interface::{catalog::dictionary::DictionaryDef, resolved::ResolvedTable},
 	key::{
@@ -20,7 +20,11 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, fragment::Fragment, util::cowvec::CowVec, value::r#type::Type};
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use super::super::decode_dictionary_columns;
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub(crate) struct TableScanNode {
 	table: ResolvedTable,
@@ -37,7 +41,7 @@ pub(crate) struct TableScanNode {
 }
 
 impl TableScanNode {
-	pub fn new(table: ResolvedTable, context: Arc<QueryContext>, rx: &mut Transaction<'_>) -> crate::Result<Self> {
+	pub fn new(table: ResolvedTable, context: Arc<QueryContext>, rx: &mut Transaction<'_>) -> Result<Self> {
 		// Look up dictionaries and build storage types
 		let mut storage_types = Vec::with_capacity(table.columns().len());
 		let mut dictionaries = Vec::with_capacity(table.columns().len());
@@ -74,11 +78,7 @@ impl TableScanNode {
 		})
 	}
 
-	fn get_or_load_schema<'a>(
-		&mut self,
-		rx: &mut Transaction<'a>,
-		first_row: &reifydb_core::encoded::encoded::EncodedValues,
-	) -> crate::Result<Schema> {
+	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedValues) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -102,13 +102,13 @@ impl TableScanNode {
 
 impl QueryNode for TableScanNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::initialize")]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "TableScanNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -176,7 +176,7 @@ impl QueryNode for TableScanNode {
 		// Restore row numbers (they get cleared during column transformation)
 		columns.row_numbers = CowVec::new(row_numbers);
 
-		super::super::decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
+		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
 
 		Ok(Some(columns))
 	}
@@ -186,11 +186,7 @@ impl QueryNode for TableScanNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::next_lazy")]
-	fn next_lazy<'a>(
-		&mut self,
-		rx: &mut Transaction<'a>,
-		_ctx: &mut QueryContext,
-	) -> crate::Result<Option<LazyBatch>> {
+	fn next_lazy<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<LazyBatch>> {
 		debug_assert!(self.context.is_some(), "TableScanNode::next_lazy() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 

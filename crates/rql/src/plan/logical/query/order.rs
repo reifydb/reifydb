@@ -4,12 +4,13 @@
 use reifydb_core::sort::{SortDirection, SortKey};
 
 use crate::{
+	Result,
 	ast::ast::AstSort,
 	plan::logical::{Compiler, LogicalPlan, OrderNode},
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_sort(&self, ast: AstSort<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_sort(&self, ast: AstSort<'bump>) -> Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::Order(OrderNode {
 			by: ast.columns
 				.into_iter()

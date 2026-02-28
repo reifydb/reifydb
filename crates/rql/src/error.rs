@@ -934,7 +934,7 @@ impl fmt::Display for SchemaNotFoundError {
 pub struct PrimitiveNotFoundError {
 	pub namespace: String,
 	pub name: String,
-	pub fragment: reifydb_type::fragment::Fragment,
+	pub fragment: Fragment,
 }
 
 impl fmt::Display for PrimitiveNotFoundError {
@@ -949,12 +949,7 @@ impl fmt::Display for PrimitiveNotFoundError {
 
 impl PrimitiveNotFoundError {
 	/// Create error with additional context about what type was expected
-	pub fn with_expected_type(
-		namespace: String,
-		name: String,
-		_expected: &str,
-		fragment: reifydb_type::fragment::Fragment,
-	) -> Self {
+	pub fn with_expected_type(namespace: String, name: String, _expected: &str, fragment: Fragment) -> Self {
 		// Could extend this to include expected type in the error
 		Self {
 			namespace,
@@ -1008,8 +1003,8 @@ impl fmt::Display for FunctionNotFoundError {
 }
 
 /// Check if a fragment represents an injected default namespace
-pub fn is_default_namespace(fragment: &reifydb_type::fragment::Fragment) -> bool {
-	matches!(fragment, reifydb_type::fragment::Fragment::Internal { .. })
+pub fn is_default_namespace(fragment: &Fragment) -> bool {
+	matches!(fragment, Fragment::Internal { .. })
 }
 
 #[cfg(test)]
@@ -1029,14 +1024,14 @@ pub mod tests {
 		let err = PrimitiveNotFoundError {
 			namespace: "public".to_string(),
 			name: "users".to_string(),
-			fragment: reifydb_type::fragment::Fragment::None,
+			fragment: Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'users' does not exist");
 
 		let err = PrimitiveNotFoundError {
 			namespace: "myschema".to_string(),
 			name: "users".to_string(),
-			fragment: reifydb_type::fragment::Fragment::None,
+			fragment: Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'myschema::users' does not exist");
 	}

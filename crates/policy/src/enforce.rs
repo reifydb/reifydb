@@ -5,6 +5,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{interface::catalog::policy::PolicyTargetType, value::column::columns::Columns};
 use reifydb_rql::{
 	ast::{ast::Ast, parse_str},
+	bump::BumpBox,
 	expression::ExpressionCompiler,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -59,11 +60,11 @@ pub fn enforce_write_policies(
 			for node in stmt.nodes {
 				let condition_expr = match node {
 					Ast::Require(req) => {
-						let body = reifydb_rql::bump::BumpBox::into_inner(req.body);
+						let body = BumpBox::into_inner(req.body);
 						ExpressionCompiler::compile(body)?
 					}
 					Ast::Filter(filter) => {
-						let body = reifydb_rql::bump::BumpBox::into_inner(filter.node);
+						let body = BumpBox::into_inner(filter.node);
 						ExpressionCompiler::compile(body)?
 					}
 					_ => continue,
@@ -139,11 +140,11 @@ pub fn enforce_session_policy(
 			for node in stmt.nodes {
 				let condition_expr = match node {
 					Ast::Require(req) => {
-						let body = reifydb_rql::bump::BumpBox::into_inner(req.body);
+						let body = BumpBox::into_inner(req.body);
 						ExpressionCompiler::compile(body)?
 					}
 					Ast::Filter(filter) => {
-						let body = reifydb_rql::bump::BumpBox::into_inner(filter.node);
+						let body = BumpBox::into_inner(filter.node);
 						ExpressionCompiler::compile(body)?
 					}
 					_ => continue,
@@ -213,11 +214,11 @@ pub fn enforce_identity_policy(
 			for node in stmt.nodes {
 				let condition_expr = match node {
 					Ast::Require(req) => {
-						let body = reifydb_rql::bump::BumpBox::into_inner(req.body);
+						let body = BumpBox::into_inner(req.body);
 						ExpressionCompiler::compile(body)?
 					}
 					Ast::Filter(filter) => {
-						let body = reifydb_rql::bump::BumpBox::into_inner(filter.node);
+						let body = BumpBox::into_inner(filter.node);
 						ExpressionCompiler::compile(body)?
 					}
 					_ => continue,

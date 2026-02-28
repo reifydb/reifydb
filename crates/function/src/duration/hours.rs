@@ -4,7 +4,11 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::temporal::TemporalContainer, duration::Duration, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct DurationHours;
 
@@ -45,7 +49,7 @@ fn is_integer_type(data: &ColumnData) -> bool {
 }
 
 impl ScalarFunction for DurationHours {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}

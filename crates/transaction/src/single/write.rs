@@ -8,7 +8,10 @@ use reifydb_core::interface::store::{
 	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionValues,
 };
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockWriteGuard};
-use reifydb_type::util::{cowvec::CowVec, hex};
+use reifydb_type::{
+	Result,
+	util::{cowvec::CowVec, hex},
+};
 
 use super::*;
 use crate::error::TransactionError;
@@ -72,7 +75,7 @@ impl<'a> SingleWriteTransaction<'a> {
 	}
 
 	#[inline]
-	fn check_key_allowed(&self, key: &EncodedKey) -> reifydb_type::Result<()> {
+	fn check_key_allowed(&self, key: &EncodedKey) -> Result<()> {
 		if self.keys.iter().any(|k| k == key) {
 			Ok(())
 		} else {
@@ -83,7 +86,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> reifydb_type::Result<Option<SingleVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -113,7 +116,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		SingleVersionGet::get(&store, key)
 	}
 
-	pub fn contains_key(&mut self, key: &EncodedKey) -> reifydb_type::Result<bool> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -138,7 +141,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		SingleVersionContains::contains(&store, key)
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> reifydb_type::Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		self.check_key_allowed(key)?;
 
 		let delta = Delta::Set {
@@ -149,7 +152,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> reifydb_type::Result<()> {
+	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		self.check_key_allowed(key)?;
 
 		self.pending.insert(
@@ -162,7 +165,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn remove(&mut self, key: &EncodedKey) -> reifydb_type::Result<()> {
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_key_allowed(key)?;
 
 		self.pending.insert(
@@ -174,7 +177,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn commit(&mut self) -> reifydb_type::Result<()> {
+	pub fn commit(&mut self) -> Result<()> {
 		let deltas: Vec<Delta> = take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
 		if !deltas.is_empty() {
@@ -186,7 +189,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn rollback(&mut self) -> reifydb_type::Result<()> {
+	pub fn rollback(&mut self) -> Result<()> {
 		self.pending.clear();
 		self.completed = true;
 		Ok(())

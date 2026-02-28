@@ -12,6 +12,7 @@ use reifydb_runtime::clock::Clock;
 use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 use crate::{
+	Result,
 	expression::{cast::cast_column_data, context::EvalContext},
 	vm::stack::SymbolTable,
 };
@@ -21,7 +22,7 @@ pub(super) fn coerce_columns(
 	column_data: &[ColumnData],
 	columns: &[ColumnDef],
 	num_rows: usize,
-) -> crate::Result<Vec<ColumnData>> {
+) -> Result<Vec<ColumnData>> {
 	let ctx = EvalContext {
 		target: None,
 		columns: Columns::empty(),

@@ -6,6 +6,7 @@
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_type::Result;
 
 use crate::{config::OtelConfig, subsystem::OtelSubsystem};
 
@@ -35,7 +36,7 @@ impl OtelSubsystemFactory {
 }
 
 impl SubsystemFactory for OtelSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		if let Some(subsystem) = self.subsystem {
 			// Subsystem already created and started
 			Ok(Box::new(subsystem))

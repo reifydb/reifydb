@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
+use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer};
 
 impl CatalogStore {
 	/// Get the primary key ID for a ring buffer
@@ -15,7 +15,7 @@ impl CatalogStore {
 	pub(crate) fn get_ringbuffer_pk_id(
 		rx: &mut Transaction<'_>,
 		ringbuffer_id: RingBufferId,
-	) -> crate::Result<Option<PrimaryKeyId>> {
+	) -> Result<Option<PrimaryKeyId>> {
 		let multi = match rx.get(&RingBufferKey::encoded(ringbuffer_id))? {
 			Some(v) => v,
 			None => return Ok(None),

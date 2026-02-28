@@ -18,9 +18,9 @@ use reifydb_type::{
 	},
 };
 
-use crate::error::CastError;
+use crate::{Result, error::CastError};
 
-pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	if let ColumnData::Utf8 {
 		container,
 		..
@@ -55,10 +55,7 @@ pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 macro_rules! impl_to_temporal {
 	($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
 		#[inline]
-		fn $fn_name<'a>(
-			container: &Utf8Container,
-			lazy_fragment: impl LazyFragment,
-		) -> crate::Result<ColumnData> {
+		fn $fn_name<'a>(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 			let mut out = ColumnData::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {

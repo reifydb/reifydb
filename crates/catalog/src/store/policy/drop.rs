@@ -7,10 +7,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_policy(txn: &mut AdminTransaction, policy: PolicyId) -> crate::Result<()> {
+	pub(crate) fn drop_policy(txn: &mut AdminTransaction, policy: PolicyId) -> Result<()> {
 		// Remove all operation rows for this policy
 		{
 			let range = PolicyOpKey::policy_scan(policy);

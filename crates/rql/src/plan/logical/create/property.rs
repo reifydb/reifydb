@@ -5,6 +5,7 @@ use reifydb_core::interface::catalog::property::{ColumnPropertyKind, ColumnSatur
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::ast::{AstColumnPropertyKind, AstCreateColumnProperty},
 	plan::logical::{Compiler, CreateColumnPropertyNode, LogicalPlan},
 };
@@ -14,7 +15,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateColumnProperty<'bump>,
 		_tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let properties = ast
 			.properties
 			.iter()

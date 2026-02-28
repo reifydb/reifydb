@@ -9,13 +9,14 @@ use reifydb_core::{
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use super::encode_retention_policy;
+use crate::Result;
 
 /// Store a retention policy for a source (table, view, or ring buffer)
 pub(crate) fn create_primitive_retention_policy(
 	txn: &mut AdminTransaction,
 	source: PrimitiveId,
 	retention_policy: &RetentionPolicy,
-) -> crate::Result<()> {
+) -> Result<()> {
 	let value = encode_retention_policy(retention_policy);
 
 	txn.set(&PrimitiveRetentionPolicyKey::encoded(source), value)?;
@@ -27,7 +28,7 @@ pub(crate) fn _create_operator_retention_policy(
 	txn: &mut AdminTransaction,
 	operator: FlowNodeId,
 	retention_policy: &RetentionPolicy,
-) -> crate::Result<()> {
+) -> Result<()> {
 	let value = encode_retention_policy(retention_policy);
 
 	txn.set(&OperatorRetentionPolicyKey::encoded(operator), value)?;

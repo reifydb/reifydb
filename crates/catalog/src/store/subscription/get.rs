@@ -8,13 +8,13 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn get_subscription(
 		rx: &mut Transaction<'_>,
 		subscription: SubscriptionId,
-	) -> crate::Result<SubscriptionDef> {
+	) -> Result<SubscriptionDef> {
 		CatalogStore::find_subscription(rx, subscription)?.ok_or_else(|| {
 			Error(internal!(
 				"Subscription with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

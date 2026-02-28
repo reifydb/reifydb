@@ -6,13 +6,9 @@ use reifydb_rql::nodes::AlterPolicyNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
-pub(crate) fn alter_policy(
-	services: &Services,
-	txn: &mut AdminTransaction,
-	plan: AlterPolicyNode,
-) -> crate::Result<Columns> {
+pub(crate) fn alter_policy(services: &Services, txn: &mut AdminTransaction, plan: AlterPolicyNode) -> Result<Columns> {
 	let name = plan.name.text();
 
 	let policy = services.catalog.get_policy_by_name(&mut Transaction::Admin(&mut *txn), name)?;

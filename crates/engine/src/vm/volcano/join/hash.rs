@@ -18,6 +18,7 @@ use super::common::{
 	resolve_column_names,
 };
 use crate::{
+	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
 		context::CompileContext,
@@ -200,7 +201,7 @@ impl HashJoinNode {
 	}
 
 	/// Build phase: materialize the right side into a hash table.
-	fn build<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<()> {
+	fn build<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<()> {
 		let build_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 		let right_width = build_columns.len();
 
@@ -302,7 +303,7 @@ fn compute_matches_for_probe_row(
 
 impl QueryNode for HashJoinNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
@@ -310,7 +311,7 @@ impl QueryNode for HashJoinNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_initialized(), "HashJoinNode::next() called before initialize()");
 
 		// Build phase (first call)

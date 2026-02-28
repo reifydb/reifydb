@@ -11,7 +11,7 @@ use reifydb_type::{Result, fragment::Fragment, value::Value};
 
 use crate::{
 	ast::parse_str,
-	bump::{Bump, BumpVec},
+	bump::{Bump, BumpBox, BumpVec},
 	error::RqlError,
 	expression::{Expression, ParameterExpression, PrefixOperator},
 	instruction::{Addr, CompiledClosureDef, CompiledFunctionDef, Instruction, ScopeType},
@@ -280,80 +280,68 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 
 		// Nodes with recursive children — materialize BumpBox to Box
 		PhysicalPlan::Aggregate(node) => QueryPlan::Aggregate(nodes::AggregateNode {
-			input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 			by: node.by,
 			map: node.map,
 		}),
 		PhysicalPlan::Distinct(node) => QueryPlan::Distinct(nodes::DistinctNode {
-			input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 			columns: node.columns,
 		}),
 		PhysicalPlan::Assert(node) => QueryPlan::Assert(nodes::AssertNode {
-			input: node
-				.input
-				.map(|i| Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))),
+			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 			conditions: node.conditions,
 			message: node.message,
 		}),
 		PhysicalPlan::Filter(node) => QueryPlan::Filter(nodes::FilterNode {
-			input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 			conditions: node.conditions,
 		}),
 		PhysicalPlan::JoinInner(node) => QueryPlan::JoinInner(nodes::JoinInnerNode {
-			left: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.left))),
-			right: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.right))),
+			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))),
+			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))),
 			on: node.on,
 			alias: node.alias,
 		}),
 		PhysicalPlan::JoinLeft(node) => QueryPlan::JoinLeft(nodes::JoinLeftNode {
-			left: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.left))),
-			right: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.right))),
+			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))),
+			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))),
 			on: node.on,
 			alias: node.alias,
 		}),
 		PhysicalPlan::JoinNatural(node) => QueryPlan::JoinNatural(nodes::JoinNaturalNode {
-			left: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.left))),
-			right: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.right))),
+			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))),
+			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))),
 			join_type: node.join_type,
 			alias: node.alias,
 		}),
 		PhysicalPlan::Take(node) => QueryPlan::Take(nodes::TakeNode {
-			input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 			take: node.take,
 		}),
 		PhysicalPlan::Sort(node) => QueryPlan::Sort(nodes::SortNode {
-			input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 			by: node.by,
 		}),
 		PhysicalPlan::Map(node) => QueryPlan::Map(nodes::MapNode {
-			input: node
-				.input
-				.map(|i| Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))),
+			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 			map: node.map,
 		}),
 		PhysicalPlan::Extend(node) => QueryPlan::Extend(nodes::ExtendNode {
-			input: node
-				.input
-				.map(|i| Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))),
+			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 			extend: node.extend,
 		}),
 		PhysicalPlan::Patch(node) => QueryPlan::Patch(nodes::PatchNode {
-			input: node
-				.input
-				.map(|i| Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))),
+			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 			assignments: node.assignments,
 		}),
 		PhysicalPlan::Apply(node) => QueryPlan::Apply(nodes::ApplyNode {
-			input: node
-				.input
-				.map(|i| Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))),
+			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 			operator: node.operator,
 			expressions: node.expressions,
 		}),
 		PhysicalPlan::Window(node) => QueryPlan::Window(nodes::WindowNode {
-			input: node
-				.input
-				.map(|i| Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))),
+			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 			window_type: node.window_type,
 			size: node.size,
 			slide: node.slide,
@@ -364,7 +352,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			max_window_age: node.max_window_age,
 		}),
 		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
-			input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 			fragment: node.fragment,
 		}),
 
@@ -372,8 +360,8 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			left,
 			right,
 		}) => QueryPlan::Append(nodes::AppendQueryNode {
-			left: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(left))),
-			right: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(right))),
+			left: Box::new(materialize_query_plan(BumpBox::into_inner(left))),
+			right: Box::new(materialize_query_plan(BumpBox::into_inner(right))),
 		}),
 
 		// Non-query nodes cannot be materialized to QueryPlan
@@ -942,7 +930,7 @@ impl InstructionCompiler {
 					view: node.view,
 					if_not_exists: node.if_not_exists,
 					columns: node.columns,
-					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
 						node.as_clause,
 					))),
 				}));
@@ -954,7 +942,7 @@ impl InstructionCompiler {
 					view: node.view,
 					if_not_exists: node.if_not_exists,
 					columns: node.columns,
-					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
 						node.as_clause,
 					))),
 				}));
@@ -965,7 +953,7 @@ impl InstructionCompiler {
 					namespace: node.namespace,
 					flow: node.flow,
 					if_not_exists: node.if_not_exists,
-					as_clause: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
+					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
 						node.as_clause,
 					))),
 				}));
@@ -974,9 +962,9 @@ impl InstructionCompiler {
 			PhysicalPlan::CreateSubscription(node) => {
 				self.emit(Instruction::CreateSubscription(nodes::CreateSubscriptionNode {
 					columns: node.columns,
-					as_clause: node.as_clause.map(|a| {
-						Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(a)))
-					}),
+					as_clause: node
+						.as_clause
+						.map(|a| Box::new(materialize_query_plan(BumpBox::into_inner(a)))),
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -992,9 +980,9 @@ impl InstructionCompiler {
 						physical::AlterFlowAction::SetQuery {
 							query,
 						} => nodes::AlterFlowAction::SetQuery {
-							query: Box::new(materialize_query_plan(
-								crate::bump::BumpBox::into_inner(query),
-							)),
+							query: Box::new(materialize_query_plan(BumpBox::into_inner(
+								query,
+							))),
 						},
 						physical::AlterFlowAction::Pause => nodes::AlterFlowAction::Pause,
 						physical::AlterFlowAction::Resume => nodes::AlterFlowAction::Resume,
@@ -1033,90 +1021,76 @@ impl InstructionCompiler {
 			// DML — materialize query subtrees inline
 			PhysicalPlan::Delete(node) => {
 				self.emit(Instruction::Delete(nodes::DeleteTableNode {
-					input: node.input.map(|i| {
-						Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))
-					}),
+					input: node
+						.input
+						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::DeleteRingBuffer(node) => {
 				self.emit(Instruction::DeleteRingBuffer(nodes::DeleteRingBufferNode {
-					input: node.input.map(|i| {
-						Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))
-					}),
+					input: node
+						.input
+						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::InsertTable(node) => {
 				self.emit(Instruction::InsertTable(nodes::InsertTableNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
-						node.input,
-					))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::InsertRingBuffer(node) => {
 				self.emit(Instruction::InsertRingBuffer(nodes::InsertRingBufferNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
-						node.input,
-					))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::InsertDictionary(node) => {
 				self.emit(Instruction::InsertDictionary(nodes::InsertDictionaryNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
-						node.input,
-					))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::InsertSeries(node) => {
 				self.emit(Instruction::InsertSeries(nodes::InsertSeriesNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
-						node.input,
-					))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::DeleteSeries(node) => {
 				self.emit(Instruction::DeleteSeries(nodes::DeleteSeriesNode {
-					input: node.input.map(|i| {
-						Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(i)))
-					}),
+					input: node
+						.input
+						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Update(node) => {
 				self.emit(Instruction::Update(nodes::UpdateTableNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
-						node.input,
-					))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::UpdateRingBuffer(node) => {
 				self.emit(Instruction::UpdateRingBuffer(nodes::UpdateRingBufferNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
-						node.input,
-					))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::UpdateSeries(node) => {
 				self.emit(Instruction::UpdateSeries(nodes::UpdateSeriesNode {
-					input: Box::new(materialize_query_plan(crate::bump::BumpBox::into_inner(
-						node.input,
-					))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
 				}));
 				self.emit(Instruction::Emit);
@@ -1129,7 +1103,7 @@ impl InstructionCompiler {
 						self.compile_expression(&expr);
 					}
 					physical::LetValue::Statement(plan) => {
-						let inner = crate::bump::BumpBox::into_inner(plan);
+						let inner = BumpBox::into_inner(plan);
 						if matches!(&inner, PhysicalPlan::DefineClosure(_)) {
 							// Closures push their value onto the stack directly
 							self.compile_plan(inner)?;
@@ -1150,8 +1124,7 @@ impl InstructionCompiler {
 						self.compile_expression(&expr);
 					}
 					physical::AssignValue::Statement(plan) => {
-						let query =
-							materialize_query_plan(crate::bump::BumpBox::into_inner(plan));
+						let query = materialize_query_plan(BumpBox::into_inner(plan));
 						self.emit(Instruction::Query(query));
 					}
 				}
@@ -1381,7 +1354,7 @@ impl InstructionCompiler {
 		let false_jump = self.emit_conditional_jump(node.condition);
 		self.emit(Instruction::EnterScope(ScopeType::Conditional));
 		self.scope_depth += 1;
-		self.compile_plan(crate::bump::BumpBox::into_inner(node.then_branch))?;
+		self.compile_plan(BumpBox::into_inner(node.then_branch))?;
 		self.scope_depth -= 1;
 		self.emit(Instruction::ExitScope);
 		let end_jump = self.emit(Instruction::Jump(0));
@@ -1395,7 +1368,7 @@ impl InstructionCompiler {
 			let false_jump = self.emit_conditional_jump(else_if.condition);
 			self.emit(Instruction::EnterScope(ScopeType::Conditional));
 			self.scope_depth += 1;
-			self.compile_plan(crate::bump::BumpBox::into_inner(else_if.then_branch))?;
+			self.compile_plan(BumpBox::into_inner(else_if.then_branch))?;
 			self.scope_depth -= 1;
 			self.emit(Instruction::ExitScope);
 			let end_jump = self.emit(Instruction::Jump(0));
@@ -1409,7 +1382,7 @@ impl InstructionCompiler {
 		if let Some(else_branch) = node.else_branch {
 			self.emit(Instruction::EnterScope(ScopeType::Conditional));
 			self.scope_depth += 1;
-			self.compile_plan(crate::bump::BumpBox::into_inner(else_branch))?;
+			self.compile_plan(BumpBox::into_inner(else_branch))?;
 			self.scope_depth -= 1;
 			self.emit(Instruction::ExitScope);
 		}
@@ -1487,7 +1460,7 @@ impl InstructionCompiler {
 	}
 
 	fn compile_for(&mut self, node: physical::ForNode<'_>) -> Result<()> {
-		self.compile_plan_for_iterable(crate::bump::BumpBox::into_inner(node.iterable))?;
+		self.compile_plan_for_iterable(BumpBox::into_inner(node.iterable))?;
 		self.emit(Instruction::ForInit {
 			variable_name: node.variable_name.clone(),
 		});

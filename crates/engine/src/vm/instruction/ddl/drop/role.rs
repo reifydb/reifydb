@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::nodes::DropRoleNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
-pub(crate) fn drop_role(services: &Services, txn: &mut AdminTransaction, plan: DropRoleNode) -> crate::Result<Columns> {
+pub(crate) fn drop_role(services: &Services, txn: &mut AdminTransaction, plan: DropRoleNode) -> Result<Columns> {
 	let name = plan.name.text();
 
 	let role = services.catalog.find_role_by_name(&mut Transaction::Admin(&mut *txn), name)?;
@@ -28,8 +29,8 @@ pub(crate) fn drop_role(services: &Services, txn: &mut AdminTransaction, plan: D
 					("dropped", Value::Boolean(false)),
 				]))
 			} else {
-				Err(reifydb_catalog::error::CatalogError::NotFound {
-					kind: reifydb_catalog::error::CatalogObjectKind::Role,
+				Err(CatalogError::NotFound {
+					kind: CatalogObjectKind::Role,
 					namespace: "system".to_string(),
 					name: name.to_string(),
 					fragment: plan.name.clone(),

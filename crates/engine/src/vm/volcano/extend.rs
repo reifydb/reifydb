@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	error::diagnostic::query::extend_duplicate_column,
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::column::{Column, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_transaction::transaction::Transaction;
@@ -14,6 +14,7 @@ use reifydb_type::{fragment::Fragment, return_error};
 use tracing::instrument;
 
 use crate::{
+	Result,
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
@@ -43,7 +44,7 @@ impl ExtendNode {
 
 impl QueryNode for ExtendNode {
 	#[instrument(name = "volcano::extend::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
 			symbol_table: &ctx.stack,
@@ -59,7 +60,7 @@ impl QueryNode for ExtendNode {
 	}
 
 	#[instrument(name = "volcano::extend::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "ExtendNode::next() called before initialize()");
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
@@ -126,7 +127,7 @@ impl QueryNode for ExtendNode {
 }
 
 impl Transform for ExtendNode {
-	fn apply(&self, ctx: &TransformContext, input: Columns) -> reifydb_type::Result<Columns> {
+	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("ExtendNode::apply() called before initialize()");
 
@@ -174,7 +175,7 @@ impl Transform for ExtendNode {
 						target_type,
 						&expr.lazy_fragment(),
 					)?;
-					column = reifydb_core::value::column::Column {
+					column = Column {
 						name: column.name,
 						data,
 					};
@@ -229,7 +230,7 @@ impl ExtendWithoutInputNode {
 
 impl QueryNode for ExtendWithoutInputNode {
 	#[instrument(name = "volcano::extend::noinput::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
 			symbol_table: &ctx.stack,
@@ -244,7 +245,7 @@ impl QueryNode for ExtendWithoutInputNode {
 	}
 
 	#[instrument(name = "volcano::extend::noinput::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "ExtendWithoutInputNode::next() called before initialize()");
 		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 

@@ -6,8 +6,12 @@ use reifydb_core::{
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::error::Error;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub(crate) struct ScalarizeNode {
 	input: Box<dyn QueryNode>,
@@ -26,14 +30,14 @@ impl<'a> ScalarizeNode {
 }
 
 impl QueryNode for ScalarizeNode {
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		self.frame_consumed = false;
 		Ok(())
 	}
 
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.initialized.is_some(), "ScalarizeNode::next() called before initialize()");
 
 		// Scalarize nodes should only produce one result
@@ -72,7 +76,7 @@ impl QueryNode for ScalarizeNode {
 			}
 			(rows, cols) => {
 				// Error for non-1x1 frames
-				Err(reifydb_type::error::Error(internal!(
+				Err(Error(internal!(
 					"Cannot scalarize frame with {} rows and {} columns - expected 1x1 frame",
 					rows,
 					cols

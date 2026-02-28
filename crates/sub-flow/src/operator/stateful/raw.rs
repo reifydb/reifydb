@@ -5,53 +5,41 @@ use reifydb_core::encoded::{
 	encoded::EncodedValues,
 	key::{EncodedKey, EncodedKeyRange},
 };
+use reifydb_type::Result;
 
-use super::utils;
+use super::{StateIterator, utils};
 use crate::{Operator, transaction::FlowTransaction};
 
 /// Raw Stateful operations - provides raw key-value access
 /// This is the foundation for operators that need state management
 pub trait RawStatefulOperator: Operator {
 	/// Get raw bytes for a key
-	fn state_get(
-		&self,
-		txn: &mut FlowTransaction,
-		key: &EncodedKey,
-	) -> reifydb_type::Result<Option<EncodedValues>> {
+	fn state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedValues>> {
 		utils::state_get(self.id(), txn, key)
 	}
 
 	/// Set raw bytes for a key
-	fn state_set(
-		&self,
-		txn: &mut FlowTransaction,
-		key: &EncodedKey,
-		value: EncodedValues,
-	) -> reifydb_type::Result<()> {
+	fn state_set(&self, txn: &mut FlowTransaction, key: &EncodedKey, value: EncodedValues) -> Result<()> {
 		utils::state_set(self.id(), txn, key, value)
 	}
 
 	/// Remove a key
-	fn state_remove(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> reifydb_type::Result<()> {
+	fn state_remove(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
 		utils::state_remove(self.id(), txn, key)
 	}
 
 	/// Scan all keys for this operator
-	fn state_scan(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<super::StateIterator> {
+	fn state_scan(&self, txn: &mut FlowTransaction) -> Result<StateIterator> {
 		utils::state_scan(self.id(), txn)
 	}
 
 	/// Range query between keys
-	fn state_range(
-		&self,
-		txn: &mut FlowTransaction,
-		range: EncodedKeyRange,
-	) -> reifydb_type::Result<super::StateIterator> {
+	fn state_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<StateIterator> {
 		utils::state_range(self.id(), txn, range)
 	}
 
 	/// Clear all state for this operator
-	fn state_clear(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<()> {
+	fn state_clear(&self, txn: &mut FlowTransaction) -> Result<()> {
 		utils::state_clear(self.id(), txn)
 	}
 }

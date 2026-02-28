@@ -16,7 +16,7 @@ use crate::{
 	convert_data_type,
 };
 
-pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
+pub fn parse_expression(rql: &str) -> Result<Vec<Expression>> {
 	let bump = Bump::new();
 	let statements = parse_str(&bump, rql)?;
 	if statements.is_empty() {
@@ -49,6 +49,8 @@ use reifydb_type::{
 	value::{row_number::ROW_NUMBER_COLUMN_NAME, r#type::Type},
 };
 use serde::{Deserialize, Serialize};
+
+use crate::{Result, ast::ast::AstBlock, diagnostic::AstError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AliasExpression {
@@ -897,7 +899,7 @@ impl Display for TupleExpression {
 pub struct ExpressionCompiler {}
 
 impl ExpressionCompiler {
-	pub fn compile(ast: Ast<'_>) -> crate::Result<Expression> {
+	pub fn compile(ast: Ast<'_>) -> Result<Expression> {
 		match ast {
 			Ast::Literal(literal) => match literal {
 				AstLiteral::Boolean(_) => Ok(Expression::Constant(ConstantExpression::Bool {
@@ -1166,7 +1168,7 @@ impl ExpressionCompiler {
 	/// Compile an AstBlock as a single expression.
 	/// Takes the first expression from the first statement in the block.
 	/// Used for IF/ELSE blocks in expression context.
-	fn compile_block_as_expr(block: crate::ast::ast::AstBlock<'_>) -> crate::Result<Expression> {
+	fn compile_block_as_expr(block: AstBlock<'_>) -> Result<Expression> {
 		let fragment = block.token.fragment.to_owned();
 		if let Some(first_stmt) = block.statements.into_iter().next() {
 			if let Some(first_node) = first_stmt.nodes.into_iter().next() {
@@ -1180,7 +1182,7 @@ impl ExpressionCompiler {
 	}
 
 	/// Compile a MATCH expression by lowering it to an IfExpression.
-	fn compile_match(match_ast: ast::ast::AstMatch<'_>) -> crate::Result<Expression> {
+	fn compile_match(match_ast: ast::ast::AstMatch<'_>) -> Result<Expression> {
 		let fragment = match_ast.token.fragment.to_owned();
 
 		// Compile subject expression (if present)
@@ -1525,7 +1527,7 @@ impl ExpressionCompiler {
 		}
 	}
 
-	fn infix(ast: AstInfix<'_>) -> crate::Result<Expression> {
+	fn infix(ast: AstInfix<'_>) -> Result<Expression> {
 		match ast.operator {
 			InfixOperator::Add(token) => {
 				let left = Self::compile(BumpBox::into_inner(ast.left))?;
@@ -1741,7 +1743,7 @@ impl ExpressionCompiler {
 			InfixOperator::Assign(token) => {
 				// Assignment operator (=) is not valid in expression context
 				// Use == for equality comparison
-				return Err(crate::diagnostic::AstError::UnsupportedToken {
+				return Err(AstError::UnsupportedToken {
 					fragment: token.fragment.to_owned(),
 				}
 				.into());
@@ -1819,7 +1821,7 @@ impl ExpressionCompiler {
 	/// Keywords like `undefined` or `true` are treated as identifiers in this
 	/// context so that `is::none(x)` resolves to a function call rather
 	/// than parsing `undefined` as the literal keyword.
-	fn compile_namespace_right(namespace: &str, right_ast: Ast<'_>) -> crate::Result<Expression> {
+	fn compile_namespace_right(namespace: &str, right_ast: Ast<'_>) -> Result<Expression> {
 		// Helper: extract a token's text from any AST node that should be treated
 		// as an identifier_or_keyword in namespace position.
 		fn identifier_or_keyword_name(ast: &Ast<'_>) -> Option<String> {

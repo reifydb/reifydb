@@ -11,12 +11,12 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::view::schema::{view, view_namespace},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_view(rx: &mut Transaction<'_>, id: ViewId) -> crate::Result<Option<ViewDef>> {
+	pub(crate) fn find_view(rx: &mut Transaction<'_>, id: ViewId) -> Result<Option<ViewDef>> {
 		let Some(multi) = rx.get(&ViewKey::encoded(id))? else {
 			return Ok(None);
 		};
@@ -46,7 +46,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<ViewDef>> {
+	) -> Result<Option<ViewDef>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceViewKey::full_scan(namespace), 1024)?;
 

@@ -5,9 +5,11 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
+	Result,
 	ast::ast::{
 		Ast, AstBlock, AstCall, AstCallFunction, AstDefFunction, AstFor, AstIf, AstLet, AstLiteral,
-		AstLiteralNone, AstLoop, AstMatch, AstMatchArm, AstReturn, AstWhile, LetValue as AstLetValue,
+		AstLiteralNone, AstLoop, AstMatch, AstMatchArm, AstReturn, AstStatement, AstWhile,
+		LetValue as AstLetValue,
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
 	convert_data_type_with_constraints,
@@ -24,11 +26,7 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_let(
-		&self,
-		ast: AstLet<'bump>,
-		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_let(&self, ast: AstLet<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		let value = match ast.value {
 			AstLetValue::Expression(expr) => {
 				let inner = BumpBox::into_inner(expr);
@@ -61,7 +59,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	/// Produce a MAP { value: none } plan node.
-	fn none_as_map(&self) -> crate::Result<LogicalPlan<'bump>> {
+	fn none_as_map(&self) -> Result<LogicalPlan<'bump>> {
 		let none_literal = Ast::Literal(AstLiteral::None(AstLiteralNone(Token {
 			kind: TokenKind::Literal(Literal::None),
 			fragment: BumpFragment::internal(self.bump, "none"),
@@ -69,11 +67,7 @@ impl<'bump> Compiler<'bump> {
 		self.compile_scalar_as_map(none_literal)
 	}
 
-	pub(crate) fn compile_if(
-		&self,
-		ast: AstIf<'bump>,
-		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_if(&self, ast: AstIf<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		// Compile the condition expression
 		let condition = ExpressionCompiler::compile(BumpBox::into_inner(ast.condition))?;
 
@@ -112,7 +106,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstMatch<'bump>,
 		_tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let fragment = ast.token.fragment.to_owned();
 
 		// Compile subject expression (if present)
@@ -352,11 +346,7 @@ impl<'bump> Compiler<'bump> {
 
 	/// Compile a block as a single logical plan node.
 	/// Takes the first expression from the first statement.
-	fn compile_block_single(
-		&self,
-		block: AstBlock<'bump>,
-		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	fn compile_block_single(&self, block: AstBlock<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		if let Some(first_stmt) = block.statements.into_iter().next() {
 			if let Some(first_node) = first_stmt.nodes.into_iter().next() {
 				return self.compile_single(first_node, tx);
@@ -371,7 +361,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		block: AstBlock<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<Vec<BumpVec<'bump, LogicalPlan<'bump>>>> {
+	) -> Result<Vec<BumpVec<'bump, LogicalPlan<'bump>>>> {
 		let mut result = Vec::new();
 		for stmt in block.statements {
 			let plans = self.compile(stmt, tx)?;
@@ -380,11 +370,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(result)
 	}
 
-	pub(crate) fn compile_loop(
-		&self,
-		ast: AstLoop<'bump>,
-		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_loop(&self, ast: AstLoop<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		let body = self.compile_block(ast.body, tx)?;
 		Ok(LogicalPlan::Loop(LoopNode {
 			body,
@@ -395,7 +381,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstWhile<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let condition = ExpressionCompiler::compile(BumpBox::into_inner(ast.condition))?;
 		let body = self.compile_block(ast.body, tx)?;
 		Ok(LogicalPlan::While(WhileNode {
@@ -404,11 +390,7 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	pub(crate) fn compile_for(
-		&self,
-		ast: AstFor<'bump>,
-		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_for(&self, ast: AstFor<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		let variable_name = {
 			let text = ast.variable.token.fragment.text();
 			let clean = if text.starts_with('$') {
@@ -419,7 +401,7 @@ impl<'bump> Compiler<'bump> {
 			BumpFragment::internal(self.bump, clean)
 		};
 		let iterable_ast = BumpBox::into_inner(ast.iterable);
-		let iterable_stmt = crate::ast::ast::AstStatement {
+		let iterable_stmt = AstStatement {
 			nodes: vec![iterable_ast],
 			has_pipes: false,
 			is_output: false,
@@ -438,7 +420,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstDefFunction<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		// Convert function name
 		let name = ast.name.token.fragment;
 
@@ -476,7 +458,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	/// Compile a return statement
-	pub(crate) fn compile_return(&self, ast: AstReturn<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_return(&self, ast: AstReturn<'bump>) -> Result<LogicalPlan<'bump>> {
 		let value = if let Some(expr) = ast.value {
 			Some(ExpressionCompiler::compile(BumpBox::into_inner(expr))?)
 		} else {
@@ -489,7 +471,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	/// Compile a function call (potentially user-defined)
-	pub(crate) fn compile_call_function(&self, ast: AstCallFunction<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_call_function(&self, ast: AstCallFunction<'bump>) -> Result<LogicalPlan<'bump>> {
 		let name = ast.function.name;
 
 		// Compile arguments as expressions
@@ -508,7 +490,7 @@ impl<'bump> Compiler<'bump> {
 	/// Compile a CALL statement (e.g., `CALL procedure_name(args)` or `CALL ns::proc(args)`)
 	/// This compiles to the same CallFunction logical plan node, so the VM
 	/// will resolve it against DEF functions, catalog procedures, or built-in functions.
-	pub(crate) fn compile_call(&self, ast: AstCall<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_call(&self, ast: AstCall<'bump>) -> Result<LogicalPlan<'bump>> {
 		// Build qualified name: join namespaces with '::' for catalog lookup
 		let name = if ast.function.namespaces.is_empty() {
 			ast.function.name

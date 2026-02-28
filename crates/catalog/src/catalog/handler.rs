@@ -13,7 +13,7 @@ use reifydb_transaction::{
 use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
 use tracing::instrument;
 
-use crate::{CatalogStore, catalog::Catalog, store::handler::create::HandlerToCreate as StoreHandlerToCreate};
+use crate::{CatalogStore, Result, catalog::Catalog, store::handler::create::HandlerToCreate as StoreHandlerToCreate};
 
 /// Handler creation specification for the Catalog API.
 #[derive(Debug, Clone)]
@@ -27,11 +27,7 @@ pub struct HandlerToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::handler::find_by_id", level = "trace", skip(self, txn))]
-	pub fn find_handler_by_id(
-		&self,
-		txn: &mut Transaction<'_>,
-		id: HandlerId,
-	) -> crate::Result<Option<HandlerDef>> {
+	pub fn find_handler_by_id(&self, txn: &mut Transaction<'_>, id: HandlerId) -> Result<Option<HandlerDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(handler) = self.materialized.find_handler_at(id, cmd.version()) {
@@ -67,7 +63,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> crate::Result<Option<HandlerDef>> {
+	) -> Result<Option<HandlerDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(handler) =
@@ -116,7 +112,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		sumtype_id: SumTypeId,
 		variant_tag: u8,
-	) -> crate::Result<Vec<HandlerDef>> {
+	) -> Result<Vec<HandlerDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.materialized.list_handlers_for_variant_at(
 				sumtype_id,
@@ -155,11 +151,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::handler::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_handler(
-		&self,
-		txn: &mut AdminTransaction,
-		to_create: HandlerToCreate,
-	) -> crate::Result<HandlerDef> {
+	pub fn create_handler(&self, txn: &mut AdminTransaction, to_create: HandlerToCreate) -> Result<HandlerDef> {
 		let store_to_create = StoreHandlerToCreate {
 			name: to_create.name.clone(),
 			namespace: to_create.namespace,

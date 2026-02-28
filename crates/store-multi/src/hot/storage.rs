@@ -11,9 +11,9 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_core::common::CommitVersion;
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-use super::memory::storage::MemoryPrimitiveStorage;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use super::sqlite::storage::SqlitePrimitiveStorage;
+use super::{memory::storage::MemoryPrimitiveStorage, sqlite::config::SqliteConfig};
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 /// Hot storage tier.
@@ -44,7 +44,7 @@ impl HotStorage {
 
 	/// Create a new SQLite backend with the given configuration
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(config: super::sqlite::config::SqliteConfig) -> Self {
+	pub fn sqlite(config: SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::new(config))
 	}
 }

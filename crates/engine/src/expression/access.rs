@@ -9,9 +9,9 @@ use reifydb_core::{
 use reifydb_rql::expression::AccessPrimitiveExpression;
 use reifydb_type::{error, fragment::Fragment};
 
-use crate::expression::context::EvalContext;
+use crate::{Result, expression::context::EvalContext};
 
-pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessPrimitiveExpression) -> crate::Result<Column> {
+pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessPrimitiveExpression) -> Result<Column> {
 	// Extract primitive name based on the ColumnPrimitive type
 	let source = match &expr.column.primitive {
 		ColumnPrimitive::Primitive {

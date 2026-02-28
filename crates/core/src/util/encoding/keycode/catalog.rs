@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_type::{Result, value::dictionary::DictionaryId};
 
+use super::{deserialize, serialize};
 use crate::{
 	interface::catalog::{
 		flow::FlowId,
@@ -21,31 +22,31 @@ pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
 	match primitive {
 		PrimitiveId::Table(TableId(id)) => {
 			result.push(0x01);
-			result.extend(&super::serialize(id));
+			result.extend(&serialize(id));
 		}
 		PrimitiveId::View(ViewId(id)) => {
 			result.push(0x02);
-			result.extend(&super::serialize(id));
+			result.extend(&serialize(id));
 		}
 		PrimitiveId::TableVirtual(VTableId(id)) => {
 			result.push(0x03);
-			result.extend(&super::serialize(id));
+			result.extend(&serialize(id));
 		}
 		PrimitiveId::RingBuffer(RingBufferId(id)) => {
 			result.push(0x04);
-			result.extend(&super::serialize(id));
+			result.extend(&serialize(id));
 		}
 		PrimitiveId::Flow(FlowId(id)) => {
 			result.push(0x05);
-			result.extend(&super::serialize(id));
+			result.extend(&serialize(id));
 		}
 		PrimitiveId::Dictionary(DictionaryId(id)) => {
 			result.push(0x06);
-			result.extend(&super::serialize(id));
+			result.extend(&serialize(id));
 		}
 		PrimitiveId::Series(SeriesId(id)) => {
 			result.push(0x07);
-			result.extend(&super::serialize(id));
+			result.extend(&serialize(id));
 		}
 	}
 	result
@@ -54,13 +55,13 @@ pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
 /// Deserialize a PrimitiveId from database key bytes
 /// Expects [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
 /// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x05 for Flow
-pub fn deserialize_primitive_id(bytes: &[u8]) -> reifydb_type::Result<PrimitiveId> {
+pub fn deserialize_primitive_id(bytes: &[u8]) -> Result<PrimitiveId> {
 	if bytes.len() != 9 {
 		return_internal_error!("Invalid PrimitiveId encoding: expected 9 bytes, got {}", bytes.len());
 	}
 
 	let type_byte = bytes[0];
-	let id: u64 = super::deserialize(&bytes[1..9])?;
+	let id: u64 = deserialize(&bytes[1..9])?;
 
 	match type_byte {
 		0x01 => Ok(PrimitiveId::Table(TableId(id))),
@@ -81,7 +82,7 @@ pub fn serialize_index_id(index: &IndexId) -> Vec<u8> {
 	match index {
 		IndexId::Primary(PrimaryKeyId(id)) => {
 			result.push(0x01);
-			result.extend(&super::serialize(id));
+			result.extend(&serialize(id));
 		} // Future: Secondary, Unique, etc.
 	}
 	result
@@ -89,13 +90,13 @@ pub fn serialize_index_id(index: &IndexId) -> Vec<u8> {
 
 /// Deserialize an IndexId from database key bytes
 /// Expects [type_byte, ...id_bytes]
-pub fn deserialize_index_id(bytes: &[u8]) -> reifydb_type::Result<IndexId> {
+pub fn deserialize_index_id(bytes: &[u8]) -> Result<IndexId> {
 	if bytes.len() != 9 {
 		return_internal_error!("Invalid IndexId encoding: expected 9 bytes, got {}", bytes.len());
 	}
 
 	let type_byte = bytes[0];
-	let id: u64 = super::deserialize(&bytes[1..9])?;
+	let id: u64 = deserialize(&bytes[1..9])?;
 
 	match type_byte {
 		0x01 => Ok(IndexId::Primary(PrimaryKeyId(id))),

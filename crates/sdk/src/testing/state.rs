@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema};
 use reifydb_type::value::Value;
 
+use super::helpers::get_values;
+
 /// Mock state store for testing operators
 #[derive(Debug, Clone, Default)]
 pub struct TestStateStore {
@@ -67,13 +69,13 @@ impl TestStateStore {
 
 	/// Decode a value using a schema
 	pub fn decode_value(&self, key: &EncodedKey, schema: &Schema) -> Option<Vec<Value>> {
-		self.get(key).map(|encoded| super::helpers::get_values(schema, encoded))
+		self.get(key).map(|encoded| get_values(schema, encoded))
 	}
 
 	/// Decode a value using a schema with field names
 	pub fn decode_named_value(&self, key: &EncodedKey, schema: &Schema) -> Option<HashMap<String, Value>> {
 		self.get(key).map(|encoded| {
-			let values = super::helpers::get_values(schema, encoded);
+			let values = get_values(schema, encoded);
 			schema.field_names().map(|n| n.to_string()).zip(values).collect()
 		})
 	}
@@ -131,7 +133,10 @@ impl TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::encoded::{encoded::EncodedValues, schema::Schema};
+	use reifydb_core::encoded::{
+		encoded::EncodedValues,
+		schema::{Schema, SchemaField},
+	};
 	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
 	use super::*;
@@ -172,8 +177,8 @@ pub mod tests {
 	fn test_state_store_with_named_schema() {
 		let mut store = TestStateStore::new();
 		let schema = Schema::new(vec![
-			reifydb_core::encoded::schema::SchemaField::unconstrained("count", Type::Int8),
-			reifydb_core::encoded::schema::SchemaField::unconstrained("name", Type::Utf8),
+			SchemaField::unconstrained("count", Type::Int8),
+			SchemaField::unconstrained("name", Type::Utf8),
 		]);
 		let key = encode_key("test_key");
 

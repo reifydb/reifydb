@@ -12,18 +12,18 @@ use reifydb_transaction::{
 	change::{TransactionalRoleChanges, TransactionalUserChanges},
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::value::identity::IdentityId;
+use reifydb_type::{fragment::Fragment, value::identity::IdentityId};
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 };
 
 impl Catalog {
 	#[instrument(name = "catalog::user::find_by_name", level = "trace", skip(self, txn))]
-	pub fn find_user_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> crate::Result<Option<UserDef>> {
+	pub fn find_user_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<UserDef>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				// 1. Check transactional changes first
@@ -87,7 +87,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		identity: IdentityId,
-	) -> crate::Result<Option<UserDef>> {
+	) -> Result<Option<UserDef>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(user) =
@@ -151,14 +151,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::user::create", level = "debug", skip(self, txn))]
-	pub fn create_user(&self, txn: &mut AdminTransaction, name: &str) -> crate::Result<UserDef> {
+	pub fn create_user(&self, txn: &mut AdminTransaction, name: &str) -> Result<UserDef> {
 		let user = CatalogStore::create_user(txn, name)?;
 		txn.track_user_def_created(user.clone())?;
 		Ok(user)
 	}
 
 	#[instrument(name = "catalog::user::drop", level = "debug", skip(self, txn))]
-	pub fn drop_user(&self, txn: &mut AdminTransaction, user_id: UserId) -> crate::Result<()> {
+	pub fn drop_user(&self, txn: &mut AdminTransaction, user_id: UserId) -> Result<()> {
 		// Get the user def before dropping for change tracking
 		if let Some(user) = CatalogStore::find_user(&mut Transaction::Admin(&mut *txn), user_id)? {
 			CatalogStore::drop_user(txn, user_id)?;
@@ -170,7 +170,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::role::find_by_name", level = "trace", skip(self, txn))]
-	pub fn find_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> crate::Result<Option<RoleDef>> {
+	pub fn find_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<RoleDef>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(role) = TransactionalRoleChanges::find_role_by_name(admin, name) {
@@ -226,14 +226,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::role::create", level = "debug", skip(self, txn))]
-	pub fn create_role(&self, txn: &mut AdminTransaction, name: &str) -> crate::Result<RoleDef> {
+	pub fn create_role(&self, txn: &mut AdminTransaction, name: &str) -> Result<RoleDef> {
 		let role = CatalogStore::create_role(txn, name)?;
 		txn.track_role_def_created(role.clone())?;
 		Ok(role)
 	}
 
 	#[instrument(name = "catalog::role::drop", level = "debug", skip(self, txn))]
-	pub fn drop_role(&self, txn: &mut AdminTransaction, role_id: RoleId) -> crate::Result<()> {
+	pub fn drop_role(&self, txn: &mut AdminTransaction, role_id: RoleId) -> Result<()> {
 		if let Some(role) = CatalogStore::find_role(&mut Transaction::Admin(&mut *txn), role_id)? {
 			CatalogStore::drop_role(txn, role_id)?;
 			txn.track_role_def_deleted(role)?;
@@ -244,19 +244,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::user::grant_role", level = "debug", skip(self, txn))]
-	pub fn grant_role(
-		&self,
-		txn: &mut AdminTransaction,
-		user_id: UserId,
-		role_id: RoleId,
-	) -> crate::Result<UserRoleDef> {
+	pub fn grant_role(&self, txn: &mut AdminTransaction, user_id: UserId, role_id: RoleId) -> Result<UserRoleDef> {
 		let ur = CatalogStore::grant_role(txn, user_id, role_id)?;
 		txn.track_user_role_def_created(ur.clone())?;
 		Ok(ur)
 	}
 
 	#[instrument(name = "catalog::user::revoke_role", level = "debug", skip(self, txn))]
-	pub fn revoke_role(&self, txn: &mut AdminTransaction, user_id: UserId, role_id: RoleId) -> crate::Result<()> {
+	pub fn revoke_role(&self, txn: &mut AdminTransaction, user_id: UserId, role_id: RoleId) -> Result<()> {
 		let ur = UserRoleDef {
 			user_id,
 			role_id,
@@ -266,25 +261,25 @@ impl Catalog {
 		Ok(())
 	}
 
-	pub fn get_user_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> crate::Result<UserDef> {
+	pub fn get_user_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<UserDef> {
 		self.find_user_by_name(txn, name)?.ok_or_else(|| {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::User,
 				namespace: "system".to_string(),
 				name: name.to_string(),
-				fragment: reifydb_type::fragment::Fragment::None,
+				fragment: Fragment::None,
 			}
 			.into()
 		})
 	}
 
-	pub fn get_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> crate::Result<RoleDef> {
+	pub fn get_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<RoleDef> {
 		self.find_role_by_name(txn, name)?.ok_or_else(|| {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::Role,
 				namespace: "system".to_string(),
 				name: name.to_string(),
-				fragment: reifydb_type::fragment::Fragment::None,
+				fragment: Fragment::None,
 			}
 			.into()
 		})

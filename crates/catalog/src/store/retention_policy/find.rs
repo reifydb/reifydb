@@ -9,7 +9,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use super::decode_retention_policy;
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	/// Find a retention policy for a source (table, view, or ring buffer)
@@ -17,7 +17,7 @@ impl CatalogStore {
 	pub(crate) fn find_primitive_retention_policy(
 		rx: &mut Transaction<'_>,
 		source: PrimitiveId,
-	) -> crate::Result<Option<RetentionPolicy>> {
+	) -> Result<Option<RetentionPolicy>> {
 		let value = rx.get(&PrimitiveRetentionPolicyKey::encoded(source))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
@@ -27,7 +27,7 @@ impl CatalogStore {
 	pub(crate) fn find_operator_retention_policy(
 		rx: &mut Transaction<'_>,
 		operator: FlowNodeId,
-	) -> crate::Result<Option<RetentionPolicy>> {
+	) -> Result<Option<RetentionPolicy>> {
 		let value = rx.get(&OperatorRetentionPolicyKey::encoded(operator))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}

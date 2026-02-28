@@ -26,6 +26,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_type::{Result, error::Error};
 
 use crate::config::OtelConfig;
 
@@ -105,7 +106,7 @@ impl OtelSubsystem {
 
 	/// Build the OTLP tracer provider
 	#[cfg(feature = "otlp")]
-	fn build_otlp_tracer_provider(&self) -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
+	fn build_otlp_tracer_provider(&self) -> std::result::Result<SdkTracerProvider, Box<dyn std::error::Error>> {
 		// Build resource with service name and version
 		let resource = Resource::builder()
 			.with_service_name(self.config.service_name.clone())
@@ -159,7 +160,7 @@ impl Subsystem for OtelSubsystem {
 		"OpenTelemetry"
 	}
 
-	fn start(&mut self) -> reifydb_type::Result<()> {
+	fn start(&mut self) -> Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
@@ -168,7 +169,7 @@ impl Subsystem for OtelSubsystem {
 		// Build the tracer provider (needs runtime context for tonic/hyper)
 		#[cfg(not(feature = "otlp"))]
 		{
-			let err: reifydb_type::error::Error = CoreError::SubsystemFeatureDisabled {
+			let err: Error = CoreError::SubsystemFeatureDisabled {
 				feature: "otlp".to_string(),
 			}
 			.into();
@@ -180,7 +181,7 @@ impl Subsystem for OtelSubsystem {
 			// Enter runtime context for tonic/hyper initialization
 			let _guard = self.runtime.handle().enter();
 			self.build_otlp_tracer_provider().map_err(|e| {
-				let err: reifydb_type::error::Error = CoreError::SubsystemInitFailed {
+				let err: Error = CoreError::SubsystemInitFailed {
 					subsystem: "OpenTelemetry".to_string(),
 					reason: e.to_string(),
 				}
@@ -207,7 +208,7 @@ impl Subsystem for OtelSubsystem {
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> reifydb_type::Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		if !self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
 			return Ok(()); // Already shutdown
 		}

@@ -3,13 +3,17 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_type::error::{AstErrorKind, TypeError};
+use reifydb_type::{
+	error::{AstErrorKind, Error, TypeError},
+	fragment::Fragment,
+};
 
 use super::{
 	cursor::Cursor,
 	identifier::is_identifier_char,
 	token::{Token, TokenKind},
 };
+use crate::Result;
 
 macro_rules! keyword {
     (
@@ -30,18 +34,18 @@ macro_rules! keyword {
         }
 
         impl TryFrom<&str> for Keyword {
-            type Error = reifydb_type::error::Error;
+            type Error = Error;
 
-            fn try_from(value: &str) -> crate::Result<Self> {
+            fn try_from(value: &str) -> Result<Self> {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,
                     _ => {
                         let message = "not a keyword".to_string();
-                        Err(reifydb_type::error::Error::from(TypeError::Ast {
+                        Err(Error::from(TypeError::Ast {
                             kind: AstErrorKind::TokenizeError { message: message.clone() },
                             message,
-                            fragment: reifydb_type::fragment::Fragment::None,
+                            fragment: Fragment::None,
                         }))
                     }
                 }

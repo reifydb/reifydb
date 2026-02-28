@@ -16,8 +16,8 @@ use reifydb_abi::{
 	transform::{descriptor::TransformDescriptorFFI, vtable::TransformVTableFFI},
 };
 use reifydb_core::value::column::columns::Columns;
-use reifydb_sdk::ffi::arena::Arena;
-use reifydb_type;
+use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
+use reifydb_type::{self, Result};
 use tracing::{error, instrument};
 
 use super::{Transform, context::TransformContext};
@@ -70,7 +70,7 @@ impl Drop for NativeTransformFFI {
 
 impl Transform for NativeTransformFFI {
 	#[instrument(name = "transform::ffi::apply", level = "debug", skip_all)]
-	fn apply(&self, _ctx: &TransformContext, input: Columns) -> reifydb_type::Result<Columns> {
+	fn apply(&self, _ctx: &TransformContext, input: Columns) -> Result<Columns> {
 		let mut arena = self.arena.borrow_mut();
 
 		let ffi_input = arena.marshal_columns(&input);
@@ -97,11 +97,8 @@ impl Transform for NativeTransformFFI {
 
 		if result_code != 0 {
 			arena.clear();
-			return Err(reifydb_sdk::error::FFIError::Other(format!(
-				"FFI transform apply failed with code: {}",
-				result_code
-			))
-			.into());
+			return Err(FFIError::Other(format!("FFI transform apply failed with code: {}", result_code))
+				.into());
 		}
 
 		let columns = arena.unmarshal_columns(&ffi_output);

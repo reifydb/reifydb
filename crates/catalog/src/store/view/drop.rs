@@ -7,10 +7,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, store::primitive::drop::drop_primitive_metadata};
+use crate::{CatalogStore, Result, store::primitive::drop::drop_primitive_metadata};
 
 impl CatalogStore {
-	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> crate::Result<()> {
+	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> Result<()> {
 		// First, find the view to get its namespace and primary key
 		let pk_id = if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
 			// Remove the namespace-view link (secondary index)

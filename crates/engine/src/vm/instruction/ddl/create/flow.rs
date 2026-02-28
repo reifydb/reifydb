@@ -7,13 +7,9 @@ use reifydb_rql::nodes::CreateFlowNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::{flow::compiler::compile_flow, vm::services::Services};
+use crate::{Result, flow::compiler::compile_flow, vm::services::Services};
 
-pub(crate) fn create_flow(
-	services: &Services,
-	txn: &mut AdminTransaction,
-	plan: CreateFlowNode,
-) -> crate::Result<Columns> {
+pub(crate) fn create_flow(services: &Services, txn: &mut AdminTransaction, plan: CreateFlowNode) -> Result<Columns> {
 	if let Some(_) =
 		services.catalog.find_flow_by_name(&mut Transaction::Admin(txn), plan.namespace.id, plan.flow.text())?
 	{

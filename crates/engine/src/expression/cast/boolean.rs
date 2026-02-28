@@ -15,7 +15,9 @@ use reifydb_type::{
 	},
 };
 
-pub fn to_boolean(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+use crate::Result;
+
+pub fn to_boolean(data: &ColumnData, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	match data {
 		ColumnData::Int1(container) => from_int1(container, lazy_fragment),
 		ColumnData::Int2(container) => from_int2(container, lazy_fragment),
@@ -49,7 +51,7 @@ fn to_bool<T>(
 	container: &NumberContainer<T>,
 	lazy_fragment: impl LazyFragment,
 	validate: impl Fn(T) -> Option<bool>,
-) -> crate::Result<ColumnData>
+) -> Result<ColumnData>
 where
 	T: Copy + Display + IsNumber + Default,
 {
@@ -84,7 +86,7 @@ macro_rules! impl_integer_to_bool {
 		fn $fn_name(
 			container: &NumberContainer<$type>,
 			lazy_fragment: impl LazyFragment,
-		) -> crate::Result<ColumnData> {
+		) -> Result<ColumnData> {
 			to_bool(container, lazy_fragment, |val| match val {
 				0 => Some(false),
 				1 => Some(true),
@@ -100,7 +102,7 @@ macro_rules! impl_float_to_bool {
 		fn $fn_name(
 			container: &NumberContainer<$type>,
 			lazy_fragment: impl LazyFragment,
-		) -> crate::Result<ColumnData> {
+		) -> Result<ColumnData> {
 			to_bool(container, lazy_fragment, |val| {
 				if val == 0.0 {
 					Some(false)
@@ -127,7 +129,7 @@ impl_integer_to_bool!(from_uint16, u128);
 impl_float_to_bool!(from_float4, f32);
 impl_float_to_bool!(from_float8, f64);
 
-fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Boolean, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {

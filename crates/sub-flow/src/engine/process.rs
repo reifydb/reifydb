@@ -9,6 +9,7 @@ use reifydb_rql::flow::{
 	flow::FlowDag,
 	node::{FlowNode, FlowNodeType::SourceInlineData},
 };
+use reifydb_type::Result;
 use tracing::{Span, instrument};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
@@ -21,7 +22,7 @@ impl FlowEngine {
 		diff_count = change.diffs.len(),
 		nodes_processed = tracing::field::Empty
 	))]
-	pub fn process(&self, txn: &mut FlowTransaction, change: Change, flow_id: FlowId) -> reifydb_type::Result<()> {
+	pub fn process(&self, txn: &mut FlowTransaction, change: Change, flow_id: FlowId) -> Result<()> {
 		let mut nodes_processed = 0;
 
 		match change.origin {
@@ -84,7 +85,7 @@ impl FlowEngine {
 		lock_wait_us = tracing::field::Empty,
 		apply_time_us = tracing::field::Empty
 	))]
-	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Change) -> Result<Change> {
 		let lock_start = self.clock.instant();
 		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
@@ -110,7 +111,7 @@ impl FlowEngine {
 		flow: &FlowDag,
 		node: &FlowNode,
 		change: Change,
-	) -> reifydb_type::Result<()> {
+	) -> Result<()> {
 		let node_type = &node.ty;
 		let changes = &node.outputs;
 

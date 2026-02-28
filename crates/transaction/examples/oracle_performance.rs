@@ -9,13 +9,14 @@ use reifydb_core::{
 	util::encoding,
 };
 use reifydb_transaction::multi::transaction::MultiTransaction;
+use reifydb_type::util::cowvec::CowVec;
 
 macro_rules! as_key {
 	($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
 }
 
 macro_rules! as_values {
-	($val:expr) => {{ EncodedValues(reifydb_type::util::cowvec::CowVec::new(keycode::serialize(&$val))) }};
+	($val:expr) => {{ EncodedValues(CowVec::new(keycode::serialize(&$val))) }};
 }
 
 /// Benchmark showing the performance improvement of the new oracle

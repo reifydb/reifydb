@@ -35,7 +35,7 @@ impl ColumnData {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{dictionary::DictionaryEntryId, r#type::Type};
+	use reifydb_type::value::{dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type};
 
 	use crate::value::column::ColumnData;
 
@@ -168,7 +168,7 @@ pub mod tests {
 
 	#[test]
 	fn test_identity_id() {
-		let mut col = ColumnData::identity_id(vec![reifydb_type::value::identity::IdentityId::generate()]);
+		let mut col = ColumnData::identity_id(vec![IdentityId::generate()]);
 		col.push_none();
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));

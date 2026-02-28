@@ -4,6 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackSubscriptionChangeOperations, id::SubscriptionId, subscription::SubscriptionDef,
 };
+use reifydb_type::Result;
 
 use crate::{
 	change::{
@@ -15,7 +16,7 @@ use crate::{
 };
 
 impl CatalogTrackSubscriptionChangeOperations for AdminTransaction {
-	fn track_subscription_def_created(&mut self, subscription: SubscriptionDef) -> reifydb_type::Result<()> {
+	fn track_subscription_def_created(&mut self, subscription: SubscriptionDef) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(subscription),
@@ -25,11 +26,7 @@ impl CatalogTrackSubscriptionChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_subscription_def_updated(
-		&mut self,
-		pre: SubscriptionDef,
-		post: SubscriptionDef,
-	) -> reifydb_type::Result<()> {
+	fn track_subscription_def_updated(&mut self, pre: SubscriptionDef, post: SubscriptionDef) -> Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -39,7 +36,7 @@ impl CatalogTrackSubscriptionChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_subscription_def_deleted(&mut self, subscription: SubscriptionDef) -> reifydb_type::Result<()> {
+	fn track_subscription_def_deleted(&mut self, subscription: SubscriptionDef) -> Result<()> {
 		let change = Change {
 			pre: Some(subscription),
 			post: None,

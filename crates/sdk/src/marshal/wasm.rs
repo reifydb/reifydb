@@ -29,6 +29,7 @@ use reifydb_type::{
 		},
 		date::Date,
 		datetime::DateTime,
+		decimal::Decimal,
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
@@ -376,7 +377,7 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnData) -> (u3
 			container,
 			..
 		} => {
-			let values: &[reifydb_type::value::decimal::Decimal] = &**container;
+			let values: &[Decimal] = &**container;
 			marshal_serialized_to_buf(buf, values)
 		}
 		ColumnData::Any(container) => {
@@ -590,11 +591,7 @@ fn unmarshal_column_data(
 			}
 		}
 		ColumnTypeCode::Decimal => {
-			let container = unmarshal_serialized::<reifydb_type::value::decimal::Decimal>(
-				data,
-				row_count,
-				offsets_bytes,
-			);
+			let container = unmarshal_serialized::<Decimal>(data, row_count, offsets_bytes);
 			ColumnData::Decimal {
 				container,
 				precision: Precision::MAX,

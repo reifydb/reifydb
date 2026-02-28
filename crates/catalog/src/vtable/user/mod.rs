@@ -41,6 +41,8 @@ pub mod registry;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_type::value::{Value, r#type::Type};
 
+use crate::Result;
+
 /// Column definition for user virtual tables.
 #[derive(Debug, Clone)]
 pub struct UserVTableColumnDef {
@@ -112,7 +114,7 @@ pub trait UserVTableIterator: Send + Sync + 'static {
 	///
 	/// Called once before iteration begins. Use the pushdown context to
 	/// optimize data generation (e.g., limit the number of rows fetched).
-	fn initialize(&mut self, ctx: Option<&UserVTablePushdownContext>) -> crate::Result<()>;
+	fn initialize(&mut self, ctx: Option<&UserVTablePushdownContext>) -> Result<()>;
 
 	/// Get the next batch of rows.
 	///
@@ -120,5 +122,5 @@ pub trait UserVTableIterator: Send + Sync + 'static {
 	/// Each inner `Vec<Value>` represents one row.
 	///
 	/// The `batch_size` parameter is a hint for how many rows to return.
-	fn next_batch(&mut self, batch_size: usize) -> crate::Result<Option<Vec<Vec<Value>>>>;
+	fn next_batch(&mut self, batch_size: usize) -> Result<Option<Vec<Vec<Value>>>>;
 }

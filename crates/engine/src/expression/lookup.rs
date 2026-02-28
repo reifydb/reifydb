@@ -20,7 +20,7 @@ use reifydb_type::value::{
 	uuid::{Uuid4, Uuid7},
 };
 
-use crate::{expression::context::EvalContext, vm::stack::Variable};
+use crate::{Result, expression::context::EvalContext, vm::stack::Variable};
 
 macro_rules! extract_typed_column {
 	($col:expr, $take:expr, $variant:ident($x:ident) => $transform:expr, $default:expr, $constructor:ident) => {{
@@ -47,7 +47,7 @@ macro_rules! extract_typed_column {
 	}};
 }
 
-pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> crate::Result<Column> {
+pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Result<Column> {
 	let name = column.0.name.text();
 
 	// Check for rownum pseudo-column first
@@ -69,7 +69,7 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> cra
 	Ok(Column::new(name.to_string(), ColumnData::none_typed(Type::Boolean, ctx.row_count)))
 }
 
-fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column> {
+fn extract_column_data(col: &Column, ctx: &EvalContext) -> Result<Column> {
 	let take = ctx.take.unwrap_or(usize::MAX);
 
 	// Use the column's actual data type instead of checking the first value
@@ -85,7 +85,7 @@ fn extract_column_data(col: &Column, ctx: &EvalContext) -> crate::Result<Column>
 	extract_column_data_by_type(col, take, effective_type)
 }
 
-fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> crate::Result<Column> {
+fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> Result<Column> {
 	match col_type {
 		Type::Boolean => extract_typed_column!(col, take, Boolean(b) => b, false, bool_with_bitvec),
 		Type::Float4 => extract_typed_column!(col, take, Float4(v) => v.value(), 0.0f32, float4_with_bitvec),
@@ -150,6 +150,7 @@ pub mod tests {
 	use reifydb_runtime::clock::Clock;
 	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
+	use super::column_lookup;
 	use crate::{expression::context::EvalContext, vm::stack::SymbolTable};
 
 	#[test]
@@ -173,7 +174,7 @@ pub mod tests {
 		};
 
 		// Try to access a column that doesn't exist
-		let result = super::column_lookup(
+		let result = column_lookup(
 			&ctx,
 			&ColumnExpression(ColumnIdentifier {
 				primitive: ColumnPrimitive::Alias(Fragment::internal("nonexistent_col")),

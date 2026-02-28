@@ -18,6 +18,8 @@ use reifydb_transaction::{
 };
 use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
 
+use crate::Result;
+
 fn build_encoded_columns(table: &TableDef, row_number: RowNumber, encoded: &EncodedValues) -> Columns {
 	let schema: Schema = (&table.columns).into();
 	let fields = schema.fields();
@@ -77,15 +79,15 @@ fn build_table_remove_change(table: &TableDef, row_number: RowNumber, encoded: &
 }
 
 pub(crate) trait TableOperations {
-	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()>;
+	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> Result<()>;
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()>;
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()>;
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()>;
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()>;
 }
 
 impl TableOperations for CommandTransaction {
-	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()> {
+	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> Result<()> {
 		TableInterceptor::pre_insert(self, &table, row_number, &row)?;
 
 		self.set(&RowKey::encoded(table.id, row_number), row.clone())?;
@@ -105,7 +107,7 @@ impl TableOperations for CommandTransaction {
 		Ok(())
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()> {
 		let key = RowKey::encoded(table.id, id);
 
 		let old_values = match self.get(&key)? {
@@ -122,7 +124,7 @@ impl TableOperations for CommandTransaction {
 		Ok(())
 	}
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()> {
 		let key = RowKey::encoded(table.id, id);
 
 		let deleted_values = match self.get(&key)? {
@@ -141,7 +143,7 @@ impl TableOperations for CommandTransaction {
 }
 
 impl TableOperations for AdminTransaction {
-	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()> {
+	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> Result<()> {
 		TableInterceptor::pre_insert(self, &table, row_number, &row)?;
 
 		self.set(&RowKey::encoded(table.id, row_number), row.clone())?;
@@ -161,7 +163,7 @@ impl TableOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()> {
 		let key = RowKey::encoded(table.id, id);
 
 		let old_values = match self.get(&key)? {
@@ -178,7 +180,7 @@ impl TableOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()> {
 		let key = RowKey::encoded(table.id, id);
 
 		let deleted_values = match self.get(&key)? {
@@ -197,7 +199,7 @@ impl TableOperations for AdminTransaction {
 }
 
 impl TableOperations for Transaction<'_> {
-	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()> {
+	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> Result<()> {
 		match self {
 			Transaction::Command(txn) => txn.insert_table(table, row, row_number),
 			Transaction::Admin(txn) => txn.insert_table(table, row, row_number),
@@ -205,7 +207,7 @@ impl TableOperations for Transaction<'_> {
 		}
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()> {
 		match self {
 			Transaction::Command(txn) => txn.update_table(table, id, row),
 			Transaction::Admin(txn) => txn.update_table(table, id, row),
@@ -213,7 +215,7 @@ impl TableOperations for Transaction<'_> {
 		}
 	}
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_table(table, id),
 			Transaction::Admin(txn) => txn.remove_from_table(table, id),

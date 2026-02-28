@@ -21,7 +21,7 @@ use reifydb_sub_server::{
 	state::AppState,
 	wire::WireParams,
 };
-use reifydb_type::params::Params;
+use reifydb_type::{params::Params, value::identity::IdentityId};
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
@@ -226,7 +226,7 @@ pub async fn handle_command(
 /// Tries in order:
 /// 1. Authorization header (Bearer token)
 /// 2. X-Api-Key header
-fn extract_identity(headers: &HeaderMap) -> Result<reifydb_type::value::identity::IdentityId, AppError> {
+fn extract_identity(headers: &HeaderMap) -> Result<IdentityId, AppError> {
 	// Try Authorization header first
 	if let Some(auth_header) = headers.get("authorization") {
 		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;

@@ -11,7 +11,7 @@ use reifydb_core::{
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	util::encoding::keycode::serializer::KeySerializer,
 };
-use reifydb_type::{util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_type::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{
 	operator::stateful::{
@@ -51,7 +51,7 @@ impl RowNumberProvider {
 		&self,
 		txn: &mut FlowTransaction,
 		keys: I,
-	) -> reifydb_type::Result<Vec<(RowNumber, bool)>>
+	) -> Result<Vec<(RowNumber, bool)>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -100,7 +100,7 @@ impl RowNumberProvider {
 		&self,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
-	) -> reifydb_type::Result<(RowNumber, bool)> {
+	) -> Result<(RowNumber, bool)> {
 		Ok(self.get_or_create_row_numbers(txn, once(key))?.into_iter().next().unwrap())
 	}
 
@@ -109,7 +109,7 @@ impl RowNumberProvider {
 		&self,
 		txn: &mut FlowTransaction,
 		row_number: RowNumber,
-	) -> reifydb_type::Result<Option<EncodedKey>> {
+	) -> Result<Option<EncodedKey>> {
 		let reverse_key = self.make_reverse_map_key(row_number);
 		if let Some(key_bytes) = internal_state_get(self.node, txn, &reverse_key)? {
 			Ok(Some(EncodedKey::new(key_bytes.as_ref().to_vec())))
@@ -136,7 +136,7 @@ impl RowNumberProvider {
 
 	/// Remove all encoded number mappings with the given prefix
 	/// This is useful for cleaning up all join results from a specific left encoded
-	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> reifydb_type::Result<()> {
+	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> Result<()> {
 		// Create the prefix for scanning
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();

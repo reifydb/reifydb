@@ -11,8 +11,16 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
-use reifydb_type::{fragment::Fragment, value::r#type::Type};
+use reifydb_core::{
+	interface::identifier::{ColumnIdentifier, ColumnPrimitive},
+	internal,
+};
+use reifydb_type::{
+	Result,
+	error::{Error, TypeError},
+	fragment::Fragment,
+	value::r#type::Type,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 
@@ -427,9 +435,9 @@ impl From<&Expression> for JsonExpression {
 // ============================================================================
 
 impl TryFrom<JsonExpression> for Expression {
-	type Error = reifydb_type::error::Error;
+	type Error = Error;
 
-	fn try_from(json: JsonExpression) -> Result<Self, Self::Error> {
+	fn try_from(json: JsonExpression) -> Result<Self> {
 		Ok(match json {
 			// Constants
 			JsonExpression::None => Expression::Constant(ConstantExpression::None {
@@ -643,7 +651,7 @@ impl TryFrom<JsonExpression> for Expression {
 				args,
 			} => Expression::Call(CallExpression {
 				func: IdentExpression(internal_fragment(&function)),
-				args: args.into_iter().map(|a| a.try_into()).collect::<Result<Vec<_>, _>>()?,
+				args: args.into_iter().map(|a| a.try_into()).collect::<Result<Vec<_>>>()?,
 				fragment: Fragment::None,
 			}),
 			JsonExpression::Tuple {
@@ -652,7 +660,7 @@ impl TryFrom<JsonExpression> for Expression {
 				expressions: expressions
 					.into_iter()
 					.map(|a| a.try_into())
-					.collect::<Result<Vec<_>, _>>()?,
+					.collect::<Result<Vec<_>>>()?,
 				fragment: Fragment::None,
 			}),
 			JsonExpression::Prefix {
@@ -664,10 +672,7 @@ impl TryFrom<JsonExpression> for Expression {
 					"+" => PrefixOperator::Plus(Fragment::None),
 					"not" => PrefixOperator::Not(Fragment::None),
 					_ => {
-						return Err(reifydb_type::error::Error(reifydb_core::internal!(
-							"Unknown prefix operator: {}",
-							operator
-						)));
+						return Err(Error(internal!("Unknown prefix operator: {}", operator)));
 					}
 				};
 				Expression::Prefix(PrefixExpression {
@@ -726,7 +731,7 @@ impl TryFrom<JsonExpression> for Expression {
 								fragment: Fragment::None,
 							})
 						})
-						.collect::<Result<Vec<_>, Self::Error>>()?,
+						.collect::<Result<Vec<_>>>()?,
 					else_expr: converted_else,
 					fragment: Fragment::None,
 				})
@@ -737,7 +742,7 @@ impl TryFrom<JsonExpression> for Expression {
 				expressions: expressions
 					.into_iter()
 					.map(|a| a.try_into())
-					.collect::<Result<Vec<_>, _>>()?,
+					.collect::<Result<Vec<_>>>()?,
 				fragment: Fragment::None,
 			}),
 			JsonExpression::Extend {
@@ -746,7 +751,7 @@ impl TryFrom<JsonExpression> for Expression {
 				expressions: expressions
 					.into_iter()
 					.map(|a| a.try_into())
-					.collect::<Result<Vec<_>, _>>()?,
+					.collect::<Result<Vec<_>>>()?,
 				fragment: Fragment::None,
 			}),
 			JsonExpression::Type {
@@ -771,7 +776,7 @@ impl TryFrom<JsonExpression> for Expression {
 }
 
 // Helper to parse type strings back to Type enum
-fn parse_type(s: &str) -> reifydb_type::Result<reifydb_type::value::r#type::Type> {
+fn parse_type(s: &str) -> Result<Type> {
 	// Handle type debug representations
 	let ty = match s.to_lowercase().as_str() {
 		"boolean" => Type::Boolean,
@@ -807,7 +812,7 @@ fn parse_type(s: &str) -> reifydb_type::Result<reifydb_type::value::r#type::Type
 		"uint" => Type::Uint,
 		"decimal" => Type::Decimal,
 		_ => {
-			return Err(reifydb_type::error::Error(reifydb_core::internal!("Unknown type: {}", s)));
+			return Err(Error(internal!("Unknown type: {}", s)));
 		}
 	};
 
@@ -834,9 +839,9 @@ pub fn to_json_pretty(expr: &Expression) -> String {
 }
 
 /// Deserialize an Expression from a JSON string.
-pub fn from_json(json: &str) -> reifydb_type::Result<Expression> {
+pub fn from_json(json: &str) -> Result<Expression> {
 	let json_expr: JsonExpression = from_str(json).map_err(|e| {
-		reifydb_type::error::Error::from(reifydb_type::error::TypeError::SerdeDeserialize {
+		Error::from(TypeError::SerdeDeserialize {
 			message: e.to_string(),
 		})
 	})?;
@@ -1292,7 +1297,7 @@ pub mod tests {
 		let expr = Expression::Cast(CastExpression {
 			expression: Box::new(column_expr("value")),
 			to: TypeExpression {
-				ty: reifydb_type::value::r#type::Type::Int4,
+				ty: Type::Int4,
 				fragment: internal_fragment("Int4"),
 			},
 			fragment: Fragment::None,
@@ -1550,7 +1555,7 @@ pub mod tests {
 	#[test]
 	fn test_type_expression() {
 		let expr = Expression::Type(TypeExpression {
-			ty: reifydb_type::value::r#type::Type::Utf8,
+			ty: Type::Utf8,
 			fragment: internal_fragment("Utf8"),
 		});
 

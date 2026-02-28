@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::AstApply,
 		parse::{Parser, Precedence},
@@ -11,7 +12,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_apply(&mut self) -> crate::Result<AstApply<'bump>> {
+	pub(crate) fn parse_apply(&mut self) -> Result<AstApply<'bump>> {
 		let token = self.consume_keyword(Keyword::Apply)?;
 
 		let operator = self.parse_identifier()?;

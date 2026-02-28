@@ -2,28 +2,31 @@
 // Copyright (c) 2025 ReifyDB
 
 use OperationType::Delete;
-use reifydb_core::interface::catalog::{
-	dictionary::DictionaryDef,
-	flow::{FlowDef, FlowId},
-	handler::HandlerDef,
-	id::{
-		HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-		SubscriptionId, TableId, ViewId,
+use reifydb_core::{
+	encoded::encoded::EncodedValues,
+	interface::catalog::{
+		dictionary::DictionaryDef,
+		flow::{FlowDef, FlowId},
+		handler::HandlerDef,
+		id::{
+			HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
+			SubscriptionId, TableId, ViewId,
+		},
+		migration::{MigrationDef, MigrationEvent},
+		namespace::NamespaceDef,
+		policy::{PolicyDef, PolicyId},
+		procedure::ProcedureDef,
+		ringbuffer::RingBufferDef,
+		series::SeriesDef,
+		subscription::SubscriptionDef,
+		sumtype::SumTypeDef,
+		table::TableDef,
+		user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
+		user_authentication::{UserAuthenticationDef, UserAuthenticationId},
+		view::ViewDef,
 	},
-	migration::{MigrationDef, MigrationEvent},
-	namespace::NamespaceDef,
-	policy::{PolicyDef, PolicyId},
-	procedure::ProcedureDef,
-	ringbuffer::RingBufferDef,
-	series::SeriesDef,
-	subscription::SubscriptionDef,
-	sumtype::SumTypeDef,
-	table::TableDef,
-	user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
-	user_authentication::{UserAuthenticationDef, UserAuthenticationId},
-	view::ViewDef,
 };
-use reifydb_type::value::{dictionary::DictionaryId, sumtype::SumTypeId};
+use reifydb_type::value::{dictionary::DictionaryId, row_number::RowNumber, sumtype::SumTypeId};
 
 use crate::TransactionId;
 
@@ -757,8 +760,8 @@ impl TransactionalDefChanges {
 #[derive(Debug, Clone)]
 pub struct TableRowInsertion {
 	pub table_id: TableId,
-	pub row_number: reifydb_type::value::row_number::RowNumber,
-	pub encoded: reifydb_core::encoded::encoded::EncodedValues,
+	pub row_number: RowNumber,
+	pub encoded: EncodedValues,
 }
 
 /// Tracks row changes across different entity types for post-commit event emission

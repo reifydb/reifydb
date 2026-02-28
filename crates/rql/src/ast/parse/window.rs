@@ -2,8 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
-		ast::{AstWindow, AstWindowConfig},
+		ast::{Ast, AstWindow, AstWindowConfig},
 		parse::{Parser, Precedence},
 	},
 	diagnostic::AstError,
@@ -15,7 +16,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_window(&mut self) -> crate::Result<AstWindow<'bump>> {
+	pub(crate) fn parse_window(&mut self) -> Result<AstWindow<'bump>> {
 		let token = self.consume_keyword(Window)?;
 
 		// Parse computation block
@@ -89,7 +90,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse WITH { interval: "5m", slide: "1m" } clause
-	fn parse_with_clause(&mut self) -> crate::Result<Vec<AstWindowConfig<'bump>>> {
+	fn parse_with_clause(&mut self) -> Result<Vec<AstWindowConfig<'bump>>> {
 		self.consume_operator(OpenCurly)?;
 
 		let mut config = Vec::new();
@@ -144,7 +145,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse BY { field1, field2 } clause
-	fn parse_by_clause(&mut self) -> crate::Result<Vec<crate::ast::ast::Ast<'bump>>> {
+	fn parse_by_clause(&mut self) -> Result<Vec<Ast<'bump>>> {
 		self.consume_operator(OpenCurly)?;
 
 		let mut group_by = Vec::new();

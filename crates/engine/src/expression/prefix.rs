@@ -13,14 +13,18 @@ use reifydb_type::{
 	value::{decimal::Decimal, int::Int, uint::Uint},
 };
 
-use crate::expression::context::EvalContext;
+use super::eval::evaluate;
+use crate::{
+	Result,
+	expression::{context::EvalContext, option::unary_op_unwrap_option},
+};
 
 pub(crate) fn prefix_eval(
 	ctx: &EvalContext,
 	prefix: &PrefixExpression,
 	functions: &Functions,
 	clock: &Clock,
-) -> crate::Result<Column> {
+) -> Result<Column> {
 	let inner_ctx = EvalContext {
 		target: None,
 		columns: ctx.columns.clone(),
@@ -34,9 +38,9 @@ pub(crate) fn prefix_eval(
 		arena: None,
 		identity: ctx.identity,
 	};
-	let column = super::eval::evaluate(&inner_ctx, &prefix.expression, functions, clock)?;
+	let column = evaluate(&inner_ctx, &prefix.expression, functions, clock)?;
 
-	crate::expression::option::unary_op_unwrap_option(&column, |column| match column.data() {
+	unary_op_unwrap_option(&column, |column| match column.data() {
 		ColumnData::Bool(container) => match prefix.operator {
 			PrefixOperator::Not(_) => {
 				let mut result = Vec::with_capacity(container.data().len());

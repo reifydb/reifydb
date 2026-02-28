@@ -3,6 +3,7 @@
 
 use reifydb_core::{common::CommitVersion, key::cdc_consumer::CdcConsumerKeyRange};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::Result;
 
 /// Computes the consumer watermark by finding the minimum checkpoint version
 /// across all registered CDC consumers.
@@ -10,7 +11,7 @@ use reifydb_transaction::transaction::Transaction;
 /// The watermark represents the lowest commit version that any consumer has
 /// checkpointed. Retention policies must not clean up versions at or above
 /// this watermark, as consumers still need them.
-pub fn compute_watermark(txn: &mut Transaction<'_>) -> reifydb_type::Result<CommitVersion> {
+pub fn compute_watermark(txn: &mut Transaction<'_>) -> Result<CommitVersion> {
 	let mut min_version: Option<CommitVersion> = None;
 
 	for multi in txn.range(CdcConsumerKeyRange::full_scan(), 1024)? {

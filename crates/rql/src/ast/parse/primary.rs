@@ -2,13 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{
-			Ast, AstCallFunction, AstEnvironment, AstFrom, AstIdentity, AstRownum, AstVariable, AstWildcard,
+			Ast, AstCallFunction, AstEnvironment, AstFrom, AstIdentity, AstRequire, AstRownum, AstVariable,
+			AstWildcard,
 		},
 		identifier::MaybeQualifiedFunctionIdentifier,
-		parse::Parser,
+		parse::{Parser, Precedence},
 	},
+	bump::BumpBox,
 	diagnostic::AstError,
 	token::{
 		keyword::Keyword,
@@ -22,7 +25,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_primary(&mut self) -> crate::Result<Ast<'bump>> {
+	pub(crate) fn parse_primary(&mut self) -> Result<Ast<'bump>> {
 		loop {
 			if self.is_eof() {
 				return Ok(Ast::Nop);
@@ -68,21 +71,17 @@ impl<'bump> Parser<'bump> {
 						let token = self.consume_keyword(Keyword::Require)?;
 						// Handle optional braces like filter does
 						let has_braces = !self.is_eof()
-							&& self.current()?.is_operator(
-								crate::token::operator::Operator::OpenCurly,
-							);
+							&& self.current()?.is_operator(Operator::OpenCurly);
 						if has_braces {
 							self.advance()?; // consume {
 						}
-						let body = self.parse_node(crate::ast::parse::Precedence::None)?;
+						let body = self.parse_node(Precedence::None)?;
 						if has_braces {
-							self.consume_operator(
-								crate::token::operator::Operator::CloseCurly,
-							)?;
+							self.consume_operator(Operator::CloseCurly)?;
 						}
-						Ok(Ast::Require(crate::ast::ast::AstRequire {
+						Ok(Ast::Require(AstRequire {
 							token,
-							body: crate::bump::BumpBox::new_in(body, self.bump()),
+							body: BumpBox::new_in(body, self.bump()),
 						}))
 					}
 					Keyword::From => Ok(Ast::From(self.parse_from()?)),

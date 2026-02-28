@@ -4,7 +4,10 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{Value, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+};
 
 pub struct IsType;
 
@@ -15,7 +18,7 @@ impl IsType {
 }
 
 impl ScalarFunction for IsType {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 

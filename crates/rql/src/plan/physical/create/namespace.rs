@@ -3,9 +3,12 @@
 
 use reifydb_transaction::transaction::Transaction;
 
-use crate::plan::{
-	logical,
-	physical::{Compiler, CreateNamespaceNode, PhysicalPlan},
+use crate::{
+	Result,
+	plan::{
+		logical,
+		physical::{Compiler, CreateNamespaceNode, PhysicalPlan},
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -13,7 +16,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		_rx: &mut Transaction<'_>,
 		create: logical::CreateNamespaceNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		Ok(PhysicalPlan::CreateNamespace(CreateNamespaceNode {
 			segments: create.segments.iter().map(|s| self.interner.intern_fragment(s)).collect(),
 			if_not_exists: create.if_not_exists,

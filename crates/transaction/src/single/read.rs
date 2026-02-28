@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionValues};
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
-use reifydb_type::util::hex;
+use reifydb_type::{Result, util::hex};
 
 use super::*;
 use crate::error::TransactionError;
@@ -50,7 +50,7 @@ pub struct SingleReadTransaction<'a> {
 
 impl<'a> SingleReadTransaction<'a> {
 	#[inline]
-	fn check_key_allowed(&self, key: &EncodedKey) -> reifydb_type::Result<()> {
+	fn check_key_allowed(&self, key: &EncodedKey) -> Result<()> {
 		if self.keys.iter().any(|k| k == key) {
 			Ok(())
 		} else {
@@ -61,13 +61,13 @@ impl<'a> SingleReadTransaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> reifydb_type::Result<Option<SingleVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
 		self.check_key_allowed(key)?;
 		let store = self.inner.store.read().clone();
 		SingleVersionGet::get(&store, key)
 	}
 
-	pub fn contains_key(&mut self, key: &EncodedKey) -> reifydb_type::Result<bool> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.check_key_allowed(key)?;
 		let store = self.inner.store.read().clone();
 		SingleVersionContains::contains(&store, key)

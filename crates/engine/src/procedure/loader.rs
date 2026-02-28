@@ -224,23 +224,17 @@ impl Drop for ProcedureLoader {
 
 /// Scan a directory for FFI procedure shared libraries and register them
 /// onto an existing `ProceduresBuilder`.
-pub fn register_procedures_from_dir(
-	dir: &Path,
-	mut builder: ProceduresBuilder,
-) -> reifydb_type::Result<ProceduresBuilder> {
+pub fn register_procedures_from_dir(dir: &Path, mut builder: ProceduresBuilder) -> FFIResult<ProceduresBuilder> {
 	let loader = ffi_procedure_loader();
 	let mut loader_guard = loader.write().unwrap();
 
 	let mut names = Vec::new();
 
-	let entries = std::fs::read_dir(dir).map_err(|e| {
-		reifydb_sdk::error::FFIError::Other(format!("Failed to read directory {}: {}", dir.display(), e))
-	})?;
+	let entries = std::fs::read_dir(dir)
+		.map_err(|e| FFIError::Other(format!("Failed to read directory {}: {}", dir.display(), e)))?;
 
 	for entry in entries {
-		let entry = entry.map_err(|e| {
-			reifydb_sdk::error::FFIError::Other(format!("Failed to read directory entry: {}", e))
-		})?;
+		let entry = entry.map_err(|e| FFIError::Other(format!("Failed to read directory entry: {}", e)))?;
 		let path = entry.path();
 		let ext = path.extension().and_then(|s| s.to_str());
 
@@ -279,6 +273,6 @@ pub fn register_procedures_from_dir(
 
 /// Scan a directory for FFI procedure shared libraries, register them,
 /// and return a `Procedures` registry with factory functions for each.
-pub fn load_procedures_from_dir(dir: &Path) -> reifydb_type::Result<Procedures> {
+pub fn load_procedures_from_dir(dir: &Path) -> FFIResult<Procedures> {
 	Ok(register_procedures_from_dir(dir, Procedures::builder())?.build())
 }

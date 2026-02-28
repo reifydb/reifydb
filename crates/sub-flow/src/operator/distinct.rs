@@ -27,6 +27,7 @@ use reifydb_runtime::{
 	hash::{Hash128, xxh3_128},
 };
 use reifydb_type::{
+	Result,
 	error::Error,
 	fragment::Fragment,
 	params::Params,
@@ -193,7 +194,7 @@ impl DistinctOperator {
 		let compiled_expressions: Vec<CompiledExpr> = expressions
 			.iter()
 			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>, _>>()
+			.collect::<Result<Vec<_>>>()
 			.expect("Failed to compile expressions");
 
 		Self {
@@ -207,7 +208,7 @@ impl DistinctOperator {
 	}
 
 	/// Compute hashes for all rows in Columns
-	fn compute_hashes(&self, columns: &Columns) -> reifydb_type::Result<Vec<Hash128>> {
+	fn compute_hashes(&self, columns: &Columns) -> Result<Vec<Hash128>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -260,7 +261,7 @@ impl DistinctOperator {
 		}
 	}
 
-	fn load_distinct_state(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<DistinctState> {
+	fn load_distinct_state(&self, txn: &mut FlowTransaction) -> Result<DistinctState> {
 		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -276,7 +277,7 @@ impl DistinctOperator {
 			.map_err(|e| Error(internal!("Failed to deserialize DistinctState: {}", e)))
 	}
 
-	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> reifydb_type::Result<()> {
+	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> Result<()> {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
 
@@ -288,7 +289,7 @@ impl DistinctOperator {
 	}
 
 	/// Process inserts - operates directly on Columns without Row conversion
-	fn process_insert(&self, state: &mut DistinctState, columns: &Columns) -> reifydb_type::Result<Vec<Diff>> {
+	fn process_insert(&self, state: &mut DistinctState, columns: &Columns) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -339,7 +340,7 @@ impl DistinctOperator {
 		state: &mut DistinctState,
 		pre_columns: &Columns,
 		post_columns: &Columns,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = post_columns.row_count();
 		if row_count == 0 {
@@ -427,7 +428,7 @@ impl DistinctOperator {
 	}
 
 	/// Process removes - operates directly on Columns without Row conversion
-	fn process_remove(&self, state: &mut DistinctState, columns: &Columns) -> reifydb_type::Result<Vec<Diff>> {
+	fn process_remove(&self, state: &mut DistinctState, columns: &Columns) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -476,7 +477,7 @@ impl Operator for DistinctOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut state = self.load_distinct_state(txn)?;
 		let mut result = Vec::new();
 
@@ -509,7 +510,7 @@ impl Operator for DistinctOperator {
 		Ok(Change::from_flow(self.node, change.version, result))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		self.parent.pull(txn, rows)
 	}
 }

@@ -80,11 +80,24 @@ while IFS= read -r file; do
             next
         }
 
+        # Skip type alias definitions (pub type X<T> = qualified::path<T>)
+        if (match(stripped, /^(pub[[:space:]]+)?type[[:space:]]+/)) {
+            next
+        }
+
         # Remove $crate:: (macro hygiene) before checking
         gsub(/\$crate::/, "", line)
 
         # Remove pub(crate) before checking
         gsub(/pub\(crate\)/, "", line)
+
+        # Remove pub(in ...) visibility annotations (cannot be replaced with use imports)
+        gsub(/pub\(in [^)]*\)/, "", line)
+
+        # Skip lines inside macro_rules! bodies (contain $ pattern variables)
+        if (match(line, /\$[a-zA-Z_]/)) {
+            next
+        }
 
         # Check for remaining crate::, super::, or reifydb_*:: occurrences
         if (match(line, /(^|[^a-zA-Z0-9_$])crate::/) || match(line, /(^|[^a-zA-Z0-9_$])super::/) || match(line, /(^|[^a-zA-Z0-9_$])reifydb[a-zA-Z0-9_]*::/)) {

@@ -3,6 +3,7 @@
 
 use reifydb_core::interface::catalog::property::ColumnSaturationPolicy;
 use reifydb_type::{
+	Result,
 	error::TypeError,
 	fragment::LazyFragment,
 	value::{
@@ -23,7 +24,7 @@ impl EvalContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment + Copy,
-	) -> reifydb_type::Result<Option<<L as Promote<R>>::Output>>
+	) -> Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -75,7 +76,7 @@ impl EvalContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment + Copy,
-	) -> reifydb_type::Result<Option<<L as Promote<R>>::Output>>
+	) -> Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -127,7 +128,7 @@ impl EvalContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment + Copy,
-	) -> reifydb_type::Result<Option<<L as Promote<R>>::Output>>
+	) -> Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -179,7 +180,7 @@ impl EvalContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment + Copy,
-	) -> reifydb_type::Result<Option<<L as Promote<R>>::Output>>
+	) -> Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -231,7 +232,7 @@ impl EvalContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment + Copy,
-	) -> reifydb_type::Result<Option<<L as Promote<R>>::Output>>
+	) -> Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,

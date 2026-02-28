@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::Value;
 
-use crate::{AggregateFunction, AggregateFunctionContext};
+use crate::{AggregateFunction, AggregateFunctionContext, error::AggregateFunctionResult};
 
 pub struct Min {
 	pub mins: IndexMap<Vec<Value>, f64>,
@@ -20,7 +20,7 @@ impl Min {
 }
 
 impl AggregateFunction for Min {
-	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::error::AggregateFunctionResult<()> {
+	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> AggregateFunctionResult<()> {
 		let column = ctx.column;
 		let groups = &ctx.groups;
 
@@ -93,7 +93,7 @@ impl AggregateFunction for Min {
 		}
 	}
 
-	fn finalize(&mut self) -> crate::error::AggregateFunctionResult<(Vec<Vec<Value>>, ColumnData)> {
+	fn finalize(&mut self) -> AggregateFunctionResult<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.mins.len());
 		let mut data = ColumnData::float8_with_capacity(self.mins.len());
 

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstInsert, AstVariable},
 		identifier::UnresolvedPrimitiveIdentifier,
@@ -17,7 +18,7 @@ impl<'bump> Parser<'bump> {
 	/// INSERT table [...]              - inline array (no FROM)
 	/// INSERT table $variable          - variable (no FROM)
 	/// INSERT namespace.table FROM source_table  - table source (FROM required)
-	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert<'bump>> {
+	pub(crate) fn parse_insert(&mut self) -> Result<AstInsert<'bump>> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
 		// 1. Parse target (REQUIRED) - namespace.table or just table

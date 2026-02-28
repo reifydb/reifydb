@@ -3,6 +3,7 @@
 
 use reifydb_type::value::constraint::TypeConstraint;
 
+use super::LogicalPlan;
 use crate::{
 	bump::{BumpFragment, BumpVec},
 	expression::Expression,
@@ -27,7 +28,7 @@ pub struct DefineFunctionNode<'bump> {
 	/// Optional return type constraint
 	pub return_type: Option<TypeConstraint>,
 	/// Function body as a list of statement plans
-	pub body: Vec<BumpVec<'bump, super::LogicalPlan<'bump>>>,
+	pub body: Vec<BumpVec<'bump, LogicalPlan<'bump>>>,
 }
 
 /// Return statement

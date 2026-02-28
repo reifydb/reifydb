@@ -10,6 +10,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_server::state::{AppState, StateConfig};
+use reifydb_type::Result;
 
 use crate::subsystem::HttpSubsystem;
 
@@ -92,7 +93,7 @@ impl HttpSubsystemFactory {
 }
 
 impl SubsystemFactory for HttpSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
 

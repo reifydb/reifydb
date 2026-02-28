@@ -7,7 +7,7 @@ use reifydb_core::{internal, value::column::columns::Columns};
 use reifydb_rql::instruction::{CompiledClosureDef, CompiledFunctionDef, ScopeType};
 use reifydb_type::{error, value::Value};
 
-use crate::error::EngineError;
+use crate::{Result, error::EngineError};
 
 /// The VM data stack for intermediate results
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ impl Stack {
 		self.variables.push(value);
 	}
 
-	pub fn pop(&mut self) -> crate::Result<Variable> {
+	pub fn pop(&mut self) -> Result<Variable> {
 		self.variables.pop().ok_or_else(|| error!(internal!("VM data stack underflow")))
 	}
 
@@ -146,7 +146,7 @@ impl SymbolTable {
 
 	/// Exit the current scope (pop from stack)
 	/// Returns error if trying to exit the global scope
-	pub fn exit_scope(&mut self) -> crate::Result<()> {
+	pub fn exit_scope(&mut self) -> Result<()> {
 		if self.scopes.len() <= 1 {
 			return Err(error!(internal!("Cannot exit global scope")));
 		}
@@ -165,13 +165,13 @@ impl SymbolTable {
 	}
 
 	/// Set a variable in the current (innermost) scope (allows shadowing)
-	pub fn set(&mut self, name: String, variable: Variable, mutable: bool) -> crate::Result<()> {
+	pub fn set(&mut self, name: String, variable: Variable, mutable: bool) -> Result<()> {
 		self.set_in_current_scope(name, variable, mutable)
 	}
 
 	/// Reassign an existing variable (checks mutability)
 	/// Searches from innermost to outermost scope to find the variable
-	pub fn reassign(&mut self, name: String, variable: Variable) -> crate::Result<()> {
+	pub fn reassign(&mut self, name: String, variable: Variable) -> Result<()> {
 		// Search from innermost scope to outermost scope
 		for scope in self.scopes.iter_mut().rev() {
 			if let Some(existing) = scope.variables.get(&name) {
@@ -201,7 +201,7 @@ impl SymbolTable {
 
 	/// Set a variable specifically in the current scope
 	/// Allows shadowing - new variable declarations can shadow existing ones
-	pub fn set_in_current_scope(&mut self, name: String, variable: Variable, mutable: bool) -> crate::Result<()> {
+	pub fn set_in_current_scope(&mut self, name: String, variable: Variable, mutable: bool) -> Result<()> {
 		let current_scope = self.scopes.last_mut().unwrap();
 
 		// Allow shadowing - simply insert the new variable binding

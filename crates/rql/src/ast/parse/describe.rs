@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::AstDescribe,
 		parse::{Parser, Precedence},
@@ -11,7 +12,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_describe(&mut self) -> crate::Result<AstDescribe<'bump>> {
+	pub(crate) fn parse_describe(&mut self) -> Result<AstDescribe<'bump>> {
 		let token = self.consume_keyword(Keyword::Describe)?;
 		self.consume_operator(Operator::OpenCurly)?;
 		let node = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());

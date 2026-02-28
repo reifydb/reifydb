@@ -2,9 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::sort::SortDirection;
-use reifydb_type::error::{AstErrorKind, Error, TypeError};
+use reifydb_type::{
+	error::{AstErrorKind, Error, TypeError},
+	fragment::Fragment,
+};
 
 use crate::{
+	Result,
 	ast::{
 		ast::{
 			AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind, AstColumnToCreate, AstCreate,
@@ -12,7 +16,8 @@ use crate::{
 			AstCreateFlow, AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
 			AstCreateProcedure, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
 			AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTransactionalView, AstIndexColumn,
-			AstPrimaryKeyDef, AstProcedureParam, AstTimestampPrecision, AstType, AstVariantDef,
+			AstPolicyTargetType, AstPrimaryKeyDef, AstProcedureParam, AstStatement, AstTimestampPrecision,
+			AstType, AstVariantDef,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -21,7 +26,7 @@ use crate::{
 			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
 			MaybeQualifiedTransactionalViewIdentifier,
 		},
-		parse::Parser,
+		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
 	token::{
@@ -42,7 +47,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create(&mut self) -> Result<AstCreate<'bump>> {
 		let token = self.consume_keyword(Create)?;
 
 		// Check for CREATE OR REPLACE
@@ -56,7 +61,7 @@ impl<'bump> Parser<'bump> {
 		// Check for CREATE FLOW / CREATE FLOW POLICY
 		if (self.consume_if(TokenKind::Keyword(Flow))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::Flow);
+				return self.parse_create_policy(token, AstPolicyTargetType::Flow);
 			}
 			return self.parse_flow(token, or_replace);
 		}
@@ -79,8 +84,7 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Namespace))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self
-					.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::Namespace);
+				return self.parse_create_policy(token, AstPolicyTargetType::Namespace);
 			}
 			return self.parse_namespace(token);
 		}
@@ -88,7 +92,7 @@ impl<'bump> Parser<'bump> {
 		// CREATE VIEW / CREATE VIEW POLICY
 		if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::View);
+				return self.parse_create_policy(token, AstPolicyTargetType::View);
 			}
 			return self.parse_transactional_view(token);
 		}
@@ -109,23 +113,21 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Table))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::Table);
+				return self.parse_create_policy(token, AstPolicyTargetType::Table);
 			}
 			return self.parse_table(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self
-					.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::RingBuffer);
+				return self.parse_create_policy(token, AstPolicyTargetType::RingBuffer);
 			}
 			return self.parse_ringbuffer(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Dictionary))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self
-					.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::Dictionary);
+				return self.parse_create_policy(token, AstPolicyTargetType::Dictionary);
 			}
 			return self.parse_dictionary(token);
 		}
@@ -136,17 +138,14 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::Series);
+				return self.parse_create_policy(token, AstPolicyTargetType::Series);
 			}
 			return self.parse_series(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Subscription))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_create_policy(
-					token,
-					crate::ast::ast::AstPolicyTargetType::Subscription,
-				);
+				return self.parse_create_policy(token, AstPolicyTargetType::Subscription);
 			}
 			return self.parse_subscription(token);
 		}
@@ -163,8 +162,7 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self
-					.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::Procedure);
+				return self.parse_create_policy(token, AstPolicyTargetType::Procedure);
 			}
 			return self.parse_procedure(token);
 		}
@@ -195,17 +193,17 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Session))?).is_some() {
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::Session);
+			return self.parse_create_policy(token, AstPolicyTargetType::Session);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Feature))?).is_some() {
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::Feature);
+			return self.parse_create_policy(token, AstPolicyTargetType::Feature);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Function))?).is_some() {
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_create_policy(token, crate::ast::ast::AstPolicyTargetType::Function);
+			return self.parse_create_policy(token, AstPolicyTargetType::Function);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Migration))?).is_some() {
@@ -219,7 +217,7 @@ impl<'bump> Parser<'bump> {
 		unimplemented!();
 	}
 
-	fn parse_procedure(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_procedure(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		// Parse dot-separated name: ns.procedure_name
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
@@ -252,7 +250,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+			let node = self.parse_node(Precedence::None)?;
 			body.push(node);
 
 			// Try to consume separator
@@ -282,7 +280,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_procedure_params(&mut self) -> crate::Result<Vec<AstProcedureParam<'bump>>> {
+	fn parse_procedure_params(&mut self) -> Result<Vec<AstProcedureParam<'bump>>> {
 		let mut params = Vec::new();
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -317,7 +315,7 @@ impl<'bump> Parser<'bump> {
 		Ok(params)
 	}
 
-	fn parse_namespace(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_namespace(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		// Check for IF NOT EXISTS BEFORE identifier
 		let mut if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
@@ -346,7 +344,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_series(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_series(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -467,7 +465,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_subscription(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_subscription(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		// Subscriptions don't have names - they're identified only by UUID v7
 		// Syntax: CREATE SUBSCRIPTION { columns... } AS { query }
 		// Or schema-less: CREATE SUBSCRIPTION AS { query }
@@ -509,7 +507,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 
-				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+				let node = self.parse_node(Precedence::None)?;
 				query_nodes.push(node);
 
 				// Check for pipe operator or newline as separator between nodes
@@ -525,7 +523,7 @@ impl<'bump> Parser<'bump> {
 			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
-			Some(crate::ast::ast::AstStatement {
+			Some(AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
@@ -540,7 +538,7 @@ impl<'bump> Parser<'bump> {
 				.current()
 				.ok()
 				.map(|t| t.fragment.to_owned())
-				.unwrap_or_else(|| reifydb_type::fragment::Fragment::internal("end of input"));
+				.unwrap_or_else(|| Fragment::internal("end of input"));
 			return Err(Error::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "AS clause (schema-less CREATE SUBSCRIPTION requires AS clause)"
@@ -562,7 +560,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_deferred_view(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_deferred_view(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -585,7 +583,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 
-				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+				let node = self.parse_node(Precedence::None)?;
 				query_nodes.push(node);
 
 				// Check for pipe operator or newline as separator between nodes
@@ -601,7 +599,7 @@ impl<'bump> Parser<'bump> {
 			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
-			Some(crate::ast::ast::AstStatement {
+			Some(AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
@@ -618,7 +616,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_transactional_view(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_transactional_view(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -641,7 +639,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 
-				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+				let node = self.parse_node(Precedence::None)?;
 				query_nodes.push(node);
 
 				// Check for pipe operator or newline as separator between nodes
@@ -657,7 +655,7 @@ impl<'bump> Parser<'bump> {
 			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
-			Some(crate::ast::ast::AstStatement {
+			Some(AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
@@ -674,7 +672,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_table(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_table(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -689,7 +687,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_ringbuffer(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_ringbuffer(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -788,7 +786,7 @@ impl<'bump> Parser<'bump> {
 				.current()
 				.ok()
 				.map(|t| t.fragment.to_owned())
-				.unwrap_or_else(|| reifydb_type::fragment::Fragment::internal("end of input"));
+				.unwrap_or_else(|| Fragment::internal("end of input"));
 			Error::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "'capacity' is required for RINGBUFFER".to_string(),
@@ -814,7 +812,7 @@ impl<'bump> Parser<'bump> {
 
 	/// Parse primary key definition: {col1: DESC, col2: ASC}
 	/// Defaults to DESC when sort order is not specified
-	fn parse_primary_key_definition(&mut self) -> crate::Result<AstPrimaryKeyDef<'bump>> {
+	fn parse_primary_key_definition(&mut self) -> Result<AstPrimaryKeyDef<'bump>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -886,7 +884,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse CREATE PRIMARY KEY ON ns.table { col1, col2: desc }
-	fn parse_create_primary_key(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_create_primary_key(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::On)?;
 
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -904,7 +902,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse CREATE COLUMN POLICY ON ns.table.column { saturation: error, default: 0 }
-	fn parse_create_column_property(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_create_column_property(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::On)?;
 
 		let column = self.parse_column_identifier()?;
@@ -939,7 +937,7 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			// Parse property value
-			let value = BumpBox::new_in(self.parse_node(crate::ast::parse::Precedence::None)?, self.bump());
+			let value = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 			properties.push(AstColumnPropertyEntry {
 				kind,
@@ -966,7 +964,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_dictionary(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_dictionary(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		// Check for IF NOT EXISTS
 		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
@@ -1002,7 +1000,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_enum(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_enum(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -1060,7 +1058,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_type(&mut self) -> crate::Result<AstType<'bump>> {
+	fn parse_type(&mut self) -> Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
 		// Check for Option(T) syntax
@@ -1104,7 +1102,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate<'bump>>> {
+	fn parse_columns(&mut self) -> Result<Vec<AstColumnToCreate<'bump>>> {
 		let mut result = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -1129,7 +1127,7 @@ impl<'bump> Parser<'bump> {
 		Ok(result)
 	}
 
-	pub(crate) fn parse_column(&mut self) -> crate::Result<AstColumnToCreate<'bump>> {
+	pub(crate) fn parse_column(&mut self) -> Result<AstColumnToCreate<'bump>> {
 		let name_identifier = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Colon)?;
 		let ty_token = self.consume(TokenKind::Identifier)?;
@@ -1188,7 +1186,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_column_properties(&mut self) -> crate::Result<Vec<AstColumnProperty<'bump>>> {
+	fn parse_column_properties(&mut self) -> Result<Vec<AstColumnProperty<'bump>>> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -1246,18 +1244,12 @@ impl<'bump> Parser<'bump> {
 				}
 				"saturation" => {
 					self.consume_operator(Colon)?;
-					let value = BumpBox::new_in(
-						self.parse_node(crate::ast::parse::Precedence::None)?,
-						self.bump(),
-					);
+					let value = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 					AstColumnProperty::Saturation(value)
 				}
 				"default" => {
 					self.consume_operator(Colon)?;
-					let value = BumpBox::new_in(
-						self.parse_node(crate::ast::parse::Precedence::None)?,
-						self.bump(),
-					);
+					let value = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 					AstColumnProperty::Default(value)
 				}
 				_ => {
@@ -1288,7 +1280,7 @@ impl<'bump> Parser<'bump> {
 		Ok(properties)
 	}
 
-	pub(crate) fn parse_event(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	pub(crate) fn parse_event(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name_frag = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1337,7 +1329,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_tag(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	pub(crate) fn parse_tag(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name_frag = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -1386,7 +1378,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	pub(crate) fn parse_handler(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	pub(crate) fn parse_handler(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		// Parse handler name: ns.handler_name
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name_frag = segments.pop().unwrap().into_fragment();
@@ -1423,7 +1415,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+			let node = self.parse_node(Precedence::None)?;
 			body.push(node);
 
 			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
@@ -1452,7 +1444,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_migration(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	fn parse_migration(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		// Parse migration name as a string literal: CREATE MIGRATION 'name'
 		let name = match &self.current()?.kind {
 			TokenKind::Literal(Literal::Text) => {
@@ -1580,7 +1572,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_flow(&mut self, token: Token<'bump>, or_replace: bool) -> crate::Result<AstCreate<'bump>> {
+	fn parse_flow(&mut self, token: Token<'bump>, or_replace: bool) -> Result<AstCreate<'bump>> {
 		// Check for IF NOT EXISTS
 		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
@@ -1618,7 +1610,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 
-				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+				let node = self.parse_node(Precedence::None)?;
 				query_nodes.push(node);
 
 				// Check for pipe operator or newline as separator between nodes
@@ -1633,7 +1625,7 @@ impl<'bump> Parser<'bump> {
 
 			self.consume_operator(Operator::CloseCurly)?;
 
-			crate::ast::ast::AstStatement {
+			AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
@@ -1654,7 +1646,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 
-				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+				let node = self.parse_node(Precedence::None)?;
 				query_nodes.push(node);
 
 				if !self.is_eof() {
@@ -1669,7 +1661,7 @@ impl<'bump> Parser<'bump> {
 				}
 			}
 
-			crate::ast::ast::AstStatement {
+			AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,

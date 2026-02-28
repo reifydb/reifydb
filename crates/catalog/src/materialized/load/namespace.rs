@@ -5,10 +5,10 @@ use reifydb_core::key::namespace::NamespaceKey;
 use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
-use crate::store::namespace;
+use crate::{Result, store::namespace};
 
 /// Load all namespaces from storage
-pub(crate) fn load_namespaces(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub(crate) fn load_namespaces(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = NamespaceKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 

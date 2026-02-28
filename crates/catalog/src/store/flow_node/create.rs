@@ -7,10 +7,13 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::store::flow_node::schema::{flow_node, flow_node_by_flow};
+use crate::{
+	CatalogStore, Result,
+	store::flow_node::schema::{flow_node, flow_node_by_flow},
+};
 
-impl crate::CatalogStore {
-	pub(crate) fn create_flow_node(txn: &mut AdminTransaction, node_def: &FlowNodeDef) -> crate::Result<()> {
+impl CatalogStore {
+	pub(crate) fn create_flow_node(txn: &mut AdminTransaction, node_def: &FlowNodeDef) -> Result<()> {
 		// Write to main flow_node table
 		let mut row = flow_node::SCHEMA.allocate();
 		flow_node::SCHEMA.set_u64(&mut row, flow_node::ID, node_def.id);
@@ -41,7 +44,7 @@ pub mod tests {
 	use crate::{
 		CatalogStore,
 		store::sequence::flow::next_flow_node_id,
-		test_utils::{create_namespace, ensure_test_flow},
+		test_utils::{create_flow, create_namespace, ensure_test_flow},
 	};
 
 	#[test]
@@ -108,8 +111,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 
 		// Create two flows
-		let flow1 = crate::test_utils::create_flow(&mut txn, "test_namespace", "flow_one");
-		let flow2 = crate::test_utils::create_flow(&mut txn, "test_namespace", "flow_two");
+		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one");
+		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two");
 
 		// Create node in first flow
 		let node1_id = next_flow_node_id(&mut txn).unwrap();

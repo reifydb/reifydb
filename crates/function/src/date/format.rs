@@ -4,7 +4,11 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct DateFormat;
 
@@ -47,7 +51,7 @@ fn compute_day_of_year(year: i32, month: u32, day: u32) -> u32 {
 }
 
 impl ScalarFunction for DateFormat {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}

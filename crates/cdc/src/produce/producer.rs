@@ -30,8 +30,10 @@ use reifydb_runtime::{
 	clock::Clock,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::Result;
 use tracing::{debug, error, trace};
 
+use super::decode::{build_insert_diff, build_remove_diff, build_update_diff};
 use crate::{
 	consume::{host::CdcHost, watermark::compute_watermark},
 	storage::CdcStorage,
@@ -108,14 +110,14 @@ where
 									.ok()
 									.flatten();
 								if let Some(prev) = pre {
-									super::decode::build_update_diff(
+									build_update_diff(
 										registry,
 										row_key.row,
 										prev.values,
 										values.clone(),
 									)
 								} else {
-									super::decode::build_insert_diff(
+									build_insert_diff(
 										registry,
 										row_key.row,
 										values.clone(),
@@ -127,7 +129,7 @@ where
 								..
 							} => {
 								if !values.is_empty() {
-									super::decode::build_remove_diff(
+									build_remove_diff(
 										registry,
 										row_key.row,
 										values.clone(),
@@ -237,7 +239,7 @@ where
 	}
 
 	fn try_cleanup(&self) {
-		let result: reifydb_type::Result<()> = (|| {
+		let result: Result<()> = (|| {
 			let mut txn = self.host.begin_command()?;
 			let watermark = compute_watermark(&mut Transaction::Command(&mut txn))?;
 			txn.rollback()?;
@@ -451,13 +453,16 @@ where
 pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
+	use reifydb_catalog::schema::SchemaRegistry;
 	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
 	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, clock::Clock};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_store_single::SingleStore;
 	use reifydb_transaction::{
-		interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction,
-		single::SingleTransaction, transaction::command::CommandTransaction,
+		interceptor::interceptors::Interceptors,
+		multi::transaction::MultiTransaction,
+		single::SingleTransaction,
+		transaction::{command::CommandTransaction, query::QueryTransaction},
 	};
 	use reifydb_type::util::cowvec::CowVec;
 
@@ -477,7 +482,7 @@ pub mod tests {
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		event_bus: EventBus,
-		schema_registry: reifydb_catalog::schema::SchemaRegistry,
+		schema_registry: SchemaRegistry,
 	}
 
 	impl TestCdcHost {
@@ -499,13 +504,13 @@ pub mod tests {
 				multi,
 				single,
 				event_bus,
-				schema_registry: reifydb_catalog::schema::SchemaRegistry::testing(),
+				schema_registry: SchemaRegistry::testing(),
 			}
 		}
 	}
 
 	impl CdcHost for TestCdcHost {
-		fn begin_command(&self) -> reifydb_type::Result<CommandTransaction> {
+		fn begin_command(&self) -> Result<CommandTransaction> {
 			CommandTransaction::new(
 				self.multi.clone(),
 				self.single.clone(),
@@ -514,16 +519,11 @@ pub mod tests {
 			)
 		}
 
-		fn begin_query(
-			&self,
-		) -> reifydb_type::Result<reifydb_transaction::transaction::query::QueryTransaction> {
-			Ok(reifydb_transaction::transaction::query::QueryTransaction::new(
-				self.multi.begin_query()?,
-				self.single.clone(),
-			))
+		fn begin_query(&self) -> Result<QueryTransaction> {
+			Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
 		}
 
-		fn current_version(&self) -> reifydb_type::Result<CommitVersion> {
+		fn current_version(&self) -> Result<CommitVersion> {
 			Ok(CommitVersion(1))
 		}
 
@@ -535,7 +535,7 @@ pub mod tests {
 			true
 		}
 
-		fn schema_registry(&self) -> &reifydb_catalog::schema::SchemaRegistry {
+		fn schema_registry(&self) -> &SchemaRegistry {
 			&self.schema_registry
 		}
 	}

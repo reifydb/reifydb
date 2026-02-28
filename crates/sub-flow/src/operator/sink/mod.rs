@@ -27,6 +27,7 @@ use reifydb_engine::{
 use reifydb_function::registry::Functions;
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{
+	Result,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
@@ -41,7 +42,7 @@ static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 /// Coerce columns to match target schema types
-pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) -> reifydb_type::Result<Columns> {
+pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) -> Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());
@@ -109,7 +110,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 pub(crate) fn coerce_subscription_columns(
 	columns: &Columns,
 	target_columns: &[SubscriptionColumnDef],
-) -> reifydb_type::Result<Columns> {
+) -> Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());
@@ -183,7 +184,7 @@ pub(crate) fn encode_row_at_index(
 
 	// Collect values in SCHEMA FIELD ORDER by matching column names
 	// This ensures values are in the same order as schema expects
-	let values: Vec<reifydb_type::value::Value> = schema
+	let values: Vec<Value> = schema
 		.field_names()
 		.map(|field_name| {
 			// Find column with matching name
@@ -208,7 +209,7 @@ pub(crate) fn encode_row_at_index(
 /// For columns that store `DictionaryId` values, reads the embedded `dictionary_id`
 /// from the container metadata, looks up the `DictionaryDef` in the catalog,
 /// then resolves each dictionary entry ID to its actual value.
-pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTransaction) -> reifydb_type::Result<()> {
+pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTransaction) -> Result<()> {
 	// Collect (col_pos, DictionaryDef) for every DictionaryId column that carries a dictionary_id
 	let dict_columns: Vec<(usize, DictionaryDef)> = {
 		let catalog = txn.catalog();

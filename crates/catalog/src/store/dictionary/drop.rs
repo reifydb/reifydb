@@ -8,10 +8,10 @@ use reifydb_core::key::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::dictionary::DictionaryId;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_dictionary(txn: &mut AdminTransaction, dictionary: DictionaryId) -> crate::Result<()> {
+	pub(crate) fn drop_dictionary(txn: &mut AdminTransaction, dictionary: DictionaryId) -> Result<()> {
 		// First, find the dictionary to get its namespace
 		if let Some(dictionary_def) = Self::find_dictionary(&mut Transaction::Admin(&mut *txn), dictionary)? {
 			// Remove the namespace-dictionary link (secondary index)

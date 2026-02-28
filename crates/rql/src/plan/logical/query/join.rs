@@ -5,8 +5,9 @@ use reifydb_core::common::JoinType;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::{
-		ast::{Ast, AstFrom, AstInfix, AstJoin, AstUsingClause, InfixOperator, JoinConnector},
+		ast::{Ast, AstFrom, AstInfix, AstJoin, AstSubQuery, AstUsingClause, InfixOperator, JoinConnector},
 		identifier::UnresolvedPrimitiveIdentifier,
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
@@ -20,7 +21,7 @@ use crate::{
 /// Build expression tree from using clause pairs.
 /// Each pair (expr1, expr2) becomes an equality condition expr1 == expr2.
 /// Pairs are combined using AND or OR based on their connectors.
-fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -> crate::Result<Vec<Expression>> {
+fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -> Result<Vec<Expression>> {
 	let compiler = JoinConditionCompiler::new(Some(alias.to_owned()));
 	let fragment = using.token.fragment.to_owned();
 
@@ -73,11 +74,7 @@ fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -
 }
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_join(
-		&self,
-		ast: AstJoin<'bump>,
-		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_join(&self, ast: AstJoin<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		match ast {
 			AstJoin::InnerJoin {
 				with,
@@ -132,10 +129,10 @@ impl<'bump> Compiler<'bump> {
 
 	fn compile_join_subquery(
 		&self,
-		with: &crate::ast::ast::AstSubQuery,
+		with: &AstSubQuery,
 		alias: &BumpFragment<'_>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<BumpVec<'bump, LogicalPlan<'bump>>> {
+	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
 		let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
 		match with_ast {
 			Ast::From(AstFrom::Source {
@@ -207,10 +204,10 @@ impl<'bump> Compiler<'bump> {
 
 	fn compile_natural_join_subquery(
 		&self,
-		with: &crate::ast::ast::AstSubQuery,
+		with: &AstSubQuery,
 		alias: &BumpFragment<'_>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<BumpVec<'bump, LogicalPlan<'bump>>> {
+	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
 		let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
 		match with_ast {
 			Ast::From(AstFrom::Source {

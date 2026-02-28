@@ -22,7 +22,7 @@ use reifydb_core::{
 		data::ColumnData,
 	},
 };
-use reifydb_type::value::Value;
+use reifydb_type::{Result, value::Value};
 
 pub struct StoreColumnVersion;
 
@@ -42,9 +42,9 @@ impl HasVersion for StoreColumnVersion {
 
 /// Trait for columnar storage backends
 pub trait ColumnStore: Send + Sync + Clone + 'static {
-	fn insert(&self, version: CommitVersion, columns: Vec<CompressedColumn>) -> reifydb_type::Result<()>;
+	fn insert(&self, version: CommitVersion, columns: Vec<CompressedColumn>) -> Result<()>;
 
-	fn scan(&self, version: CommitVersion, column_indices: &[usize]) -> reifydb_type::Result<Vec<ColumnData>>;
+	fn scan(&self, version: CommitVersion, column_indices: &[usize]) -> Result<Vec<ColumnData>>;
 
 	fn statistics(&self, column_index: usize) -> Option<ColumnStatistics>;
 

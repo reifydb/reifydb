@@ -11,6 +11,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
+	Result,
 	nodes::AlterSequenceNode,
 	plan::{
 		logical::{self, resolver::DEFAULT_NAMESPACE},
@@ -23,7 +24,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		alter: logical::AlterSequenceNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		// Get the namespace name from the sequence identifier
 		let namespace_name = if alter.sequence.namespace.is_empty() {
 			DEFAULT_NAMESPACE.to_string()

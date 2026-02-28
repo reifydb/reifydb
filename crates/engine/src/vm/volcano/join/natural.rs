@@ -16,7 +16,10 @@ use reifydb_type::{
 use tracing::instrument;
 
 use super::common::{JoinContext, compute_join_hash, load_and_merge_all, resolve_column_names};
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub struct NaturalJoinNode {
 	left: Box<dyn QueryNode>,
@@ -61,7 +64,7 @@ impl NaturalJoinNode {
 
 impl QueryNode for NaturalJoinNode {
 	#[instrument(name = "volcano::join::natural::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
@@ -69,7 +72,7 @@ impl QueryNode for NaturalJoinNode {
 	}
 
 	#[instrument(name = "volcano::join::natural::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_initialized(), "NaturalJoinNode::next() called before initialize()");
 
 		if self.headers.is_some() {

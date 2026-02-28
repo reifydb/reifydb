@@ -5,6 +5,7 @@ use std::any::Any;
 
 use reifydb_core::{interface::version::HasVersion, util::ioc::IocContainer};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
+use reifydb_type::Result;
 
 /// Uniform interface that all subsystems must implement
 ///
@@ -18,7 +19,7 @@ pub trait Subsystem: Any + HasVersion {
 	/// This method should initialize the subsystem and start any background
 	/// threads or processes. It should be idempotent - calling start() on
 	/// an already running subsystem should succeed without side effects.
-	fn start(&mut self) -> reifydb_type::Result<()>;
+	fn start(&mut self) -> Result<()>;
 	/// Shutdown the subsystem
 	///
 	/// This method should gracefully shut down the subsystem and clean up
@@ -26,7 +27,7 @@ pub trait Subsystem: Any + HasVersion {
 	/// subsystem cannot be restarted. It should be idempotent - calling
 	/// shutdown() on an already shutdown subsystem should succeed without
 	/// side effects.
-	fn shutdown(&mut self) -> reifydb_type::Result<()>;
+	fn shutdown(&mut self) -> Result<()>;
 
 	/// Check if the subsystem is currently running
 	fn is_running(&self) -> bool;
@@ -50,7 +51,7 @@ pub trait SubsystemFactory: Send {
 		builder
 	}
 
-	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>>;
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>>;
 }
 
 #[derive(Debug, Clone, PartialEq)]

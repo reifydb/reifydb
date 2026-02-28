@@ -7,25 +7,26 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::CatalogStore;
+use super::{migration_def_from_row, migration_event_from_row};
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn list_migrations(txn: &mut Transaction<'_>) -> crate::Result<Vec<MigrationDef>> {
+	pub(crate) fn list_migrations(txn: &mut Transaction<'_>) -> Result<Vec<MigrationDef>> {
 		let range = MigrationKey::full_scan();
 		let mut results = Vec::new();
 		for entry in txn.range(range, 1024)? {
 			let entry = entry?;
-			results.push(super::migration_def_from_row(&entry.values));
+			results.push(migration_def_from_row(&entry.values));
 		}
 		Ok(results)
 	}
 
-	pub(crate) fn list_migration_events(txn: &mut Transaction<'_>) -> crate::Result<Vec<MigrationEvent>> {
+	pub(crate) fn list_migration_events(txn: &mut Transaction<'_>) -> Result<Vec<MigrationEvent>> {
 		let range = MigrationEventKey::full_scan();
 		let mut results = Vec::new();
 		for entry in txn.range(range, 1024)? {
 			let entry = entry?;
-			results.push(super::migration_event_from_row(&entry.values));
+			results.push(migration_event_from_row(&entry.values));
 		}
 		Ok(results)
 	}

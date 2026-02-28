@@ -50,9 +50,15 @@ use reifydb_core::{
 	retention::RetentionPolicy,
 	util::multi::MultiVersionContainer,
 };
-use reifydb_type::value::{dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId},
+};
 
-use crate::error::{CatalogError, CatalogObjectKind};
+use crate::{
+	Result,
+	error::{CatalogError, CatalogObjectKind},
+};
 
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
@@ -236,7 +242,7 @@ impl MaterializedCatalog {
 	/// Register a user-defined virtual table
 	///
 	/// Returns an error if a virtual table with the same name already exists in the namespace.
-	pub fn register_vtable_user(&self, def: Arc<VTableDef>) -> crate::Result<()> {
+	pub fn register_vtable_user(&self, def: Arc<VTableDef>) -> Result<()> {
 		let key = (def.namespace, def.name.clone());
 
 		// Check if already exists
@@ -251,7 +257,7 @@ impl MaterializedCatalog {
 				kind: CatalogObjectKind::VirtualTable,
 				namespace: ns_name,
 				name: def.name.clone(),
-				fragment: reifydb_type::fragment::Fragment::None,
+				fragment: Fragment::None,
 			}
 			.into());
 		}
@@ -262,7 +268,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Unregister a user-defined virtual table by namespace and name
-	pub fn unregister_vtable_user(&self, namespace: NamespaceId, name: &str) -> crate::Result<()> {
+	pub fn unregister_vtable_user(&self, namespace: NamespaceId, name: &str) -> Result<()> {
 		let key = (namespace, name.to_string());
 
 		if let Some(entry) = self.vtable_user_by_name.remove(&key) {
@@ -279,7 +285,7 @@ impl MaterializedCatalog {
 				kind: CatalogObjectKind::VirtualTable,
 				namespace: ns_name,
 				name: name.to_string(),
-				fragment: reifydb_type::fragment::Fragment::None,
+				fragment: Fragment::None,
 			}
 			.into())
 		}

@@ -5,7 +5,11 @@ use num_traits::ToPrimitive;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::number::NumberContainer, decimal::Decimal, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct Floor;
 
@@ -16,7 +20,7 @@ impl Floor {
 }
 
 impl ScalarFunction for Floor {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}

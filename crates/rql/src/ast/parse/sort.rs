@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{ast::AstSort, parse::Parser},
 	error::{OperationKind, RqlError},
 	token::{
@@ -12,7 +13,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_sort(&mut self) -> crate::Result<AstSort<'bump>> {
+	pub(crate) fn parse_sort(&mut self) -> Result<AstSort<'bump>> {
 		let token = self.consume_keyword(Keyword::Sort)?;
 
 		// Always require opening curly brace

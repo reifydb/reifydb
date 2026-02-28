@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{encoded::schema::Schema, interface::catalog::flow::FlowNodeId, internal};
+use reifydb_core::{
+	encoded::{key::EncodedKey, schema::Schema},
+	interface::catalog::flow::FlowNodeId,
+	internal,
+};
 use reifydb_runtime::hash::Hash128;
 use reifydb_type::{
+	Result,
 	error::Error,
 	value::{blob::Blob, r#type::Type},
 };
@@ -33,18 +38,14 @@ impl Store {
 		}
 	}
 
-	fn make_key(&self, hash: &Hash128) -> reifydb_core::encoded::key::EncodedKey {
+	fn make_key(&self, hash: &Hash128) -> EncodedKey {
 		let mut key_bytes = self.prefix.clone();
 		// Hash128 is a tuple struct containing u128
 		key_bytes.extend_from_slice(&hash.0.to_le_bytes());
-		reifydb_core::encoded::key::EncodedKey::new(key_bytes)
+		EncodedKey::new(key_bytes)
 	}
 
-	pub(crate) fn get(
-		&self,
-		txn: &mut FlowTransaction,
-		hash: &Hash128,
-	) -> reifydb_type::Result<Option<JoinSideEntry>> {
+	pub(crate) fn get(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<JoinSideEntry>> {
 		let key = self.make_key(hash);
 		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
@@ -62,12 +63,7 @@ impl Store {
 		}
 	}
 
-	pub(crate) fn set(
-		&self,
-		txn: &mut FlowTransaction,
-		hash: &Hash128,
-		entry: &JoinSideEntry,
-	) -> reifydb_type::Result<()> {
+	pub(crate) fn set(&self, txn: &mut FlowTransaction, hash: &Hash128, entry: &JoinSideEntry) -> Result<()> {
 		let key = self.make_key(hash);
 
 		// Serialize JoinSideEntry
@@ -84,12 +80,12 @@ impl Store {
 		Ok(())
 	}
 
-	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> reifydb_type::Result<bool> {
+	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<bool> {
 		let key = self.make_key(hash);
 		Ok(state_get(self.node_id, txn, &key)?.is_some())
 	}
 
-	pub(crate) fn remove(&self, txn: &mut FlowTransaction, hash: &Hash128) -> reifydb_type::Result<()> {
+	pub(crate) fn remove(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<()> {
 		let key = self.make_key(hash);
 		state_remove(self.node_id, txn, &key)?;
 		Ok(())
@@ -100,7 +96,7 @@ impl Store {
 		txn: &mut FlowTransaction,
 		hash: &Hash128,
 		f: F,
-	) -> reifydb_type::Result<JoinSideEntry>
+	) -> Result<JoinSideEntry>
 	where
 		F: FnOnce() -> JoinSideEntry,
 	{
@@ -113,12 +109,7 @@ impl Store {
 		}
 	}
 
-	pub(crate) fn update_entry<F>(
-		&self,
-		txn: &mut FlowTransaction,
-		hash: &Hash128,
-		f: F,
-	) -> reifydb_type::Result<()>
+	pub(crate) fn update_entry<F>(&self, txn: &mut FlowTransaction, hash: &Hash128, f: F) -> Result<()>
 	where
 		F: FnOnce(&mut JoinSideEntry),
 	{

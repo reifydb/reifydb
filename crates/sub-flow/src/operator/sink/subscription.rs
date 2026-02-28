@@ -19,7 +19,7 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_type::{fragment::Fragment, value::row_number::RowNumber};
+use reifydb_type::{Result, fragment::Fragment, value::row_number::RowNumber};
 
 use super::encode_row_at_index;
 use crate::{
@@ -75,7 +75,7 @@ impl Operator for SinkSubscriptionOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let subscription_def = self.subscription.def().clone();
 
 		for diff in change.diffs.iter() {
@@ -162,13 +162,13 @@ impl Operator for SinkSubscriptionOperator {
 		Ok(Change::from_flow(self.node, change.version, Vec::new()))
 	}
 
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
 		unreachable!()
 	}
 }
 
 /// Create and persist a schema from actual column data
-fn create_schema_from_columns(columns: &Columns, catalog: &Catalog) -> reifydb_type::Result<Schema> {
+fn create_schema_from_columns(columns: &Columns, catalog: &Catalog) -> Result<Schema> {
 	let fields: Vec<SchemaField> = columns
 		.iter()
 		.map(|col| SchemaField::unconstrained(col.name.to_string(), col.data().get_type()))

@@ -9,17 +9,18 @@ use reifydb_transaction::{
 	change::TransactionalPolicyChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
+use reifydb_type::fragment::Fragment;
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 };
 
 impl Catalog {
 	#[instrument(name = "catalog::policy::find_by_name", level = "trace", skip(self, txn))]
-	pub fn find_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> crate::Result<Option<PolicyDef>> {
+	pub fn find_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<PolicyDef>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				// 1. Check transactional changes first
@@ -83,19 +84,14 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: PolicyToCreate,
-	) -> crate::Result<(PolicyDef, Vec<PolicyOperationDef>)> {
+	) -> Result<(PolicyDef, Vec<PolicyOperationDef>)> {
 		let (policy, ops) = CatalogStore::create_policy(txn, to_create)?;
 		txn.track_policy_def_created(policy.clone())?;
 		Ok((policy, ops))
 	}
 
 	#[instrument(name = "catalog::policy::alter", level = "debug", skip(self, txn))]
-	pub fn alter_policy(
-		&self,
-		txn: &mut AdminTransaction,
-		policy_id: PolicyId,
-		enabled: bool,
-	) -> crate::Result<()> {
+	pub fn alter_policy(&self, txn: &mut AdminTransaction, policy_id: PolicyId, enabled: bool) -> Result<()> {
 		// Read pre-state
 		let pre = CatalogStore::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)?;
 
@@ -112,7 +108,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::policy::drop", level = "debug", skip(self, txn))]
-	pub fn drop_policy(&self, txn: &mut AdminTransaction, policy_id: PolicyId) -> crate::Result<()> {
+	pub fn drop_policy(&self, txn: &mut AdminTransaction, policy_id: PolicyId) -> Result<()> {
 		// Get the policy def before dropping for change tracking
 		if let Some(policy) = CatalogStore::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)? {
 			CatalogStore::drop_policy(txn, policy_id)?;
@@ -123,19 +119,19 @@ impl Catalog {
 		Ok(())
 	}
 
-	pub fn get_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> crate::Result<PolicyDef> {
+	pub fn get_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<PolicyDef> {
 		self.find_policy_by_name(txn, name)?.ok_or_else(|| {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::Policy,
 				namespace: "system".to_string(),
 				name: name.to_string(),
-				fragment: reifydb_type::fragment::Fragment::None,
+				fragment: Fragment::None,
 			}
 			.into()
 		})
 	}
 
-	pub fn list_all_policies(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<PolicyDef>> {
+	pub fn list_all_policies(&self, txn: &mut Transaction<'_>) -> Result<Vec<PolicyDef>> {
 		CatalogStore::list_all_policies(txn)
 	}
 
@@ -143,7 +139,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		policy_id: PolicyId,
-	) -> crate::Result<Vec<PolicyOperationDef>> {
+	) -> Result<Vec<PolicyOperationDef>> {
 		CatalogStore::list_policy_operations(txn, policy_id)
 	}
 }

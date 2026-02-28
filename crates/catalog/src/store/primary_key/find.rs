@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::primary_key::schema::{primary_key, primary_key::deserialize_column_ids},
 };
 
@@ -22,7 +22,7 @@ impl CatalogStore {
 	pub(crate) fn find_primary_key(
 		rx: &mut Transaction<'_>,
 		primitive: impl Into<PrimitiveId>,
-	) -> crate::Result<Option<PrimaryKeyDef>> {
+	) -> Result<Option<PrimaryKeyDef>> {
 		let primitive_id = primitive.into();
 
 		let primary_key_id = match primitive_id {
@@ -96,7 +96,7 @@ impl CatalogStore {
 	pub(crate) fn find_table_primary_key(
 		rx: &mut Transaction<'_>,
 		table_id: TableId,
-	) -> crate::Result<Option<PrimaryKeyDef>> {
+	) -> Result<Option<PrimaryKeyDef>> {
 		Self::find_primary_key(rx, table_id)
 	}
 
@@ -104,7 +104,7 @@ impl CatalogStore {
 	pub(crate) fn find_view_primary_key(
 		rx: &mut Transaction<'_>,
 		view_id: ViewId,
-	) -> crate::Result<Option<PrimaryKeyDef>> {
+	) -> Result<Option<PrimaryKeyDef>> {
 		Self::find_primary_key(rx, view_id)
 	}
 }

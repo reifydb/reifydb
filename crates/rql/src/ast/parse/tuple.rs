@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::AstTuple,
 		parse::{Parser, Precedence},
@@ -14,12 +15,12 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_tuple(&mut self) -> crate::Result<AstTuple<'bump>> {
+	pub(crate) fn parse_tuple(&mut self) -> Result<AstTuple<'bump>> {
 		let token = self.consume_operator(Operator::OpenParen)?;
 		self.parse_tuple_call(token)
 	}
 
-	pub(crate) fn parse_tuple_call(&mut self, operator: Token<'bump>) -> crate::Result<AstTuple<'bump>> {
+	pub(crate) fn parse_tuple_call(&mut self, operator: Token<'bump>) -> Result<AstTuple<'bump>> {
 		let mut nodes = Vec::with_capacity(4);
 		loop {
 			self.skip_new_line()?;

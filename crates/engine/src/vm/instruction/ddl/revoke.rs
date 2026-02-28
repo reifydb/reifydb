@@ -6,9 +6,9 @@ use reifydb_rql::nodes::RevokeNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
-pub(crate) fn revoke(services: &Services, txn: &mut AdminTransaction, plan: RevokeNode) -> crate::Result<Columns> {
+pub(crate) fn revoke(services: &Services, txn: &mut AdminTransaction, plan: RevokeNode) -> Result<Columns> {
 	let role_name = plan.role.text();
 	let user_name = plan.user.text();
 

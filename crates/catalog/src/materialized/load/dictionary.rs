@@ -12,9 +12,12 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use super::MaterializedCatalog;
-use crate::store::dictionary::schema::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SCHEMA, VALUE_TYPE};
+use crate::{
+	Result,
+	store::dictionary::schema::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SCHEMA, VALUE_TYPE},
+};
 
-pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = DictionaryKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 

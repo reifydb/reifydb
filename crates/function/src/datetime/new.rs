@@ -4,7 +4,11 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct DateTimeNew;
 
@@ -15,7 +19,7 @@ impl DateTimeNew {
 }
 
 impl ScalarFunction for DateTimeNew {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}

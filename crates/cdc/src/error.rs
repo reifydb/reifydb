@@ -6,6 +6,7 @@
 use std::fmt::Display;
 
 use reifydb_core::common::CommitVersion;
+use reifydb_type::{error, error::Error};
 
 /// Error type for CDC operations.
 #[derive(Debug, Clone)]
@@ -30,9 +31,9 @@ impl Display for CdcError {
 
 impl std::error::Error for CdcError {}
 
-impl From<CdcError> for reifydb_type::error::Error {
+impl From<CdcError> for Error {
 	fn from(err: CdcError) -> Self {
-		reifydb_type::error!(match err {
+		error!(match err {
 			CdcError::Internal(msg) => diagnostic::storage_error(msg),
 			CdcError::NotFound(version) => diagnostic::not_found(version.0),
 			CdcError::Codec(msg) => diagnostic::codec_error(msg),

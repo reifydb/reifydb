@@ -12,6 +12,7 @@ use reifydb_type::{
 };
 
 use crate::{
+	Result,
 	ast::ast::{AstColumnProperty, AstCreateRingBuffer},
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateRingBufferNode, LogicalPlan},
@@ -22,7 +23,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateRingBuffer<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<RingBufferColumnToCreate> = vec![];
 
 		let ringbuffer_namespace_name = ast.ringbuffer.namespace.first().map(|n| n.text()).unwrap_or("default");

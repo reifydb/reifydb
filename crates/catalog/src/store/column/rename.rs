@@ -8,7 +8,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::column::schema::{column, primitive_column},
 };
 
@@ -18,7 +18,7 @@ impl CatalogStore {
 		primitive: PrimitiveId,
 		column_id: ColumnId,
 		new_name: &str,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		// Update column definition (ColumnsKey)
 		// We must rebuild the row since set_utf8 cannot overwrite existing values
 		if let Some(multi) = txn.get(&ColumnsKey::encoded(column_id))? {

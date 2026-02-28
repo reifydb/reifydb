@@ -1053,7 +1053,7 @@ pub struct AstProcedureParam<'bump> {
 #[derive(Debug)]
 pub struct AstCreateRingBuffer<'bump> {
 	pub token: Token<'bump>,
-	pub ringbuffer: crate::ast::identifier::MaybeQualifiedRingBufferIdentifier<'bump>,
+	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub capacity: u64,
 }
@@ -1071,7 +1071,7 @@ pub struct AstCreateDictionary<'bump> {
 pub struct AstCreateSumType<'bump> {
 	pub token: Token<'bump>,
 	pub if_not_exists: bool,
-	pub name: crate::ast::identifier::MaybeQualifiedSumTypeIdentifier<'bump>,
+	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub variants: Vec<AstVariantDef<'bump>>,
 }
 

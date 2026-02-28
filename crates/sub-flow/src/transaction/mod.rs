@@ -3,7 +3,7 @@
 
 use pending::{Pending, PendingWrite};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, interface::change::Change};
 use reifydb_transaction::{
 	interceptor::{
 		WithInterceptors,
@@ -257,7 +257,7 @@ impl FlowTransaction {
 	}
 
 	/// Append a view change (used by `SinkViewOperator`).
-	pub fn push_view_change(&mut self, change: reifydb_core::interface::change::Change) {
+	pub fn push_view_change(&mut self, change: Change) {
 		match self {
 			Self::Deferred {
 				pending,

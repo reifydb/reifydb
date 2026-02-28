@@ -3,9 +3,12 @@
 
 use reifydb_transaction::transaction::Transaction;
 
-use crate::plan::{
-	logical,
-	physical::{Compiler, CreateSubscriptionNode, PhysicalPlan},
+use crate::{
+	Result,
+	plan::{
+		logical,
+		physical::{Compiler, CreateSubscriptionNode, PhysicalPlan},
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -13,7 +16,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateSubscriptionNode<'bump>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let as_clause = if !create.as_clause.is_empty() {
 			// Compile logical plans to physical plan
 			let physical_plan = self.compile(rx, create.as_clause)?.unwrap();

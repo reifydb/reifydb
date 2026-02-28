@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::PrimaryKeyId, primitive::PrimitiveId},
+	interface::catalog::{
+		id::{ColumnId, PrimaryKeyId},
+		primitive::PrimitiveId,
+	},
 	key::{
 		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, primary_key::PrimaryKeyKey,
 		property::ColumnPropertyKey, retention_policy::PrimitiveRetentionPolicyKey,
@@ -11,7 +14,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::store::column::schema::primitive_column;
+use crate::{Result, store::column::schema::primitive_column};
 
 /// Remove all metadata associated with a primitive (table, view, or ringbuffer):
 /// columns, column policies, column sequences, column definitions, primary key,
@@ -22,7 +25,7 @@ pub(crate) fn drop_primitive_metadata(
 	txn: &mut AdminTransaction,
 	primitive: PrimitiveId,
 	pk_id: Option<PrimaryKeyId>,
-) -> crate::Result<()> {
+) -> Result<()> {
 	// Step 1: Scan all columns for this primitive
 	let range = ColumnKey::full_scan(primitive);
 	let mut stream = txn.range(range, 1024)?;
@@ -30,7 +33,7 @@ pub(crate) fn drop_primitive_metadata(
 	while let Some(entry) = stream.next() {
 		let entry = entry?;
 		let col_id = primitive_column::SCHEMA.get_u64(&entry.values, primitive_column::ID);
-		col_entries.push((entry.key.clone(), reifydb_core::interface::catalog::id::ColumnId(col_id)));
+		col_entries.push((entry.key.clone(), ColumnId(col_id)));
 	}
 	drop(stream);
 

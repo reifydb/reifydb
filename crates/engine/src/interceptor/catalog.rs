@@ -4,6 +4,8 @@
 use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_transaction::interceptor::transaction::{PostCommitContext, PostCommitInterceptor};
 
+use crate::Result;
+
 pub(crate) struct MaterializedCatalogInterceptor {
 	catalog: MaterializedCatalog,
 }
@@ -17,7 +19,7 @@ impl MaterializedCatalogInterceptor {
 }
 
 impl PostCommitInterceptor for MaterializedCatalogInterceptor {
-	fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
+	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
 		let version = ctx.version;
 
 		for change in &ctx.changes.namespace_def {

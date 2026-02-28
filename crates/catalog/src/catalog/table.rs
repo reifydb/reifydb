@@ -26,7 +26,7 @@ use reifydb_type::{
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
@@ -89,7 +89,7 @@ impl From<TableToCreate> for StoreTableToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self, txn))]
-	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> crate::Result<Option<TableDef>> {
+	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Option<TableDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -154,7 +154,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> crate::Result<Option<TableDef>> {
+	) -> Result<Option<TableDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -241,7 +241,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::get", level = "trace", skip(self, txn))]
-	pub fn get_table(&self, txn: &mut Transaction<'_>, id: TableId) -> crate::Result<TableDef> {
+	pub fn get_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<TableDef> {
 		self.find_table(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -256,7 +256,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl Into<Fragment> + Send,
-	) -> crate::Result<TableDef> {
+	) -> Result<TableDef> {
 		let name = name.into();
 
 		// Try to get the namespace name for the error message
@@ -277,7 +277,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
+	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<TableDef> {
 		let pk_columns = to_create.primary_key_columns.clone();
 
 		let table = CatalogStore::create_table(txn, to_create.into())?;
@@ -299,7 +299,7 @@ impl Catalog {
 						))
 					})
 				})
-				.collect::<crate::Result<Vec<_>>>()?;
+				.collect::<Result<Vec<_>>>()?;
 
 			let _pk_id = CatalogStore::create_primary_key(
 				txn,
@@ -318,7 +318,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::drop", level = "debug", skip(self, txn))]
-	pub fn drop_table(&self, txn: &mut AdminTransaction, table: TableDef) -> crate::Result<()> {
+	pub fn drop_table(&self, txn: &mut AdminTransaction, table: TableDef) -> Result<()> {
 		CatalogStore::drop_table(txn, table.id)?;
 		txn.track_table_def_deleted(table)?;
 		Ok(())
@@ -326,13 +326,13 @@ impl Catalog {
 
 	/// Lists all tables in the catalog.
 	#[instrument(name = "catalog::table::list_all", level = "debug", skip(self, txn))]
-	pub fn list_tables_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<TableDef>> {
+	pub fn list_tables_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<TableDef>> {
 		CatalogStore::list_tables_all(txn)
 	}
 
 	/// Lists all columns for a given table.
 	#[instrument(name = "catalog::table::list_columns", level = "debug", skip(self, txn))]
-	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> crate::Result<Vec<ColumnDef>> {
+	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<ColumnDef>> {
 		CatalogStore::list_columns(txn, table_id)
 	}
 
@@ -343,17 +343,13 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		CatalogStore::set_table_primary_key(txn, table_id, primary_key_id)
 	}
 
 	/// Gets the primary key ID for a table.
 	#[instrument(name = "catalog::table::get_pk_id", level = "trace", skip(self, txn))]
-	pub fn get_table_pk_id(
-		&self,
-		txn: &mut Transaction<'_>,
-		table_id: TableId,
-	) -> crate::Result<Option<PrimaryKeyId>> {
+	pub fn get_table_pk_id(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Option<PrimaryKeyId>> {
 		CatalogStore::get_table_pk_id(txn, table_id)
 	}
 
@@ -364,7 +360,7 @@ impl Catalog {
 		table_id: TableId,
 		column: TableColumnToCreate,
 		namespace_name: &str,
-	) -> crate::Result<TableDef> {
+	) -> Result<TableDef> {
 		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
 		let index = ColumnIndex(pre.columns.len() as u8);
 
@@ -397,7 +393,7 @@ impl Catalog {
 		table_id: TableId,
 		column_name: &str,
 		namespace_name: &str,
-	) -> crate::Result<TableDef> {
+	) -> Result<TableDef> {
 		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
 
 		let column = pre.columns.iter().find(|c| c.name == column_name).ok_or_else(|| {
@@ -426,7 +422,7 @@ impl Catalog {
 		old_name: &str,
 		new_name: &str,
 		namespace_name: &str,
-	) -> crate::Result<TableDef> {
+	) -> Result<TableDef> {
 		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
 
 		let column = pre.columns.iter().find(|c| c.name == old_name).ok_or_else(|| {

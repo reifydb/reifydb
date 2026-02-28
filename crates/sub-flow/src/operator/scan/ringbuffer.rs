@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_type::{Result, fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
 
@@ -33,7 +33,7 @@ impl Operator for PrimitiveRingBufferOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs {
 			decoded_diffs.push(match diff {
@@ -73,7 +73,7 @@ impl Operator for PrimitiveRingBufferOperator {
 		Ok(Change::from_flow(self.node, change.version, decoded_diffs))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		if rows.is_empty() {
 			return Ok(self.empty_columns());
 		}

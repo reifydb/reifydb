@@ -5,6 +5,7 @@ use reifydb_type::value::r#type::Type;
 use reifydb_core::value::column::data::ColumnData;
 
 use crate::{ScalarFunction, ScalarFunctionContext, propagate_options};
+use crate::error::ScalarFunctionResult;
 
 pub struct Sum {}
 
@@ -15,7 +16,7 @@ impl Sum {
 }
 
 impl ScalarFunction for Sum {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}

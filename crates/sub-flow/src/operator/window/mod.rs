@@ -31,7 +31,7 @@ use reifydb_core::{
 	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
-		schema::Schema,
+		schema::{Schema, SchemaField},
 	},
 	interface::change::{Change, Diff},
 	row::Row,
@@ -52,6 +52,7 @@ use reifydb_runtime::{
 	hash::{Hash128, xxh3_128},
 };
 use reifydb_type::{
+	Result,
 	error::Error,
 	fragment::Fragment,
 	params::Params,
@@ -95,13 +96,11 @@ impl WindowEvent {
 	}
 
 	pub fn to_row(&self) -> Row {
-		let fields: Vec<reifydb_core::encoded::schema::SchemaField> = self
+		let fields: Vec<SchemaField> = self
 			.layout_names
 			.iter()
 			.zip(self.layout_types.iter())
-			.map(|(name, ty)| {
-				reifydb_core::encoded::schema::SchemaField::unconstrained(name.clone(), ty.clone())
-			})
+			.map(|(name, ty)| SchemaField::unconstrained(name.clone(), ty.clone()))
 			.collect();
 
 		let layout = Schema::new(fields);
@@ -220,7 +219,7 @@ impl WindowOperator {
 	}
 
 	/// Compute group keys for all rows in Columns
-	pub fn compute_group_keys(&self, columns: &Columns) -> reifydb_type::Result<Vec<Hash128>> {
+	pub fn compute_group_keys(&self, columns: &Columns) -> Result<Vec<Hash128>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -265,7 +264,7 @@ impl WindowOperator {
 	}
 
 	/// Extract timestamps for all rows in Columns
-	pub fn extract_timestamps(&self, columns: &Columns) -> reifydb_type::Result<Vec<u64>> {
+	pub fn extract_timestamps(&self, columns: &Columns) -> Result<Vec<u64>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -324,7 +323,7 @@ impl WindowOperator {
 	}
 
 	/// Extract timestamp from row data
-	pub fn extract_timestamp_from_row(&self, row: &Row) -> reifydb_type::Result<u64> {
+	pub fn extract_timestamp_from_row(&self, row: &Row) -> Result<u64> {
 		match &self.window_type {
 			WindowType::Time(time_mode) => match time_mode {
 				WindowTimeMode::Processing => Ok(self.current_timestamp()),
@@ -352,7 +351,7 @@ impl WindowOperator {
 
 	/// Extract group values from window events (all events in a group have the same group values)
 	/// TODO: Refactor to use column-based evaluation when window operator is needed
-	pub fn extract_group_values(&self, events: &[WindowEvent]) -> reifydb_type::Result<(Vec<Value>, Vec<String>)> {
+	pub fn extract_group_values(&self, events: &[WindowEvent]) -> Result<(Vec<Value>, Vec<String>)> {
 		if events.is_empty() || self.group_by.is_empty() {
 			return Ok((Vec::new(), Vec::new()));
 		}
@@ -363,7 +362,7 @@ impl WindowOperator {
 	}
 
 	/// Convert window events to columnar format for aggregation
-	pub fn events_to_columns(&self, events: &[WindowEvent]) -> reifydb_type::Result<Columns> {
+	pub fn events_to_columns(&self, events: &[WindowEvent]) -> Result<Columns> {
 		if events.is_empty() {
 			return Ok(Columns::new(Vec::new()));
 		}
@@ -397,7 +396,7 @@ impl WindowOperator {
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 		events: &[WindowEvent],
-	) -> reifydb_type::Result<Option<(Row, bool)>> {
+	) -> Result<Option<(Row, bool)>> {
 		if events.is_empty() {
 			return Ok(None);
 		}
@@ -448,12 +447,10 @@ impl WindowOperator {
 			result_types.push(value.get_type());
 		}
 
-		let fields: Vec<reifydb_core::encoded::schema::SchemaField> = result_names
+		let fields: Vec<SchemaField> = result_names
 			.iter()
 			.zip(result_types.iter())
-			.map(|(name, ty)| {
-				reifydb_core::encoded::schema::SchemaField::unconstrained(name.clone(), ty.clone())
-			})
+			.map(|(name, ty)| SchemaField::unconstrained(name.clone(), ty.clone()))
 			.collect();
 		let layout = Schema::new(fields);
 		let mut encoded = layout.allocate();
@@ -471,11 +468,7 @@ impl WindowOperator {
 	}
 
 	/// Process expired windows and clean up state
-	pub fn process_expired_windows(
-		&self,
-		txn: &mut FlowTransaction,
-		current_timestamp: u64,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	pub fn process_expired_windows(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
 		let result = Vec::new();
 
 		if let (WindowType::Time(_), WindowSize::Duration(duration)) = (&self.window_type, &self.size) {
@@ -494,11 +487,7 @@ impl WindowOperator {
 	}
 
 	/// Load window state from storage
-	pub fn load_window_state(
-		&self,
-		txn: &mut FlowTransaction,
-		window_key: &EncodedKey,
-	) -> reifydb_type::Result<WindowState> {
+	pub fn load_window_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> Result<WindowState> {
 		let state_row = self.load_state(txn, window_key)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -520,7 +509,7 @@ impl WindowOperator {
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 		state: &WindowState,
-	) -> reifydb_type::Result<()> {
+	) -> Result<()> {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize WindowState: {}", e)))?;
 
@@ -532,11 +521,7 @@ impl WindowOperator {
 	}
 
 	/// Get and increment global event count for count-based windows
-	pub fn get_and_increment_global_count(
-		&self,
-		txn: &mut FlowTransaction,
-		group_hash: Hash128,
-	) -> reifydb_type::Result<u64> {
+	pub fn get_and_increment_global_count(&self, txn: &mut FlowTransaction, group_hash: Hash128) -> Result<u64> {
 		let count_key = self.create_count_key(group_hash);
 		let count_row = self.load_state(txn, &count_key)?;
 
@@ -587,7 +572,7 @@ impl Operator for WindowOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		// We'll need to refactor the architecture to support this properly.
 
 		match &self.slide {
@@ -597,7 +582,7 @@ impl Operator for WindowOperator {
 		}
 	}
 
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
 		todo!()
 	}
 }

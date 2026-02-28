@@ -8,12 +8,12 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::policy::{convert_policy, convert_policy_op},
 };
 
 impl CatalogStore {
-	pub(crate) fn list_all_policies(rx: &mut Transaction<'_>) -> crate::Result<Vec<PolicyDef>> {
+	pub(crate) fn list_all_policies(rx: &mut Transaction<'_>) -> Result<Vec<PolicyDef>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(PolicyKey::full_scan(), 1024)?;
 
@@ -29,7 +29,7 @@ impl CatalogStore {
 	pub(crate) fn list_policy_operations(
 		rx: &mut Transaction<'_>,
 		policy: PolicyId,
-	) -> crate::Result<Vec<PolicyOperationDef>> {
+	) -> Result<Vec<PolicyOperationDef>> {
 		let mut result = Vec::new();
 		let range = PolicyOpKey::policy_scan(policy);
 		let mut stream = rx.range(range, 1024)?;
@@ -42,7 +42,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_all_policy_operations(rx: &mut Transaction<'_>) -> crate::Result<Vec<PolicyOperationDef>> {
+	pub(crate) fn list_all_policy_operations(rx: &mut Transaction<'_>) -> Result<Vec<PolicyOperationDef>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(PolicyOpKey::full_scan(), 1024)?;
 

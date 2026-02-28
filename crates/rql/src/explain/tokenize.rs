@@ -4,13 +4,17 @@
 use std::collections::BTreeMap;
 
 use crate::{
+	Result,
 	bump::Bump,
-	token::token::{Token, TokenKind},
+	token::{
+		token::{Token, TokenKind},
+		tokenize,
+	},
 };
 
-pub fn explain_tokenize(query: &str) -> crate::Result<String> {
+pub fn explain_tokenize(query: &str) -> Result<String> {
 	let bump = Bump::new();
-	let tokens = crate::token::tokenize(&bump, query)?;
+	let tokens = tokenize(&bump, query)?;
 
 	let mut lines: BTreeMap<u32, Vec<(usize, &Token)>> = BTreeMap::new();
 	for (i, token) in tokens.iter().enumerate() {

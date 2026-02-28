@@ -6,7 +6,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	convert_data_type_with_constraints,
+	Result, convert_data_type_with_constraints,
 	nodes::{CreateSumTypeColumn, CreateSumTypeNode, CreateSumTypeVariant},
 	plan::{
 		logical,
@@ -19,7 +19,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateSumTypeNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if create.name.namespace.is_empty() {
 			"default".to_string()
 		} else {

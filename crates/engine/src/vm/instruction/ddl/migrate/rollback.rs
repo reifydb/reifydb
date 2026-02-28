@@ -6,13 +6,17 @@ use std::sync::Arc;
 use reifydb_catalog::error::CatalogError;
 use reifydb_core::{
 	interface::catalog::migration::{MigrationAction, MigrationDef},
+	internal_error,
 	value::column::columns::Columns,
 };
 use reifydb_rql::{compiler::CompilationResult, nodes::RollbackMigrationNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
-use crate::vm::{services::Services, vm::Vm};
+use crate::{
+	Result,
+	vm::{services::Services, vm::Vm},
+};
 
 pub(crate) fn execute_rollback_migration(
 	vm: &mut Vm,
@@ -20,11 +24,11 @@ pub(crate) fn execute_rollback_migration(
 	tx: &mut Transaction<'_>,
 	plan: RollbackMigrationNode,
 	params: &Params,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
 		_ => {
-			return Err(reifydb_core::internal_error!("ROLLBACK MIGRATION requires an admin transaction"));
+			return Err(internal_error!("ROLLBACK MIGRATION requires an admin transaction"));
 		}
 	};
 
@@ -94,7 +98,7 @@ pub(crate) fn execute_rollback_migration(
 				vm.ip = saved_ip;
 			}
 			CompilationResult::Incremental(_) => {
-				return Err(reifydb_core::internal_error!(
+				return Err(internal_error!(
 					"Migration '{}' rollback body requires more input",
 					migration.name
 				));

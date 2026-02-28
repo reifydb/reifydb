@@ -170,7 +170,7 @@ where
 		done_read: &mut bool,
 		version: CommitVersion,
 		conflicts: ConflictManager,
-	) -> reifydb_type::Result<CreateCommitResult> {
+	) -> Result<CreateCommitResult> {
 		// First, perform conflict detection with read lock for better
 		// concurrency
 		let lock_start = self.metrics_clock.instant();

@@ -11,7 +11,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::params::Params;
 
-use crate::system::{SystemCatalog, ids::vtable::*};
+use crate::{
+	Result,
+	system::{SystemCatalog, ids::vtable::*},
+};
 
 /// A batch of columnar data returned from virtual table queries
 #[derive(Debug)]
@@ -47,10 +50,10 @@ pub enum VTableContext {
 pub trait VTable: Send + Sync {
 	/// Initialize the virtual table iterator with context
 	/// Called once before iteration begins
-	fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> crate::Result<()>;
+	fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
-	fn next(&mut self, txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>>;
+	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>>;
 
 	/// Get the table definition
 	fn definition(&self) -> &VTableDef;
@@ -62,7 +65,7 @@ pub struct VTableRegistry;
 impl VTableRegistry {
 	/// Find a virtual table by its ID
 	/// Returns None if the virtual table doesn't exist
-	pub fn find_vtable(_rx: &mut Transaction<'_>, id: VTableId) -> crate::Result<Option<Arc<VTableDef>>> {
+	pub fn find_vtable(_rx: &mut Transaction<'_>, id: VTableId) -> Result<Option<Arc<VTableDef>>> {
 		Ok(match id {
 			SEQUENCES => Some(SystemCatalog::get_system_sequences_table_def()),
 			NAMESPACES => Some(SystemCatalog::get_system_namespaces_table_def()),
@@ -100,7 +103,7 @@ impl VTableRegistry {
 	}
 
 	/// List all virtual tables
-	pub fn list_vtables(_rx: &mut Transaction<'_>) -> crate::Result<Vec<Arc<VTableDef>>> {
+	pub fn list_vtables(_rx: &mut Transaction<'_>) -> Result<Vec<Arc<VTableDef>>> {
 		// Return all registered virtual tables
 		Ok(vec![
 			SystemCatalog::get_system_sequences_table_def(),

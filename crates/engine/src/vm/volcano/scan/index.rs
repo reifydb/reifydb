@@ -11,7 +11,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub(crate) struct IndexScanNode {
 	_table: TableDef, // FIXME needs to work with different sources
@@ -25,7 +28,7 @@ pub(crate) struct IndexScanNode {
 }
 
 impl IndexScanNode {
-	pub fn new(table: TableDef, index_id: IndexId, context: Arc<QueryContext>) -> crate::Result<Self> {
+	pub fn new(table: TableDef, index_id: IndexId, context: Arc<QueryContext>) -> Result<Self> {
 		let storage_types = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 
 		let headers = ColumnHeaders {
@@ -46,12 +49,12 @@ impl IndexScanNode {
 }
 
 impl QueryNode for IndexScanNode {
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		unimplemented!()
 		// let ctx = self.context.as_ref().unwrap();

@@ -15,13 +15,14 @@ use reifydb_core::{
 	interface::store::{MultiVersionBatch, MultiVersionValues},
 	key::{Key, kind::KeyKind},
 };
+use reifydb_type::Result;
 
 use super::{FlowTransaction, PendingWrite};
 
 impl FlowTransaction {
 	/// Get a value by key, checking pending writes first, then (if transactional) base_pending, then querying
 	/// multi-version store
-	pub fn get(&mut self, key: &EncodedKey) -> reifydb_type::Result<Option<EncodedValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedValues>> {
 		match self {
 			Self::Deferred {
 				pending,
@@ -86,7 +87,7 @@ impl FlowTransaction {
 	}
 
 	/// Check if a key exists
-	pub fn contains_key(&mut self, key: &EncodedKey) -> reifydb_type::Result<bool> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		match self {
 			Self::Deferred {
 				pending,
@@ -140,9 +141,9 @@ impl FlowTransaction {
 	}
 
 	/// Prefix scan
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> reifydb_type::Result<MultiVersionBatch> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		let range = EncodedKeyRange::prefix(prefix);
-		let items = self.range(range, 1024).collect::<Result<Vec<_>, _>>()?;
+		let items = self.range(range, 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -170,7 +171,7 @@ impl FlowTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = reifydb_type::Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
 		match self {
 			Self::Deferred {
 				pending,
@@ -245,7 +246,7 @@ impl FlowTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = reifydb_type::Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
 		match self {
 			Self::Deferred {
 				pending,
@@ -314,7 +315,7 @@ impl FlowTransaction {
 /// Iterator that merges pending writes with storage data (forward order).
 struct FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = reifydb_type::Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionValues>>,
 {
 	storage_iter: std::iter::Peekable<I>,
 	pending_iter: std::iter::Peekable<std::vec::IntoIter<(EncodedKey, PendingWrite)>>,
@@ -323,9 +324,9 @@ where
 
 impl<I> Iterator for FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = reifydb_type::Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionValues>>,
 {
-	type Item = reifydb_type::Result<MultiVersionValues>;
+	type Item = Result<MultiVersionValues>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -400,7 +401,7 @@ fn flow_merge_pending_iterator<I>(
 	version: CommitVersion,
 ) -> FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = reifydb_type::Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionValues>>,
 {
 	FlowMergePendingIterator {
 		storage_iter: storage_iter.peekable(),
@@ -412,7 +413,7 @@ where
 /// Iterator that merges pending writes with storage data (reverse order).
 struct FlowMergePendingIteratorRev<I>
 where
-	I: Iterator<Item = reifydb_type::Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionValues>>,
 {
 	storage_iter: std::iter::Peekable<I>,
 	pending_iter: std::iter::Peekable<std::vec::IntoIter<(EncodedKey, PendingWrite)>>,
@@ -421,9 +422,9 @@ where
 
 impl<I> Iterator for FlowMergePendingIteratorRev<I>
 where
-	I: Iterator<Item = reifydb_type::Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionValues>>,
 {
-	type Item = reifydb_type::Result<MultiVersionValues>;
+	type Item = Result<MultiVersionValues>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -498,7 +499,7 @@ fn flow_merge_pending_iterator_rev<I>(
 	version: CommitVersion,
 ) -> FlowMergePendingIteratorRev<I>
 where
-	I: Iterator<Item = reifydb_type::Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionValues>>,
 {
 	FlowMergePendingIteratorRev {
 		storage_iter: storage_iter.peekable(),
@@ -694,7 +695,7 @@ pub mod tests {
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 
-		let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+		let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should be in sorted order
 		assert_eq!(items.len(), 3);
@@ -713,7 +714,7 @@ pub mod tests {
 		txn.remove(&make_key("b")).unwrap();
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 
-		let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+		let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should only have 2 items (remove filtered out)
 		assert_eq!(items.len(), 2);
@@ -744,7 +745,7 @@ pub mod tests {
 		txn.set(&make_key("d"), make_value("4")).unwrap();
 
 		let range = EncodedKeyRange::new(Included(make_key("b")), Excluded(make_key("d")));
-		let items: Vec<_> = txn.range(range, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+		let items: Vec<_> = txn.range(range, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should only include b and c (not d, exclusive end)
 		assert_eq!(items.len(), 2);

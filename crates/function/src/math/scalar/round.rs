@@ -3,9 +3,13 @@
 
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{decimal::Decimal, int::Int, r#type::Type, uint::Uint};
+use reifydb_type::value::{container::number::NumberContainer, decimal::Decimal, int::Int, r#type::Type, uint::Uint};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct Round;
 
@@ -22,7 +26,7 @@ impl Round {
 }
 
 impl ScalarFunction for Round {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}
@@ -302,7 +306,7 @@ impl ScalarFunction for Round {
 				}
 
 				Ok(ColumnData::Int {
-					container: reifydb_type::value::container::number::NumberContainer::new(result),
+					container: NumberContainer::new(result),
 					max_bytes: *max_bytes,
 				})
 			}
@@ -324,7 +328,7 @@ impl ScalarFunction for Round {
 				}
 
 				Ok(ColumnData::Uint {
-					container: reifydb_type::value::container::number::NumberContainer::new(result),
+					container: NumberContainer::new(result),
 					max_bytes: *max_bytes,
 				})
 			}
@@ -351,7 +355,7 @@ impl ScalarFunction for Round {
 				}
 
 				Ok(ColumnData::Decimal {
-					container: reifydb_type::value::container::number::NumberContainer::new(result),
+					container: NumberContainer::new(result),
 					precision: *precision,
 					scale: *scale,
 				})

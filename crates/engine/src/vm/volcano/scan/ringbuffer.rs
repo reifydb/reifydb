@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::{encoded::EncodedValues, schema::Schema},
 	interface::{
 		catalog::{dictionary::DictionaryDef, ringbuffer::RingBufferMetadata},
 		resolved::ResolvedRingBuffer,
@@ -16,11 +16,16 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
+	util::cowvec::CowVec,
 	value::{row_number::RowNumber, r#type::Type},
 };
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use super::super::decode_dictionary_columns;
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub struct RingBufferScan {
 	ringbuffer: ResolvedRingBuffer,
@@ -42,7 +47,7 @@ impl RingBufferScan {
 		ringbuffer: ResolvedRingBuffer,
 		context: Arc<QueryContext>,
 		rx: &mut Transaction<'_>,
-	) -> crate::Result<Self> {
+	) -> Result<Self> {
 		// Build storage types and dictionaries
 		let mut storage_types = Vec::with_capacity(ringbuffer.columns().len());
 		let mut dictionaries = Vec::with_capacity(ringbuffer.columns().len());
@@ -82,11 +87,7 @@ impl RingBufferScan {
 		})
 	}
 
-	fn get_or_load_schema(
-		&mut self,
-		rx: &mut Transaction,
-		first_row: &reifydb_core::encoded::encoded::EncodedValues,
-	) -> crate::Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -110,7 +111,7 @@ impl RingBufferScan {
 
 impl QueryNode for RingBufferScan {
 	#[instrument(name = "volcano::scan::ringbuffer::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, txn: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, txn: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		if !self.initialized {
 			// Get ring buffer metadata from the catalog
 			let metadata = ctx.services.catalog.find_ringbuffer_metadata(txn, self.ringbuffer.def().id)?;
@@ -128,7 +129,7 @@ impl QueryNode for RingBufferScan {
 	}
 
 	#[instrument(name = "volcano::scan::ringbuffer::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 
 		// Get metadata or return empty
@@ -195,9 +196,9 @@ impl QueryNode for RingBufferScan {
 			columns.append_rows(&schema, batch_rows.into_iter(), row_numbers.clone())?;
 
 			// Restore row numbers
-			columns.row_numbers = reifydb_type::util::cowvec::CowVec::new(row_numbers);
+			columns.row_numbers = CowVec::new(row_numbers);
 
-			super::super::decode_dictionary_columns(&mut columns, &self.dictionaries, txn)?;
+			decode_dictionary_columns(&mut columns, &self.dictionaries, txn)?;
 
 			Ok(Some(columns))
 		}

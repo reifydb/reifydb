@@ -13,7 +13,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::CatalogError,
 	store::{
 		primary_key::schema::{
@@ -33,7 +33,7 @@ impl CatalogStore {
 	pub(crate) fn create_primary_key(
 		txn: &mut AdminTransaction,
 		to_create: PrimaryKeyToCreate,
-	) -> crate::Result<PrimaryKeyId> {
+	) -> Result<PrimaryKeyId> {
 		// Validate that primary key has at least one column
 		if to_create.column_ids.is_empty() {
 			return Err(CatalogError::PrimaryKeyEmpty {

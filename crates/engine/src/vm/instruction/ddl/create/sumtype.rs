@@ -10,13 +10,13 @@ use reifydb_rql::nodes::CreateSumTypeNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_sumtype(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateSumTypeNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	if let Some(_) = services.catalog.find_sumtype_by_name(
 		&mut Transaction::Admin(&mut *txn),
 		plan.namespace.id,

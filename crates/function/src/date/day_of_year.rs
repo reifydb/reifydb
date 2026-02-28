@@ -4,7 +4,11 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{date::Date, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct DateDayOfYear;
 
@@ -15,7 +19,7 @@ impl DateDayOfYear {
 }
 
 impl ScalarFunction for DateDayOfYear {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}

@@ -34,7 +34,9 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
+use super::schema::get_or_create_series_schema;
 use crate::{
+	Result,
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
@@ -52,7 +54,7 @@ pub(crate) fn update_series<'a>(
 	params: Params,
 	identity: IdentityId,
 	symbol_table_ref: &SymbolTable,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -118,7 +120,7 @@ pub(crate) fn update_series<'a>(
 	let mut data_rows: Vec<Vec<Value>> = Vec::new();
 
 	// Get the schema for decoding series values
-	let read_schema = super::schema::get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+	let read_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
 
 	{
 		let mut stream = txn.range(range, 4096)?;
@@ -352,7 +354,7 @@ pub(crate) fn update_series<'a>(
 				data_values.push(value);
 			}
 
-			let schema = super::schema::get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+			let schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
 			let mut row = schema.allocate();
 			// Get timestamp for this row
 			let ts = patched_columns

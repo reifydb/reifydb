@@ -25,7 +25,9 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
+use super::schema::get_or_create_series_schema;
 use crate::{
+	Result,
 	policy::PolicyEvaluator,
 	vm::{
 		services::Services,
@@ -45,7 +47,7 @@ pub(crate) fn insert_series<'a>(
 	params: Params,
 	identity: IdentityId,
 	symbol_table: &SymbolTable,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -92,7 +94,7 @@ pub(crate) fn insert_series<'a>(
 	let precision = series_def.precision;
 
 	// Create schema for series encoding
-	let schema = super::schema::get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+	let schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
 
 	// Process all input batches
 	let mut mutable_context = (*execution_context).clone();

@@ -6,6 +6,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
+	Result,
 	nodes::{CreatePrimaryKeyNode, PrimaryKeyColumn},
 	plan::{
 		logical,
@@ -18,7 +19,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreatePrimaryKeyNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if create.table.namespace.is_empty() {
 			"default".to_string()
 		} else {

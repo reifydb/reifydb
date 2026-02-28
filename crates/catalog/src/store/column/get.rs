@@ -58,12 +58,12 @@ use reifydb_core::interface::catalog::{
 };
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::column::schema::column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, VALUE},
 };
 
 impl CatalogStore {
-	pub(crate) fn get_column(rx: &mut Transaction<'_>, column: ColumnId) -> crate::Result<ColumnDef> {
+	pub(crate) fn get_column(rx: &mut Transaction<'_>, column: ColumnId) -> Result<ColumnDef> {
 		let multi = rx.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
 			Error(internal!(
 				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

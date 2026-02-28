@@ -6,13 +6,14 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
+use reifydb_type::Result;
 
-use super::{WindowEvent, WindowOperator};
+use super::{WindowEvent, WindowOperator, WindowState};
 use crate::transaction::FlowTransaction;
 
 impl WindowOperator {
 	/// Check if rolling window should evict old events
-	pub fn should_evict_rolling_window(&self, state: &super::WindowState, current_timestamp: u64) -> bool {
+	pub fn should_evict_rolling_window(&self, state: &WindowState, current_timestamp: u64) -> bool {
 		match (&self.window_type, &self.size) {
 			(WindowType::Time(_), WindowSize::Duration(duration)) => {
 				if state.events.is_empty() {
@@ -28,7 +29,7 @@ impl WindowOperator {
 	}
 
 	/// Evict old events from rolling window to maintain size limit
-	pub fn evict_old_events(&self, state: &mut super::WindowState, current_timestamp: u64) {
+	pub fn evict_old_events(&self, state: &mut WindowState, current_timestamp: u64) {
 		match (&self.window_type, &self.size) {
 			(WindowType::Time(_), WindowSize::Duration(duration)) => {
 				let window_size_ms = duration.as_millis() as u64;
@@ -57,7 +58,7 @@ fn process_rolling_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
-) -> reifydb_type::Result<Vec<Diff>> {
+) -> Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -86,7 +87,7 @@ fn process_rolling_group_insert(
 	columns: &Columns,
 	group_hash: Hash128,
 	current_timestamp: u64,
-) -> reifydb_type::Result<Vec<Diff>> {
+) -> Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -155,11 +156,7 @@ fn process_rolling_group_insert(
 }
 
 /// Apply changes for rolling windows
-pub fn apply_rolling_window(
-	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
-	change: Change,
-) -> reifydb_type::Result<Change> {
+pub fn apply_rolling_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let mut result = Vec::new();
 
 	for diff in change.diffs.iter() {

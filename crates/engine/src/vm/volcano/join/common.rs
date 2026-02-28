@@ -9,6 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 
 use crate::{
+	Result,
 	expression::{compile::CompiledExpr, context::EvalContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -18,7 +19,7 @@ pub(crate) fn load_and_merge_all<'a>(
 	node: &mut Box<dyn QueryNode>,
 	rx: &mut Transaction<'a>,
 	ctx: &mut QueryContext,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let mut result: Option<Columns> = None;
 
 	while let Some(columns) = node.next(rx, ctx)? {

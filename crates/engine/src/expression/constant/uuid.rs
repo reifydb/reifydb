@@ -11,7 +11,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::error::CastError;
+use crate::{Result, error::CastError};
 
 pub(crate) struct UuidParser;
 
@@ -22,7 +22,7 @@ impl UuidParser {
 		fragment: impl Into<Fragment>,
 		target: Type,
 		row_count: usize,
-	) -> crate::Result<ColumnData> {
+	) -> Result<ColumnData> {
 		let fragment = fragment.into();
 		match target {
 			Type::Uuid4 => Self::parse_uuid4(fragment, row_count),
@@ -38,7 +38,7 @@ impl UuidParser {
 		}
 	}
 
-	fn parse_uuid4<'a>(fragment: impl Into<Fragment>, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_uuid4<'a>(fragment: impl Into<Fragment>, row_count: usize) -> Result<ColumnData> {
 		let fragment = fragment.into();
 		match parse_uuid4(fragment.clone()) {
 			Ok(uuid) => Ok(ColumnData::uuid4(vec![uuid; row_count])),
@@ -53,7 +53,7 @@ impl UuidParser {
 		}
 	}
 
-	fn parse_uuid7<'a>(fragment: impl Into<Fragment>, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_uuid7<'a>(fragment: impl Into<Fragment>, row_count: usize) -> Result<ColumnData> {
 		let fragment = fragment.into();
 		match parse_uuid7(fragment.clone()) {
 			Ok(uuid) => Ok(ColumnData::uuid7(vec![uuid; row_count])),

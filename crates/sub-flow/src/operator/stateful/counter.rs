@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	util::encoding::keycode::serializer::KeySerializer,
 };
-use reifydb_type::{util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_type::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{
 	operator::stateful::utils::{internal_state_get, internal_state_set},
@@ -57,7 +57,7 @@ impl Counter {
 	}
 
 	/// Get next counter value (atomically: returns current, then increments/decrements)
-	pub fn next(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<RowNumber> {
+	pub fn next(&self, txn: &mut FlowTransaction) -> Result<RowNumber> {
 		let current = self.load(txn)?;
 		let next_value = self.compute_next(current);
 		self.save(txn, next_value)?;
@@ -65,17 +65,17 @@ impl Counter {
 	}
 
 	/// Get current value without modifying
-	pub fn current(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<u64> {
+	pub fn current(&self, txn: &mut FlowTransaction) -> Result<u64> {
 		self.load(txn)
 	}
 
 	/// Set to specific value
-	pub fn set(&self, txn: &mut FlowTransaction, value: u64) -> reifydb_type::Result<()> {
+	pub fn set(&self, txn: &mut FlowTransaction, value: u64) -> Result<()> {
 		self.save(txn, value)
 	}
 
 	// Internal methods
-	fn load(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<u64> {
+	fn load(&self, txn: &mut FlowTransaction) -> Result<u64> {
 		match internal_state_get(self.node, txn, &self.key)? {
 			None => Ok(self.default_value()),
 			Some(encoded) => {
@@ -92,7 +92,7 @@ impl Counter {
 		}
 	}
 
-	fn save(&self, txn: &mut FlowTransaction, value: u64) -> reifydb_type::Result<()> {
+	fn save(&self, txn: &mut FlowTransaction, value: u64) -> Result<()> {
 		let bytes = value.to_be_bytes().to_vec();
 		internal_state_set(self.node, txn, &self.key, EncodedValues(CowVec::new(bytes)))?;
 		Ok(())

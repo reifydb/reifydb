@@ -15,7 +15,7 @@ use reifydb_core::{
 	encoded::{encoded::EncodedValues, key::EncodedKey},
 	interface::store::SingleVersionStore,
 };
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::{
 	MetricId,
@@ -99,7 +99,7 @@ impl<S: SingleVersionStore> CdcStatsWriter<S> {
 	}
 
 	/// Record CDC bytes for a change.
-	pub fn record_cdc(&mut self, key: &[u8], value_bytes: u64) -> reifydb_type::Result<()> {
+	pub fn record_cdc(&mut self, key: &[u8], value_bytes: u64) -> Result<()> {
 		let id = parse_id(key);
 		let key_bytes = key.len() as u64;
 
@@ -120,7 +120,7 @@ impl<S: SingleVersionStore> CdcStatsWriter<S> {
 	}
 
 	/// Record CDC entry drop (decrement stats).
-	pub fn record_drop(&mut self, key: &[u8], value_bytes: u64) -> reifydb_type::Result<()> {
+	pub fn record_drop(&mut self, key: &[u8], value_bytes: u64) -> Result<()> {
 		let id = parse_id(key);
 		let key_bytes = key.len() as u64;
 		let storage_key = EncodedKey::new(encode_cdc_stats_key(id));
@@ -151,13 +151,13 @@ impl<S: SingleVersionStore> CdcStatsReader<S> {
 	}
 
 	/// Get stats for a specific object.
-	pub fn get(&self, id: MetricId) -> reifydb_type::Result<Option<CdcStats>> {
+	pub fn get(&self, id: MetricId) -> Result<Option<CdcStats>> {
 		let key = EncodedKey::new(encode_cdc_stats_key(id));
 		Ok(self.storage.get(&key)?.and_then(|v| decode_cdc_stats(v.values.as_slice())))
 	}
 
 	/// Scan all CDC stats entries.
-	pub fn scan_all(&self) -> reifydb_type::Result<Vec<(MetricId, CdcStats)>> {
+	pub fn scan_all(&self) -> Result<Vec<(MetricId, CdcStats)>> {
 		let prefix = EncodedKey::new(cdc_stats_key_prefix());
 		let batch = self.storage.prefix(&prefix)?;
 

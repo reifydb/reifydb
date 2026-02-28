@@ -5,7 +5,7 @@ use reifydb_core::{interface::catalog::policy::PolicyId, key::policy::PolicyKey}
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::policy::schema::policy::{ENABLED, ID, NAME, SCHEMA, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
 };
 
@@ -14,7 +14,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		policy_id: PolicyId,
 		enabled: bool,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		if let Some(def) = Self::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)? {
 			let mut row = SCHEMA.allocate();
 			SCHEMA.set_u64(&mut row, ID, def.id);

@@ -3,8 +3,10 @@
 
 use std::collections::HashMap;
 
+use reifydb_type::Result;
+
 pub trait AuthenticationProvider: Send + Sync {
 	fn method(&self) -> &str;
-	fn create(&self, config: &HashMap<String, String>) -> reifydb_type::Result<HashMap<String, String>>;
-	fn validate(&self, stored: &HashMap<String, String>, credential: &str) -> reifydb_type::Result<bool>;
+	fn create(&self, config: &HashMap<String, String>) -> Result<HashMap<String, String>>;
+	fn validate(&self, stored: &HashMap<String, String>, credential: &str) -> Result<bool>;
 }

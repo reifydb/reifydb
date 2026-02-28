@@ -6,23 +6,24 @@ use reifydb_core::common::JoinType;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	ast::parse_str,
+	Result,
+	ast::{ast::AstAlterPolicyAction, parse_str},
 	bump::Bump,
 	plan::logical::{
-		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, CreateColumnPropertyNode, CreateIndexNode,
-		CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode, InlineDataNode,
-		JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode, PatchNode,
-		PrimitiveScanNode, TakeNode, VariableSourceNode, alter::flow::AlterFlowAction,
+		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, Compiler, CreateColumnPropertyNode,
+		CreateIndexNode, CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
+		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
+		PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode, alter::flow::AlterFlowAction,
 	},
 };
 
-pub fn explain_logical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query: &str) -> crate::Result<String> {
+pub fn explain_logical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query: &str) -> Result<String> {
 	let bump = Bump::new();
 	let statements = parse_str(&bump, query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		let compiler = crate::plan::logical::Compiler {
+		let compiler = Compiler {
 			catalog: catalog.clone(),
 			bump: &bump,
 		};
@@ -32,7 +33,7 @@ pub fn explain_logical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query: 
 	explain_logical_plans(&plans)
 }
 
-pub fn explain_logical_plans(plans: &[LogicalPlan<'_>]) -> crate::Result<String> {
+pub fn explain_logical_plans(plans: &[LogicalPlan<'_>]) -> Result<String> {
 	let mut result = String::new();
 	for plan in plans {
 		let mut output = String::new();
@@ -155,7 +156,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			));
 		}
 		LogicalPlan::AlterPolicy(n) => {
-			let enabled = n.action == crate::ast::ast::AstAlterPolicyAction::Enable;
+			let enabled = n.action == AstAlterPolicyAction::Enable;
 			output.push_str(&format!(
 				"{}{} AlterPolicy name={} enabled={}\n",
 				prefix,

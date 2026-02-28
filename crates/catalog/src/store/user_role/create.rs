@@ -8,12 +8,12 @@ use reifydb_core::{
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::user_role::schema::user_role::{ROLE_ID, SCHEMA, USER_ID},
 };
 
 impl CatalogStore {
-	pub(crate) fn grant_role(txn: &mut AdminTransaction, user: UserId, role: RoleId) -> crate::Result<UserRoleDef> {
+	pub(crate) fn grant_role(txn: &mut AdminTransaction, user: UserId, role: RoleId) -> Result<UserRoleDef> {
 		let mut row = SCHEMA.allocate();
 		SCHEMA.set_u64(&mut row, USER_ID, user);
 		SCHEMA.set_u64(&mut row, ROLE_ID, role);

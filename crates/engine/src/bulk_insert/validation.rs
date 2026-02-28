@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 use super::coerce::coerce_columns;
-use crate::error::EngineError;
+use crate::{Result, error::EngineError};
 
 /// Validate and coerce all rows for a table in columnar batch mode.
 ///
@@ -20,7 +20,7 @@ use crate::error::EngineError;
 /// 3. Extracting coerced values back to row format
 ///
 /// Returns `Vec<Vec<Value>>` where outer vec is rows, inner is column values in table column order.
-pub fn validate_and_coerce_rows(rows: &[Params], table: &TableDef) -> crate::Result<Vec<Vec<Value>>> {
+pub fn validate_and_coerce_rows(rows: &[Params], table: &TableDef) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -35,7 +35,7 @@ pub fn validate_and_coerce_rows(rows: &[Params], table: &TableDef) -> crate::Res
 }
 
 /// Validate and coerce all rows for a ring buffer in columnar batch mode.
-pub fn validate_and_coerce_rows_rb(rows: &[Params], ringbuffer: &RingBufferDef) -> crate::Result<Vec<Vec<Value>>> {
+pub fn validate_and_coerce_rows_rb(rows: &[Params], ringbuffer: &RingBufferDef) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -52,7 +52,7 @@ pub fn validate_and_coerce_rows_rb(rows: &[Params], ringbuffer: &RingBufferDef) 
 /// Reorder all rows for a table without coercion (trusted mode).
 ///
 /// Used when validation is skipped for pre-validated internal data.
-pub fn reorder_rows_trusted(rows: &[Params], table: &TableDef) -> crate::Result<Vec<Vec<Value>>> {
+pub fn reorder_rows_trusted(rows: &[Params], table: &TableDef) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -68,7 +68,7 @@ pub fn reorder_rows_trusted(rows: &[Params], table: &TableDef) -> crate::Result<
 }
 
 /// Reorder all rows for a ring buffer without coercion (trusted mode).
-pub fn reorder_rows_trusted_rb(rows: &[Params], ringbuffer: &RingBufferDef) -> crate::Result<Vec<Vec<Value>>> {
+pub fn reorder_rows_trusted_rb(rows: &[Params], ringbuffer: &RingBufferDef) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -86,11 +86,7 @@ pub fn reorder_rows_trusted_rb(rows: &[Params], ringbuffer: &RingBufferDef) -> c
 /// Collect rows (params) into columnar format.
 ///
 /// Returns `Vec<ColumnData>` where each entry contains all values for that column.
-fn collect_rows_to_columns(
-	rows: &[Params],
-	columns: &[ColumnDef],
-	source_name: &str,
-) -> crate::Result<Vec<ColumnData>> {
+fn collect_rows_to_columns(rows: &[Params], columns: &[ColumnDef], source_name: &str) -> Result<Vec<ColumnData>> {
 	let num_cols = columns.len();
 	let mut column_data: Vec<ColumnData> =
 		columns.iter().map(|col| ColumnData::none_typed(col.constraint.get_type(), 0)).collect();

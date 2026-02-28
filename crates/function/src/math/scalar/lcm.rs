@@ -4,7 +4,11 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::r#type::Type;
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct Lcm;
 
@@ -48,7 +52,7 @@ fn compute_lcm(a: i64, b: i64) -> i64 {
 }
 
 impl ScalarFunction for Lcm {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}

@@ -7,6 +7,7 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_type::Result;
 
 use crate::{config::AdminConfig, state::AdminState, subsystem::AdminSubsystem};
 
@@ -25,7 +26,7 @@ impl AdminSubsystemFactory {
 }
 
 impl SubsystemFactory for AdminSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
 

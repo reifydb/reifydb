@@ -10,6 +10,8 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
+use reifydb_type::Result;
+
 use crate::internal_error;
 
 struct BoxedValue {
@@ -54,7 +56,7 @@ impl IocContainer {
 		self.dependencies.write().unwrap().clear();
 	}
 
-	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> reifydb_type::Result<T> {
+	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Result<T> {
 		self.dependencies
 			.read()
 			.unwrap()

@@ -13,15 +13,18 @@ use reifydb_type::{
 	},
 };
 
-use crate::expression::context::EvalContext;
+use crate::{
+	Result,
+	expression::{context::EvalContext, option::binary_op_unwrap_option},
+};
 
 pub(crate) fn add_columns(
 	ctx: &EvalContext,
 	left: &Column,
 	right: &Column,
 	fragment: impl LazyFragment + Copy,
-) -> crate::Result<Column> {
-	crate::expression::option::binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
+) -> Result<Column> {
+	binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let target = Type::promote(left.get_type(), right.get_type());
 
 		dispatch_arith!(
@@ -89,7 +92,7 @@ fn add_numeric<L, R>(
 	r: &NumberContainer<R>,
 	target: Type,
 	fragment: impl LazyFragment + Copy,
-) -> crate::Result<Column>
+) -> Result<Column>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -121,7 +124,7 @@ fn add_numeric_clone<L, R>(
 	r: &NumberContainer<R>,
 	target: Type,
 	fragment: impl LazyFragment + Copy,
-) -> crate::Result<Column>
+) -> Result<Column>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,
@@ -177,7 +180,7 @@ fn can_promote_to_string(data: &ColumnData) -> bool {
 	)
 }
 
-fn concat_strings(l: &Utf8Container, r: &Utf8Container, target: Type, fragment: Fragment) -> crate::Result<Column> {
+fn concat_strings(l: &Utf8Container, r: &Utf8Container, target: Type, fragment: Fragment) -> Result<Column> {
 	debug_assert_eq!(l.len(), r.len());
 
 	let mut data = ColumnData::with_capacity(target, l.len());
@@ -202,7 +205,7 @@ fn concat_string_with_other(
 	string_is_left: bool,
 	target: Type,
 	fragment: Fragment,
-) -> crate::Result<Column> {
+) -> Result<Column> {
 	debug_assert_eq!(string_data.len(), other_data.len());
 
 	let mut data = ColumnData::with_capacity(target, string_data.len());

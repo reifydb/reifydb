@@ -11,12 +11,14 @@ use reifydb_core::{
 use reifydb_rql::flow::node::FlowNodeType;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
+use crate::Result;
+
 pub(crate) fn find_column_dependents(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
 	columns: &[ColumnInfo],
 	check: impl Fn(&ColumnInfo) -> Option<String>,
-) -> crate::Result<Vec<String>> {
+) -> Result<Vec<String>> {
 	let mut dependents = Vec::new();
 	for info in columns {
 		if let Some(suffix) = check(info) {
@@ -41,7 +43,7 @@ pub(crate) fn find_flow_dependents(
 	nodes: &[FlowNodeDef],
 	flows: &[FlowDef],
 	check: impl Fn(&FlowNodeType) -> bool,
-) -> crate::Result<Vec<String>> {
+) -> Result<Vec<String>> {
 	let mut dependents = Vec::new();
 	let mut seen_flows = HashSet::new();
 	for node in nodes {

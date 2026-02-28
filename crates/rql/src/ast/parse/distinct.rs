@@ -2,12 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{ast::AstDistinct, identifier::MaybeQualifiedColumnIdentifier, parse::Parser},
 	token::{keyword::Keyword, operator::Operator, separator::Separator},
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_distinct(&mut self) -> crate::Result<AstDistinct<'bump>> {
+	pub(crate) fn parse_distinct(&mut self) -> Result<AstDistinct<'bump>> {
 		let token = self.consume_keyword(Keyword::Distinct)?;
 
 		let (columns, _has_braces) = self.parse_identifiers()?;
@@ -18,7 +19,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_identifiers(&mut self) -> crate::Result<(Vec<MaybeQualifiedColumnIdentifier<'bump>>, bool)> {
+	fn parse_identifiers(&mut self) -> Result<(Vec<MaybeQualifiedColumnIdentifier<'bump>>, bool)> {
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
 			return Ok((vec![], false));
 		}
@@ -58,7 +59,7 @@ impl<'bump> Parser<'bump> {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::{bump::Bump, token::tokenize};
+	use crate::{ast::parse::Ast, bump::Bump, token::tokenize};
 
 	#[test]
 	fn test_distinct_empty_braces() {
@@ -68,7 +69,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let crate::ast::ast::Ast::Distinct(distinct) = result.first_unchecked() {
+		if let Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 0);
 		} else {
 			panic!("Expected Distinct operator");
@@ -83,7 +84,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let crate::ast::ast::Ast::Distinct(distinct) = result.first_unchecked() {
+		if let Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 1);
 			assert_eq!(distinct.columns[0].name.text(), "name");
 		} else {
@@ -99,7 +100,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let crate::ast::ast::Ast::Distinct(distinct) = result.first_unchecked() {
+		if let Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 2);
 			assert_eq!(distinct.columns[0].name.text(), "name");
 			assert_eq!(distinct.columns[1].name.text(), "age");
@@ -116,7 +117,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let crate::ast::ast::Ast::Distinct(distinct) = result.first_unchecked() {
+		if let Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 0);
 		} else {
 			panic!("Expected Distinct operator");
@@ -133,7 +134,7 @@ pub mod tests {
 		// Should parse as one statement with two nodes: DISTINCT (bare, 0 columns) then FROM users
 		let statement = &result[0];
 		assert!(statement.nodes.len() >= 2);
-		if let crate::ast::ast::Ast::Distinct(distinct) = &statement.nodes[0] {
+		if let Ast::Distinct(distinct) = &statement.nodes[0] {
 			assert_eq!(distinct.columns.len(), 0);
 		} else {
 			panic!("Expected Distinct operator");

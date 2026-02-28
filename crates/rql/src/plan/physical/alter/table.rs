@@ -7,9 +7,14 @@ use reifydb_core::{error::diagnostic::catalog::namespace_not_found, interface::r
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
-use crate::plan::{
-	logical::alter::table::{AlterTableAction as LogicalAlterTableAction, AlterTableNode as LogicalAlterTableNode},
-	physical::{AlterTableAction, AlterTableNode, Compiler, PhysicalPlan},
+use crate::{
+	Result,
+	plan::{
+		logical::alter::table::{
+			AlterTableAction as LogicalAlterTableAction, AlterTableNode as LogicalAlterTableNode,
+		},
+		physical::{AlterTableAction, AlterTableNode, Compiler, PhysicalPlan},
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -17,7 +22,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		alter: LogicalAlterTableNode<'bump>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if alter.table.namespace.is_empty() {
 			"default".to_string()
 		} else {

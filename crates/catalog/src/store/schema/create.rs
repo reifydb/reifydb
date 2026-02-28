@@ -11,6 +11,7 @@ use reifydb_transaction::single::write::SingleWriteTransaction;
 use tracing::instrument;
 
 use super::schema::{schema_field, schema_header};
+use crate::Result;
 
 #[instrument(
 	name = "schema_store::create",
@@ -18,7 +19,7 @@ use super::schema::{schema_field, schema_header};
 	skip(cmd, schema),
 	fields(fingerprint = ?schema.fingerprint(), field_count = schema.field_count())
 )]
-pub(crate) fn create_schema(cmd: &mut SingleWriteTransaction, schema: &Schema) -> crate::Result<()> {
+pub(crate) fn create_schema(cmd: &mut SingleWriteTransaction, schema: &Schema) -> Result<()> {
 	let fingerprint = schema.fingerprint();
 
 	let mut header_row = schema_header::SCHEMA.allocate();

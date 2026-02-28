@@ -4,7 +4,11 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct TextChar;
 
@@ -15,7 +19,7 @@ impl TextChar {
 }
 
 impl ScalarFunction for TextChar {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}
@@ -69,11 +73,7 @@ impl ScalarFunction for TextChar {
 	}
 }
 
-fn convert_to_char<F>(
-	row_count: usize,
-	_capacity: usize,
-	get_value: F,
-) -> crate::error::ScalarFunctionResult<ColumnData>
+fn convert_to_char<F>(row_count: usize, _capacity: usize, get_value: F) -> ScalarFunctionResult<ColumnData>
 where
 	F: Fn(usize) -> Option<u32>,
 {

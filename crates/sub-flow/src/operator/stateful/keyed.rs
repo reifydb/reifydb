@@ -5,7 +5,10 @@ use reifydb_core::{
 	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
 	util::encoding::keycode::serializer::KeySerializer,
 };
-use reifydb_type::value::{Value, r#type::Type};
+use reifydb_type::{
+	Result,
+	value::{Value, r#type::Type},
+};
 
 use super::utils;
 use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
@@ -38,31 +41,21 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a specific key
-	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> reifydb_type::Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<EncodedValues> {
 		let key = self.encode_key(key_values);
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
 	/// Save state for a specific key
-	fn save_state(
-		&self,
-		txn: &mut FlowTransaction,
-		key_values: &[Value],
-		row: EncodedValues,
-	) -> reifydb_type::Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedValues) -> Result<()> {
 		let key = self.encode_key(key_values);
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state for a key with a function
-	fn update_state<F>(
-		&self,
-		txn: &mut FlowTransaction,
-		key_values: &[Value],
-		f: F,
-	) -> reifydb_type::Result<EncodedValues>
+	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedValues>
 	where
-		F: FnOnce(&Schema, &mut EncodedValues) -> reifydb_type::Result<()>,
+		F: FnOnce(&Schema, &mut EncodedValues) -> Result<()>,
 	{
 		let schema = self.layout();
 		let mut row = self.load_state(txn, key_values)?;
@@ -72,7 +65,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Remove state for a key
-	fn remove_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> reifydb_type::Result<()> {
+	fn remove_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<()> {
 		let key = self.encode_key(key_values);
 		utils::state_remove(self.id(), txn, &key)
 	}

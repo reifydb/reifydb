@@ -2,9 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
+use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct TextConcat;
 
@@ -15,7 +19,7 @@ impl TextConcat {
 }
 
 impl ScalarFunction for TextConcat {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}
@@ -78,7 +82,7 @@ impl ScalarFunction for TextConcat {
 
 		Ok(ColumnData::Utf8 {
 			container: Utf8Container::new(result_data),
-			max_bytes: reifydb_type::value::constraint::bytes::MaxBytes::MAX,
+			max_bytes: MaxBytes::MAX,
 		})
 	}
 

@@ -20,7 +20,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
@@ -51,7 +51,7 @@ impl CatalogStore {
 	pub(crate) fn create_ringbuffer(
 		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
-	) -> crate::Result<RingBufferDef> {
+	) -> Result<RingBufferDef> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
@@ -87,7 +87,7 @@ impl CatalogStore {
 		ringbuffer: RingBufferId,
 		namespace: NamespaceId,
 		to_create: &RingBufferToCreate,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = ringbuffer::SCHEMA.allocate();
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::ID, ringbuffer);
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::NAMESPACE, namespace);
@@ -106,7 +106,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		ringbuffer: RingBufferId,
 		name: &str,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = ringbuffer_namespace::SCHEMA.allocate();
 		ringbuffer_namespace::SCHEMA.set_u64(&mut row, ringbuffer_namespace::ID, ringbuffer);
 		ringbuffer_namespace::SCHEMA.set_utf8(&mut row, ringbuffer_namespace::NAME, name);
@@ -120,7 +120,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		for (idx, col) in to_create.columns.into_iter().enumerate() {
 			CatalogStore::create_column(
 				txn,
@@ -146,7 +146,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = ringbuffer_metadata::SCHEMA.allocate();
 		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::ID, ringbuffer_id);
 		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::CAPACITY, capacity);
@@ -285,7 +285,7 @@ pub mod tests {
 		let links: Vec<_> = txn
 			.range(NamespaceRingBufferKey::full_scan(test_namespace.id), 1024)
 			.unwrap()
-			.collect::<Result<Vec<_>, _>>()
+			.collect::<Result<Vec<_>>>()
 			.unwrap();
 		assert_eq!(links.len(), 2);
 

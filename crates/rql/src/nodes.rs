@@ -10,9 +10,10 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			flow::FlowId,
-			id::{NamespaceId, RingBufferId, TableId, ViewId},
+			id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
 			namespace::NamespaceDef,
 			procedure::{ProcedureParamDef, ProcedureTrigger},
+			property::ColumnPropertyKind,
 			series::TimestampPrecision,
 		},
 		resolved::{
@@ -274,7 +275,7 @@ pub struct AlterTableNode {
 #[derive(Debug, Clone)]
 pub enum AlterTableAction {
 	AddColumn {
-		column: reifydb_catalog::catalog::table::TableColumnToCreate,
+		column: TableColumnToCreate,
 	},
 	DropColumn {
 		column: Fragment,
@@ -364,7 +365,7 @@ pub struct CreateColumnPropertyNode {
 	pub namespace: ResolvedNamespace,
 	pub table: Fragment,
 	pub column: Fragment,
-	pub properties: Vec<reifydb_core::interface::catalog::property::ColumnPropertyKind>,
+	pub properties: Vec<ColumnPropertyKind>,
 }
 
 #[derive(Debug, Clone)]
@@ -842,7 +843,7 @@ pub struct DropSubscriptionNode {
 pub struct DropSeriesNode {
 	pub namespace_name: Fragment,
 	pub series_name: Fragment,
-	pub series_id: Option<reifydb_core::interface::catalog::id::SeriesId>,
+	pub series_id: Option<SeriesId>,
 	pub if_exists: bool,
 	pub cascade: bool,
 }

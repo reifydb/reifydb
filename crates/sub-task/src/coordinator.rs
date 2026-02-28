@@ -194,7 +194,7 @@ pub async fn run_coordinator(
 /// Spawn a task execution
 fn spawn_task(
 	task_id: TaskId,
-	task: Arc<crate::task::ScheduledTask>,
+	task: Arc<ScheduledTask>,
 	runtime: SharedRuntime,
 	engine: StandardEngine,
 	completion_tx: mpsc::UnboundedSender<(TaskId, Instant)>,

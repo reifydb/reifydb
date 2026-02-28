@@ -9,13 +9,13 @@ use reifydb_rql::nodes::CreatePolicyNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_policy(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreatePolicyNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let target_type = match plan.target_type.as_str() {
 		"table" => PolicyTargetType::Table,
 		"column" => PolicyTargetType::Column,

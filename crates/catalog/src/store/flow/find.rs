@@ -11,12 +11,12 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::flow::schema::{flow, flow_namespace},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_flow(rx: &mut Transaction<'_>, id: FlowId) -> crate::Result<Option<FlowDef>> {
+	pub(crate) fn find_flow(rx: &mut Transaction<'_>, id: FlowId) -> Result<Option<FlowDef>> {
 		let Some(multi) = rx.get(&FlowKey::encoded(id))? else {
 			return Ok(None);
 		};
@@ -40,7 +40,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<FlowDef>> {
+	) -> Result<Option<FlowDef>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceFlowKey::full_scan(namespace), 1024)?;
 

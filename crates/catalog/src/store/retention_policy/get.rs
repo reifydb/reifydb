@@ -9,7 +9,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	/// Get a retention policy for a source (table, view, or ring buffer)
@@ -17,7 +17,7 @@ impl CatalogStore {
 	pub(crate) fn get_primitive_retention_policy(
 		rx: &mut Transaction<'_>,
 		source: PrimitiveId,
-	) -> crate::Result<RetentionPolicy> {
+	) -> Result<RetentionPolicy> {
 		Self::find_primitive_retention_policy(rx, source)?.ok_or_else(|| {
 			Error(internal!(
 				"Retention policy for source {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -31,7 +31,7 @@ impl CatalogStore {
 	pub(crate) fn get_operator_retention_policy(
 		rx: &mut Transaction<'_>,
 		operator: FlowNodeId,
-	) -> crate::Result<RetentionPolicy> {
+	) -> Result<RetentionPolicy> {
 		Self::find_operator_retention_policy(rx, operator)?.ok_or_else(|| {
 			Error(internal!(
 				"Retention policy for operator {:?} not found in catalog. This indicates a critical catalog inconsistency.",

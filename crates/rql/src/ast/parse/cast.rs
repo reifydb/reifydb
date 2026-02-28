@@ -2,12 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{ast::AstCast, parse::Parser},
 	token::keyword::Keyword::Cast,
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_cast(&mut self) -> crate::Result<AstCast<'bump>> {
+	pub(crate) fn parse_cast(&mut self) -> Result<AstCast<'bump>> {
 		let token = self.consume_keyword(Cast)?;
 		let tuple = self.parse_tuple()?;
 		Ok(AstCast {

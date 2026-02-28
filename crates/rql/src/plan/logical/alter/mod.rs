@@ -8,6 +8,7 @@ pub mod table;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::ast::AstAlter,
 	plan::logical::{AlterPolicyNode, Compiler, LogicalPlan},
 };
@@ -17,7 +18,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstAlter<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		match ast {
 			AstAlter::Sequence(node) => self.compile_alter_sequence(node),
 			AstAlter::Flow(node) => self.compile_alter_flow(node, tx),

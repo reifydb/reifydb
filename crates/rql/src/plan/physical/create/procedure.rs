@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
-	convert_data_type_with_constraints, nodes,
+	Result, convert_data_type_with_constraints, nodes,
 	plan::{
 		logical,
 		physical::{Compiler, PhysicalPlan},
@@ -21,7 +21,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateProcedureNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		// If this is a handler-style procedure (has on_event), delegate to handler compiler
 		if create.on_event.is_some() {
 			return self.compile_create_handler(rx, create);

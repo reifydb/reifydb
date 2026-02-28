@@ -7,6 +7,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstInsert},
 		identifier::{
@@ -28,7 +29,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstInsert<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let unresolved_target = ast.target;
 		let source_ast = BumpBox::into_inner(ast.source);
 
@@ -57,7 +58,7 @@ impl<'bump> Compiler<'bump> {
 		unresolved_target: UnresolvedPrimitiveIdentifier<'bump>,
 		source: LogicalPlan<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let namespace_name = unresolved_target.namespace.first().map(|n| n.text().to_string());
 		let namespace_name_str = namespace_name.as_deref().unwrap_or("default");
 		let target_name = unresolved_target.name.text();
@@ -125,7 +126,7 @@ impl<'bump> Compiler<'bump> {
 		target: &UnresolvedPrimitiveIdentifier<'bump>,
 		nodes: Vec<Ast<'bump>>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let namespace_name = target.namespace.first().map(|n| n.text().to_string());
 		let namespace_name_str = namespace_name.as_deref().unwrap_or("default");
 		let target_name = target.name.text();

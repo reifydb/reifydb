@@ -6,6 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, ViewId},
 	view::ViewDef,
 };
+use reifydb_type::Result;
 
 use crate::{
 	change::{
@@ -17,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackViewChangeOperations for AdminTransaction {
-	fn track_view_def_created(&mut self, view: ViewDef) -> reifydb_type::Result<()> {
+	fn track_view_def_created(&mut self, view: ViewDef) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(view),
@@ -27,7 +28,7 @@ impl CatalogTrackViewChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_view_def_updated(&mut self, pre: ViewDef, post: ViewDef) -> reifydb_type::Result<()> {
+	fn track_view_def_updated(&mut self, pre: ViewDef, post: ViewDef) -> Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -37,7 +38,7 @@ impl CatalogTrackViewChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_view_def_deleted(&mut self, view: ViewDef) -> reifydb_type::Result<()> {
+	fn track_view_def_deleted(&mut self, view: ViewDef) -> Result<()> {
 		let change = Change {
 			pre: Some(view),
 			post: None,

@@ -9,14 +9,14 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_column(
 		txn: &mut AdminTransaction,
 		primitive: PrimitiveId,
 		column_id: ColumnId,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		// Delete column policies
 		let policy_range = ColumnPropertyKey::full_scan(column_id);
 		let mut policy_stream = txn.range(policy_range, 1024)?;

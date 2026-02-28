@@ -10,10 +10,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::view::schema::view};
+use crate::{CatalogStore, Result, store::view::schema::view};
 
 impl CatalogStore {
-	pub(crate) fn list_views_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<ViewDef>> {
+	pub(crate) fn list_views_all(rx: &mut Transaction<'_>) -> Result<Vec<ViewDef>> {
 		let mut result = Vec::new();
 
 		// Collect view data first to avoid holding stream borrow

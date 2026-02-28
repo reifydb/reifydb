@@ -3,26 +3,30 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::vtable::{
-	VTableContext,
-	system::{
-		cdc_consumers::CdcConsumers, column_properties::ColumnProperties, columns::ColumnsTable,
-		dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, enums::Enums,
-		events::Events, flow_edges::FlowEdges, flow_lags::FlowLags,
-		flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes, flow_nodes::FlowNodes,
-		flow_operator_inputs::FlowOperatorInputs, flow_operator_outputs::FlowOperatorOutputs,
-		flow_operators::FlowOperators, flow_storage_stats::FlowStorageStats, flows::Flows, handlers::Handlers,
-		index_storage_stats::IndexStorageStats, migrations::Migrations, namespaces::Namespaces,
-		operator_retention_policies::OperatorRetentionPolicies, policies::Policies,
-		policy_operations::PolicyOperations, primary_key_columns::PrimaryKeyColumns, primary_keys::PrimaryKeys,
-		primitive_retention_policies::PrimitiveRetentionPolicies, procedures::Procedures,
-		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, roles::Roles,
-		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences, series::Series,
-		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, tags::Tags,
-		types::Types, user_roles::UserRoles, users::Users, versions::Versions,
-		view_storage_stats::ViewStorageStats, views::Views,
+use reifydb_catalog::{
+	catalog::Catalog,
+	vtable::{
+		VTableContext,
+		system::{
+			cdc_consumers::CdcConsumers, column_properties::ColumnProperties, columns::ColumnsTable,
+			dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, enums::Enums,
+			events::Events, flow_edges::FlowEdges, flow_lags::FlowLags,
+			flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes,
+			flow_nodes::FlowNodes, flow_operator_inputs::FlowOperatorInputs,
+			flow_operator_outputs::FlowOperatorOutputs, flow_operators::FlowOperators,
+			flow_storage_stats::FlowStorageStats, flows::Flows, handlers::Handlers,
+			index_storage_stats::IndexStorageStats, migrations::Migrations, namespaces::Namespaces,
+			operator_retention_policies::OperatorRetentionPolicies, policies::Policies,
+			policy_operations::PolicyOperations, primary_key_columns::PrimaryKeyColumns,
+			primary_keys::PrimaryKeys, primitive_retention_policies::PrimitiveRetentionPolicies,
+			procedures::Procedures, ringbuffer_storage_stats::RingBufferStorageStats,
+			ringbuffers::RingBuffers, roles::Roles, schema_fields::SchemaFields, schemas::Schemas,
+			sequences::Sequences, series::Series, table_storage_stats::TableStorageStats, tables::Tables,
+			tables_virtual::TablesVirtual, tags::Tags, types::Types, user_roles::UserRoles, users::Users,
+			versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
+		},
+		tables::VTables,
 	},
-	tables::VTables,
 };
 use reifydb_core::interface::{
 	catalog::id::{IndexId, NamespaceId},
@@ -44,6 +48,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::constraint::Constraint};
 use tracing::instrument;
 
+use super::{apply_transform::ApplyTransformNode, filter::resolve_is_variant_tags};
 use crate::vm::volcano::{
 	aggregate::AggregateNode,
 	assert::{AssertNode, AssertWithoutInputNode},
@@ -113,7 +118,7 @@ pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedPri
 fn expand_patch_sumtype_assignments(
 	assignments: Vec<Expression>,
 	source: &ResolvedPrimitive,
-	catalog: &reifydb_catalog::catalog::Catalog,
+	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
 ) -> Vec<Expression> {
 	let mut expanded = Vec::with_capacity(assignments.len());
@@ -288,13 +293,8 @@ pub(crate) fn compile<'a>(
 		}) => {
 			if let Some(source) = extract_resolved_source(&input) {
 				for expr in &mut conditions {
-					super::filter::resolve_is_variant_tags(
-						expr,
-						&source,
-						&context.services.catalog,
-						rx,
-					)
-					.expect("resolve IS variant tags");
+					resolve_is_variant_tags(expr, &source, &context.services.catalog, rx)
+						.expect("resolve IS variant tags");
 				}
 			}
 			let input_node = compile(*input, rx, context);
@@ -328,13 +328,8 @@ pub(crate) fn compile<'a>(
 			if let Some(input) = input {
 				if let Some(source) = extract_resolved_source(&input) {
 					for expr in &mut map {
-						super::filter::resolve_is_variant_tags(
-							expr,
-							&source,
-							&context.services.catalog,
-							rx,
-						)
-						.expect("resolve IS variant tags in map");
+						resolve_is_variant_tags(expr, &source, &context.services.catalog, rx)
+							.expect("resolve IS variant tags in map");
 					}
 				}
 				let input_node = compile(*input, rx, context);
@@ -351,13 +346,8 @@ pub(crate) fn compile<'a>(
 			if let Some(input) = input {
 				if let Some(source) = extract_resolved_source(&input) {
 					for expr in &mut extend {
-						super::filter::resolve_is_variant_tags(
-							expr,
-							&source,
-							&context.services.catalog,
-							rx,
-						)
-						.expect("resolve IS variant tags in extend");
+						resolve_is_variant_tags(expr, &source, &context.services.catalog, rx)
+							.expect("resolve IS variant tags in extend");
 					}
 				}
 				let input_node = compile(*input, rx, context);
@@ -636,7 +626,7 @@ pub(crate) fn compile<'a>(
 			let input = apply_node.input.expect("Apply requires input");
 			let input_node = compile(*input, rx, context);
 
-			Box::new(super::apply_transform::ApplyTransformNode::new(input_node, transform))
+			Box::new(ApplyTransformNode::new(input_node, transform))
 		}
 		RqlQueryPlan::Window(_) => {
 			unimplemented!(
@@ -654,7 +644,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_number,
 		}) => {
-			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
+			let resolved_source = ResolvedPrimitive::from(source);
 			Box::new(
 				RowPointLookupNode::new(resolved_source, row_number, context)
 					.expect("Failed to create RowPointLookupNode"),
@@ -664,7 +654,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_numbers,
 		}) => {
-			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
+			let resolved_source = ResolvedPrimitive::from(source);
 			Box::new(
 				RowListLookupNode::new(resolved_source, row_numbers, context)
 					.expect("Failed to create RowListLookupNode"),
@@ -675,7 +665,7 @@ pub(crate) fn compile<'a>(
 			start,
 			end,
 		}) => {
-			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
+			let resolved_source = ResolvedPrimitive::from(source);
 			Box::new(
 				RowRangeScanNode::new(resolved_source, start, end, context)
 					.expect("Failed to create RowRangeScanNode"),

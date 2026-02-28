@@ -4,6 +4,11 @@
 //! WASM transform implementation that executes WebAssembly modules as columnar transforms
 
 use reifydb_core::value::column::columns::Columns;
+use reifydb_sdk::{
+	error::FFIError,
+	marshal::wasm::{marshal_columns_to_bytes, unmarshal_columns_from_bytes},
+};
+use reifydb_type::Result;
 use reifydb_wasm::{Engine, SpawnBinary, module::value::Value, source};
 
 use super::{Transform, context::TransformContext};
@@ -39,29 +44,23 @@ unsafe impl Send for WasmTransform {}
 unsafe impl Sync for WasmTransform {}
 
 impl Transform for WasmTransform {
-	fn apply(&self, _ctx: &TransformContext, input: Columns) -> reifydb_type::Result<Columns> {
-		let input_bytes = reifydb_sdk::marshal::wasm::marshal_columns_to_bytes(&input);
+	fn apply(&self, _ctx: &TransformContext, input: Columns) -> Result<Columns> {
+		let input_bytes = marshal_columns_to_bytes(&input);
 
 		let mut engine = Engine::default();
 		engine.spawn(source::binary::bytes(&self.wasm_bytes)).map_err(|e| {
-			reifydb_sdk::error::FFIError::Other(format!(
-				"WASM transform '{}' failed to load: {:?}",
-				self.name, e
-			))
+			FFIError::Other(format!("WASM transform '{}' failed to load: {:?}", self.name, e))
 		})?;
 
 		// Allocate space in WASM linear memory
 		let alloc_result = engine.invoke("alloc", &[Value::I32(input_bytes.len() as i32)]).map_err(|e| {
-			reifydb_sdk::error::FFIError::Other(format!(
-				"WASM transform '{}' alloc failed: {:?}",
-				self.name, e
-			))
+			FFIError::Other(format!("WASM transform '{}' alloc failed: {:?}", self.name, e))
 		})?;
 
 		let input_ptr = match alloc_result.first() {
 			Some(Value::I32(v)) => *v,
 			_ => {
-				return Err(reifydb_sdk::error::FFIError::Other(format!(
+				return Err(FFIError::Other(format!(
 					"WASM transform '{}': alloc returned unexpected result",
 					self.name
 				))
@@ -71,17 +70,14 @@ impl Transform for WasmTransform {
 
 		// Write input data into WASM memory
 		engine.write_memory(input_ptr as usize, &input_bytes).map_err(|e| {
-			reifydb_sdk::error::FFIError::Other(format!(
-				"WASM transform '{}' write_memory failed: {:?}",
-				self.name, e
-			))
+			FFIError::Other(format!("WASM transform '{}' write_memory failed: {:?}", self.name, e))
 		})?;
 
 		// Call transform
 		let result = engine
 			.invoke("transform", &[Value::I32(input_ptr), Value::I32(input_bytes.len() as i32)])
 			.map_err(|e| {
-				reifydb_sdk::error::FFIError::Other(format!(
+				FFIError::Other(format!(
 					"WASM transform '{}' transform call failed: {:?}",
 					self.name, e
 				))
@@ -90,7 +86,7 @@ impl Transform for WasmTransform {
 		let output_ptr = match result.first() {
 			Some(Value::I32(v)) => *v as usize,
 			_ => {
-				return Err(reifydb_sdk::error::FFIError::Other(format!(
+				return Err(FFIError::Other(format!(
 					"WASM transform '{}': transform returned unexpected result",
 					self.name
 				))
@@ -100,22 +96,16 @@ impl Transform for WasmTransform {
 
 		// Read output length (first 4 bytes at output_ptr)
 		let len_bytes = engine.read_memory(output_ptr, 4).map_err(|e| {
-			reifydb_sdk::error::FFIError::Other(format!(
-				"WASM transform '{}' read output length failed: {:?}",
-				self.name, e
-			))
+			FFIError::Other(format!("WASM transform '{}' read output length failed: {:?}", self.name, e))
 		})?;
 
 		let output_len = u32::from_le_bytes([len_bytes[0], len_bytes[1], len_bytes[2], len_bytes[3]]) as usize;
 
 		// Read full output data
 		let output_bytes = engine.read_memory(output_ptr + 4, output_len).map_err(|e| {
-			reifydb_sdk::error::FFIError::Other(format!(
-				"WASM transform '{}' read output data failed: {:?}",
-				self.name, e
-			))
+			FFIError::Other(format!("WASM transform '{}' read output data failed: {:?}", self.name, e))
 		})?;
 
-		Ok(reifydb_sdk::marshal::wasm::unmarshal_columns_from_bytes(&output_bytes))
+		Ok(unmarshal_columns_from_bytes(&output_bytes))
 	}
 }

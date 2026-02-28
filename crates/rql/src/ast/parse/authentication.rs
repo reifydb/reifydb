@@ -2,10 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{AstAuthenticationEntry, AstCreate, AstCreateAuthentication, AstDrop, AstDropAuthentication},
-		parse::Parser,
+		parse::{Parser, Precedence},
 	},
+	bump::BumpFragment,
 	token::{
 		keyword::Keyword,
 		operator::Operator,
@@ -16,7 +18,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	/// Parse `CREATE AUTHENTICATION FOR user { key: value; ... }`
-	pub(crate) fn parse_create_authentication(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create_authentication(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::For)?;
 		let user_token = self.consume(TokenKind::Identifier)?;
 		let entries = self.parse_authentication_body()?;
@@ -29,7 +31,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse `DROP AUTHENTICATION [IF EXISTS] FOR user { method: <method> }`
-	pub(crate) fn parse_drop_authentication(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop_authentication(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 		self.consume_keyword(Keyword::For)?;
 		let user_token = self.consume(TokenKind::Identifier)?;
@@ -40,7 +42,7 @@ impl<'bump> Parser<'bump> {
 			.iter()
 			.find(|e| e.key.text() == "method")
 			.map(|e| e.value.as_identifier().token.fragment)
-			.unwrap_or(crate::bump::BumpFragment::None);
+			.unwrap_or(BumpFragment::None);
 
 		Ok(AstDrop::Authentication(AstDropAuthentication {
 			token,
@@ -51,7 +53,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse `{ key: value; key: value; ... }`
-	fn parse_authentication_body(&mut self) -> crate::Result<Vec<AstAuthenticationEntry<'bump>>> {
+	fn parse_authentication_body(&mut self) -> Result<Vec<AstAuthenticationEntry<'bump>>> {
 		self.consume_operator(Operator::OpenCurly)?;
 		self.skip_new_line()?;
 
@@ -67,7 +69,7 @@ impl<'bump> Parser<'bump> {
 			// key is an identifier or keyword-as-ident
 			let key_token = self.consume_name()?;
 			self.consume_operator(Operator::Colon)?;
-			let value = self.parse_node(crate::ast::parse::Precedence::None)?;
+			let value = self.parse_node(Precedence::None)?;
 
 			entries.push(AstAuthenticationEntry {
 				key: key_token.fragment,
@@ -88,7 +90,7 @@ impl<'bump> Parser<'bump> {
 mod tests {
 	use crate::{
 		ast::{
-			ast::{AstCreate, AstDrop},
+			ast::{Ast, AstCreate, AstDrop},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -147,7 +149,7 @@ mod tests {
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
 		let drop = match node {
-			crate::ast::ast::Ast::Drop(d) => d,
+			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
 		};
 		let AstDrop::Authentication(auth) = drop else {
@@ -169,7 +171,7 @@ mod tests {
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
 		let drop = match node {
-			crate::ast::ast::Ast::Drop(d) => d,
+			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
 		};
 		let AstDrop::Authentication(auth) = drop else {

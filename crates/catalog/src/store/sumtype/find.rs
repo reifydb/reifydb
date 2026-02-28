@@ -8,25 +8,23 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::SumTypeId;
 
-use crate::{CatalogStore, store::sumtype::schema::sumtype_namespace};
+use super::sumtype_def_from_row;
+use crate::{CatalogStore, Result, store::sumtype::schema::sumtype_namespace};
 
 impl CatalogStore {
-	pub(crate) fn find_sumtype(
-		rx: &mut Transaction<'_>,
-		sumtype_id: SumTypeId,
-	) -> crate::Result<Option<SumTypeDef>> {
+	pub(crate) fn find_sumtype(rx: &mut Transaction<'_>, sumtype_id: SumTypeId) -> Result<Option<SumTypeDef>> {
 		let Some(multi) = rx.get(&SumTypeKey::encoded(sumtype_id))? else {
 			return Ok(None);
 		};
 
-		Ok(Some(super::sumtype_def_from_row(&multi.values)))
+		Ok(Some(sumtype_def_from_row(&multi.values)))
 	}
 
 	pub(crate) fn find_sumtype_by_name(
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<SumTypeDef>> {
+	) -> Result<Option<SumTypeDef>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), 1024)?;
 

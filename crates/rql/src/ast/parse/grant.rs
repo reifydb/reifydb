@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{AstGrant, AstRevoke},
 		parse::Parser,
@@ -11,7 +12,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	/// Parse `GRANT role TO user`
-	pub(crate) fn parse_grant(&mut self) -> crate::Result<AstGrant<'bump>> {
+	pub(crate) fn parse_grant(&mut self) -> Result<AstGrant<'bump>> {
 		let token = self.consume_keyword(Keyword::Grant)?;
 		let role_token = self.consume(TokenKind::Identifier)?;
 		self.consume_keyword(Keyword::To)?;
@@ -25,7 +26,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse `REVOKE role FROM user`
-	pub(crate) fn parse_revoke(&mut self) -> crate::Result<AstRevoke<'bump>> {
+	pub(crate) fn parse_revoke(&mut self) -> Result<AstRevoke<'bump>> {
 		let token = self.consume_keyword(Keyword::Revoke)?;
 		let role_token = self.consume(TokenKind::Identifier)?;
 		self.consume_keyword(Keyword::From)?;
@@ -41,7 +42,11 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 mod tests {
-	use crate::{ast::parse::Parser, bump::Bump, token::tokenize};
+	use crate::{
+		ast::{ast::Ast, parse::Parser},
+		bump::Bump,
+		token::tokenize,
+	};
 
 	#[test]
 	fn test_grant_basic() {
@@ -52,7 +57,7 @@ mod tests {
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
 		let grant = match node {
-			crate::ast::ast::Ast::Grant(g) => g,
+			Ast::Grant(g) => g,
 			_ => panic!("expected Grant"),
 		};
 		assert_eq!(grant.role.text(), "analyst");
@@ -68,7 +73,7 @@ mod tests {
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
 		let revoke = match node {
-			crate::ast::ast::Ast::Revoke(r) => r,
+			Ast::Revoke(r) => r,
 			_ => panic!("expected Revoke"),
 		};
 		assert_eq!(revoke.role.text(), "analyst");

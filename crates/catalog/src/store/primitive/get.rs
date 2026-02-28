@@ -8,7 +8,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	/// Get a primitive (table or view) by its PrimitiveId
@@ -16,7 +16,7 @@ impl CatalogStore {
 	pub(crate) fn get_primitive(
 		rx: &mut Transaction<'_>,
 		primitive: impl Into<PrimitiveId>,
-	) -> crate::Result<PrimitiveDef> {
+	) -> Result<PrimitiveDef> {
 		let primitive_id = primitive.into();
 
 		CatalogStore::find_primitive(rx, primitive_id)?.ok_or_else(|| {

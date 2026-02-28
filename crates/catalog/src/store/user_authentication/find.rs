@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::user_authentication::{convert_user_authentication, schema::user_authentication},
 };
 
@@ -20,7 +20,7 @@ impl CatalogStore {
 	pub(crate) fn find_user_authentication(
 		rx: &mut Transaction<'_>,
 		id: UserAuthenticationId,
-	) -> crate::Result<Option<UserAuthenticationDef>> {
+	) -> Result<Option<UserAuthenticationDef>> {
 		Ok(rx.get(&UserAuthenticationKey::encoded(id))?.map(convert_user_authentication))
 	}
 
@@ -28,7 +28,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		user_id: UserId,
 		method: &str,
-	) -> crate::Result<Option<UserAuthenticationDef>> {
+	) -> Result<Option<UserAuthenticationDef>> {
 		let mut stream = rx.range(UserAuthenticationKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {

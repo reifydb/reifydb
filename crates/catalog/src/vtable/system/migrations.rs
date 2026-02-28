@@ -4,14 +4,14 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::{migration::MigrationAction, vtable::VTableDef},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	system::SystemCatalog,
 	vtable::{Batch, VTable, VTableContext},
 };
@@ -32,12 +32,12 @@ impl Migrations {
 }
 
 impl VTable for Migrations {
-	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -55,12 +55,8 @@ impl VTable for Migrations {
 
 			let action_str = match latest {
 				Some(e) => match e.action {
-					reifydb_core::interface::catalog::migration::MigrationAction::Applied => {
-						"Applied"
-					}
-					reifydb_core::interface::catalog::migration::MigrationAction::Rollback => {
-						"Rollback"
-					}
+					MigrationAction::Applied => "Applied",
+					MigrationAction::Rollback => "Rollback",
 				},
 				None => "Pending",
 			};

@@ -2,14 +2,19 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	ast::{ast::AstDispatch, identifier::MaybeQualifiedSumTypeIdentifier, parse::Parser},
+	Result,
+	ast::{
+		ast::AstDispatch,
+		identifier::MaybeQualifiedSumTypeIdentifier,
+		parse::{Parser, Precedence},
+	},
 	bump::BumpBox,
-	token::{operator::Operator, separator::Separator, token::TokenKind},
+	token::{keyword::Keyword, operator::Operator, separator::Separator, token::TokenKind},
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_dispatch(&mut self) -> crate::Result<AstDispatch<'bump>> {
-		let token = self.consume_keyword(crate::token::keyword::Keyword::Dispatch)?;
+	pub(crate) fn parse_dispatch(&mut self) -> Result<AstDispatch<'bump>> {
+		let token = self.consume_keyword(Keyword::Dispatch)?;
 
 		// Parse event type and variant: ns::EventType::Variant (all :: separated)
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -38,7 +43,7 @@ impl<'bump> Parser<'bump> {
 
 			let field_name = self.parse_identifier_with_hyphens()?.into_fragment();
 			self.consume_operator(Operator::Colon)?;
-			let value = BumpBox::new_in(self.parse_node(crate::ast::parse::Precedence::None)?, self.bump());
+			let value = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 			fields.push((field_name, value));
 

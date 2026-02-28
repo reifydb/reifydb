@@ -2,13 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{ast::AstPatch, parse::Parser},
 	error::{OperationKind, RqlError},
 	token::keyword::Keyword,
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_patch(&mut self) -> crate::Result<AstPatch<'bump>> {
+	pub(crate) fn parse_patch(&mut self) -> Result<AstPatch<'bump>> {
 		let token = self.consume_keyword(Keyword::Patch)?;
 
 		let (nodes, has_braces) = self.parse_expressions(true, false)?;

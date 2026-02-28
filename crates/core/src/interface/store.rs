@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::{
 	common::CommitVersion,
@@ -52,19 +52,19 @@ impl MultiVersionBatch {
 /// Trait for committing deltas to multi-version storage.
 pub trait MultiVersionCommit: Send + Sync {
 	/// Commit a batch of deltas at the given version.
-	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> reifydb_type::Result<()>;
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()>;
 }
 
 /// Trait for getting values from multi-version storage.
 pub trait MultiVersionGet: Send + Sync {
 	/// Get the value for a key at a specific version.
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> reifydb_type::Result<Option<MultiVersionValues>>;
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>>;
 }
 
 /// Trait for checking key existence in multi-version storage.
 pub trait MultiVersionContains: Send + Sync {
 	/// Check if a key exists at a specific version.
-	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> reifydb_type::Result<bool>;
+	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool>;
 }
 
 /// Trait for getting the previous version of a key before a given version.
@@ -87,7 +87,7 @@ pub trait MultiVersionGetPrevious: Send + Sync {
 		&self,
 		key: &EncodedKey,
 		before_version: CommitVersion,
-	) -> reifydb_type::Result<Option<MultiVersionValues>>;
+	) -> Result<Option<MultiVersionValues>>;
 }
 
 /// Composite trait for multi-version storage capabilities.
@@ -123,25 +123,25 @@ impl SingleVersionBatch {
 /// Trait for committing deltas to single-version storage.
 pub trait SingleVersionCommit: Send + Sync {
 	/// Commit a batch of deltas.
-	fn commit(&mut self, deltas: CowVec<Delta>) -> reifydb_type::Result<()>;
+	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()>;
 }
 
 /// Trait for getting values from single-version storage.
 pub trait SingleVersionGet: Send + Sync {
 	/// Get the value for a key.
-	fn get(&self, key: &EncodedKey) -> reifydb_type::Result<Option<SingleVersionValues>>;
+	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionValues>>;
 }
 
 /// Trait for checking key existence in single-version storage.
 pub trait SingleVersionContains: Send + Sync {
 	/// Check if a key exists.
-	fn contains(&self, key: &EncodedKey) -> reifydb_type::Result<bool>;
+	fn contains(&self, key: &EncodedKey) -> Result<bool>;
 }
 
 /// Trait for setting values in single-version storage.
 pub trait SingleVersionSet: SingleVersionCommit {
 	/// Set a value for a key.
-	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> reifydb_type::Result<()> {
+	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Set {
@@ -155,7 +155,7 @@ pub trait SingleVersionSet: SingleVersionCommit {
 /// Trait for removing values from single-version storage.
 pub trait SingleVersionRemove: SingleVersionCommit {
 	/// Unset a key, preserving the deleted values for CDC and metrics.
-	fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> reifydb_type::Result<()> {
+	fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Unset {
@@ -166,7 +166,7 @@ pub trait SingleVersionRemove: SingleVersionCommit {
 	}
 
 	/// Remove a key without preserving the deleted values.
-	fn remove(&mut self, key: &EncodedKey) -> reifydb_type::Result<()> {
+	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Remove {
@@ -179,15 +179,15 @@ pub trait SingleVersionRemove: SingleVersionCommit {
 /// Trait for forward range queries with batch-fetch pattern.
 pub trait SingleVersionRange: Send + Sync {
 	/// Fetch a batch of values in key order (ascending).
-	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> reifydb_type::Result<SingleVersionBatch>;
+	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch>;
 
 	/// Convenience method with default batch size.
-	fn range(&self, range: EncodedKeyRange) -> reifydb_type::Result<SingleVersionBatch> {
+	fn range(&self, range: EncodedKeyRange) -> Result<SingleVersionBatch> {
 		self.range_batch(range, 1024)
 	}
 
 	/// Range query with prefix.
-	fn prefix(&self, prefix: &EncodedKey) -> reifydb_type::Result<SingleVersionBatch> {
+	fn prefix(&self, prefix: &EncodedKey) -> Result<SingleVersionBatch> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 }
@@ -195,15 +195,15 @@ pub trait SingleVersionRange: Send + Sync {
 /// Trait for reverse range queries with batch-fetch pattern.
 pub trait SingleVersionRangeRev: Send + Sync {
 	/// Fetch a batch of values in reverse key order (descending).
-	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> reifydb_type::Result<SingleVersionBatch>;
+	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch>;
 
 	/// Convenience method with default batch size.
-	fn range_rev(&self, range: EncodedKeyRange) -> reifydb_type::Result<SingleVersionBatch> {
+	fn range_rev(&self, range: EncodedKeyRange) -> Result<SingleVersionBatch> {
 		self.range_rev_batch(range, 1024)
 	}
 
 	/// Reverse range query with prefix.
-	fn prefix_rev(&self, prefix: &EncodedKey) -> reifydb_type::Result<SingleVersionBatch> {
+	fn prefix_rev(&self, prefix: &EncodedKey) -> Result<SingleVersionBatch> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }

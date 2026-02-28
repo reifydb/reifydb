@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{AstClosure, AstFunctionParameter, AstVariable},
 		parse::Parser,
@@ -12,7 +13,7 @@ use crate::{
 impl<'bump> Parser<'bump> {
 	/// Parse a closure: `($params) { body }`
 	/// Called when we see '(' and determine it's a closure (not a tuple or grouped expression).
-	pub(crate) fn parse_closure(&mut self) -> crate::Result<AstClosure<'bump>> {
+	pub(crate) fn parse_closure(&mut self) -> Result<AstClosure<'bump>> {
 		let token = self.consume_operator(Operator::OpenParen)?;
 
 		// Parse parameters (same format as function params)
@@ -31,7 +32,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse closure parameters: $var, $var2: type
-	fn parse_closure_parameters(&mut self) -> crate::Result<Vec<AstFunctionParameter<'bump>>> {
+	fn parse_closure_parameters(&mut self) -> Result<Vec<AstFunctionParameter<'bump>>> {
 		let mut parameters = Vec::new();
 
 		loop {
@@ -158,8 +159,11 @@ impl<'bump> Parser<'bump> {
 #[cfg(test)]
 pub mod tests {
 	use crate::{
-		ast::{ast::Ast, parse::parse},
-		bump::Bump,
+		ast::{
+			ast::{Ast, LetValue},
+			parse::parse,
+		},
+		bump::{Bump, BumpBox},
 		token::tokenize,
 	};
 
@@ -174,7 +178,7 @@ pub mod tests {
 			panic!("Expected Let")
 		};
 
-		if let crate::ast::ast::LetValue::Expression(expr) = let_node.value {
+		if let LetValue::Expression(expr) = let_node.value {
 			assert!(matches!(*expr, Ast::Closure(_)));
 		} else {
 			panic!("Expected expression value");
@@ -192,8 +196,8 @@ pub mod tests {
 			panic!("Expected Let")
 		};
 
-		if let crate::ast::ast::LetValue::Expression(expr) = let_node.value {
-			let inner = crate::bump::BumpBox::into_inner(expr);
+		if let LetValue::Expression(expr) = let_node.value {
+			let inner = BumpBox::into_inner(expr);
 			if let Ast::Closure(closure) = inner {
 				assert_eq!(closure.parameters.len(), 2);
 				assert_eq!(closure.parameters[0].variable.name(), "a");
@@ -217,8 +221,8 @@ pub mod tests {
 			panic!("Expected Let")
 		};
 
-		if let crate::ast::ast::LetValue::Expression(expr) = let_node.value {
-			let inner = crate::bump::BumpBox::into_inner(expr);
+		if let LetValue::Expression(expr) = let_node.value {
+			let inner = BumpBox::into_inner(expr);
 			if let Ast::Closure(closure) = inner {
 				assert_eq!(closure.parameters.len(), 0);
 			} else {

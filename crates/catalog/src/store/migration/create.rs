@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		migration::schema::{migration as migration_schema, migration_event as event_schema},
@@ -27,7 +27,7 @@ impl CatalogStore {
 	pub(crate) fn create_migration(
 		txn: &mut AdminTransaction,
 		to_create: MigrationToCreate,
-	) -> crate::Result<MigrationDef> {
+	) -> Result<MigrationDef> {
 		// Check for duplicate name
 		if let Some(_existing) =
 			CatalogStore::find_migration_by_name(&mut Transaction::Admin(&mut *txn), &to_create.name)?
@@ -67,7 +67,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		migration: &MigrationDef,
 		action: MigrationAction,
-	) -> crate::Result<MigrationEvent> {
+	) -> Result<MigrationEvent> {
 		let event_id = SystemSequence::next_migration_event_id(txn)?;
 
 		let mut row = event_schema::SCHEMA.allocate();

@@ -6,6 +6,8 @@
 //! These wrappers check the entity name against the filter before invoking the handler.
 //! Note: Namespace filtering requires namespace name resolution which is currently a TODO.
 
+use reifydb_type::Result;
+
 use super::{
 	filter::InterceptFilter,
 	namespace_def::{
@@ -57,7 +59,7 @@ macro_rules! define_filtered_interceptor {
 		/// Filtered interceptor wrapper that checks entity name before executing.
 		pub struct $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> reifydb_type::Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
 		{
 			filter: InterceptFilter,
 			handler: F,
@@ -65,7 +67,7 @@ macro_rules! define_filtered_interceptor {
 
 		impl<F> $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> reifydb_type::Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
 		{
 			/// Create a new filtered interceptor.
 			pub fn new(filter: InterceptFilter, handler: F) -> Self {
@@ -78,7 +80,7 @@ macro_rules! define_filtered_interceptor {
 
 		impl<F> Clone for $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync + Clone,
 		{
 			fn clone(&self) -> Self {
 				Self {
@@ -90,9 +92,9 @@ macro_rules! define_filtered_interceptor {
 
 		impl<F> $trait_name for $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a>) -> reifydb_type::Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
 		{
-			fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> reifydb_type::Result<()> {
+			fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> Result<()> {
 				// TODO: Add namespace matching once we have namespace name resolution.
 				// For now, we only match by entity name if namespace is not specified in filter,
 				// or skip namespace check entirely.

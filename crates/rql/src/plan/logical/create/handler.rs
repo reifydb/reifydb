@@ -2,12 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{ast::AstCreateHandler, identifier::MaybeQualifiedProcedureIdentifier},
 	plan::logical::{Compiler, CreateProcedureNode, LogicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_handler(&self, ast: AstCreateHandler<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_create_handler(&self, ast: AstCreateHandler<'bump>) -> Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::CreateProcedure(CreateProcedureNode {
 			procedure: MaybeQualifiedProcedureIdentifier {
 				namespace: ast.name.namespace,

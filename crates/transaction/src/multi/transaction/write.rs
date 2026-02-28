@@ -36,7 +36,7 @@ pub struct MultiWriteTransaction {
 
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::new", level = "debug", skip(engine))]
-	pub fn new(engine: MultiTransaction) -> reifydb_type::Result<Self> {
+	pub fn new(engine: MultiTransaction) -> Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
 			engine,
@@ -87,7 +87,7 @@ impl MultiWriteTransaction {
 		self.tm.version()
 	}
 
-	pub fn pending_writes(&self) -> &crate::multi::pending::PendingWrites {
+	pub fn pending_writes(&self) -> &PendingWrites {
 		self.tm.pending_writes()
 	}
 
@@ -223,7 +223,7 @@ use std::cmp::Ordering;
 
 use reifydb_core::interface::store::MultiVersionValues;
 
-use crate::multi::types::Pending;
+use crate::multi::{pending::PendingWrites, types::Pending};
 
 /// Iterator that merges pending writes with storage iterator.
 struct MergePendingIterator<I> {

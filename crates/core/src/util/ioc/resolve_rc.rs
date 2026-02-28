@@ -7,6 +7,8 @@ use std::{
 	rc::Rc,
 };
 
+use reifydb_type::Result;
+
 use super::IocContainer;
 use crate::internal_error;
 
@@ -35,7 +37,7 @@ impl<T: Clone> LazyResolveRc<T> {
 	/// Get or resolve the value from the IoC container
 	/// The resolution happens exactly once, subsequent calls return the
 	/// cached value
-	pub fn get_or_resolve(&self, ioc: &IocContainer) -> reifydb_type::Result<&T>
+	pub fn get_or_resolve(&self, ioc: &IocContainer) -> Result<&T>
 	where
 		T: Clone + Any + Send + Sync + 'static,
 	{

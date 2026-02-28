@@ -6,6 +6,7 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 use reifydb_catalog::{
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
+	schema::SchemaRegistry,
 	vtable::{
 		system::flow_operator_store::{FlowOperatorEventListener, FlowOperatorStore},
 		tables::UserVTableDataFunction,
@@ -30,6 +31,7 @@ use reifydb_core::{
 use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
 use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
+use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
@@ -45,7 +47,8 @@ use reifydb_type::{
 use tracing::instrument;
 
 use crate::{
-	bulk_insert::builder::BulkInsertBuilder,
+	Result,
+	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
 	interceptor::catalog::MaterializedCatalogInterceptor,
 	procedure::registry::Procedures,
 	transform::registry::Transforms,
@@ -63,24 +66,24 @@ impl WithEventBus for StandardEngine {
 // Engine methods (formerly from Engine trait in reifydb-core)
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self) -> crate::Result<CommandTransaction> {
+	pub fn begin_command(&self) -> Result<CommandTransaction> {
 		let interceptors = self.interceptors.create();
 		CommandTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
 	}
 
 	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
-	pub fn begin_admin(&self) -> crate::Result<AdminTransaction> {
+	pub fn begin_admin(&self) -> Result<AdminTransaction> {
 		let interceptors = self.interceptors.create();
 		AdminTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
 	}
 
 	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
-	pub fn begin_query(&self) -> crate::Result<QueryTransaction> {
+	pub fn begin_query(&self) -> Result<QueryTransaction> {
 		Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
 	}
 
 	#[instrument(name = "engine::admin", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
 			let mut txn = self.begin_admin()?;
 			let frames = self.executor.admin(
@@ -101,7 +104,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
 			let mut txn = self.begin_command()?;
 			let frames = self.executor.command(
@@ -122,7 +125,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::query", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
 			let mut txn = self.begin_query()?;
 			self.executor.query(
@@ -142,7 +145,7 @@ impl StandardEngine {
 
 	/// Call a procedure by fully-qualified name.
 	#[instrument(name = "engine::procedure", level = "debug", skip(self, params), fields(name = %name))]
-	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<Vec<Frame>, Error> {
+	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<Vec<Frame>> {
 		let mut txn = self.begin_command()?;
 		let frames = self.executor.call_procedure(&mut txn, identity, name, &params)?;
 		txn.commit()?;
@@ -185,12 +188,7 @@ impl StandardEngine {
 	///
 	/// let id = engine.register_virtual_table("default", "my_table", MyTable)?;
 	/// ```
-	pub fn register_virtual_table<T: UserVTable>(
-		&self,
-		namespace: &str,
-		name: &str,
-		table: T,
-	) -> crate::Result<VTableId> {
+	pub fn register_virtual_table<T: UserVTable>(&self, namespace: &str, name: &str, table: T) -> Result<VTableId> {
 		let catalog = self.materialized_catalog();
 
 		// Look up namespace by name (use max u64 to get latest version)
@@ -227,15 +225,15 @@ impl StandardEngine {
 }
 
 impl CdcHost for StandardEngine {
-	fn begin_command(&self) -> reifydb_type::Result<CommandTransaction> {
+	fn begin_command(&self) -> Result<CommandTransaction> {
 		StandardEngine::begin_command(self)
 	}
 
-	fn begin_query(&self) -> reifydb_type::Result<QueryTransaction> {
+	fn begin_query(&self) -> Result<QueryTransaction> {
 		StandardEngine::begin_query(self)
 	}
 
-	fn current_version(&self) -> reifydb_type::Result<CommitVersion> {
+	fn current_version(&self) -> Result<CommitVersion> {
 		StandardEngine::current_version(self)
 	}
 
@@ -247,7 +245,7 @@ impl CdcHost for StandardEngine {
 		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}
 
-	fn schema_registry(&self) -> &reifydb_catalog::schema::SchemaRegistry {
+	fn schema_registry(&self) -> &SchemaRegistry {
 		&self.catalog.schema
 	}
 }
@@ -295,7 +293,7 @@ impl StandardEngine {
 
 		// Get the metrics store from IoC to create the stats reader
 		let metrics_store = ioc
-			.resolve::<reifydb_store_single::SingleStore>()
+			.resolve::<SingleStore>()
 			.expect("SingleStore must be registered in IocContainer for metrics");
 		let stats_reader = MetricReader::new(metrics_store);
 
@@ -328,7 +326,7 @@ impl StandardEngine {
 	}
 
 	/// Create a new set of interceptors from the factory.
-	pub fn create_interceptors(&self) -> reifydb_transaction::interceptor::interceptors::Interceptors {
+	pub fn create_interceptors(&self) -> Interceptors {
 		self.interceptors.create()
 	}
 
@@ -346,7 +344,7 @@ impl StandardEngine {
 	/// read from the same snapshot (same CommitVersion) for consistency.
 	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0
     ))]
-	pub fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<QueryTransaction> {
+	pub fn begin_query_at_version(&self, version: CommitVersion) -> Result<QueryTransaction> {
 		Ok(QueryTransaction::new(self.multi.begin_query_at_version(version)?, self.single.clone()))
 	}
 
@@ -401,7 +399,7 @@ impl StandardEngine {
 
 	/// Get the current version from the transaction manager
 	#[inline]
-	pub fn current_version(&self) -> crate::Result<CommitVersion> {
+	pub fn current_version(&self) -> Result<CommitVersion> {
 		self.multi.current_version()
 	}
 
@@ -456,10 +454,7 @@ impl StandardEngine {
 	///         .done()
 	///     .execute()?;
 	/// ```
-	pub fn bulk_insert<'e>(
-		&'e self,
-		identity: IdentityId,
-	) -> BulkInsertBuilder<'e, crate::bulk_insert::builder::Validated> {
+	pub fn bulk_insert<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Validated> {
 		BulkInsertBuilder::new(self, identity)
 	}
 
@@ -472,10 +467,7 @@ impl StandardEngine {
 	///
 	/// The caller is responsible for ensuring the data conforms to the
 	/// schema constraints. Invalid data may cause undefined behavior.
-	pub fn bulk_insert_trusted<'e>(
-		&'e self,
-		identity: IdentityId,
-	) -> BulkInsertBuilder<'e, crate::bulk_insert::builder::Trusted> {
+	pub fn bulk_insert_trusted<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Trusted> {
 		BulkInsertBuilder::new_trusted(self, identity)
 	}
 }

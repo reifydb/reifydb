@@ -9,7 +9,7 @@ use reifydb_type::value::{Value, r#type::Type};
 
 use super::generator::SequenceTransaction;
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::sequence::generator::{
 		i8::GeneratorI8, i16::GeneratorI16, i32::GeneratorI32, i64::GeneratorI64, i128::GeneratorI128,
 		u8::GeneratorU8, u16::GeneratorU16, u32::GeneratorU32, u64::GeneratorU64, u128::GeneratorU128,
@@ -23,7 +23,7 @@ impl ColumnSequence {
 		txn: &mut impl SequenceTransaction,
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,
-	) -> crate::Result<Value> {
+	) -> Result<Value> {
 		let column = CatalogStore::get_column(&mut txn.as_transaction(), column)?;
 		let key = ColumnSequenceKey::encoded(source, column.id);
 
@@ -47,7 +47,7 @@ impl ColumnSequence {
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,
 		value: Value,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		// let table = CatalogStore::get_table(txn, table)?;
 		let column = CatalogStore::get_column(&mut txn.as_transaction(), column)?;
 

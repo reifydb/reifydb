@@ -8,7 +8,9 @@ use reifydb_type::{
 	value::{blob::Blob, r#type::Type},
 };
 
-pub fn to_blob(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+use crate::Result;
+
+pub fn to_blob(data: &ColumnData, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	match data {
 		ColumnData::Utf8 {
 			container,

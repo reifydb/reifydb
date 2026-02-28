@@ -7,6 +7,7 @@ use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::Flo
 use reifydb_core::{util::ioc::IocContainer, value::column::columns::Columns};
 use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
+use reifydb_policy::inject_read_policies;
 use reifydb_rql::compiler::{CompilationResult, constrain_policy};
 use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
@@ -20,6 +21,7 @@ use reifydb_type::{
 use tracing::instrument;
 
 use crate::{
+	Result,
 	policy::PolicyEvaluator,
 	procedure::registry::Procedures,
 	transform::registry::Transforms,
@@ -88,7 +90,7 @@ impl Executor {
 }
 
 /// Populate a stack with parameters so they can be accessed as variables.
-fn populate_stack(stack: &mut SymbolTable, params: &Params) -> crate::Result<()> {
+fn populate_stack(stack: &mut SymbolTable, params: &Params) -> Result<()> {
 	match params {
 		Params::Positional(values) => {
 			for (index, value) in values.iter().enumerate() {
@@ -113,7 +115,7 @@ fn populate_identity(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	identity: IdentityId,
-) -> crate::Result<()> {
+) -> Result<()> {
 	if identity.is_root() {
 		return Ok(());
 	}
@@ -145,14 +147,14 @@ impl Executor {
 		identity: IdentityId,
 		rql: &str,
 		params: Params,
-	) -> crate::Result<Vec<Frame>> {
+	) -> Result<Vec<Frame>> {
 		let mut result = vec![];
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &params)?;
 		populate_identity(&mut symbol_table, &self.catalog, tx, identity)?;
 
 		let compiled = match self.compiler.compile_with_policy(tx, rql, |plans, bump, cat, tx| {
-			reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity)
+			inject_read_policies(plans, bump, cat, tx, identity)
 		})? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {
@@ -171,7 +173,7 @@ impl Executor {
 	}
 
 	#[instrument(name = "executor::admin", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn admin(&self, txn: &mut AdminTransaction, cmd: Admin<'_>) -> crate::Result<Vec<Frame>> {
+	pub fn admin(&self, txn: &mut AdminTransaction, cmd: Admin<'_>) -> Result<Vec<Frame>> {
 		let mut result = vec![];
 		let mut output_results: Vec<Frame> = Vec::new();
 		let mut symbol_table = SymbolTable::new();
@@ -190,7 +192,7 @@ impl Executor {
 		match self.compiler.compile_with_policy(
 			&mut Transaction::Admin(txn),
 			cmd.rql,
-			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity),
+			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
 		)? {
 			CompilationResult::Ready(compiled) => {
 				for compiled in compiled.iter() {
@@ -207,7 +209,7 @@ impl Executor {
 			}
 			CompilationResult::Incremental(mut state) => {
 				let policy = constrain_policy(|plans, bump, cat, tx| {
-					reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity)
+					inject_read_policies(plans, bump, cat, tx, identity)
 				});
 				while let Some(compiled) = self.compiler.compile_next_with_policy(
 					&mut Transaction::Admin(txn),
@@ -233,7 +235,7 @@ impl Executor {
 	}
 
 	#[instrument(name = "executor::command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+	pub fn command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> Result<Vec<Frame>> {
 		let mut result = vec![];
 		let mut output_results: Vec<Frame> = Vec::new();
 		let mut symbol_table = SymbolTable::new();
@@ -252,7 +254,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Command(txn),
 			cmd.rql,
-			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity),
+			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
 		)? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {
@@ -285,7 +287,7 @@ impl Executor {
 		identity: IdentityId,
 		name: &str,
 		params: &Params,
-	) -> crate::Result<Vec<Frame>> {
+	) -> Result<Vec<Frame>> {
 		// Compile and execute CALL <name>(<params>)
 		let rql = format!("CALL {}()", name);
 		let mut result = vec![];
@@ -312,7 +314,7 @@ impl Executor {
 	}
 
 	#[instrument(name = "executor::query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
-	pub fn query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
+	pub fn query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> Result<Vec<Frame>> {
 		let mut result = vec![];
 		let mut output_results: Vec<Frame> = Vec::new();
 		let mut symbol_table = SymbolTable::new();
@@ -331,7 +333,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Query(txn),
 			qry.rql,
-			|plans, bump, cat, tx| reifydb_policy::inject_read_policies(plans, bump, cat, tx, identity),
+			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
 		)? {
 			CompilationResult::Ready(compiled) => compiled,
 			CompilationResult::Incremental(_) => {

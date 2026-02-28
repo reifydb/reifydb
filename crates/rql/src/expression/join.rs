@@ -8,6 +8,7 @@ use reifydb_core::{
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
+	Result,
 	ast::ast::{Ast, AstInfix, AstPrefixOperator, InfixOperator},
 	bump::BumpBox,
 	expression::{
@@ -34,7 +35,7 @@ impl JoinConditionCompiler {
 
 	/// Compile a join condition expression
 	/// This handles the special case where alias.column references are valid
-	pub fn compile(&self, ast: Ast<'_>) -> crate::Result<Expression> {
+	pub fn compile(&self, ast: Ast<'_>) -> Result<Expression> {
 		match ast {
 			// Handle alias.column references in join conditions
 			Ast::Infix(ast_infix) if matches!(ast_infix.operator, InfixOperator::AccessTable(_)) => {
@@ -90,7 +91,7 @@ impl JoinConditionCompiler {
 		}
 	}
 
-	fn compile_qualified_column(&self, ast: AstInfix<'_>) -> crate::Result<Expression> {
+	fn compile_qualified_column(&self, ast: AstInfix<'_>) -> Result<Expression> {
 		assert!(matches!(ast.operator, InfixOperator::AccessTable(_)));
 
 		let Ast::Identifier(left) = BumpBox::into_inner(ast.left) else {
@@ -122,7 +123,7 @@ impl JoinConditionCompiler {
 		))
 	}
 
-	fn compile_infix(&self, ast: AstInfix<'_>) -> crate::Result<Expression> {
+	fn compile_infix(&self, ast: AstInfix<'_>) -> Result<Expression> {
 		match ast.operator {
 			InfixOperator::AccessTable(_) => self.compile_qualified_column(ast),
 			InfixOperator::Add(token) => {

@@ -35,13 +35,14 @@ use user_role::load_user_roles;
 use view::load_views;
 
 use super::MaterializedCatalog;
+use crate::Result;
 
 /// Loads catalog data from storage and populates a MaterializedCatalog
 pub struct MaterializedCatalogLoader;
 
 impl MaterializedCatalogLoader {
 	/// Load all catalog data from storage into the MaterializedCatalog
-	pub fn load_all(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+	pub fn load_all(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 		load_namespaces(rx, catalog)?;
 		// Load primary keys first so they're available when loading
 		// tables/views

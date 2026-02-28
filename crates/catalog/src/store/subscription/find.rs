@@ -8,13 +8,13 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::subscription::schema::subscription};
+use crate::{CatalogStore, Result, store::subscription::schema::subscription};
 
 impl CatalogStore {
 	pub(crate) fn find_subscription(
 		rx: &mut Transaction<'_>,
 		id: SubscriptionId,
-	) -> crate::Result<Option<SubscriptionDef>> {
+	) -> Result<Option<SubscriptionDef>> {
 		let Some(multi) = rx.get(&SubscriptionKey::encoded(id))? else {
 			return Ok(None);
 		};

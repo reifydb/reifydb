@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::common::{WindowSize, WindowSlide, WindowType};
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{error::Error, fragment::Fragment};
 
 use super::{WindowConfig, WindowNode};
 use crate::{Result, error::RqlError, expression::Expression};
@@ -14,14 +14,14 @@ pub fn create_sliding_window(
 ) -> Result<WindowNode> {
 	validate_sliding_config(&config)?;
 
-	let window_type = config.window_type.ok_or_else(|| -> reifydb_type::error::Error {
+	let window_type = config.window_type.ok_or_else(|| -> Error {
 		RqlError::WindowMissingTypeOrSize {
 			fragment: Fragment::None,
 		}
 		.into()
 	})?;
 
-	let size = config.size.ok_or_else(|| -> reifydb_type::error::Error {
+	let size = config.size.ok_or_else(|| -> Error {
 		RqlError::WindowMissingTypeOrSize {
 			fragment: Fragment::None,
 		}
@@ -43,7 +43,7 @@ pub fn create_sliding_window(
 }
 
 fn validate_sliding_config(config: &WindowConfig) -> Result<()> {
-	let slide = config.slide.as_ref().ok_or_else(|| -> reifydb_type::error::Error {
+	let slide = config.slide.as_ref().ok_or_else(|| -> Error {
 		RqlError::WindowMissingSlideParameter {
 			fragment: Fragment::None,
 		}

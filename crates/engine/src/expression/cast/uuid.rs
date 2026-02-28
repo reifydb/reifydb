@@ -15,9 +15,9 @@ use reifydb_type::{
 	},
 };
 
-use crate::error::CastError;
+use crate::{Result, error::CastError};
 
-pub fn to_uuid(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+pub fn to_uuid(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	match data {
 		ColumnData::Utf8 {
 			container,
@@ -38,7 +38,7 @@ pub fn to_uuid(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment
 }
 
 #[inline]
-fn from_text(container: &Utf8Container, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+fn from_text(container: &Utf8Container, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	match target {
 		Type::Uuid4 => to_uuid4(container, lazy_fragment),
 		Type::Uuid7 => to_uuid7(container, lazy_fragment),
@@ -57,7 +57,7 @@ fn from_text(container: &Utf8Container, target: Type, lazy_fragment: impl LazyFr
 macro_rules! impl_to_uuid {
 	($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
 		#[inline]
-		fn $fn_name(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+		fn $fn_name(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 			let mut out = ColumnData::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
@@ -94,11 +94,7 @@ impl_to_uuid!(to_uuid4, Uuid4, Type::Uuid4, parse_uuid4);
 impl_to_uuid!(to_uuid7, Uuid7, Type::Uuid7, parse_uuid7);
 
 #[inline]
-fn from_uuid4(
-	container: &UuidContainer<Uuid4>,
-	target: Type,
-	lazy_fragment: impl LazyFragment,
-) -> crate::Result<ColumnData> {
+fn from_uuid4(container: &UuidContainer<Uuid4>, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	match target {
 		Type::Uuid4 => Ok(ColumnData::Uuid4(UuidContainer::new(container.data().to_vec()))),
 		_ => {
@@ -114,11 +110,7 @@ fn from_uuid4(
 }
 
 #[inline]
-fn from_uuid7(
-	container: &UuidContainer<Uuid7>,
-	target: Type,
-	lazy_fragment: impl LazyFragment,
-) -> crate::Result<ColumnData> {
+fn from_uuid7(container: &UuidContainer<Uuid7>, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	match target {
 		Type::Uuid7 => Ok(ColumnData::Uuid7(UuidContainer::new(container.data().to_vec()))),
 		_ => {

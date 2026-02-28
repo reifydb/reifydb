@@ -6,8 +6,9 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
+use reifydb_type::Result;
 
-use super::{WindowEvent, WindowOperator};
+use super::{WindowEvent, WindowOperator, WindowState};
 use crate::transaction::FlowTransaction;
 
 impl WindowOperator {
@@ -55,7 +56,7 @@ impl WindowOperator {
 	}
 
 	/// Check if a tumbling window should be expired (closed)
-	pub fn should_expire_tumbling_window(&self, state: &super::WindowState, current_timestamp: u64) -> bool {
+	pub fn should_expire_tumbling_window(&self, state: &WindowState, current_timestamp: u64) -> bool {
 		match (&self.window_type, &self.size, &self.slide) {
 			(WindowType::Time(_), WindowSize::Duration(duration), None) => {
 				let window_size_ms = duration.as_millis() as u64;
@@ -72,7 +73,7 @@ fn process_tumbling_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
-) -> reifydb_type::Result<Vec<Diff>> {
+) -> Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -97,7 +98,7 @@ fn process_tumbling_group_insert(
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	group_hash: Hash128,
-) -> reifydb_type::Result<Vec<Diff>> {
+) -> Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -171,11 +172,7 @@ fn process_tumbling_group_insert(
 }
 
 /// Apply changes for tumbling windows
-pub fn apply_tumbling_window(
-	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
-	change: Change,
-) -> reifydb_type::Result<Change> {
+pub fn apply_tumbling_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let mut result = Vec::new();
 	let current_timestamp = operator.current_timestamp();
 

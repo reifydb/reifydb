@@ -6,13 +6,9 @@ use reifydb_rql::nodes::CreateUserNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
-pub(crate) fn create_user(
-	services: &Services,
-	txn: &mut AdminTransaction,
-	plan: CreateUserNode,
-) -> crate::Result<Columns> {
+pub(crate) fn create_user(services: &Services, txn: &mut AdminTransaction, plan: CreateUserNode) -> Result<Columns> {
 	let name = plan.name.text();
 
 	services.catalog.create_user(txn, name)?;

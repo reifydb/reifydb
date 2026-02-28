@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+#![cfg_attr(not(debug_assertions), deny(warnings))]
+
 //! WebSocket server subsystem for ReifyDB.
 //!
 //! This crate provides a tokio-tungstenite-based WebSocket server for handling

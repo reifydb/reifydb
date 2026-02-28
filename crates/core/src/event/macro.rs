@@ -1,31 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-/// Defines an event struct with cheap O(1) cloning using Arc<Inner> pattern.
-///
-/// This macro generates:
-/// - A hidden Inner struct containing all fields
-/// - A public wrapper struct with Arc<Inner>
-/// - Clone implementation that clones the Arc (cheap)
-/// - Constructor and accessor methods for all fields
-/// - Event trait implementation
-///
-/// # Example
-/// ```
-/// use reifydb_core::define_event;
-///
-/// define_event! {
-///     pub struct MyEvent {
-/// 	pub data: Vec<i32>,
-/// 	pub name: String,
-///     }
-/// }
-///
-/// let event = MyEvent::new(vec![1, 2, 3], "test".to_string());
-/// let clone = event.clone(); // O(1) operation, just increments Arc refcount
-/// assert_eq!(event.data().len(), 3);
-/// assert_eq!(event.name(), "test");
-/// ```
 #[macro_export]
 macro_rules! define_event {
 	// Handle empty structs (e.g., OnStartEvent)
@@ -138,6 +113,8 @@ macro_rules! define_event {
 mod tests {
 	use std::sync::{Arc, Mutex};
 
+	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
+
 	use crate::event::{Event, EventBus, EventListener};
 
 	define_event! {
@@ -224,9 +201,7 @@ mod tests {
 
 	#[test]
 	fn test_define_event_with_event_bus() {
-		let actor_system = reifydb_runtime::actor::system::ActorSystem::new(
-			reifydb_runtime::SharedRuntimeConfig::default().actor_system_config(),
-		);
+		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let event_bus = EventBus::new(&actor_system);
 
 		// Create a listener for DefineTestEvent

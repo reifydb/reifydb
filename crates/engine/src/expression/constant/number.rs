@@ -13,14 +13,14 @@ use reifydb_type::{
 	},
 };
 
-use crate::error::CastError;
+use crate::{Result, error::CastError};
 
 pub(crate) struct NumberParser;
 
 impl NumberParser {
 	/// Parse a number to a specific target type with detailed error
 	/// handling and range checking
-	pub(crate) fn from_number<'a>(fragment: Fragment, target: Type, row_count: usize) -> crate::Result<ColumnData> {
+	pub(crate) fn from_number<'a>(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnData> {
 		match &target {
 			Type::Boolean => Self::parse_bool(fragment, row_count),
 			Type::Float4 => Self::parse_float4(fragment, row_count),
@@ -51,7 +51,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_bool<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_bool<'a>(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
 		match parse_bool(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::bool(vec![v; row_count])),
 			Err(err) => {
@@ -64,7 +64,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_float4<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_float4<'a>(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
 		match parse_float::<f32>(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::float4(vec![v; row_count])),
 			Err(err) => {
@@ -78,7 +78,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_float8<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_float8<'a>(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
 		match parse_float::<f64>(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::float8(vec![v; row_count])),
 			Err(err) => {
@@ -92,7 +92,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int1<'a>(fragment: Fragment, ty: Type, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_int1<'a>(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
 		if let Ok(v) = parse_primitive_int::<i8>(fragment.clone()) {
 			Ok(ColumnData::int1(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
@@ -127,7 +127,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int2<'a>(fragment: Fragment, ty: Type, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_int2<'a>(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
 		if let Ok(v) = parse_primitive_int::<i16>(fragment.clone()) {
 			Ok(ColumnData::int2(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
@@ -161,7 +161,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int4<'a>(fragment: Fragment, ty: Type, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_int4<'a>(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
 		if let Ok(v) = parse_primitive_int::<i32>(fragment.clone()) {
 			Ok(ColumnData::int4(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
@@ -195,7 +195,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int8<'a>(fragment: Fragment, ty: Type, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_int8<'a>(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
 		if let Ok(v) = parse_primitive_int::<i64>(fragment.clone()) {
 			Ok(ColumnData::int8(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
@@ -229,7 +229,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int16<'a>(fragment: Fragment, ty: Type, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_int16<'a>(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
 		if let Ok(v) = parse_primitive_int::<i128>(fragment.clone()) {
 			Ok(ColumnData::int16(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
@@ -263,7 +263,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint1<'a>(fragment: Fragment, ty: Type, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_uint1<'a>(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
 		if let Ok(v) = parse_primitive_uint::<u8>(fragment.clone()) {
 			Ok(ColumnData::uint1(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
@@ -297,7 +297,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint2<'a>(fragment: Fragment, ty: Type, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_uint2<'a>(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
 		if let Ok(v) = parse_primitive_uint::<u16>(fragment.clone()) {
 			Ok(ColumnData::uint2(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
@@ -331,7 +331,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint4<'a>(fragment: Fragment, ty: Type, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_uint4<'a>(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
 		if let Ok(v) = parse_primitive_uint::<u32>(fragment.clone()) {
 			Ok(ColumnData::uint4(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
@@ -365,7 +365,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint8<'a>(fragment: Fragment, ty: Type, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_uint8<'a>(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
 		if let Ok(v) = parse_primitive_uint::<u64>(fragment.clone()) {
 			Ok(ColumnData::uint8(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
@@ -399,7 +399,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint16<'a>(fragment: Fragment, ty: Type, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_uint16<'a>(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
 		if let Ok(v) = parse_primitive_uint::<u128>(fragment.clone()) {
 			Ok(ColumnData::uint16(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
@@ -433,7 +433,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_int<'a>(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
 		match parse_primitive_int(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::int(vec![v; row_count])),
 			Err(err) => {
@@ -447,7 +447,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_uint<'a>(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
 		match parse_primitive_uint(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::uint(vec![v; row_count])),
 			Err(err) => {
@@ -461,7 +461,7 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_decimal<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+	fn parse_decimal<'a>(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
 		match parse_decimal(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::decimal(vec![v; row_count])),
 			Err(err) => {

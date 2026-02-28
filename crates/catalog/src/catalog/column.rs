@@ -10,7 +10,7 @@ use reifydb_core::interface::catalog::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use tracing::instrument;
 
-use crate::{CatalogStore, catalog::Catalog, store::column::list::ColumnInfo};
+use crate::{CatalogStore, Result, catalog::Catalog, store::column::list::ColumnInfo};
 
 impl Catalog {
 	#[instrument(name = "catalog::column::find_by_name", level = "trace", skip(self, txn, source, name))]
@@ -19,17 +19,17 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		source: impl Into<PrimitiveId>,
 		name: &str,
-	) -> crate::Result<Option<ColumnDef>> {
+	) -> Result<Option<ColumnDef>> {
 		CatalogStore::find_column_by_name(txn, source, name)
 	}
 
 	#[instrument(name = "catalog::column::get", level = "trace", skip(self, txn))]
-	pub fn get_column(&self, txn: &mut Transaction<'_>, column_id: ColumnId) -> crate::Result<ColumnDef> {
+	pub fn get_column(&self, txn: &mut Transaction<'_>, column_id: ColumnId) -> Result<ColumnDef> {
 		CatalogStore::get_column(txn, column_id)
 	}
 
 	#[instrument(name = "catalog::column::list_all", level = "debug", skip(self, txn))]
-	pub fn list_columns_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<ColumnInfo>> {
+	pub fn list_columns_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<ColumnInfo>> {
 		CatalogStore::list_columns_all(txn)
 	}
 
@@ -39,7 +39,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		column: ColumnId,
 		policy: ColumnPropertyKind,
-	) -> crate::Result<ColumnProperty> {
+	) -> Result<ColumnProperty> {
 		CatalogStore::create_column_property(txn, column, policy)
 	}
 }

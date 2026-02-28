@@ -6,6 +6,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
+	Result,
 	ast::ast::AstCreateTransactionalView,
 	bump::BumpVec,
 	convert_data_type_with_constraints,
@@ -17,7 +18,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateTransactionalView<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 		for col in ast.columns.into_iter() {
 			let constraint = convert_data_type_with_constraints(&col.ty)?;

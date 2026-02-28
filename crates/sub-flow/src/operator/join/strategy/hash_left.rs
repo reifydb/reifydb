@@ -3,6 +3,7 @@
 
 use reifydb_core::{common::CommitVersion, interface::change::Diff, value::column::columns::Columns};
 use reifydb_runtime::hash::Hash128;
+use reifydb_type::Result;
 
 use super::hash::{
 	add_to_state_entry_batch, emit_joined_columns_batch, emit_remove_joined_columns_batch,
@@ -29,7 +30,7 @@ impl LeftHashJoin {
 		side: JoinSide,
 		_state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		match side {
 			JoinSide::Left => {
 				// Undefined key in left join still emits the row
@@ -55,7 +56,7 @@ impl LeftHashJoin {
 		_state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		let row_number = pre.row_numbers[row_idx];
 
 		match side {
@@ -85,7 +86,7 @@ impl LeftHashJoin {
 		_state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		match side {
 			JoinSide::Left => {
 				// Both keys are undefined - update the row
@@ -113,7 +114,7 @@ impl LeftHashJoin {
 		key_hash: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -197,7 +198,7 @@ impl LeftHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -301,7 +302,7 @@ impl LeftHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	) -> Result<Vec<Diff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}

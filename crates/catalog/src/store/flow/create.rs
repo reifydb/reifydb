@@ -12,7 +12,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		flow::schema::{flow, flow_namespace},
@@ -28,7 +28,7 @@ pub struct FlowToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_flow(txn: &mut AdminTransaction, to_create: FlowToCreate) -> crate::Result<FlowDef> {
+	pub(crate) fn create_flow(txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<FlowDef> {
 		let namespace_id = to_create.namespace;
 
 		// Check if flow already exists
@@ -60,7 +60,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		to_create: FlowToCreate,
-	) -> crate::Result<FlowDef> {
+	) -> Result<FlowDef> {
 		let namespace_id = to_create.namespace;
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;
@@ -73,7 +73,7 @@ impl CatalogStore {
 		flow: FlowId,
 		namespace: NamespaceId,
 		to_create: &FlowToCreate,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = flow::SCHEMA.allocate();
 		flow::SCHEMA.set_u64(&mut row, flow::ID, flow);
 		flow::SCHEMA.set_u64(&mut row, flow::NAMESPACE, namespace);
@@ -91,7 +91,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		flow: FlowId,
 		name: &str,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = flow_namespace::SCHEMA.allocate();
 		flow_namespace::SCHEMA.set_u64(&mut row, flow_namespace::ID, flow);
 		flow_namespace::SCHEMA.set_utf8(&mut row, flow_namespace::NAME, name);

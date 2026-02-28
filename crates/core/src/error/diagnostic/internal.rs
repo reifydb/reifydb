@@ -180,6 +180,7 @@ pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
 	use super::*;
+	use crate::error::Error;
 
 	#[derive(Debug)]
 	#[allow(dead_code)]
@@ -228,7 +229,7 @@ pub mod tests {
 
 	#[test]
 	fn test_internal_err_literal_string() {
-		let result: Result<(), reifydb_type::error::Error> = internal_err!("test error");
+		let result: Result<(), Error> = internal_err!("test error");
 
 		assert!(result.is_err());
 		let error = result.unwrap_err();
@@ -240,8 +241,7 @@ pub mod tests {
 	fn test_internal_err_with_format() {
 		let code = "ERR_123";
 		let line = 456;
-		let result: Result<(), reifydb_type::error::Error> =
-			internal_err!("Error code: {} at line {}", code, line);
+		let result: Result<(), Error> = internal_err!("Error code: {} at line {}", code, line);
 
 		assert!(result.is_err());
 		let error = result.unwrap_err();
@@ -277,7 +277,7 @@ pub mod tests {
 
 	#[test]
 	fn test_return_internal_error_in_function() {
-		fn test_function_literal() -> Result<(), reifydb_type::error::Error> {
+		fn test_function_literal() -> Result<(), Error> {
 			return_internal_error!("function error");
 		}
 
@@ -290,7 +290,7 @@ pub mod tests {
 
 	#[test]
 	fn test_return_internal_error_with_format() {
-		fn test_function_format(val: u32) -> Result<(), reifydb_type::error::Error> {
+		fn test_function_format(val: u32) -> Result<(), Error> {
 			return_internal_error!("Invalid value: {:#04x}", val);
 		}
 

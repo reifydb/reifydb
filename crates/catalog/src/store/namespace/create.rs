@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		namespace::schema::namespace::{ID, NAME, PARENT_ID, SCHEMA},
@@ -28,7 +28,7 @@ impl CatalogStore {
 	pub(crate) fn create_namespace(
 		txn: &mut AdminTransaction,
 		to_create: NamespaceToCreate,
-	) -> crate::Result<NamespaceDef> {
+	) -> Result<NamespaceDef> {
 		if let Some(namespace) =
 			Self::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), &to_create.name)?
 		{

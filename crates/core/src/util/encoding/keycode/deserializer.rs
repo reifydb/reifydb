@@ -3,6 +3,7 @@
 
 use num_bigint::Sign;
 use reifydb_type::{
+	Result,
 	error::{Error, TypeError},
 	value::{
 		Value,
@@ -50,7 +51,7 @@ impl<'a> KeyDeserializer<'a> {
 		self.position
 	}
 
-	fn read_exact(&mut self, count: usize) -> reifydb_type::Result<&'a [u8]> {
+	fn read_exact(&mut self, count: usize) -> Result<&'a [u8]> {
 		if self.remaining() < count {
 			return Err(Error::from(TypeError::SerdeKeycode {
 				message: format!(
@@ -66,72 +67,72 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(&self.buffer[start..self.position])
 	}
 
-	pub fn read_bool(&mut self) -> reifydb_type::Result<bool> {
+	pub fn read_bool(&mut self) -> Result<bool> {
 		let bytes = self.read_exact(1)?;
 		Ok(deserialize::<bool>(bytes)?)
 	}
 
-	pub fn read_f32(&mut self) -> reifydb_type::Result<f32> {
+	pub fn read_f32(&mut self) -> Result<f32> {
 		let bytes = self.read_exact(4)?;
 		Ok(deserialize::<f32>(bytes)?)
 	}
 
-	pub fn read_f64(&mut self) -> reifydb_type::Result<f64> {
+	pub fn read_f64(&mut self) -> Result<f64> {
 		let bytes = self.read_exact(8)?;
 		Ok(deserialize::<f64>(bytes)?)
 	}
 
-	pub fn read_i8(&mut self) -> reifydb_type::Result<i8> {
+	pub fn read_i8(&mut self) -> Result<i8> {
 		let bytes = self.read_exact(1)?;
 		Ok(deserialize::<i8>(bytes)?)
 	}
 
-	pub fn read_i16(&mut self) -> reifydb_type::Result<i16> {
+	pub fn read_i16(&mut self) -> Result<i16> {
 		let bytes = self.read_exact(2)?;
 		Ok(deserialize::<i16>(bytes)?)
 	}
 
-	pub fn read_i32(&mut self) -> reifydb_type::Result<i32> {
+	pub fn read_i32(&mut self) -> Result<i32> {
 		let bytes = self.read_exact(4)?;
 		Ok(deserialize::<i32>(bytes)?)
 	}
 
-	pub fn read_i64(&mut self) -> reifydb_type::Result<i64> {
+	pub fn read_i64(&mut self) -> Result<i64> {
 		let bytes = self.read_exact(8)?;
 		Ok(deserialize::<i64>(bytes)?)
 	}
 
-	pub fn read_i128(&mut self) -> reifydb_type::Result<i128> {
+	pub fn read_i128(&mut self) -> Result<i128> {
 		let bytes = self.read_exact(16)?;
 		Ok(deserialize::<i128>(bytes)?)
 	}
 
-	pub fn read_u8(&mut self) -> reifydb_type::Result<u8> {
+	pub fn read_u8(&mut self) -> Result<u8> {
 		let bytes = self.read_exact(1)?;
 		Ok(deserialize::<u8>(bytes)?)
 	}
 
-	pub fn read_u16(&mut self) -> reifydb_type::Result<u16> {
+	pub fn read_u16(&mut self) -> Result<u16> {
 		let bytes = self.read_exact(2)?;
 		Ok(deserialize::<u16>(bytes)?)
 	}
 
-	pub fn read_u32(&mut self) -> reifydb_type::Result<u32> {
+	pub fn read_u32(&mut self) -> Result<u32> {
 		let bytes = self.read_exact(4)?;
 		Ok(deserialize::<u32>(bytes)?)
 	}
 
-	pub fn read_u64(&mut self) -> reifydb_type::Result<u64> {
+	pub fn read_u64(&mut self) -> Result<u64> {
 		let bytes = self.read_exact(8)?;
 		Ok(deserialize::<u64>(bytes)?)
 	}
 
-	pub fn read_u128(&mut self) -> reifydb_type::Result<u128> {
+	pub fn read_u128(&mut self) -> Result<u128> {
 		let bytes = self.read_exact(16)?;
 		Ok(deserialize::<u128>(bytes)?)
 	}
 
-	pub fn read_bytes(&mut self) -> reifydb_type::Result<Vec<u8>> {
+	pub fn read_bytes(&mut self) -> Result<Vec<u8>> {
 		let mut result = Vec::new();
 		loop {
 			if self.remaining() < 1 {
@@ -177,7 +178,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(result)
 	}
 
-	pub fn read_str(&mut self) -> reifydb_type::Result<String> {
+	pub fn read_str(&mut self) -> Result<String> {
 		let bytes = self.read_bytes()?;
 		String::from_utf8(bytes).map_err(|e| {
 			Error::from(TypeError::SerdeKeycode {
@@ -186,17 +187,17 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_primitive_id(&mut self) -> reifydb_type::Result<PrimitiveId> {
+	pub fn read_primitive_id(&mut self) -> Result<PrimitiveId> {
 		let bytes = self.read_exact(9)?;
 		catalog::deserialize_primitive_id(bytes)
 	}
 
-	pub fn read_index_id(&mut self) -> reifydb_type::Result<IndexId> {
+	pub fn read_index_id(&mut self) -> Result<IndexId> {
 		let bytes = self.read_exact(9)?;
 		catalog::deserialize_index_id(bytes)
 	}
 
-	pub fn read_date(&mut self) -> reifydb_type::Result<Date> {
+	pub fn read_date(&mut self) -> Result<Date> {
 		let days = self.read_i32()?;
 		Date::from_days_since_epoch(days).ok_or_else(|| {
 			Error::from(TypeError::SerdeKeycode {
@@ -208,12 +209,12 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_datetime(&mut self) -> reifydb_type::Result<DateTime> {
+	pub fn read_datetime(&mut self) -> Result<DateTime> {
 		let nanos = self.read_i64()?;
 		Ok(DateTime::from_nanos_since_epoch(nanos))
 	}
 
-	pub fn read_time(&mut self) -> reifydb_type::Result<Time> {
+	pub fn read_time(&mut self) -> Result<Time> {
 		let nanos = self.read_u64()?;
 		Time::from_nanos_since_midnight(nanos).ok_or_else(|| {
 			Error::from(TypeError::SerdeKeycode {
@@ -225,17 +226,17 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_duration(&mut self) -> reifydb_type::Result<Duration> {
+	pub fn read_duration(&mut self) -> Result<Duration> {
 		let nanos = self.read_i64()?;
 		Ok(Duration::from_nanoseconds(nanos))
 	}
 
-	pub fn read_row_number(&mut self) -> reifydb_type::Result<RowNumber> {
+	pub fn read_row_number(&mut self) -> Result<RowNumber> {
 		let value = self.read_u64()?;
 		Ok(RowNumber(value))
 	}
 
-	pub fn read_identity_id(&mut self) -> reifydb_type::Result<IdentityId> {
+	pub fn read_identity_id(&mut self) -> Result<IdentityId> {
 		let bytes = self.read_bytes()?;
 		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
 			Error::from(TypeError::SerdeKeycode {
@@ -245,7 +246,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(IdentityId::from(Uuid7::from(uuid)))
 	}
 
-	pub fn read_uuid4(&mut self) -> reifydb_type::Result<Uuid4> {
+	pub fn read_uuid4(&mut self) -> Result<Uuid4> {
 		let bytes = self.read_bytes()?;
 		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
 			Error::from(TypeError::SerdeKeycode {
@@ -255,7 +256,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(Uuid4::from(uuid))
 	}
 
-	pub fn read_uuid7(&mut self) -> reifydb_type::Result<Uuid7> {
+	pub fn read_uuid7(&mut self) -> Result<Uuid7> {
 		let bytes = self.read_bytes()?;
 		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
 			Error::from(TypeError::SerdeKeycode {
@@ -265,12 +266,12 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(Uuid7::from(uuid))
 	}
 
-	pub fn read_blob(&mut self) -> reifydb_type::Result<Blob> {
+	pub fn read_blob(&mut self) -> Result<Blob> {
 		let bytes = self.read_bytes()?;
 		Ok(Blob::from(bytes))
 	}
 
-	pub fn read_int(&mut self) -> reifydb_type::Result<Int> {
+	pub fn read_int(&mut self) -> Result<Int> {
 		let sign = self.read_exact(1)?[0];
 		let len = self.read_u32()? as usize;
 		let bytes = self.read_exact(len)?;
@@ -283,13 +284,13 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(Int(num_bigint::BigInt::from_bytes_be(sign, bytes)))
 	}
 
-	pub fn read_uint(&mut self) -> reifydb_type::Result<Uint> {
+	pub fn read_uint(&mut self) -> Result<Uint> {
 		let len = self.read_u32()? as usize;
 		let bytes = self.read_exact(len)?;
 		Ok(Uint(num_bigint::BigInt::from_bytes_be(Sign::Plus, bytes)))
 	}
 
-	pub fn read_decimal(&mut self) -> reifydb_type::Result<Decimal> {
+	pub fn read_decimal(&mut self) -> Result<Decimal> {
 		let s = self.read_str()?;
 		s.parse::<Decimal>().map_err(|e| {
 			Error::from(TypeError::SerdeKeycode {
@@ -298,7 +299,7 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_value(&mut self) -> reifydb_type::Result<reifydb_type::value::Value> {
+	pub fn read_value(&mut self) -> Result<Value> {
 		if self.remaining() < 1 {
 			return Err(Error::from(TypeError::SerdeKeycode {
 				message: format!(
@@ -439,7 +440,7 @@ impl<'a> KeyDeserializer<'a> {
 		}
 	}
 
-	pub fn read_raw(&mut self, count: usize) -> reifydb_type::Result<&'a [u8]> {
+	pub fn read_raw(&mut self, count: usize) -> Result<&'a [u8]> {
 		self.read_exact(count)
 	}
 }

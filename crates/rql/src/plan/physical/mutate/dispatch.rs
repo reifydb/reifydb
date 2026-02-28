@@ -2,11 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::interface::catalog::sumtype::SumTypeKind;
+use reifydb_core::{interface::catalog::sumtype::SumTypeKind, internal_error};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
+	Result,
 	nodes::DispatchNode,
 	plan::{
 		logical,
@@ -19,7 +20,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		dispatch: logical::DispatchNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		// Resolve namespace
 		let ns_name = if dispatch.on_event.namespace.is_empty() {
 			"default".to_string()
@@ -50,7 +51,7 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		if sumtype_def.kind != SumTypeKind::Event {
-			return Err(reifydb_core::internal_error!("'{}' is not an EVENT type", event_name));
+			return Err(internal_error!("'{}' is not an EVENT type", event_name));
 		}
 
 		// Convert fields - variant resolved at runtime

@@ -13,9 +13,11 @@ pub mod token;
 pub mod variable;
 
 use cursor::Cursor;
+use reifydb_type::fragment::Fragment;
 use variable::scan_variable;
 
 use crate::{
+	Result,
 	bump::{Bump, BumpVec},
 	token::{
 		identifier::{scan_identifier, scan_quoted_identifier},
@@ -29,7 +31,7 @@ use crate::{
 
 /// Tokenize the input string into a vector of tokens.
 /// The input lifetime is tied to the bump lifetime, enabling zero-copy fragments.
-pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> crate::Result<BumpVec<'b, Token<'b>>> {
+pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<'b>>> {
 	let mut cursor = Cursor::new(input);
 	// Estimate token count: rough heuristic of 1 token per 6 characters
 	// with minimum of 8 and maximum reasonable limit
@@ -125,7 +127,7 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> crate::Result<BumpVec<'b,
 						message: message.clone(),
 					},
 					message,
-					fragment: reifydb_type::fragment::Fragment::None,
+					fragment: Fragment::None,
 				}));
 			}
 		}

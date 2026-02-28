@@ -13,6 +13,7 @@ use reifydb_type::{
 use crate::{
 	catalog::Catalog,
 	error::Result,
+	rql::raw_rql,
 	state::{State, row::RowNumberProvider},
 	store::Store,
 };
@@ -62,13 +63,13 @@ impl OperatorContext {
 	/// Returns `(RowNumber, is_new)` where `is_new` indicates if this is
 	/// a newly created row number.
 	/// ```
-	pub fn get_or_create_row_number(&mut self, key: &EncodedKey) -> reifydb_type::Result<(RowNumber, bool)> {
+	pub fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
 		let provider = RowNumberProvider::new(self.operator_id());
 		provider.get_or_create_row_number(self, key)
 	}
 
 	/// Execute an RQL statement within the current transaction.
 	pub fn rql(&self, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		crate::rql::raw_rql(self, rql, params)
+		raw_rql(self, rql, params)
 	}
 }

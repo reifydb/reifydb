@@ -8,14 +8,12 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::user_authentication::{convert_user_authentication, schema::user_authentication},
 };
 
 impl CatalogStore {
-	pub(crate) fn list_all_user_authentications(
-		rx: &mut Transaction<'_>,
-	) -> crate::Result<Vec<UserAuthenticationDef>> {
+	pub(crate) fn list_all_user_authentications(rx: &mut Transaction<'_>) -> Result<Vec<UserAuthenticationDef>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(UserAuthenticationKey::full_scan(), 1024)?;
 
@@ -31,7 +29,7 @@ impl CatalogStore {
 	pub(crate) fn list_user_authentications_by_user(
 		rx: &mut Transaction<'_>,
 		user_id: UserId,
-	) -> crate::Result<Vec<UserAuthenticationDef>> {
+	) -> Result<Vec<UserAuthenticationDef>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(UserAuthenticationKey::full_scan(), 1024)?;
 

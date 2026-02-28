@@ -10,29 +10,29 @@ use reifydb_type::value::{Value, row_number::RowNumber};
 use tracing::instrument;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	catalog::Catalog,
 	store::sequence::{Sequence, column::ColumnSequence, generator::SequenceTransaction, row::RowSequence},
 };
 
 impl Catalog {
 	#[instrument(name = "catalog::sequence::find", level = "trace", skip(self, txn))]
-	pub fn find_sequence(&self, txn: &mut Transaction<'_>, id: SequenceId) -> crate::Result<Option<Sequence>> {
+	pub fn find_sequence(&self, txn: &mut Transaction<'_>, id: SequenceId) -> Result<Option<Sequence>> {
 		CatalogStore::find_sequence(txn, id)
 	}
 
 	#[instrument(name = "catalog::sequence::get", level = "trace", skip(self, txn))]
-	pub fn get_sequence(&self, txn: &mut Transaction<'_>, id: SequenceId) -> crate::Result<Sequence> {
+	pub fn get_sequence(&self, txn: &mut Transaction<'_>, id: SequenceId) -> Result<Sequence> {
 		CatalogStore::get_sequence(txn, id)
 	}
 
 	#[instrument(name = "catalog::sequence::list", level = "debug", skip(self, txn))]
-	pub fn list_sequences(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<Sequence>> {
+	pub fn list_sequences(&self, txn: &mut Transaction<'_>) -> Result<Vec<Sequence>> {
 		CatalogStore::list_sequences(txn)
 	}
 
 	#[instrument(name = "catalog::sequence::next_row_number", level = "trace", skip(self, txn))]
-	pub fn next_row_number(&self, txn: &mut impl SequenceTransaction, table: TableId) -> crate::Result<RowNumber> {
+	pub fn next_row_number(&self, txn: &mut impl SequenceTransaction, table: TableId) -> Result<RowNumber> {
 		RowSequence::next_row_number(txn, table)
 	}
 
@@ -42,7 +42,7 @@ impl Catalog {
 		txn: &mut impl SequenceTransaction,
 		table: TableId,
 		count: u64,
-	) -> crate::Result<Vec<RowNumber>> {
+	) -> Result<Vec<RowNumber>> {
 		RowSequence::next_row_number_batch(txn, table, count)
 	}
 
@@ -51,7 +51,7 @@ impl Catalog {
 		&self,
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
-	) -> crate::Result<RowNumber> {
+	) -> Result<RowNumber> {
 		RowSequence::next_row_number_for_ringbuffer(txn, ringbuffer)
 	}
 
@@ -65,7 +65,7 @@ impl Catalog {
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
 		count: u64,
-	) -> crate::Result<Vec<RowNumber>> {
+	) -> Result<Vec<RowNumber>> {
 		RowSequence::next_row_number_batch_for_ringbuffer(txn, ringbuffer, count)
 	}
 
@@ -75,7 +75,7 @@ impl Catalog {
 		txn: &mut impl SequenceTransaction,
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,
-	) -> crate::Result<Value> {
+	) -> Result<Value> {
 		ColumnSequence::next_value(txn, source, column)
 	}
 
@@ -86,7 +86,7 @@ impl Catalog {
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,
 		value: Value,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		ColumnSequence::set_value(txn, source, column, value)
 	}
 }

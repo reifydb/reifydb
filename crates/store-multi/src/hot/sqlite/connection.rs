@@ -7,7 +7,7 @@ use reifydb_core::internal_error;
 use reifydb_type::Result;
 use rusqlite::Connection;
 
-use super::DbPath;
+use super::{DbPath, OpenFlags};
 
 /// Connect to a SQLite database asynchronously.
 pub(super) fn connect(path: &DbPath, flags: rusqlite::OpenFlags) -> Result<Connection> {
@@ -84,7 +84,7 @@ pub(super) fn resolve_db_path(db_path: DbPath) -> DbPath {
 }
 
 /// Convert our OpenFlags to rusqlite OpenFlags.
-pub(super) fn convert_flags(flags: &super::OpenFlags) -> rusqlite::OpenFlags {
+pub(super) fn convert_flags(flags: &OpenFlags) -> rusqlite::OpenFlags {
 	let mut rusqlite_flags = rusqlite::OpenFlags::empty();
 
 	if flags.read_write {

@@ -7,10 +7,13 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::store::flow_edge::schema::{flow_edge, flow_edge_by_flow};
+use crate::{
+	CatalogStore, Result,
+	store::flow_edge::schema::{flow_edge, flow_edge_by_flow},
+};
 
-impl crate::CatalogStore {
-	pub(crate) fn create_flow_edge(txn: &mut AdminTransaction, edge_def: &FlowEdgeDef) -> crate::Result<()> {
+impl CatalogStore {
+	pub(crate) fn create_flow_edge(txn: &mut AdminTransaction, edge_def: &FlowEdgeDef) -> Result<()> {
 		// Write to main flow_edge table
 		let mut row = flow_edge::SCHEMA.allocate();
 		flow_edge::SCHEMA.set_u64(&mut row, flow_edge::ID, edge_def.id);

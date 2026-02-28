@@ -9,27 +9,25 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::sequence::{
 		Sequence,
 		schema::sequence::{SCHEMA, VALUE},
 	},
+	system::ids::sequences::{COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, NAMESPACE, PRIMARY_KEY, SOURCE},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_sequence(
-		rx: &mut Transaction<'_>,
-		sequence_id: SequenceId,
-	) -> crate::Result<Option<Sequence>> {
+	pub(crate) fn find_sequence(rx: &mut Transaction<'_>, sequence_id: SequenceId) -> Result<Option<Sequence>> {
 		let (namespace, name) = match sequence_id {
-			crate::system::ids::sequences::NAMESPACE => (NamespaceId(1), "namespace"),
-			crate::system::ids::sequences::SOURCE => (NamespaceId(1), "source"),
-			crate::system::ids::sequences::COLUMN => (NamespaceId(1), "column"),
-			crate::system::ids::sequences::COLUMN_PROPERTY => (NamespaceId(1), "column_property"),
-			crate::system::ids::sequences::FLOW => (NamespaceId(1), "flow"),
-			crate::system::ids::sequences::FLOW_NODE => (NamespaceId(1), "flow_node"),
-			crate::system::ids::sequences::FLOW_EDGE => (NamespaceId(1), "flow_edge"),
-			crate::system::ids::sequences::PRIMARY_KEY => (NamespaceId(1), "primary_key"),
+			NAMESPACE => (NamespaceId(1), "namespace"),
+			SOURCE => (NamespaceId(1), "source"),
+			COLUMN => (NamespaceId(1), "column"),
+			COLUMN_PROPERTY => (NamespaceId(1), "column_property"),
+			FLOW => (NamespaceId(1), "flow"),
+			FLOW_NODE => (NamespaceId(1), "flow_node"),
+			FLOW_EDGE => (NamespaceId(1), "flow_edge"),
+			PRIMARY_KEY => (NamespaceId(1), "primary_key"),
 			_ => return_internal_error!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				sequence_id

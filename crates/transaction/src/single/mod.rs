@@ -18,6 +18,7 @@ pub mod write;
 
 use read::{KeyReadLock, SingleReadTransaction};
 use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
+use reifydb_type::Result;
 use write::{KeyWriteLock, SingleWriteTransaction};
 
 #[derive(Clone)]
@@ -62,20 +63,20 @@ impl SingleTransaction {
 	}
 
 	/// Helper for single-version queries.
-	pub fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> reifydb_type::Result<R>
+	pub fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut SingleReadTransaction<'_>) -> reifydb_type::Result<R>,
+		F: FnOnce(&mut SingleReadTransaction<'_>) -> Result<R>,
 	{
 		let mut tx = self.begin_query(keys)?;
 		f(&mut tx)
 	}
 
 	/// Helper for single-version commands.
-	pub fn with_command<'a, I, F, R>(&self, keys: I, f: F) -> reifydb_type::Result<R>
+	pub fn with_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut SingleWriteTransaction<'_>) -> reifydb_type::Result<R>,
+		F: FnOnce(&mut SingleWriteTransaction<'_>) -> Result<R>,
 	{
 		let mut tx = self.begin_command(keys)?;
 		let result = f(&mut tx)?;
@@ -83,7 +84,7 @@ impl SingleTransaction {
 		Ok(result)
 	}
 
-	pub fn begin_query<'a, I>(&self, keys: I) -> reifydb_type::Result<SingleReadTransaction<'_>>
+	pub fn begin_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -110,7 +111,7 @@ impl SingleTransaction {
 		})
 	}
 
-	pub fn begin_command<'a, I>(&self, keys: I) -> reifydb_type::Result<SingleWriteTransaction<'_>>
+	pub fn begin_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{

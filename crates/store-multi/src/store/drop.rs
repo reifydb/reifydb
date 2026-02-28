@@ -10,7 +10,10 @@
 use reifydb_core::common::CommitVersion;
 use reifydb_type::util::cowvec::CowVec;
 
-use crate::tier::{EntryKind, TierStorage};
+use crate::{
+	Result,
+	tier::{EntryKind, TierStorage},
+};
 
 /// Information about an entry to be dropped.
 #[derive(Debug, Clone)]
@@ -39,7 +42,7 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 	up_to_version: Option<CommitVersion>,
 	keep_last_versions: Option<usize>,
 	pending_version: Option<CommitVersion>,
-) -> crate::Result<Vec<DropEntry>> {
+) -> Result<Vec<DropEntry>> {
 	// Get all versions of this key directly (bypasses MVCC resolution)
 	let all_versions = storage.get_all_versions(table, key)?;
 

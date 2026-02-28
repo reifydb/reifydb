@@ -9,13 +9,13 @@ use reifydb_rql::nodes::CreateRingBufferNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_ringbuffer(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateRingBufferNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	// Check if ring buffer already exists using the catalog
 	if let Some(_) = services.catalog.find_ringbuffer_by_name(
 		&mut Transaction::Admin(txn),

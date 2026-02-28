@@ -3,8 +3,9 @@
 
 use std::sync::Arc;
 
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::catalog::dictionary::DictionaryDef,
+	interface::{catalog::dictionary::DictionaryDef, resolved::ResolvedPrimitive},
 	value::{
 		batch::lazy::LazyBatch,
 		column::{columns::Columns, data::ColumnData, headers::ColumnHeaders},
@@ -15,7 +16,9 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{util::bitvec::BitVec, value::constraint::Constraint};
 use tracing::instrument;
 
+use super::decode_dictionary_columns;
 use crate::{
+	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
@@ -42,7 +45,7 @@ impl FilterNode {
 
 impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
 			symbol_table: &ctx.stack,
@@ -58,7 +61,7 @@ impl QueryNode for FilterNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
 		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 
@@ -85,7 +88,7 @@ impl QueryNode for FilterNode {
 				let mut columns = lazy_batch.into_columns();
 
 				// Decode dictionary columns back to actual values
-				super::decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
+				decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
 
 				return Ok(Some(columns));
 			}
@@ -114,7 +117,7 @@ impl QueryNode for FilterNode {
 }
 
 impl Transform for FilterNode {
-	fn apply(&self, ctx: &TransformContext, input: Columns) -> reifydb_type::Result<Columns> {
+	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("FilterNode::apply() called before initialize()");
 
@@ -190,13 +193,13 @@ impl FilterNode {
 		ctx: &QueryContext,
 		compiled: &[CompiledExpr],
 		rx: &mut Transaction<'a>,
-	) -> crate::Result<Option<BitVec>> {
+	) -> Result<Option<BitVec>> {
 		// Materialize to columns for column-oriented evaluation,
 		// then decode dictionary columns so filters can compare actual values.
 		let dictionaries: Vec<Option<DictionaryDef>> =
 			lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
 		let mut columns = lazy_batch.clone().into_columns();
-		super::decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
+		decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
 		let row_count = columns.row_count();
 
 		if row_count == 0 {
@@ -258,10 +261,10 @@ impl FilterNode {
 
 pub(crate) fn resolve_is_variant_tags(
 	expr: &mut Expression,
-	source: &reifydb_core::interface::resolved::ResolvedPrimitive,
-	catalog: &reifydb_catalog::catalog::Catalog,
+	source: &ResolvedPrimitive,
+	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
-) -> crate::Result<()> {
+) -> Result<()> {
 	match expr {
 		Expression::IsVariant(e) => {
 			let col_name = match e.expression.as_ref() {

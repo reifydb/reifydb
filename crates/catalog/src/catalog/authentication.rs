@@ -10,7 +10,7 @@ use reifydb_core::interface::catalog::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use tracing::instrument;
 
-use crate::{CatalogStore, catalog::Catalog};
+use crate::{CatalogStore, Result, catalog::Catalog};
 
 impl Catalog {
 	#[instrument(name = "catalog::user_authentication::create", level = "debug", skip(self, txn))]
@@ -20,7 +20,7 @@ impl Catalog {
 		user_id: UserId,
 		method: &str,
 		properties: HashMap<String, String>,
-	) -> crate::Result<UserAuthenticationDef> {
+	) -> Result<UserAuthenticationDef> {
 		let auth = CatalogStore::create_user_authentication(txn, user_id, method, properties)?;
 		txn.track_user_authentication_def_created(auth.clone())?;
 		Ok(auth)
@@ -32,7 +32,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		user_id: UserId,
 		method: &str,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		if let Some(auth) = CatalogStore::find_user_authentication_by_user_and_method(
 			&mut Transaction::Admin(&mut *txn),
 			user_id,

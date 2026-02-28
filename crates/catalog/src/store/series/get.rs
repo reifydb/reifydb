@@ -8,10 +8,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_series(rx: &mut Transaction<'_>, series: SeriesId) -> crate::Result<SeriesDef> {
+	pub(crate) fn get_series(rx: &mut Transaction<'_>, series: SeriesId) -> Result<SeriesDef> {
 		Self::find_series(rx, series)?.ok_or_else(|| {
 			Error(internal!(
 				"Series with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

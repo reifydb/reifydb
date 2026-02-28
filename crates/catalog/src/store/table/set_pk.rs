@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::{CatalogStore, store::table::schema::table};
+use crate::{CatalogStore, Result, store::table::schema::table};
 
 impl CatalogStore {
 	/// Set the primary key ID for a table
@@ -17,7 +17,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let multi = match txn.get(&TableKey::encoded(table_id))? {
 			Some(v) => v,
 			None => return_internal_error!(format!(

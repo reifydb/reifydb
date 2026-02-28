@@ -7,10 +7,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn revoke_role(txn: &mut AdminTransaction, user: UserId, role: RoleId) -> crate::Result<()> {
+	pub(crate) fn revoke_role(txn: &mut AdminTransaction, user: UserId, role: RoleId) -> Result<()> {
 		txn.remove(&UserRoleKey::encoded(user, role))?;
 		Ok(())
 	}

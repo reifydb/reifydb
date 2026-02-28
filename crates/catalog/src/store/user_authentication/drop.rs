@@ -6,13 +6,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_user_authentication(
-		txn: &mut AdminTransaction,
-		id: UserAuthenticationId,
-	) -> crate::Result<()> {
+	pub(crate) fn drop_user_authentication(txn: &mut AdminTransaction, id: UserAuthenticationId) -> Result<()> {
 		txn.remove(&UserAuthenticationKey::encoded(id))?;
 		Ok(())
 	}

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::ast::{AstCreateIndex, AstIndexColumn},
 	bump::BumpBox,
 	expression::ExpressionCompiler,
@@ -9,7 +10,7 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_create_index(&self, ast: AstCreateIndex<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_create_index(&self, ast: AstCreateIndex<'bump>) -> Result<LogicalPlan<'bump>> {
 		// Note: Column qualification will be handled during physical plan compilation
 
 		let columns = ast
@@ -25,7 +26,7 @@ impl<'bump> Compiler<'bump> {
 			.filters
 			.into_iter()
 			.map(|filter_ast| ExpressionCompiler::compile(BumpBox::into_inner(filter_ast)))
-			.collect::<Result<Vec<_>, _>>()?;
+			.collect::<Result<Vec<_>>>()?;
 
 		let map = if let Some(map_ast) = ast.map {
 			Some(ExpressionCompiler::compile(BumpBox::into_inner(map_ast))?)

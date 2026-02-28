@@ -13,7 +13,7 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::columns::Columns,
 };
-use reifydb_type::{error::Error, value::row_number::RowNumber};
+use reifydb_type::{Result, error::Error, value::row_number::RowNumber};
 
 use crate::{
 	operator::{Operator, Operators, stateful::row::RowNumberProvider},
@@ -89,7 +89,7 @@ impl Operator for AppendOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
 			Error(internal!("Append received change from unknown node: {:?}", change.origin))
 		})?;
@@ -195,7 +195,7 @@ impl Operator for AppendOperator {
 		Ok(Change::from_flow(self.node, change.version, result_diffs))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		let mut found_columns: Vec<Columns> = Vec::new();
 
 		for &row_number in rows {

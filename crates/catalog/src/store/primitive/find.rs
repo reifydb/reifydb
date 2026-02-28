@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::interface::catalog::primitive::{PrimitiveDef, PrimitiveId};
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, vtable::VTableRegistry};
+use crate::{CatalogStore, Result, vtable::VTableRegistry};
 
 impl CatalogStore {
 	/// Find a primitive (table, store::view, or virtual table) by its PrimitiveId
@@ -14,7 +14,7 @@ impl CatalogStore {
 	pub(crate) fn find_primitive(
 		rx: &mut Transaction<'_>,
 		primitive: impl Into<PrimitiveId>,
-	) -> crate::Result<Option<PrimitiveDef>> {
+	) -> Result<Option<PrimitiveDef>> {
 		let primitive_id = primitive.into();
 
 		match primitive_id {
@@ -86,6 +86,7 @@ pub mod tests {
 	use crate::{
 		CatalogStore,
 		store::view::create::{ViewColumnToCreate, ViewToCreate},
+		system::ids::vtable::SEQUENCES,
 		test_utils::{ensure_test_namespace, ensure_test_table},
 	};
 
@@ -189,7 +190,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// Find the sequences virtual table
-		let sequences_id = crate::system::ids::vtable::SEQUENCES;
+		let sequences_id = SEQUENCES;
 		let primitive = CatalogStore::find_primitive(&mut Transaction::Admin(&mut txn), sequences_id)
 			.unwrap()
 			.expect("Sequences virtual table should exist");

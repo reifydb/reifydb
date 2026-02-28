@@ -19,9 +19,12 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::vm::{
-	instruction::dml::schema::get_or_create_series_schema,
-	volcano::query::{QueryContext, QueryNode},
+use crate::{
+	Result,
+	vm::{
+		instruction::dml::schema::get_or_create_series_schema,
+		volcano::query::{QueryContext, QueryNode},
+	},
 };
 
 pub struct SeriesScanNode {
@@ -42,7 +45,7 @@ impl SeriesScanNode {
 		time_range_end: Option<i64>,
 		variant_tag: Option<u8>,
 		context: Arc<QueryContext>,
-	) -> crate::Result<Self> {
+	) -> Result<Self> {
 		// Build headers: timestamp, optional tag, then data columns
 		let mut columns = vec![Fragment::internal("timestamp")];
 		if series.def().tag.is_some() {
@@ -70,12 +73,12 @@ impl SeriesScanNode {
 
 impl QueryNode for SeriesScanNode {
 	#[instrument(name = "volcano::scan::series::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::scan::series::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "SeriesScanNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -177,7 +180,7 @@ impl QueryNode for SeriesScanNode {
 	}
 }
 
-pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) -> crate::Result<Column> {
+pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) -> Result<Column> {
 	let data = match col_type {
 		Type::Boolean => {
 			let vals: Vec<bool> = values

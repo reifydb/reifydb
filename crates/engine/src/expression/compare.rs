@@ -22,6 +22,9 @@ use reifydb_type::{
 	},
 };
 
+use super::option::binary_op_unwrap_option;
+use crate::Result;
+
 /// Generates a complete match expression dispatching all numeric type pairs for comparison.
 /// Uses push-down accumulation to build the cross-product of type arms.
 macro_rules! dispatch_compare {
@@ -320,8 +323,8 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 	right: &Column,
 	fragment: Fragment,
 	error_fn: impl FnOnce(Fragment, Type, Type) -> Diagnostic,
-) -> crate::Result<Column> {
-	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
+) -> Result<Column> {
+	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
 		dispatch_compare!(
 			&left.data(), &right.data();
 			fragment;

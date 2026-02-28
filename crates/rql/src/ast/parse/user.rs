@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{AstCreate, AstCreateRole, AstCreateUser, AstDrop, AstDropRole, AstDropUser},
 		parse::Parser,
@@ -11,7 +12,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	/// Parse `CREATE USER name`
-	pub(crate) fn parse_create_user(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create_user(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 
 		Ok(AstCreate::User(AstCreateUser {
@@ -21,7 +22,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse `CREATE ROLE name`
-	pub(crate) fn parse_create_role(&mut self, token: Token<'bump>) -> crate::Result<AstCreate<'bump>> {
+	pub(crate) fn parse_create_role(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 
 		Ok(AstCreate::Role(AstCreateRole {
@@ -31,7 +32,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse `DROP USER [IF EXISTS] name`
-	pub(crate) fn parse_drop_user(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop_user(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume(TokenKind::Identifier)?;
 
@@ -43,7 +44,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse `DROP ROLE [IF EXISTS] name`
-	pub(crate) fn parse_drop_role(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop_role(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume(TokenKind::Identifier)?;
 
@@ -59,7 +60,7 @@ impl<'bump> Parser<'bump> {
 mod tests {
 	use crate::{
 		ast::{
-			ast::{AstCreate, AstDrop},
+			ast::{Ast, AstCreate, AstDrop},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -103,7 +104,7 @@ mod tests {
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
 		let drop = match node {
-			crate::ast::ast::Ast::Drop(d) => d,
+			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
 		};
 		let AstDrop::User(user) = drop else {
@@ -121,7 +122,7 @@ mod tests {
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
 		let drop = match node {
-			crate::ast::ast::Ast::Drop(d) => d,
+			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
 		};
 		let AstDrop::User(user) = drop else {
@@ -139,7 +140,7 @@ mod tests {
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
 		let drop = match node {
-			crate::ast::ast::Ast::Drop(d) => d,
+			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
 		};
 		let AstDrop::Role(role) = drop else {

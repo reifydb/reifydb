@@ -7,6 +7,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	value::column::{compressed::CompressedColumn, data::ColumnData},
 };
+use reifydb_type::Result;
 
 pub mod select;
 pub mod strategy;
@@ -14,8 +15,8 @@ pub mod strategy;
 pub type BoxedColumnCompressor = Box<dyn ColumnCompressor>;
 
 pub trait ColumnCompressor: Send + Sync {
-	fn compress(&self, data: &ColumnData) -> reifydb_type::Result<CompressedColumn>;
-	fn decompress(&self, compressed: &CompressedColumn) -> reifydb_type::Result<ColumnData>;
+	fn compress(&self, data: &ColumnData) -> Result<CompressedColumn>;
+	fn decompress(&self, compressed: &CompressedColumn) -> Result<ColumnData>;
 }
 
 /// Statistics collected during compression

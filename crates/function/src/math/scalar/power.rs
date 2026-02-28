@@ -8,7 +8,11 @@ use reifydb_type::{
 	value::{container::number::NumberContainer, decimal::Decimal, int::Int, r#type::Type, uint::Uint},
 };
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError, propagate_options};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
 
 pub struct Power;
 
@@ -443,7 +447,7 @@ fn promote_numeric_types(left: Type, right: Type) -> Type {
 }
 
 impl ScalarFunction for Power {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if let Some(result) = propagate_options(self, &ctx) {
 			return result;
 		}

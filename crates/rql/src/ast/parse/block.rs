@@ -4,7 +4,11 @@
 use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
-	ast::{ast::AstBlock, parse::Parser},
+	Result,
+	ast::{
+		ast::{AstBlock, AstStatement},
+		parse::{Parser, Precedence},
+	},
 	token::{operator::Operator, separator::Separator, token::TokenKind},
 };
 
@@ -12,7 +16,7 @@ impl<'bump> Parser<'bump> {
 	/// Parse a block: `{ stmt; stmt; ... }`
 	/// Consumes the opening `{`, parses statements separated by `;` or newlines,
 	/// and consumes the closing `}`.
-	pub(crate) fn parse_block(&mut self) -> crate::Result<AstBlock<'bump>> {
+	pub(crate) fn parse_block(&mut self) -> Result<AstBlock<'bump>> {
 		let token = self.consume_operator(Operator::OpenCurly)?;
 
 		let mut statements = Vec::new();
@@ -57,7 +61,7 @@ impl<'bump> Parser<'bump> {
 
 	/// Parse a single statement inside a block.
 	/// Stops at `;`, `}`, or EOF without consuming `}`.
-	fn parse_block_statement(&mut self) -> crate::Result<crate::ast::ast::AstStatement<'bump>> {
+	fn parse_block_statement(&mut self) -> Result<AstStatement<'bump>> {
 		let mut nodes = Vec::with_capacity(4);
 		let mut has_pipes = false;
 
@@ -77,7 +81,7 @@ impl<'bump> Parser<'bump> {
 				}
 			}
 
-			let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+			let node = self.parse_node(Precedence::None)?;
 			nodes.push(node);
 
 			if !self.is_eof() {
@@ -99,7 +103,7 @@ impl<'bump> Parser<'bump> {
 			}
 		}
 
-		Ok(crate::ast::ast::AstStatement {
+		Ok(AstStatement {
 			nodes,
 			has_pipes,
 			is_output: false,

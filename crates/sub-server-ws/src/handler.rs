@@ -12,6 +12,7 @@ use reifydb_core::{
 		subscription::{subscription_flow_name, subscription_flow_namespace},
 	},
 };
+use reifydb_engine::engine::StandardEngine;
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
 	execute::{ExecuteError, execute_admin, execute_command, execute_query},
@@ -20,6 +21,7 @@ use reifydb_sub_server::{
 };
 use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{
+	Result,
 	error::Error,
 	params::Params,
 	value::{identity::IdentityId, uuid::Uuid7},
@@ -191,10 +193,7 @@ pub async fn handle_connection(
 }
 
 /// Cleanup a subscription from the database (synchronous).
-fn cleanup_subscription_from_db_sync(
-	engine: &reifydb_engine::engine::StandardEngine,
-	subscription_id: DbSubscriptionId,
-) -> reifydb_type::Result<()> {
+fn cleanup_subscription_from_db_sync(engine: &StandardEngine, subscription_id: DbSubscriptionId) -> Result<()> {
 	let mut txn = engine.begin_admin()?;
 
 	// Delete the associated flow (named after the subscription ID)
@@ -210,7 +209,7 @@ fn cleanup_subscription_from_db_sync(
 }
 
 /// Cleanup a subscription from the database.
-async fn cleanup_subscription_from_db(state: &AppState, subscription_id: DbSubscriptionId) -> reifydb_type::Result<()> {
+async fn cleanup_subscription_from_db(state: &AppState, subscription_id: DbSubscriptionId) -> Result<()> {
 	let engine = state.engine_clone();
 	let system = state.actor_system();
 

@@ -4,6 +4,7 @@
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::{
 		ast::{AstAlterFlow, AstAlterFlowAction},
 		identifier::MaybeQualifiedFlowIdentifier,
@@ -35,7 +36,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstAlterFlow<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let flow = ast.flow.clone();
 
 		let action = match ast.action {

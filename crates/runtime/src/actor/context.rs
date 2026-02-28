@@ -17,6 +17,8 @@ use std::{
 	time::Duration,
 };
 
+#[cfg(reifydb_target = "wasm")]
+use crate::actor::timers::wasm::{schedule_once_fn, schedule_repeat};
 use crate::actor::{mailbox::ActorRef, system::ActorSystem, timers::TimerHandle};
 
 /// A cancellation token for signaling shutdown.
@@ -114,7 +116,7 @@ impl<M: Send + 'static> Context<M> {
 	/// Returns a handle that can be used to cancel the timer.
 	#[cfg(reifydb_target = "wasm")]
 	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(&self, delay: Duration, factory: F) -> TimerHandle {
-		crate::actor::timers::wasm::schedule_once_fn(self.self_ref.clone(), delay, factory)
+		schedule_once_fn(self.self_ref.clone(), delay, factory)
 	}
 }
 
@@ -135,7 +137,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	/// Returns a handle that can be used to cancel the timer.
 	#[cfg(reifydb_target = "wasm")]
 	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
-		crate::actor::timers::wasm::schedule_repeat(self.self_ref.clone(), interval, msg)
+		schedule_repeat(self.self_ref.clone(), interval, msg)
 	}
 }
 

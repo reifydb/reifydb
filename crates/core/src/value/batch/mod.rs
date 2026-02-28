@@ -4,7 +4,7 @@
 pub mod lazy;
 
 use lazy::LazyBatch;
-use reifydb_type::{util::bitvec::BitVec, value::Value};
+use reifydb_type::{Result, util::bitvec::BitVec, value::Value};
 
 use crate::value::column::columns::Columns;
 
@@ -85,7 +85,7 @@ impl Batch {
 	///
 	/// For lazy batches: updates validity bitmap without materialization
 	/// For materialized batches: filters columns
-	pub fn apply_filter(&mut self, filter: &BitVec) -> reifydb_type::Result<()> {
+	pub fn apply_filter(&mut self, filter: &BitVec) -> Result<()> {
 		match self {
 			Batch::Lazy(lazy) => {
 				lazy.apply_filter(filter);

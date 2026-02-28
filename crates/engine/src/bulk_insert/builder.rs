@@ -27,6 +27,7 @@ use super::{
 	},
 };
 use crate::{
+	Result,
 	bulk_insert::primitive::{
 		ringbuffer::{PendingRingBufferInsert, RingBufferInsertBuilder},
 		table::{PendingTableInsert, TableInsertBuilder},
@@ -35,7 +36,10 @@ use crate::{
 	transaction::operation::{
 		dictionary::DictionaryOperations, ringbuffer::RingBufferOperations, table::TableOperations,
 	},
-	vm::instruction::dml::primary_key,
+	vm::instruction::dml::{
+		primary_key,
+		schema::{get_or_create_ringbuffer_schema, get_or_create_table_schema},
+	},
 };
 
 /// Marker trait for validation mode (sealed)
@@ -50,9 +54,10 @@ pub struct Trusted;
 impl ValidationMode for Trusted {}
 
 pub mod sealed {
+	use super::{Trusted, Validated};
 	pub trait Sealed {}
-	impl Sealed for super::Validated {}
-	impl Sealed for super::Trusted {}
+	impl Sealed for Validated {}
+	impl Sealed for Trusted {}
 }
 
 /// Main builder for bulk insert operations.
@@ -125,7 +130,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	///
 	/// Returns a summary of what was inserted. On error, the entire
 	/// transaction is rolled back (no partial inserts).
-	pub fn execute(self) -> crate::Result<BulkInsertResult> {
+	pub fn execute(self) -> Result<BulkInsertResult> {
 		let mut txn = self.engine.begin_command()?;
 		let catalog = self.engine.catalog();
 		let mut result = BulkInsertResult::default();
@@ -161,7 +166,7 @@ fn execute_table_insert<V: ValidationMode>(
 	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
 	type_id: std::any::TypeId,
-) -> crate::Result<TableInsertResult> {
+) -> Result<TableInsertResult> {
 	// 1. Look up namespace and table from catalog
 	let namespace = catalog
 		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
@@ -182,11 +187,7 @@ fn execute_table_insert<V: ValidationMode>(
 		})?;
 
 	// 2. Get or create schema with proper field names and constraints
-	let schema = crate::vm::instruction::dml::schema::get_or_create_table_schema(
-		catalog,
-		&table,
-		&mut Transaction::Command(txn),
-	)?;
+	let schema = get_or_create_table_schema(catalog, &table, &mut Transaction::Command(txn))?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == std::any::TypeId::of::<Validated>();
@@ -292,7 +293,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,
 	type_id: std::any::TypeId,
-) -> crate::Result<RingBufferInsertResult> {
+) -> Result<RingBufferInsertResult> {
 	let namespace = catalog
 		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
 		.ok_or_else(|| CatalogError::NotFound {
@@ -321,11 +322,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		})?;
 
 	// Get or create schema with proper field names and constraints
-	let schema = crate::vm::instruction::dml::schema::get_or_create_ringbuffer_schema(
-		catalog,
-		&ringbuffer,
-		&mut Transaction::Command(txn),
-	)?;
+	let schema = get_or_create_ringbuffer_schema(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == std::any::TypeId::of::<Validated>();

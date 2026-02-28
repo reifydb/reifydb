@@ -5,9 +5,9 @@ use reifydb_core::key::policy::PolicyKey;
 use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
-use crate::store::policy::convert_policy;
+use crate::{Result, store::policy::convert_policy};
 
-pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = PolicyKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, schema::Schema},
+	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
 	interface::resolved::ResolvedView,
 	internal_error,
 	key::{
@@ -17,7 +17,10 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub(crate) struct ViewScanNode {
 	view: ResolvedView,
@@ -29,7 +32,7 @@ pub(crate) struct ViewScanNode {
 }
 
 impl ViewScanNode {
-	pub fn new(view: ResolvedView, context: Arc<QueryContext>) -> crate::Result<Self> {
+	pub fn new(view: ResolvedView, context: Arc<QueryContext>) -> Result<Self> {
 		let headers = ColumnHeaders {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
@@ -44,11 +47,7 @@ impl ViewScanNode {
 		})
 	}
 
-	fn get_or_load_schema<'a>(
-		&mut self,
-		rx: &mut Transaction<'a>,
-		first_row: &reifydb_core::encoded::encoded::EncodedValues,
-	) -> crate::Result<Schema> {
+	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedValues) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -72,13 +71,13 @@ impl ViewScanNode {
 
 impl QueryNode for ViewScanNode {
 	#[instrument(name = "volcano::scan::view::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::scan::view::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 

@@ -17,7 +17,10 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub struct DictionaryScanNode {
 	dictionary: ResolvedDictionary,
@@ -28,7 +31,7 @@ pub struct DictionaryScanNode {
 }
 
 impl DictionaryScanNode {
-	pub fn new(dictionary: ResolvedDictionary, context: Arc<QueryContext>) -> crate::Result<Self> {
+	pub fn new(dictionary: ResolvedDictionary, context: Arc<QueryContext>) -> Result<Self> {
 		// Create column headers for dictionary scan: (id, value)
 		let headers = ColumnHeaders {
 			columns: vec![Fragment::internal("id"), Fragment::internal("value")],
@@ -46,13 +49,13 @@ impl DictionaryScanNode {
 
 impl QueryNode for DictionaryScanNode {
 	#[instrument(name = "volcano::scan::dictionary::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::scan::dictionary::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "DictionaryScan::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -128,7 +131,7 @@ impl QueryNode for DictionaryScanNode {
 }
 
 /// Build the ID column based on the dictionary's id_type
-fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> crate::Result<Column> {
+fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> Result<Column> {
 	let data = match id_type {
 		Type::Uint1 => {
 			let vals: Vec<u8> = ids.iter().map(|id| id.to_u128() as u8).collect();
@@ -160,7 +163,7 @@ fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> crate::Result<Co
 }
 
 /// Build the value column based on the dictionary's value_type
-fn build_value_column(values: &[Value], value_type: Type) -> crate::Result<Column> {
+fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 	let data = match value_type {
 		Type::Utf8 => {
 			let vals: Vec<String> = values

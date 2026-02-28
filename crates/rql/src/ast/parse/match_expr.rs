@@ -3,8 +3,9 @@
 
 use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
-use super::Parser;
+use super::{Parser, Precedence};
 use crate::{
+	Result,
 	ast::ast::{AstMatch, AstMatchArm, AstMatchArmDestructure},
 	bump::BumpBox,
 	token::{keyword::Keyword, operator::Operator, separator::Separator, token::TokenKind},
@@ -13,7 +14,7 @@ use crate::{
 impl<'bump> Parser<'bump> {
 	/// Parse a MATCH expression:
 	///   MATCH [subject] { arm, arm, ... }
-	pub(crate) fn parse_match(&mut self) -> crate::Result<AstMatch<'bump>> {
+	pub(crate) fn parse_match(&mut self) -> Result<AstMatch<'bump>> {
 		let token = self.consume_keyword(Keyword::Match)?;
 
 		// Determine if this is a searched MATCH (no subject) or value MATCH
@@ -21,7 +22,7 @@ impl<'bump> Parser<'bump> {
 		let subject = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
 			None
 		} else {
-			Some(BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump()))
+			Some(BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump()))
 		};
 
 		// Consume opening brace
@@ -70,14 +71,14 @@ impl<'bump> Parser<'bump> {
 
 	/// Parse a single match arm.
 	/// `has_subject` indicates whether the MATCH has a subject expression.
-	fn parse_match_arm(&mut self, has_subject: bool) -> crate::Result<AstMatchArm<'bump>> {
+	fn parse_match_arm(&mut self, has_subject: bool) -> Result<AstMatchArm<'bump>> {
 		self.skip_new_line()?;
 
 		// ELSE arm
 		if !self.is_eof() && self.current()?.is_keyword(Keyword::Else) {
 			self.advance()?; // consume ELSE
 			self.consume_operator(Operator::Arrow)?;
-			let result = BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump());
+			let result = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 			return Ok(AstMatchArm::Else {
 				result,
 			});
@@ -103,12 +104,12 @@ impl<'bump> Parser<'bump> {
 		}
 
 		// Value or Condition arm
-		let expr = self.parse_node(super::Precedence::None)?;
+		let expr = self.parse_node(Precedence::None)?;
 
 		// Optional IF guard
 		let guard = if !self.is_eof() && self.current()?.is_keyword(Keyword::If) {
 			self.advance()?; // consume IF
-			Some(BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump()))
+			Some(BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump()))
 		} else {
 			None
 		};
@@ -117,7 +118,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::Arrow)?;
 
 		// Parse result expression
-		let result = BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump());
+		let result = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 		if has_subject {
 			Ok(AstMatchArm::Value {
@@ -136,7 +137,7 @@ impl<'bump> Parser<'bump> {
 
 	/// Parse an IS variant match arm:
 	///   IS [ns.]Type::Variant [{ field1, field2, ... }] [IF guard] => result
-	fn parse_match_is_variant_arm(&mut self) -> crate::Result<AstMatchArm<'bump>> {
+	fn parse_match_is_variant_arm(&mut self) -> Result<AstMatchArm<'bump>> {
 		self.advance()?; // consume IS
 
 		// Parse [namespace.]SumType::Variant
@@ -182,7 +183,7 @@ impl<'bump> Parser<'bump> {
 		// Optional IF guard
 		let guard = if !self.is_eof() && self.current()?.is_keyword(Keyword::If) {
 			self.advance()?; // consume IF
-			Some(BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump()))
+			Some(BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump()))
 		} else {
 			None
 		};
@@ -191,7 +192,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::Arrow)?;
 
 		// Parse result expression
-		let result = BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump());
+		let result = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 		Ok(AstMatchArm::IsVariant {
 			namespace,
@@ -205,7 +206,7 @@ impl<'bump> Parser<'bump> {
 
 	/// Parse a simplified variant match arm:
 	///   VariantName [{ field1, field2, ... }] [IF guard] => result
-	fn parse_match_variant_arm(&mut self) -> crate::Result<AstMatchArm<'bump>> {
+	fn parse_match_variant_arm(&mut self) -> Result<AstMatchArm<'bump>> {
 		let variant_token = self.consume(TokenKind::Identifier)?;
 		let variant_name = variant_token.fragment;
 
@@ -236,7 +237,7 @@ impl<'bump> Parser<'bump> {
 		// Optional IF guard
 		let guard = if !self.is_eof() && self.current()?.is_keyword(Keyword::If) {
 			self.advance()?; // consume IF
-			Some(BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump()))
+			Some(BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump()))
 		} else {
 			None
 		};
@@ -245,7 +246,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::Arrow)?;
 
 		// Parse result expression
-		let result = BumpBox::new_in(self.parse_node(super::Precedence::None)?, self.bump());
+		let result = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 		Ok(AstMatchArm::Variant {
 			variant_name,

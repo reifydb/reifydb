@@ -11,9 +11,11 @@ use reifydb_core::{
 use crate::{
 	Result,
 	ast::ast::{
+		Ast,
 		Ast::Literal,
+		AstLiteral,
 		AstLiteral::{Number, Text},
-		AstWindow,
+		AstWindow, AstWindowConfig,
 	},
 	diagnostic::AstError,
 	expression::{Expression, ExpressionCompiler},
@@ -88,7 +90,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::Window(window_node))
 	}
 
-	fn parse_config_item(config_item: &crate::ast::ast::AstWindowConfig, config: &mut WindowConfig) -> Result<()> {
+	fn parse_config_item(config_item: &AstWindowConfig, config: &mut WindowConfig) -> Result<()> {
 		match config_item.key.text() {
 			"interval" => {
 				config.window_type = Some(WindowType::Time(WindowTimeMode::Processing));
@@ -246,7 +248,7 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	pub fn extract_literal_string(ast: &crate::ast::ast::Ast) -> Option<String> {
+	pub fn extract_literal_string(ast: &Ast) -> Option<String> {
 		if let Literal(literal) = ast {
 			if let Text(text) = literal {
 				Some(text.0.fragment.text().to_string())
@@ -258,7 +260,7 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	pub fn extract_literal_number(ast: &crate::ast::ast::Ast) -> Option<i64> {
+	pub fn extract_literal_number(ast: &Ast) -> Option<i64> {
 		if let Literal(literal) = ast {
 			if let Number(number) = literal {
 				number.0.fragment.text().parse().ok()
@@ -270,9 +272,9 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	pub fn extract_literal_boolean(ast: &crate::ast::ast::Ast) -> Option<bool> {
+	pub fn extract_literal_boolean(ast: &Ast) -> Option<bool> {
 		if let Literal(literal) = ast {
-			if let crate::ast::ast::AstLiteral::Boolean(boolean) = literal {
+			if let AstLiteral::Boolean(boolean) = literal {
 				match boolean.0.fragment.text() {
 					"true" => Some(true),
 					"false" => Some(false),

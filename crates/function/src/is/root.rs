@@ -4,7 +4,10 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::r#type::Type;
 
-use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+};
 
 pub struct IsRoot;
 
@@ -15,7 +18,7 @@ impl IsRoot {
 }
 
 impl ScalarFunction for IsRoot {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		if ctx.columns.len() != 0 {
 			return Err(ScalarFunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),

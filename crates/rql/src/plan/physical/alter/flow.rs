@@ -4,6 +4,7 @@
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	nodes::AlterFlowIdentifier,
 	plan::{
 		logical,
@@ -16,7 +17,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		alter: logical::alter::flow::AlterFlowNode<'bump>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let flow = AlterFlowIdentifier {
 			namespace: alter.flow.namespace.first().map(|n| self.interner.intern_fragment(n)),
 			name: self.interner.intern_fragment(&alter.flow.name),

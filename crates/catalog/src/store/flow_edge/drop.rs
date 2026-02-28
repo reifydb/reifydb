@@ -7,10 +7,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_flow_edge(txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
+	pub(crate) fn drop_flow_edge(txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> Result<()> {
 		// First, get the edge to find the flow ID for index deletion
 		let edge = CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut *txn), edge_id)?;
 

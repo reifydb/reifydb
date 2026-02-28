@@ -13,6 +13,8 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
+use super::helpers::get_values;
+
 /// Test helper for FFISingleStateful operators
 pub struct SingleStatefulTestHelper {
 	schema: Schema,
@@ -44,7 +46,7 @@ impl SingleStatefulTestHelper {
 	pub fn get_state(&self) -> Option<Vec<Value>> {
 		self.state.as_ref().map(|bytes| {
 			let encoded = EncodedValues(CowVec::new(bytes.clone()));
-			super::helpers::get_values(&self.schema, &encoded)
+			get_values(&self.schema, &encoded)
 		})
 	}
 
@@ -105,9 +107,7 @@ impl KeyedStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		self.states
-			.get(&key.into_encoded_key())
-			.map(|encoded| super::helpers::get_values(&self.schema, encoded))
+		self.states.get(&key.into_encoded_key()).map(|encoded| get_values(&self.schema, encoded))
 	}
 
 	/// Assert state for a key matches expected values
@@ -119,7 +119,7 @@ impl KeyedStatefulTestHelper {
 		let actual = self
 			.states
 			.get(&key_encoded)
-			.map(|encoded| super::helpers::get_values(&self.schema, encoded))
+			.map(|encoded| get_values(&self.schema, encoded))
 			.expect("No state for key");
 		assert_eq!(actual, expected, "State mismatch for key");
 	}
@@ -129,9 +129,7 @@ impl KeyedStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		self.states
-			.remove(&key.into_encoded_key())
-			.map(|encoded| super::helpers::get_values(&self.schema, &encoded))
+		self.states.remove(&key.into_encoded_key()).map(|encoded| get_values(&self.schema, &encoded))
 	}
 
 	/// Check if a key has state
@@ -209,7 +207,7 @@ impl WindowStatefulTestHelper {
 		self.windows
 			.get(&window_id)
 			.and_then(|window| window.get(&key.into_encoded_key()))
-			.map(|encoded| super::helpers::get_values(&self.schema, encoded))
+			.map(|encoded| get_values(&self.schema, encoded))
 	}
 
 	/// Assert state for a window and key
@@ -222,7 +220,7 @@ impl WindowStatefulTestHelper {
 			.windows
 			.get(&window_id)
 			.and_then(|window| window.get(&key_encoded))
-			.map(|encoded| super::helpers::get_values(&self.schema, encoded))
+			.map(|encoded| get_values(&self.schema, encoded))
 			.expect("No state for window and key");
 		assert_eq!(actual, expected, "State mismatch for window {} and key", window_id);
 	}

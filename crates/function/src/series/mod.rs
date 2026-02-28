@@ -4,7 +4,10 @@
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::r#type::Type;
 
-use crate::{GeneratorContext, GeneratorFunction, ScalarFunction, ScalarFunctionContext, error::ScalarFunctionError};
+use crate::{
+	GeneratorContext, GeneratorFunction, ScalarFunction, ScalarFunctionContext,
+	error::{GeneratorFunctionResult, ScalarFunctionError, ScalarFunctionResult},
+};
 
 pub struct GenerateSeries;
 
@@ -15,7 +18,7 @@ impl GenerateSeries {
 }
 
 impl GeneratorFunction for GenerateSeries {
-	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::error::GeneratorFunctionResult<Columns> {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
 		// Extract parameters: start and end
 		let params = &ctx.params;
 
@@ -65,7 +68,7 @@ fn extract_i32(data: &ColumnData, index: usize) -> Option<i32> {
 }
 
 impl ScalarFunction for Series {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::error::ScalarFunctionResult<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
 		let columns = ctx.columns;
 
 		if columns.len() != 2 {

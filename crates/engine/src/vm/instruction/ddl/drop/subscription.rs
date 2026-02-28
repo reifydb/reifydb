@@ -13,13 +13,13 @@ use reifydb_rql::nodes::DropSubscriptionNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{return_error, value::Value};
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn drop_subscription(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropSubscriptionNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let name = plan.subscription_name.text();
 
 	// Parse the subscription ID from the name (convention: "subscription_<id>")

@@ -21,6 +21,7 @@ use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{
+	Result,
 	fragment::Fragment,
 	params::Params,
 	value::{identity::IdentityId, row_number::RowNumber},
@@ -56,7 +57,7 @@ impl MapOperator {
 		let compiled_expressions: Vec<CompiledExpr> = expressions
 			.iter()
 			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>, _>>()
+			.collect::<Result<Vec<_>>>()
 			.expect("Failed to compile expressions");
 
 		Self {
@@ -70,7 +71,7 @@ impl MapOperator {
 	}
 
 	/// Project all rows in Columns using expressions
-	fn project(&self, columns: &Columns) -> reifydb_type::Result<Columns> {
+	fn project(&self, columns: &Columns) -> Result<Columns> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Columns::empty());
@@ -126,7 +127,7 @@ impl Operator for MapOperator {
 		self.node
 	}
 
-	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {
@@ -177,7 +178,7 @@ impl Operator for MapOperator {
 		Ok(Change::from_flow(self.node, change.version, result))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		self.parent.pull(txn, rows)
 	}
 }

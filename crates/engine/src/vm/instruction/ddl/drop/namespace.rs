@@ -10,13 +10,13 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::{Value, constraint::Constraint};
 
 use super::dependent::{find_column_dependents, find_flow_dependents};
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn drop_namespace(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropNamespaceNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let Some(namespace_id) = plan.namespace_id else {
 		return Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace_name.text().to_string())),

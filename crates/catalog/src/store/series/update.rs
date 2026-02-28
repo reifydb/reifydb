@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::series::SeriesMetadata, key::series::SeriesMetadataKey};
+use reifydb_core::{
+	encoded::encoded::EncodedValues, interface::catalog::series::SeriesMetadata, key::series::SeriesMetadataKey,
+};
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::series::schema::series_metadata};
+use crate::{CatalogStore, Result, store::series::schema::series_metadata};
 
-fn encode_series_metadata(metadata: &SeriesMetadata) -> reifydb_core::encoded::encoded::EncodedValues {
+fn encode_series_metadata(metadata: &SeriesMetadata) -> EncodedValues {
 	let mut row = series_metadata::SCHEMA.allocate();
 	series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ID, metadata.id.0);
 	series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ROW_COUNT, metadata.row_count);
@@ -17,10 +19,7 @@ fn encode_series_metadata(metadata: &SeriesMetadata) -> reifydb_core::encoded::e
 }
 
 impl CatalogStore {
-	pub(crate) fn update_series_metadata_txn(
-		txn: &mut Transaction<'_>,
-		metadata: SeriesMetadata,
-	) -> crate::Result<()> {
+	pub(crate) fn update_series_metadata_txn(txn: &mut Transaction<'_>, metadata: SeriesMetadata) -> Result<()> {
 		let row = encode_series_metadata(&metadata);
 		txn.set(&SeriesMetadataKey::encoded(metadata.id), row)?;
 		Ok(())

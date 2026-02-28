@@ -16,7 +16,10 @@ use reifydb_core::interface::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, fragment::Fragment};
 
-use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
+use crate::{
+	ast::identifier::UnresolvedPrimitiveIdentifier,
+	error::{IdentifierError, PrimitiveNotFoundError},
+};
 
 /// Default namespace for unqualified identifiers
 pub const DEFAULT_NAMESPACE: &str = "default";
@@ -127,7 +130,7 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Not found
-	Err(crate::error::IdentifierError::SourceNotFound(crate::error::PrimitiveNotFoundError {
+	Err(IdentifierError::SourceNotFound(PrimitiveNotFoundError {
 		namespace: namespace_str.to_string(),
 		name: name_str.to_string(),
 		fragment: unresolved.name.to_owned(),

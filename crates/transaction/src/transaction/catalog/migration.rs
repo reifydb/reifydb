@@ -6,6 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::MigrationId,
 	migration::{MigrationDef, MigrationEvent},
 };
+use reifydb_type::Result;
 
 use crate::{
 	change::{
@@ -17,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackMigrationChangeOperations for AdminTransaction {
-	fn track_migration_def_created(&mut self, migration: MigrationDef) -> reifydb_type::Result<()> {
+	fn track_migration_def_created(&mut self, migration: MigrationDef) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(migration),
@@ -27,7 +28,7 @@ impl CatalogTrackMigrationChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_migration_def_deleted(&mut self, migration: MigrationDef) -> reifydb_type::Result<()> {
+	fn track_migration_def_deleted(&mut self, migration: MigrationDef) -> Result<()> {
 		let change = Change {
 			pre: Some(migration),
 			post: None,
@@ -39,7 +40,7 @@ impl CatalogTrackMigrationChangeOperations for AdminTransaction {
 }
 
 impl CatalogTrackMigrationEventChangeOperations for AdminTransaction {
-	fn track_migration_event_created(&mut self, event: MigrationEvent) -> reifydb_type::Result<()> {
+	fn track_migration_event_created(&mut self, event: MigrationEvent) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(event),

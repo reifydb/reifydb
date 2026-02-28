@@ -10,13 +10,13 @@ use reifydb_rql::nodes::CreateNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_namespace(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateNamespaceNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let full_name: String = plan.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join(".");
 
 	// Auto-create parent namespaces (mkdir -p semantics)

@@ -45,6 +45,8 @@ use std::{collections::VecDeque, marker::PhantomData};
 
 #[cfg(reifydb_target = "native")]
 use crate::actor::mailbox::ActorRef;
+#[cfg(reifydb_target = "wasm")]
+use crate::actor::mailbox::create_actor_ref;
 use crate::{
 	SharedRuntimeConfig,
 	actor::{
@@ -234,7 +236,7 @@ impl<M: Send + 'static> TestContext<M> {
 		};
 
 		#[cfg(reifydb_target = "wasm")]
-		let actor_ref = crate::actor::mailbox::create_actor_ref();
+		let actor_ref = create_actor_ref();
 
 		// Create an actor system for testing
 		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());

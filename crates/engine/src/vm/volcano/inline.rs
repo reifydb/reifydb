@@ -18,6 +18,7 @@ use reifydb_type::{
 };
 
 use crate::{
+	Result,
 	expression::{cast::cast_column_data, context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -66,7 +67,7 @@ impl InlineDataNode {
 		}
 	}
 
-	fn expand_sumtype_constructors<'a>(&mut self, txn: &mut Transaction<'a>) -> crate::Result<()> {
+	fn expand_sumtype_constructors<'a>(&mut self, txn: &mut Transaction<'a>) -> Result<()> {
 		let ctx = match self.context.as_ref() {
 			Some(ctx) => ctx.clone(),
 			None => return Ok(()),
@@ -314,12 +315,12 @@ impl InlineDataNode {
 }
 
 impl QueryNode for InlineDataNode {
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		self.expand_sumtype_constructors(rx)?;
 		Ok(())
 	}
 
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap().clone();
 
@@ -396,7 +397,7 @@ impl<'a> InlineDataNode {
 		}
 	}
 
-	fn next_infer_namespace(&mut self, ctx: &QueryContext) -> crate::Result<Option<Columns>> {
+	fn next_infer_namespace(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
 		// Collect all unique column names across all rows
 		let mut all_columns: BTreeSet<String> = BTreeSet::new();
 
@@ -584,7 +585,7 @@ impl<'a> InlineDataNode {
 		Ok(Some(columns))
 	}
 
-	fn next_with_source(&mut self, ctx: &QueryContext) -> crate::Result<Option<Columns>> {
+	fn next_with_source(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
 		let source = ctx.source.as_ref().unwrap(); // Safe because headers is Some
 		let headers = self.headers.as_ref().unwrap(); // Safe because we're in this path
 

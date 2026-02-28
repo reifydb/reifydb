@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{AstStatement, AstSubQuery},
 		parse::{Parser, Precedence},
@@ -11,7 +12,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	/// Parse a subquery enclosed in braces: { query statement }
-	pub(crate) fn parse_sub_query(&mut self) -> crate::Result<AstSubQuery<'bump>> {
+	pub(crate) fn parse_sub_query(&mut self) -> Result<AstSubQuery<'bump>> {
 		let token = self.consume_operator(OpenCurly)?;
 		let statement = self.parse_sub_query_statement()?;
 		self.consume_operator(CloseCurly)?;
@@ -24,7 +25,7 @@ impl<'bump> Parser<'bump> {
 
 	/// Parse the statement inside a subquery
 	/// This is similar to the main parse() but stops at CloseCurly
-	fn parse_sub_query_statement(&mut self) -> crate::Result<AstStatement<'bump>> {
+	fn parse_sub_query_statement(&mut self) -> Result<AstStatement<'bump>> {
 		let mut nodes = Vec::new();
 		let mut has_pipes = false;
 

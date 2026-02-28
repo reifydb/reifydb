@@ -11,6 +11,7 @@ pub mod test {
 	use reifydb_engine::test_utils::create_test_engine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_type::{
+		Result,
 		util::cowvec::CowVec,
 		value::{row_number::RowNumber, r#type::Type},
 	};
@@ -58,11 +59,11 @@ pub mod test {
 			self.id
 		}
 
-		fn apply(&self, _txn: &mut FlowTransaction, _change: Change) -> reifydb_type::Result<Change> {
+		fn apply(&self, _txn: &mut FlowTransaction, _change: Change) -> Result<Change> {
 			todo!()
 		}
 
-		fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+		fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
 			unimplemented!()
 		}
 	}

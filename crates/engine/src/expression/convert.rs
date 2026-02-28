@@ -3,6 +3,7 @@
 
 use reifydb_core::interface::catalog::property::ColumnSaturationPolicy;
 use reifydb_type::{
+	Result,
 	error::TypeError,
 	fragment::Fragment,
 	value::{number::safe::convert::SafeConvert, r#type::get::GetType},
@@ -11,14 +12,14 @@ use reifydb_type::{
 use crate::expression::context::EvalContext;
 
 pub trait Convert {
-	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_type::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType;
 }
 
 impl Convert for EvalContext<'_> {
-	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_type::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,
@@ -28,7 +29,7 @@ impl Convert for EvalContext<'_> {
 }
 
 impl Convert for &EvalContext<'_> {
-	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_type::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,

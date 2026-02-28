@@ -7,15 +7,11 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, store::flow::schema::flow};
+use crate::{CatalogStore, Result, store::flow::schema::flow};
 
 impl CatalogStore {
 	/// Update the name of a flow
-	pub(crate) fn update_flow_name(
-		txn: &mut AdminTransaction,
-		flow_id: FlowId,
-		new_name: String,
-	) -> crate::Result<()> {
+	pub(crate) fn update_flow_name(txn: &mut AdminTransaction, flow_id: FlowId, new_name: String) -> Result<()> {
 		// Get the existing flow
 		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
@@ -36,7 +32,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		status: FlowStatus,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		// Get the existing flow
 		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 

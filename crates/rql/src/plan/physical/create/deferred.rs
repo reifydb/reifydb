@@ -6,9 +6,12 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
-use crate::plan::{
-	logical,
-	physical::{Compiler, CreateDeferredViewNode, PhysicalPlan},
+use crate::{
+	Result,
+	plan::{
+		logical,
+		physical::{Compiler, CreateDeferredViewNode, PhysicalPlan},
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -16,7 +19,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateDeferredViewNode<'bump>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if create.view.namespace.is_empty() {
 			"default".to_string()
 		} else {

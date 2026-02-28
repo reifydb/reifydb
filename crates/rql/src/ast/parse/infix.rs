@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstInfix, InfixOperator},
 		parse::{Parser, Precedence},
@@ -12,7 +13,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_infix(&mut self, left: Ast<'bump>) -> crate::Result<AstInfix<'bump>> {
+	pub(crate) fn parse_infix(&mut self, left: Ast<'bump>) -> Result<AstInfix<'bump>> {
 		let precedence = self.current_precedence()?;
 		let operator = self.parse_infix_operator()?;
 
@@ -31,7 +32,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	pub(crate) fn parse_infix_operator(&mut self) -> crate::Result<InfixOperator<'bump>> {
+	pub(crate) fn parse_infix_operator(&mut self) -> Result<InfixOperator<'bump>> {
 		let token = self.advance()?;
 		match token.kind {
 			TokenKind::Operator(operator) => match operator {

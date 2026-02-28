@@ -8,13 +8,13 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{Value, dictionary::DictionaryEntryId};
 
-use crate::transaction::operation::dictionary::DictionaryOperations;
+use crate::{Result, transaction::operation::dictionary::DictionaryOperations};
 
 pub(crate) fn decode_dictionary_columns(
 	columns: &mut Columns,
 	dictionaries: &[Option<DictionaryDef>],
 	rx: &mut Transaction,
-) -> crate::Result<()> {
+) -> Result<()> {
 	for (col_idx, dict_opt) in dictionaries.iter().enumerate() {
 		if let Some(dictionary) = dict_opt {
 			if col_idx >= columns.len() {

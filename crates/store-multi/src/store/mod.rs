@@ -21,6 +21,8 @@ pub mod worker;
 
 use worker::{DropActor, DropMessage, DropWorkerConfig};
 
+use crate::Result;
+
 #[derive(Clone)]
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
 
@@ -42,7 +44,7 @@ impl StandardMultiStore {
 		has_warm = config.warm.is_some(),
 		has_cold = config.cold.is_some(),
 	))]
-	pub fn new(config: MultiStoreConfig) -> crate::Result<Self> {
+	pub fn new(config: MultiStoreConfig) -> Result<Self> {
 		let hot = config.hot.map(|c| c.storage);
 		// TODO: warm and cold are placeholders for now
 		let warm = None;

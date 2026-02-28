@@ -6,6 +6,7 @@ use reifydb_core::interface::catalog::{
 	user::UserId,
 	user_authentication::{UserAuthenticationDef, UserAuthenticationId},
 };
+use reifydb_type::Result;
 
 use crate::{
 	change::{
@@ -17,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackUserAuthenticationChangeOperations for AdminTransaction {
-	fn track_user_authentication_def_created(&mut self, auth: UserAuthenticationDef) -> reifydb_type::Result<()> {
+	fn track_user_authentication_def_created(&mut self, auth: UserAuthenticationDef) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(auth),
@@ -27,7 +28,7 @@ impl CatalogTrackUserAuthenticationChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_user_authentication_def_deleted(&mut self, auth: UserAuthenticationDef) -> reifydb_type::Result<()> {
+	fn track_user_authentication_def_deleted(&mut self, auth: UserAuthenticationDef) -> Result<()> {
 		let change = Change {
 			pre: Some(auth),
 			post: None,

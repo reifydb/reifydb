@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
-	nodes,
+	Result, nodes,
 	plan::{
 		logical,
 		physical::{Compiler, PhysicalPlan},
@@ -21,7 +21,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropNamespaceNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let full_name: String = drop.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join(".");
 		let namespace_name = self.interner.intern_fragment(drop.segments.last().unwrap()).with_text(&full_name);
 
@@ -48,7 +48,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropTableNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if drop.table.namespace.is_empty() {
 			"default".to_string()
 		} else {
@@ -95,7 +95,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropViewNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if drop.view.namespace.is_empty() {
 			"default".to_string()
 		} else {
@@ -142,7 +142,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropRingBufferNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if drop.ringbuffer.namespace.is_empty() {
 			"default".to_string()
 		} else {
@@ -193,7 +193,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropDictionaryNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if drop.dictionary.namespace.is_empty() {
 			"default".to_string()
 		} else {
@@ -244,7 +244,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropSumTypeNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if drop.sumtype.namespace.is_empty() {
 			"default".to_string()
 		} else {
@@ -295,7 +295,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropFlowNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if drop.flow.namespace.is_empty() {
 			"default".to_string()
 		} else {
@@ -342,7 +342,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		_rx: &mut Transaction<'_>,
 		drop: logical::DropSubscriptionNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let subscription_name = self.interner.intern_fragment(&drop.identifier);
 
 		// Subscriptions are looked up by ID at execution time, not by name in a namespace.
@@ -358,7 +358,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		drop: logical::DropSeriesNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if drop.series.namespace.is_empty() {
 			"default".to_string()
 		} else {

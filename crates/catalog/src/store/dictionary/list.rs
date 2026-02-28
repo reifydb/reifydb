@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::dictionary::schema::{dictionary, dictionary_namespace},
 };
 
@@ -18,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn list_dictionaries(
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
-	) -> crate::Result<Vec<DictionaryDef>> {
+	) -> Result<Vec<DictionaryDef>> {
 		// Collect dictionary IDs first to avoid borrow conflict
 		let mut dictionary_ids = Vec::new();
 		{
@@ -43,7 +43,7 @@ impl CatalogStore {
 	}
 
 	/// List all dictionaries in the database
-	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> crate::Result<Vec<DictionaryDef>> {
+	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> Result<Vec<DictionaryDef>> {
 		let mut dictionaries = Vec::new();
 
 		let mut stream = rx.range(DictionaryKey::full_scan(), 1024)?;

@@ -7,6 +7,7 @@ use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	environment::create_env_columns,
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -26,13 +27,13 @@ impl EnvironmentNode {
 }
 
 impl QueryNode for EnvironmentNode {
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		// Store context for environment access
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "EnvironmentNode::next() called before initialize()");
 
 		// Environment executes once and returns environment dataframe

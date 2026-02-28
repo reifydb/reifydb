@@ -6,6 +6,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
+	Result,
 	ast::{
 		ast::{AstAlterTable, AstAlterTableAction, AstColumnProperty},
 		identifier::MaybeQualifiedTableIdentifier,
@@ -40,7 +41,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstAlterTable<'bump>,
 		_tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let table = ast.table;
 
 		let action = match ast.action {

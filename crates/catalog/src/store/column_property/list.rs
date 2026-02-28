@@ -10,13 +10,13 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::column_property::schema::column_property};
+use crate::{CatalogStore, Result, store::column_property::schema::column_property};
 
 impl CatalogStore {
 	pub(crate) fn list_column_properties(
 		rx: &mut Transaction<'_>,
 		column: ColumnId,
-	) -> crate::Result<Vec<ColumnProperty>> {
+	) -> Result<Vec<ColumnProperty>> {
 		let mut stream = rx.range(ColumnPropertyKey::full_scan(column), 1024)?;
 		let mut result = Vec::new();
 
@@ -41,7 +41,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_column_properties_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<ColumnProperty>> {
+	pub(crate) fn list_column_properties_all(rx: &mut Transaction<'_>) -> Result<Vec<ColumnProperty>> {
 		let mut result = Vec::new();
 
 		// Get all columns from tables and views

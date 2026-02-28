@@ -5,6 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	error::diagnostic::internal::internal_with_context,
 	interface::catalog::policy::PolicyTargetType,
 	internal_error,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
@@ -17,13 +18,38 @@ use reifydb_rql::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
-	error::{ProcedureErrorKind, RuntimeErrorKind, TypeError},
+	error::{Error, ProcedureErrorKind, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
 	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
 };
 
 use super::{
+	instruction::{
+		ddl::{
+			alter::{flow::execute_alter_flow, sequence::alter_table_sequence, table::execute_alter_table},
+			create::{
+				deferred::create_deferred_view, dictionary::create_dictionary, flow::create_flow,
+				migration::create_migration, namespace::create_namespace,
+				primary_key::create_primary_key, procedure::create_procedure,
+				property::create_column_property, ringbuffer::create_ringbuffer, series::create_series,
+				subscription::create_subscription, sumtype::create_sumtype, table::create_table,
+				tag::create_tag, transactional::create_transactional_view,
+			},
+			drop::{
+				dictionary::drop_dictionary, flow::drop_flow, namespace::drop_namespace,
+				ringbuffer::drop_ringbuffer, series::drop_series, subscription::drop_subscription,
+				sumtype::drop_sumtype, table::drop_table, view::drop_view,
+			},
+			migrate::{migrate::execute_migrate, rollback::execute_rollback_migration},
+		},
+		dml::{
+			dictionary_insert::insert_dictionary, ringbuffer_delete::delete_ringbuffer,
+			ringbuffer_insert::insert_ringbuffer, ringbuffer_update::update_ringbuffer,
+			series_delete::delete_series, series_insert::insert_series, series_update::update_series,
+			table_delete::delete, table_insert::insert_table, table_update::update_table,
+		},
+	},
 	scalar,
 	services::Services,
 	stack::{ClosureValue, ControlFlow, Stack, SymbolTable, Variable},
@@ -33,24 +59,29 @@ use super::{
 	},
 };
 use crate::{
+	Result,
 	arena::QueryArena,
 	expression::{context::EvalContext, eval::evaluate},
 	policy::PolicyEvaluator,
-	vm::instruction::{
-		ddl::{
-			alter::policy::alter_policy,
-			create::{
-				authentication::create_authentication, event::create_event, policy::create_policy,
-				role::create_role, user::create_user,
+	procedure::context::ProcedureContext,
+	vm::{
+		executor::Executor,
+		instruction::{
+			ddl::{
+				alter::policy::alter_policy,
+				create::{
+					authentication::create_authentication, event::create_event,
+					policy::create_policy, role::create_role, user::create_user,
+				},
+				drop::{
+					authentication::drop_authentication, policy::drop_policy, role::drop_role,
+					user::drop_user,
+				},
+				grant::grant,
+				revoke::revoke,
 			},
-			drop::{
-				authentication::drop_authentication, policy::drop_policy, role::drop_role,
-				user::drop_user,
-			},
-			grant::grant,
-			revoke::revoke,
+			dml::dispatch::dispatch,
 		},
-		dml::dispatch::dispatch,
 	},
 };
 
@@ -89,7 +120,7 @@ impl Vm {
 
 	/// Pop a scalar Value from the stack. Works for Scalar(Columns) and
 	/// 1x1 Columns variants.
-	fn pop_value(&mut self) -> crate::Result<Value> {
+	fn pop_value(&mut self) -> Result<Value> {
 		match self.stack.pop()? {
 			Variable::Scalar(c) => Ok(c.scalar_value()),
 			Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => Ok(c.scalar_value()),
@@ -98,7 +129,7 @@ impl Vm {
 	}
 
 	/// Pop the top of stack as Columns. Works for any variant.
-	fn pop_as_columns(&mut self) -> crate::Result<Columns> {
+	fn pop_as_columns(&mut self) -> Result<Columns> {
 		match self.stack.pop()? {
 			Variable::Scalar(c)
 			| Variable::Columns(c)
@@ -117,7 +148,7 @@ impl Vm {
 		instructions: &[Instruction],
 		params: &Params,
 		result: &mut Vec<Frame>,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		while self.ip < instructions.len() {
 			match &instructions[self.ip] {
 				Instruction::Halt => return Ok(()),
@@ -871,10 +902,8 @@ impl Vm {
 							// Runtime-registered native procedure (no catalog entry needed)
 							let call_params = Params::Positional(args);
 							let identity = self.identity;
-							let executor = crate::vm::executor::Executor::from_services(
-								services.clone(),
-							);
-							let ctx = crate::procedure::context::ProcedureContext {
+							let executor = Executor::from_services(services.clone());
+							let ctx = ProcedureContext {
 								identity,
 								params: &call_params,
 								catalog: &services.catalog,
@@ -981,11 +1010,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::namespace::create_namespace(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_namespace(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateTable(node) => {
@@ -997,11 +1022,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::table::create_table(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_table(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateRingBuffer(node) => {
@@ -1013,11 +1034,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::ringbuffer::create_ringbuffer(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_ringbuffer(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateFlow(node) => {
@@ -1029,11 +1046,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::flow::create_flow(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_flow(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateDeferredView(node) => {
@@ -1045,11 +1058,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::deferred::create_deferred_view(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_deferred_view(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateTransactionalView(node) => {
@@ -1061,7 +1070,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::transactional::create_transactional_view(services, txn, node.clone())?;
+					let columns = create_transactional_view(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateDictionary(node) => {
@@ -1073,11 +1082,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::dictionary::create_dictionary(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_dictionary(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateSumType(node) => {
@@ -1089,11 +1094,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::sumtype::create_sumtype(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_sumtype(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateSubscription(node) => {
@@ -1105,12 +1106,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns =
-						super::instruction::ddl::create::subscription::create_subscription(
-							services,
-							txn,
-							node.clone(),
-						)?;
+					let columns = create_subscription(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::AlterSequence(node) => {
@@ -1122,11 +1118,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::alter::sequence::alter_table_sequence(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = alter_table_sequence(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreatePrimaryKey(node) => {
@@ -1138,11 +1130,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::primary_key::create_primary_key(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_primary_key(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateColumnProperty(node) => {
@@ -1154,12 +1142,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns =
-						super::instruction::ddl::create::property::create_column_property(
-							services,
-							txn,
-							node.clone(),
-						)?;
+					let columns = create_column_property(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateProcedure(node) => {
@@ -1171,11 +1154,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::procedure::create_procedure(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_procedure(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateSeries(node) => {
@@ -1187,11 +1166,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::series::create_series(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_series(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateEvent(node) => {
@@ -1215,11 +1190,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::tag::create_tag(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_tag(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 
@@ -1232,32 +1203,16 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::create::migration::create_migration(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = create_migration(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::Migrate(node) => {
-					let columns = super::instruction::ddl::migrate::migrate::execute_migrate(
-						self,
-						services,
-						tx,
-						node.clone(),
-						params,
-					)?;
+					let columns = execute_migrate(self, services, tx, node.clone(), params)?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::RollbackMigration(node) => {
 					let columns =
-						super::instruction::ddl::migrate::rollback::execute_rollback_migration(
-							self,
-							services,
-							tx,
-							node.clone(),
-							params,
-						)?;
+						execute_rollback_migration(self, services, tx, node.clone(), params)?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::Dispatch(node) => {
@@ -1284,11 +1239,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::alter::flow::execute_alter_flow(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = execute_alter_flow(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 
@@ -1301,11 +1252,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = super::instruction::ddl::alter::table::execute_alter_table(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = execute_alter_table(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 
@@ -1313,154 +1260,154 @@ impl Vm {
 				Instruction::DropNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
+						_ => {
+							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+								file!(),
+								line!(),
+								column!(),
+								module_path!(),
+								module_path!(),
+							)));
+						}
 					};
-					let columns = super::instruction::ddl::drop::namespace::drop_namespace(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = drop_namespace(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropTable(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
+						_ => {
+							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+								file!(),
+								line!(),
+								column!(),
+								module_path!(),
+								module_path!(),
+							)));
+						}
 					};
-					let columns = super::instruction::ddl::drop::table::drop_table(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = drop_table(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropView(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
+						_ => {
+							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+								file!(),
+								line!(),
+								column!(),
+								module_path!(),
+								module_path!(),
+							)));
+						}
 					};
-					let columns = super::instruction::ddl::drop::view::drop_view(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = drop_view(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropRingBuffer(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
+						_ => {
+							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+								file!(),
+								line!(),
+								column!(),
+								module_path!(),
+								module_path!(),
+							)));
+						}
 					};
-					let columns = super::instruction::ddl::drop::ringbuffer::drop_ringbuffer(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = drop_ringbuffer(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropSeries(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
+						_ => {
+							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+								file!(),
+								line!(),
+								column!(),
+								module_path!(),
+								module_path!(),
+							)));
+						}
 					};
-					let columns = super::instruction::ddl::drop::series::drop_series(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = drop_series(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropDictionary(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
+						_ => {
+							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+								file!(),
+								line!(),
+								column!(),
+								module_path!(),
+								module_path!(),
+							)));
+						}
 					};
-					let columns = super::instruction::ddl::drop::dictionary::drop_dictionary(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = drop_dictionary(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropSumType(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
+						_ => {
+							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+								file!(),
+								line!(),
+								column!(),
+								module_path!(),
+								module_path!(),
+							)));
+						}
 					};
-					let columns = super::instruction::ddl::drop::sumtype::drop_sumtype(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = drop_sumtype(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropFlow(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
+						_ => {
+							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+								file!(),
+								line!(),
+								column!(),
+								module_path!(),
+								module_path!(),
+							)));
+						}
 					};
-					let columns = super::instruction::ddl::drop::flow::drop_flow(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = drop_flow(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropSubscription(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
-						_ => return Err(reifydb_type::error::Error(
-							reifydb_core::error::diagnostic::internal::internal_with_context(
+						_ => {
+							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
-								file!(), line!(), column!(), module_path!(), module_path!(),
-							),
-						)),
+								file!(),
+								line!(),
+								column!(),
+								module_path!(),
+								module_path!(),
+							)));
+						}
 					};
-					let columns = super::instruction::ddl::drop::subscription::drop_subscription(
-						services,
-						txn,
-						node.clone(),
-					)?;
+					let columns = drop_subscription(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 
@@ -1475,7 +1422,7 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = super::instruction::dml::table_delete::delete(
+					let columns = delete(
 						services,
 						&mut std_txn,
 						node.clone(),
@@ -1495,7 +1442,7 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = super::instruction::dml::ringbuffer_delete::delete_ringbuffer(
+					let columns = delete_ringbuffer(
 						services,
 						&mut std_txn,
 						node.clone(),
@@ -1515,7 +1462,7 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = super::instruction::dml::table_insert::insert_table(
+					let columns = insert_table(
 						services,
 						&mut std_txn,
 						node.clone(),
@@ -1534,7 +1481,7 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = super::instruction::dml::ringbuffer_insert::insert_ringbuffer(
+					let columns = insert_ringbuffer(
 						services,
 						&mut std_txn,
 						node.clone(),
@@ -1554,7 +1501,7 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = super::instruction::dml::dictionary_insert::insert_dictionary(
+					let columns = insert_dictionary(
 						services,
 						&mut std_txn,
 						node.clone(),
@@ -1573,7 +1520,7 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = super::instruction::dml::series_insert::insert_series(
+					let columns = insert_series(
 						services,
 						&mut std_txn,
 						node.clone(),
@@ -1593,7 +1540,7 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = super::instruction::dml::series_delete::delete_series(
+					let columns = delete_series(
 						services,
 						&mut std_txn,
 						node.clone(),
@@ -1613,7 +1560,7 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = super::instruction::dml::table_update::update_table(
+					let columns = update_table(
 						services,
 						&mut std_txn,
 						node.clone(),
@@ -1633,7 +1580,7 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = super::instruction::dml::ringbuffer_update::update_ringbuffer(
+					let columns = update_ringbuffer(
 						services,
 						&mut std_txn,
 						node.clone(),
@@ -1653,7 +1600,7 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = super::instruction::dml::series_update::update_series(
+					let columns = update_series(
 						services,
 						&mut std_txn,
 						node.clone(),
@@ -1899,7 +1846,7 @@ fn run_query_plan(
 	params: Params,
 	symbol_table: &mut SymbolTable,
 	identity: IdentityId,
-) -> crate::Result<Option<Columns>> {
+) -> Result<Option<Columns>> {
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,

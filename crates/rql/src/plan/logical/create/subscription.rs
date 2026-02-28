@@ -5,6 +5,7 @@ use reifydb_catalog::catalog::subscription::SubscriptionColumnToCreate;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::ast::AstCreateSubscription,
 	bump::BumpVec,
 	convert_data_type_with_constraints,
@@ -16,7 +17,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateSubscription<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let mut columns = Vec::with_capacity(ast.columns.len());
 
 		for col in ast.columns.iter() {

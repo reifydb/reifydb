@@ -6,9 +6,10 @@ use reifydb_core::{
 	key::{policy::PolicyKey, policy_op::PolicyOpKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_type::fragment::Fragment;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		policy::schema::{
@@ -23,7 +24,7 @@ impl CatalogStore {
 	pub(crate) fn create_policy(
 		txn: &mut AdminTransaction,
 		to_create: PolicyToCreate,
-	) -> crate::Result<(PolicyDef, Vec<PolicyOperationDef>)> {
+	) -> Result<(PolicyDef, Vec<PolicyOperationDef>)> {
 		// Check duplicate by name if named
 		if let Some(ref name) = to_create.name {
 			if let Some(_) = Self::find_policy_by_name(&mut Transaction::Admin(&mut *txn), name)? {
@@ -31,7 +32,7 @@ impl CatalogStore {
 					kind: CatalogObjectKind::Policy,
 					namespace: "system".to_string(),
 					name: name.clone(),
-					fragment: reifydb_type::fragment::Fragment::None,
+					fragment: Fragment::None,
 				}
 				.into());
 			}

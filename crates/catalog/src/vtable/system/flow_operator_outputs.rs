@@ -12,6 +12,7 @@ use reifydb_type::fragment::Fragment;
 
 use super::flow_operator_store::FlowOperatorStore;
 use crate::{
+	Result,
 	system::SystemCatalog,
 	vtable::{Batch, VTable, VTableContext},
 };
@@ -34,12 +35,12 @@ impl FlowOperatorOutputs {
 }
 
 impl VTable for FlowOperatorOutputs {
-	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}

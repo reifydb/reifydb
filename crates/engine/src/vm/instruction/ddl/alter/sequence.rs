@@ -17,6 +17,7 @@ use reifydb_type::{
 };
 
 use crate::{
+	Result,
 	expression::{context::EvalContext, eval::evaluate},
 	vm::{services::Services, stack::SymbolTable},
 };
@@ -25,7 +26,7 @@ pub(crate) fn alter_table_sequence<'a>(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterSequenceNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	// let namespace_name = plan.sequence.namespace().name();
 	// let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 	// 	return_error!(namespace_not_found(

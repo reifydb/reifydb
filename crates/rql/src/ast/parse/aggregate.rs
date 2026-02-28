@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::AstAggregate,
 		parse::{Parser, Precedence},
@@ -15,7 +16,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_aggregate(&mut self) -> crate::Result<AstAggregate<'bump>> {
+	pub(crate) fn parse_aggregate(&mut self) -> Result<AstAggregate<'bump>> {
 		let token = self.consume_keyword(Keyword::Aggregate)?;
 
 		let mut projections = Vec::new();

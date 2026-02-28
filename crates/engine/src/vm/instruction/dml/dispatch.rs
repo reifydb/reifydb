@@ -3,7 +3,10 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::value::column::{Column, columns::Columns};
+use reifydb_core::{
+	internal_error,
+	value::column::{Column, columns::Columns},
+};
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -13,6 +16,7 @@ use reifydb_type::{
 };
 
 use crate::{
+	Result,
 	expression::{context::EvalContext, eval::evaluate},
 	procedure::context::ProcedureContext,
 	vm::{executor::Executor, services::Services, stack::Variable, vm::Vm},
@@ -27,9 +31,9 @@ pub(crate) fn dispatch(
 	plan: DispatchNode,
 	params: &Params,
 	dispatch_depth: u8,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	if dispatch_depth >= MAX_DISPATCH_DEPTH {
-		return Err(reifydb_core::internal_error!(
+		return Err(internal_error!(
 			"Max dispatch depth ({}) exceeded for event variant '{}'",
 			MAX_DISPATCH_DEPTH,
 			plan.variant_name
@@ -44,7 +48,7 @@ pub(crate) fn dispatch(
 
 	let variant_name_lower = plan.variant_name.to_lowercase();
 	let Some(variant_def) = sumtype_def.variants.iter().find(|v| v.name == variant_name_lower) else {
-		return Err(reifydb_core::internal_error!(
+		return Err(internal_error!(
 			"Variant '{}' not found in event type '{}'",
 			plan.variant_name,
 			sumtype_def.name
@@ -107,9 +111,7 @@ pub(crate) fn dispatch(
 				let _ = vm.symbol_table.exit_scope();
 			}
 			CompilationResult::Incremental(_) => {
-				return Err(reifydb_core::internal_error!(
-					"Handler body requires more input during dispatch"
-				));
+				return Err(internal_error!("Handler body requires more input during dispatch"));
 			}
 		}
 	}

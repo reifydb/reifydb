@@ -5,20 +5,16 @@ use reifydb_core::interface::catalog::primitive::{PrimitiveDef, PrimitiveId};
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
-use crate::{CatalogStore, catalog::Catalog};
+use crate::{CatalogStore, Result, catalog::Catalog};
 
 impl Catalog {
 	#[instrument(name = "catalog::primitive::find", level = "trace", skip(self, txn))]
-	pub fn find_primitive(
-		&self,
-		txn: &mut Transaction<'_>,
-		id: PrimitiveId,
-	) -> crate::Result<Option<PrimitiveDef>> {
+	pub fn find_primitive(&self, txn: &mut Transaction<'_>, id: PrimitiveId) -> Result<Option<PrimitiveDef>> {
 		CatalogStore::find_primitive(txn, id)
 	}
 
 	#[instrument(name = "catalog::primitive::get", level = "trace", skip(self, txn))]
-	pub fn get_primitive(&self, txn: &mut Transaction<'_>, id: PrimitiveId) -> crate::Result<PrimitiveDef> {
+	pub fn get_primitive(&self, txn: &mut Transaction<'_>, id: PrimitiveId) -> Result<PrimitiveDef> {
 		CatalogStore::get_primitive(txn, id)
 	}
 }

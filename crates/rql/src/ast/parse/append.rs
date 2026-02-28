@@ -5,12 +5,13 @@ use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 use super::{Parser, Precedence};
 use crate::{
+	Result,
 	ast::ast::{Ast, AstAppend, AstAppendSource, AstFrom, AstStatement, AstVariable},
 	token::{keyword::Keyword, operator::Operator, separator::Separator, token::TokenKind},
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_append(&mut self) -> crate::Result<AstAppend<'bump>> {
+	pub(crate) fn parse_append(&mut self) -> Result<AstAppend<'bump>> {
 		let token = self.current()?;
 		// Consume APPEND keyword
 		self.advance()?;

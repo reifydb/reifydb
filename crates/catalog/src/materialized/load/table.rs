@@ -15,12 +15,15 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
-use crate::store::table::schema::{
-	table,
-	table::{ID, NAME, NAMESPACE, PRIMARY_KEY},
+use crate::{
+	Result,
+	store::table::schema::{
+		table,
+		table::{ID, NAME, NAMESPACE, PRIMARY_KEY},
+	},
 };
 
-pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = TableKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 

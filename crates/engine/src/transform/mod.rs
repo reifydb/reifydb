@@ -11,8 +11,9 @@ pub mod wasm;
 pub mod wasm_loader;
 
 use reifydb_core::value::column::columns::Columns;
+use reifydb_type::Result;
 
 /// A stateless Columns → Columns transformation.
 pub trait Transform: Send + Sync {
-	fn apply(&self, ctx: &context::TransformContext, input: Columns) -> reifydb_type::Result<Columns>;
+	fn apply(&self, ctx: &context::TransformContext, input: Columns) -> Result<Columns>;
 }

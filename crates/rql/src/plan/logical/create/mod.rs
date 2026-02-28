@@ -23,6 +23,7 @@ pub mod transactional;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::ast::AstCreate,
 	plan::logical::{
 		Compiler, CreateAuthenticationNode, CreatePolicyNode, CreateRoleNode, CreateUserNode, LogicalPlan,
@@ -34,7 +35,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreate<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		match ast {
 			AstCreate::DeferredView(node) => self.compile_deferred_view(node, tx),
 			AstCreate::TransactionalView(node) => self.compile_transactional_view(node, tx),

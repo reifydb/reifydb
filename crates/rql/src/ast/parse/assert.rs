@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::AstAssert,
 		parse::{Parser, Precedence},
@@ -15,7 +16,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_assert(&mut self) -> crate::Result<AstAssert<'bump>> {
+	pub(crate) fn parse_assert(&mut self) -> Result<AstAssert<'bump>> {
 		let token = self.consume_keyword(Keyword::Assert)?;
 		self.consume_operator(Operator::OpenCurly)?;
 		let node = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());

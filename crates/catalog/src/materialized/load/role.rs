@@ -5,9 +5,9 @@ use reifydb_core::key::role::RoleKey;
 use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
-use crate::store::role::convert_role;
+use crate::{Result, store::role::convert_role};
 
-pub(crate) fn load_roles(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub(crate) fn load_roles(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = RoleKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 

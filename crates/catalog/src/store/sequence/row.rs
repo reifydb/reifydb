@@ -11,12 +11,12 @@ use reifydb_core::{
 use reifydb_type::value::row_number::RowNumber;
 
 use super::generator::SequenceTransaction;
-use crate::store::sequence::generator::u64::GeneratorU64;
+use crate::{Result, store::sequence::generator::u64::GeneratorU64};
 
 pub struct RowSequence {}
 
 impl RowSequence {
-	pub(crate) fn next_row_number(txn: &mut impl SequenceTransaction, table: TableId) -> crate::Result<RowNumber> {
+	pub(crate) fn next_row_number(txn: &mut impl SequenceTransaction, table: TableId) -> Result<RowNumber> {
 		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(table)), None).map(RowNumber)
 	}
 
@@ -26,7 +26,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		table: TableId,
 		count: u64,
-	) -> crate::Result<Vec<RowNumber>> {
+	) -> Result<Vec<RowNumber>> {
 		Self::next_row_number_batch_for_source(txn, PrimitiveId::from(table), count)
 	}
 
@@ -34,7 +34,7 @@ impl RowSequence {
 	pub(crate) fn next_row_number_for_ringbuffer(
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
-	) -> crate::Result<RowNumber> {
+	) -> Result<RowNumber> {
 		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(ringbuffer)), None).map(RowNumber)
 	}
 
@@ -44,7 +44,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
 		count: u64,
-	) -> crate::Result<Vec<RowNumber>> {
+	) -> Result<Vec<RowNumber>> {
 		Self::next_row_number_batch_for_source(txn, PrimitiveId::from(ringbuffer), count)
 	}
 
@@ -53,7 +53,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		source: PrimitiveId,
 		count: u64,
-	) -> crate::Result<Vec<RowNumber>> {
+	) -> Result<Vec<RowNumber>> {
 		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(source), None, count)?;
 
 		// Calculate the first row number in the batch

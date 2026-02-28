@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::common::{WindowSize, WindowType};
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{error::Error, fragment::Fragment};
 
 use super::{WindowConfig, WindowNode};
 use crate::{Result, error::RqlError, expression::Expression};
@@ -14,14 +14,14 @@ pub fn create_tumbling_window(
 ) -> Result<WindowNode> {
 	validate_tumbling_config(&config)?;
 
-	let window_type = config.window_type.ok_or_else(|| -> reifydb_type::error::Error {
+	let window_type = config.window_type.ok_or_else(|| -> Error {
 		RqlError::WindowMissingTypeOrSize {
 			fragment: Fragment::None,
 		}
 		.into()
 	})?;
 
-	let size = config.size.ok_or_else(|| -> reifydb_type::error::Error {
+	let size = config.size.ok_or_else(|| -> Error {
 		RqlError::WindowMissingTypeOrSize {
 			fragment: Fragment::None,
 		}
@@ -76,7 +76,7 @@ fn validate_tumbling_config(config: &WindowConfig) -> Result<()> {
 pub mod tests {
 	use std::time::Duration;
 
-	use reifydb_core::common::{WindowSize, WindowTimeMode, WindowType};
+	use reifydb_core::common::{WindowSize, WindowSlide, WindowTimeMode, WindowType};
 
 	use super::*;
 
@@ -129,7 +129,7 @@ pub mod tests {
 		let config = WindowConfig {
 			window_type: Some(WindowType::Time(WindowTimeMode::Processing)),
 			size: Some(WindowSize::Duration(Duration::from_secs(60))),
-			slide: Some(reifydb_core::common::WindowSlide::Duration(Duration::from_secs(30))),
+			slide: Some(WindowSlide::Duration(Duration::from_secs(30))),
 			timestamp_column: None,
 			min_events: None,
 			max_window_count: None,

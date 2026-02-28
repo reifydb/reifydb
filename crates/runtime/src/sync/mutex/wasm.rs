@@ -10,6 +10,8 @@ use std::{
 	ops::{Deref, DerefMut},
 };
 
+use crate::sync;
+
 /// WASM mutex implementation using RefCell (no actual locking needed).
 pub struct MutexInner<T> {
 	inner: std::cell::RefCell<T>,
@@ -46,7 +48,7 @@ impl<T> MutexInner<T> {
 
 /// WASM guard providing mutable access to the data protected by a Mutex.
 pub struct MutexGuardInner<'a, T> {
-	pub(in crate::sync) inner: RefMut<'a, T>,
+	pub(in sync) inner: RefMut<'a, T>,
 }
 
 impl<'a, T> Deref for MutexGuardInner<'a, T> {

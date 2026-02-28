@@ -11,14 +11,20 @@
 use std::collections::HashMap;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::catalog::flow::{FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId};
+use reifydb_core::{
+	interface::catalog::flow::{FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId},
+	internal,
+};
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::blob::Blob;
+use reifydb_type::{error::Error, value::blob::Blob};
 
 use super::plan::{CompiledFlowPlan, LocalNodeId};
-use crate::flow::{
-	flow::FlowDag,
-	node::{FlowEdge, FlowNode},
+use crate::{
+	Result,
+	flow::{
+		flow::FlowDag,
+		node::{FlowEdge, FlowNode},
+	},
 };
 
 /// Persists a compiled flow plan to the catalog and returns the Flow.
@@ -44,7 +50,7 @@ pub fn persist_flow(
 	txn: &mut AdminTransaction,
 	plan: CompiledFlowPlan,
 	flow_id: FlowId,
-) -> crate::Result<FlowDag> {
+) -> Result<FlowDag> {
 	// Map local IDs to real catalog IDs
 	let mut node_map: HashMap<LocalNodeId, FlowNodeId> = HashMap::new();
 
@@ -57,9 +63,8 @@ pub fn persist_flow(
 		node_map.insert(compiled_node.local_id, real_node_id);
 
 		// Serialize the node type
-		let data = postcard::to_stdvec(&compiled_node.node_type).map_err(|e| {
-			reifydb_type::error::Error(reifydb_core::internal!("Failed to serialize FlowNodeType: {}", e))
-		})?;
+		let data = postcard::to_stdvec(&compiled_node.node_type)
+			.map_err(|e| Error(internal!("Failed to serialize FlowNodeType: {}", e)))?;
 
 		// Create and persist the catalog entry
 		let node_def = FlowNodeDef {

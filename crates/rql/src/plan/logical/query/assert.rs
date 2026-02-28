@@ -2,17 +2,18 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::ast::AstAssert,
 	bump::BumpBox,
 	expression::ExpressionCompiler,
 	plan::logical::{AssertNode, Compiler, LogicalPlan},
-	token::token::Literal,
+	token::token::{Literal, TokenKind},
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_assert(&self, ast: AstAssert<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_assert(&self, ast: AstAssert<'bump>) -> Result<LogicalPlan<'bump>> {
 		let message = ast.message.and_then(|tok| {
-			if matches!(tok.kind, crate::token::token::TokenKind::Literal(Literal::Text)) {
+			if matches!(tok.kind, TokenKind::Literal(Literal::Text)) {
 				Some(tok.fragment.text().to_string())
 			} else {
 				None

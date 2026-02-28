@@ -14,13 +14,9 @@ use reifydb_type::{
 	},
 };
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
-pub(crate) fn create_table(
-	services: &Services,
-	txn: &mut AdminTransaction,
-	plan: CreateTableNode,
-) -> crate::Result<Columns> {
+pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan: CreateTableNode) -> Result<Columns> {
 	// Check if table already exists using the catalog
 	if let Some(_) = services.catalog.find_table_by_name(
 		&mut Transaction::Admin(txn),
@@ -63,7 +59,7 @@ fn expand_sumtype_columns(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	columns: Vec<TableColumnToCreate>,
-) -> crate::Result<Vec<TableColumnToCreate>> {
+) -> Result<Vec<TableColumnToCreate>> {
 	let mut expanded = Vec::with_capacity(columns.len());
 
 	for col in columns {

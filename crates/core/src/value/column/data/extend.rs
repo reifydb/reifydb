@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_type::{Result, storage::DataBitVec, util::bitvec::BitVec};
 
 use crate::{
 	return_internal_error,
@@ -9,7 +9,7 @@ use crate::{
 };
 
 impl ColumnData {
-	pub fn extend(&mut self, other: ColumnData) -> reifydb_type::Result<()> {
+	pub fn extend(&mut self, other: ColumnData) -> Result<()> {
 		match (&mut *self, other) {
 			// Same type extensions
 			(ColumnData::Bool(l), ColumnData::Bool(r)) => l.extend(&r)?,

@@ -12,7 +12,8 @@ use reifydb_type::{
 };
 
 use crate::{
-	ast::ast::{AstColumnProperty, AstCreateTable},
+	Result,
+	ast::ast::{AstColumnProperty, AstCreateTable, AstType},
 	convert_data_type_with_constraints,
 	diagnostic::AstError,
 	plan::logical::{Compiler, CreateTableNode, LogicalPlan},
@@ -23,7 +24,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstCreateTable<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 
 		let table_namespace_name = ast.table.namespace.first().map(|n| n.text()).unwrap_or("default");
@@ -31,7 +32,7 @@ impl<'bump> Compiler<'bump> {
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.text().to_string();
 			let mut constraint = match &col.ty {
-				crate::ast::ast::AstType::Qualified {
+				AstType::Qualified {
 					namespace,
 					name,
 				} => {

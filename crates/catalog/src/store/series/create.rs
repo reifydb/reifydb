@@ -20,7 +20,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
@@ -49,7 +49,7 @@ pub struct SeriesToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_series(txn: &mut AdminTransaction, to_create: SeriesToCreate) -> crate::Result<SeriesDef> {
+	pub(crate) fn create_series(txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<SeriesDef> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(series) = CatalogStore::find_series_by_name(
@@ -83,7 +83,7 @@ impl CatalogStore {
 		series_id: SeriesId,
 		namespace: NamespaceId,
 		to_create: &SeriesToCreate,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = series::SCHEMA.allocate();
 		series::SCHEMA.set_u64(&mut row, series::ID, series_id);
 		series::SCHEMA.set_u64(&mut row, series::NAMESPACE, namespace);
@@ -102,7 +102,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		series_id: SeriesId,
 		name: &str,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = series_namespace::SCHEMA.allocate();
 		series_namespace::SCHEMA.set_u64(&mut row, series_namespace::ID, series_id);
 		series_namespace::SCHEMA.set_utf8(&mut row, series_namespace::NAME, name);
@@ -116,7 +116,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		series_id: SeriesId,
 		to_create: &SeriesToCreate,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		for (idx, col) in to_create.columns.iter().enumerate() {
 			CatalogStore::create_column(
 				txn,
@@ -138,7 +138,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn initialize_series_metadata(txn: &mut AdminTransaction, series_id: SeriesId) -> crate::Result<()> {
+	fn initialize_series_metadata(txn: &mut AdminTransaction, series_id: SeriesId) -> Result<()> {
 		let mut row = series_metadata::SCHEMA.allocate();
 		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ID, series_id);
 		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ROW_COUNT, 0u64);

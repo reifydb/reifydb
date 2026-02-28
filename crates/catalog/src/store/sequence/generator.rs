@@ -74,6 +74,7 @@ macro_rules! impl_generator {
 	) => {
 		pub(crate) mod $mod_name {
 			use super::*;
+			use crate::Result;
 
 			pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| Schema::testing(&[$type_enum]));
 
@@ -84,7 +85,7 @@ macro_rules! impl_generator {
 					txn: &mut impl SequenceTransaction,
 					key: &EncodedKey,
 					default: Option<$prim>,
-				) -> crate::Result<$prim> {
+				) -> Result<$prim> {
 					Self::next_batched(txn, key, default, 1)
 				}
 
@@ -93,7 +94,7 @@ macro_rules! impl_generator {
 					key: &EncodedKey,
 					default: Option<$prim>,
 					incr: $prim,
-				) -> crate::Result<$prim> {
+				) -> Result<$prim> {
 					let mut tx = txn.begin_single_command([key])?;
 					let result = match tx.get(key)? {
 						Some(row) => {
@@ -150,7 +151,7 @@ macro_rules! impl_generator {
 					txn: &mut impl SequenceTransaction,
 					key: &EncodedKey,
 					value: $prim,
-				) -> crate::Result<()> {
+				) -> Result<()> {
 					let mut tx = txn.begin_single_command([key])?;
 					let mut row = match tx.get(key)? {
 						Some(row) => row.values,

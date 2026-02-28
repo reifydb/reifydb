@@ -5,15 +5,15 @@ use reifydb_auth::error::AuthError;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::nodes::CreateAuthenticationNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::Value;
+use reifydb_type::{error::Error, value::Value};
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_authentication(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateAuthenticationNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let user_name = plan.user.text();
 	let method = plan.method.text();
 
@@ -22,7 +22,7 @@ pub(crate) fn create_authentication(
 
 	// Get the auth provider
 	let provider = services.auth_registry.get(method).ok_or_else(|| {
-		reifydb_type::error::Error::from(AuthError::UnknownMethod {
+		Error::from(AuthError::UnknownMethod {
 			method: method.to_string(),
 		})
 	})?;

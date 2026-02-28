@@ -7,10 +7,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::table::schema::table};
+use crate::{CatalogStore, Result, store::table::schema::table};
 
 impl CatalogStore {
-	pub(crate) fn list_tables_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<TableDef>> {
+	pub(crate) fn list_tables_all(rx: &mut Transaction<'_>) -> Result<Vec<TableDef>> {
 		let mut result = Vec::new();
 
 		// Collect table IDs first, then fetch details (to avoid holding stream borrow)

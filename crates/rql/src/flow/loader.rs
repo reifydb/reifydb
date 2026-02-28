@@ -8,13 +8,16 @@ use reifydb_core::{interface::catalog::flow::FlowId, internal};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::error::Error;
 
-use crate::flow::{
-	flow::FlowDag,
-	node::{FlowEdge, FlowNode, FlowNodeType},
+use crate::{
+	Result,
+	flow::{
+		flow::FlowDag,
+		node::{FlowEdge, FlowNode, FlowNodeType},
+	},
 };
 
 /// Loads a Flow from the catalog by reconstructing it from nodes and edges
-pub fn load_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, flow_id: FlowId) -> crate::Result<FlowDag> {
+pub fn load_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<FlowDag> {
 	let node_defs = catalog.list_flow_nodes_by_flow(txn, flow_id)?;
 	let edge_defs = catalog.list_flow_edges_by_flow(txn, flow_id)?;
 

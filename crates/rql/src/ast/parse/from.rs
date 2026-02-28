@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstGenerator, AstList, AstVariable},
 		identifier::UnresolvedPrimitiveIdentifier,
@@ -20,7 +21,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_from(&mut self) -> crate::Result<AstFrom<'bump>> {
+	pub(crate) fn parse_from(&mut self) -> Result<AstFrom<'bump>> {
 		let token = self.consume_keyword(Keyword::From)?;
 
 		// Check token type first
@@ -158,7 +159,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn parse_static(&mut self) -> crate::Result<AstList<'bump>> {
+	pub(crate) fn parse_static(&mut self) -> Result<AstList<'bump>> {
 		let token = self.consume_operator(OpenBracket)?;
 
 		let mut nodes = Vec::new();
@@ -204,7 +205,7 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::{AstFrom, InfixOperator::As},
+			ast::{AstFrom, InfixOperator, InfixOperator::As},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -566,15 +567,15 @@ pub mod tests {
 				assert_eq!(generator.nodes.len(), 2);
 
 				let first_param = generator.nodes[0].as_infix();
-				assert!(matches!(first_param.operator, crate::ast::ast::InfixOperator::As(_)));
+				assert!(matches!(first_param.operator, InfixOperator::As(_)));
 				assert_eq!(first_param.left.as_literal_text().value(), "/api/v1");
 				assert_eq!(first_param.right.as_identifier().text(), "endpoint");
 
 				let second_param = generator.nodes[1].as_infix();
-				assert!(matches!(second_param.operator, crate::ast::ast::InfixOperator::As(_)));
+				assert!(matches!(second_param.operator, InfixOperator::As(_)));
 
 				let timeout_expr = second_param.left.as_infix();
-				assert!(matches!(timeout_expr.operator, crate::ast::ast::InfixOperator::Multiply(_)));
+				assert!(matches!(timeout_expr.operator, InfixOperator::Multiply(_)));
 				assert_eq!(timeout_expr.left.as_literal_number().value(), "30");
 				assert_eq!(timeout_expr.right.as_literal_number().value(), "1000");
 

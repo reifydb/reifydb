@@ -19,7 +19,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
@@ -48,7 +48,7 @@ pub struct TableToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
+	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<TableDef> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(table) = CatalogStore::find_table_by_name(
@@ -84,7 +84,7 @@ impl CatalogStore {
 		table: TableId,
 		namespace: NamespaceId,
 		to_create: &TableToCreate,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = table::SCHEMA.allocate();
 		table::SCHEMA.set_u64(&mut row, table::ID, table);
 		table::SCHEMA.set_u64(&mut row, table::NAMESPACE, namespace);
@@ -103,7 +103,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		table: TableId,
 		name: &str,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = table_namespace::SCHEMA.allocate();
 		table_namespace::SCHEMA.set_u64(&mut row, table_namespace::ID, table);
 		table_namespace::SCHEMA.set_utf8(&mut row, table_namespace::NAME, name);
@@ -111,7 +111,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn insert_columns(txn: &mut AdminTransaction, table: TableId, to_create: TableToCreate) -> crate::Result<()> {
+	fn insert_columns(txn: &mut AdminTransaction, table: TableId, to_create: TableToCreate) -> Result<()> {
 		// Look up namespace name for error messages
 		let namespace_name = Self::find_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?
 			.map(|s| s.name)

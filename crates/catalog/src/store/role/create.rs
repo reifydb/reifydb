@@ -3,9 +3,10 @@
 
 use reifydb_core::{interface::catalog::user::RoleDef, key::role::RoleKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_type::fragment::Fragment;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		role::schema::role::{ID, NAME, SCHEMA},
@@ -14,13 +15,13 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn create_role(txn: &mut AdminTransaction, name: &str) -> crate::Result<RoleDef> {
+	pub(crate) fn create_role(txn: &mut AdminTransaction, name: &str) -> Result<RoleDef> {
 		if let Some(_) = Self::find_role_by_name(&mut Transaction::Admin(&mut *txn), name)? {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Role,
 				namespace: "system".to_string(),
 				name: name.to_string(),
-				fragment: reifydb_type::fragment::Fragment::None,
+				fragment: Fragment::None,
 			}
 			.into());
 		}

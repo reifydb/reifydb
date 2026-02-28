@@ -4,6 +4,7 @@
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
+	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstPatch, AstUpdate},
 		identifier::{
@@ -24,7 +25,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstUpdate<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		// Build internal pipeline: FROM -> FILTER -> MAP
 
 		// 1. Create FROM scan from target

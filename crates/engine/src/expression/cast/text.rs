@@ -17,9 +17,9 @@ use reifydb_type::{
 	},
 };
 
-use crate::error::CastError;
+use crate::{Result, error::CastError};
 
-pub fn to_text(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+pub fn to_text(data: &ColumnData, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	match data {
 		ColumnData::Blob {
 			container,
@@ -57,7 +57,7 @@ pub fn to_text(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Re
 }
 
 #[inline]
-pub fn from_blob(container: &BlobContainer, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+pub fn from_blob(container: &BlobContainer, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -79,7 +79,7 @@ pub fn from_blob(container: &BlobContainer, lazy_fragment: impl LazyFragment) ->
 }
 
 #[inline]
-fn from_bool(container: &BoolContainer) -> crate::Result<ColumnData> {
+fn from_bool(container: &BoolContainer) -> Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -92,7 +92,7 @@ fn from_bool(container: &BoolContainer) -> crate::Result<ColumnData> {
 }
 
 #[inline]
-fn from_number<T>(container: &NumberContainer<T>) -> crate::Result<ColumnData>
+fn from_number<T>(container: &NumberContainer<T>) -> Result<ColumnData>
 where
 	T: Copy + Display + IsNumber + Default,
 {
@@ -108,7 +108,7 @@ where
 }
 
 #[inline]
-fn from_temporal<T>(container: &TemporalContainer<T>) -> crate::Result<ColumnData>
+fn from_temporal<T>(container: &TemporalContainer<T>) -> Result<ColumnData>
 where
 	T: Copy + Display + IsTemporal + Default,
 {
@@ -124,7 +124,7 @@ where
 }
 
 #[inline]
-fn from_uuid<T>(container: &UuidContainer<T>) -> crate::Result<ColumnData>
+fn from_uuid<T>(container: &UuidContainer<T>) -> Result<ColumnData>
 where
 	T: Copy + Display + IsUuid + Default,
 {

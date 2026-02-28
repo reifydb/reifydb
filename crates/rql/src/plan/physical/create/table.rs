@@ -6,9 +6,12 @@ use reifydb_core::{error::diagnostic::catalog::namespace_not_found, interface::r
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
 
-use crate::plan::{
-	logical,
-	physical::{Compiler, CreateTableNode, PhysicalPlan},
+use crate::{
+	Result,
+	plan::{
+		logical,
+		physical::{Compiler, CreateTableNode, PhysicalPlan},
+	},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -16,7 +19,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateTableNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		// Get namespace name from the MaybeQualified type (join all segments for nested namespaces)
 		let namespace_name = if create.table.namespace.is_empty() {
 			"default".to_string()

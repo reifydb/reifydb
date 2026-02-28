@@ -15,12 +15,12 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::SumTypeId;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::series::schema::{series, series_metadata, series_namespace},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_series(rx: &mut Transaction<'_>, series_id: SeriesId) -> crate::Result<Option<SeriesDef>> {
+	pub(crate) fn find_series(rx: &mut Transaction<'_>, series_id: SeriesId) -> Result<Option<SeriesDef>> {
 		let Some(multi) = rx.get(&SeriesKey::encoded(series_id))? else {
 			return Ok(None);
 		};
@@ -56,7 +56,7 @@ impl CatalogStore {
 	pub(crate) fn find_series_metadata(
 		rx: &mut Transaction<'_>,
 		series_id: SeriesId,
-	) -> crate::Result<Option<SeriesMetadata>> {
+	) -> Result<Option<SeriesMetadata>> {
 		let Some(multi) = rx.get(&SeriesMetadataKey::encoded(series_id))? else {
 			return Ok(None);
 		};
@@ -81,7 +81,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<SeriesDef>> {
+	) -> Result<Option<SeriesDef>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceSeriesKey::full_scan(namespace), 1024)?;
 

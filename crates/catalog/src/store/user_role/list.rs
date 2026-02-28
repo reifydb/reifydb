@@ -4,10 +4,10 @@
 use reifydb_core::{interface::catalog::user::UserRoleDef, key::user_role::UserRoleKey};
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::user_role::convert_user_role};
+use crate::{CatalogStore, Result, store::user_role::convert_user_role};
 
 impl CatalogStore {
-	pub(crate) fn list_all_user_roles(rx: &mut Transaction<'_>) -> crate::Result<Vec<UserRoleDef>> {
+	pub(crate) fn list_all_user_roles(rx: &mut Transaction<'_>) -> Result<Vec<UserRoleDef>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(UserRoleKey::full_scan(), 1024)?;
 

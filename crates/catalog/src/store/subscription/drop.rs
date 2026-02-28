@@ -10,10 +10,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_subscription(txn: &mut AdminTransaction, subscription: SubscriptionId) -> crate::Result<()> {
+	pub(crate) fn drop_subscription(txn: &mut AdminTransaction, subscription: SubscriptionId) -> Result<()> {
 		// Step 1: Delete subscription columns
 		let col_range = SubscriptionColumnKey::subscription_range(subscription);
 		let mut col_stream = txn.range(col_range, 1000)?;

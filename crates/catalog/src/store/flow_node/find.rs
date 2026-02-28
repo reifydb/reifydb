@@ -8,13 +8,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::flow_node::schema::flow_node};
+use crate::{CatalogStore, Result, store::flow_node::schema::flow_node};
 
 impl CatalogStore {
-	pub(crate) fn find_flow_node(
-		rx: &mut Transaction<'_>,
-		node_id: FlowNodeId,
-	) -> crate::Result<Option<FlowNodeDef>> {
+	pub(crate) fn find_flow_node(rx: &mut Transaction<'_>, node_id: FlowNodeId) -> Result<Option<FlowNodeDef>> {
 		let Some(multi) = rx.get(&FlowNodeKey::encoded(node_id))? else {
 			return Ok(None);
 		};

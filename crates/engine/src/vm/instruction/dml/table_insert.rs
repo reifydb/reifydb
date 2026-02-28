@@ -29,6 +29,7 @@ use tracing::instrument;
 
 use super::{primary_key, schema::get_or_create_table_schema};
 use crate::{
+	Result,
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
@@ -49,7 +50,7 @@ pub(crate) fn insert_table<'a>(
 	plan: InsertTableNode,
 	stack: &mut SymbolTable,
 	identity: IdentityId,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {

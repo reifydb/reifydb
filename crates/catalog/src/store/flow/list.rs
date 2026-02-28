@@ -10,10 +10,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::flow::schema::flow};
+use crate::{CatalogStore, Result, store::flow::schema::flow};
 
 impl CatalogStore {
-	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<FlowDef>> {
+	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowDef>> {
 		let mut result = Vec::new();
 
 		let mut stream = rx.range(FlowKey::full_scan(), 1024)?;

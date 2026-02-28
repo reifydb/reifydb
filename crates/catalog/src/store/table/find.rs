@@ -11,12 +11,12 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::table::schema::{table, table_namespace},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_table(rx: &mut Transaction<'_>, table: TableId) -> crate::Result<Option<TableDef>> {
+	pub(crate) fn find_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Option<TableDef>> {
 		let Some(multi) = rx.get(&TableKey::encoded(table))? else {
 			return Ok(None);
 		};
@@ -39,7 +39,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<TableDef>> {
+	) -> Result<Option<TableDef>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceTableKey::full_scan(namespace), 1024)?;
 

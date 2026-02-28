@@ -6,12 +6,16 @@ use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::clock::Clock;
 
-use crate::expression::{
-	compile::compile_expression,
-	context::{CompileContext, EvalContext},
+use crate::{
+	Result,
+	expression::{
+		cast::cast_column_data,
+		compile::compile_expression,
+		context::{CompileContext, EvalContext},
+	},
 };
 
-pub fn evaluate(ctx: &EvalContext, expr: &Expression, _functions: &Functions, _clock: &Clock) -> crate::Result<Column> {
+pub fn evaluate(ctx: &EvalContext, expr: &Expression, _functions: &Functions, _clock: &Clock) -> Result<Column> {
 	let compile_ctx = CompileContext {
 		functions: ctx.functions,
 		symbol_table: ctx.symbol_table,
@@ -21,7 +25,7 @@ pub fn evaluate(ctx: &EvalContext, expr: &Expression, _functions: &Functions, _c
 
 	// Ensures that result column data type matches the expected target column type
 	if let Some(ty) = ctx.target.as_ref().map(|c| c.column_type()) {
-		let data = crate::expression::cast::cast_column_data(ctx, &column.data(), ty, &expr.lazy_fragment())?;
+		let data = cast_column_data(ctx, &column.data(), ty, &expr.lazy_fragment())?;
 		Ok(Column {
 			name: column.name,
 			data,

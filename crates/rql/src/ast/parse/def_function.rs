@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{AstDefFunction, AstFunctionParameter, AstReturn, AstType, AstVariable},
 		parse::{Parser, Precedence},
@@ -12,7 +13,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	/// Parse `fun name ($param: type, ...) : return_type { body }`
-	pub(crate) fn parse_def_function(&mut self) -> crate::Result<AstDefFunction<'bump>> {
+	pub(crate) fn parse_def_function(&mut self) -> Result<AstDefFunction<'bump>> {
 		let token = self.consume_keyword(Keyword::Fun)?;
 		let name = self.parse_as_identifier()?;
 
@@ -41,7 +42,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse function parameters: $var: type, $var2: type
-	fn parse_function_parameters(&mut self) -> crate::Result<Vec<AstFunctionParameter<'bump>>> {
+	fn parse_function_parameters(&mut self) -> Result<Vec<AstFunctionParameter<'bump>>> {
 		let mut parameters = Vec::new();
 
 		loop {
@@ -89,7 +90,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse a type annotation (identifier with optional parameters)
-	pub(crate) fn parse_type_annotation(&mut self) -> crate::Result<AstType<'bump>> {
+	pub(crate) fn parse_type_annotation(&mut self) -> Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
 		// Check for Option(T) syntax
@@ -125,7 +126,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse `RETURN` or `RETURN expr`
-	pub(crate) fn parse_return(&mut self) -> crate::Result<AstReturn<'bump>> {
+	pub(crate) fn parse_return(&mut self) -> Result<AstReturn<'bump>> {
 		let token = self.consume_keyword(Keyword::Return)?;
 
 		// Check if there's a value to return (not at EOF, semicolon, or closing brace)

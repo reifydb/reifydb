@@ -5,13 +5,17 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::migration::{MigrationAction, MigrationDef},
+	internal_error,
 	value::column::columns::Columns,
 };
 use reifydb_rql::{compiler::CompilationResult, nodes::MigrateNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{params::Params, value::Value};
 
-use crate::vm::{services::Services, vm::Vm};
+use crate::{
+	Result,
+	vm::{services::Services, vm::Vm},
+};
 
 pub(crate) fn execute_migrate(
 	vm: &mut Vm,
@@ -19,11 +23,11 @@ pub(crate) fn execute_migrate(
 	tx: &mut Transaction<'_>,
 	plan: MigrateNode,
 	params: &Params,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
 		_ => {
-			return Err(reifydb_core::internal_error!("MIGRATE requires an admin transaction"));
+			return Err(internal_error!("MIGRATE requires an admin transaction"));
 		}
 	};
 
@@ -84,10 +88,7 @@ pub(crate) fn execute_migrate(
 				vm.ip = saved_ip;
 			}
 			CompilationResult::Incremental(_) => {
-				return Err(reifydb_core::internal_error!(
-					"Migration '{}' body requires more input",
-					migration.name
-				));
+				return Err(internal_error!("Migration '{}' body requires more input", migration.name));
 			}
 		}
 

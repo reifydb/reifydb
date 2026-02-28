@@ -5,6 +5,7 @@ use reifydb_core::interface::catalog::{
 	change::CatalogTrackUserChangeOperations,
 	user::{UserDef, UserId},
 };
+use reifydb_type::Result;
 
 use crate::{
 	change::{
@@ -16,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackUserChangeOperations for AdminTransaction {
-	fn track_user_def_created(&mut self, user: UserDef) -> reifydb_type::Result<()> {
+	fn track_user_def_created(&mut self, user: UserDef) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(user),
@@ -26,7 +27,7 @@ impl CatalogTrackUserChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_user_def_updated(&mut self, pre: UserDef, post: UserDef) -> reifydb_type::Result<()> {
+	fn track_user_def_updated(&mut self, pre: UserDef, post: UserDef) -> Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -36,7 +37,7 @@ impl CatalogTrackUserChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_user_def_deleted(&mut self, user: UserDef) -> reifydb_type::Result<()> {
+	fn track_user_def_deleted(&mut self, user: UserDef) -> Result<()> {
 		let change = Change {
 			pre: Some(user),
 			post: None,

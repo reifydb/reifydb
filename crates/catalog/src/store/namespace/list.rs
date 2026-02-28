@@ -7,10 +7,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::namespace::schema::namespace};
+use crate::{CatalogStore, Result, store::namespace::schema::namespace};
 
 impl CatalogStore {
-	pub(crate) fn list_namespaces_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<NamespaceDef>> {
+	pub(crate) fn list_namespaces_all(rx: &mut Transaction<'_>) -> Result<Vec<NamespaceDef>> {
 		let mut result = Vec::new();
 
 		let namespace_range = NamespaceKey::full_scan();

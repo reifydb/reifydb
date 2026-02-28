@@ -11,7 +11,10 @@ use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub(crate) struct DistinctNode {
 	input: Box<dyn QueryNode>,
@@ -31,13 +34,13 @@ impl DistinctNode {
 
 impl QueryNode for DistinctNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		// Only emit once (like AggregateNode)
 		if self.headers.is_some() {
 			return Ok(None);

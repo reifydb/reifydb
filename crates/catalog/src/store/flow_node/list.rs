@@ -3,25 +3,24 @@
 
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowNodeDef, FlowNodeId},
-	key::{EncodableKey, flow_node::FlowNodeKey},
+	key::{
+		EncodableKey,
+		flow_node::{FlowNodeByFlowKey, FlowNodeKey},
+	},
 };
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::flow_node::schema::{flow_node, flow_node_by_flow},
 };
 
 impl CatalogStore {
-	pub(crate) fn list_flow_nodes_by_flow(
-		rx: &mut Transaction<'_>,
-		flow_id: FlowId,
-	) -> crate::Result<Vec<FlowNodeDef>> {
+	pub(crate) fn list_flow_nodes_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNodeDef>> {
 		// First collect all node IDs to avoid holding stream borrow
 		let mut node_ids = Vec::new();
 		{
-			let mut stream =
-				rx.range(reifydb_core::key::flow_node::FlowNodeByFlowKey::full_scan(flow_id), 1024)?;
+			let mut stream = rx.range(FlowNodeByFlowKey::full_scan(flow_id), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				node_ids.push(FlowNodeId(
@@ -41,7 +40,7 @@ impl CatalogStore {
 		Ok(nodes)
 	}
 
-	pub(crate) fn list_flow_nodes_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<FlowNodeDef>> {
+	pub(crate) fn list_flow_nodes_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowNodeDef>> {
 		let mut result = Vec::new();
 
 		let mut stream = rx.range(FlowNodeKey::full_scan(), 1024)?;

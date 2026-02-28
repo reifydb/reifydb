@@ -2,12 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::ast::AstDistinct,
 	plan::logical::{Compiler, DistinctNode, LogicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_distinct(&self, ast: AstDistinct<'bump>) -> crate::Result<LogicalPlan<'bump>> {
+	pub(crate) fn compile_distinct(&self, ast: AstDistinct<'bump>) -> Result<LogicalPlan<'bump>> {
 		// DISTINCT operates on the output columns of the query
 		// In a proper implementation, we would need to resolve these
 		// columns based on the SELECT clause and FROM sources in the

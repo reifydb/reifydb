@@ -6,6 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, TableId},
 	table::TableDef,
 };
+use reifydb_type::Result;
 
 use crate::{
 	change::{
@@ -17,7 +18,7 @@ use crate::{
 };
 
 impl CatalogTrackTableChangeOperations for AdminTransaction {
-	fn track_table_def_created(&mut self, table: TableDef) -> reifydb_type::Result<()> {
+	fn track_table_def_created(&mut self, table: TableDef) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(table),
@@ -27,7 +28,7 @@ impl CatalogTrackTableChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_table_def_updated(&mut self, pre: TableDef, post: TableDef) -> reifydb_type::Result<()> {
+	fn track_table_def_updated(&mut self, pre: TableDef, post: TableDef) -> Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -37,7 +38,7 @@ impl CatalogTrackTableChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_table_def_deleted(&mut self, table: TableDef) -> reifydb_type::Result<()> {
+	fn track_table_def_deleted(&mut self, table: TableDef) -> Result<()> {
 		let change = Change {
 			pre: Some(table),
 			post: None,

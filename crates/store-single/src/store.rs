@@ -21,7 +21,7 @@ use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
 
 use crate::{
-	HotConfig, SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet,
+	HotConfig, Result, SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet,
 	SingleVersionRange, SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
 	config::SingleStoreConfig,
 	hot::tier::HotTier,
@@ -39,7 +39,7 @@ impl StandardSingleStore {
 	#[instrument(name = "store::single::new", level = "debug", skip(config), fields(
 		has_hot = config.hot.is_some(),
 	))]
-	pub fn new(config: SingleStoreConfig) -> crate::Result<Self> {
+	pub fn new(config: SingleStoreConfig) -> Result<Self> {
 		let hot = config.hot.map(|c| c.storage);
 
 		Ok(Self(Arc::new(StandardSingleStoreInner {
@@ -82,7 +82,7 @@ impl StandardSingleStore {
 
 impl SingleVersionGet for StandardSingleStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
-	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
 		if let Some(hot) = &self.hot {
 			if let Some(value) = hot.get(key.as_ref())? {
 				return Ok(Some(SingleVersionValues {
@@ -98,7 +98,7 @@ impl SingleVersionGet for StandardSingleStore {
 
 impl SingleVersionContains for StandardSingleStore {
 	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())), ret)]
-	fn contains(&self, key: &EncodedKey) -> crate::Result<bool> {
+	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		if let Some(hot) = &self.hot {
 			if hot.contains(key.as_ref())? {
 				return Ok(true);
@@ -111,7 +111,7 @@ impl SingleVersionContains for StandardSingleStore {
 
 impl SingleVersionCommit for StandardSingleStore {
 	#[instrument(name = "store::single::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
-	fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()> {
+	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
 		// Get the hot storage tier (warm and cold are placeholders for now)
 		let Some(storage) = &self.hot else {
 			return Ok(());
@@ -150,7 +150,7 @@ impl SingleVersionRemove for StandardSingleStore {}
 
 impl SingleVersionRange for StandardSingleStore {
 	#[instrument(name = "store::single::range_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
-	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
+	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
 		let mut all_entries: BTreeMap<CowVec<u8>, Option<CowVec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
@@ -196,7 +196,7 @@ impl SingleVersionRange for StandardSingleStore {
 
 impl SingleVersionRangeRev for StandardSingleStore {
 	#[instrument(name = "store::single::range_rev_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
-	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
+	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
 		let mut all_entries: BTreeMap<CowVec<u8>, Option<CowVec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);

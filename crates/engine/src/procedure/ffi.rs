@@ -97,16 +97,15 @@ fn create_procedure_host_callbacks() -> HostCallbacks {
 
 impl Procedure for NativeProcedureFFI {
 	#[instrument(name = "procedure::ffi::call", level = "debug", skip_all)]
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> reifydb_type::Result<Columns> {
+	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns> {
 		let mut arena = self.arena.borrow_mut();
 
 		// Set thread-local arena for host_alloc
 		memory::set_current_arena(&mut *arena as *mut Arena);
 
 		// Serialize params to postcard bytes
-		let params_bytes = postcard::to_stdvec(ctx.params).map_err(|e| {
-			reifydb_sdk::error::FFIError::Other(format!("Failed to serialize params: {}", e))
-		})?;
+		let params_bytes = postcard::to_stdvec(ctx.params)
+			.map_err(|e| FFIError::Other(format!("Failed to serialize params: {}", e)))?;
 
 		// Build ContextFFI with real callbacks
 		let callbacks = create_procedure_host_callbacks();
@@ -147,11 +146,9 @@ impl Procedure for NativeProcedureFFI {
 		if result_code != 0 {
 			memory::clear_current_arena();
 			arena.clear();
-			return Err(reifydb_sdk::error::FFIError::Other(format!(
-				"FFI procedure call failed with code: {}",
-				result_code
-			))
-			.into());
+			return Err(
+				FFIError::Other(format!("FFI procedure call failed with code: {}", result_code)).into()
+			);
 		}
 
 		let columns = arena.unmarshal_columns(&ffi_output);
@@ -169,6 +166,8 @@ use reifydb_abi::{
 	catalog::{namespace::NamespaceFFI, table::TableFFI},
 	context::iterators::{StateIteratorFFI, StoreIteratorFFI},
 };
+use reifydb_sdk::error::FFIError;
+use reifydb_type::Result;
 
 fn stub_state_callbacks() -> StateCallbacks {
 	StateCallbacks {

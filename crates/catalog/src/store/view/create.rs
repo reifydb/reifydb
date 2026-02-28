@@ -16,7 +16,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, value::constraint::TypeConstraint};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
@@ -40,21 +40,18 @@ pub struct ViewToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_deferred_view(
-		txn: &mut AdminTransaction,
-		to_create: ViewToCreate,
-	) -> crate::Result<ViewDef> {
+	pub(crate) fn create_deferred_view(txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<ViewDef> {
 		Self::create_view(txn, to_create, Deferred)
 	}
 
 	pub(crate) fn create_transactional_view(
 		txn: &mut AdminTransaction,
 		to_create: ViewToCreate,
-	) -> crate::Result<ViewDef> {
+	) -> Result<ViewDef> {
 		Self::create_view(txn, to_create, Transactional)
 	}
 
-	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> crate::Result<ViewDef> {
+	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> Result<ViewDef> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(view) = CatalogStore::find_view_by_name(
@@ -87,7 +84,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &ViewToCreate,
 		kind: ViewKind,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = view::SCHEMA.allocate();
 		view::SCHEMA.set_u64(&mut row, view::ID, view);
 		view::SCHEMA.set_u64(&mut row, view::NAMESPACE, namespace);
@@ -112,7 +109,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		view: ViewId,
 		name: &str,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = view_namespace::SCHEMA.allocate();
 		view_namespace::SCHEMA.set_u64(&mut row, view_namespace::ID, view);
 		view_namespace::SCHEMA.set_utf8(&mut row, view_namespace::NAME, name);
@@ -120,11 +117,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn insert_columns_for_view(
-		txn: &mut AdminTransaction,
-		view: ViewId,
-		to_create: ViewToCreate,
-	) -> crate::Result<()> {
+	fn insert_columns_for_view(txn: &mut AdminTransaction, view: ViewId, to_create: ViewToCreate) -> Result<()> {
 		// Look up namespace name for error messages
 		let namespace = Self::get_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?;
 

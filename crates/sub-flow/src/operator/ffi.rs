@@ -23,7 +23,7 @@ use reifydb_core::{
 };
 use reifydb_engine::vm::executor::Executor;
 use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_type::{Result, value::row_number::RowNumber};
 use tracing::{Span, error, instrument};
 
 use crate::{
@@ -127,7 +127,7 @@ fn call_vtable(
 /// Unmarshal FFI output to Change
 #[inline]
 #[instrument(name = "flow::ffi::unmarshal", level = "trace", skip_all)]
-fn unmarshal_output(arena: &mut Arena, ffi_output: &ChangeFFI) -> Result<Change, String> {
+fn unmarshal_output(arena: &mut Arena, ffi_output: &ChangeFFI) -> std::result::Result<Change, String> {
 	arena.unmarshal_change(ffi_output)
 }
 
@@ -141,7 +141,7 @@ impl Operator for FFIOperator {
 		input_diff_count = change.diffs.len(),
 		output_diff_count = tracing::field::Empty
 	))]
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut arena = self.arena.borrow_mut();
 
 		let ffi_input = marshal_input(&mut arena, &change);
@@ -176,7 +176,7 @@ impl Operator for FFIOperator {
 		Ok(output_change)
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		let mut arena = self.arena.borrow_mut();
 
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();

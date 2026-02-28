@@ -9,7 +9,10 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 pub(crate) struct VirtualScanNode {
 	virtual_table: VTables,
@@ -19,11 +22,7 @@ pub(crate) struct VirtualScanNode {
 }
 
 impl VirtualScanNode {
-	pub fn new(
-		virtual_table: VTables,
-		context: Arc<QueryContext>,
-		table_context: VTableContext,
-	) -> crate::Result<Self> {
+	pub fn new(virtual_table: VTables, context: Arc<QueryContext>, table_context: VTableContext) -> Result<Self> {
 		let def = virtual_table.definition();
 
 		let headers = ColumnHeaders {
@@ -41,7 +40,7 @@ impl VirtualScanNode {
 
 impl QueryNode for VirtualScanNode {
 	#[instrument(name = "volcano::scan::virtual::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		let ctx = self.table_context.take().unwrap_or_else(|| VTableContext::Basic {
 			params: self.context.as_ref().unwrap().params.clone(),
 		});
@@ -50,7 +49,7 @@ impl QueryNode for VirtualScanNode {
 	}
 
 	#[instrument(name = "volcano::scan::virtual::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
 		match self.virtual_table.next(rx)? {
 			Some(vtable_batch) => Ok(Some(vtable_batch.columns)),

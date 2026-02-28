@@ -7,10 +7,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_handler(rx: &mut Transaction<'_>, handler: HandlerId) -> crate::Result<HandlerDef> {
+	pub(crate) fn get_handler(rx: &mut Transaction<'_>, handler: HandlerId) -> Result<HandlerDef> {
 		match Self::find_handler(rx, handler)? {
 			Some(def) => Ok(def),
 			None => return_internal_error!("Handler with ID {:?} not found in catalog.", handler),

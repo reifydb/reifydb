@@ -8,16 +8,16 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::policy::{convert_policy, schema::policy},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_policy(rx: &mut Transaction<'_>, id: PolicyId) -> crate::Result<Option<PolicyDef>> {
+	pub(crate) fn find_policy(rx: &mut Transaction<'_>, id: PolicyId) -> Result<Option<PolicyDef>> {
 		Ok(rx.get(&PolicyKey::encoded(id))?.map(convert_policy))
 	}
 
-	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> crate::Result<Option<PolicyDef>> {
+	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<PolicyDef>> {
 		let mut stream = rx.range(PolicyKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {

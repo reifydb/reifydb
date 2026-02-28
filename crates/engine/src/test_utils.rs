@@ -13,7 +13,7 @@ use reifydb_catalog::{
 	schema::SchemaRegistry,
 };
 use reifydb_cdc::{
-	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
+	produce::producer::{CdcProduceMsg, CdcProducerEventListener, spawn_cdc_producer},
 	storage::CdcStore,
 };
 use reifydb_core::{
@@ -22,6 +22,7 @@ use reifydb_core::{
 		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
 		transaction::PostCommitEvent,
 	},
+	interface::catalog::id::NamespaceId,
 	util::ioc::IocContainer,
 };
 use reifydb_function::registry::Functions;
@@ -30,7 +31,7 @@ use reifydb_metric::worker::{
 };
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
-	actor::system::{ActorSystem, ActorSystemConfig},
+	actor::system::{ActorHandle, ActorSystem, ActorSystemConfig},
 	clock::Clock,
 };
 use reifydb_store_multi::MultiStore;
@@ -46,7 +47,7 @@ use reifydb_type::{
 	value::{constraint::TypeConstraint, r#type::Type},
 };
 
-use crate::{engine::StandardEngine, procedure::registry::Procedures};
+use crate::{engine::StandardEngine, procedure::registry::Procedures, transform::registry::Transforms};
 
 pub fn create_test_admin_transaction() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
@@ -87,7 +88,7 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 			NamespaceToCreate {
 				namespace_fragment: None,
 				name: "reifydb".to_string(),
-				parent_id: reifydb_core::interface::catalog::id::NamespaceId::ROOT,
+				parent_id: NamespaceId::ROOT,
 			},
 		)
 		.unwrap();
@@ -186,7 +187,7 @@ pub fn create_test_engine() -> StandardEngine {
 		runtime.clock().clone(),
 		Functions::builder().build(),
 		Procedures::empty(),
-		crate::transform::registry::Transforms::empty(),
+		Transforms::empty(),
 		ioc,
 	);
 
@@ -201,10 +202,7 @@ pub fn create_test_engine() -> StandardEngine {
 		cdc_handle.actor_ref().clone(),
 		runtime.clock().clone(),
 	));
-	ioc_for_cdc
-		.register_service::<Arc<reifydb_runtime::actor::system::ActorHandle<reifydb_cdc::produce::producer::CdcProduceMsg>>>(
-			Arc::new(cdc_handle),
-		);
+	ioc_for_cdc.register_service::<Arc<ActorHandle<CdcProduceMsg>>>(Arc::new(cdc_handle));
 
 	engine
 }

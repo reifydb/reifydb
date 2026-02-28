@@ -6,13 +6,13 @@ use reifydb_rql::nodes::DropAuthenticationNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn drop_authentication(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: DropAuthenticationNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let user_name = plan.user.text();
 	let method = plan.method.text();
 

@@ -17,7 +17,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		dictionary::schema::{dictionary, dictionary_namespace},
@@ -37,7 +37,7 @@ impl CatalogStore {
 	pub(crate) fn create_dictionary(
 		txn: &mut AdminTransaction,
 		to_create: DictionaryToCreate,
-	) -> crate::Result<DictionaryDef> {
+	) -> Result<DictionaryDef> {
 		let namespace_id = to_create.namespace;
 
 		// Check if dictionary already exists
@@ -76,7 +76,7 @@ impl CatalogStore {
 		dictionary: DictionaryId,
 		namespace: NamespaceId,
 		to_create: &DictionaryToCreate,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = dictionary::SCHEMA.allocate();
 		dictionary::SCHEMA.set_u64(&mut row, dictionary::ID, dictionary);
 		dictionary::SCHEMA.set_u64(&mut row, dictionary::NAMESPACE, namespace);
@@ -94,7 +94,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		dictionary: DictionaryId,
 		name: &str,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let mut row = dictionary_namespace::SCHEMA.allocate();
 		dictionary_namespace::SCHEMA.set_u64(&mut row, dictionary_namespace::ID, dictionary);
 		dictionary_namespace::SCHEMA.set_utf8(&mut row, dictionary_namespace::NAME, name);
@@ -104,7 +104,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn initialize_dictionary_sequence(txn: &mut AdminTransaction, dictionary: DictionaryId) -> crate::Result<()> {
+	fn initialize_dictionary_sequence(txn: &mut AdminTransaction, dictionary: DictionaryId) -> Result<()> {
 		// Initialize sequence counter to 0
 		// This ensures StorageTracker begins tracking the dictionary immediately
 		let seq_key = DictionarySequenceKey::encoded(dictionary);
@@ -195,7 +195,7 @@ pub mod tests {
 		let links: Vec<_> = txn
 			.range(NamespaceDictionaryKey::full_scan(test_namespace.id), 1024)
 			.unwrap()
-			.collect::<Result<Vec<_>, _>>()
+			.collect::<Result<Vec<_>>>()
 			.unwrap();
 		assert_eq!(links.len(), 2);
 

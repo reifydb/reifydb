@@ -6,7 +6,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
-	convert_data_type_with_constraints,
+	Result, convert_data_type_with_constraints,
 	plan::{
 		logical,
 		physical::{Compiler, CreateDictionaryNode, PhysicalPlan},
@@ -18,7 +18,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		create: logical::CreateDictionaryNode<'_>,
-	) -> crate::Result<PhysicalPlan<'bump>> {
+	) -> Result<PhysicalPlan<'bump>> {
 		let namespace_name = if create.dictionary.namespace.is_empty() {
 			"default".to_string()
 		} else {

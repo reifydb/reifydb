@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::ringbuffer::schema::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
 };
 
@@ -22,7 +22,7 @@ impl CatalogStore {
 	pub(crate) fn find_ringbuffer(
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
-	) -> crate::Result<Option<RingBufferDef>> {
+	) -> Result<Option<RingBufferDef>> {
 		let Some(multi) = rx.get(&RingBufferKey::encoded(ringbuffer))? else {
 			return Ok(None);
 		};
@@ -46,7 +46,7 @@ impl CatalogStore {
 	pub(crate) fn find_ringbuffer_metadata(
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
-	) -> crate::Result<Option<RingBufferMetadata>> {
+	) -> Result<Option<RingBufferMetadata>> {
 		let Some(multi) = rx.get(&RingBufferMetadataKey::encoded(ringbuffer))? else {
 			return Ok(None);
 		};
@@ -71,7 +71,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<RingBufferDef>> {
+	) -> Result<Option<RingBufferDef>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceRingBufferKey::full_scan(namespace), 1024)?;
 

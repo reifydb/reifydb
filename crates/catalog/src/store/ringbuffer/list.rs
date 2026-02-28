@@ -10,10 +10,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
+use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer};
 
 impl CatalogStore {
-	pub(crate) fn list_ringbuffers_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<RingBufferDef>> {
+	pub(crate) fn list_ringbuffers_all(rx: &mut Transaction<'_>) -> Result<Vec<RingBufferDef>> {
 		let mut result = Vec::new();
 
 		// Collect ringbuffer data first to avoid holding stream borrow

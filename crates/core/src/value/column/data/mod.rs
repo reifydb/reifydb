@@ -14,6 +14,7 @@ use std::fmt;
 
 use reifydb_type::{
 	storage::{Cow, DataBitVec, Storage},
+	util::bitvec::BitVec,
 	value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
@@ -360,7 +361,7 @@ impl Serialize for ColumnData<Cow> {
 			DictionaryId(&'a DictionaryContainer),
 			Option {
 				inner: &'a Box<ColumnData>,
-				bitvec: &'a reifydb_type::util::bitvec::BitVec,
+				bitvec: &'a BitVec,
 			},
 		}
 		let helper = match self {
@@ -484,7 +485,7 @@ impl<'de> Deserialize<'de> for ColumnData<Cow> {
 			DictionaryId(DictionaryContainer),
 			Option {
 				inner: Box<ColumnData>,
-				bitvec: reifydb_type::util::bitvec::BitVec,
+				bitvec: BitVec,
 			},
 		}
 		let helper = Helper::deserialize(deserializer)?;
@@ -870,7 +871,7 @@ impl ColumnData {
 			Type::DictionaryId => Self::dictionary_id_with_capacity(capacity),
 			Type::Option(inner) => ColumnData::Option {
 				inner: Box::new(ColumnData::with_capacity(*inner, capacity)),
-				bitvec: reifydb_type::util::bitvec::BitVec::with_capacity(capacity),
+				bitvec: BitVec::with_capacity(capacity),
 			},
 			Type::Any | Type::List(_) => Self::any_with_capacity(capacity),
 		}

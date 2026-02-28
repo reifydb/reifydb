@@ -8,10 +8,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, store::subscription::schema::subscription};
+use crate::{CatalogStore, Result, store::subscription::schema::subscription};
 
 impl CatalogStore {
-	pub(crate) fn list_subscriptions_all(rx: &mut Transaction<'_>) -> crate::Result<Vec<SubscriptionDef>> {
+	pub(crate) fn list_subscriptions_all(rx: &mut Transaction<'_>) -> Result<Vec<SubscriptionDef>> {
 		// First, collect all subscription IDs and metadata
 		let mut subscription_data = Vec::new();
 		{

@@ -6,7 +6,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::Value;
+use reifydb_type::{Result, params::Params, value::Value};
 
 use super::{Procedure, context::ProcedureContext};
 
@@ -24,9 +24,9 @@ impl IdentityInject {
 }
 
 impl Procedure for IdentityInject {
-	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> reifydb_type::Result<Columns> {
+	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns> {
 		let identity_id = match ctx.params {
-			reifydb_type::params::Params::Positional(args) if args.len() == 1 => match &args[0] {
+			Params::Positional(args) if args.len() == 1 => match &args[0] {
 				Value::IdentityId(id) => *id,
 				other => {
 					return Err(internal_error!(

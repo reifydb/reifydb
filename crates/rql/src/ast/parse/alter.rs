@@ -4,26 +4,27 @@
 use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
+	Result,
 	ast::{
 		ast::{
 			AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstAlterTable,
-			AstAlterTableAction, AstStatement,
+			AstAlterTableAction, AstLiteral, AstLiteralNumber, AstPolicyTargetType, AstStatement,
 		},
 		identifier::{
 			MaybeQualifiedFlowIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
 		},
-		parse::Parser,
+		parse::{Parser, Precedence},
 	},
 	token::{
 		keyword::Keyword,
 		operator::Operator,
 		separator::Separator,
-		token::{Token, TokenKind},
+		token::{Literal, Token, TokenKind},
 	},
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_alter(&mut self) -> crate::Result<AstAlter<'bump>> {
+	pub(crate) fn parse_alter(&mut self) -> Result<AstAlter<'bump>> {
 		let token = self.consume_keyword(Keyword::Alter)?;
 
 		if self.current()?.is_keyword(Keyword::Sequence) {
@@ -34,7 +35,7 @@ impl<'bump> Parser<'bump> {
 		if self.current()?.is_keyword(Keyword::Flow) {
 			self.consume_keyword(Keyword::Flow)?;
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Flow);
+				return self.parse_alter_policy(token, AstPolicyTargetType::Flow);
 			}
 			return self.parse_alter_flow(token);
 		}
@@ -43,7 +44,7 @@ impl<'bump> Parser<'bump> {
 			self.consume_keyword(Keyword::Table)?;
 			if self.current()?.is_keyword(Keyword::Policy) {
 				self.consume_keyword(Keyword::Policy)?;
-				return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Table);
+				return self.parse_alter_policy(token, AstPolicyTargetType::Table);
 			}
 			return self.parse_alter_table(token);
 		}
@@ -51,67 +52,67 @@ impl<'bump> Parser<'bump> {
 		if self.current()?.is_keyword(Keyword::View) {
 			self.consume_keyword(Keyword::View)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::View);
+			return self.parse_alter_policy(token, AstPolicyTargetType::View);
 		}
 
 		if self.current()?.is_keyword(Keyword::Ringbuffer) {
 			self.consume_keyword(Keyword::Ringbuffer)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::RingBuffer);
+			return self.parse_alter_policy(token, AstPolicyTargetType::RingBuffer);
 		}
 
 		if self.current()?.is_keyword(Keyword::Namespace) {
 			self.consume_keyword(Keyword::Namespace)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Namespace);
+			return self.parse_alter_policy(token, AstPolicyTargetType::Namespace);
 		}
 
 		if self.current()?.is_keyword(Keyword::Procedure) {
 			self.consume_keyword(Keyword::Procedure)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Procedure);
+			return self.parse_alter_policy(token, AstPolicyTargetType::Procedure);
 		}
 
 		if self.current()?.is_keyword(Keyword::Function) {
 			self.consume_keyword(Keyword::Function)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Function);
+			return self.parse_alter_policy(token, AstPolicyTargetType::Function);
 		}
 
 		if self.current()?.is_keyword(Keyword::Session) {
 			self.consume_keyword(Keyword::Session)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Session);
+			return self.parse_alter_policy(token, AstPolicyTargetType::Session);
 		}
 
 		if self.current()?.is_keyword(Keyword::Series) {
 			self.consume_keyword(Keyword::Series)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Series);
+			return self.parse_alter_policy(token, AstPolicyTargetType::Series);
 		}
 
 		if self.current()?.is_keyword(Keyword::Dictionary) {
 			self.consume_keyword(Keyword::Dictionary)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Dictionary);
+			return self.parse_alter_policy(token, AstPolicyTargetType::Dictionary);
 		}
 
 		if self.current()?.is_keyword(Keyword::Subscription) {
 			self.consume_keyword(Keyword::Subscription)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Subscription);
+			return self.parse_alter_policy(token, AstPolicyTargetType::Subscription);
 		}
 
 		if self.current()?.is_keyword(Keyword::Feature) {
 			self.consume_keyword(Keyword::Feature)?;
 			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_alter_policy(token, crate::ast::ast::AstPolicyTargetType::Feature);
+			return self.parse_alter_policy(token, AstPolicyTargetType::Feature);
 		}
 
 		unimplemented!("Only ALTER SEQUENCE, ALTER FLOW, ALTER TABLE, and ALTER <TYPE> POLICY are supported");
 	}
 
-	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
+	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
 		// Parse [namespace...].table.column (at least 2 segments required)
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		if segments.len() < 2 {
@@ -130,11 +131,10 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_keyword(Keyword::Set)?;
 		self.consume_keyword(Keyword::Value)?;
-		let value_token =
-			self.consume(crate::token::token::TokenKind::Literal(crate::token::token::Literal::Number))?;
+		let value_token = self.consume(TokenKind::Literal(Literal::Number))?;
 
 		let column = column_token.into_fragment();
-		let value = crate::ast::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(value_token));
+		let value = AstLiteral::Number(AstLiteralNumber(value_token));
 
 		Ok(AstAlter::Sequence(AstAlterSequence {
 			token,
@@ -144,7 +144,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_alter_table(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
+	fn parse_alter_table(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -196,7 +196,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_alter_flow(&mut self, token: Token<'bump>) -> crate::Result<AstAlter<'bump>> {
+	fn parse_alter_flow(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -234,7 +234,7 @@ impl<'bump> Parser<'bump> {
 						break;
 					}
 
-					let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+					let node = self.parse_node(Precedence::None)?;
 					query_nodes.push(node);
 				}
 
@@ -260,7 +260,7 @@ impl<'bump> Parser<'bump> {
 						break;
 					}
 
-					let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+					let node = self.parse_node(Precedence::None)?;
 					query_nodes.push(node);
 
 					// Check if we've consumed everything up to a terminator
@@ -314,7 +314,7 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::{AstAlter, AstAlterFlowAction, AstAlterSequence, AstAlterTableAction},
+			ast::{AstAlter, AstAlterFlowAction, AstAlterSequence, AstAlterTableAction, AstLiteral},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -345,7 +345,7 @@ pub mod tests {
 				assert_eq!(sequence.name.text(), "users");
 				assert_eq!(column.text(), "id");
 				match value {
-					crate::ast::ast::AstLiteral::Number(num) => {
+					AstLiteral::Number(num) => {
 						assert_eq!(num.value(), "1000")
 					}
 					_ => panic!("Expected number literal"),
@@ -377,7 +377,7 @@ pub mod tests {
 				assert_eq!(sequence.name.text(), "users");
 				assert_eq!(column.text(), "id");
 				match value {
-					crate::ast::ast::AstLiteral::Number(num) => {
+					AstLiteral::Number(num) => {
 						assert_eq!(num.value(), "500")
 					}
 					_ => panic!("Expected number literal"),

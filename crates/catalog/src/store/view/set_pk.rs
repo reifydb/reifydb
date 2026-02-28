@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::{CatalogStore, store::view::schema::view};
+use crate::{CatalogStore, Result, store::view::schema::view};
 
 impl CatalogStore {
 	/// Set the primary key ID for a view
@@ -17,7 +17,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
-	) -> crate::Result<()> {
+	) -> Result<()> {
 		let multi = match txn.get(&ViewKey::encoded(view_id))? {
 			Some(v) => v,
 			None => return_internal_error!(format!(

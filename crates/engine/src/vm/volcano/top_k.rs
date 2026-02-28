@@ -13,10 +13,13 @@ use reifydb_core::{
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error, util::cowvec::CowVec, value::Value};
+use reifydb_type::{error, error::Error, util::cowvec::CowVec, value::Value};
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 /// A heap entry that stores a row index and its cached sort key values.
 /// The Ord implementation is designed so that BinaryHeap (a max-heap) will
@@ -90,14 +93,14 @@ impl TopKNode {
 
 impl QueryNode for TopKNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::top_k::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::top_k::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.initialized.is_some(), "TopKNode::next() called before initialize()");
 
 		// Handle edge case: limit of 0
@@ -138,9 +141,9 @@ impl QueryNode for TopKNode {
 						.iter()
 						.find(|c| c.name() == key.column.fragment())
 						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-					Ok::<_, reifydb_type::error::Error>((col.data().clone(), key.direction.clone()))
+					Ok::<_, Error>((col.data().clone(), key.direction.clone()))
 				})
-				.collect::<crate::Result<Vec<_>>>()?;
+				.collect::<Result<Vec<_>>>()?;
 
 		let directions: Vec<_> = self.by.iter().map(|k| k.direction.clone()).collect();
 
@@ -208,7 +211,7 @@ impl QueryNode for TopKNode {
 
 impl TopKNode {
 	/// Fallback to regular sorting when row count <= limit
-	fn sort_all(&self, columns: &mut Columns) -> crate::Result<Option<Columns>> {
+	fn sort_all(&self, columns: &mut Columns) -> Result<Option<Columns>> {
 		let key_refs: Vec<_> =
 			self.by.iter()
 				.map(|key| {
@@ -216,9 +219,9 @@ impl TopKNode {
 						.iter()
 						.find(|c| c.name() == key.column.fragment())
 						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-					Ok::<_, reifydb_type::error::Error>((col.data().clone(), key.direction.clone()))
+					Ok::<_, Error>((col.data().clone(), key.direction.clone()))
 				})
-				.collect::<crate::Result<Vec<_>>>()?;
+				.collect::<Result<Vec<_>>>()?;
 
 		let row_count = columns.row_count();
 		let mut indices: Vec<usize> = (0..row_count).collect();

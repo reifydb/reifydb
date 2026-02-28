@@ -6,13 +6,13 @@ use reifydb_rql::nodes::{AlterTableAction, AlterTableNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn execute_alter_table(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterTableNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let namespace_id = plan.namespace.def().id;
 	let namespace_name = plan.namespace.name().to_string();
 	let table_name = plan.table.text().to_string();
@@ -61,6 +61,7 @@ pub(crate) fn execute_alter_table(
 
 #[cfg(test)]
 mod tests {
+	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_type::{
 		params::Params,
 		value::{Value, identity::IdentityId},
@@ -71,7 +72,7 @@ mod tests {
 		vm::{Admin, executor::Executor},
 	};
 
-	fn setup() -> (Executor, reifydb_transaction::transaction::admin::AdminTransaction, IdentityId) {
+	fn setup() -> (Executor, AdminTransaction, IdentityId) {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 		let identity = IdentityId::root();

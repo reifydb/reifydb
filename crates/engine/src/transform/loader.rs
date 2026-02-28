@@ -221,20 +221,17 @@ impl Drop for TransformLoader {
 
 /// Scan a directory for FFI transform shared libraries, register them,
 /// and return a `Transforms` registry with factory functions for each.
-pub fn load_transforms_from_dir(dir: &Path) -> reifydb_type::Result<Transforms> {
+pub fn load_transforms_from_dir(dir: &Path) -> FFIResult<Transforms> {
 	let loader = ffi_transform_loader();
 	let mut loader_guard = loader.write().unwrap();
 
 	let mut names = Vec::new();
 
-	let entries = std::fs::read_dir(dir).map_err(|e| {
-		reifydb_sdk::error::FFIError::Other(format!("Failed to read directory {}: {}", dir.display(), e))
-	})?;
+	let entries = std::fs::read_dir(dir)
+		.map_err(|e| FFIError::Other(format!("Failed to read directory {}: {}", dir.display(), e)))?;
 
 	for entry in entries {
-		let entry = entry.map_err(|e| {
-			reifydb_sdk::error::FFIError::Other(format!("Failed to read directory entry: {}", e))
-		})?;
+		let entry = entry.map_err(|e| FFIError::Other(format!("Failed to read directory entry: {}", e)))?;
 		let path = entry.path();
 		let ext = path.extension().and_then(|s| s.to_str());
 

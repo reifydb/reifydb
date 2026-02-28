@@ -17,24 +17,18 @@ use reifydb_type::{
 	value::{Value, dictionary::DictionaryEntryId},
 };
 
+use crate::Result;
+
 pub(crate) trait DictionaryOperations {
 	/// Insert a value into the dictionary, returning its ID.
 	/// If the value already exists, returns the existing ID.
 	/// If the value is new, assigns a new ID and stores it.
 	/// The returned ID type matches the dictionary's `id_type`.
-	fn insert_into_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		value: &Value,
-	) -> crate::Result<DictionaryEntryId>;
+	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId>;
 
 	/// Get a value from the dictionary by its ID.
 	/// Returns None if the ID doesn't exist.
-	fn get_from_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		id: DictionaryEntryId,
-	) -> crate::Result<Option<Value>>;
+	fn get_from_dictionary(&mut self, dictionary: &DictionaryDef, id: DictionaryEntryId) -> Result<Option<Value>>;
 
 	/// Find the ID of a value in the dictionary without inserting.
 	/// Returns the ID if the value exists, None otherwise.
@@ -43,15 +37,11 @@ pub(crate) trait DictionaryOperations {
 		&mut self,
 		dictionary: &DictionaryDef,
 		value: &Value,
-	) -> crate::Result<Option<DictionaryEntryId>>;
+	) -> Result<Option<DictionaryEntryId>>;
 }
 
 impl DictionaryOperations for CommandTransaction {
-	fn insert_into_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		value: &Value,
-	) -> crate::Result<DictionaryEntryId> {
+	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId> {
 		// 1. Serialize value and compute hash
 		let value_bytes =
 			postcard::to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
@@ -93,11 +83,7 @@ impl DictionaryOperations for CommandTransaction {
 		Ok(entry_id)
 	}
 
-	fn get_from_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		id: DictionaryEntryId,
-	) -> crate::Result<Option<Value>> {
+	fn get_from_dictionary(&mut self, dictionary: &DictionaryDef, id: DictionaryEntryId) -> Result<Option<Value>> {
 		// Note: DictionaryEntryIndexKey currently uses u64, so we truncate
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
 		match self.get(&index_key)? {
@@ -114,7 +100,7 @@ impl DictionaryOperations for CommandTransaction {
 		&mut self,
 		dictionary: &DictionaryDef,
 		value: &Value,
-	) -> crate::Result<Option<DictionaryEntryId>> {
+	) -> Result<Option<DictionaryEntryId>> {
 		let value_bytes =
 			postcard::to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
@@ -132,11 +118,7 @@ impl DictionaryOperations for CommandTransaction {
 }
 
 impl DictionaryOperations for AdminTransaction {
-	fn insert_into_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		value: &Value,
-	) -> crate::Result<DictionaryEntryId> {
+	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId> {
 		// 1. Serialize value and compute hash
 		let value_bytes =
 			postcard::to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
@@ -176,11 +158,7 @@ impl DictionaryOperations for AdminTransaction {
 		Ok(entry_id)
 	}
 
-	fn get_from_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		id: DictionaryEntryId,
-	) -> crate::Result<Option<Value>> {
+	fn get_from_dictionary(&mut self, dictionary: &DictionaryDef, id: DictionaryEntryId) -> Result<Option<Value>> {
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
 		match self.get(&index_key)? {
 			Some(v) => {
@@ -196,7 +174,7 @@ impl DictionaryOperations for AdminTransaction {
 		&mut self,
 		dictionary: &DictionaryDef,
 		value: &Value,
-	) -> crate::Result<Option<DictionaryEntryId>> {
+	) -> Result<Option<DictionaryEntryId>> {
 		let value_bytes =
 			postcard::to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
@@ -216,11 +194,7 @@ impl DictionaryOperations for AdminTransaction {
 /// Implementation for Transaction (both Command and Query)
 /// This provides read-only access to dictionaries for query operations.
 impl DictionaryOperations for Transaction<'_> {
-	fn insert_into_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		value: &Value,
-	) -> crate::Result<DictionaryEntryId> {
+	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId> {
 		// Only command and admin transactions can insert
 		match self {
 			Transaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
@@ -231,11 +205,7 @@ impl DictionaryOperations for Transaction<'_> {
 		}
 	}
 
-	fn get_from_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		id: DictionaryEntryId,
-	) -> crate::Result<Option<Value>> {
+	fn get_from_dictionary(&mut self, dictionary: &DictionaryDef, id: DictionaryEntryId) -> Result<Option<Value>> {
 		// Both command and query transactions can read
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128() as u64);
 		match self.get(&index_key)? {
@@ -252,7 +222,7 @@ impl DictionaryOperations for Transaction<'_> {
 		&mut self,
 		dictionary: &DictionaryDef,
 		value: &Value,
-	) -> crate::Result<Option<DictionaryEntryId>> {
+	) -> Result<Option<DictionaryEntryId>> {
 		// Both command and query transactions can read
 		let value_bytes =
 			postcard::to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;

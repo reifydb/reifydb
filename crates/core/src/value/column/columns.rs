@@ -9,6 +9,7 @@ use std::{
 
 use indexmap::IndexMap;
 use reifydb_type::{
+	Result,
 	fragment::Fragment,
 	util::cowvec::CowVec,
 	value::{Value, constraint::Constraint, row_number::RowNumber, r#type::Type},
@@ -255,7 +256,7 @@ impl Columns {
 }
 
 impl Column {
-	pub fn extend(&mut self, other: Column) -> reifydb_type::Result<()> {
+	pub fn extend(&mut self, other: Column) -> Result<()> {
 		self.data_mut().extend(other.data().clone())
 	}
 }

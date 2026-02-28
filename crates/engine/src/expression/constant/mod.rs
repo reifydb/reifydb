@@ -21,7 +21,9 @@ use reifydb_type::{
 use temporal::TemporalParser;
 use text::TextParser;
 
-pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> crate::Result<ColumnData> {
+use crate::Result;
+
+pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Result<ColumnData> {
 	Ok(match expr {
 		ConstantExpression::Bool {
 			fragment,
@@ -89,11 +91,7 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> cra
 	})
 }
 
-pub(crate) fn constant_value_of(
-	expr: &ConstantExpression,
-	target: Type,
-	row_count: usize,
-) -> crate::Result<ColumnData> {
+pub(crate) fn constant_value_of(expr: &ConstantExpression, target: Type, row_count: usize) -> Result<ColumnData> {
 	Ok(match (expr, target) {
 		(
 			ConstantExpression::Number {

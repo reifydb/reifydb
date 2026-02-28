@@ -8,13 +8,11 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::SumTypeId;
 
-use crate::{CatalogStore, store::sumtype::schema::sumtype_namespace};
+use super::sumtype_def_from_row;
+use crate::{CatalogStore, Result, store::sumtype::schema::sumtype_namespace};
 
 impl CatalogStore {
-	pub(crate) fn list_sumtypes(
-		rx: &mut Transaction<'_>,
-		namespace: NamespaceId,
-	) -> crate::Result<Vec<SumTypeDef>> {
+	pub(crate) fn list_sumtypes(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<SumTypeDef>> {
 		let mut ids = Vec::new();
 		{
 			let mut stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), 1024)?;
@@ -35,13 +33,13 @@ impl CatalogStore {
 		Ok(results)
 	}
 
-	pub(crate) fn list_all_sumtypes(rx: &mut Transaction<'_>) -> crate::Result<Vec<SumTypeDef>> {
+	pub(crate) fn list_all_sumtypes(rx: &mut Transaction<'_>) -> Result<Vec<SumTypeDef>> {
 		let mut results = Vec::new();
 
 		let mut stream = rx.range(SumTypeKey::full_scan(), 1024)?;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			results.push(super::sumtype_def_from_row(&multi.values));
+			results.push(sumtype_def_from_row(&multi.values));
 		}
 
 		Ok(results)

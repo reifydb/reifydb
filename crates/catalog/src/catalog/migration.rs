@@ -9,10 +9,11 @@ use reifydb_transaction::{
 	change::TransactionalMigrationChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
+use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 	store::migration::create::MigrationToCreate as StoreMigrationToCreate,
@@ -32,14 +33,14 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: MigrationToCreate,
-	) -> crate::Result<MigrationDef> {
+	) -> Result<MigrationDef> {
 		// Check transactional changes first
 		if let Some(_) = txn.find_migration_by_name(&to_create.name) {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Migration,
 				namespace: String::new(),
 				name: to_create.name,
-				fragment: reifydb_type::fragment::Fragment::None,
+				fragment: Fragment::None,
 			}
 			.into());
 		}
@@ -62,25 +63,21 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		migration: &MigrationDef,
 		action: MigrationAction,
-	) -> crate::Result<MigrationEvent> {
+	) -> Result<MigrationEvent> {
 		let event = CatalogStore::create_migration_event(txn, migration, action)?;
 		txn.track_migration_event_created(event.clone())?;
 		Ok(event)
 	}
 
-	pub fn list_migrations(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<MigrationDef>> {
+	pub fn list_migrations(&self, txn: &mut Transaction<'_>) -> Result<Vec<MigrationDef>> {
 		CatalogStore::list_migrations(txn)
 	}
 
-	pub fn list_migration_events(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<MigrationEvent>> {
+	pub fn list_migration_events(&self, txn: &mut Transaction<'_>) -> Result<Vec<MigrationEvent>> {
 		CatalogStore::list_migration_events(txn)
 	}
 
-	pub fn find_migration_by_name(
-		&self,
-		txn: &mut Transaction<'_>,
-		name: &str,
-	) -> crate::Result<Option<MigrationDef>> {
+	pub fn find_migration_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<MigrationDef>> {
 		CatalogStore::find_migration_by_name(txn, name)
 	}
 }

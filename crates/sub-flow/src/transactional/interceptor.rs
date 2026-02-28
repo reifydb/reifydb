@@ -19,9 +19,12 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::{
-	catalog::{flow::FlowId, primitive::PrimitiveId},
-	change::{Change, ChangeOrigin, Diff},
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{
+		catalog::{flow::FlowId, primitive::PrimitiveId},
+		change::{Change, ChangeOrigin, Diff},
+	},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::{
@@ -32,6 +35,7 @@ use reifydb_transaction::{
 	},
 	multi::transaction::read::MultiReadTransaction,
 };
+use reifydb_type::Result;
 
 use crate::{
 	engine::FlowEngine,
@@ -57,7 +61,7 @@ pub struct TransactionalFlowPreCommitInterceptor {
 }
 
 impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
-	fn intercept(&self, ctx: &mut PreCommitContext) -> reifydb_type::Result<()> {
+	fn intercept(&self, ctx: &mut PreCommitContext) -> Result<()> {
 		if ctx.flow_changes.is_empty() {
 			return Ok(());
 		}
@@ -146,7 +150,7 @@ impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
 /// `Change` with one `Diff::Insert` / `Diff::Update` / `Diff::Remove` containing
 /// multi-row `Columns`. Operators like hash-join group rows by join key within a
 /// single `Diff`, so this deep merge is required for consistent output ordering.
-fn merge_changes_by_origin(changes: &[Change], version: reifydb_core::common::CommitVersion) -> Vec<Change> {
+fn merge_changes_by_origin(changes: &[Change], version: CommitVersion) -> Vec<Change> {
 	let mut grouped: BTreeMap<PrimitiveId, Vec<Diff>> = BTreeMap::new();
 	let mut non_primitive: Vec<Change> = Vec::new();
 
@@ -277,7 +281,7 @@ pub struct TransactionalFlowPostCommitInterceptor {
 }
 
 impl PostCommitInterceptor for TransactionalFlowPostCommitInterceptor {
-	fn intercept(&self, ctx: &mut PostCommitContext) -> reifydb_type::Result<()> {
+	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
 		for flow_change in &ctx.changes.flow_def {
 			if flow_change.op == OperationType::Create {
 				if let Some(flow_def) = &flow_change.post {

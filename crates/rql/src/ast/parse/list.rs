@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::AstList,
 		parse::{Parser, Precedence},
@@ -14,7 +15,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_list(&mut self) -> crate::Result<AstList<'bump>> {
+	pub(crate) fn parse_list(&mut self) -> Result<AstList<'bump>> {
 		let token = self.consume_operator(Operator::OpenBracket)?;
 
 		let mut nodes = Vec::with_capacity(4);

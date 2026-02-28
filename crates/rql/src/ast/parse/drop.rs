@@ -4,6 +4,7 @@
 use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
+	Result,
 	ast::{
 		ast::{
 			AstDrop, AstDropDictionary, AstDropFlow, AstDropNamespace, AstDropRingBuffer, AstDropSeries,
@@ -24,7 +25,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	pub(crate) fn parse_drop(&mut self) -> crate::Result<AstDrop<'bump>> {
+	pub(crate) fn parse_drop(&mut self) -> Result<AstDrop<'bump>> {
 		let token = self.consume_keyword(Keyword::Drop)?;
 
 		// Check what we're dropping
@@ -121,7 +122,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse IF EXISTS clause, returning true if present.
-	pub(crate) fn parse_if_exists(&mut self) -> crate::Result<bool> {
+	pub(crate) fn parse_if_exists(&mut self) -> Result<bool> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::If))?).is_some() {
 			self.consume_keyword(Keyword::Exists)?;
 			Ok(true)
@@ -131,7 +132,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse optional CASCADE or RESTRICT clause, defaulting to RESTRICT (false).
-	fn parse_cascade(&mut self) -> crate::Result<bool> {
+	fn parse_cascade(&mut self) -> Result<bool> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::Cascade))?).is_some() {
 			Ok(true)
 		} else if (self.consume_if(TokenKind::Keyword(Keyword::Restrict))?).is_some() {
@@ -141,7 +142,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_drop_flow(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	fn parse_drop_flow(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -163,7 +164,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_table(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	fn parse_drop_table(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -185,7 +186,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_view(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	fn parse_drop_view(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -207,7 +208,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_ringbuffer(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	fn parse_drop_ringbuffer(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -229,7 +230,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_namespace(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	fn parse_drop_namespace(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
 		let segments: Vec<_> = self
@@ -249,7 +250,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_dictionary(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	fn parse_drop_dictionary(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -271,7 +272,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_enum(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	fn parse_drop_enum(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -293,7 +294,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_series(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	fn parse_drop_series(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
@@ -315,7 +316,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_drop_subscription(&mut self, token: Token<'bump>) -> crate::Result<AstDrop<'bump>> {
+	fn parse_drop_subscription(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
 		let identifier = self.parse_identifier_with_hyphens()?.into_fragment();

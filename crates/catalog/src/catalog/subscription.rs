@@ -16,7 +16,7 @@ use reifydb_type::{error, fragment::Fragment, value::r#type::Type};
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	catalog::Catalog,
 	store::subscription::create::{
 		SubscriptionColumnToCreate as StoreSubscriptionColumnToCreate,
@@ -59,7 +59,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		id: SubscriptionId,
-	) -> crate::Result<Option<SubscriptionDef>> {
+	) -> Result<Option<SubscriptionDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -123,11 +123,7 @@ impl Catalog {
 
 	/// Get a subscription by ID, error if not found
 	#[instrument(name = "catalog::subscription::get", level = "trace", skip(self, txn))]
-	pub fn get_subscription(
-		&self,
-		txn: &mut Transaction<'_>,
-		id: SubscriptionId,
-	) -> crate::Result<SubscriptionDef> {
+	pub fn get_subscription(&self, txn: &mut Transaction<'_>, id: SubscriptionId) -> Result<SubscriptionDef> {
 		self.find_subscription(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Subscription with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -142,7 +138,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		subscription_id: SubscriptionId,
-	) -> crate::Result<ResolvedSubscription> {
+	) -> Result<ResolvedSubscription> {
 		let subscription_def = self.get_subscription(txn, subscription_id)?;
 		// Use subscription ID as identifier since subscriptions don't have names
 		let subscription_ident = Fragment::internal(format!("subscription_{}", subscription_id.0));
@@ -155,25 +151,21 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: SubscriptionToCreate,
-	) -> crate::Result<SubscriptionDef> {
+	) -> Result<SubscriptionDef> {
 		let subscription = CatalogStore::create_subscription(txn, to_create.into())?;
 		txn.track_subscription_def_created(subscription.clone())?;
 		Ok(subscription)
 	}
 
 	#[instrument(name = "catalog::subscription::drop", level = "debug", skip(self, txn))]
-	pub fn drop_subscription(
-		&self,
-		txn: &mut AdminTransaction,
-		subscription: SubscriptionDef,
-	) -> crate::Result<()> {
+	pub fn drop_subscription(&self, txn: &mut AdminTransaction, subscription: SubscriptionDef) -> Result<()> {
 		CatalogStore::drop_subscription(txn, subscription.id)?;
 		txn.track_subscription_def_deleted(subscription)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::subscription::list_all", level = "debug", skip(self, txn))]
-	pub fn list_subscriptions_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<SubscriptionDef>> {
+	pub fn list_subscriptions_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<SubscriptionDef>> {
 		CatalogStore::list_subscriptions_all(txn)
 	}
 }

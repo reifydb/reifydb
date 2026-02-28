@@ -26,8 +26,9 @@ use reifydb_type::{
 	value::{Value, identity::IdentityId, r#type::Type},
 };
 
-use super::primary_key;
+use super::{primary_key, schema::get_or_create_table_schema};
 use crate::{
+	Result,
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
@@ -47,8 +48,8 @@ pub(crate) fn update_table<'a>(
 	plan: UpdateTableNode,
 	params: Params,
 	identity: IdentityId,
-	symbol_table_ref: &crate::vm::stack::SymbolTable,
-) -> crate::Result<Columns> {
+	symbol_table_ref: &SymbolTable,
+) -> Result<Columns> {
 	// Get table from plan or infer from input pipeline
 	let (namespace, table) = if let Some(target) = &plan.target {
 		// Namespace and table explicitly specified
@@ -68,7 +69,7 @@ pub(crate) fn update_table<'a>(
 	};
 
 	// Get or create schema with proper field names and constraints
-	let schema = super::schema::get_or_create_table_schema(&services.catalog, &table, txn)?;
+	let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
 
 	// Create resolved source for the table
 	let namespace_ident = Fragment::internal(namespace.name.clone());

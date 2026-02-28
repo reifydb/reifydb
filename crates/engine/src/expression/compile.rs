@@ -16,8 +16,10 @@ use super::{
 	option::{binary_op_unwrap_option, unary_op_unwrap_option},
 };
 use crate::{
+	Result,
 	error::CastError,
 	expression::{
+		access::access_lookup,
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
 		call::call_eval,
 		cast::cast_column_data,
@@ -25,6 +27,8 @@ use crate::{
 		constant::{constant_value, constant_value_of},
 		context::EvalContext,
 		lookup::column_lookup,
+		parameter::parameter_lookup,
+		prefix::prefix_eval,
 	},
 	vm::stack::Variable,
 };
@@ -35,29 +39,26 @@ pub struct CompiledExpr {
 }
 
 enum CompiledExprInner {
-	Single(Box<dyn Fn(&EvalContext) -> crate::Result<Column> + Send + Sync>),
-	Multi(Box<dyn Fn(&EvalContext) -> crate::Result<Vec<Column>> + Send + Sync>),
+	Single(Box<dyn Fn(&EvalContext) -> Result<Column> + Send + Sync>),
+	Multi(Box<dyn Fn(&EvalContext) -> Result<Vec<Column>> + Send + Sync>),
 }
 
 impl CompiledExpr {
-	pub fn new(f: impl Fn(&EvalContext) -> crate::Result<Column> + Send + Sync + 'static) -> Self {
+	pub fn new(f: impl Fn(&EvalContext) -> Result<Column> + Send + Sync + 'static) -> Self {
 		Self {
 			inner: CompiledExprInner::Single(Box::new(f)),
 			access_column_name: None,
 		}
 	}
 
-	pub fn new_multi(f: impl Fn(&EvalContext) -> crate::Result<Vec<Column>> + Send + Sync + 'static) -> Self {
+	pub fn new_multi(f: impl Fn(&EvalContext) -> Result<Vec<Column>> + Send + Sync + 'static) -> Self {
 		Self {
 			inner: CompiledExprInner::Multi(Box::new(f)),
 			access_column_name: None,
 		}
 	}
 
-	pub fn new_access(
-		name: String,
-		f: impl Fn(&EvalContext) -> crate::Result<Column> + Send + Sync + 'static,
-	) -> Self {
+	pub fn new_access(name: String, f: impl Fn(&EvalContext) -> Result<Column> + Send + Sync + 'static) -> Self {
 		Self {
 			inner: CompiledExprInner::Single(Box::new(f)),
 			access_column_name: Some(name),
@@ -68,7 +69,7 @@ impl CompiledExpr {
 		self.access_column_name.as_deref()
 	}
 
-	pub fn execute(&self, ctx: &EvalContext) -> crate::Result<Column> {
+	pub fn execute(&self, ctx: &EvalContext) -> Result<Column> {
 		match &self.inner {
 			CompiledExprInner::Single(f) => f(ctx),
 			CompiledExprInner::Multi(f) => {
@@ -81,7 +82,7 @@ impl CompiledExpr {
 		}
 	}
 
-	pub fn execute_multi(&self, ctx: &EvalContext) -> crate::Result<Vec<Column>> {
+	pub fn execute_multi(&self, ctx: &EvalContext) -> Result<Vec<Column>> {
 		match &self.inner {
 			CompiledExprInner::Single(f) => Ok(vec![f(ctx)?]),
 			CompiledExprInner::Multi(f) => f(ctx),
@@ -92,7 +93,7 @@ impl CompiledExpr {
 /// Compile an `Expression` into a `CompiledExpr`.
 ///
 /// All execution logic is baked into closures at compile time — no match dispatch at runtime.
-pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Result<CompiledExpr> {
+pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<CompiledExpr> {
 	Ok(match expr {
 		Expression::Constant(e) => {
 			let expr = e.clone();
@@ -172,7 +173,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 
 		Expression::Parameter(e) => {
 			let expr = e.clone();
-			CompiledExpr::new(move |ctx| crate::expression::parameter::parameter_lookup(ctx, &expr))
+			CompiledExpr::new(move |ctx| parameter_lookup(ctx, &expr))
 		}
 
 		Expression::Alias(e) => {
@@ -399,9 +400,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 
 		Expression::Prefix(e) => {
 			let expr = e.clone();
-			CompiledExpr::new(move |ctx| {
-				crate::expression::prefix::prefix_eval(ctx, &expr, ctx.functions, ctx.clock)
-			})
+			CompiledExpr::new(move |ctx| prefix_eval(ctx, &expr, ctx.functions, ctx.clock))
 		}
 
 		Expression::Type(e) => {
@@ -418,9 +417,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 		Expression::AccessSource(e) => {
 			let col_name = e.column.name.text().to_string();
 			let expr = e.clone();
-			CompiledExpr::new_access(col_name, move |ctx| {
-				crate::expression::access::access_lookup(ctx, &expr)
-			})
+			CompiledExpr::new_access(col_name, move |ctx| access_lookup(ctx, &expr))
 		}
 
 		Expression::Tuple(e) => {
@@ -432,13 +429,13 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 					.expressions
 					.iter()
 					.map(|expr| compile_expression(_ctx, expr))
-					.collect::<crate::Result<Vec<_>>>()?;
+					.collect::<Result<Vec<_>>>()?;
 				let fragment = e.fragment.clone();
 				CompiledExpr::new(move |ctx| {
 					let columns: Vec<Column> = compiled
 						.iter()
 						.map(|expr| expr.execute(ctx))
-						.collect::<crate::Result<Vec<_>>>()?;
+						.collect::<Result<Vec<_>>>()?;
 
 					let len = columns.first().map_or(1, |c| c.data().len());
 					let mut data: Vec<Box<Value>> = Vec::with_capacity(len);
@@ -545,7 +542,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			let list: Vec<CompiledExpr> = list_expressions
 				.iter()
 				.map(|expr| compile_expression(_ctx, expr))
-				.collect::<crate::Result<Vec<_>>>()?;
+				.collect::<Result<Vec<_>>>()?;
 			let negated = e.negated;
 			let fragment = e.fragment.clone();
 			CompiledExpr::new(move |ctx| {
@@ -613,7 +610,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			let list: Vec<CompiledExpr> = list_expressions
 				.iter()
 				.map(|expr| compile_expression(_ctx, expr))
-				.collect::<crate::Result<Vec<_>>>()?;
+				.collect::<Result<Vec<_>>>()?;
 			let fragment = e.fragment.clone();
 			CompiledExpr::new(move |ctx| {
 				let value_col = value.execute(ctx)?;
@@ -697,7 +694,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 						compile_expressions(_ctx, from_ref(ei.then_expr.as_ref()))?,
 					))
 				})
-				.collect::<crate::Result<Vec<_>>>()?;
+				.collect::<Result<Vec<_>>>()?;
 			let else_branch: Option<Vec<CompiledExpr>> = match &e.else_expr {
 				Some(expr) => Some(compile_expressions(_ctx, from_ref(expr.as_ref()))?),
 				None => None,
@@ -884,13 +881,13 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 	})
 }
 
-fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> crate::Result<Vec<CompiledExpr>> {
+fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> Result<Vec<CompiledExpr>> {
 	exprs.iter().map(|e| compile_expression(ctx, e)).collect()
 }
 
 // --- Helper functions (moved from execute.rs) ---
 
-fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
+fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> Result<Column> {
 	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
 		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
 			let data: Vec<bool> = l_container
@@ -941,7 +938,7 @@ fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> crate::Res
 	})
 }
 
-fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
+fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> Result<Column> {
 	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
 		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
 			let data: Vec<bool> = l_container
@@ -992,7 +989,7 @@ fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> crate::Resu
 	})
 }
 
-fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
+fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> Result<Column> {
 	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
 		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
 			let data: Vec<bool> = l_container
@@ -1043,7 +1040,7 @@ fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> crate::Res
 	})
 }
 
-fn or_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<Column> {
+fn or_columns(left: Column, right: Column, fragment: Fragment) -> Result<Column> {
 	binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| match (left.data(), right.data()) {
 		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
 			let len = l.len();
@@ -1076,7 +1073,7 @@ fn or_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<
 	})
 }
 
-fn and_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<Column> {
+fn and_columns(left: Column, right: Column, fragment: Fragment) -> Result<Column> {
 	binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| match (left.data(), right.data()) {
 		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
 			let len = l.len();
@@ -1140,7 +1137,7 @@ fn list_items_contain(items: &[Value], element: &Value, fragment: &Fragment) -> 
 	})
 }
 
-fn list_contains_element(list_col: &Column, element_col: &Column, fragment: &Fragment) -> crate::Result<Column> {
+fn list_contains_element(list_col: &Column, element_col: &Column, fragment: &Fragment) -> Result<Column> {
 	let len = list_col.data().len();
 	let mut data = Vec::with_capacity(len);
 
@@ -1215,7 +1212,7 @@ fn execute_if_multi(
 	else_ifs: &[(CompiledExpr, Vec<CompiledExpr>)],
 	else_branch: &Option<Vec<CompiledExpr>>,
 	_fragment: &Fragment,
-) -> crate::Result<Vec<Column>> {
+) -> Result<Vec<Column>> {
 	let condition_column = condition.execute(ctx)?;
 
 	let mut result_data: Option<Vec<ColumnData>> = None;
@@ -1305,7 +1302,7 @@ fn execute_if_multi(
 	}
 }
 
-fn execute_multi_exprs(ctx: &EvalContext, exprs: &[CompiledExpr]) -> crate::Result<Vec<Column>> {
+fn execute_multi_exprs(ctx: &EvalContext, exprs: &[CompiledExpr]) -> Result<Vec<Column>> {
 	let mut result = Vec::new();
 	for expr in exprs {
 		result.extend(expr.execute_multi(ctx)?);
@@ -1313,7 +1310,7 @@ fn execute_multi_exprs(ctx: &EvalContext, exprs: &[CompiledExpr]) -> crate::Resu
 	Ok(result)
 }
 
-fn execute_map_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> crate::Result<Vec<Column>> {
+fn execute_map_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> Result<Vec<Column>> {
 	let mut result = Vec::with_capacity(expressions.len());
 
 	for expr in expressions {
@@ -1328,7 +1325,7 @@ fn execute_map_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> crate::
 	Ok(result)
 }
 
-fn execute_extend_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> crate::Result<Vec<Column>> {
+fn execute_extend_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> Result<Vec<Column>> {
 	let mut result = Vec::with_capacity(expressions.len());
 
 	for expr in expressions {

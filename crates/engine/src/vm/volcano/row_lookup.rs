@@ -13,7 +13,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, schema::Schema},
 	interface::{catalog::primitive::PrimitiveId, resolved::ResolvedPrimitive},
-	internal_error,
+	internal_err, internal_error,
 	key::row::RowKey,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
@@ -24,7 +24,10 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::vm::volcano::query::{QueryContext, QueryNode};
+use crate::{
+	Result,
+	vm::volcano::query::{QueryContext, QueryNode},
+};
 
 /// O(1) point lookup by row number
 pub(crate) struct RowPointLookupNode {
@@ -37,7 +40,7 @@ pub(crate) struct RowPointLookupNode {
 }
 
 impl<'a> RowPointLookupNode {
-	pub fn new(source: ResolvedPrimitive, row_number: u64, context: Arc<QueryContext>) -> crate::Result<Self> {
+	pub fn new(source: ResolvedPrimitive, row_number: u64, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -50,7 +53,7 @@ impl<'a> RowPointLookupNode {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> crate::Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -71,12 +74,12 @@ impl<'a> RowPointLookupNode {
 
 impl QueryNode for RowPointLookupNode {
 	#[instrument(name = "volcano::lookup::point::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::lookup::point::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -118,11 +121,7 @@ pub(crate) struct RowListLookupNode {
 }
 
 impl<'a> RowListLookupNode {
-	pub fn new(
-		source: ResolvedPrimitive,
-		row_numbers: Vec<u64>,
-		context: Arc<QueryContext>,
-	) -> crate::Result<Self> {
+	pub fn new(source: ResolvedPrimitive, row_numbers: Vec<u64>, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -135,7 +134,7 @@ impl<'a> RowListLookupNode {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> crate::Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -156,12 +155,12 @@ impl<'a> RowListLookupNode {
 
 impl QueryNode for RowListLookupNode {
 	#[instrument(name = "volcano::lookup::list::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::lookup::list::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
 
@@ -223,7 +222,7 @@ pub(crate) struct RowRangeScanNode {
 }
 
 impl<'a> RowRangeScanNode {
-	pub fn new(source: ResolvedPrimitive, start: u64, end: u64, context: Arc<QueryContext>) -> crate::Result<Self> {
+	pub fn new(source: ResolvedPrimitive, start: u64, end: u64, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -238,7 +237,7 @@ impl<'a> RowRangeScanNode {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> crate::Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -259,12 +258,12 @@ impl<'a> RowRangeScanNode {
 
 impl QueryNode for RowRangeScanNode {
 	#[instrument(name = "volcano::scan::range::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::scan::range::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
 
@@ -316,7 +315,7 @@ impl QueryNode for RowRangeScanNode {
 
 // Helper functions
 
-fn build_headers_and_storage_types<'a>(source: &ResolvedPrimitive) -> crate::Result<(ColumnHeaders, Vec<Type>)> {
+fn build_headers_and_storage_types<'a>(source: &ResolvedPrimitive) -> Result<(ColumnHeaders, Vec<Type>)> {
 	let columns = match source {
 		ResolvedPrimitive::Table(table) => table.columns(),
 		ResolvedPrimitive::View(view) => view.columns(),
@@ -335,12 +334,12 @@ fn build_headers_and_storage_types<'a>(source: &ResolvedPrimitive) -> crate::Res
 	Ok((headers, storage_types))
 }
 
-fn get_source_id(source: &ResolvedPrimitive) -> crate::Result<PrimitiveId> {
+fn get_source_id(source: &ResolvedPrimitive) -> Result<PrimitiveId> {
 	match source {
 		ResolvedPrimitive::Table(table) => Ok(table.def().id.into()),
 		ResolvedPrimitive::View(view) => Ok(view.def().id.into()),
 		ResolvedPrimitive::RingBuffer(rb) => Ok(rb.def().id.into()),
-		_ => reifydb_core::internal_err!("Row lookup not supported for this source type"),
+		_ => internal_err!("Row lookup not supported for this source type"),
 	}
 }
 

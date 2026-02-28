@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), deny(warnings))]
+
 //! Build utilities for ReifyDB target detection.
 //!
 //! This crate provides a single function to emit the `reifydb_target` cfg

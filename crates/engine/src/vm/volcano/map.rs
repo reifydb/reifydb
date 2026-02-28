@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::column::{Column, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_transaction::transaction::Transaction;
@@ -13,6 +13,7 @@ use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
 use crate::{
+	Result,
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
@@ -42,7 +43,7 @@ impl MapNode {
 
 impl QueryNode for MapNode {
 	#[instrument(name = "volcano::map::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
 			symbol_table: &ctx.stack,
@@ -58,7 +59,7 @@ impl QueryNode for MapNode {
 	}
 
 	#[instrument(name = "volcano::map::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "MapNode::next() called before initialize()");
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
@@ -86,7 +87,7 @@ impl QueryNode for MapNode {
 }
 
 impl Transform for MapNode {
-	fn apply(&self, ctx: &TransformContext, input: Columns) -> reifydb_type::Result<Columns> {
+	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("MapNode::apply() called before initialize()");
 
@@ -128,7 +129,7 @@ impl Transform for MapNode {
 						target_type,
 						&expr.lazy_fragment(),
 					)?;
-					column = reifydb_core::value::column::Column {
+					column = Column {
 						name: column.name,
 						data,
 					};
@@ -164,7 +165,7 @@ impl MapWithoutInputNode {
 
 impl QueryNode for MapWithoutInputNode {
 	#[instrument(name = "volcano::map::noinput::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
 			symbol_table: &ctx.stack,
@@ -179,7 +180,7 @@ impl QueryNode for MapWithoutInputNode {
 	}
 
 	#[instrument(name = "volcano::map::noinput::next", level = "trace", skip_all)]
-	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
 		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 

@@ -6,6 +6,7 @@ use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
 use crate::{
+	Result,
 	ast::ast::AstStatement,
 	bump::{Bump, BumpVec},
 	expression::Expression,
@@ -26,7 +27,7 @@ pub fn plan<'a>(
 	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
 	statement: AstStatement<'a>,
-) -> crate::Result<Option<PhysicalPlan<'a>>> {
+) -> Result<Option<PhysicalPlan<'a>>> {
 	let logical = compile_logical(bump, catalog, rx, statement)?;
 	let physical = compile_physical(bump, catalog, rx, logical)?;
 	Ok(physical)
@@ -43,8 +44,8 @@ pub fn plan_with_policy<'a>(
 		&'a Bump,
 		&Catalog,
 		&mut Transaction<'_>,
-	) -> crate::Result<BumpVec<'a, LogicalPlan<'a>>>,
-) -> crate::Result<Option<PhysicalPlan<'a>>> {
+	) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
+) -> Result<Option<PhysicalPlan<'a>>> {
 	let logical = compile_logical(bump, catalog, rx, statement)?;
 	let logical = policy(logical, bump, catalog, rx)?;
 	let physical = compile_physical(bump, catalog, rx, logical)?;

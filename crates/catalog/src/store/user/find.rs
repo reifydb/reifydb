@@ -9,17 +9,17 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::identity::IdentityId;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::user::{convert_user, schema::user},
 };
 
 impl CatalogStore {
 	#[allow(dead_code)]
-	pub(crate) fn find_user(rx: &mut Transaction<'_>, id: UserId) -> crate::Result<Option<UserDef>> {
+	pub(crate) fn find_user(rx: &mut Transaction<'_>, id: UserId) -> Result<Option<UserDef>> {
 		Ok(rx.get(&UserKey::encoded(id))?.map(convert_user))
 	}
 
-	pub(crate) fn find_user_by_name(rx: &mut Transaction<'_>, name: &str) -> crate::Result<Option<UserDef>> {
+	pub(crate) fn find_user_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<UserDef>> {
 		let mut stream = rx.range(UserKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
@@ -33,10 +33,7 @@ impl CatalogStore {
 		Ok(None)
 	}
 
-	pub(crate) fn find_user_by_identity(
-		rx: &mut Transaction<'_>,
-		identity: IdentityId,
-	) -> crate::Result<Option<UserDef>> {
+	pub(crate) fn find_user_by_identity(rx: &mut Transaction<'_>, identity: IdentityId) -> Result<Option<UserDef>> {
 		let mut stream = rx.range(UserKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {

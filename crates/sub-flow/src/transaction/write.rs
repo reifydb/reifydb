@@ -2,12 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_type::Result;
 
 use super::FlowTransaction;
 
 impl FlowTransaction {
 	/// Set a value, buffering it in pending writes
-	pub fn set(&mut self, key: &EncodedKey, value: EncodedValues) -> reifydb_type::Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, value: EncodedValues) -> Result<()> {
 		match self {
 			Self::Deferred {
 				pending,
@@ -22,7 +23,7 @@ impl FlowTransaction {
 	}
 
 	/// Remove a key, buffering the deletion in pending operations
-	pub fn remove(&mut self, key: &EncodedKey) -> reifydb_type::Result<()> {
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		match self {
 			Self::Deferred {
 				pending,

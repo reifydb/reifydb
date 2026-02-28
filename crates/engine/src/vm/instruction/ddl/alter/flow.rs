@@ -10,13 +10,13 @@ use reifydb_rql::nodes::{AlterFlowAction, AlterFlowNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
-use crate::vm::services::Services;
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn execute_alter_flow(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterFlowNode,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	// Get namespace and flow names from MaybeQualified type
 	let namespace_name = plan.flow.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 	let flow_name = plan.flow.name.text();

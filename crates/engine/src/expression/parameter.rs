@@ -12,9 +12,9 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
-use crate::expression::context::EvalContext;
+use crate::{Result, expression::context::EvalContext};
 
-pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) -> crate::Result<Column> {
+pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) -> Result<Column> {
 	let value = match expr {
 		ParameterExpression::Positional {
 			fragment,

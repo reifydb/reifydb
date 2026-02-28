@@ -5,8 +5,9 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{err, error::Diagnostic, fragment::Fragment};
 
 use crate::{
+	Result,
 	ast::ast::{Ast, AstAppend, AstAppendSource, AstList},
-	bump::BumpBox,
+	bump::{BumpBox, BumpFragment},
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{AppendNode, AppendSourcePlan, Compiler, InlineDataNode, LogicalPlan},
 };
@@ -16,7 +17,7 @@ impl<'bump> Compiler<'bump> {
 		&self,
 		ast: AstAppend<'bump>,
 		tx: &mut Transaction<'_>,
-	) -> crate::Result<LogicalPlan<'bump>> {
+	) -> Result<LogicalPlan<'bump>> {
 		match ast {
 			AstAppend::IntoVariable {
 				target,
@@ -24,7 +25,7 @@ impl<'bump> Compiler<'bump> {
 				..
 			} => {
 				let target_text = target.name();
-				let target = crate::bump::BumpFragment::internal(self.bump, target_text);
+				let target = BumpFragment::internal(self.bump, target_text);
 
 				let source = match source {
 					AstAppendSource::Statement(statement) => {
@@ -55,7 +56,7 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-fn compile_inline_list(list: AstList<'_>) -> crate::Result<InlineDataNode> {
+fn compile_inline_list(list: AstList<'_>) -> Result<InlineDataNode> {
 	let mut rows = Vec::new();
 
 	for row in list.nodes {

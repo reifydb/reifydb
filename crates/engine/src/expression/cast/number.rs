@@ -19,14 +19,14 @@ use reifydb_type::{
 	},
 };
 
-use crate::{error::CastError, expression::convert::Convert};
+use crate::{Result, error::CastError, expression::convert::Convert};
 
 pub fn to_number(
 	ctx: impl Convert,
 	data: &ColumnData,
 	target: Type,
 	lazy_fragment: impl LazyFragment,
-) -> crate::Result<ColumnData> {
+) -> Result<ColumnData> {
 	if !target.is_number() {
 		let from = data.get_type();
 		return Err(TypeError::UnsupportedCast {
@@ -68,7 +68,7 @@ pub fn to_number(
 	.into());
 }
 
-fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	macro_rules! boolean_to_number {
 		($target_ty:ty, $true_val:expr, $false_val:expr) => {{
 			|out: &mut ColumnData, val: bool| {
@@ -174,7 +174,7 @@ fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFr
 	}
 }
 
-fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	match data {
 		ColumnData::Float4(container) => match &target {
 			Type::Int1 => f32_to_i8_vec(container),
@@ -265,7 +265,7 @@ macro_rules! parse_and_push {
 	}};
 }
 
-fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	match data {
 		ColumnData::Utf8 {
 			container,
@@ -447,11 +447,7 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 	}
 }
 
-fn text_to_float<'a>(
-	column_data: &ColumnData,
-	target: Type,
-	lazy_fragment: impl LazyFragment,
-) -> crate::Result<ColumnData> {
+fn text_to_float<'a>(column_data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	if let ColumnData::Utf8 {
 		container,
 		..
@@ -515,11 +511,7 @@ fn text_to_float<'a>(
 	}
 }
 
-fn text_to_decimal<'a>(
-	column_data: &ColumnData,
-	target: Type,
-	lazy_fragment: impl LazyFragment,
-) -> crate::Result<ColumnData> {
+fn text_to_decimal<'a>(column_data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	if let ColumnData::Utf8 {
 		container,
 		..
@@ -559,7 +551,7 @@ fn text_to_decimal<'a>(
 
 macro_rules! float_to_int_vec {
 	($fn_name:ident, $float_ty:ty, $int_ty:ty, $target_type:expr, $min_val:expr, $max_val:expr) => {
-		fn $fn_name(container: &NumberContainer<$float_ty>) -> crate::Result<ColumnData>
+		fn $fn_name(container: &NumberContainer<$float_ty>) -> Result<ColumnData>
 		where
 			$float_ty: Copy + IsNumber,
 		{
@@ -605,7 +597,7 @@ float_to_int_vec!(f64_to_u64_vec, f64, u64, Type::Uint8, 0.0, u64::MAX as f64);
 float_to_int_vec!(f64_to_u128_vec, f64, u128, Type::Uint16, 0.0, u128::MAX as f64);
 
 // Float to Int conversion
-fn f32_to_int_vec(container: &NumberContainer<f32>) -> crate::Result<ColumnData> {
+fn f32_to_int_vec(container: &NumberContainer<f32>) -> Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Int, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -620,7 +612,7 @@ fn f32_to_int_vec(container: &NumberContainer<f32>) -> crate::Result<ColumnData>
 	Ok(out)
 }
 
-fn f64_to_int_vec(container: &NumberContainer<f64>) -> crate::Result<ColumnData> {
+fn f64_to_int_vec(container: &NumberContainer<f64>) -> Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Int, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -636,7 +628,7 @@ fn f64_to_int_vec(container: &NumberContainer<f64>) -> crate::Result<ColumnData>
 }
 
 // Float to Uint conversion
-fn f32_to_uint_vec(container: &NumberContainer<f32>) -> crate::Result<ColumnData> {
+fn f32_to_uint_vec(container: &NumberContainer<f32>) -> Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Uint, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -655,7 +647,7 @@ fn f32_to_uint_vec(container: &NumberContainer<f32>) -> crate::Result<ColumnData
 	Ok(out)
 }
 
-fn f64_to_uint_vec(container: &NumberContainer<f64>) -> crate::Result<ColumnData> {
+fn f64_to_uint_vec(container: &NumberContainer<f64>) -> Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Uint, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -675,7 +667,7 @@ fn f64_to_uint_vec(container: &NumberContainer<f64>) -> crate::Result<ColumnData
 }
 
 // Float to Decimal conversion
-fn f32_to_decimal_vec(container: &NumberContainer<f32>, target: Type) -> crate::Result<ColumnData> {
+fn f32_to_decimal_vec(container: &NumberContainer<f32>, target: Type) -> Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(target, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -690,7 +682,7 @@ fn f32_to_decimal_vec(container: &NumberContainer<f32>, target: Type) -> crate::
 	Ok(out)
 }
 
-fn f64_to_decimal_vec(container: &NumberContainer<f64>, target: Type) -> crate::Result<ColumnData> {
+fn f64_to_decimal_vec(container: &NumberContainer<f64>, target: Type) -> Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(target, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -710,7 +702,7 @@ fn number_to_number(
 	target: Type,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
-) -> crate::Result<ColumnData> {
+) -> Result<ColumnData> {
 	if !target.is_number() {
 		return Err(TypeError::UnsupportedCast {
 			from: data.get_type(),
@@ -1254,7 +1246,7 @@ pub(crate) fn convert_vec<'a, From, To>(
 	lazy_fragment: impl LazyFragment,
 	target_kind: Type,
 	mut push: impl FnMut(&mut ColumnData, To),
-) -> crate::Result<ColumnData>
+) -> Result<ColumnData>
 where
 	From: Copy + SafeConvert<To> + GetType + IsNumber + Default,
 	To: GetType,
@@ -1281,7 +1273,7 @@ pub(crate) fn convert_vec_clone<'a, From, To>(
 	lazy_fragment: impl LazyFragment,
 	target_kind: Type,
 	mut push: impl FnMut(&mut ColumnData, To),
-) -> crate::Result<ColumnData>
+) -> Result<ColumnData>
 where
 	From: Clone + SafeConvert<To> + GetType + IsNumber + Default,
 	To: GetType,
@@ -1306,6 +1298,7 @@ where
 pub mod tests {
 	mod convert {
 		use reifydb_type::{
+			Result,
 			fragment::Fragment,
 			value::{
 				container::number::NumberContainer,
@@ -1412,11 +1405,7 @@ pub mod tests {
 
 		impl Convert for &TestCtx {
 			/// Can only used with i8
-			fn convert<From, To>(
-				&self,
-				val: From,
-				_fragment: impl Into<reifydb_type::fragment::Fragment>,
-			) -> crate::Result<Option<To>>
+			fn convert<From, To>(&self, val: From, _fragment: impl Into<Fragment>) -> Result<Option<To>>
 			where
 				From: SafeConvert<To> + GetType,
 				To: GetType,

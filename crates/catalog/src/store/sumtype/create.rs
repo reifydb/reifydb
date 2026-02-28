@@ -13,7 +13,7 @@ use reifydb_type::fragment::Fragment;
 
 use super::schema::{sumtype as sumtype_schema, sumtype_namespace};
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::sequence::system::SystemSequence,
 };
@@ -26,10 +26,7 @@ pub struct SumTypeToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_sumtype(
-		txn: &mut AdminTransaction,
-		to_create: SumTypeToCreate,
-	) -> crate::Result<SumTypeDef> {
+	pub(crate) fn create_sumtype(txn: &mut AdminTransaction, to_create: SumTypeToCreate) -> Result<SumTypeDef> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(_existing) = CatalogStore::find_sumtype_by_name(
@@ -211,7 +208,7 @@ pub mod tests {
 		let links: Vec<_> = txn
 			.range(NamespaceSumTypeKey::full_scan(test_namespace.id), 1024)
 			.unwrap()
-			.collect::<Result<Vec<_>, _>>()
+			.collect::<Result<Vec<_>>>()
 			.unwrap();
 		assert_eq!(links.len(), 2);
 

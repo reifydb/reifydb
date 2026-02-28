@@ -7,10 +7,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_role(txn: &mut AdminTransaction, role: RoleId) -> crate::Result<()> {
+	pub(crate) fn drop_role(txn: &mut AdminTransaction, role: RoleId) -> Result<()> {
 		// Remove associated user-role entries that reference this role
 		{
 			let range = UserRoleKey::full_scan();

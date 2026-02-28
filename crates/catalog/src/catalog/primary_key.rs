@@ -10,7 +10,8 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use tracing::instrument;
 
 use crate::{
-	CatalogStore, catalog::Catalog, store::primary_key::create::PrimaryKeyToCreate as StorePrimaryKeyToCreate,
+	CatalogStore, Result, catalog::Catalog,
+	store::primary_key::create::PrimaryKeyToCreate as StorePrimaryKeyToCreate,
 };
 
 #[derive(Debug, Clone)]
@@ -34,7 +35,7 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: PrimaryKeyToCreate,
-	) -> crate::Result<PrimaryKeyId> {
+	) -> Result<PrimaryKeyId> {
 		CatalogStore::create_primary_key(txn, to_create.into())
 	}
 
@@ -43,17 +44,17 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		source: impl Into<PrimitiveId>,
-	) -> crate::Result<Option<PrimaryKeyDef>> {
+	) -> Result<Option<PrimaryKeyDef>> {
 		CatalogStore::find_primary_key(txn, source)
 	}
 
 	#[instrument(name = "catalog::primary_key::list", level = "debug", skip(self, txn))]
-	pub fn list_primary_keys(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<PrimaryKeyDef>> {
+	pub fn list_primary_keys(&self, txn: &mut Transaction<'_>) -> Result<Vec<PrimaryKeyDef>> {
 		Ok(CatalogStore::list_primary_keys(txn)?.into_iter().map(|info| info.def).collect())
 	}
 
 	#[instrument(name = "catalog::primary_key::list_columns", level = "debug", skip(self, txn))]
-	pub fn list_primary_key_columns(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<(u64, u64, usize)>> {
+	pub fn list_primary_key_columns(&self, txn: &mut Transaction<'_>) -> Result<Vec<(u64, u64, usize)>> {
 		CatalogStore::list_primary_key_columns(txn)
 	}
 }

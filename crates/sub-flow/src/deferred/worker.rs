@@ -18,6 +18,7 @@ use reifydb_runtime::actor::{
 	system::ActorConfig,
 	traits::{Actor, Directive},
 };
+use reifydb_type::Result;
 use tracing::{Span, error, instrument};
 
 use super::instruction::WorkerBatch;
@@ -133,7 +134,7 @@ impl FlowWorkerActor {
 		instructions = batch.instructions.len(),
 		total_changes = tracing::field::Empty
 	))]
-	fn process_request(&self, flow_engine: &mut FlowEngine, batch: WorkerBatch) -> reifydb_type::Result<Pending> {
+	fn process_request(&self, flow_engine: &mut FlowEngine, batch: WorkerBatch) -> Result<Pending> {
 		let total_changes: usize = batch.instructions.iter().map(|i| i.changes.len()).sum();
 		Span::current().record("total_changes", total_changes);
 

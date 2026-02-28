@@ -11,7 +11,10 @@ use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::fragment::Fragment;
 
-use crate::flow::compiler::{compile_flow, compile_subscription_flow};
+use crate::{
+	Result,
+	flow::compiler::{compile_flow, compile_subscription_flow},
+};
 
 pub mod authentication;
 pub mod deferred;
@@ -44,7 +47,7 @@ pub(crate) fn create_deferred_view_flow(
 	txn: &mut AdminTransaction,
 	view: &ViewDef,
 	plan: QueryPlan,
-) -> crate::Result<()> {
+) -> Result<()> {
 	let flow_def = catalog.create_flow(
 		txn,
 		FlowToCreate {
@@ -67,7 +70,7 @@ pub(crate) fn create_subscription_flow(
 	txn: &mut AdminTransaction,
 	subscription: &SubscriptionDef,
 	plan: QueryPlan,
-) -> crate::Result<()> {
+) -> Result<()> {
 	// FlowId == SubscriptionId for subscription flows
 	let flow_id = FlowId(subscription.id.0);
 	let flow_def = catalog.create_flow_with_id(

@@ -11,6 +11,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
 use crate::{
+	Result,
 	system::SystemCatalog,
 	vtable::{Batch, VTable, VTableContext},
 };
@@ -51,12 +52,12 @@ const FLOW_NODE_TYPE_NAMES: [&str; 16] = [
 ];
 
 impl VTable for FlowNodeTypes {
-	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut Transaction<'_>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}

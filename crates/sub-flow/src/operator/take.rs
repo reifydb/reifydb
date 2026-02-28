@@ -13,6 +13,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_type::{
+	Result,
 	error::Error,
 	value::{blob::Blob, row_number::RowNumber, r#type::Type},
 };
@@ -58,7 +59,7 @@ impl TakeOperator {
 		}
 	}
 
-	fn load_take_state(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<TakeState> {
+	fn load_take_state(&self, txn: &mut FlowTransaction) -> Result<TakeState> {
 		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -74,7 +75,7 @@ impl TakeOperator {
 			.map_err(|e| Error(internal!("Failed to deserialize TakeState: {}", e)))
 	}
 
-	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> reifydb_type::Result<()> {
+	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> Result<()> {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
 
@@ -85,11 +86,7 @@ impl TakeOperator {
 		self.save_state(txn, state_row)
 	}
 
-	fn promote_candidates(
-		&self,
-		state: &mut TakeState,
-		txn: &mut FlowTransaction,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	fn promote_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> Result<Vec<Diff>> {
 		let mut output_diffs = Vec::new();
 
 		while state.active.len() < self.limit && !state.candidates.is_empty() {
@@ -109,11 +106,7 @@ impl TakeOperator {
 		Ok(output_diffs)
 	}
 
-	fn evict_to_candidates(
-		&self,
-		state: &mut TakeState,
-		txn: &mut FlowTransaction,
-	) -> reifydb_type::Result<Vec<Diff>> {
+	fn evict_to_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> Result<Vec<Diff>> {
 		let mut output_diffs = Vec::new();
 		let candidate_limit = self.limit * 4;
 
@@ -154,7 +147,7 @@ impl Operator for TakeOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> reifydb_type::Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut state = self.load_take_state(txn)?;
 		let mut output_diffs = Vec::new();
 		let version = change.version;
@@ -285,7 +278,7 @@ impl Operator for TakeOperator {
 		Ok(Change::from_flow(self.node, version, output_diffs))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		self.parent.pull(txn, rows)
 	}
 }

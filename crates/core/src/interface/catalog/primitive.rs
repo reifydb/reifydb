@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_type::{Result, value::dictionary::DictionaryId};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -266,7 +266,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_table_id(self) -> reifydb_type::Result<TableId> {
+	pub fn to_table_id(self) -> Result<TableId> {
 		if let PrimitiveId::Table(table) = self {
 			Ok(table)
 		} else {
@@ -279,7 +279,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_view_id(self) -> reifydb_type::Result<ViewId> {
+	pub fn to_view_id(self) -> Result<ViewId> {
 		if let PrimitiveId::View(view) = self {
 			Ok(view)
 		} else {
@@ -292,7 +292,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_flow_id(self) -> reifydb_type::Result<FlowId> {
+	pub fn to_flow_id(self) -> Result<FlowId> {
 		if let PrimitiveId::Flow(flow) = self {
 			Ok(flow)
 		} else {
@@ -305,7 +305,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_vtable_id(self) -> reifydb_type::Result<VTableId> {
+	pub fn to_vtable_id(self) -> Result<VTableId> {
 		if let PrimitiveId::TableVirtual(vtable) = self {
 			Ok(vtable)
 		} else {
@@ -318,7 +318,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_ringbuffer_id(self) -> reifydb_type::Result<RingBufferId> {
+	pub fn to_ringbuffer_id(self) -> Result<RingBufferId> {
 		if let PrimitiveId::RingBuffer(ringbuffer) = self {
 			Ok(ringbuffer)
 		} else {
@@ -331,7 +331,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_dictionary_id(self) -> reifydb_type::Result<DictionaryId> {
+	pub fn to_dictionary_id(self) -> Result<DictionaryId> {
 		if let PrimitiveId::Dictionary(dictionary) = self {
 			Ok(dictionary)
 		} else {
@@ -344,7 +344,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_series_id(self) -> reifydb_type::Result<SeriesId> {
+	pub fn to_series_id(self) -> Result<SeriesId> {
 		if let PrimitiveId::Series(series) = self {
 			Ok(series)
 		} else {

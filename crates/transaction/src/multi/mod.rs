@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use reifydb_core::common::CommitVersion;
+use reifydb_type::Result;
 
 use crate::multi::transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction};
 
@@ -18,7 +19,7 @@ pub mod watermark;
 
 impl MultiTransaction {
 	/// Get the current version from the transaction manager
-	pub fn current_version(&self) -> reifydb_type::Result<CommitVersion> {
+	pub fn current_version(&self) -> Result<CommitVersion> {
 		self.tm.version()
 	}
 

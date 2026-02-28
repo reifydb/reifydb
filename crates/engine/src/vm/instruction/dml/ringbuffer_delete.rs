@@ -25,6 +25,7 @@ use reifydb_type::{
 };
 
 use crate::{
+	Result,
 	policy::PolicyEvaluator,
 	transaction::operation::ringbuffer::RingBufferOperations,
 	vm::{
@@ -44,7 +45,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 	params: Params,
 	identity: IdentityId,
 	symbol_table: &SymbolTable,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));

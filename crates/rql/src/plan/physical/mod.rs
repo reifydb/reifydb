@@ -8,11 +8,13 @@ pub mod mutate;
 
 use std::iter::once;
 
-use reifydb_catalog::catalog::Catalog;
+use reifydb_catalog::catalog::{
+	Catalog, subscription::SubscriptionColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
+};
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
 	error::diagnostic::catalog::{
-		dictionary_not_found, namespace_not_found, ringbuffer_not_found, table_not_found,
+		dictionary_not_found, namespace_not_found, ringbuffer_not_found, series_not_found, table_not_found,
 	},
 	interface::{
 		catalog::{
@@ -37,8 +39,9 @@ use reifydb_type::{
 use tracing::instrument;
 
 use crate::{
+	Result,
 	ast::ast::{AstAlterPolicyAction, AstPolicyScope},
-	bump::{Bump, BumpBox},
+	bump::{Bump, BumpBox, FragmentInterner},
 	error::RqlError,
 	expression::{ConstantExpression, Expression, Expression::Constant, VariableExpression},
 	nodes::{
@@ -183,7 +186,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub namespace: NamespaceDef,
 	pub view: Fragment,
 	pub if_not_exists: bool,
-	pub columns: Vec<reifydb_catalog::catalog::view::ViewColumnToCreate>,
+	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 }
 
@@ -192,7 +195,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub namespace: NamespaceDef,
 	pub view: Fragment,
 	pub if_not_exists: bool,
-	pub columns: Vec<reifydb_catalog::catalog::view::ViewColumnToCreate>,
+	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 }
 
@@ -206,7 +209,7 @@ pub struct CreateFlowNode<'bump> {
 
 #[derive(Debug)]
 pub struct CreateSubscriptionNode<'bump> {
-	pub columns: Vec<reifydb_catalog::catalog::subscription::SubscriptionColumnToCreate>,
+	pub columns: Vec<SubscriptionColumnToCreate>,
 	pub as_clause: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 }
 
@@ -227,7 +230,7 @@ pub struct AlterTableNode<'bump> {
 #[derive(Debug)]
 pub enum AlterTableAction {
 	AddColumn {
-		column: reifydb_catalog::catalog::table::TableColumnToCreate,
+		column: TableColumnToCreate,
 	},
 	DropColumn {
 		column: Fragment,
@@ -542,7 +545,7 @@ pub struct ScalarizeNode<'bump> {
 
 pub(crate) struct Compiler<'bump> {
 	pub catalog: Catalog,
-	pub interner: crate::bump::FragmentInterner,
+	pub interner: FragmentInterner,
 	pub bump: &'bump Bump,
 }
 
@@ -552,10 +555,10 @@ pub fn compile_physical<'b>(
 	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
 	logical: impl IntoIterator<Item = LogicalPlan<'b>>,
-) -> crate::Result<Option<PhysicalPlan<'b>>> {
+) -> Result<Option<PhysicalPlan<'b>>> {
 	Compiler {
 		catalog: catalog.clone(),
-		interner: crate::bump::FragmentInterner::new(),
+		interner: FragmentInterner::new(),
 		bump,
 	}
 	.compile(rx, logical)
@@ -570,7 +573,7 @@ impl<'bump> Compiler<'bump> {
 		&mut self,
 		rx: &mut Transaction<'_>,
 		logical: impl IntoIterator<Item = LogicalPlan<'bump>>,
-	) -> crate::Result<Option<PhysicalPlan<'bump>>> {
+	) -> Result<Option<PhysicalPlan<'bump>>> {
 		let mut stack: Vec<PhysicalPlan<'bump>> = Vec::new();
 		for plan in logical {
 			match plan {
@@ -783,18 +786,26 @@ impl<'bump> Compiler<'bump> {
 									.map(|s| s.text())
 									.collect::<Vec<_>>()
 									.join(".");
-								if self.catalog.find_namespace_by_name(rx, &full_path)?.is_some() {
-									let ns_fragment = self.interner.intern_fragment(&segments[0]);
+								if self.catalog
+									.find_namespace_by_name(rx, &full_path)?
+									.is_some()
+								{
+									let ns_fragment = self
+										.interner
+										.intern_fragment(&segments[0]);
 									(Some(ns_fragment.with_text(&full_path)), None)
 								} else {
-									// Join all segments except the last with "." to form the
-									// namespace path (e.g. ["app","sub","items"] → ns="app.sub")
+									// Join all segments except the last with "." to
+									// form the namespace path (e.g.
+									// ["app","sub","items"] → ns="app.sub")
 									let ns_name = segments[..segments.len() - 1]
 										.iter()
 										.map(|s| s.text())
 										.collect::<Vec<_>>()
 										.join(".");
-									let ns_fragment = self.interner.intern_fragment(&segments[0]);
+									let ns_fragment = self
+										.interner
+										.intern_fragment(&segments[0]);
 									(
 										Some(ns_fragment.with_text(&ns_name)),
 										Some(self.interner.intern_fragment(
@@ -961,10 +972,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::DeleteTable(delete) => {
 					let input = if let Some(delete_input) = delete.input {
 						let sub_plan = self
-							.compile(
-								rx,
-								once(crate::bump::BumpBox::into_inner(delete_input)),
-							)?
+							.compile(rx, once(BumpBox::into_inner(delete_input)))?
 							.expect("Delete input must produce a plan");
 						Some(self.bump_box(sub_plan))
 					} else {
@@ -1024,10 +1032,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::DeleteRingBuffer(delete) => {
 					let input = if let Some(delete_input) = delete.input {
 						let sub_plan = self
-							.compile(
-								rx,
-								once(crate::bump::BumpBox::into_inner(delete_input)),
-							)?
+							.compile(rx, once(BumpBox::into_inner(delete_input)))?
 							.expect("Delete input must produce a plan");
 						Some(self.bump_box(sub_plan))
 					} else {
@@ -1089,7 +1094,7 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::InsertTable(insert) => {
 					let input = self
-						.compile(rx, once(crate::bump::BumpBox::into_inner(insert.source)))?
+						.compile(rx, once(BumpBox::into_inner(insert.source)))?
 						.expect("Insert source must produce a plan");
 
 					let table = insert.target;
@@ -1142,7 +1147,7 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::InsertRingBuffer(insert_rb) => {
 					let input = self
-						.compile(rx, once(crate::bump::BumpBox::into_inner(insert_rb.source)))?
+						.compile(rx, once(BumpBox::into_inner(insert_rb.source)))?
 						.expect("Insert source must produce a plan");
 
 					let ringbuffer_id = insert_rb.target;
@@ -1200,10 +1205,7 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::InsertDictionary(insert_dict) => {
 					let input = self
-						.compile(
-							rx,
-							once(crate::bump::BumpBox::into_inner(insert_dict.source)),
-						)?
+						.compile(rx, once(BumpBox::into_inner(insert_dict.source)))?
 						.expect("Insert source must produce a plan");
 
 					let dictionary_id = insert_dict.target;
@@ -1261,10 +1263,7 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::InsertSeries(insert_series) => {
 					let input = self
-						.compile(
-							rx,
-							once(crate::bump::BumpBox::into_inner(insert_series.source)),
-						)?
+						.compile(rx, once(BumpBox::into_inner(insert_series.source)))?
 						.expect("Insert source must produce a plan");
 
 					let series_id = insert_series.target;
@@ -1294,13 +1293,11 @@ impl<'bump> Compiler<'bump> {
 						series_id.name.text(),
 					)?
 					else {
-						return_error!(
-							reifydb_core::error::diagnostic::catalog::series_not_found(
-								self.interner.intern_fragment(&series_id.name),
-								&namespace_def.name,
-								series_id.name.text()
-							)
-						);
+						return_error!(series_not_found(
+							self.interner.intern_fragment(&series_id.name),
+							&namespace_def.name,
+							series_id.name.text()
+						));
 					};
 
 					let namespace_id = if let Some(n) = series_id.namespace.first() {
@@ -1325,10 +1322,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::DeleteSeries(delete_series) => {
 					let input = if let Some(delete_input) = delete_series.input {
 						let sub_plan = self
-							.compile(
-								rx,
-								once(crate::bump::BumpBox::into_inner(delete_input)),
-							)?
+							.compile(rx, once(BumpBox::into_inner(delete_input)))?
 							.expect("Delete input must produce a plan");
 						Some(self.bump_box(sub_plan))
 					} else {
@@ -1362,13 +1356,11 @@ impl<'bump> Compiler<'bump> {
 						series_id.name.text(),
 					)?
 					else {
-						return_error!(
-							reifydb_core::error::diagnostic::catalog::series_not_found(
-								self.interner.intern_fragment(&series_id.name),
-								&namespace_def.name,
-								series_id.name.text()
-							)
-						);
+						return_error!(series_not_found(
+							self.interner.intern_fragment(&series_id.name),
+							&namespace_def.name,
+							series_id.name.text()
+						));
 					};
 
 					let namespace_id = if let Some(n) = series_id.namespace.first() {
@@ -1393,10 +1385,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Update(update) => {
 					let input = if let Some(update_input) = update.input {
 						let sub_plan = self
-							.compile(
-								rx,
-								once(crate::bump::BumpBox::into_inner(update_input)),
-							)?
+							.compile(rx, once(BumpBox::into_inner(update_input)))?
 							.expect("Update input must produce a plan");
 						self.bump_box(sub_plan)
 					} else {
@@ -1462,10 +1451,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::UpdateRingBuffer(update_rb) => {
 					let input = if let Some(update_input) = update_rb.input {
 						let sub_plan = self
-							.compile(
-								rx,
-								once(crate::bump::BumpBox::into_inner(update_input)),
-							)?
+							.compile(rx, once(BumpBox::into_inner(update_input)))?
 							.expect("UpdateRingBuffer input must produce a plan");
 						self.bump_box(sub_plan)
 					} else {
@@ -1528,10 +1514,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::UpdateSeries(update_series) => {
 					let input = if let Some(update_input) = update_series.input {
 						let sub_plan = self
-							.compile(
-								rx,
-								once(crate::bump::BumpBox::into_inner(update_input)),
-							)?
+							.compile(rx, once(BumpBox::into_inner(update_input)))?
 							.expect("UpdateSeries input must produce a plan");
 						self.bump_box(sub_plan)
 					} else {
@@ -1565,13 +1548,11 @@ impl<'bump> Compiler<'bump> {
 						series_id.name.text(),
 					)?
 					else {
-						return_error!(
-							reifydb_core::error::diagnostic::catalog::series_not_found(
-								self.interner.intern_fragment(&series_id.name),
-								&namespace_def.name,
-								series_id.name.text()
-							)
-						);
+						return_error!(series_not_found(
+							self.interner.intern_fragment(&series_id.name),
+							&namespace_def.name,
+							series_id.name.text()
+						));
 					};
 
 					let namespace_id = if let Some(n) = series_id.namespace.first() {
@@ -1964,10 +1945,9 @@ impl<'bump> Compiler<'bump> {
 				}
 
 				LogicalPlan::Conditional(conditional_node) => {
-					let then_branch = if let Some(then_plan) = self.compile(
-						rx,
-						once(crate::bump::BumpBox::into_inner(conditional_node.then_branch)),
-					)? {
+					let then_branch = if let Some(then_plan) = self
+						.compile(rx, once(BumpBox::into_inner(conditional_node.then_branch)))?
+					{
 						self.bump_box(then_plan)
 					} else {
 						return Err(RqlError::InternalFunctionError {
@@ -1982,10 +1962,9 @@ impl<'bump> Compiler<'bump> {
 					let mut else_ifs = Vec::new();
 					for else_if in conditional_node.else_ifs {
 						let condition = else_if.condition;
-						let then_branch = if let Some(plan) = self.compile(
-							rx,
-							once(crate::bump::BumpBox::into_inner(else_if.then_branch)),
-						)? {
+						let then_branch = if let Some(plan) = self
+							.compile(rx, once(BumpBox::into_inner(else_if.then_branch)))?
+						{
 							self.bump_box(plan)
 						} else {
 							return Err(RqlError::InternalFunctionError {
@@ -2004,10 +1983,9 @@ impl<'bump> Compiler<'bump> {
 
 					let else_branch =
 						if let Some(else_logical) = conditional_node.else_branch {
-							if let Some(plan) = self.compile(
-								rx,
-								once(crate::bump::BumpBox::into_inner(else_logical)),
-							)? {
+							if let Some(plan) = self
+								.compile(rx, once(BumpBox::into_inner(else_logical)))?
+							{
 								Some(self.bump_box(plan))
 							} else {
 								return Err(RqlError::InternalFunctionError {
@@ -2029,10 +2007,9 @@ impl<'bump> Compiler<'bump> {
 				}
 
 				LogicalPlan::Scalarize(scalarize_node) => {
-					let input_plan = if let Some(plan) = self.compile(
-						rx,
-						once(crate::bump::BumpBox::into_inner(scalarize_node.input)),
-					)? {
+					let input_plan = if let Some(plan) =
+						self.compile(rx, once(BumpBox::into_inner(scalarize_node.input)))?
+					{
 						self.bump_box(plan)
 					} else {
 						return Err(RqlError::InternalFunctionError {

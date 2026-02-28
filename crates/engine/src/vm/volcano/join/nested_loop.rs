@@ -12,6 +12,7 @@ use tracing::instrument;
 
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
 use crate::{
+	Result,
 	expression::{
 		compile::compile_expression,
 		context::{CompileContext, EvalContext},
@@ -73,7 +74,7 @@ impl NestedLoopJoinNode {
 
 impl QueryNode for NestedLoopJoinNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
 			symbol_table: &ctx.stack,
@@ -87,7 +88,7 @@ impl QueryNode for NestedLoopJoinNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> crate::Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_initialized(), "NestedLoopJoinNode::next() called before initialize()");
 		let _stored_ctx = self.context.get();
 

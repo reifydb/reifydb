@@ -11,6 +11,7 @@ use reifydb_type::{
 };
 
 use crate::{
+	Result,
 	error::EngineError,
 	expression::{cast::cast_column_data, context::EvalContext},
 	vm::volcano::query::QueryContext,
@@ -33,7 +34,7 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 	target: Type,
 	column: ResolvedColumn,
 	ctx: &QueryContext,
-) -> crate::Result<Value> {
+) -> Result<Value> {
 	if value.get_type() == target {
 		return Ok(value);
 	}

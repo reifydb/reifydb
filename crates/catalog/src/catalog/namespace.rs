@@ -13,7 +13,7 @@ use reifydb_type::{error, fragment::Fragment};
 use tracing::{instrument, warn};
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 	store::namespace::create::NamespaceToCreate as StoreNamespaceToCreate,
@@ -39,11 +39,7 @@ impl From<NamespaceToCreate> for StoreNamespaceToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::namespace::find", level = "trace", skip(self, txn))]
-	pub fn find_namespace(
-		&self,
-		txn: &mut Transaction<'_>,
-		id: NamespaceId,
-	) -> crate::Result<Option<NamespaceDef>> {
+	pub fn find_namespace(&self, txn: &mut Transaction<'_>, id: NamespaceId) -> Result<Option<NamespaceDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -116,11 +112,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::find_by_name", level = "trace", skip(self, txn, name))]
-	pub fn find_namespace_by_name(
-		&self,
-		txn: &mut Transaction<'_>,
-		name: &str,
-	) -> crate::Result<Option<NamespaceDef>> {
+	pub fn find_namespace_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<NamespaceDef>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -194,7 +186,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::get", level = "trace", skip(self, txn))]
-	pub fn get_namespace(&self, txn: &mut Transaction<'_>, id: NamespaceId) -> crate::Result<NamespaceDef> {
+	pub fn get_namespace(&self, txn: &mut Transaction<'_>, id: NamespaceId) -> Result<NamespaceDef> {
 		self.find_namespace(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Namespace with ID {} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -208,7 +200,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		name: impl Into<Fragment> + Send,
-	) -> crate::Result<NamespaceDef> {
+	) -> Result<NamespaceDef> {
 		let name = name.into();
 		self.find_namespace_by_name(txn, name.text())?.ok_or_else(|| {
 			CatalogError::NotFound {
@@ -226,21 +218,21 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: NamespaceToCreate,
-	) -> crate::Result<NamespaceDef> {
+	) -> Result<NamespaceDef> {
 		let namespace = CatalogStore::create_namespace(txn, to_create.into())?;
 		txn.track_namespace_def_created(namespace.clone())?;
 		Ok(namespace)
 	}
 
 	#[instrument(name = "catalog::namespace::drop", level = "debug", skip(self, txn))]
-	pub fn drop_namespace(&self, txn: &mut AdminTransaction, namespace: NamespaceDef) -> crate::Result<()> {
+	pub fn drop_namespace(&self, txn: &mut AdminTransaction, namespace: NamespaceDef) -> Result<()> {
 		CatalogStore::drop_namespace(txn, namespace.id)?;
 		txn.track_namespace_def_deleted(namespace)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::namespace::list_all", level = "debug", skip(self, txn))]
-	pub fn list_namespaces_all(&self, txn: &mut Transaction<'_>) -> crate::Result<Vec<NamespaceDef>> {
+	pub fn list_namespaces_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<NamespaceDef>> {
 		CatalogStore::list_namespaces_all(txn)
 	}
 }

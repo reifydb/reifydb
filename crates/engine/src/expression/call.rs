@@ -10,6 +10,7 @@ use reifydb_rql::{
 };
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{
+	error::Error,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, identity::IdentityId, r#type::Type},
@@ -17,6 +18,7 @@ use reifydb_type::{
 
 use super::eval::evaluate;
 use crate::{
+	Result,
 	error::EngineError,
 	expression::context::EvalContext,
 	vm::{
@@ -52,7 +54,7 @@ pub(crate) fn call_eval(
 	call: &CallExpression,
 	functions: &Functions,
 	clock: &Clock,
-) -> crate::Result<Column> {
+) -> Result<Column> {
 	let function_name = call.func.0.text();
 
 	// Check if we're in aggregation context and if function exists as aggregate
@@ -72,7 +74,7 @@ pub(crate) fn call_eval(
 	}
 
 	// Fall back to built-in scalar function handling
-	let functor = functions.get_scalar(function_name).ok_or_else(|| -> reifydb_type::error::Error {
+	let functor = functions.get_scalar(function_name).ok_or_else(|| -> Error {
 		EngineError::UnknownFunction {
 			name: call.func.0.text().to_string(),
 			fragment: call.func.0.clone(),
@@ -104,7 +106,7 @@ fn call_user_defined_function(
 	arguments: &Columns,
 	functions: &Functions,
 	clock: &Clock,
-) -> crate::Result<Column> {
+) -> Result<Column> {
 	let row_count = ctx.row_count;
 	let mut results: Vec<Value> = Vec::with_capacity(row_count);
 
@@ -159,7 +161,7 @@ fn execute_function_body_for_scalar(
 	functions: &Functions,
 	clock: &Clock,
 	identity: IdentityId,
-) -> crate::Result<Value> {
+) -> Result<Value> {
 	let mut ip = 0;
 	let mut stack: Vec<Value> = Vec::new();
 
@@ -489,7 +491,7 @@ fn handle_aggregate_function(
 	mut aggregate_fn: Box<dyn AggregateFunction>,
 	functions: &Functions,
 	clock: &Clock,
-) -> crate::Result<Column> {
+) -> Result<Column> {
 	// Create a single group containing all row indices for aggregation
 	let mut group_view = GroupByView::new();
 	let all_indices: Vec<usize> = (0..ctx.row_count).collect();
@@ -529,7 +531,7 @@ fn evaluate_arguments(
 	expressions: &Vec<Expression>,
 	functions: &Functions,
 	clock: &Clock,
-) -> crate::Result<Columns> {
+) -> Result<Columns> {
 	let inner_ctx = EvalContext {
 		target: None,
 		columns: ctx.columns.clone(),

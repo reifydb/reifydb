@@ -11,15 +11,12 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::handler::{handler_def_from_row, schema::handler_namespace},
 };
 
 impl CatalogStore {
-	pub(crate) fn find_handler(
-		rx: &mut Transaction<'_>,
-		handler_id: HandlerId,
-	) -> crate::Result<Option<HandlerDef>> {
+	pub(crate) fn find_handler(rx: &mut Transaction<'_>, handler_id: HandlerId) -> Result<Option<HandlerDef>> {
 		let Some(multi) = rx.get(&HandlerKey::encoded(handler_id))? else {
 			return Ok(None);
 		};
@@ -31,7 +28,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<HandlerDef>> {
+	) -> Result<Option<HandlerDef>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceHandlerKey::full_scan(namespace), 1024)?;
 

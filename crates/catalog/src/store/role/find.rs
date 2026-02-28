@@ -8,17 +8,17 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	CatalogStore,
+	CatalogStore, Result,
 	store::role::{convert_role, schema::role},
 };
 
 impl CatalogStore {
 	#[allow(dead_code)]
-	pub(crate) fn find_role(rx: &mut Transaction<'_>, id: RoleId) -> crate::Result<Option<RoleDef>> {
+	pub(crate) fn find_role(rx: &mut Transaction<'_>, id: RoleId) -> Result<Option<RoleDef>> {
 		Ok(rx.get(&RoleKey::encoded(id))?.map(convert_role))
 	}
 
-	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> crate::Result<Option<RoleDef>> {
+	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<RoleDef>> {
 		let mut stream = rx.range(RoleKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {

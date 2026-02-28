@@ -2,12 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	Result,
 	ast::{
 		ast::{
-			AstAlter, AstAlterPolicy, AstAlterPolicyAction, AstCreate, AstCreatePolicy, AstDrop,
+			Ast, AstAlter, AstAlterPolicy, AstAlterPolicyAction, AstCreate, AstCreatePolicy, AstDrop,
 			AstDropPolicy, AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType,
 		},
-		parse::Parser,
+		parse::{Parser, Precedence},
 	},
 	token::{
 		keyword::Keyword,
@@ -23,7 +24,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
-	) -> crate::Result<AstCreate<'bump>> {
+	) -> Result<AstCreate<'bump>> {
 		// Optionally read policy name (identifier before ON or {)
 		let name = if !self.is_eof()
 			&& self.current()?.is_identifier()
@@ -109,7 +110,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse policy scope: `ns::object` (specific) or `ns` (namespace-wide)
-	fn parse_policy_scope(&mut self) -> crate::Result<AstPolicyScope<'bump>> {
+	fn parse_policy_scope(&mut self) -> Result<AstPolicyScope<'bump>> {
 		let segments = self.parse_double_colon_separated_identifiers()?;
 		let fragments: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
@@ -121,7 +122,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse a policy body: RQL nodes inside { ... } until closing }
-	fn parse_policy_body(&mut self) -> crate::Result<Vec<crate::ast::ast::Ast<'bump>>> {
+	fn parse_policy_body(&mut self) -> Result<Vec<Ast<'bump>>> {
 		let mut nodes = Vec::new();
 
 		loop {
@@ -131,7 +132,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+			let node = self.parse_node(Precedence::None)?;
 			nodes.push(node);
 
 			// Consume pipe if present
@@ -148,7 +149,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
-	) -> crate::Result<AstAlter<'bump>> {
+	) -> Result<AstAlter<'bump>> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 
 		let action = if (self.consume_if(TokenKind::Keyword(Keyword::Enable))?).is_some() {
@@ -171,7 +172,7 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
-	) -> crate::Result<AstDrop<'bump>> {
+	) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume(TokenKind::Identifier)?;
 
@@ -188,7 +189,7 @@ impl<'bump> Parser<'bump> {
 mod tests {
 	use crate::{
 		ast::{
-			ast::{AstCreate, AstDrop, AstPolicyTargetType},
+			ast::{Ast, AstCreate, AstDrop, AstPolicyTargetType},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -274,7 +275,7 @@ mod tests {
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
 		let drop = match node {
-			crate::ast::ast::Ast::Drop(d) => d,
+			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
 		};
 		let AstDrop::Policy(sp) = drop else {
@@ -294,7 +295,7 @@ mod tests {
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
 		let drop = match node {
-			crate::ast::ast::Ast::Drop(d) => d,
+			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
 		};
 		let AstDrop::Policy(sp) = drop else {

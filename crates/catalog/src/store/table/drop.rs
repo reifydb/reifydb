@@ -7,10 +7,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, store::primitive::drop::drop_primitive_metadata};
+use crate::{CatalogStore, Result, store::primitive::drop::drop_primitive_metadata};
 
 impl CatalogStore {
-	pub(crate) fn drop_table(txn: &mut AdminTransaction, table: TableId) -> crate::Result<()> {
+	pub(crate) fn drop_table(txn: &mut AdminTransaction, table: TableId) -> Result<()> {
 		// First, find the table to get its namespace
 		if let Some(table_def) = Self::find_table(&mut Transaction::Admin(&mut *txn), table)? {
 			// Delete the namespace-table link (secondary index)

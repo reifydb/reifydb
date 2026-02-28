@@ -12,10 +12,10 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::CatalogStore;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_namespace(txn: &mut AdminTransaction, namespace: NamespaceId) -> crate::Result<()> {
+	pub(crate) fn drop_namespace(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
 		// Cascade-drop all child objects within this namespace
 
 		// Drop all tables

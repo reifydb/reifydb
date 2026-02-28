@@ -28,10 +28,13 @@ use reifydb_type::{
 };
 use tracing::{Span, instrument};
 
-use crate::store::schema::{
-	create::create_schema,
-	find::find_schema_by_fingerprint,
-	schema::{schema_field, schema_header},
+use crate::{
+	Result,
+	store::schema::{
+		create::create_schema,
+		find::find_schema_by_fingerprint,
+		schema::{schema_field, schema_header},
+	},
 };
 
 /// Thread-safe schema registry with content-addressable caching.
@@ -97,7 +100,7 @@ impl SchemaRegistry {
 		skip(fields),
 		fields(fingerprint = tracing::field::Empty, field_count = fields.len())
 	)]
-	pub fn get_or_create(&self, fields: Vec<SchemaField>) -> crate::Result<Schema> {
+	pub fn get_or_create(&self, fields: Vec<SchemaField>) -> Result<Schema> {
 		let schema = Schema::new(fields);
 		let fingerprint = schema.fingerprint();
 		Span::current().record("fingerprint", tracing::field::debug(&fingerprint));
@@ -157,11 +160,7 @@ impl SchemaRegistry {
 			field_count = tracing::field::Empty
 		)
 	)]
-	pub fn get_or_load(
-		&self,
-		fingerprint: SchemaFingerprint,
-		txn: &mut Transaction<'_>,
-	) -> crate::Result<Option<Schema>> {
+	pub fn get_or_load(&self, fingerprint: SchemaFingerprint, txn: &mut Transaction<'_>) -> Result<Option<Schema>> {
 		// Check cache first
 		if let Some(entry) = self.0.cache.get(&fingerprint) {
 			let schema = entry.value().clone();

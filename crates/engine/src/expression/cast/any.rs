@@ -5,14 +5,14 @@ use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{error::TypeError, fragment::LazyFragment, value::r#type::Type};
 
 use super::cast_column_data;
-use crate::expression::context::EvalContext;
+use crate::{Result, expression::context::EvalContext};
 
 pub fn from_any(
 	ctx: &EvalContext,
 	data: &ColumnData,
 	target: Type,
 	lazy_fragment: impl LazyFragment + Clone,
-) -> crate::Result<ColumnData> {
+) -> Result<ColumnData> {
 	let any_container = match data {
 		ColumnData::Any(container) => container,
 		_ => {
