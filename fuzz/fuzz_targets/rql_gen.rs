@@ -1,5 +1,38 @@
-use arbitrary::Arbitrary;
+use arbitrary::{Arbitrary, Unstructured};
+use std::cell::Cell;
 use std::fmt;
+
+// --- Depth-limited Arbitrary infrastructure ---
+
+thread_local! {
+    static ARBITRARY_DEPTH: Cell<usize> = const { Cell::new(0) };
+}
+
+const ARB_MAX_DEPTH: usize = 4;
+
+struct DepthGuard;
+
+impl DepthGuard {
+    fn new() -> Self {
+        ARBITRARY_DEPTH.with(|d| d.set(d.get() + 1));
+        DepthGuard
+    }
+}
+
+impl Drop for DepthGuard {
+    fn drop(&mut self) {
+        ARBITRARY_DEPTH.with(|d| d.set(d.get() - 1));
+    }
+}
+
+fn current_depth() -> usize {
+    ARBITRARY_DEPTH.with(|d| d.get())
+}
+
+fn short_vec<'a, T: Arbitrary<'a>>(u: &mut Unstructured<'a>, max: usize) -> arbitrary::Result<Vec<T>> {
+    let len = u.int_in_range(0..=(max as u32))? as usize;
+    (0..len).map(|_| T::arbitrary(u)).collect()
+}
 
 pub struct LimitedWriter {
     pub buf: String,
@@ -22,9 +55,15 @@ impl fmt::Write for LimitedWriter {
     }
 }
 
-#[derive(Debug, Arbitrary)]
+#[derive(Debug)]
 pub struct RqlInput {
     pub stmts: Vec<RqlStatement>,
+}
+
+impl<'a> Arbitrary<'a> for RqlInput {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(RqlInput { stmts: short_vec(u, 8)? })
+    }
 }
 
 impl fmt::Display for RqlInput {
@@ -62,7 +101,7 @@ impl fmt::Display for RqlStatement {
         }
     }
 }
-#[derive(Debug, Arbitrary)]
+#[derive(Debug)]
 pub enum RqlQuery {
     From(RqlTableRef),
     FromInline(Vec<RqlInlineRow>),
@@ -76,6 +115,44 @@ pub enum RqlQuery {
     Extend(Vec<RqlMapItem>),
     Join(RqlJoin),
     Pipeline(Vec<RqlQuery>),
+}
+
+impl<'a> Arbitrary<'a> for RqlQuery {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let _guard = DepthGuard::new();
+        let depth = current_depth();
+
+        if depth >= ARB_MAX_DEPTH {
+            // Only non-recursive leaf variants to prevent unbounded recursion
+            match u.int_in_range(0..=3u32)? {
+                0 => Ok(RqlQuery::From(RqlTableRef::arbitrary(u)?)),
+                1 => Ok(RqlQuery::FromVar(RqlVarName::arbitrary(u)?)),
+                2 => Ok(RqlQuery::Distinct),
+                _ => Ok(RqlQuery::Take {
+                    count: u16::arbitrary(u)?,
+                    offset: Option::<u16>::arbitrary(u)?,
+                }),
+            }
+        } else {
+            match u.int_in_range(0..=11u32)? {
+                0 => Ok(RqlQuery::From(RqlTableRef::arbitrary(u)?)),
+                1 => Ok(RqlQuery::FromInline(short_vec(u, 4)?)),
+                2 => Ok(RqlQuery::FromVar(RqlVarName::arbitrary(u)?)),
+                3 => Ok(RqlQuery::Filter(RqlExpr::arbitrary(u)?)),
+                4 => Ok(RqlQuery::Map(short_vec(u, 4)?)),
+                5 => Ok(RqlQuery::Sort(short_vec(u, 4)?)),
+                6 => Ok(RqlQuery::Take {
+                    count: u16::arbitrary(u)?,
+                    offset: Option::<u16>::arbitrary(u)?,
+                }),
+                7 => Ok(RqlQuery::Distinct),
+                8 => Ok(RqlQuery::Aggregate(short_vec(u, 4)?)),
+                9 => Ok(RqlQuery::Extend(short_vec(u, 4)?)),
+                10 => Ok(RqlQuery::Join(RqlJoin::arbitrary(u)?)),
+                _ => Ok(RqlQuery::Pipeline(short_vec(u, 4)?)),
+            }
+        }
+    }
 }
 
 impl fmt::Display for RqlQuery {
@@ -135,9 +212,15 @@ impl fmt::Display for RqlQuery {
     }
 }
 
-#[derive(Debug, Arbitrary)]
+#[derive(Debug)]
 pub struct RqlInlineRow {
     pub fields: Vec<(RqlIdent, RqlExpr)>,
+}
+
+impl<'a> Arbitrary<'a> for RqlInlineRow {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(RqlInlineRow { fields: short_vec(u, 4)? })
+    }
 }
 
 impl fmt::Display for RqlInlineRow {
@@ -261,7 +344,7 @@ impl fmt::Display for RqlJoinKind {
         })
     }
 }
-#[derive(Debug, Arbitrary)]
+#[derive(Debug)]
 pub enum RqlDml {
     Insert {
         table: RqlTableRef,
@@ -276,6 +359,26 @@ pub enum RqlDml {
         table: RqlTableRef,
         filter: Option<RqlExpr>,
     },
+}
+
+impl<'a> Arbitrary<'a> for RqlDml {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        match u.int_in_range(0..=2u32)? {
+            0 => Ok(RqlDml::Insert {
+                table: RqlTableRef::arbitrary(u)?,
+                rows: short_vec(u, 4)?,
+            }),
+            1 => Ok(RqlDml::Update {
+                table: RqlTableRef::arbitrary(u)?,
+                sets: short_vec(u, 4)?,
+                filter: if bool::arbitrary(u)? { Some(RqlExpr::arbitrary(u)?) } else { None },
+            }),
+            _ => Ok(RqlDml::Delete {
+                table: RqlTableRef::arbitrary(u)?,
+                filter: if bool::arbitrary(u)? { Some(RqlExpr::arbitrary(u)?) } else { None },
+            }),
+        }
+    }
 }
 
 impl fmt::Display for RqlDml {
@@ -388,7 +491,7 @@ impl fmt::Display for RqlColumnDef {
         write!(f, "{} {}", self.name, self.ty)
     }
 }
-#[derive(Debug, Arbitrary)]
+#[derive(Debug)]
 pub enum RqlControlFlow {
     If {
         cond: RqlExpr,
@@ -410,6 +513,47 @@ pub enum RqlControlFlow {
     Break,
     Continue,
     Return(Option<RqlExpr>),
+}
+
+impl<'a> Arbitrary<'a> for RqlControlFlow {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let _guard = DepthGuard::new();
+        let depth = current_depth();
+
+        if depth >= ARB_MAX_DEPTH {
+            // Only leaf variants to prevent unbounded recursion
+            match u.int_in_range(0..=2u32)? {
+                0 => Ok(RqlControlFlow::Break),
+                1 => Ok(RqlControlFlow::Continue),
+                _ => Ok(RqlControlFlow::Return(None)),
+            }
+        } else {
+            match u.int_in_range(0..=6u32)? {
+                0 => Ok(RqlControlFlow::If {
+                    cond: RqlExpr::arbitrary(u)?,
+                    then_body: short_vec(u, 4)?,
+                    else_body: if bool::arbitrary(u)? { Some(short_vec(u, 4)?) } else { None },
+                }),
+                1 => Ok(RqlControlFlow::While {
+                    cond: RqlExpr::arbitrary(u)?,
+                    body: short_vec(u, 4)?,
+                }),
+                2 => Ok(RqlControlFlow::Loop {
+                    body: short_vec(u, 4)?,
+                }),
+                3 => Ok(RqlControlFlow::For {
+                    var: RqlVarName::arbitrary(u)?,
+                    iter: RqlExpr::arbitrary(u)?,
+                    body: short_vec(u, 4)?,
+                }),
+                4 => Ok(RqlControlFlow::Break),
+                5 => Ok(RqlControlFlow::Continue),
+                _ => Ok(RqlControlFlow::Return(
+                    if bool::arbitrary(u)? { Some(RqlExpr::arbitrary(u)?) } else { None },
+                )),
+            }
+        }
+    }
 }
 
 impl fmt::Display for RqlControlFlow {
@@ -531,7 +675,7 @@ impl fmt::Display for RqlEdgeCase {
         }
     }
 }
-#[derive(Debug, Arbitrary)]
+#[derive(Debug)]
 pub enum RqlExpr {
     Literal(RqlLiteral),
     Ident(RqlIdent),
@@ -571,6 +715,64 @@ pub enum RqlExpr {
         field: RqlIdent,
     },
     Wildcard,
+}
+
+impl<'a> Arbitrary<'a> for RqlExpr {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let _guard = DepthGuard::new();
+        let depth = current_depth();
+
+        if depth >= ARB_MAX_DEPTH {
+            // Only leaf variants to prevent unbounded recursion
+            match u.int_in_range(0..=3u32)? {
+                0 => Ok(RqlExpr::Literal(RqlLiteral::arbitrary(u)?)),
+                1 => Ok(RqlExpr::Ident(RqlIdent::arbitrary(u)?)),
+                2 => Ok(RqlExpr::Variable(RqlVarName::arbitrary(u)?)),
+                _ => Ok(RqlExpr::Wildcard),
+            }
+        } else {
+            match u.int_in_range(0..=13u32)? {
+                0 => Ok(RqlExpr::Literal(RqlLiteral::arbitrary(u)?)),
+                1 => Ok(RqlExpr::Ident(RqlIdent::arbitrary(u)?)),
+                2 => Ok(RqlExpr::Variable(RqlVarName::arbitrary(u)?)),
+                3 => Ok(RqlExpr::BinaryOp {
+                    left: Box::new(RqlExpr::arbitrary(u)?),
+                    op: RqlBinaryOp::arbitrary(u)?,
+                    right: Box::new(RqlExpr::arbitrary(u)?),
+                }),
+                4 => Ok(RqlExpr::UnaryOp {
+                    op: RqlUnaryOp::arbitrary(u)?,
+                    operand: Box::new(RqlExpr::arbitrary(u)?),
+                }),
+                5 => Ok(RqlExpr::FunctionCall {
+                    name: RqlIdent::arbitrary(u)?,
+                    args: short_vec(u, 4)?,
+                }),
+                6 => Ok(RqlExpr::Between {
+                    expr: Box::new(RqlExpr::arbitrary(u)?),
+                    low: Box::new(RqlExpr::arbitrary(u)?),
+                    high: Box::new(RqlExpr::arbitrary(u)?),
+                }),
+                7 => Ok(RqlExpr::InList {
+                    expr: Box::new(RqlExpr::arbitrary(u)?),
+                    list: short_vec(u, 4)?,
+                    negated: bool::arbitrary(u)?,
+                }),
+                8 => Ok(RqlExpr::Cast {
+                    expr: Box::new(RqlExpr::arbitrary(u)?),
+                    ty: RqlType::arbitrary(u)?,
+                }),
+                9 => Ok(RqlExpr::Paren(Box::new(RqlExpr::arbitrary(u)?))),
+                10 => Ok(RqlExpr::List(short_vec(u, 4)?)),
+                11 => Ok(RqlExpr::InlineObject(short_vec(u, 4)?)),
+                12 => Ok(RqlExpr::FieldAccess {
+                    object: Box::new(RqlExpr::arbitrary(u)?),
+                    field: RqlIdent::arbitrary(u)?,
+                }),
+                _ => Ok(RqlExpr::Wildcard),
+            }
+        }
+    }
 }
 
 const MAX_DEPTH: usize = 6;

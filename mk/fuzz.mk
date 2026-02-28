@@ -23,7 +23,7 @@ ifndef TARGET
 	$(error TARGET is required. Usage: make fuzz-run TARGET=sql_transpile)
 endif
 	@if [ -f $(FUZZ_CFG) ]; then mv $(FUZZ_CFG) $(FUZZ_CFG_BAK); fi; \
-	cargo +nightly fuzz run $(TARGET) -- -max_total_time=$(DURATION); ret=$$?; \
+	cargo +nightly fuzz run $(TARGET) -- -max_total_time=$(DURATION) -rss_limit_mb=4096; ret=$$?; \
 	if [ -f $(FUZZ_CFG_BAK) ]; then mv $(FUZZ_CFG_BAK) $(FUZZ_CFG); fi; \
 	exit $$ret
 
@@ -34,7 +34,7 @@ fuzz-smoke:
 	failed=0; \
 	for target in $$(cargo +nightly fuzz list 2>/dev/null); do \
 		echo "  Fuzzing $$target..."; \
-		cargo +nightly fuzz run $$target -- -max_total_time=10 || { failed=1; break; }; \
+		cargo +nightly fuzz run $$target -- -max_total_time=10 -rss_limit_mb=4096 || { failed=1; break; }; \
 	done; \
 	if [ -f $(FUZZ_CFG_BAK) ]; then mv $(FUZZ_CFG_BAK) $(FUZZ_CFG); fi; \
 	if [ $$failed -ne 0 ]; then echo "Fuzz smoke tests FAILED"; exit 1; fi; \
@@ -53,7 +53,7 @@ fuzz-regression:
 	for artifact in $$artifacts; do \
 		target=$$(basename $$(dirname $$artifact)); \
 		echo "  Replaying $$artifact against $$target..."; \
-		cargo +nightly fuzz run $$target $$artifact || { failed=1; break; }; \
+		cargo +nightly fuzz run $$target $$artifact -- -rss_limit_mb=4096 || { failed=1; break; }; \
 	done; \
 	if [ -f $(FUZZ_CFG_BAK) ]; then mv $(FUZZ_CFG_BAK) $(FUZZ_CFG); fi; \
 	if [ $$failed -ne 0 ]; then echo "Fuzz regression FAILED"; exit 1; fi; \
