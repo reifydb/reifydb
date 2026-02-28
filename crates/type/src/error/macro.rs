@@ -74,7 +74,7 @@ pub mod tests {
 	use std::sync::Arc;
 
 	use crate::{
-		error::{IntoDiagnostic, TypeError},
+		error::{Error, IntoDiagnostic, TypeError},
 		fragment::{Fragment, StatementColumn, StatementLine},
 	};
 
@@ -84,7 +84,7 @@ pub mod tests {
 		let err = error!(TypeError::NanNotAllowed.into_diagnostic());
 
 		// Verify it creates the correct Error type
-		assert!(matches!(err, crate::error::Error(_)));
+		assert!(matches!(err, Error(_)));
 
 		// Test that the diagnostic is properly wrapped
 		let diagnostic = err.diagnostic();
@@ -93,7 +93,7 @@ pub mod tests {
 
 	#[test]
 	fn test_return_error_macro() {
-		fn test_fn() -> Result<(), crate::error::Error> {
+		fn test_fn() -> Result<(), Error> {
 			return_error!(TypeError::NanNotAllowed.into_diagnostic());
 		}
 
@@ -109,7 +109,7 @@ pub mod tests {
 	#[test]
 	fn test_err_macro() {
 		// Test that err! macro creates correct Result type with Err
-		let result: Result<(), crate::error::Error> = err!(TypeError::NanNotAllowed.into_diagnostic());
+		let result: Result<(), Error> = err!(TypeError::NanNotAllowed.into_diagnostic());
 
 		assert!(result.is_err());
 
@@ -133,7 +133,7 @@ pub mod tests {
 		let err = error!(TypeError::NanNotAllowed.into_diagnostic(), fragment.clone());
 
 		// Verify it creates the correct Error type
-		assert!(matches!(err, crate::error::Error(_)));
+		assert!(matches!(err, Error(_)));
 
 		// Test that the diagnostic has the origin set (via fragment)
 		let diagnostic = err.diagnostic();
@@ -152,7 +152,7 @@ pub mod tests {
 
 	#[test]
 	fn test_return_error_macro_with_fragment() {
-		fn test_fn() -> Result<(), crate::error::Error> {
+		fn test_fn() -> Result<(), Error> {
 			let fragment = Fragment::Statement {
 				line: StatementLine(100),
 				column: StatementColumn(25),
@@ -190,7 +190,7 @@ pub mod tests {
 
 		// Test that err! macro with fragment creates correct Result
 		// type with Err
-		let result: Result<(), crate::error::Error> =
+		let result: Result<(), Error> =
 			err!(TypeError::NanNotAllowed.into_diagnostic(), fragment);
 
 		assert!(result.is_err());

@@ -108,6 +108,7 @@ check-code-quality:
 	@echo "🔍 Checking code quality standards..."
 	@./scripts/check-internal-reexports.sh
 	@./scripts/check-toplevel-imports.sh
+	@./scripts/check-inline-qualifications.sh
 
 .PHONY: check
 check:

@@ -9,6 +9,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
+	Result,
 	storage::{Cow, DataBitVec, Storage},
 	util::bitvec::BitVec,
 	value::{Value, r#type::Type},
@@ -45,7 +46,7 @@ where
 }
 
 impl Serialize for BoolContainer<Cow> {
-	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
+	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> std::result::Result<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
 			data: &'a BitVec,
@@ -58,7 +59,7 @@ impl Serialize for BoolContainer<Cow> {
 }
 
 impl<'de> Deserialize<'de> for BoolContainer<Cow> {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
 			data: BitVec,
@@ -169,7 +170,7 @@ impl<S: Storage> BoolContainer<S> {
 		}
 	}
 
-	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
+	pub fn extend(&mut self, other: &Self) -> Result<()> {
 		DataBitVec::extend_from(&mut self.data, &other.data);
 		Ok(())
 	}

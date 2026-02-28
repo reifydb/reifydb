@@ -9,6 +9,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
+	Result,
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
 	value::{Value, identity::IdentityId, r#type::Type},
@@ -45,7 +46,7 @@ where
 }
 
 impl Serialize for IdentityIdContainer<Cow> {
-	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
+	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> std::result::Result<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
 			data: &'a CowVec<IdentityId>,
@@ -58,7 +59,7 @@ impl Serialize for IdentityIdContainer<Cow> {
 }
 
 impl<'de> Deserialize<'de> for IdentityIdContainer<Cow> {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
 			data: CowVec<IdentityId>,
@@ -157,7 +158,7 @@ impl<S: Storage> IdentityIdContainer<S> {
 		idx < self.len()
 	}
 
-	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
+	pub fn extend(&mut self, other: &Self) -> Result<()> {
 		DataVec::extend_from_slice(&mut self.data, DataVec::as_slice(&other.data));
 		Ok(())
 	}

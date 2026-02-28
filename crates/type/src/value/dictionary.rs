@@ -9,8 +9,8 @@ use std::{
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
-use super::r#type::Type;
-use crate::error::TypeError;
+use super::{Value, r#type::Type};
+use crate::{Result, error::TypeError};
 
 /// A dictionary entry ID that can be one of several unsigned integer sizes.
 /// The variant used depends on the dictionary's `id_type` configuration.
@@ -26,7 +26,7 @@ pub enum DictionaryEntryId {
 impl DictionaryEntryId {
 	/// Create a DictionaryEntryId from a u128 value and the target Type.
 	/// Returns an error if the value doesn't fit in the specified type.
-	pub fn from_u128(value: u128, id_type: Type) -> crate::Result<Self> {
+	pub fn from_u128(value: u128, id_type: Type) -> Result<Self> {
 		match id_type {
 			Type::Uint1 => {
 				if value > u8::MAX as u128 {
@@ -104,20 +104,20 @@ impl DictionaryEntryId {
 	}
 
 	/// Convert this DictionaryEntryId to a Value.
-	pub fn to_value(self) -> super::Value {
-		super::Value::DictionaryId(self)
+	pub fn to_value(self) -> Value {
+		Value::DictionaryId(self)
 	}
 
 	/// Create a DictionaryEntryId from a Value.
 	/// Returns None if the Value is not a DictionaryId or unsigned integer type.
-	pub fn from_value(value: &super::Value) -> Option<Self> {
+	pub fn from_value(value: &Value) -> Option<Self> {
 		match value {
-			super::Value::DictionaryId(id) => Some(*id),
-			super::Value::Uint1(v) => Some(Self::U1(*v)),
-			super::Value::Uint2(v) => Some(Self::U2(*v)),
-			super::Value::Uint4(v) => Some(Self::U4(*v)),
-			super::Value::Uint8(v) => Some(Self::U8(*v)),
-			super::Value::Uint16(v) => Some(Self::U16(*v)),
+			Value::DictionaryId(id) => Some(*id),
+			Value::Uint1(v) => Some(Self::U1(*v)),
+			Value::Uint2(v) => Some(Self::U2(*v)),
+			Value::Uint4(v) => Some(Self::U4(*v)),
+			Value::Uint8(v) => Some(Self::U8(*v)),
+			Value::Uint16(v) => Some(Self::U16(*v)),
 			_ => None,
 		}
 	}
@@ -204,7 +204,7 @@ impl From<u64> for DictionaryId {
 }
 
 impl Serialize for DictionaryId {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
@@ -213,7 +213,7 @@ impl Serialize for DictionaryId {
 }
 
 impl<'de> Deserialize<'de> for DictionaryId {
-	fn deserialize<D>(deserializer: D) -> Result<DictionaryId, D::Error>
+	fn deserialize<D>(deserializer: D) -> std::result::Result<DictionaryId, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
@@ -226,7 +226,7 @@ impl<'de> Deserialize<'de> for DictionaryId {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E> {
 				Ok(DictionaryId(value))
 			}
 		}

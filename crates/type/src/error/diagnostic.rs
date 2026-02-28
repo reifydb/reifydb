@@ -4,10 +4,11 @@
 use super::{Diagnostic, IntoDiagnostic, util::value_range};
 use crate::{
 	error::{
-		AstErrorKind, AuthErrorKind, BlobEncodingKind, ConstraintKind, FunctionErrorKind, LogicalOp,
+		AstErrorKind, AuthErrorKind, BinaryOp, BlobEncodingKind, ConstraintKind, FunctionErrorKind, LogicalOp,
 		NetworkErrorKind, OperandCategory, ProcedureErrorKind, RuntimeErrorKind, TemporalKind, TypeError,
 	},
 	fragment::Fragment,
+	value::r#type::Type,
 };
 
 fn temporal_unit_name(unit: char) -> &'static str {
@@ -156,29 +157,29 @@ impl IntoDiagnostic for TypeError {
 				fragment,
 			} => {
 				let code = match &operator {
-					crate::error::BinaryOp::Add => "OPERATOR_017",
-					crate::error::BinaryOp::Sub => "OPERATOR_018",
-					crate::error::BinaryOp::Mul => "OPERATOR_019",
-					crate::error::BinaryOp::Div => "OPERATOR_020",
-					crate::error::BinaryOp::Rem => "OPERATOR_021",
-					crate::error::BinaryOp::Equal => "OPERATOR_022",
-					crate::error::BinaryOp::NotEqual => "OPERATOR_023",
-					crate::error::BinaryOp::LessThan => "OPERATOR_024",
-					crate::error::BinaryOp::LessThanEqual => "OPERATOR_025",
-					crate::error::BinaryOp::GreaterThan => "OPERATOR_026",
-					crate::error::BinaryOp::GreaterThanEqual => "OPERATOR_027",
-					crate::error::BinaryOp::Between => "OPERATOR_028",
+					BinaryOp::Add => "OPERATOR_017",
+					BinaryOp::Sub => "OPERATOR_018",
+					BinaryOp::Mul => "OPERATOR_019",
+					BinaryOp::Div => "OPERATOR_020",
+					BinaryOp::Rem => "OPERATOR_021",
+					BinaryOp::Equal => "OPERATOR_022",
+					BinaryOp::NotEqual => "OPERATOR_023",
+					BinaryOp::LessThan => "OPERATOR_024",
+					BinaryOp::LessThanEqual => "OPERATOR_025",
+					BinaryOp::GreaterThan => "OPERATOR_026",
+					BinaryOp::GreaterThanEqual => "OPERATOR_027",
+					BinaryOp::Between => "OPERATOR_028",
 				};
 
 				let sym = operator.symbol();
-				let message = if matches!(&operator, crate::error::BinaryOp::Between) {
+				let message = if matches!(&operator, BinaryOp::Between) {
 					format!("Cannot apply '{}' operator to {} with range of {}", sym, left, right)
 				} else {
 					format!("Cannot apply '{}' operator to {} and {}", sym, left, right)
 				};
 				let label = Some(format!("'{}' operator on incompatible types", sym));
 
-				let mut notes = if matches!(&operator, crate::error::BinaryOp::Between) {
+				let mut notes = if matches!(&operator, BinaryOp::Between) {
 					vec![
 						format!("Value is of type: {}", left),
 						format!("Range bounds are of type: {}", right),
@@ -191,32 +192,32 @@ impl IntoDiagnostic for TypeError {
 				};
 
 				let comparison_note = match &operator {
-					crate::error::BinaryOp::Add
-					| crate::error::BinaryOp::Sub
-					| crate::error::BinaryOp::Mul
-					| crate::error::BinaryOp::Div
-					| crate::error::BinaryOp::Rem => {
+					BinaryOp::Add
+					| BinaryOp::Sub
+					| BinaryOp::Mul
+					| BinaryOp::Div
+					| BinaryOp::Rem => {
 						Some("Consider converting operands to compatible numeric types first".to_string())
 					}
-					crate::error::BinaryOp::Equal => {
+					BinaryOp::Equal => {
 						Some("Equality comparison is only supported between compatible types".to_string())
 					}
-					crate::error::BinaryOp::NotEqual => {
+					BinaryOp::NotEqual => {
 						Some("Inequality comparison is only supported between compatible types".to_string())
 					}
-					crate::error::BinaryOp::LessThan => {
+					BinaryOp::LessThan => {
 						Some("Less than comparison is only supported between compatible types".to_string())
 					}
-					crate::error::BinaryOp::LessThanEqual => {
+					BinaryOp::LessThanEqual => {
 						Some("Less than or equal comparison is only supported between compatible types".to_string())
 					}
-					crate::error::BinaryOp::GreaterThan => {
+					BinaryOp::GreaterThan => {
 						Some("Greater than comparison is only supported between compatible types".to_string())
 					}
-					crate::error::BinaryOp::GreaterThanEqual => {
+					BinaryOp::GreaterThanEqual => {
 						Some("Greater than or equal comparison is only supported between compatible types".to_string())
 					}
-					crate::error::BinaryOp::Between => {
+					BinaryOp::Between => {
 						Some("BETWEEN comparison is only supported between compatible types".to_string())
 					}
 				};
@@ -426,7 +427,7 @@ impl IntoDiagnostic for TypeError {
 			TypeError::InvalidNumberFormat { target, fragment } => {
 				let label = Some(format!("'{}' is not a valid {} number", fragment.text(), target));
 				let (help, notes) = match target {
-					crate::value::r#type::Type::Float4 | crate::value::r#type::Type::Float8 => (
+					Type::Float4 | Type::Float8 => (
 						"use decimal format (e.g., 123.45, -67.89, 1.23e-4)".to_string(),
 						vec![
 							"valid: 123.45".to_string(),
@@ -434,16 +435,16 @@ impl IntoDiagnostic for TypeError {
 							"valid: 1.23e-4".to_string(),
 						],
 					),
-					crate::value::r#type::Type::Int1
-					| crate::value::r#type::Type::Int2
-					| crate::value::r#type::Type::Int4
-					| crate::value::r#type::Type::Int8
-					| crate::value::r#type::Type::Int16
-					| crate::value::r#type::Type::Uint1
-					| crate::value::r#type::Type::Uint2
-					| crate::value::r#type::Type::Uint4
-					| crate::value::r#type::Type::Uint8
-					| crate::value::r#type::Type::Uint16 => (
+					Type::Int1
+					| Type::Int2
+					| Type::Int4
+					| Type::Int8
+					| Type::Int16
+					| Type::Uint1
+					| Type::Uint2
+					| Type::Uint4
+					| Type::Uint8
+					| Type::Uint16 => (
 						"use integer format (e.g., 123, -456) or decimal that can be truncated".to_string(),
 						vec![
 							"valid: 123".to_string(),
@@ -538,14 +539,14 @@ impl IntoDiagnostic for TypeError {
 			} => {
 				let is_signed = source_type.is_signed_integer();
 				let (min_limit, max_limit) = match target {
-					crate::value::r#type::Type::Float4 => {
+					Type::Float4 => {
 						if is_signed {
 							("-16_777_216 (-2^24)", "16_777_216 (2^24)")
 						} else {
 							("0", "16_777_216 (2^24)")
 						}
 					}
-					crate::value::r#type::Type::Float8 => {
+					Type::Float8 => {
 						if is_signed {
 							("-9_007_199_254_740_992 (-2^53)", "9_007_199_254_740_992 (2^53)")
 						} else {

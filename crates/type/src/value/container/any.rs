@@ -9,6 +9,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
+	Result,
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
 	value::Value,
@@ -45,7 +46,7 @@ where
 }
 
 impl Serialize for AnyContainer<Cow> {
-	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
+	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> std::result::Result<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
 			data: &'a CowVec<Box<Value>>,
@@ -58,7 +59,7 @@ impl Serialize for AnyContainer<Cow> {
 }
 
 impl<'de> Deserialize<'de> for AnyContainer<Cow> {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
 			data: CowVec<Box<Value>>,
@@ -205,7 +206,7 @@ impl<S: Storage> AnyContainer<S> {
 		self.data = new_data;
 	}
 
-	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
+	pub fn extend(&mut self, other: &Self) -> Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
 		Ok(())
 	}

@@ -217,39 +217,38 @@ impl SafeDiv for f64 {
 
 #[cfg(test)]
 pub mod tests {
-	use super::SafeDiv;
-
 	macro_rules! signed {
         ($($t:ty => $mod:ident),*) => {
             $(
                 mod $mod {
+                    use super::super::SafeDiv;
 
                     #[test]
                     fn checked_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(10));
+                        assert_eq!(SafeDiv::checked_div(&x, &y), Some(10));
                     }
 
                     #[test]
                     fn checked_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
-                        assert_eq!(super::SafeDiv::checked_div(&x, &y), None);
+                        assert_eq!(SafeDiv::checked_div(&x, &y), None);
                     }
 
                     #[test]
                     fn saturating_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::saturating_div(&x, &y), 10);
+                        assert_eq!(SafeDiv::saturating_div(&x, &y), 10);
                     }
 
                     #[test]
                     fn saturating_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
-                        let result = super::SafeDiv::saturating_div(&x, &y);
+                        let result = SafeDiv::saturating_div(&x, &y);
                         // Should saturate to 0 for division by zero
                         assert_eq!(result, 0);
                     }
@@ -258,7 +257,7 @@ pub mod tests {
                     fn saturating_div_negative() {
                         let x: $t = -10;
                         let y: $t = 0;
-                        let result = super::SafeDiv::saturating_div(&x, &y);
+                        let result = SafeDiv::saturating_div(&x, &y);
                         // Should saturate to 0 for division by zero
                         assert_eq!(result, 0);
                     }
@@ -267,7 +266,7 @@ pub mod tests {
                     fn wrapping_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 10);
+                        assert_eq!(SafeDiv::wrapping_div(&x, &y), 10);
                     }
 
                     #[test]
@@ -275,7 +274,7 @@ pub mod tests {
                         let x: $t = <$t>::MIN;
                         let y: $t = -1;
                         // For signed types, MIN / -1 would overflow, so it wraps
-                        let result = super::SafeDiv::wrapping_div(&x, &y);
+                        let result = SafeDiv::wrapping_div(&x, &y);
                         // The exact wrapped value depends on the type, but should wrap to MIN
                         assert_eq!(result, <$t>::MIN);
                     }
@@ -285,9 +284,9 @@ pub mod tests {
                         let x: $t = 5;
                         let y: $t = <$t>::MAX;
 
-                        assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(0));
-                        assert_eq!(super::SafeDiv::saturating_div(&x, &y), 0);
-                        assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 0);
+                        assert_eq!(SafeDiv::checked_div(&x, &y), Some(0));
+                        assert_eq!(SafeDiv::saturating_div(&x, &y), 0);
+                        assert_eq!(SafeDiv::wrapping_div(&x, &y), 0);
                     }
                 }
             )*
@@ -298,33 +297,34 @@ pub mod tests {
         ($($t:ty => $mod:ident),*) => {
             $(
                 mod $mod {
+                    use super::super::SafeDiv;
 
                     #[test]
                     fn checked_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(10));
+                        assert_eq!(SafeDiv::checked_div(&x, &y), Some(10));
                     }
 
                     #[test]
                     fn checked_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
-                        assert_eq!(super::SafeDiv::checked_div(&x, &y), None);
+                        assert_eq!(SafeDiv::checked_div(&x, &y), None);
                     }
 
                     #[test]
                     fn saturating_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::saturating_div(&x, &y), 10);
+                        assert_eq!(SafeDiv::saturating_div(&x, &y), 10);
                     }
 
                     #[test]
                     fn saturating_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
-                        let result = super::SafeDiv::saturating_div(&x, &y);
+                        let result = SafeDiv::saturating_div(&x, &y);
                         // Should saturate to 0 for division by zero
                         assert_eq!(result, 0);
                     }
@@ -333,14 +333,14 @@ pub mod tests {
                     fn wrapping_div_happy() {
                         let x: $t = 20;
                         let y: $t = 2;
-                        assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 10);
+                        assert_eq!(SafeDiv::wrapping_div(&x, &y), 10);
                     }
 
                     #[test]
                     fn wrapping_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
-                        let result = super::SafeDiv::wrapping_div(&x, &y);
+                        let result = SafeDiv::wrapping_div(&x, &y);
                         assert_eq!(result, 0);
                     }
 
@@ -349,9 +349,9 @@ pub mod tests {
                         let x: $t = 5;
                         let y: $t = <$t>::MAX;
 
-                        assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(0));
-                        assert_eq!(super::SafeDiv::saturating_div(&x, &y), 0);
-                        assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 0);
+                        assert_eq!(SafeDiv::checked_div(&x, &y), Some(0));
+                        assert_eq!(SafeDiv::saturating_div(&x, &y), 0);
+                        assert_eq!(SafeDiv::wrapping_div(&x, &y), 0);
                     }
                 }
             )*
@@ -375,47 +375,48 @@ pub mod tests {
 	);
 
 	mod f32 {
+		use super::super::SafeDiv;
 
 		#[test]
 		fn checked_div_happy() {
 			let x: f32 = 20.0;
 			let y: f32 = 2.0;
-			assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(10.0));
+			assert_eq!(SafeDiv::checked_div(&x, &y), Some(10.0));
 		}
 
 		#[test]
 		fn checked_div_unhappy() {
 			let x: f32 = f32::MAX;
 			let y: f32 = 0.1;
-			assert_eq!(super::SafeDiv::checked_div(&x, &y), None);
+			assert_eq!(SafeDiv::checked_div(&x, &y), None);
 		}
 
 		#[test]
 		fn saturating_div_happy() {
 			let x: f32 = 20.0;
 			let y: f32 = 2.0;
-			assert_eq!(super::SafeDiv::saturating_div(&x, &y), 10.0);
+			assert_eq!(SafeDiv::saturating_div(&x, &y), 10.0);
 		}
 
 		#[test]
 		fn saturating_div_unhappy() {
 			let x: f32 = f32::MAX;
 			let y: f32 = 0.1;
-			assert_eq!(super::SafeDiv::saturating_div(&x, &y), f32::MAX);
+			assert_eq!(SafeDiv::saturating_div(&x, &y), f32::MAX);
 		}
 
 		#[test]
 		fn wrapping_div_happy() {
 			let x: f32 = 20.0;
 			let y: f32 = 2.0;
-			assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 10.0);
+			assert_eq!(SafeDiv::wrapping_div(&x, &y), 10.0);
 		}
 
 		#[test]
 		fn wrapping_div_unhappy() {
 			let x: f32 = f32::MAX;
 			let y: f32 = 0.1;
-			let result = super::SafeDiv::wrapping_div(&x, &y);
+			let result = SafeDiv::wrapping_div(&x, &y);
 			assert!(result.is_finite());
 			assert_eq!(result, 0.0);
 		}
@@ -424,54 +425,55 @@ pub mod tests {
 		fn wrapping_div_negative() {
 			let x: f32 = f32::MAX;
 			let y: f32 = -0.1;
-			let result = super::SafeDiv::wrapping_div(&x, &y);
+			let result = SafeDiv::wrapping_div(&x, &y);
 			assert!(result.is_finite());
 			assert_eq!(result, 0.0);
 		}
 	}
 
 	mod f64 {
+		use super::super::SafeDiv;
 
 		#[test]
 		fn checked_div_happy() {
 			let x: f64 = 20.0;
 			let y: f64 = 2.0;
-			assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(10.0));
+			assert_eq!(SafeDiv::checked_div(&x, &y), Some(10.0));
 		}
 
 		#[test]
 		fn checked_div_unhappy() {
 			let x: f64 = f64::MAX;
 			let y: f64 = 0.1;
-			assert_eq!(super::SafeDiv::checked_div(&x, &y), None);
+			assert_eq!(SafeDiv::checked_div(&x, &y), None);
 		}
 
 		#[test]
 		fn saturating_div_happy() {
 			let x: f64 = 20.0;
 			let y: f64 = 2.0;
-			assert_eq!(super::SafeDiv::saturating_div(&x, &y), 10.0);
+			assert_eq!(SafeDiv::saturating_div(&x, &y), 10.0);
 		}
 
 		#[test]
 		fn saturating_div_unhappy() {
 			let x: f64 = f64::MAX;
 			let y: f64 = 0.1;
-			assert_eq!(super::SafeDiv::saturating_div(&x, &y), f64::MAX);
+			assert_eq!(SafeDiv::saturating_div(&x, &y), f64::MAX);
 		}
 
 		#[test]
 		fn wrapping_div_happy() {
 			let x: f64 = 20.0;
 			let y: f64 = 2.0;
-			assert_eq!(super::SafeDiv::wrapping_div(&x, &y), 10.0);
+			assert_eq!(SafeDiv::wrapping_div(&x, &y), 10.0);
 		}
 
 		#[test]
 		fn wrapping_div_unhappy() {
 			let x: f64 = f64::MAX;
 			let y: f64 = 0.1;
-			let result = super::SafeDiv::wrapping_div(&x, &y);
+			let result = SafeDiv::wrapping_div(&x, &y);
 			assert!(result.is_finite());
 			assert_eq!(result, 0.0);
 		}
@@ -480,7 +482,7 @@ pub mod tests {
 		fn wrapping_div_negative() {
 			let x: f64 = f64::MAX;
 			let y: f64 = -0.1;
-			let result = super::SafeDiv::wrapping_div(&x, &y);
+			let result = SafeDiv::wrapping_div(&x, &y);
 			assert!(result.is_finite());
 			assert_eq!(result, 0.0);
 		}

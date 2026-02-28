@@ -11,6 +11,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
+	Result,
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
 	value::{
@@ -54,7 +55,7 @@ where
 }
 
 impl<T: IsUuid + Serialize> Serialize for UuidContainer<T, Cow> {
-	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
+	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> std::result::Result<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a, T: Clone + PartialEq + Serialize> {
 			data: &'a CowVec<T>,
@@ -67,7 +68,7 @@ impl<T: IsUuid + Serialize> Serialize for UuidContainer<T, Cow> {
 }
 
 impl<'de, T: IsUuid + Deserialize<'de>> Deserialize<'de> for UuidContainer<T, Cow> {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper<T: Clone + PartialEq> {
 			data: CowVec<T>,
@@ -193,7 +194,7 @@ where
 		}
 	}
 
-	pub fn extend(&mut self, other: &Self) -> crate::Result<()> {
+	pub fn extend(&mut self, other: &Self) -> Result<()> {
 		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
 		Ok(())
 	}
