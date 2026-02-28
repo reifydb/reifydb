@@ -3,7 +3,9 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	interface::catalog::policy::PolicyTargetType,
 	internal_error,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
@@ -742,6 +744,25 @@ impl Vm {
 						};
 
 						if let Some(proc_def) = proc_def {
+							// Enforce procedure call policy
+							let (pol_ns, pol_name) = if let Some((ns, name)) =
+								Catalog::split_qualified_name(func_name)
+							{
+								(ns, name.to_string())
+							} else {
+								("default".to_string(), func_name.to_string())
+							};
+							crate::policy::enforce_identity_policy(
+								services,
+								tx,
+								self.identity,
+								&pol_ns,
+								&pol_name,
+								"call",
+								PolicyTargetType::Procedure,
+								&self.symbol_table,
+							)?;
+
 							// Catalog-stored RQL procedure
 							let source = proc_def.body.clone();
 							let compiled = services.compiler.compile(tx, &source)?;

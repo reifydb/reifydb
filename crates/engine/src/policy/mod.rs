@@ -44,6 +44,7 @@ pub fn enforce_write_policies(
 		return Ok(());
 	}
 
+	let target_type_str = target_type.as_str().to_string();
 	let policies = reifydb_policy::resolve_write_policies(
 		&services.catalog,
 		tx,
@@ -58,6 +59,7 @@ pub fn enforce_write_policies(
 		return Err(EngineError::NoPolicyDefined {
 			operation: operation.to_string(),
 			target: format!("{}::{}", target_namespace, target_object),
+			target_type: target_type_str,
 		}
 		.into());
 	}
@@ -127,6 +129,126 @@ pub fn enforce_write_policies(
 							let valid = defined && container.is_defined(i);
 							!(valid && container.data().get(i))
 						}),
+						_ => true,
+					},
+					_ => true,
+				};
+
+				if denied {
+					return Err(EngineError::PolicyDenied {
+						policy_name: policy_name.to_string(),
+						operation: operation.to_string(),
+						target: target.clone(),
+					}
+					.into());
+				}
+			}
+		}
+	}
+
+	Ok(())
+}
+
+/// Enforce identity-only policies (no row data) for operations like procedure calls.
+///
+/// - Root bypasses all policies.
+/// - If no policies match, the operation is denied (default-deny).
+/// - For each matching policy, the `require` condition is evaluated with identity in scope but no row data
+///   (row_count=1, empty columns).
+/// - If the condition evaluates to false, the operation is denied.
+pub fn enforce_identity_policy(
+	services: &Arc<Services>,
+	tx: &mut Transaction<'_>,
+	identity: IdentityId,
+	target_namespace: &str,
+	target_object: &str,
+	operation: &str,
+	target_type: PolicyTargetType,
+	symbol_table: &SymbolTable,
+) -> crate::Result<()> {
+	if identity.is_root() {
+		return Ok(());
+	}
+
+	let target_type_str = target_type.as_str().to_string();
+	let policies = reifydb_policy::resolve_write_policies(
+		&services.catalog,
+		tx,
+		identity,
+		target_namespace,
+		target_object,
+		operation,
+		target_type,
+	)?;
+
+	if policies.is_empty() {
+		return Err(EngineError::NoPolicyDefined {
+			operation: operation.to_string(),
+			target: format!("{}::{}", target_namespace, target_object),
+			target_type: target_type_str,
+		}
+		.into());
+	}
+
+	let bump = bumpalo::Bump::new();
+	let target = format!("{}::{}", target_namespace, target_object);
+	let empty_columns = Columns::empty();
+
+	for (policy, op) in &policies {
+		let policy_name = policy.name.as_deref().unwrap_or("<unnamed>");
+
+		let body_source = bump.alloc_str(&op.body_source);
+		let statements = parse_str(&bump, body_source)?;
+
+		for stmt in statements {
+			for node in stmt.nodes {
+				let condition_expr = match node {
+					Ast::Require(req) => {
+						let body = reifydb_rql::bump::BumpBox::into_inner(req.body);
+						ExpressionCompiler::compile(body)?
+					}
+					Ast::Filter(filter) => {
+						let body = reifydb_rql::bump::BumpBox::into_inner(filter.node);
+						ExpressionCompiler::compile(body)?
+					}
+					_ => continue,
+				};
+
+				let compile_ctx = CompileContext {
+					functions: &services.functions,
+					symbol_table,
+				};
+				let compiled = compile_expression(&compile_ctx, &condition_expr)?;
+
+				let eval_ctx = EvalContext {
+					target: None,
+					columns: empty_columns.clone(),
+					row_count: 1,
+					take: None,
+					params: &reifydb_type::params::Params::None,
+					symbol_table,
+					is_aggregate_context: false,
+					functions: &services.functions,
+					clock: &services.clock,
+					arena: None,
+					identity,
+				};
+
+				let result = compiled.execute(&eval_ctx)?;
+
+				let denied = match result.data() {
+					ColumnData::Bool(container) => {
+						!container.is_defined(0) || !container.data().get(0)
+					}
+					ColumnData::Option {
+						inner,
+						bitvec,
+					} => match inner.as_ref() {
+						ColumnData::Bool(container) => {
+							let defined = bitvec.len() > 0 && bitvec.get(0);
+							let valid = defined && container.is_defined(0);
+							!(valid && container.data().get(0))
+						}
 						_ => true,
 					},
 					_ => true,

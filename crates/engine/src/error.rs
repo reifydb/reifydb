@@ -205,6 +205,7 @@ pub enum EngineError {
 	NoPolicyDefined {
 		operation: String,
 		target: String,
+		target_type: String,
 	},
 }
 
@@ -372,6 +373,7 @@ impl IntoDiagnostic for EngineError {
 			EngineError::NoPolicyDefined {
 				operation,
 				target,
+				target_type,
 			} => Diagnostic {
 				code: "POLICY_002".to_string(),
 				statement: None,
@@ -379,10 +381,26 @@ impl IntoDiagnostic for EngineError {
 				column: None,
 				fragment: Fragment::None,
 				label: None,
-				help: Some(format!(
-					"Define a table policy with an {} clause to allow write operations",
-					operation
-				)),
+				help: Some({
+					let article = |word: &str| {
+						if matches!(
+							word.as_bytes().first(),
+							Some(b'a' | b'e' | b'i' | b'o' | b'u')
+						) {
+							"an"
+						} else {
+							"a"
+						}
+					};
+					format!(
+						"Define {} {} policy with {} {} clause to allow {} operations",
+						article(&target_type),
+						target_type,
+						article(&operation),
+						operation,
+						operation
+					)
+				}),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,
