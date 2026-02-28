@@ -114,6 +114,8 @@ pub enum Value {
 	DictionaryId(DictionaryEntryId),
 	/// A type value (first-class type identifier)
 	Type(Type),
+	/// An ordered list of values
+	List(Vec<Value>),
 }
 
 fn default_none_inner() -> Type {
@@ -228,6 +230,10 @@ impl Value {
 	pub fn any(v: impl Into<Value>) -> Self {
 		Value::Any(Box::new(v.into()))
 	}
+
+	pub fn list(items: Vec<Value>) -> Self {
+		Value::List(items)
+	}
 }
 
 impl PartialEq for Value {
@@ -269,6 +275,7 @@ impl PartialEq for Value {
 			(Value::Any(l), Value::Any(r)) => l == r,
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l == r,
 			(Value::Type(l), Value::Type(r)) => l == r,
+			(Value::List(l), Value::List(r)) => l == r,
 			_ => false,
 		}
 	}
@@ -311,6 +318,7 @@ impl std::hash::Hash for Value {
 			Value::Any(v) => v.hash(state),
 			Value::DictionaryId(v) => v.hash(state),
 			Value::Type(v) => v.hash(state),
+			Value::List(v) => v.hash(state),
 		}
 	}
 }
@@ -345,7 +353,8 @@ impl PartialOrd for Value {
 			(Value::Decimal(l), Value::Decimal(r)) => l.partial_cmp(r),
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().partial_cmp(&r.to_u128()),
 			(Value::Type(l), Value::Type(r)) => l.partial_cmp(r),
-			(Value::Any(_), Value::Any(_)) => None, // Any values are not comparable
+			(Value::List(_), Value::List(_)) => None, // Lists are not orderable
+			(Value::Any(_), Value::Any(_)) => None,   // Any values are not comparable
 			(
 				Value::None {
 					..
@@ -424,6 +433,7 @@ impl Ord for Value {
 			(Value::Decimal(l), Value::Decimal(r)) => l.cmp(r),
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().cmp(&r.to_u128()),
 			(Value::Type(l), Value::Type(r)) => l.cmp(r),
+			(Value::List(_), Value::List(_)) => unreachable!("List values are not orderable"),
 			(Value::Any(_), Value::Any(_)) => unreachable!("Any values are not orderable"),
 			_ => unimplemented!(),
 		}
@@ -462,6 +472,16 @@ impl Display for Value {
 			Value::Any(value) => Display::fmt(value, f),
 			Value::DictionaryId(value) => Display::fmt(value, f),
 			Value::Type(value) => Display::fmt(value, f),
+			Value::List(items) => {
+				f.write_str("(")?;
+				for (i, item) in items.iter().enumerate() {
+					if i > 0 {
+						f.write_str(", ")?;
+					}
+					Display::fmt(item, f)?;
+				}
+				f.write_str(")")
+			}
 			Value::None {
 				..
 			} => f.write_str("none"),
@@ -503,6 +523,10 @@ impl Value {
 			Value::Any(_) => Type::Any,
 			Value::DictionaryId(_) => Type::DictionaryId,
 			Value::Type(t) => t.clone(),
+			Value::List(items) => {
+				let element_type = items.first().map(|v| v.get_type()).unwrap_or(Type::Any);
+				Type::list_of(element_type)
+			}
 		}
 	}
 }

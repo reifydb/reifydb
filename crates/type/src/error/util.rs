@@ -35,6 +35,7 @@ pub fn value_max<'a>(value: Type) -> &'a str {
 		Type::Option(_) => unreachable!(),
 		Type::Any => unreachable!(),
 		Type::DictionaryId => unreachable!(),
+		Type::List(_) => unreachable!(),
 	}
 }
 
@@ -72,6 +73,7 @@ pub fn value_range<'a>(value: Type) -> &'a str {
 		Type::Option(_) => unreachable!(),
 		Type::Any => unreachable!(),
 		Type::DictionaryId => unreachable!(),
+		Type::List(_) => unreachable!(),
 	}
 }
 

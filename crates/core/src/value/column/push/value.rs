@@ -176,6 +176,7 @@ impl ColumnData {
 				..
 			} => self.push_none(),
 			Value::Type(t) => self.push_value(Value::Any(Box::new(Value::Type(t)))),
+			Value::List(v) => self.push_value(Value::Any(Box::new(Value::List(v)))),
 			Value::Any(v) => match self {
 				ColumnData::Any(container) => container.push(v),
 				_ => unreachable!("Cannot push Any value to non-Any column"),

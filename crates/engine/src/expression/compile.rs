@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{
@@ -9,7 +11,10 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
-use super::context::CompileContext;
+use super::{
+	context::CompileContext,
+	option::{binary_op_unwrap_option, unary_op_unwrap_option},
+};
 use crate::{
 	error::CastError,
 	expression::{
@@ -423,7 +428,32 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 				let inner = compile_expression(_ctx, &e.expressions[0])?;
 				CompiledExpr::new(move |ctx| inner.execute(ctx))
 			} else {
-				unimplemented!("Multi-element tuple evaluation not yet supported: {:?}", e)
+				let compiled: Vec<CompiledExpr> = e
+					.expressions
+					.iter()
+					.map(|expr| compile_expression(_ctx, expr))
+					.collect::<crate::Result<Vec<_>>>()?;
+				let fragment = e.fragment.clone();
+				CompiledExpr::new(move |ctx| {
+					let columns: Vec<Column> = compiled
+						.iter()
+						.map(|expr| expr.execute(ctx))
+						.collect::<crate::Result<Vec<_>>>()?;
+
+					let len = columns.first().map_or(1, |c| c.data().len());
+					let mut data: Vec<Box<Value>> = Vec::with_capacity(len);
+
+					for i in 0..len {
+						let items: Vec<Value> =
+							columns.iter().map(|col| col.data().get_value(i)).collect();
+						data.push(Box::new(Value::List(items)));
+					}
+
+					Ok(Column {
+						name: fragment.clone(),
+						data: ColumnData::any(data),
+					})
+				})
 			}
 		}
 
@@ -509,7 +539,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 		Expression::In(e) => {
 			let list_expressions = match e.list.as_ref() {
 				Expression::Tuple(tuple) => &tuple.expressions,
-				_ => std::slice::from_ref(e.list.as_ref()),
+				_ => from_ref(e.list.as_ref()),
 			};
 			let value = compile_expression(_ctx, &e.value)?;
 			let list: Vec<CompiledExpr> = list_expressions
@@ -574,6 +604,44 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 			})
 		}
 
+		Expression::Contains(e) => {
+			let list_expressions = match e.list.as_ref() {
+				Expression::Tuple(tuple) => &tuple.expressions,
+				_ => from_ref(e.list.as_ref()),
+			};
+			let value = compile_expression(_ctx, &e.value)?;
+			let list: Vec<CompiledExpr> = list_expressions
+				.iter()
+				.map(|expr| compile_expression(_ctx, expr))
+				.collect::<crate::Result<Vec<_>>>()?;
+			let fragment = e.fragment.clone();
+			CompiledExpr::new(move |ctx| {
+				let value_col = value.execute(ctx)?;
+
+				// Empty list → vacuous truth (all elements trivially contained)
+				if list.is_empty() {
+					let len = value_col.data().len();
+					let result = vec![true; len];
+					return Ok(Column {
+						name: fragment.clone(),
+						data: ColumnData::bool(result),
+					});
+				}
+
+				// For each list element, check if it's contained in the set value
+				let first_col = list[0].execute(ctx)?;
+				let mut result = list_contains_element(&value_col, &first_col, &fragment)?;
+
+				for list_expr in list.iter().skip(1) {
+					let list_col = list_expr.execute(ctx)?;
+					let element_result = list_contains_element(&value_col, &list_col, &fragment)?;
+					result = and_columns(result, element_result, fragment.clone())?;
+				}
+
+				Ok(result)
+			})
+		}
+
 		Expression::Cast(e) => {
 			if let Expression::Constant(const_expr) = e.expression.as_ref() {
 				let const_expr = const_expr.clone();
@@ -619,19 +687,19 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> crate::Re
 
 		Expression::If(e) => {
 			let condition = compile_expression(_ctx, &e.condition)?;
-			let then_expr = compile_expressions(_ctx, std::slice::from_ref(e.then_expr.as_ref()))?;
+			let then_expr = compile_expressions(_ctx, from_ref(e.then_expr.as_ref()))?;
 			let else_ifs: Vec<(CompiledExpr, Vec<CompiledExpr>)> = e
 				.else_ifs
 				.iter()
 				.map(|ei| {
 					Ok((
 						compile_expression(_ctx, &ei.condition)?,
-						compile_expressions(_ctx, std::slice::from_ref(ei.then_expr.as_ref()))?,
+						compile_expressions(_ctx, from_ref(ei.then_expr.as_ref()))?,
 					))
 				})
 				.collect::<crate::Result<Vec<_>>>()?;
 			let else_branch: Option<Vec<CompiledExpr>> = match &e.else_expr {
-				Some(expr) => Some(compile_expressions(_ctx, std::slice::from_ref(expr.as_ref()))?),
+				Some(expr) => Some(compile_expressions(_ctx, from_ref(expr.as_ref()))?),
 				None => None,
 			};
 			let fragment = e.fragment.clone();
@@ -823,203 +891,282 @@ fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> crate::Res
 // --- Helper functions (moved from execute.rs) ---
 
 fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
-		match (&left.data(), &right.data()) {
-			(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-				let data: Vec<bool> = l_container
-					.data()
-					.iter()
-					.zip(r_container.data().iter())
-					.map(|(l_val, r_val)| l_val && r_val)
-					.collect();
+	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
+		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
+			let data: Vec<bool> = l_container
+				.data()
+				.iter()
+				.zip(r_container.data().iter())
+				.map(|(l_val, r_val)| l_val && r_val)
+				.collect();
 
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool(data),
-				})
-			}
-			(l, r) => {
-				if l.is_number() || r.is_number() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::And,
-						operand_category: OperandCategory::Number,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else if l.is_text() || r.is_text() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::And,
-						operand_category: OperandCategory::Text,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else if l.is_temporal() || r.is_temporal() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::And,
-						operand_category: OperandCategory::Temporal,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else if l.is_uuid() || r.is_uuid() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::And,
-						operand_category: OperandCategory::Uuid,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else {
-					unimplemented!("{} and {}", l.get_type(), r.get_type());
+			Ok(Column {
+				name: fragment.clone(),
+				data: ColumnData::bool(data),
+			})
+		}
+		(l, r) => {
+			if l.is_number() || r.is_number() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::And,
+					operand_category: OperandCategory::Number,
+					fragment: fragment.clone(),
 				}
+				.into());
+			} else if l.is_text() || r.is_text() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::And,
+					operand_category: OperandCategory::Text,
+					fragment: fragment.clone(),
+				}
+				.into());
+			} else if l.is_temporal() || r.is_temporal() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::And,
+					operand_category: OperandCategory::Temporal,
+					fragment: fragment.clone(),
+				}
+				.into());
+			} else if l.is_uuid() || r.is_uuid() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::And,
+					operand_category: OperandCategory::Uuid,
+					fragment: fragment.clone(),
+				}
+				.into());
+			} else {
+				unimplemented!("{} and {}", l.get_type(), r.get_type());
 			}
 		}
 	})
 }
 
 fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
-		match (&left.data(), &right.data()) {
-			(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-				let data: Vec<bool> = l_container
-					.data()
-					.iter()
-					.zip(r_container.data().iter())
-					.map(|(l_val, r_val)| l_val || r_val)
-					.collect();
+	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
+		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
+			let data: Vec<bool> = l_container
+				.data()
+				.iter()
+				.zip(r_container.data().iter())
+				.map(|(l_val, r_val)| l_val || r_val)
+				.collect();
 
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool(data),
-				})
-			}
-			(l, r) => {
-				if l.is_number() || r.is_number() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::Or,
-						operand_category: OperandCategory::Number,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else if l.is_text() || r.is_text() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::Or,
-						operand_category: OperandCategory::Text,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else if l.is_temporal() || r.is_temporal() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::Or,
-						operand_category: OperandCategory::Temporal,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else if l.is_uuid() || r.is_uuid() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::Or,
-						operand_category: OperandCategory::Uuid,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else {
-					unimplemented!("{} or {}", l.get_type(), r.get_type());
+			Ok(Column {
+				name: fragment.clone(),
+				data: ColumnData::bool(data),
+			})
+		}
+		(l, r) => {
+			if l.is_number() || r.is_number() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::Or,
+					operand_category: OperandCategory::Number,
+					fragment: fragment.clone(),
 				}
+				.into());
+			} else if l.is_text() || r.is_text() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::Or,
+					operand_category: OperandCategory::Text,
+					fragment: fragment.clone(),
+				}
+				.into());
+			} else if l.is_temporal() || r.is_temporal() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::Or,
+					operand_category: OperandCategory::Temporal,
+					fragment: fragment.clone(),
+				}
+				.into());
+			} else if l.is_uuid() || r.is_uuid() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::Or,
+					operand_category: OperandCategory::Uuid,
+					fragment: fragment.clone(),
+				}
+				.into());
+			} else {
+				unimplemented!("{} or {}", l.get_type(), r.get_type());
 			}
 		}
 	})
 }
 
 fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> crate::Result<Column> {
-	super::option::binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
-		match (&left.data(), &right.data()) {
-			(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-				let data: Vec<bool> = l_container
-					.data()
-					.iter()
-					.zip(r_container.data().iter())
-					.map(|(l_val, r_val)| l_val != r_val)
-					.collect();
+	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
+		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
+			let data: Vec<bool> = l_container
+				.data()
+				.iter()
+				.zip(r_container.data().iter())
+				.map(|(l_val, r_val)| l_val != r_val)
+				.collect();
 
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool(data),
-				})
-			}
-			(l, r) => {
-				if l.is_number() || r.is_number() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::Xor,
-						operand_category: OperandCategory::Number,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else if l.is_text() || r.is_text() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::Xor,
-						operand_category: OperandCategory::Text,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else if l.is_temporal() || r.is_temporal() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::Xor,
-						operand_category: OperandCategory::Temporal,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else if l.is_uuid() || r.is_uuid() {
-					return Err(TypeError::LogicalOperatorNotApplicable {
-						operator: LogicalOp::Xor,
-						operand_category: OperandCategory::Uuid,
-						fragment: fragment.clone(),
-					}
-					.into());
-				} else {
-					unimplemented!("{} xor {}", l.get_type(), r.get_type());
+			Ok(Column {
+				name: fragment.clone(),
+				data: ColumnData::bool(data),
+			})
+		}
+		(l, r) => {
+			if l.is_number() || r.is_number() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::Xor,
+					operand_category: OperandCategory::Number,
+					fragment: fragment.clone(),
 				}
+				.into());
+			} else if l.is_text() || r.is_text() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::Xor,
+					operand_category: OperandCategory::Text,
+					fragment: fragment.clone(),
+				}
+				.into());
+			} else if l.is_temporal() || r.is_temporal() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::Xor,
+					operand_category: OperandCategory::Temporal,
+					fragment: fragment.clone(),
+				}
+				.into());
+			} else if l.is_uuid() || r.is_uuid() {
+				return Err(TypeError::LogicalOperatorNotApplicable {
+					operator: LogicalOp::Xor,
+					operand_category: OperandCategory::Uuid,
+					fragment: fragment.clone(),
+				}
+				.into());
+			} else {
+				unimplemented!("{} xor {}", l.get_type(), r.get_type());
 			}
 		}
 	})
 }
 
 fn or_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<Column> {
-	super::option::binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| {
-		match (left.data(), right.data()) {
-			(ColumnData::Bool(l), ColumnData::Bool(r)) => {
-				let len = l.len();
-				let mut data = Vec::with_capacity(len);
-				let mut bitvec = Vec::with_capacity(len);
+	binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| match (left.data(), right.data()) {
+		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
+			let len = l.len();
+			let mut data = Vec::with_capacity(len);
+			let mut bitvec = Vec::with_capacity(len);
 
-				for i in 0..len {
-					let l_defined = l.is_defined(i);
-					let r_defined = r.is_defined(i);
-					let l_val = l.data().get(i);
-					let r_val = r.data().get(i);
+			for i in 0..len {
+				let l_defined = l.is_defined(i);
+				let r_defined = r.is_defined(i);
+				let l_val = l.data().get(i);
+				let r_val = r.data().get(i);
 
-					if l_defined && r_defined {
-						data.push(l_val || r_val);
-						bitvec.push(true);
-					} else {
-						data.push(false);
-						bitvec.push(false);
-					}
+				if l_defined && r_defined {
+					data.push(l_val || r_val);
+					bitvec.push(true);
+				} else {
+					data.push(false);
+					bitvec.push(false);
 				}
+			}
 
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::bool_with_bitvec(data, bitvec),
-				})
-			}
-			_ => {
-				unreachable!(
-					"OR columns should only be called with boolean columns from equality comparisons"
-				)
-			}
+			Ok(Column {
+				name: fragment.clone(),
+				data: ColumnData::bool_with_bitvec(data, bitvec),
+			})
+		}
+		_ => {
+			unreachable!("OR columns should only be called with boolean columns from equality comparisons")
 		}
 	})
 }
 
+fn and_columns(left: Column, right: Column, fragment: Fragment) -> crate::Result<Column> {
+	binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| match (left.data(), right.data()) {
+		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
+			let len = l.len();
+			let mut data = Vec::with_capacity(len);
+			let mut bitvec = Vec::with_capacity(len);
+
+			for i in 0..len {
+				let l_defined = l.is_defined(i);
+				let r_defined = r.is_defined(i);
+				let l_val = l.data().get(i);
+				let r_val = r.data().get(i);
+
+				if l_defined && r_defined {
+					data.push(l_val && r_val);
+					bitvec.push(true);
+				} else {
+					data.push(false);
+					bitvec.push(false);
+				}
+			}
+
+			Ok(Column {
+				name: fragment.clone(),
+				data: ColumnData::bool_with_bitvec(data, bitvec),
+			})
+		}
+		_ => {
+			unreachable!("AND columns should only be called with boolean columns")
+		}
+	})
+}
+
+fn list_items_contain(items: &[Value], element: &Value, fragment: &Fragment) -> bool {
+	items.iter().any(|item| {
+		if item == element {
+			return true;
+		}
+		let item_col = Column {
+			name: fragment.clone(),
+			data: ColumnData::from(item.clone()),
+		};
+		let elem_col = Column {
+			name: fragment.clone(),
+			data: ColumnData::from(element.clone()),
+		};
+		compare_columns::<Equal>(&item_col, &elem_col, fragment.clone(), |f, l, r| {
+			TypeError::BinaryOperatorNotApplicable {
+				operator: BinaryOp::Equal,
+				left: l,
+				right: r,
+				fragment: f,
+			}
+			.into_diagnostic()
+		})
+		.ok()
+		.and_then(|c| match c.data() {
+			ColumnData::Bool(b) => Some(b.data().get(0)),
+			_ => None,
+		})
+		.unwrap_or(false)
+	})
+}
+
+fn list_contains_element(list_col: &Column, element_col: &Column, fragment: &Fragment) -> crate::Result<Column> {
+	let len = list_col.data().len();
+	let mut data = Vec::with_capacity(len);
+
+	for i in 0..len {
+		let list_value = list_col.data().get_value(i);
+		let element_value = element_col.data().get_value(i);
+
+		let contained = match &list_value {
+			Value::List(items) => list_items_contain(items, &element_value, fragment),
+			Value::Any(boxed) => match boxed.as_ref() {
+				Value::List(items) => list_items_contain(items, &element_value, fragment),
+				_ => false,
+			},
+			_ => false,
+		};
+		data.push(contained);
+	}
+
+	Ok(Column {
+		name: fragment.clone(),
+		data: ColumnData::bool(data),
+	})
+}
+
 fn negate_column(col: Column, fragment: Fragment) -> Column {
-	super::option::unary_op_unwrap_option(&col, |col| match col.data() {
+	unary_op_unwrap_option(&col, |col| match col.data() {
 		ColumnData::Bool(container) => {
 			let len = container.len();
 			let mut data = Vec::with_capacity(len);

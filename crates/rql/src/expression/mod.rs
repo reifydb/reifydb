@@ -113,6 +113,8 @@ pub enum Expression {
 
 	In(InExpression),
 
+	Contains(ContainsExpression),
+
 	Type(TypeExpression),
 
 	Parameter(ParameterExpression),
@@ -451,6 +453,23 @@ impl InExpression {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContainsExpression {
+	pub value: Box<Expression>,
+	pub list: Box<Expression>,
+	pub fragment: Fragment,
+}
+
+impl ContainsExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
+		Fragment::merge_all([
+			self.value.full_fragment_owned(),
+			self.fragment.clone(),
+			self.list.full_fragment_owned(),
+		])
+	}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnExpression(pub ColumnIdentifier);
 
 impl ColumnExpression {
@@ -617,6 +636,13 @@ impl Display for Expression {
 				} else {
 					write!(f, "({} IN {})", value, list)
 				}
+			}
+			Expression::Contains(ContainsExpression {
+				value,
+				list,
+				..
+			}) => {
+				write!(f, "({} CONTAINS {})", value, list)
 			}
 			Expression::Type(TypeExpression {
 				fragment,
@@ -1481,6 +1507,10 @@ impl ExpressionCompiler {
 				Self::rewrite_field_refs(&mut e.value, bindings);
 				Self::rewrite_field_refs(&mut e.list, bindings);
 			}
+			Expression::Contains(e) => {
+				Self::rewrite_field_refs(&mut e.value, bindings);
+				Self::rewrite_field_refs(&mut e.list, bindings);
+			}
 			// Leaf nodes that don't contain column references
 			Expression::Constant(_)
 			| Expression::AccessSource(_)
@@ -1693,6 +1723,17 @@ impl ExpressionCompiler {
 					value: Box::new(value),
 					list: Box::new(list),
 					negated: true,
+					fragment: token.fragment.to_owned(),
+				}))
+			}
+
+			InfixOperator::Contains(token) => {
+				let value = Self::compile(BumpBox::into_inner(ast.left))?;
+				let list = Self::compile(BumpBox::into_inner(ast.right))?;
+
+				Ok(Expression::Contains(ContainsExpression {
+					value: Box::new(value),
+					list: Box::new(list),
 					fragment: token.fragment.to_owned(),
 				}))
 			}

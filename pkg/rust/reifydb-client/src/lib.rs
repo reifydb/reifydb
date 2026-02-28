@@ -92,6 +92,7 @@ fn value_to_wire(value: Value) -> WireValue {
 		Value::Any(v) => return value_to_wire(*v.clone()),
 		Value::DictionaryId(id) => ("DictionaryId", id.to_string()),
 		Value::Type(t) => ("Type", t.to_string()),
+		Value::List(items) => ("List", format!("{}", Value::List(items.clone()))),
 	};
 	WireValue {
 		type_name: type_name.to_string(),

@@ -178,6 +178,7 @@ Version => "VERSION",
 Current => "CURRENT",
 Pending => "PENDING",
 Authentication => "AUTHENTICATION",
+Contains => "CONTAINS",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -299,6 +300,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("CURRENT", Keyword::Current);
 	map.insert("PENDING", Keyword::Pending);
 	map.insert("AUTHENTICATION", Keyword::Authentication);
+	map.insert("CONTAINS", Keyword::Contains);
 	map
 });
 
@@ -494,6 +496,7 @@ pub mod tests {
 	test_keyword_session => (Session, "SESSION"),
 	test_keyword_feature => (Feature, "FEATURE"),
 	test_keyword_authentication => (Authentication, "AUTHENTICATION"),
+	test_keyword_contains => (Contains, "CONTAINS"),
 	}
 
 	fn check_no_keyword(repr: &str) {
@@ -651,6 +654,7 @@ pub mod tests {
 	test_not_keyword_session => ( "session"),
 	test_not_keyword_feature => ( "feature"),
 	test_not_keyword_authentication => ( "authentication"),
+	test_not_keyword_contains => ( "contains"),
 	}
 
 	#[test]

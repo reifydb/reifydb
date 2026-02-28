@@ -72,9 +72,15 @@ pub enum Type {
 	Any,
 	/// A dictionary entry identifier
 	DictionaryId,
+	/// An ordered list of values of a given element type
+	List(Box<Type>),
 }
 
 impl Type {
+	pub fn list_of(ty: Type) -> Self {
+		Type::List(Box::new(ty))
+	}
+
 	pub fn is_number(&self) -> bool {
 		match self {
 			Type::Option(inner) => inner.is_number(),
@@ -202,6 +208,7 @@ impl Type {
 			Type::Uint => 25,
 			Type::Any => 26,
 			Type::DictionaryId => 27,
+			Type::List(_) => 28,
 		}
 	}
 }
@@ -239,6 +246,7 @@ impl Type {
 			25 => Type::Uint,
 			26 => Type::Any,
 			27 => Type::DictionaryId,
+			28 => Type::list_of(Type::Any),
 			_ => unreachable!(),
 		}
 	}
@@ -280,6 +288,7 @@ impl Type {
 			// storage with offset + length
 			Type::Option(inner) => inner.size(), // size determined by inner type
 			Type::Any => 8,                      // pointer size on 64-bit systems
+			Type::List(_) => 8,                  // pointer size (Vec is heap-allocated)
 			Type::DictionaryId => 16,            /* max possible; actual size determined by constraint's
 			                                       * id_type */
 		}
@@ -320,6 +329,7 @@ impl Type {
 			Type::Option(inner) => inner.alignment(),
 			Type::Any => 8, // pointer alignment
 			Type::DictionaryId => 16,
+			Type::List(_) => 8, // pointer alignment
 		}
 	}
 }
@@ -355,6 +365,7 @@ impl Display for Type {
 			Type::Option(inner) => write!(f, "Option({inner})"),
 			Type::Any => f.write_str("Any"),
 			Type::DictionaryId => f.write_str("DictionaryId"),
+			Type::List(inner) => write!(f, "List({inner})"),
 		}
 	}
 }
@@ -393,6 +404,10 @@ impl From<&Value> for Type {
 			Value::Any(_) => Type::Any,
 			Value::DictionaryId(_) => Type::DictionaryId,
 			Value::Type(t) => t.clone(),
+			Value::List(items) => {
+				let element_type = items.first().map(|v| Type::from(v)).unwrap_or(Type::Any);
+				Type::list_of(element_type)
+			}
 		}
 	}
 }

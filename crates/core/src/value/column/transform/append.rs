@@ -230,7 +230,7 @@ impl Columns {
 						}
 						col_data
 					}
-					Type::Any => ColumnData::any_with_bitvec(
+					Type::Any | Type::List(_) => ColumnData::any_with_bitvec(
 						vec![Box::new(Value::none()); size],
 						BitVec::repeat(size, false),
 					),

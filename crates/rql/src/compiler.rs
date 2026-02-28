@@ -771,7 +771,8 @@ impl InstructionCompiler {
 			| Expression::Alias(_)
 			| Expression::Extend(_)
 			| Expression::SumTypeConstructor(_)
-			| Expression::IsVariant(_) => {
+			| Expression::IsVariant(_)
+			| Expression::Contains(_) => {
 				self.emit(Instruction::PushNone);
 			}
 		}

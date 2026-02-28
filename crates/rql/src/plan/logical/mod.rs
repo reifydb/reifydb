@@ -202,7 +202,8 @@ impl<'bump> Compiler<'bump> {
 					| InfixOperator::As(_)
 					| InfixOperator::TypeAscription(_)
 					| InfixOperator::In(_)
-					| InfixOperator::NotIn(_) => self.compile_scalar_as_map(Ast::Infix(infix_node)),
+					| InfixOperator::NotIn(_)
+					| InfixOperator::Contains(_) => self.compile_scalar_as_map(Ast::Infix(infix_node)),
 
 					// Statement-like operations - compile directly
 					InfixOperator::AccessTable(_) | InfixOperator::AccessNamespace(_) => {

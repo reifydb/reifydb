@@ -1478,6 +1478,7 @@ pub enum InfixOperator<'bump> {
 	Xor(Token<'bump>),
 	In(Token<'bump>),
 	NotIn(Token<'bump>),
+	Contains(Token<'bump>),
 }
 
 #[derive(Debug)]

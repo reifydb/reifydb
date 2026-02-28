@@ -41,6 +41,10 @@ impl AsString for Value {
 			Value::DictionaryId(id) => id.to_string(),
 			Value::Type(t) => t.to_string(),
 			Value::Any(v) => v.as_string(),
+			Value::List(items) => {
+				let inner: Vec<String> = items.iter().map(|v| v.as_string()).collect();
+				format!("({})", inner.join(", "))
+			}
 		}
 	}
 }

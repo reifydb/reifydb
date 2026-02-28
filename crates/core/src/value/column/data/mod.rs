@@ -872,7 +872,7 @@ impl ColumnData {
 				inner: Box::new(ColumnData::with_capacity(*inner, capacity)),
 				bitvec: reifydb_type::util::bitvec::BitVec::with_capacity(capacity),
 			},
-			Type::Any => Self::any_with_capacity(capacity),
+			Type::Any | Type::List(_) => Self::any_with_capacity(capacity),
 		}
 	}
 

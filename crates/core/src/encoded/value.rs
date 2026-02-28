@@ -295,6 +295,7 @@ impl Schema {
 			Type::DictionaryId => Value::DictionaryId(self.get_dictionary_id(row, index)),
 			Type::Option(_) => unreachable!("Option type already unwrapped"),
 			Type::Any => unreachable!("Any type cannot be stored in database"),
+			Type::List(_) => unreachable!("List type cannot be stored in database"),
 		}
 	}
 }

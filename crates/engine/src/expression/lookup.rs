@@ -133,6 +133,9 @@ fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> cra
 			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::from_i64(0), decimal_with_bitvec)
 		}
 		Type::Option(inner) => extract_column_data_by_type(col, take, *inner),
+		Type::List(_) => {
+			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
+		}
 	}
 }
 

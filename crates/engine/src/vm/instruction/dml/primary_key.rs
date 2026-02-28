@@ -160,6 +160,9 @@ pub fn encode_primary_key(
 			Type::Any => {
 				panic!("Any type cannot be used in primary keys");
 			}
+			Type::List(_) => {
+				panic!("List type cannot be used in primary keys");
+			}
 		}
 	}
 

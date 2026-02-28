@@ -258,6 +258,7 @@ impl<'bump> Parser<'bump> {
 				In,
 				NotIn,
 				Is,
+				Contains,
 			}
 
 			let special = if let Ok(current) = self.current() {
@@ -265,6 +266,7 @@ impl<'bump> Parser<'bump> {
 					TokenKind::Keyword(Keyword::Between) => Some(SpecialInfix::Between),
 					TokenKind::Keyword(Keyword::In) => Some(SpecialInfix::In),
 					TokenKind::Keyword(Keyword::Is) => Some(SpecialInfix::Is),
+					TokenKind::Keyword(Keyword::Contains) => Some(SpecialInfix::Contains),
 					TokenKind::Operator(Operator::Not) => {
 						// Check if next token is IN for NOT IN
 						if self.is_next_keyword(Keyword::In) {
@@ -291,6 +293,9 @@ impl<'bump> Parser<'bump> {
 				}
 				Some(SpecialInfix::Is) => {
 					left = self.parse_is(left)?;
+				}
+				Some(SpecialInfix::Contains) => {
+					left = Ast::Infix(self.parse_contains(left)?);
 				}
 				_ => {
 					let infix = self.parse_infix(left)?;
@@ -503,6 +508,7 @@ impl<'bump> Parser<'bump> {
 			TokenKind::Keyword(Keyword::Between) => Ok(Precedence::Comparison),
 			TokenKind::Keyword(Keyword::In) => Ok(Precedence::Comparison),
 			TokenKind::Keyword(Keyword::Is) => Ok(Precedence::Comparison),
+			TokenKind::Keyword(Keyword::Contains) => Ok(Precedence::Comparison),
 			_ => Ok(Precedence::None),
 		}
 	}
@@ -584,6 +590,19 @@ impl<'bump> Parser<'bump> {
 			token: *value.token(),
 			left: BumpBox::new_in(value, self.bump()),
 			operator,
+			right: BumpBox::new_in(right, self.bump()),
+		})
+	}
+
+	/// Parse a CONTAINS expression: `value CONTAINS (list)`
+	pub(crate) fn parse_contains(&mut self, value: Ast<'bump>) -> crate::Result<AstInfix<'bump>> {
+		let contains_token = self.consume_keyword(Keyword::Contains)?;
+		let right = Ast::List(self.parse_list()?);
+
+		Ok(AstInfix {
+			token: *value.token(),
+			left: BumpBox::new_in(value, self.bump()),
+			operator: InfixOperator::Contains(contains_token),
 			right: BumpBox::new_in(right, self.bump()),
 		})
 	}

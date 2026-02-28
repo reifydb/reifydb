@@ -170,6 +170,11 @@ fn simplified_name<'a>(expr: &Expression) -> Fragment {
 			simplified_name(&in_expr.value).text(),
 			simplified_name(&in_expr.list).text()
 		)),
+		Expression::Contains(c) => Fragment::internal(format!(
+			"{} CONTAINS {}",
+			simplified_name(&c.value).text(),
+			simplified_name(&c.list).text()
+		)),
 		Expression::SumTypeConstructor(ctor) => {
 			Fragment::internal(format!("{}::{}", ctor.sumtype_name.text(), ctor.variant_name.text()))
 		}

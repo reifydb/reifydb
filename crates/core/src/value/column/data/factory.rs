@@ -4,6 +4,7 @@
 use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{
+		Value,
 		blob::Blob,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		container::{
@@ -676,12 +677,12 @@ impl ColumnData {
 		}
 	}
 
-	pub fn any(data: impl IntoIterator<Item = Box<reifydb_type::value::Value>>) -> Self {
+	pub fn any(data: impl IntoIterator<Item = Box<Value>>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnData::Any(AnyContainer::from_vec(data))
 	}
 
-	pub fn any_optional(data: impl IntoIterator<Item = Option<Box<reifydb_type::value::Value>>>) -> Self {
+	pub fn any_optional(data: impl IntoIterator<Item = Option<Box<Value>>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 		let mut has_none = false;
@@ -693,7 +694,7 @@ impl ColumnData {
 					bitvec.push(true);
 				}
 				None => {
-					values.push(Box::new(reifydb_type::value::Value::none()));
+					values.push(Box::new(Value::none()));
 					bitvec.push(false);
 					has_none = true;
 				}
@@ -715,10 +716,7 @@ impl ColumnData {
 		ColumnData::Any(AnyContainer::with_capacity(capacity))
 	}
 
-	pub fn any_with_bitvec(
-		data: impl IntoIterator<Item = Box<reifydb_type::value::Value>>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn any_with_bitvec(data: impl IntoIterator<Item = Box<Value>>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -834,8 +832,9 @@ impl ColumnData {
 			Type::Decimal {
 				..
 			} => Self::decimal(vec![Decimal::from(0); len]),
-			Type::Any => Self::any(vec![Box::new(reifydb_type::value::Value::none()); len]),
+			Type::Any => Self::any(vec![Box::new(Value::none()); len]),
 			Type::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
+			Type::List(_) => Self::any(vec![Box::new(Value::List(vec![])); len]),
 			Type::Option(inner) => return Self::none_typed(*inner, len),
 		};
 		ColumnData::Option {

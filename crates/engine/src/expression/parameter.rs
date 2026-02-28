@@ -68,7 +68,9 @@ pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) ->
 		Value::None {
 			..
 		} => ColumnData::none_typed(Type::Boolean, ctx.row_count),
-		Value::Type(_) | Value::Any(_) => unreachable!("Any/Type not supported as parameter"),
+		Value::Type(_) | Value::Any(_) | Value::List(_) => {
+			unreachable!("Any/Type/List not supported as parameter")
+		}
 	};
 	Ok(Column {
 		name: Fragment::internal("parameter"),

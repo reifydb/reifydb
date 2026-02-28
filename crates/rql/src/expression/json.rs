@@ -18,11 +18,12 @@ use serde_json::from_str;
 
 use super::{
 	AccessPrimitiveExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
-	CastExpression, ColumnExpression, ConstantExpression, DivExpression, ElseIfExpression, EqExpression,
-	Expression, ExtendExpression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression,
-	IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression, MapExpression,
-	MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator,
-	RemExpression, SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
+	CastExpression, ColumnExpression, ConstantExpression, ContainsExpression, DivExpression, ElseIfExpression,
+	EqExpression, Expression, ExtendExpression, FieldAccessExpression, GreaterThanEqExpression,
+	GreaterThanExpression, IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression,
+	MapExpression, MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression,
+	PrefixOperator, RemExpression, SubExpression, TupleExpression, TypeExpression, VariableExpression,
+	XorExpression,
 };
 
 /// JSON-serializable expression for query builders.
@@ -161,6 +162,10 @@ pub enum JsonExpression {
 		value: Box<JsonExpression>,
 		list: Box<JsonExpression>,
 		negated: bool,
+	},
+	Contains {
+		value: Box<JsonExpression>,
+		list: Box<JsonExpression>,
 	},
 	If {
 		condition: Box<JsonExpression>,
@@ -376,6 +381,10 @@ impl From<&Expression> for JsonExpression {
 				value: Box::new((&*e.value).into()),
 				list: Box::new((&*e.list).into()),
 				negated: e.negated,
+			},
+			Expression::Contains(e) => JsonExpression::Contains {
+				value: Box::new((&*e.value).into()),
+				list: Box::new((&*e.list).into()),
 			},
 			Expression::If(e) => JsonExpression::If {
 				condition: Box::new((&*e.condition).into()),
@@ -685,6 +694,14 @@ impl TryFrom<JsonExpression> for Expression {
 				value: Box::new((*value).try_into()?),
 				list: Box::new((*list).try_into()?),
 				negated,
+				fragment: Fragment::None,
+			}),
+			JsonExpression::Contains {
+				value,
+				list,
+			} => Expression::Contains(ContainsExpression {
+				value: Box::new((*value).try_into()?),
+				list: Box::new((*list).try_into()?),
 				fragment: Fragment::None,
 			}),
 			JsonExpression::If {
