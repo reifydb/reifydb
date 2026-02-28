@@ -8,7 +8,7 @@
 # Fuzz testing artifacts
 /fuzz/target/
 /fuzz/corpus/
-/fuzz/artifacts/
+/fuzz/artifacts/**/target/
 
 # Ignore workspace member lock files - only root Cargo.lock should exist
 /bin/*/Cargo.lock

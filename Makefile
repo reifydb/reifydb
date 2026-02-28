@@ -64,6 +64,7 @@ help:
 	@printf "  %-25s %s\n" "fuzz-list" "List all available fuzz targets"
 	@printf "  %-25s %s\n" "fuzz-run TARGET=<name>" "Run a fuzz target (DURATION=60)"
 	@printf "  %-25s %s\n" "fuzz-smoke" "Smoke-test all fuzz targets (10s each)"
+	@printf "  %-25s %s\n" "fuzz-regression" "Replay all checked-in fuzz artifacts"
 	@echo ""
 	@echo "  🏗️  Building"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -155,7 +156,7 @@ push: check
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-workspace test-pkg-rust test-examples test-suite test-external test-pkg-typescript
+test-full: test-workspace test-pkg-rust test-examples test-suite test-external test-pkg-typescript fuzz-regression
 	@echo "✅ All tests completed successfully!"
 
 test-dev: test-workspace test-pkg-rust test-examples test-suite-dev
