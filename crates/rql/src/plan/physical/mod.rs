@@ -37,6 +37,7 @@ use reifydb_type::{
 use tracing::instrument;
 
 use crate::{
+	ast::ast::{AstAlterPolicyAction, AstPolicyScope},
 	bump::{Bump, BumpBox},
 	error::RqlError,
 	expression::{ConstantExpression, Expression, Expression::Constant, VariableExpression},
@@ -773,16 +774,34 @@ impl<'bump> Compiler<'bump> {
 					let name = node.name.map(|n| self.interner.intern_fragment(&n));
 					let target_type = node.target_type.as_str().to_string();
 					let (scope_namespace, scope_object) = match &node.scope {
-						crate::ast::ast::AstPolicyScope::Specific(segments) => {
+						AstPolicyScope::Specific(segments) => {
 							if segments.len() >= 2 {
-								(
-									Some(self
-										.interner
-										.intern_fragment(&segments[0])),
-									Some(self.interner.intern_fragment(
-										&segments[segments.len() - 1],
-									)),
-								)
+								// Check if the full path refers to a namespace
+								// (namespace-wide on nested ns, e.g. ON app::sub)
+								let full_path = segments
+									.iter()
+									.map(|s| s.text())
+									.collect::<Vec<_>>()
+									.join(".");
+								if self.catalog.find_namespace_by_name(rx, &full_path)?.is_some() {
+									let ns_fragment = self.interner.intern_fragment(&segments[0]);
+									(Some(ns_fragment.with_text(&full_path)), None)
+								} else {
+									// Join all segments except the last with "." to form the
+									// namespace path (e.g. ["app","sub","items"] → ns="app.sub")
+									let ns_name = segments[..segments.len() - 1]
+										.iter()
+										.map(|s| s.text())
+										.collect::<Vec<_>>()
+										.join(".");
+									let ns_fragment = self.interner.intern_fragment(&segments[0]);
+									(
+										Some(ns_fragment.with_text(&ns_name)),
+										Some(self.interner.intern_fragment(
+											&segments[segments.len() - 1],
+										)),
+									)
+								}
 							} else if segments.len() == 1 {
 								(
 									Some(self
@@ -794,10 +813,10 @@ impl<'bump> Compiler<'bump> {
 								(None, None)
 							}
 						}
-						crate::ast::ast::AstPolicyScope::NamespaceWide(ns) => {
+						AstPolicyScope::NamespaceWide(ns) => {
 							(Some(self.interner.intern_fragment(ns)), None)
 						}
-						crate::ast::ast::AstPolicyScope::Global => (None, None),
+						AstPolicyScope::Global => (None, None),
 					};
 					let operations = node
 						.operations
@@ -816,7 +835,7 @@ impl<'bump> Compiler<'bump> {
 					}));
 				}
 				LogicalPlan::AlterPolicy(node) => {
-					let enable = node.action == crate::ast::ast::AstAlterPolicyAction::Enable;
+					let enable = node.action == AstAlterPolicyAction::Enable;
 					stack.push(PhysicalPlan::AlterPolicy(nodes::AlterPolicyNode {
 						target_type: node.target_type.as_str().to_string(),
 						name: self.interner.intern_fragment(&node.name),
