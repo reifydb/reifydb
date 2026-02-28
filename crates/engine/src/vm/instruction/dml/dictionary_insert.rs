@@ -18,6 +18,7 @@ use reifydb_type::{
 };
 
 use crate::{
+	policy::PolicyEvaluator,
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		services::Services,
@@ -70,15 +71,13 @@ pub(crate) fn insert_dictionary<'a>(
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		// Enforce write policies before processing rows
-		crate::policy::enforce_write_policies(
-			services,
+		PolicyEvaluator::new(services, stack).enforce_write_policies(
 			txn,
 			identity,
 			namespace_name,
 			dictionary_name,
 			"insert",
 			&columns,
-			stack,
 			PolicyTargetType::Dictionary,
 		)?;
 

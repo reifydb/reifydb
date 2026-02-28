@@ -35,6 +35,7 @@ use super::{
 use crate::{
 	arena::QueryArena,
 	expression::{context::EvalContext, eval::evaluate},
+	policy::PolicyEvaluator,
 	vm::instruction::{
 		ddl::{
 			alter::policy::alter_policy,
@@ -752,16 +753,15 @@ impl Vm {
 							} else {
 								("default".to_string(), func_name.to_string())
 							};
-							crate::policy::enforce_identity_policy(
-								services,
-								tx,
-								self.identity,
-								&pol_ns,
-								&pol_name,
-								"call",
-								PolicyTargetType::Procedure,
-								&self.symbol_table,
-							)?;
+							PolicyEvaluator::new(services, &self.symbol_table)
+								.enforce_identity_policy(
+									tx,
+									self.identity,
+									&pol_ns,
+									&pol_name,
+									"call",
+									PolicyTargetType::Procedure,
+								)?;
 
 							// Catalog-stored RQL procedure
 							let source = proc_def.body.clone();

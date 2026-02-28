@@ -20,7 +20,7 @@ use reifydb_type::{
 use tracing::instrument;
 
 use crate::{
-	policy::enforce_session_policy,
+	policy::PolicyEvaluator,
 	procedure::registry::Procedures,
 	transform::registry::Transforms,
 	vm::{
@@ -180,13 +180,11 @@ impl Executor {
 		let identity = cmd.identity;
 		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Admin(&mut *txn), identity)?;
 
-		enforce_session_policy(
-			&self.0,
+		PolicyEvaluator::new(&self.0, &symbol_table).enforce_session_policy(
 			&mut Transaction::Admin(&mut *txn),
 			identity,
 			"admin",
 			true,
-			&symbol_table,
 		)?;
 
 		match self.compiler.compile_with_policy(
@@ -244,13 +242,11 @@ impl Executor {
 		let identity = cmd.identity;
 		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Command(&mut *txn), identity)?;
 
-		enforce_session_policy(
-			&self.0,
+		PolicyEvaluator::new(&self.0, &symbol_table).enforce_session_policy(
 			&mut Transaction::Command(&mut *txn),
 			identity,
 			"command",
 			false,
-			&symbol_table,
 		)?;
 
 		let compiled = match self.compiler.compile_with_policy(
@@ -325,13 +321,11 @@ impl Executor {
 		let identity = qry.identity;
 		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Query(&mut *txn), identity)?;
 
-		enforce_session_policy(
-			&self.0,
+		PolicyEvaluator::new(&self.0, &symbol_table).enforce_session_policy(
 			&mut Transaction::Query(&mut *txn),
 			identity,
 			"query",
 			false,
-			&symbol_table,
 		)?;
 
 		let compiled = match self.compiler.compile_with_policy(

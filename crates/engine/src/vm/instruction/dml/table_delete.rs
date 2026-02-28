@@ -29,6 +29,7 @@ use reifydb_type::{
 use super::primary_key;
 use crate::{
 	error::EngineError,
+	policy::PolicyEvaluator,
 	transaction::operation::table::TableOperations,
 	vm::{
 		services::Services,
@@ -120,15 +121,13 @@ pub(crate) fn delete<'a>(
 		let mut mutable_context = context.clone();
 		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 			// Enforce write policies before processing rows
-			crate::policy::enforce_write_policies(
-				services,
+			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
 				txn,
 				identity,
 				&namespace.name,
 				&table.name,
 				"delete",
 				&columns,
-				symbol_table_ref,
 				PolicyTargetType::Table,
 			)?;
 

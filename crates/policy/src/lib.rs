@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+pub mod enforce;
+pub mod error;
+pub mod evaluate;
+
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{

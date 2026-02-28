@@ -40,6 +40,7 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
+	policy::PolicyEvaluator,
 	vm::{services::Services, stack::SymbolTable, volcano::scan::series::build_data_column},
 };
 
@@ -321,15 +322,13 @@ pub(crate) fn update_series<'a>(
 				});
 			}
 			let filtered = Columns::new(filtered_cols);
-			crate::policy::enforce_write_policies(
-				services,
+			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
 				txn,
 				identity,
 				namespace_name,
 				series_name,
 				"update",
 				&filtered,
-				symbol_table_ref,
 				PolicyTargetType::Series,
 			)?;
 		}

@@ -26,6 +26,7 @@ use reifydb_type::{
 
 use super::coerce::coerce_value_to_column_type;
 use crate::{
+	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
 	vm::{
 		services::Services,
@@ -95,15 +96,13 @@ pub(crate) fn update_ringbuffer<'a>(
 		let mut mutable_context = context.clone();
 		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 			// Enforce write policies before processing rows
-			crate::policy::enforce_write_policies(
-				services,
+			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
 				txn,
 				identity,
 				&namespace.name,
 				&ringbuffer.name,
 				"update",
 				&columns,
-				symbol_table_ref,
 				PolicyTargetType::RingBuffer,
 			)?;
 

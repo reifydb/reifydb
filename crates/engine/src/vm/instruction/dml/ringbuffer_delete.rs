@@ -25,6 +25,7 @@ use reifydb_type::{
 };
 
 use crate::{
+	policy::PolicyEvaluator,
 	transaction::operation::ringbuffer::RingBufferOperations,
 	vm::{
 		services::Services,
@@ -105,15 +106,13 @@ pub(crate) fn delete_ringbuffer<'a>(
 			let mut mutable_context = context.clone();
 			while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 				// Enforce write policies before processing rows
-				crate::policy::enforce_write_policies(
-					services,
+				PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
 					txn,
 					identity,
 					&namespace.name,
 					&ringbuffer.name,
 					"delete",
 					&columns,
-					symbol_table,
 					PolicyTargetType::RingBuffer,
 				)?;
 

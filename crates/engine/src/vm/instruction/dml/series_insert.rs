@@ -25,12 +25,15 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::vm::{
-	services::Services,
-	stack::SymbolTable,
-	volcano::{
-		compile::compile,
-		query::{QueryContext, QueryNode},
+use crate::{
+	policy::PolicyEvaluator,
+	vm::{
+		services::Services,
+		stack::SymbolTable,
+		volcano::{
+			compile::compile,
+			query::{QueryContext, QueryNode},
+		},
 	},
 };
 
@@ -95,15 +98,13 @@ pub(crate) fn insert_series<'a>(
 	let mut mutable_context = (*execution_context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		// Enforce write policies before processing rows
-		crate::policy::enforce_write_policies(
-			services,
+		PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
 			txn,
 			identity,
 			namespace_name,
 			series_name,
 			"insert",
 			&columns,
-			symbol_table,
 			PolicyTargetType::Series,
 		)?;
 

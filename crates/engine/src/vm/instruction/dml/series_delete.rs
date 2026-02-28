@@ -33,6 +33,7 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
+	policy::PolicyEvaluator,
 	vm::{
 		instruction::dml::schema::get_or_create_series_schema, services::Services, stack::SymbolTable,
 		volcano::scan::series::build_data_column,
@@ -225,15 +226,13 @@ pub(crate) fn delete_series<'a>(
 					});
 				}
 				let filtered = Columns::new(filtered_cols);
-				crate::policy::enforce_write_policies(
-					services,
+				PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
 					txn,
 					identity,
 					namespace_name,
 					series_name,
 					"delete",
 					&filtered,
-					symbol_table,
 					PolicyTargetType::Series,
 				)?;
 			}

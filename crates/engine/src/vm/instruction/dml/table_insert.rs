@@ -29,6 +29,7 @@ use tracing::instrument;
 
 use super::{primary_key, schema::get_or_create_table_schema};
 use crate::{
+	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
 		instruction::dml::coerce::coerce_value_to_column_type,
@@ -93,15 +94,13 @@ pub(crate) fn insert_table<'a>(
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		// Enforce write policies before processing rows
-		crate::policy::enforce_write_policies(
-			services,
+		PolicyEvaluator::new(services, stack).enforce_write_policies(
 			txn,
 			identity,
 			namespace_name,
 			table_name,
 			"insert",
 			&columns,
-			stack,
 			PolicyTargetType::Table,
 		)?;
 
