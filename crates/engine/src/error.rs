@@ -200,6 +200,12 @@ pub enum EngineError {
 		operation: String,
 		target: String,
 	},
+
+	#[error("No {operation} policy defined on {target}")]
+	NoPolicyDefined {
+		operation: String,
+		target: String,
+	},
 }
 
 impl IntoDiagnostic for EngineError {
@@ -359,6 +365,24 @@ impl IntoDiagnostic for EngineError {
 				fragment: Fragment::None,
 				label: None,
 				help: Some("The write operation violates a policy constraint".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			EngineError::NoPolicyDefined {
+				operation,
+				target,
+			} => Diagnostic {
+				code: "POLICY_002".to_string(),
+				statement: None,
+				message: format!("No {} policy defined for {} on {}", operation, operation, target),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some(format!(
+					"Define a table policy with an {} clause to allow write operations",
+					operation
+				)),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

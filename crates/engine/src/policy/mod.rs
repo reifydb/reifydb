@@ -55,8 +55,7 @@ pub fn enforce_write_policies(
 	)?;
 
 	if policies.is_empty() {
-		return Err(EngineError::PolicyDenied {
-			policy_name: "<none>".to_string(),
+		return Err(EngineError::NoPolicyDefined {
 			operation: operation.to_string(),
 			target: format!("{}::{}", target_namespace, target_object),
 		}

@@ -15,7 +15,7 @@ use reifydb_transaction::transaction::{
 };
 use reifydb_type::{
 	params::Params,
-	value::{Value, frame::frame::Frame, identity::IdentityId},
+	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
 };
 use tracing::instrument;
 
@@ -113,7 +113,15 @@ fn populate_identity(
 	tx: &mut Transaction<'_>,
 	identity: IdentityId,
 ) -> crate::Result<()> {
-	if identity.is_root() || identity.is_anonymous() {
+	if identity.is_root() {
+		return Ok(());
+	}
+	if identity.is_anonymous() {
+		let columns = Columns::single_row([
+			("id", Value::IdentityId(identity)),
+			("name", Value::none_of(Type::Utf8)),
+		]);
+		stack.set("identity".to_string(), Variable::Columns(columns), false)?;
 		return Ok(());
 	}
 	if let Some(user) = catalog.find_user_by_identity(tx, identity)? {
