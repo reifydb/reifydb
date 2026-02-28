@@ -149,6 +149,120 @@ pub fn enforce_write_policies(
 	Ok(())
 }
 
+/// Enforce session-level access control for admin/command/query operations.
+///
+/// - Root bypasses all policies.
+/// - If no session policies match, uses `default_deny` to decide:
+///   - `true` → deny (e.g., admin for non-root)
+///   - `false` → allow (e.g., command/query for non-root)
+/// - If policies found, evaluates filter/require conditions against identity.
+/// - If any condition denies, returns `SessionDenied` error.
+pub fn enforce_session_policy(
+	services: &Arc<Services>,
+	tx: &mut Transaction<'_>,
+	identity: IdentityId,
+	session_type: &str,
+	default_deny: bool,
+	symbol_table: &SymbolTable,
+) -> crate::Result<()> {
+	if identity.is_root() {
+		return Ok(());
+	}
+
+	let policies = reifydb_policy::resolve_write_policies(
+		&services.catalog,
+		tx,
+		identity,
+		"",
+		"",
+		session_type,
+		PolicyTargetType::Session,
+	)?;
+
+	if policies.is_empty() {
+		if default_deny {
+			return Err(EngineError::SessionDenied {
+				session_type: session_type.to_string(),
+			}
+			.into());
+		}
+		return Ok(());
+	}
+
+	let bump = bumpalo::Bump::new();
+	let empty_columns = Columns::empty();
+
+	for (_policy, op) in &policies {
+		let body_source = bump.alloc_str(&op.body_source);
+		let statements = parse_str(&bump, body_source)?;
+
+		for stmt in statements {
+			for node in stmt.nodes {
+				let condition_expr = match node {
+					Ast::Require(req) => {
+						let body = reifydb_rql::bump::BumpBox::into_inner(req.body);
+						ExpressionCompiler::compile(body)?
+					}
+					Ast::Filter(filter) => {
+						let body = reifydb_rql::bump::BumpBox::into_inner(filter.node);
+						ExpressionCompiler::compile(body)?
+					}
+					_ => continue,
+				};
+
+				let compile_ctx = CompileContext {
+					functions: &services.functions,
+					symbol_table,
+				};
+				let compiled = compile_expression(&compile_ctx, &condition_expr)?;
+
+				let eval_ctx = EvalContext {
+					target: None,
+					columns: empty_columns.clone(),
+					row_count: 1,
+					take: None,
+					params: &reifydb_type::params::Params::None,
+					symbol_table,
+					is_aggregate_context: false,
+					functions: &services.functions,
+					clock: &services.clock,
+					arena: None,
+					identity,
+				};
+
+				let result = compiled.execute(&eval_ctx)?;
+
+				let denied = match result.data() {
+					ColumnData::Bool(container) => {
+						!container.is_defined(0) || !container.data().get(0)
+					}
+					ColumnData::Option {
+						inner,
+						bitvec,
+					} => match inner.as_ref() {
+						ColumnData::Bool(container) => {
+							let defined = bitvec.len() > 0 && bitvec.get(0);
+							let valid = defined && container.is_defined(0);
+							!(valid && container.data().get(0))
+						}
+						_ => true,
+					},
+					_ => true,
+				};
+
+				if denied {
+					return Err(EngineError::SessionDenied {
+						session_type: session_type.to_string(),
+					}
+					.into());
+				}
+			}
+		}
+	}
+
+	Ok(())
+}
+
 /// Enforce identity-only policies (no row data) for operations like procedure calls.
 ///
 /// - Root bypasses all policies.

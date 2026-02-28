@@ -207,6 +207,11 @@ pub enum EngineError {
 		target: String,
 		target_type: String,
 	},
+
+	#[error("{session_type} session denied for identity")]
+	SessionDenied {
+		session_type: String,
+	},
 }
 
 impl IntoDiagnostic for EngineError {
@@ -416,6 +421,20 @@ impl IntoDiagnostic for EngineError {
 				label: None,
 				help: Some("Use 'let mut $name := value' to declare a mutable variable".to_string()),
 				notes: vec!["Only mutable variables can be reassigned".to_string()],
+				cause: None,
+				operator_chain: None,
+			},
+			EngineError::SessionDenied {
+				session_type,
+			} => Diagnostic {
+				code: "SESSION_001".to_string(),
+				statement: None,
+				message: format!("{} session denied for identity", session_type),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("Create a session policy to grant access".to_string()),
+				notes: vec![],
 				cause: None,
 				operator_chain: None,
 			},

@@ -20,6 +20,7 @@ use reifydb_type::{
 use tracing::instrument;
 
 use crate::{
+	policy::enforce_session_policy,
 	procedure::registry::Procedures,
 	transform::registry::Transforms,
 	vm::{
@@ -178,6 +179,16 @@ impl Executor {
 
 		let identity = cmd.identity;
 		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Admin(&mut *txn), identity)?;
+
+		enforce_session_policy(
+			&self.0,
+			&mut Transaction::Admin(&mut *txn),
+			identity,
+			"admin",
+			true,
+			&symbol_table,
+		)?;
+
 		match self.compiler.compile_with_policy(
 			&mut Transaction::Admin(txn),
 			cmd.rql,
@@ -232,6 +243,16 @@ impl Executor {
 
 		let identity = cmd.identity;
 		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Command(&mut *txn), identity)?;
+
+		enforce_session_policy(
+			&self.0,
+			&mut Transaction::Command(&mut *txn),
+			identity,
+			"command",
+			false,
+			&symbol_table,
+		)?;
+
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Command(txn),
 			cmd.rql,
@@ -303,6 +324,16 @@ impl Executor {
 
 		let identity = qry.identity;
 		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Query(&mut *txn), identity)?;
+
+		enforce_session_policy(
+			&self.0,
+			&mut Transaction::Query(&mut *txn),
+			identity,
+			"query",
+			false,
+			&symbol_table,
+		)?;
+
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Query(txn),
 			qry.rql,
