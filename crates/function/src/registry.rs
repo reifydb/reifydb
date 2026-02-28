@@ -179,6 +179,8 @@ impl Functions {
 			.register_scalar("is::some", is::some::IsSome::new)
 			.register_scalar("is::none", is::none::IsNone::new)
 			.register_scalar("is::type", is::r#type::IsType::new)
+			.register_scalar("is::root", is::root::IsRoot::new)
+			.register_scalar("is::anonymous", is::anonymous::IsAnonymous::new)
 			.register_scalar("gen::series", series::Series::new)
 			.register_generator("generate_series", series::GenerateSeries::new)
 			.register_generator("inspect_subscription", subscription::inspect::InspectSubscription::new)
