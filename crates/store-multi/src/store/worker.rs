@@ -256,7 +256,6 @@ impl Actor for DropActor {
 	}
 
 	fn config(&self) -> ActorConfig {
-		// Use a reasonable mailbox size for batched operations
-		ActorConfig::new().mailbox_capacity(256)
+		ActorConfig::new().mailbox_capacity(4096 * 16)
 	}
 }

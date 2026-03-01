@@ -202,7 +202,9 @@ impl MultiVersionCommit for StandardMultiStore {
 		}
 
 		if !drop_batch.is_empty() {
-			let _ = self.drop_actor.send(DropMessage::Batch(drop_batch));
+			if self.drop_actor.send_blocking(DropMessage::Batch(drop_batch)).is_err() {
+				tracing::warn!("Failed to send drop batch");
+			}
 		}
 
 		// Pass version explicitly to storage
