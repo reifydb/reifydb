@@ -46,9 +46,9 @@ use crate::{
 	expression::{ConstantExpression, Expression, Expression::Constant, VariableExpression},
 	nodes::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
-		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, FlowScanNode, GeneratorNode,
-		IndexScanNode, InlineDataNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
-		RowRangeScanNode, SeriesScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
+		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
+		InlineDataNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
+		SeriesScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
 	plan::{
 		logical,
@@ -76,7 +76,6 @@ pub enum PhysicalPlan<'bump> {
 	CreateNamespace(CreateNamespaceNode),
 	CreateTable(CreateTableNode),
 	CreateRingBuffer(CreateRingBufferNode),
-	CreateFlow(CreateFlowNode<'bump>),
 	CreateDictionary(CreateDictionaryNode),
 	CreateSumType(CreateSumTypeNode),
 	CreateSubscription(CreateSubscriptionNode<'bump>),
@@ -98,12 +97,10 @@ pub enum PhysicalPlan<'bump> {
 	DropRingBuffer(nodes::DropRingBufferNode),
 	DropDictionary(nodes::DropDictionaryNode),
 	DropSumType(nodes::DropSumTypeNode),
-	DropFlow(nodes::DropFlowNode),
 	DropSubscription(nodes::DropSubscriptionNode),
 	DropSeries(nodes::DropSeriesNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
-	AlterFlow(AlterFlowNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
 	// Mutate
 	Delete(DeleteTableNode<'bump>),
@@ -159,7 +156,6 @@ pub enum PhysicalPlan<'bump> {
 	TableVirtualScan(TableVirtualScanNode),
 	ViewScan(ViewScanNode),
 	RingBufferScan(RingBufferScanNode),
-	FlowScan(FlowScanNode),
 	DictionaryScan(DictionaryScanNode),
 	SeriesScan(SeriesScanNode),
 	Generator(GeneratorNode),
@@ -200,23 +196,9 @@ pub struct CreateTransactionalViewNode<'bump> {
 }
 
 #[derive(Debug)]
-pub struct CreateFlowNode<'bump> {
-	pub namespace: NamespaceDef,
-	pub flow: Fragment,
-	pub if_not_exists: bool,
-	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
-}
-
-#[derive(Debug)]
 pub struct CreateSubscriptionNode<'bump> {
 	pub columns: Vec<SubscriptionColumnToCreate>,
 	pub as_clause: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
-}
-
-#[derive(Debug)]
-pub struct AlterFlowNode<'bump> {
-	pub flow: nodes::AlterFlowIdentifier,
-	pub action: AlterFlowAction<'bump>,
 }
 
 #[derive(Debug)]
@@ -239,18 +221,6 @@ pub enum AlterTableAction {
 		old_name: Fragment,
 		new_name: Fragment,
 	},
-}
-
-#[derive(Debug)]
-pub enum AlterFlowAction<'bump> {
-	Rename {
-		new_name: Fragment,
-	},
-	SetQuery {
-		query: BumpBox<'bump, PhysicalPlan<'bump>>,
-	},
-	Pause,
-	Resume,
 }
 
 #[derive(Debug)]
@@ -598,10 +568,6 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_ringbuffer(rx, create)?);
 				}
 
-				LogicalPlan::CreateFlow(create) => {
-					stack.push(self.compile_create_flow(rx, create)?);
-				}
-
 				LogicalPlan::CreateDeferredView(create) => {
 					stack.push(self.compile_create_deferred(rx, create)?);
 				}
@@ -674,9 +640,6 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_dispatch(rx, dispatch)?);
 				}
 
-				LogicalPlan::AlterFlow(alter) => {
-					stack.push(self.compile_alter_flow(rx, alter)?);
-				}
 				LogicalPlan::AlterTable(alter) => {
 					stack.push(self.compile_alter_table(rx, alter)?);
 				}
@@ -699,9 +662,6 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::DropSumType(drop) => {
 					stack.push(self.compile_drop_sumtype(rx, drop)?);
-				}
-				LogicalPlan::DropFlow(drop) => {
-					stack.push(self.compile_drop_flow(rx, drop)?);
 				}
 				LogicalPlan::DropSubscription(drop) => {
 					stack.push(self.compile_drop_subscription(rx, drop)?);
@@ -1769,14 +1729,7 @@ impl<'bump> Compiler<'bump> {
 							source: resolved_ringbuffer.clone(),
 						}));
 					}
-					ResolvedPrimitive::Flow(resolved_flow) => {
-						if scan.index.is_some() {
-							unimplemented!("flows do not support indexes yet");
-						}
-						stack.push(PhysicalPlan::FlowScan(FlowScanNode {
-							source: resolved_flow.clone(),
-						}));
-					}
+
 					ResolvedPrimitive::Dictionary(resolved_dictionary) => {
 						if scan.index.is_some() {
 							unimplemented!("dictionaries do not support indexes");

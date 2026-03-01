@@ -11,8 +11,8 @@ use reifydb_core::{
 use crate::{
 	ast::identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier, MaybeQualifiedFunctionIdentifier,
-		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
+		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIndexIdentifier,
+		MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
 		MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier,
 		MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
 		MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier, UnqualifiedIdentifier,
@@ -800,7 +800,6 @@ pub struct AstIsVariant<'bump> {
 pub enum AstCreate<'bump> {
 	DeferredView(AstCreateDeferredView<'bump>),
 	TransactionalView(AstCreateTransactionalView<'bump>),
-	Flow(AstCreateFlow<'bump>),
 	Namespace(AstCreateNamespace<'bump>),
 	Series(AstCreateSeries<'bump>),
 	Subscription(AstCreateSubscription<'bump>),
@@ -825,7 +824,6 @@ pub enum AstCreate<'bump> {
 #[derive(Debug)]
 pub enum AstAlter<'bump> {
 	Sequence(AstAlterSequence<'bump>),
-	Flow(AstAlterFlow<'bump>),
 	Policy(AstAlterPolicy<'bump>),
 	Table(AstAlterTable<'bump>),
 }
@@ -853,7 +851,6 @@ pub enum AstAlterTableAction<'bump> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstDrop<'bump> {
-	Flow(AstDropFlow<'bump>),
 	Table(AstDropTable<'bump>),
 	View(AstDropView<'bump>),
 	RingBuffer(AstDropRingBuffer<'bump>),
@@ -866,14 +863,6 @@ pub enum AstDrop<'bump> {
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
 	Policy(AstDropPolicy<'bump>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AstDropFlow<'bump> {
-	pub token: Token<'bump>,
-	pub if_exists: bool,
-	pub flow: MaybeQualifiedFlowIdentifier<'bump>,
-	pub cascade: bool, // CASCADE or RESTRICT (false = RESTRICT)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -955,25 +944,6 @@ pub struct AstSubQuery<'bump> {
 }
 
 #[derive(Debug)]
-pub struct AstAlterFlow<'bump> {
-	pub token: Token<'bump>,
-	pub flow: MaybeQualifiedFlowIdentifier<'bump>,
-	pub action: AstAlterFlowAction<'bump>,
-}
-
-#[derive(Debug)]
-pub enum AstAlterFlowAction<'bump> {
-	Rename {
-		new_name: BumpFragment<'bump>,
-	},
-	SetQuery {
-		query: AstStatement<'bump>,
-	},
-	Pause,
-	Resume,
-}
-
-#[derive(Debug)]
 pub struct AstCreateDeferredView<'bump> {
 	pub token: Token<'bump>,
 	pub view: MaybeQualifiedDeferredViewIdentifier<'bump>,
@@ -987,15 +957,6 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub view: MaybeQualifiedTransactionalViewIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
-}
-
-#[derive(Debug)]
-pub struct AstCreateFlow<'bump> {
-	pub token: Token<'bump>,
-	pub or_replace: bool,
-	pub if_not_exists: bool,
-	pub flow: MaybeQualifiedFlowIdentifier<'bump>,
-	pub as_clause: AstStatement<'bump>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1184,10 +1145,6 @@ impl<'bump> AstCreate<'bump> {
 				token,
 				..
 			}) => token,
-			AstCreate::Flow(AstCreateFlow {
-				token,
-				..
-			}) => token,
 			AstCreate::Namespace(AstCreateNamespace {
 				token,
 				..
@@ -1275,10 +1232,6 @@ impl<'bump> AstAlter<'bump> {
 				token,
 				..
 			}) => token,
-			AstAlter::Flow(AstAlterFlow {
-				token,
-				..
-			}) => token,
 			AstAlter::Policy(AstAlterPolicy {
 				token,
 				..
@@ -1294,10 +1247,6 @@ impl<'bump> AstAlter<'bump> {
 impl<'bump> AstDrop<'bump> {
 	pub fn token(&self) -> &Token<'bump> {
 		match self {
-			AstDrop::Flow(AstDropFlow {
-				token,
-				..
-			}) => token,
 			AstDrop::Table(AstDropTable {
 				token,
 				..
@@ -1888,7 +1837,6 @@ pub enum AstPolicyTargetType {
 	Namespace,
 	Procedure,
 	Function,
-	Flow,
 	Subscription,
 	Series,
 	Dictionary,
@@ -1906,7 +1854,6 @@ impl AstPolicyTargetType {
 			Self::Namespace => "namespace",
 			Self::Procedure => "procedure",
 			Self::Function => "function",
-			Self::Flow => "flow",
 			Self::Subscription => "subscription",
 			Self::Series => "series",
 			Self::Dictionary => "dictionary",

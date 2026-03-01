@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	interface::catalog::{
-		flow::{FlowDef, FlowId},
 		id::{RingBufferId, SeriesId, TableId, ViewId},
 		table::TableDef,
 		view::ViewDef,
@@ -20,7 +19,6 @@ use crate::{
 pub enum PrimitiveId {
 	Table(TableId),
 	View(ViewId),
-	Flow(FlowId),
 	TableVirtual(VTableId),
 	RingBuffer(RingBufferId),
 	Dictionary(DictionaryId),
@@ -32,7 +30,6 @@ impl std::fmt::Display for PrimitiveId {
 		match self {
 			PrimitiveId::Table(id) => write!(f, "{}", id.0),
 			PrimitiveId::View(id) => write!(f, "{}", id.0),
-			PrimitiveId::Flow(id) => write!(f, "{}", id.0),
 			PrimitiveId::TableVirtual(id) => write!(f, "{}", id.0),
 			PrimitiveId::RingBuffer(id) => write!(f, "{}", id.0),
 			PrimitiveId::Dictionary(id) => write!(f, "{}", id.0),
@@ -48,10 +45,6 @@ impl PrimitiveId {
 
 	pub fn view(id: impl Into<ViewId>) -> Self {
 		Self::View(id.into())
-	}
-
-	pub fn flow(id: impl Into<FlowId>) -> Self {
-		Self::Flow(id.into())
 	}
 
 	pub fn vtable(id: impl Into<VTableId>) -> Self {
@@ -76,7 +69,6 @@ impl PrimitiveId {
 		match self {
 			PrimitiveId::Table(id) => id.to_u64(),
 			PrimitiveId::View(id) => id.to_u64(),
-			PrimitiveId::Flow(id) => id.to_u64(),
 			PrimitiveId::TableVirtual(id) => id.to_u64(),
 			PrimitiveId::RingBuffer(id) => id.to_u64(),
 			PrimitiveId::Dictionary(id) => id.to_u64(),
@@ -94,12 +86,6 @@ impl From<TableId> for PrimitiveId {
 impl From<ViewId> for PrimitiveId {
 	fn from(id: ViewId) -> Self {
 		PrimitiveId::View(id)
-	}
-}
-
-impl From<FlowId> for PrimitiveId {
-	fn from(id: FlowId) -> Self {
-		PrimitiveId::Flow(id)
 	}
 }
 
@@ -132,7 +118,6 @@ impl PartialEq<u64> for PrimitiveId {
 		match self {
 			PrimitiveId::Table(id) => id.0.eq(other),
 			PrimitiveId::View(id) => id.0.eq(other),
-			PrimitiveId::Flow(id) => id.0.eq(other),
 			PrimitiveId::TableVirtual(id) => id.0.eq(other),
 			PrimitiveId::RingBuffer(id) => id.0.eq(other),
 			PrimitiveId::Dictionary(id) => id.0.eq(other),
@@ -154,15 +139,6 @@ impl PartialEq<ViewId> for PrimitiveId {
 	fn eq(&self, other: &ViewId) -> bool {
 		match self {
 			PrimitiveId::View(id) => id.0 == other.0,
-			_ => false,
-		}
-	}
-}
-
-impl PartialEq<FlowId> for PrimitiveId {
-	fn eq(&self, other: &FlowId) -> bool {
-		match self {
-			PrimitiveId::Flow(id) => id.0 == other.0,
 			_ => false,
 		}
 	}
@@ -216,11 +192,10 @@ impl PrimitiveId {
 		match self {
 			PrimitiveId::Table(_) => 1,
 			PrimitiveId::View(_) => 2,
-			PrimitiveId::Flow(_) => 3,
-			PrimitiveId::TableVirtual(_) => 4,
-			PrimitiveId::RingBuffer(_) => 5,
-			PrimitiveId::Dictionary(_) => 6,
-			PrimitiveId::Series(_) => 7,
+			PrimitiveId::TableVirtual(_) => 3,
+			PrimitiveId::RingBuffer(_) => 4,
+			PrimitiveId::Dictionary(_) => 5,
+			PrimitiveId::Series(_) => 6,
 		}
 	}
 
@@ -229,7 +204,6 @@ impl PrimitiveId {
 		match self {
 			PrimitiveId::Table(id) => id.0,
 			PrimitiveId::View(id) => id.0,
-			PrimitiveId::Flow(id) => id.0,
 			PrimitiveId::TableVirtual(id) => id.0,
 			PrimitiveId::RingBuffer(id) => id.0,
 			PrimitiveId::Dictionary(id) => id.0,
@@ -242,7 +216,6 @@ impl PrimitiveId {
 		match self {
 			PrimitiveId::Table(table) => PrimitiveId::table(table.0 + 1),
 			PrimitiveId::View(view) => PrimitiveId::view(view.0 + 1),
-			PrimitiveId::Flow(flow) => PrimitiveId::flow(flow.0 + 1),
 			PrimitiveId::TableVirtual(vtable) => PrimitiveId::vtable(vtable.0 + 1),
 			PrimitiveId::RingBuffer(ringbuffer) => PrimitiveId::ringbuffer(ringbuffer.0 + 1),
 			PrimitiveId::Dictionary(dictionary) => PrimitiveId::dictionary(dictionary.0 + 1),
@@ -258,7 +231,6 @@ impl PrimitiveId {
 		match self {
 			PrimitiveId::Table(table) => PrimitiveId::table(table.0.wrapping_sub(1)),
 			PrimitiveId::View(view) => PrimitiveId::view(view.0.wrapping_sub(1)),
-			PrimitiveId::Flow(flow) => PrimitiveId::flow(flow.0.wrapping_sub(1)),
 			PrimitiveId::TableVirtual(vtable) => PrimitiveId::vtable(vtable.0.wrapping_sub(1)),
 			PrimitiveId::RingBuffer(ringbuffer) => PrimitiveId::ringbuffer(ringbuffer.0.wrapping_sub(1)),
 			PrimitiveId::Dictionary(dictionary) => PrimitiveId::dictionary(dictionary.0.wrapping_sub(1)),
@@ -287,19 +259,6 @@ impl PrimitiveId {
 				"Data inconsistency: Expected PrimitiveId::View but found {:?}. \
 				This indicates a critical catalog inconsistency where a non-view primitive ID \
 				was used in a context that requires a view ID.",
-				self
-			)
-		}
-	}
-
-	pub fn to_flow_id(self) -> Result<FlowId> {
-		if let PrimitiveId::Flow(flow) = self {
-			Ok(flow)
-		} else {
-			return_internal_error!(
-				"Data inconsistency: Expected PrimitiveId::Flow but found {:?}. \
-				This indicates a critical catalog inconsistency where a non-flow primitive ID \
-				was used in a context that requires a flow ID.",
 				self
 			)
 		}
@@ -362,7 +321,6 @@ impl PrimitiveId {
 pub enum PrimitiveDef {
 	Table(TableDef),
 	View(ViewDef),
-	Flow(FlowDef),
 	TableVirtual(VTableDef),
 }
 
@@ -371,7 +329,6 @@ impl PrimitiveDef {
 		match self {
 			PrimitiveDef::Table(table) => table.id.into(),
 			PrimitiveDef::View(view) => view.id.into(),
-			PrimitiveDef::Flow(flow) => flow.id.into(),
 			PrimitiveDef::TableVirtual(vtable) => vtable.id.into(),
 		}
 	}
@@ -380,7 +337,6 @@ impl PrimitiveDef {
 		match self {
 			PrimitiveDef::Table(table) => PrimitiveId::Table(table.id),
 			PrimitiveDef::View(view) => PrimitiveId::View(view.id),
-			PrimitiveDef::Flow(flow) => PrimitiveId::Flow(flow.id),
 			PrimitiveDef::TableVirtual(vtable) => PrimitiveId::TableVirtual(vtable.id),
 		}
 	}

@@ -13,7 +13,7 @@ use crate::{
 		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, Compiler, CreateColumnPropertyNode,
 		CreateIndexNode, CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
-		PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode, alter::flow::AlterFlowAction,
+		PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
 	},
 };
 
@@ -91,7 +91,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::DropRingBuffer(_) => unimplemented!(),
 		LogicalPlan::DropDictionary(_) => unimplemented!(),
 		LogicalPlan::DropSumType(_) => unimplemented!(),
-		LogicalPlan::DropFlow(_) => unimplemented!(),
 		LogicalPlan::DropSubscription(_) => unimplemented!(),
 		LogicalPlan::DropSeries(_) => unimplemented!(),
 		LogicalPlan::CreateUser(n) => {
@@ -836,78 +835,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				}
 			);
 			render_logical_plan_inner(&scalarize.input, &child_prefix, true, output);
-		}
-		LogicalPlan::CreateFlow(create_flow) => {
-			let flow_name = if let Some(ns) = create_flow.flow.namespace.first() {
-				format!("{}::{}", ns.text(), create_flow.flow.name.text())
-			} else {
-				create_flow.flow.name.text().to_string()
-			};
-
-			output.push_str(&format!("{}{} CreateFlow: {}", prefix, branch, flow_name));
-
-			if create_flow.if_not_exists {
-				output.push_str(" (IF NOT EXISTS)");
-			}
-
-			output.push_str("\n");
-
-			// Render the AS query as a child
-			if !create_flow.as_clause.is_empty() {
-				for (i, plan) in create_flow.as_clause.iter().enumerate() {
-					let is_last = i == create_flow.as_clause.len() - 1;
-					let new_prefix = format!(
-						"{}{}",
-						prefix,
-						if is_last {
-							"    "
-						} else {
-							"│   "
-						}
-					);
-					render_logical_plan_inner(plan, &new_prefix, is_last, output);
-				}
-			}
-		}
-		LogicalPlan::AlterFlow(alter_flow) => {
-			let flow_name = if let Some(ns) = alter_flow.flow.namespace.first() {
-				format!("{}::{}", ns.text(), alter_flow.flow.name.text())
-			} else {
-				alter_flow.flow.name.text().to_string()
-			};
-
-			let action_str = match &alter_flow.action {
-				AlterFlowAction::Rename {
-					new_name,
-				} => format!("RENAME TO {}", new_name.text()),
-				AlterFlowAction::SetQuery {
-					..
-				} => "SET QUERY".to_string(),
-				AlterFlowAction::Pause => "PAUSE".to_string(),
-				AlterFlowAction::Resume => "RESUME".to_string(),
-			};
-
-			output.push_str(&format!("{}{} AlterFlow: {} ({})\n", prefix, branch, flow_name, action_str));
-
-			// Render the SetQuery child plan if present
-			if let AlterFlowAction::SetQuery {
-				query,
-			} = &alter_flow.action
-			{
-				for (i, plan) in query.iter().enumerate() {
-					let is_last = i == query.len() - 1;
-					let new_prefix = format!(
-						"{}{}",
-						prefix,
-						if is_last {
-							"    "
-						} else {
-							"│   "
-						}
-					);
-					render_logical_plan_inner(plan, &new_prefix, is_last, output);
-				}
-			}
 		}
 		LogicalPlan::AlterTable(alter_table) => {
 			let table_name = if let Some(ns) = alter_table.table.namespace.first() {

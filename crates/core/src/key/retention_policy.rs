@@ -8,7 +8,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::{
-		flow::{FlowId, FlowNodeId},
+		flow::FlowNodeId,
 		id::{RingBufferId, SeriesId, TableId, ViewId},
 		primitive::PrimitiveId,
 		vtable::VTableId,
@@ -48,9 +48,6 @@ impl EncodableKey for PrimitiveRetentionPolicyKey {
 			PrimitiveId::View(id) => {
 				serializer.extend_u8(0x02).extend_u64(id.0);
 			}
-			PrimitiveId::Flow(id) => {
-				serializer.extend_u8(0x05).extend_u64(id.0);
-			}
 			PrimitiveId::TableVirtual(id) => {
 				serializer.extend_u8(0x03).extend_u64(id.0);
 			}
@@ -89,7 +86,6 @@ impl EncodableKey for PrimitiveRetentionPolicyKey {
 			0x02 => PrimitiveId::View(ViewId(id)),
 			0x03 => PrimitiveId::TableVirtual(VTableId(id)),
 			0x04 => PrimitiveId::RingBuffer(RingBufferId(id)),
-			0x05 => PrimitiveId::Flow(FlowId(id)),
 			0x06 => PrimitiveId::Dictionary(DictionaryId(id)),
 			0x07 => PrimitiveId::Series(SeriesId(id)),
 			_ => return None,

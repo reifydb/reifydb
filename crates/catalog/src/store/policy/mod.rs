@@ -31,7 +31,6 @@ pub(crate) fn convert_policy(multi: MultiVersionValues) -> PolicyDef {
 		"namespace" => PolicyTargetType::Namespace,
 		"procedure" => PolicyTargetType::Procedure,
 		"function" => PolicyTargetType::Function,
-		"flow" => PolicyTargetType::Flow,
 		"subscription" => PolicyTargetType::Subscription,
 		"series" => PolicyTargetType::Series,
 		"dictionary" => PolicyTargetType::Dictionary,

@@ -95,7 +95,6 @@ fn inject_pipeline<'a>(
 					ResolvedPrimitive::RingBuffer(_) => PolicyTargetType::RingBuffer,
 					ResolvedPrimitive::Series(_) => PolicyTargetType::Series,
 					ResolvedPrimitive::Dictionary(_) => PolicyTargetType::Dictionary,
-					ResolvedPrimitive::Flow(_) => PolicyTargetType::Flow,
 				};
 				let target_ns = scan.source.namespace().unwrap().name().to_string();
 				let target_obj = scan.source.name().to_string();

@@ -16,7 +16,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
-			flow::{FlowId, FlowNodeId},
+			flow::FlowNodeId,
 			id::{RingBufferId, SeriesId, TableId, ViewId},
 			primitive::PrimitiveId,
 			vtable::VTableId,
@@ -79,10 +79,6 @@ impl Arena {
 				},
 				PrimitiveId::RingBuffer(id) => OriginFFI {
 					origin: 4,
-					id: id.0,
-				},
-				&PrimitiveId::Flow(id) => OriginFFI {
-					origin: 5,
 					id: id.0,
 				},
 				PrimitiveId::Dictionary(id) => OriginFFI {
@@ -154,7 +150,6 @@ impl Arena {
 			2 => Ok(ChangeOrigin::Primitive(PrimitiveId::View(ViewId(ffi.id)))),
 			3 => Ok(ChangeOrigin::Primitive(PrimitiveId::TableVirtual(VTableId(ffi.id)))),
 			4 => Ok(ChangeOrigin::Primitive(PrimitiveId::RingBuffer(RingBufferId(ffi.id)))),
-			5 => Ok(ChangeOrigin::Primitive(PrimitiveId::Flow(FlowId(ffi.id)))),
 			6 => Ok(ChangeOrigin::Primitive(PrimitiveId::Dictionary(DictionaryId(ffi.id)))),
 			7 => Ok(ChangeOrigin::Primitive(PrimitiveId::Series(SeriesId(ffi.id)))),
 			_ => Err(format!("Invalid origin_type: {}", ffi.origin)),

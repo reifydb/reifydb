@@ -23,7 +23,6 @@ impl CatalogStore {
 			let primitive_type = match primitive_id {
 				PrimitiveId::Table(_) => "Table",
 				PrimitiveId::View(_) => "View",
-				PrimitiveId::Flow(_) => "Flow",
 				PrimitiveId::TableVirtual(_) => "TableVirtual",
 				PrimitiveId::RingBuffer(_) => "RingBuffer",
 				PrimitiveId::Dictionary(_) => "Dictionary",

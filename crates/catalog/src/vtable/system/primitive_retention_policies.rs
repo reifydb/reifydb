@@ -58,7 +58,6 @@ impl VTable for PrimitiveRetentionPolicies {
 				PrimitiveId::View(id) => (id.0, "view"),
 				PrimitiveId::TableVirtual(id) => (id.0, "vtable"),
 				PrimitiveId::RingBuffer(id) => (id.0, "ringbuffer"),
-				PrimitiveId::Flow(id) => (id.0, "flow"),
 				PrimitiveId::Dictionary(id) => (id.0, "dictionary"),
 				PrimitiveId::Series(id) => (id.0, "series"),
 			};

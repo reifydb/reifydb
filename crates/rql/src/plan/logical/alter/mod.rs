@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-pub mod flow;
 pub mod sequence;
 pub mod table;
 
@@ -21,7 +20,6 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<LogicalPlan<'bump>> {
 		match ast {
 			AstAlter::Sequence(node) => self.compile_alter_sequence(node),
-			AstAlter::Flow(node) => self.compile_alter_flow(node, tx),
 			AstAlter::Policy(node) => Ok(LogicalPlan::AlterPolicy(AlterPolicyNode {
 				target_type: node.target_type,
 				name: node.name,

@@ -6,7 +6,6 @@ use reifydb_type::{Result, value::dictionary::DictionaryId};
 use super::{deserialize, serialize};
 use crate::{
 	interface::catalog::{
-		flow::FlowId,
 		id::{IndexId, PrimaryKeyId, RingBufferId, SeriesId, TableId, ViewId},
 		primitive::PrimitiveId,
 		vtable::VTableId,
@@ -16,7 +15,7 @@ use crate::{
 
 /// Serialize a PrimitiveId for use in database keys
 /// Returns [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
-/// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x05 for Flow
+/// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x06 for Dictionary, 0x07 for Series
 pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
 	let mut result = Vec::with_capacity(9);
 	match primitive {
@@ -36,10 +35,6 @@ pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
 			result.push(0x04);
 			result.extend(&serialize(id));
 		}
-		PrimitiveId::Flow(FlowId(id)) => {
-			result.push(0x05);
-			result.extend(&serialize(id));
-		}
 		PrimitiveId::Dictionary(DictionaryId(id)) => {
 			result.push(0x06);
 			result.extend(&serialize(id));
@@ -54,7 +49,7 @@ pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
 
 /// Deserialize a PrimitiveId from database key bytes
 /// Expects [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
-/// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x05 for Flow
+/// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x06 for Dictionary, 0x07 for Series
 pub fn deserialize_primitive_id(bytes: &[u8]) -> Result<PrimitiveId> {
 	if bytes.len() != 9 {
 		return_internal_error!("Invalid PrimitiveId encoding: expected 9 bytes, got {}", bytes.len());
@@ -68,7 +63,6 @@ pub fn deserialize_primitive_id(bytes: &[u8]) -> Result<PrimitiveId> {
 		0x02 => Ok(PrimitiveId::View(ViewId(id))),
 		0x03 => Ok(PrimitiveId::TableVirtual(VTableId(id))),
 		0x04 => Ok(PrimitiveId::RingBuffer(RingBufferId(id))),
-		0x05 => Ok(PrimitiveId::Flow(FlowId(id))),
 		0x06 => Ok(PrimitiveId::Dictionary(DictionaryId(id))),
 		0x07 => Ok(PrimitiveId::Series(SeriesId(id))),
 		_ => return_internal_error!("Invalid PrimitiveId type byte: 0x{:02x}.", type_byte),

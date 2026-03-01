@@ -43,17 +43,17 @@ use crate::{
 		},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
-			MaybeQualifiedIndexIdentifier, MaybeQualifiedProcedureIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedIndexIdentifier,
+			MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
 			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
 	diagnostic::AstError,
 	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
-	plan::logical::alter::{flow::AlterFlowNode, table::AlterTableNode},
+	plan::logical::alter::table::AlterTableNode,
 };
 
 pub(crate) struct Compiler<'bump> {
@@ -364,7 +364,6 @@ pub enum LogicalPlan<'bump> {
 	CreateRingBuffer(CreateRingBufferNode<'bump>),
 	CreateDictionary(CreateDictionaryNode<'bump>),
 	CreateSumType(CreateSumTypeNode<'bump>),
-	CreateFlow(CreateFlowNode<'bump>),
 	CreateIndex(CreateIndexNode<'bump>),
 	CreateSubscription(CreateSubscriptionNode<'bump>),
 	CreatePrimaryKey(CreatePrimaryKeyNode<'bump>),
@@ -385,12 +384,10 @@ pub enum LogicalPlan<'bump> {
 	DropRingBuffer(DropRingBufferNode<'bump>),
 	DropDictionary(DropDictionaryNode<'bump>),
 	DropSumType(DropSumTypeNode<'bump>),
-	DropFlow(DropFlowNode<'bump>),
 	DropSubscription(DropSubscriptionNode<'bump>),
 	DropSeries(DropSeriesNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
-	AlterFlow(AlterFlowNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
 	// Mutate
 	DeleteTable(DeleteTableNode<'bump>),
@@ -612,13 +609,6 @@ pub struct CreateSumTypeNode<'bump> {
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub variants: Vec<AstVariantDef<'bump>>,
-}
-
-#[derive(Debug)]
-pub struct CreateFlowNode<'bump> {
-	pub flow: MaybeQualifiedFlowIdentifier<'bump>,
-	pub if_not_exists: bool,
-	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
@@ -895,13 +885,6 @@ pub struct DropDictionaryNode<'bump> {
 #[derive(Debug)]
 pub struct DropSumTypeNode<'bump> {
 	pub sumtype: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub if_exists: bool,
-	pub cascade: bool,
-}
-
-#[derive(Debug)]
-pub struct DropFlowNode<'bump> {
-	pub flow: MaybeQualifiedFlowIdentifier<'bump>,
 	pub if_exists: bool,
 	pub cascade: bool,
 }

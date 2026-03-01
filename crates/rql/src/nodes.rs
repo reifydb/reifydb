@@ -9,7 +9,6 @@ use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
 	interface::{
 		catalog::{
-			flow::FlowId,
 			id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
 			namespace::NamespaceDef,
 			procedure::{ProcedureParamDef, ProcedureTrigger},
@@ -17,9 +16,8 @@ use reifydb_core::{
 			series::TimestampPrecision,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
-			ResolvedRingBuffer, ResolvedSequence, ResolvedSeries, ResolvedTable, ResolvedTableVirtual,
-			ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
+			ResolvedSequence, ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
 	sort::{SortDirection, SortKey},
@@ -54,7 +52,6 @@ pub enum PhysicalPlan {
 	CreateNamespace(CreateNamespaceNode),
 	CreateTable(CreateTableNode),
 	CreateRingBuffer(CreateRingBufferNode),
-	CreateFlow(CreateFlowNode),
 	CreateDictionary(CreateDictionaryNode),
 	CreateSumType(CreateSumTypeNode),
 	CreateSubscription(CreateSubscriptionNode),
@@ -71,7 +68,6 @@ pub enum PhysicalPlan {
 	Dispatch(DispatchNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
-	AlterFlow(AlterFlowNode),
 	AlterTable(AlterTableNode),
 	// Mutate
 	Delete(DeleteTableNode),
@@ -124,7 +120,6 @@ pub enum PhysicalPlan {
 	TableVirtualScan(TableVirtualScanNode),
 	ViewScan(ViewScanNode),
 	RingBufferScan(RingBufferScanNode),
-	FlowScan(FlowScanNode),
 	DictionaryScan(DictionaryScanNode),
 	SeriesScan(SeriesScanNode),
 	// Series DML
@@ -154,14 +149,6 @@ pub struct CreateDeferredViewNode {
 	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub as_clause: Box<QueryPlan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateFlowNode {
-	pub namespace: NamespaceDef,
-	pub flow: Fragment,
-	pub if_not_exists: bool,
 	pub as_clause: Box<QueryPlan>,
 }
 
@@ -237,32 +224,6 @@ pub struct AlterSequenceNode {
 	pub sequence: ResolvedSequence,
 	pub column: ResolvedColumn,
 	pub value: Expression,
-}
-
-// Alter Flow types
-
-#[derive(Debug, Clone)]
-pub struct AlterFlowNode {
-	pub flow: AlterFlowIdentifier,
-	pub action: AlterFlowAction,
-}
-
-#[derive(Debug, Clone)]
-pub struct AlterFlowIdentifier {
-	pub namespace: Option<Fragment>,
-	pub name: Fragment,
-}
-
-#[derive(Debug, Clone)]
-pub enum AlterFlowAction {
-	Rename {
-		new_name: Fragment,
-	},
-	SetQuery {
-		query: Box<QueryPlan>,
-	},
-	Pause,
-	Resume,
 }
 
 #[derive(Debug, Clone)]
@@ -597,11 +558,6 @@ pub struct RingBufferScanNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct FlowScanNode {
-	pub source: ResolvedFlow,
-}
-
-#[derive(Debug, Clone)]
 pub struct DictionaryScanNode {
 	pub source: ResolvedDictionary,
 }
@@ -819,15 +775,6 @@ pub struct DropSumTypeNode {
 	pub namespace_name: Fragment,
 	pub sumtype_name: Fragment,
 	pub sumtype_id: Option<SumTypeId>,
-	pub if_exists: bool,
-	pub cascade: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct DropFlowNode {
-	pub namespace_name: Fragment,
-	pub flow_name: Fragment,
-	pub flow_id: Option<FlowId>,
 	pub if_exists: bool,
 	pub cascade: bool,
 }

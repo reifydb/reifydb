@@ -201,34 +201,6 @@ impl<'bump> MaybeQualifiedViewIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified flow identifier - namespace is optional
-#[derive(Debug, Clone, PartialEq)]
-pub struct MaybeQualifiedFlowIdentifier<'bump> {
-	pub namespace: Vec<BumpFragment<'bump>>,
-	pub name: BumpFragment<'bump>,
-	pub alias: Option<BumpFragment<'bump>>,
-}
-
-impl<'bump> MaybeQualifiedFlowIdentifier<'bump> {
-	pub fn new(name: BumpFragment<'bump>) -> Self {
-		Self {
-			namespace: Vec::new(),
-			name,
-			alias: None,
-		}
-	}
-
-	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
-		self.namespace = namespace;
-		self
-	}
-
-	pub fn with_alias(mut self, alias: BumpFragment<'bump>) -> Self {
-		self.alias = Some(alias);
-		self
-	}
-}
-
 /// Maybe-qualified ring buffer identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedRingBufferIdentifier<'bump> {

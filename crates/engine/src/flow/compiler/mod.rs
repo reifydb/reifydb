@@ -36,7 +36,7 @@ use crate::flow::compiler::{
 		sort::SortCompiler, take::TakeCompiler, window::WindowCompiler,
 	},
 	primitive::{
-		flow_scan::FlowScanCompiler, inline_data::InlineDataCompiler, ringbuffer_scan::RingBufferScanCompiler,
+		inline_data::InlineDataCompiler, ringbuffer_scan::RingBufferScanCompiler,
 		series_scan::SeriesScanCompiler, table_scan::TableScanCompiler, view_scan::ViewScanCompiler,
 	},
 };
@@ -220,7 +220,6 @@ impl FlowCompiler {
 			QueryPlan::Patch(_) => {
 				unimplemented!("Patch compilation not yet implemented for flow")
 			}
-			QueryPlan::FlowScan(flow_scan) => FlowScanCompiler::from(flow_scan).compile(self, txn),
 			QueryPlan::TableVirtualScan(_scan) => {
 				// TODO: Implement VirtualScanCompiler
 				unimplemented!("VirtualScan compilation not yet implemented")

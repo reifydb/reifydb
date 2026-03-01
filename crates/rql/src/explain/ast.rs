@@ -120,11 +120,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 					.unwrap_or_default();
 				format!("ALTER SEQUENCE {}{}.{}", namespace, s.sequence.name.text(), s.column.text())
 			}
-			AstAlter::Flow(f) => {
-				let namespace =
-					f.flow.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
-				format!("ALTER FLOW {}{}", namespace, f.flow.name.text())
-			}
 			AstAlter::Policy(sp) => {
 				format!("ALTER {:?} POLICY {}", sp.target_type, sp.name.text())
 			}
@@ -331,10 +326,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 				AstAlter::Sequence(_) => {
 					// Sequence alter doesn't have child
 					// operations
-				}
-				AstAlter::Flow(_) => {
-					// Flow alter doesn't have child operations to display here
-					// The action is part of the flow node itself
 				}
 				AstAlter::Policy(_) => {}
 				AstAlter::Table(_) => {

@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use super::catalog::{
 	column::ColumnDef,
 	dictionary::DictionaryDef,
-	flow::FlowDef,
 	namespace::NamespaceDef,
 	property::ColumnPropertyKind,
 	ringbuffer::RingBufferDef,
@@ -239,61 +238,6 @@ impl ResolvedRingBuffer {
 	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedRingBuffer {
 		ResolvedRingBuffer(Arc::new(ResolvedRingBufferInner {
-			identifier: Fragment::internal(self.0.identifier.text()),
-			namespace: self.0.namespace.clone(),
-			def: self.0.def.clone(),
-		}))
-	}
-}
-
-/// Resolved flow
-#[derive(Debug, Clone)]
-pub struct ResolvedFlow(Arc<ResolvedFlowInner>);
-
-#[derive(Debug)]
-struct ResolvedFlowInner {
-	pub identifier: Fragment,
-	pub namespace: ResolvedNamespace,
-	pub def: FlowDef,
-}
-
-impl ResolvedFlow {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: FlowDef) -> Self {
-		Self(Arc::new(ResolvedFlowInner {
-			identifier,
-			namespace,
-			def,
-		}))
-	}
-
-	/// Get the flow name
-	pub fn name(&self) -> &str {
-		&self.0.def.name
-	}
-
-	/// Get the flow def
-	pub fn def(&self) -> &FlowDef {
-		&self.0.def
-	}
-
-	/// Get the namespace
-	pub fn namespace(&self) -> &ResolvedNamespace {
-		&self.0.namespace
-	}
-
-	/// Get the identifier
-	pub fn identifier(&self) -> &Fragment {
-		&self.0.identifier
-	}
-
-	/// Get fully qualified name
-	pub fn fully_qualified_name(&self) -> String {
-		format!("{}::{}", self.0.namespace.name(), self.name())
-	}
-
-	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedFlow {
-		ResolvedFlow(Arc::new(ResolvedFlowInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
 			namespace: self.0.namespace.clone(),
 			def: self.0.def.clone(),
@@ -729,7 +673,6 @@ pub enum ResolvedPrimitive {
 	DeferredView(ResolvedDeferredView),
 	TransactionalView(ResolvedTransactionalView),
 	RingBuffer(ResolvedRingBuffer),
-	Flow(ResolvedFlow),
 	Dictionary(ResolvedDictionary),
 	Series(ResolvedSeries),
 }
@@ -744,7 +687,6 @@ impl ResolvedPrimitive {
 			Self::DeferredView(v) => v.identifier(),
 			Self::TransactionalView(v) => v.identifier(),
 			Self::RingBuffer(r) => r.identifier(),
-			Self::Flow(f) => f.identifier(),
 			Self::Dictionary(d) => d.identifier(),
 			Self::Series(s) => s.identifier(),
 		}
@@ -759,7 +701,6 @@ impl ResolvedPrimitive {
 			Self::DeferredView(v) => v.name(),
 			Self::TransactionalView(v) => v.name(),
 			Self::RingBuffer(r) => r.name(),
-			Self::Flow(f) => f.name(),
 			Self::Dictionary(d) => d.name(),
 			Self::Series(s) => s.name(),
 		}
@@ -774,7 +715,6 @@ impl ResolvedPrimitive {
 			Self::DeferredView(v) => Some(v.namespace()),
 			Self::TransactionalView(v) => Some(v.namespace()),
 			Self::RingBuffer(r) => Some(r.namespace()),
-			Self::Flow(f) => Some(f.namespace()),
 			Self::Dictionary(d) => Some(d.namespace()),
 			Self::Series(s) => Some(s.namespace()),
 		}
@@ -799,7 +739,6 @@ impl ResolvedPrimitive {
 			Self::DeferredView(v) => v.columns(),
 			Self::TransactionalView(v) => v.columns(),
 			Self::RingBuffer(r) => r.columns(),
-			Self::Flow(_f) => unreachable!(),
 			Self::Dictionary(_d) => unreachable!(), // Dictionary columns are dynamic (id, value)
 			Self::Series(s) => s.columns(),
 		}
@@ -819,7 +758,6 @@ impl ResolvedPrimitive {
 			Self::DeferredView(_) => "deferred view",
 			Self::TransactionalView(_) => "transactional view",
 			Self::RingBuffer(_) => "ring buffer",
-			Self::Flow(_) => "flow",
 			Self::Dictionary(_) => "dictionary",
 			Self::Series(_) => "series",
 		}
@@ -834,7 +772,6 @@ impl ResolvedPrimitive {
 			Self::TransactionalView(v) => Some(format!("{}::{}", v.namespace().name(), v.name())),
 			Self::TableVirtual(t) => Some(format!("{}::{}", t.namespace().name(), t.name())),
 			Self::RingBuffer(r) => Some(r.fully_qualified_name()),
-			Self::Flow(f) => Some(f.fully_qualified_name()),
 			Self::Dictionary(d) => Some(d.fully_qualified_name()),
 			Self::Series(s) => Some(s.fully_qualified_name()),
 		}
@@ -995,9 +932,6 @@ pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOu
 		}
 		ResolvedPrimitive::TransactionalView(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
-		}
-		ResolvedPrimitive::Flow(flow) => {
-			(Some(flow.namespace().name().to_string()), Some(flow.name().to_string()))
 		}
 		ResolvedPrimitive::Dictionary(dict) => {
 			(Some(dict.namespace().name().to_string()), Some(dict.name().to_string()))

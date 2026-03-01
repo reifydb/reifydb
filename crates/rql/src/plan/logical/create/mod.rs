@@ -4,7 +4,6 @@
 pub mod deferred;
 pub mod dictionary;
 pub mod event;
-pub mod flow;
 pub mod handler;
 pub mod index;
 pub mod migration;
@@ -39,7 +38,6 @@ impl<'bump> Compiler<'bump> {
 		match ast {
 			AstCreate::DeferredView(node) => self.compile_deferred_view(node, tx),
 			AstCreate::TransactionalView(node) => self.compile_transactional_view(node, tx),
-			AstCreate::Flow(node) => self.compile_create_flow(node, tx),
 			AstCreate::Namespace(node) => self.compile_create_namespace(node),
 			AstCreate::Series(node) => self.compile_create_series(node, tx),
 			AstCreate::Table(node) => self.compile_create_table(node, tx),

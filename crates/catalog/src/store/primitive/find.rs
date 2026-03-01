@@ -32,13 +32,6 @@ impl CatalogStore {
 					Ok(None)
 				}
 			}
-			PrimitiveId::Flow(flow_id) => {
-				if let Some(flow) = Self::find_flow(rx, flow_id)? {
-					Ok(Some(PrimitiveDef::Flow(flow)))
-				} else {
-					Ok(None)
-				}
-			}
 			PrimitiveId::TableVirtual(vtable_id) => {
 				if let Some(vtable) = VTableRegistry::find_vtable(rx, vtable_id)? {
 					// Convert Arc<VTableDef> to VTableDef

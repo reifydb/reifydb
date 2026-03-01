@@ -471,11 +471,6 @@ pub(crate) fn compile<'a>(
 			Box::new(RingBufferScan::new(node.source.clone(), context, rx).unwrap())
 		}
 
-		RqlQueryPlan::FlowScan(_node) => {
-			// TODO: Implement FlowScan execution
-			unimplemented!("FlowScan execution not yet implemented")
-		}
-
 		RqlQueryPlan::DictionaryScan(node) => {
 			Box::new(DictionaryScanNode::new(node.source.clone(), context).unwrap())
 		}

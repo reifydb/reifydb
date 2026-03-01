@@ -27,9 +27,9 @@ use reifydb_type::{
 use super::{
 	instruction::{
 		ddl::{
-			alter::{flow::execute_alter_flow, sequence::alter_table_sequence, table::execute_alter_table},
+			alter::{sequence::alter_table_sequence, table::execute_alter_table},
 			create::{
-				deferred::create_deferred_view, dictionary::create_dictionary, flow::create_flow,
+				deferred::create_deferred_view, dictionary::create_dictionary,
 				migration::create_migration, namespace::create_namespace,
 				primary_key::create_primary_key, procedure::create_procedure,
 				property::create_column_property, ringbuffer::create_ringbuffer, series::create_series,
@@ -37,9 +37,9 @@ use super::{
 				tag::create_tag, transactional::create_transactional_view,
 			},
 			drop::{
-				dictionary::drop_dictionary, flow::drop_flow, namespace::drop_namespace,
-				ringbuffer::drop_ringbuffer, series::drop_series, subscription::drop_subscription,
-				sumtype::drop_sumtype, table::drop_table, view::drop_view,
+				dictionary::drop_dictionary, namespace::drop_namespace, ringbuffer::drop_ringbuffer,
+				series::drop_series, subscription::drop_subscription, sumtype::drop_sumtype,
+				table::drop_table, view::drop_view,
 			},
 			migrate::{migrate::execute_migrate, rollback::execute_rollback_migration},
 		},
@@ -1037,18 +1037,6 @@ impl Vm {
 					let columns = create_ringbuffer(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::CreateFlow(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_flow(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
 				Instruction::CreateDeferredView(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
@@ -1230,19 +1218,6 @@ impl Vm {
 					self.dispatch_depth -= 1;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::AlterFlow(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = execute_alter_flow(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-
 				Instruction::AlterTable(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
@@ -1374,23 +1349,6 @@ impl Vm {
 						}
 					};
 					let columns = drop_sumtype(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DropFlow(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						_ => {
-							return Err(Error(internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(),
-								line!(),
-								column!(),
-								module_path!(),
-								module_path!(),
-							)));
-						}
-					};
-					let columns = drop_flow(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropSubscription(node) => {

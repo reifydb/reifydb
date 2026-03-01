@@ -3,8 +3,8 @@
 
 use crate::nodes::{
 	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, DictionaryScanNode, DistinctNode, EnvironmentNode,
-	ExtendNode, FilterNode, FlowScanNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
-	JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
+	ExtendNode, FilterNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode, JoinLeftNode,
+	JoinNaturalNode, MapNode, PatchNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
 	RowRangeScanNode, ScalarizeNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode,
 	VariableNode, ViewScanNode, WindowNode,
 };
@@ -15,7 +15,6 @@ pub enum QueryPlan {
 	TableVirtualScan(TableVirtualScanNode),
 	ViewScan(ViewScanNode),
 	RingBufferScan(RingBufferScanNode),
-	FlowScan(FlowScanNode),
 	DictionaryScan(DictionaryScanNode),
 	SeriesScan(SeriesScanNode),
 	IndexScan(IndexScanNode),

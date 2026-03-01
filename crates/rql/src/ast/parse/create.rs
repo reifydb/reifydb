@@ -13,7 +13,7 @@ use crate::{
 		ast::{
 			AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind, AstColumnToCreate, AstCreate,
 			AstCreateColumnProperty, AstCreateDeferredView, AstCreateDictionary, AstCreateEvent,
-			AstCreateFlow, AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
+			AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
 			AstCreateProcedure, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
 			AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTransactionalView, AstIndexColumn,
 			AstPolicyTargetType, AstPrimaryKeyDef, AstProcedureParam, AstStatement, AstTimestampPrecision,
@@ -21,9 +21,9 @@ use crate::{
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
-			MaybeQualifiedFlowIdentifier, MaybeQualifiedNamespaceIdentifier,
-			MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
 			MaybeQualifiedTransactionalViewIdentifier,
 		},
 		parse::{Parser, Precedence},
@@ -33,8 +33,8 @@ use crate::{
 		keyword::{
 			Keyword,
 			Keyword::{
-				Create, Deferred, Dictionary, Exists, Flow, For, If, Namespace, Replace, Ringbuffer,
-				Series, Subscription, Table, Tag, Transactional, View,
+				Create, Deferred, Dictionary, Exists, For, If, Namespace, Replace, Ringbuffer, Series,
+				Subscription, Table, Tag, Transactional, View,
 			},
 		},
 		operator::{
@@ -57,14 +57,6 @@ impl<'bump> Parser<'bump> {
 		} else {
 			false
 		};
-
-		// Check for CREATE FLOW / CREATE FLOW POLICY
-		if (self.consume_if(TokenKind::Keyword(Flow))?).is_some() {
-			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_create_policy(token, AstPolicyTargetType::Flow);
-			}
-			return self.parse_flow(token, or_replace);
-		}
 
 		// CREATE OR REPLACE is only valid for FLOW currently
 		if or_replace {
@@ -1571,111 +1563,6 @@ impl<'bump> Parser<'bump> {
 			rollback_body_source,
 		}))
 	}
-
-	fn parse_flow(&mut self, token: Token<'bump>, or_replace: bool) -> Result<AstCreate<'bump>> {
-		// Check for IF NOT EXISTS
-		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
-			self.consume_operator(Not)?;
-			self.consume_keyword(Exists)?;
-			true
-		} else {
-			false
-		};
-
-		let mut segments = self.parse_double_colon_separated_identifiers()?;
-		let name = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let flow = if namespace.is_empty() {
-			MaybeQualifiedFlowIdentifier::new(name)
-		} else {
-			MaybeQualifiedFlowIdentifier::new(name).with_namespace(namespace)
-		};
-
-		// Parse required AS clause
-		self.consume_operator(Operator::As)?;
-
-		// The AS clause can be either:
-		// 1. Curly brace syntax: AS { FROM ... }
-		// 2. Direct syntax: AS FROM ...
-		let as_clause = if self.current()?.kind == TokenKind::Operator(Operator::OpenCurly) {
-			// Curly brace syntax
-			self.consume_operator(Operator::OpenCurly)?;
-
-			let mut query_nodes = Vec::new();
-			let mut has_pipes = false;
-
-			// Parse statements until we hit the closing brace
-			loop {
-				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
-					break;
-				}
-
-				let node = self.parse_node(Precedence::None)?;
-				query_nodes.push(node);
-
-				// Check for pipe operator or newline as separator between nodes
-				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
-					self.advance()?; // consume the pipe
-					has_pipes = true;
-				} else {
-					// Try to consume a newline if present (optional)
-					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
-				}
-			}
-
-			self.consume_operator(Operator::CloseCurly)?;
-
-			AstStatement {
-				nodes: query_nodes,
-				has_pipes,
-				is_output: false,
-			}
-		} else {
-			// Direct syntax - parse until semicolon or EOF
-			let mut query_nodes = Vec::new();
-			let mut has_pipes = false;
-
-			// Parse nodes until we hit a terminator
-			loop {
-				if self.is_eof() {
-					break;
-				}
-
-				// Check for statement terminators
-				if self.current()?.kind == TokenKind::Separator(Separator::Semicolon) {
-					break;
-				}
-
-				let node = self.parse_node(Precedence::None)?;
-				query_nodes.push(node);
-
-				if !self.is_eof() {
-					// Check for pipe operator or newline as separator
-					if self.current()?.is_operator(Operator::Pipe) {
-						self.advance()?; // consume the pipe
-						has_pipes = true;
-					} else {
-						// Try to consume a newline if present (optional)
-						self.consume_if(TokenKind::Separator(Separator::NewLine))?;
-					}
-				}
-			}
-
-			AstStatement {
-				nodes: query_nodes,
-				has_pipes,
-				is_output: false,
-			}
-		};
-
-		Ok(AstCreate::Flow(AstCreateFlow {
-			token,
-			or_replace,
-			if_not_exists,
-			flow,
-			as_clause,
-		}))
-	}
 }
 
 #[cfg(test)]
@@ -2386,159 +2273,6 @@ pub mod tests {
 					// nodes
 					assert!(as_statement.len() > 0);
 				}
-			}
-			_ => unreachable!(),
-		}
-	}
-
-	#[test]
-	fn test_create_flow_basic() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE FLOW my_flow AS FROM orders WHERE status = 'pending'")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Flow(flow) => {
-				assert!(!flow.or_replace);
-				assert!(!flow.if_not_exists);
-				assert_eq!(flow.flow.name.text(), "my_flow");
-				assert!(flow.flow.namespace.is_empty());
-				assert!(flow.as_clause.len() > 0);
-			}
-			_ => unreachable!(),
-		}
-	}
-
-	#[test]
-	fn test_create_flow_or_replace() {
-		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE OR REPLACE FLOW my_flow AS FROM orders").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Flow(flow) => {
-				assert!(flow.or_replace);
-				assert!(!flow.if_not_exists);
-				assert_eq!(flow.flow.name.text(), "my_flow");
-			}
-			_ => unreachable!(),
-		}
-	}
-
-	#[test]
-	fn test_create_flow_if_not_exists() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE FLOW IF NOT EXISTS my_flow AS FROM orders")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Flow(flow) => {
-				assert!(!flow.or_replace);
-				assert!(flow.if_not_exists);
-				assert_eq!(flow.flow.name.text(), "my_flow");
-			}
-			_ => unreachable!(),
-		}
-	}
-
-	#[test]
-	fn test_create_flow_qualified_name() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE FLOW analytics::sales_flow AS FROM sales::orders")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Flow(flow) => {
-				assert_eq!(flow.flow.namespace[0].text(), "analytics");
-				assert_eq!(flow.flow.name.text(), "sales_flow");
-			}
-			_ => unreachable!(),
-		}
-	}
-
-	#[test]
-	fn test_create_flow_complex_query() {
-		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
-			CREATE FLOW aggregated AS {
-				FROM raw_events
-				FILTER {event_type = 'purchase'}
-				AGGREGATE BY {user_id}
-				MAP { user_id, total: SUM(amount) }
-			}
-		"#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Flow(flow) => {
-				assert_eq!(flow.flow.name.text(), "aggregated");
-				assert!(flow.as_clause.len() >= 4);
-			}
-			_ => unreachable!(),
-		}
-	}
-
-	#[test]
-	fn test_create_or_replace_flow_if_not_exists() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE OR REPLACE FLOW IF NOT EXISTS test::my_flow AS FROM orders")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Flow(flow) => {
-				assert!(flow.or_replace);
-				assert!(flow.if_not_exists);
-				assert_eq!(flow.flow.namespace[0].text(), "test");
-				assert_eq!(flow.flow.name.text(), "my_flow");
 			}
 			_ => unreachable!(),
 		}

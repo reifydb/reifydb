@@ -3,7 +3,6 @@
 
 //! Source-specific compilation implementations
 
-pub mod flow_scan;
 pub mod inline_data;
 pub mod ringbuffer_scan;
 pub mod series_scan;

@@ -7,14 +7,13 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			AstDrop, AstDropDictionary, AstDropFlow, AstDropNamespace, AstDropRingBuffer, AstDropSeries,
+			AstDrop, AstDropDictionary, AstDropNamespace, AstDropRingBuffer, AstDropSeries,
 			AstDropSubscription, AstDropSumType, AstDropTable, AstDropView, AstPolicyTargetType,
 		},
 		identifier::{
-			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
-			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
-			MaybeQualifiedViewIdentifier,
+			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedViewIdentifier,
 		},
 		parse::Parser,
 	},
@@ -29,12 +28,6 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Keyword::Drop)?;
 
 		// Check what we're dropping
-		if (self.consume_if(TokenKind::Keyword(Keyword::Flow))?).is_some() {
-			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
-				return self.parse_drop_policy(token, AstPolicyTargetType::Flow);
-			}
-			return self.parse_drop_flow(token);
-		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Table))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
 				return self.parse_drop_policy(token, AstPolicyTargetType::Table);
@@ -141,29 +134,6 @@ impl<'bump> Parser<'bump> {
 			Ok(false)
 		}
 	}
-
-	fn parse_drop_flow(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
-		let if_exists = self.parse_if_exists()?;
-
-		let mut segments = self.parse_double_colon_separated_identifiers()?;
-		let name = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let flow = if namespace.is_empty() {
-			MaybeQualifiedFlowIdentifier::new(name)
-		} else {
-			MaybeQualifiedFlowIdentifier::new(name).with_namespace(namespace)
-		};
-
-		let cascade = self.parse_cascade()?;
-
-		Ok(AstDrop::Flow(AstDropFlow {
-			token,
-			if_exists,
-			flow,
-			cascade,
-		}))
-	}
-
 	fn parse_drop_table(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 
@@ -336,95 +306,6 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use super::*;
 	use crate::{ast::parse::Parser, bump::Bump, token::tokenize};
-
-	#[test]
-	fn test_drop_flow_basic() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP FLOW my_flow").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let result = parser.parse_drop().unwrap();
-
-		let AstDrop::Flow(drop) = result else {
-			panic!("expected Flow")
-		};
-		assert!(!drop.if_exists);
-		assert_eq!(drop.flow.name.text(), "my_flow");
-		assert!(drop.flow.namespace.is_empty());
-		assert!(!drop.cascade);
-	}
-
-	#[test]
-	fn test_drop_flow_if_exists() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP FLOW IF EXISTS my_flow").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let result = parser.parse_drop().unwrap();
-
-		let AstDrop::Flow(drop) = result else {
-			panic!("expected Flow")
-		};
-		assert!(drop.if_exists);
-		assert_eq!(drop.flow.name.text(), "my_flow");
-	}
-
-	#[test]
-	fn test_drop_flow_qualified() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP FLOW analytics::sales_flow").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let result = parser.parse_drop().unwrap();
-
-		let AstDrop::Flow(drop) = result else {
-			panic!("expected Flow")
-		};
-		assert_eq!(drop.flow.namespace[0].text(), "analytics");
-		assert_eq!(drop.flow.name.text(), "sales_flow");
-	}
-
-	#[test]
-	fn test_drop_flow_cascade() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP FLOW my_flow CASCADE").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let result = parser.parse_drop().unwrap();
-
-		let AstDrop::Flow(drop) = result else {
-			panic!("expected Flow")
-		};
-		assert_eq!(drop.flow.name.text(), "my_flow");
-		assert!(drop.cascade);
-	}
-
-	#[test]
-	fn test_drop_flow_restrict() {
-		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP FLOW my_flow RESTRICT").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let result = parser.parse_drop().unwrap();
-
-		let AstDrop::Flow(drop) = result else {
-			panic!("expected Flow")
-		};
-		assert_eq!(drop.flow.name.text(), "my_flow");
-		assert!(!drop.cascade);
-	}
-
-	#[test]
-	fn test_drop_flow_if_exists_cascade() {
-		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "DROP FLOW IF EXISTS test::my_flow CASCADE").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
-		let result = parser.parse_drop().unwrap();
-
-		let AstDrop::Flow(drop) = result else {
-			panic!("expected Flow")
-		};
-		assert!(drop.if_exists);
-		assert_eq!(drop.flow.namespace[0].text(), "test");
-		assert_eq!(drop.flow.name.text(), "my_flow");
-		assert!(drop.cascade);
-	}
 
 	#[test]
 	fn test_drop_table_basic() {

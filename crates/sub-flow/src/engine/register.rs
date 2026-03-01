@@ -162,7 +162,6 @@ impl FlowEngine {
 			} => {
 				let source_flow_def =
 					self.catalog.get_flow(&mut Transaction::Command(&mut *txn), source_flow)?;
-				self.add_source(flow.id, node.id, PrimitiveId::flow(source_flow_def.id));
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SourceFlow(PrimitiveFlowOperator::new(

@@ -5,7 +5,7 @@ use crate::{
 	Result,
 	ast::ast::AstDrop,
 	plan::logical::{
-		Compiler, DropAuthenticationNode, DropDictionaryNode, DropFlowNode, DropNamespaceNode, DropPolicyNode,
+		Compiler, DropAuthenticationNode, DropDictionaryNode, DropNamespaceNode, DropPolicyNode,
 		DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSubscriptionNode, DropSumTypeNode, DropTableNode,
 		DropUserNode, DropViewNode, LogicalPlan,
 	},
@@ -41,11 +41,6 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstDrop::Enum(node) => Ok(LogicalPlan::DropSumType(DropSumTypeNode {
 				sumtype: node.sumtype,
-				if_exists: node.if_exists,
-				cascade: node.cascade,
-			})),
-			AstDrop::Flow(node) => Ok(LogicalPlan::DropFlow(DropFlowNode {
-				flow: node.flow,
 				if_exists: node.if_exists,
 				cascade: node.cascade,
 			})),

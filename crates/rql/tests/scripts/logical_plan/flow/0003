@@ -1,7 +1,0 @@
-# Copyright (c) reifydb.com 2025
-# This file is licensed under the AGPL-3.0-or-later, see license.md file
-
-logical 'ALTER FLOW my_flow RENAME TO new_flow'
----
-> └── AlterFlow: my_flow (RENAME TO new_flow)
->

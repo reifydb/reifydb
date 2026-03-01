@@ -7,11 +7,8 @@
 //! counterparts, including namespace resolution and identifier creation.
 
 use reifydb_core::interface::{
-	catalog::{
-		flow::FlowId,
-		id::{NamespaceId, RingBufferId, TableId, ViewId},
-	},
-	resolved::{ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedView},
+	catalog::id::{NamespaceId, RingBufferId, TableId, ViewId},
+	resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedView},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -51,16 +48,6 @@ impl Catalog {
 		let view_ident = Fragment::internal(view_def.name.clone());
 
 		Ok(ResolvedView::new(view_ident, resolved_namespace, view_def))
-	}
-
-	/// Resolve a flow ID to a fully resolved flow with namespace and identifiers
-	#[instrument(name = "catalog::resolve::flow", level = "trace", skip(self, txn))]
-	pub fn resolve_flow(&self, txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<ResolvedFlow> {
-		let flow_def = self.get_flow(txn, flow_id)?;
-		let resolved_namespace = self.resolve_namespace(txn, flow_def.namespace)?;
-		let flow_ident = Fragment::internal(flow_def.name.clone());
-
-		Ok(ResolvedFlow::new(flow_ident, resolved_namespace, flow_def))
 	}
 
 	/// Resolve a ring buffer ID to a fully resolved ring buffer with namespace and identifiers

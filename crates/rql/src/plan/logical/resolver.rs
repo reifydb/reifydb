@@ -9,8 +9,8 @@ use reifydb_core::interface::{
 		vtable::{VTableDef, VTableId},
 	},
 	resolved::{
-		ResolvedDeferredView, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
-		ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
+		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
+		ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -120,13 +120,6 @@ pub fn resolve_unresolved_source(
 	// Try series
 	if let Some(series) = catalog.find_series_by_name(tx, ns_def.id, name_str)? {
 		return Ok(ResolvedPrimitive::Series(ResolvedSeries::new(name_fragment, namespace, series)));
-	}
-
-	// Try flows (after views, since deferred views take precedence)
-	if let Some(flow) = catalog.find_flow_by_name(tx, ns_def.id, name_str)? {
-		// ResolvedFlow doesn't support aliases, so we'll need to handle this differently
-		// For now, just create without alias
-		return Ok(ResolvedPrimitive::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));
 	}
 
 	// Not found

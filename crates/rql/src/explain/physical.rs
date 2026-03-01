@@ -15,9 +15,9 @@ use crate::{
 	plan::{
 		logical::compile_logical,
 		physical::{
-			AggregateNode, AlterFlowAction, AppendPhysicalNode, ApplyNode, AssertNode, DistinctNode,
-			ExtendNode, FilterNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode,
-			PhysicalPlan, SortNode, TakeNode, compile_physical,
+			AggregateNode, AppendPhysicalNode, ApplyNode, AssertNode, DistinctNode, ExtendNode, FilterNode,
+			JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, PhysicalPlan, SortNode,
+			TakeNode, compile_physical,
 		},
 	},
 };
@@ -99,7 +99,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::DropRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::DropDictionary(_) => unimplemented!(),
 		PhysicalPlan::DropSumType(_) => unimplemented!(),
-		PhysicalPlan::DropFlow(_) => unimplemented!(),
 		PhysicalPlan::DropSubscription(_) => unimplemented!(),
 		PhysicalPlan::DropSeries(_) => unimplemented!(),
 		PhysicalPlan::CreateUser(n) => {
@@ -185,21 +184,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				is_last,
 				&format!("DropPolicy name={} if_exists={}", n.name.text(), n.if_exists),
 			);
-		}
-		PhysicalPlan::CreateFlow(create_flow) => {
-			let mut label =
-				format!("CreateFlow {}::{}", create_flow.namespace.name, create_flow.flow.text());
-
-			if create_flow.if_not_exists {
-				label.push_str(" (IF NOT EXISTS)");
-			}
-
-			write_node_header(output, prefix, is_last, &label);
-
-			// Render the WITH query as a child
-			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(&create_flow.as_clause, child_prefix, true, output);
-			});
 		}
 		PhysicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
@@ -465,11 +449,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				format!("RingBufferScan {}::{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
-		PhysicalPlan::FlowScan(node) => {
-			let label = format!("FlowScan {}::{}", node.source.namespace().name(), node.source.name());
-			write_node_header(output, prefix, is_last, &label);
-		}
-
 		PhysicalPlan::DictionaryScan(node) => {
 			let label =
 				format!("DictionaryScan {}::{}", node.source.namespace().name(), node.source.name());
@@ -553,37 +532,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		}
 		PhysicalPlan::Dispatch(_) => {
 			write_node_header(output, prefix, is_last, "Dispatch");
-		}
-		PhysicalPlan::AlterFlow(alter_flow) => {
-			let flow_name = if let Some(ns) = &alter_flow.flow.namespace {
-				format!("{}.{}", ns.text(), alter_flow.flow.name.text())
-			} else {
-				alter_flow.flow.name.text().to_string()
-			};
-
-			let action_str = match &alter_flow.action {
-				AlterFlowAction::Rename {
-					new_name,
-				} => format!("RENAME TO {}", new_name.text()),
-				AlterFlowAction::SetQuery {
-					..
-				} => "SET QUERY".to_string(),
-				AlterFlowAction::Pause => "PAUSE".to_string(),
-				AlterFlowAction::Resume => "RESUME".to_string(),
-			};
-
-			let label = format!("AlterFlow {} ({})", flow_name, action_str);
-			write_node_header(output, prefix, is_last, &label);
-
-			// Render the SetQuery child plan if present
-			if let AlterFlowAction::SetQuery {
-				query,
-			} = &alter_flow.action
-			{
-				with_child_prefix(prefix, is_last, |child_prefix| {
-					render_physical_plan_inner(query, child_prefix, true, output);
-				});
-			}
 		}
 		PhysicalPlan::AlterTable(node) => {
 			let label = format!("AlterTable: {}.{}", node.namespace.name(), node.table.text());
@@ -688,7 +636,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
 				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
 				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
-				ResolvedPrimitive::Flow(f) => f.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			write_node_header(
@@ -704,7 +651,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
 				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
 				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
-				ResolvedPrimitive::Flow(f) => f.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			let rows_str = lookup.row_numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ");
@@ -721,7 +667,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
 				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
 				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
-				ResolvedPrimitive::Flow(f) => f.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			write_node_header(

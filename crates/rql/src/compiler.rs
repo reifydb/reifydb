@@ -266,7 +266,6 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		PhysicalPlan::TableVirtualScan(node) => QueryPlan::TableVirtualScan(node),
 		PhysicalPlan::ViewScan(node) => QueryPlan::ViewScan(node),
 		PhysicalPlan::RingBufferScan(node) => QueryPlan::RingBufferScan(node),
-		PhysicalPlan::FlowScan(node) => QueryPlan::FlowScan(node),
 		PhysicalPlan::DictionaryScan(node) => QueryPlan::DictionaryScan(node),
 		PhysicalPlan::SeriesScan(node) => QueryPlan::SeriesScan(node),
 		PhysicalPlan::IndexScan(node) => QueryPlan::IndexScan(node),
@@ -864,10 +863,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::DropSumType(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::DropFlow(node) => {
-				self.emit(Instruction::DropFlow(node));
-				self.emit(Instruction::Emit);
-			}
 			PhysicalPlan::DropSubscription(node) => {
 				self.emit(Instruction::DropSubscription(node));
 				self.emit(Instruction::Emit);
@@ -948,17 +943,6 @@ impl InstructionCompiler {
 				}));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::CreateFlow(node) => {
-				self.emit(Instruction::CreateFlow(nodes::CreateFlowNode {
-					namespace: node.namespace,
-					flow: node.flow,
-					if_not_exists: node.if_not_exists,
-					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
-						node.as_clause,
-					))),
-				}));
-				self.emit(Instruction::Emit);
-			}
 			PhysicalPlan::CreateSubscription(node) => {
 				self.emit(Instruction::CreateSubscription(nodes::CreateSubscriptionNode {
 					columns: node.columns,
@@ -968,29 +952,6 @@ impl InstructionCompiler {
 				}));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::AlterFlow(node) => {
-				self.emit(Instruction::AlterFlow(nodes::AlterFlowNode {
-					flow: node.flow,
-					action: match node.action {
-						physical::AlterFlowAction::Rename {
-							new_name,
-						} => nodes::AlterFlowAction::Rename {
-							new_name,
-						},
-						physical::AlterFlowAction::SetQuery {
-							query,
-						} => nodes::AlterFlowAction::SetQuery {
-							query: Box::new(materialize_query_plan(BumpBox::into_inner(
-								query,
-							))),
-						},
-						physical::AlterFlowAction::Pause => nodes::AlterFlowAction::Pause,
-						physical::AlterFlowAction::Resume => nodes::AlterFlowAction::Resume,
-					},
-				}));
-				self.emit(Instruction::Emit);
-			}
-
 			PhysicalPlan::AlterTable(node) => {
 				self.emit(Instruction::AlterTable(nodes::AlterTableNode {
 					namespace: node.namespace,
@@ -1237,10 +1198,6 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::RingBufferScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::RingBufferScan(node)));
-				self.emit(Instruction::Emit);
-			}
-			PhysicalPlan::FlowScan(node) => {
-				self.emit(Instruction::Query(QueryPlan::FlowScan(node)));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::DictionaryScan(node) => {
@@ -1516,9 +1473,6 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::RingBufferScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::RingBufferScan(node)));
-			}
-			PhysicalPlan::FlowScan(node) => {
-				self.emit(Instruction::Query(QueryPlan::FlowScan(node)));
 			}
 			PhysicalPlan::DictionaryScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::DictionaryScan(node)));

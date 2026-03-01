@@ -22,7 +22,6 @@ pub(crate) fn create_policy(
 		"namespace" => PolicyTargetType::Namespace,
 		"procedure" => PolicyTargetType::Procedure,
 		"function" => PolicyTargetType::Function,
-		"flow" => PolicyTargetType::Flow,
 		"subscription" => PolicyTargetType::Subscription,
 		"series" => PolicyTargetType::Series,
 		"dictionary" => PolicyTargetType::Dictionary,

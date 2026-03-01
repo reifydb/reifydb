@@ -8,13 +8,13 @@ use reifydb_type::{
 
 use crate::{
 	nodes::{
-		self, AlterFlowNode, AlterSequenceNode, CreateColumnPropertyNode, CreateDeferredViewNode,
-		CreateDictionaryNode, CreateEventNode, CreateFlowNode, CreateMigrationNode, CreateNamespaceNode,
-		CreatePrimaryKeyNode, CreateProcedureNode, CreateRingBufferNode, CreateSeriesNode,
-		CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode, CreateTagNode, CreateTransactionalViewNode,
-		DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, DispatchNode, FunctionParameter,
-		InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode, InsertTableNode, MigrateNode,
-		RollbackMigrationNode, UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
+		self, AlterSequenceNode, CreateColumnPropertyNode, CreateDeferredViewNode, CreateDictionaryNode,
+		CreateEventNode, CreateMigrationNode, CreateNamespaceNode, CreatePrimaryKeyNode, CreateProcedureNode,
+		CreateRingBufferNode, CreateSeriesNode, CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode,
+		CreateTagNode, CreateTransactionalViewNode, DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode,
+		DispatchNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode,
+		InsertTableNode, MigrateNode, RollbackMigrationNode, UpdateRingBufferNode, UpdateSeriesNode,
+		UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -155,7 +155,6 @@ pub enum Instruction {
 	CreateNamespace(CreateNamespaceNode),
 	CreateTable(CreateTableNode),
 	CreateRingBuffer(CreateRingBufferNode),
-	CreateFlow(CreateFlowNode),
 	CreateDeferredView(CreateDeferredViewNode),
 	CreateTransactionalView(CreateTransactionalViewNode),
 	CreateDictionary(CreateDictionaryNode),
@@ -173,7 +172,6 @@ pub enum Instruction {
 	RollbackMigration(RollbackMigrationNode),
 	Dispatch(DispatchNode),
 	AlterSequence(AlterSequenceNode),
-	AlterFlow(AlterFlowNode),
 	AlterTable(nodes::AlterTableNode),
 
 	// === DDL (Drop) ===
@@ -183,7 +181,6 @@ pub enum Instruction {
 	DropRingBuffer(nodes::DropRingBufferNode),
 	DropDictionary(nodes::DropDictionaryNode),
 	DropSumType(nodes::DropSumTypeNode),
-	DropFlow(nodes::DropFlowNode),
 	DropSubscription(nodes::DropSubscriptionNode),
 	DropSeries(nodes::DropSeriesNode),
 
