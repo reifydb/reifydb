@@ -123,6 +123,7 @@ pub struct FlowSubsystem {
 	worker_handles: Vec<ActorHandle<FlowMsg>>,
 	pool_handle: Option<ActorHandle<PoolMsg>>,
 	coordinator_handle: Option<ActorHandle<CoordinatorMsg>>,
+	transactional_flow_engine: Arc<RwLock<FlowEngine>>,
 	running: bool,
 }
 
@@ -218,6 +219,8 @@ impl FlowSubsystem {
 			catalog: engine.catalog(),
 		};
 
+		let transactional_flow_engine_for_self = transactional_flow_engine.clone();
+
 		// Register both pre-commit and post-commit interceptors via a single factory function.
 		{
 			let flow_engine_for_interceptor = transactional_flow_engine.clone();
@@ -269,6 +272,7 @@ impl FlowSubsystem {
 			worker_handles,
 			pool_handle: Some(pool_handle),
 			coordinator_handle: Some(coordinator_handle),
+			transactional_flow_engine: transactional_flow_engine_for_self,
 			running: false,
 		}
 	}
@@ -306,6 +310,12 @@ impl Subsystem for FlowSubsystem {
 
 		for handle in self.worker_handles.drain(..) {
 			let _ = handle.join();
+		}
+
+		// Clear the transactional flow engine to drop all Arc<Operators>,
+		// which triggers FFI operator cleanup and frees LRU caches.
+		if let Ok(mut engine) = self.transactional_flow_engine.write() {
+			engine.clear();
 		}
 
 		self.running = false;

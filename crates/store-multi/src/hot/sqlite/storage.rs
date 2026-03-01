@@ -77,6 +77,13 @@ impl SqlitePrimitiveStorage {
 		Self::new(SqliteConfig::in_memory())
 	}
 
+	/// Explicitly checkpoint WAL and shrink the page cache before shutdown.
+	pub fn shutdown(&self) {
+		let conn = self.inner.conn.lock();
+		let _ = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE");
+		let _ = conn.pragma_update(None, "cache_size", 0);
+	}
+
 	/// Create a table with the versioned schema if it doesn't exist.
 	fn create_table_if_needed(conn: &Connection, table_name: &str) -> rusqlite::Result<()> {
 		conn.execute(
@@ -489,11 +496,10 @@ fn insert_versioned_entries_in_tx(
 	entries: &[(CowVec<u8>, Option<CowVec<u8>>)],
 ) -> rusqlite::Result<()> {
 	let version_bytes = version_to_bytes(version);
+	let sql = format!("INSERT OR REPLACE INTO \"{}\" (key, version, value) VALUES (?1, ?2, ?3)", table_name);
+	let mut stmt = tx.prepare(&sql)?;
 	for (key, value) in entries {
-		tx.execute(
-			&format!("INSERT OR REPLACE INTO \"{}\" (key, version, value) VALUES (?1, ?2, ?3)", table_name),
-			params![key.as_slice(), version_bytes.as_slice(), value.as_ref().map(|v| v.as_slice())],
-		)?;
+		stmt.execute(params![key.as_slice(), version_bytes.as_slice(), value.as_ref().map(|v| v.as_slice())])?;
 	}
 	Ok(())
 }

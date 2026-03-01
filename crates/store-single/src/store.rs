@@ -81,7 +81,7 @@ impl StandardSingleStore {
 }
 
 impl SingleVersionGet for StandardSingleStore {
-	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
 		if let Some(hot) = &self.hot {
 			if let Some(value) = hot.get(key.as_ref())? {
@@ -97,7 +97,7 @@ impl SingleVersionGet for StandardSingleStore {
 }
 
 impl SingleVersionContains for StandardSingleStore {
-	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())), ret)]
+	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())), ret)]
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		if let Some(hot) = &self.hot {
 			if hot.contains(key.as_ref())? {

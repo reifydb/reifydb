@@ -91,6 +91,16 @@ where
 		self.inner.iter().map(|entry| entry.key().clone()).collect()
 	}
 
+	/// Clears `buf` and fills it with all keys in the map, reusing the buffer's allocation.
+	#[inline]
+	pub fn keys_into(&self, buf: &mut Vec<K>)
+	where
+		K: Clone,
+	{
+		buf.clear();
+		buf.extend(self.inner.iter().map(|entry| entry.key().clone()));
+	}
+
 	/// Applies a closure to the mutable value associated with the key, returning the result.
 	/// Returns None if the key doesn't exist.
 	#[inline]

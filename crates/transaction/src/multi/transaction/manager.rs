@@ -196,7 +196,7 @@ where
 	/// Set a key-value pair to the transaction.
 	#[instrument(name = "transaction::command::set", level = "debug", skip(self, values), fields(
 		txn_id = %self.id,
-		key_hex = %hex::encode(key.as_ref()),
+		key_hex = %hex::display(key.as_ref()),
 		value_len = values.as_ref().len()
 	))]
 	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
@@ -216,7 +216,7 @@ where
 	/// The `values` parameter contains the deleted values for CDC and metrics.
 	#[instrument(name = "transaction::command::unset", level = "debug", skip(self, values), fields(
 		txn_id = %self.id,
-		key_hex = %hex::encode(key.as_ref()),
+		key_hex = %hex::display(key.as_ref()),
 		value_len = values.len()
 	))]
 	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
@@ -265,7 +265,7 @@ where
 	/// Returns `true` if the pending writes contains the key.
 	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_hex = %hex::encode(key.as_ref())
+		key_hex = %hex::display(key.as_ref())
 	))]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<Option<bool>> {
 		if self.discarded {
@@ -293,7 +293,7 @@ where
 	/// pending writes, the end user can read the key from the database.
 	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(
 		txn_id = %self.id,
-		key_hex = %hex::encode(key.as_ref())
+		key_hex = %hex::display(key.as_ref())
 	))]
 	pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b EncodedKey) -> Result<Option<Pending>> {
 		if self.discarded {
@@ -330,7 +330,7 @@ where
 {
 	#[instrument(name = "transaction::command::set_internal", level = "trace", skip(self, values), fields(
 		txn_id = %self.id,
-		key_hex = %hex::encode(key.as_ref())
+		key_hex = %hex::display(key.as_ref())
 	))]
 	fn set_internal(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		if self.discarded {
@@ -348,7 +348,7 @@ where
 
 	#[instrument(name = "transaction::command::modify", level = "trace", skip(self, pending), fields(
 		txn_id = %self.id,
-		key_hex = %hex::encode(pending.key().as_ref()),
+		key_hex = %hex::display(pending.key().as_ref()),
 		is_remove = pending.was_removed()
 	))]
 	fn modify(&mut self, pending: Pending) -> Result<()> {

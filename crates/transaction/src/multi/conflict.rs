@@ -40,12 +40,12 @@ impl ConflictManager {
 		}
 	}
 
-	#[instrument(name = "transaction::conflict::mark_read", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "transaction::conflict::mark_read", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	pub fn mark_read(&mut self, key: &EncodedKey) {
 		self.read_keys.insert(key.clone());
 	}
 
-	#[instrument(name = "transaction::conflict::mark_write", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "transaction::conflict::mark_write", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	pub fn mark_write(&mut self, key: &EncodedKey) {
 		self.write_keys.insert(key.clone());
 	}

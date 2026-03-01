@@ -104,6 +104,15 @@ where
 		self.inner.keys()
 	}
 
+	/// Clears `buf` and fills it with all keys in the map, reusing the buffer's allocation.
+	#[inline]
+	pub fn keys_into(&self, buf: &mut Vec<K>)
+	where
+		K: Clone,
+	{
+		self.inner.keys_into(buf)
+	}
+
 	#[inline]
 	pub fn with_write<Q, R, F>(&self, key: &Q, f: F) -> Option<R>
 	where

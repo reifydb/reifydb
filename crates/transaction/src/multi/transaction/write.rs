@@ -105,7 +105,7 @@ impl MultiWriteTransaction {
 		self.tm.rollback()
 	}
 
-	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		let version = self.tm.version();
 		match self.tm.contains_key(key)? {
@@ -115,7 +115,7 @@ impl MultiWriteTransaction {
 		}
 	}
 
-	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
 		let version = self.tm.version();
 		match self.tm.get(key)? {
@@ -130,17 +130,17 @@ impl MultiWriteTransaction {
 		}
 	}
 
-	#[instrument(name = "transaction::command::set", level = "trace", skip(self, values), fields(key_hex = %hex::encode(key.as_ref()), value_len = values.as_ref().len()))]
+	#[instrument(name = "transaction::command::set", level = "trace", skip(self, values), fields(key_hex = %hex::display(key.as_ref()), value_len = values.as_ref().len()))]
 	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		self.tm.set(key, values)
 	}
 
-	#[instrument(name = "transaction::command::unset", level = "trace", skip(self, values), fields(key_hex = %hex::encode(key.as_ref()), value_len = values.len()))]
+	#[instrument(name = "transaction::command::unset", level = "trace", skip(self, values), fields(key_hex = %hex::display(key.as_ref()), value_len = values.len()))]
 	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		self.tm.unset(key, values)
 	}
 
-	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.tm.remove(key)
 	}

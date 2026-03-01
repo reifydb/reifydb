@@ -38,7 +38,7 @@ use crate::{
 const TIER_SCAN_CHUNK_SIZE: usize = 4096;
 
 impl MultiVersionGet for StandardMultiStore {
-	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
+	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref()), version = version.0))]
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>> {
 		let table = classify_key(key);
 
@@ -101,7 +101,7 @@ impl MultiVersionGet for StandardMultiStore {
 }
 
 impl MultiVersionContains for StandardMultiStore {
-	#[instrument(name = "store::multi::contains", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0), ret)]
+	#[instrument(name = "store::multi::contains", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref()), version = version.0), ret)]
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
 		Ok(MultiVersionGet::get(self, key, version)?.is_some())
 	}

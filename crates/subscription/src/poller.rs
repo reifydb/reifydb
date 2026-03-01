@@ -6,6 +6,8 @@
 //! Polls all registered subscriptions and delivers data via the
 //! `SubscriptionDelivery` trait, decoupled from any specific transport.
 
+use std::sync::Mutex;
+
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{actor::system::ActorSystem, sync::map::Map};
@@ -25,6 +27,8 @@ pub struct SubscriptionPoller {
 	states: Map<SubscriptionId, ConsumptionState>,
 	/// Batch size for reading rows per poll cycle
 	batch_size: usize,
+	/// Reusable buffer for collecting subscription keys, avoiding allocation per poll cycle
+	keys_buf: Mutex<Vec<SubscriptionId>>,
 }
 
 impl SubscriptionPoller {
@@ -37,6 +41,7 @@ impl SubscriptionPoller {
 		Self {
 			states: Map::new(),
 			batch_size,
+			keys_buf: Mutex::new(Vec::new()),
 		}
 	}
 
@@ -64,9 +69,10 @@ impl SubscriptionPoller {
 
 	/// Poll all active subscriptions and deliver data via the delivery trait.
 	pub fn poll_all(&self, engine: &StandardEngine, system: &ActorSystem, delivery: &dyn SubscriptionDelivery) {
-		let subscription_ids: Vec<_> = self.states.keys();
+		let mut keys_buf = self.keys_buf.lock().unwrap();
+		self.states.keys_into(&mut keys_buf);
 
-		for subscription_id in subscription_ids {
+		for &subscription_id in keys_buf.iter() {
 			if let Err(e) = self.poll_single(subscription_id, engine, system, delivery) {
 				error!("Failed to poll subscription {}: {:?}", subscription_id, e);
 			}

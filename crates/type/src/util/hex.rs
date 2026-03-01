@@ -3,11 +3,30 @@
 
 //! Simple hex encoding/decoding implementation
 
+use std::fmt::{self, Write};
+
+/// Zero-allocation hex display wrapper.
+pub struct DisplayHex<'a>(&'a [u8]);
+
+/// Returns a `Display` wrapper that writes hex without heap allocation.
+pub fn display(data: &[u8]) -> DisplayHex<'_> {
+	DisplayHex(data)
+}
+
+impl fmt::Display for DisplayHex<'_> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		for byte in self.0 {
+			write!(f, "{:02x}", byte)?;
+		}
+		Ok(())
+	}
+}
+
 /// Encode bytes to hex string
 pub fn encode(data: &[u8]) -> String {
 	let mut result = String::with_capacity(data.len() * 2);
 	for byte in data {
-		result.push_str(&format!("{:02x}", byte));
+		write!(result, "{:02x}", byte).unwrap();
 	}
 	result
 }

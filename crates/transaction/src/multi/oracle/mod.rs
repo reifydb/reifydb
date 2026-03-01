@@ -348,6 +348,13 @@ where
 			*shutdown = true;
 		}
 
+		// Clear accumulated window data to free memory before shutdown
+		{
+			let mut inner = self.inner.write();
+			inner.time_windows.clear();
+			inner.key_to_windows.clear();
+		}
+
 		self.actor_system.shutdown();
 	}
 
