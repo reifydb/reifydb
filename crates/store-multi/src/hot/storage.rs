@@ -49,6 +49,20 @@ impl HotStorage {
 	}
 }
 
+impl HotStorage {
+	/// Run periodic maintenance (vacuum + shrink) to reclaim memory.
+	pub fn maintenance(&self) {
+		match self {
+			Self::Memory(_) => {}
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => {
+				s.incremental_vacuum();
+				s.shrink_memory();
+			}
+		}
+	}
+}
+
 impl TierStorage for HotStorage {
 	#[inline]
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {

@@ -77,6 +77,12 @@ impl SqlitePrimitiveStorage {
 		Self::new(SqliteConfig::in_memory())
 	}
 
+	/// Run incremental vacuum to return freed pages to the OS.
+	pub fn incremental_vacuum(&self) {
+		let conn = self.inner.conn.lock();
+		let _ = conn.execute("PRAGMA incremental_vacuum", []);
+	}
+
 	/// Release unused memory back to the allocator.
 	pub fn shrink_memory(&self) {
 		let conn = self.inner.conn.lock();
@@ -391,50 +397,17 @@ impl TierStorage for SqlitePrimitiveStorage {
 
 		for (table, entries) in batches {
 			let table_name = entry_id_to_name(table);
+			let sql = format!("DELETE FROM \"{}\" WHERE key = ?1 AND version = ?2", table_name);
+			let mut stmt = match tx.prepare(&sql) {
+				Ok(s) => s,
+				Err(e) if e.to_string().contains("no such table") => continue,
+				Err(e) => return Err(error!(internal(format!("Failed to prepare delete: {}", e)))),
+			};
 			for (key, version) in entries {
 				let version_bytes = version_to_bytes(version);
-				// First check if this is the latest version for this key
-				let is_latest: bool = tx
-					.query_row(
-						&format!(
-							"SELECT version = ?2 FROM \"{}\" WHERE key = ?1 ORDER BY version DESC LIMIT 1",
-							table_name
-						),
-						params![key.as_slice(), version_bytes.as_slice()],
-						|row| row.get(0),
-					)
-					.unwrap_or(false);
-
-				if is_latest {
-					// Dropping the latest version - remove ALL versions of this key
-					let result = tx.execute(
-						&format!("DELETE FROM \"{}\" WHERE key = ?1", table_name),
-						params![key.as_slice()],
-					);
-					if let Err(e) = result {
-						if !e.to_string().contains("no such table") {
-							return Err(error!(internal(format!(
-								"Failed to delete entry: {}",
-								e
-							))));
-						}
-					}
-				} else {
-					// Dropping a non-latest version - just remove that specific version
-					let result = tx.execute(
-						&format!(
-							"DELETE FROM \"{}\" WHERE key = ?1 AND version = ?2",
-							table_name
-						),
-						params![key.as_slice(), version_bytes.as_slice()],
-					);
-					if let Err(e) = result {
-						if !e.to_string().contains("no such table") {
-							return Err(error!(internal(format!(
-								"Failed to delete entry: {}",
-								e
-							))));
-						}
+				if let Err(e) = stmt.execute(params![key.as_slice(), version_bytes.as_slice()]) {
+					if !e.to_string().contains("no such table") {
+						return Err(error!(internal(format!("Failed to delete entry: {}", e))));
 					}
 				}
 			}

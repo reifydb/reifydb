@@ -50,4 +50,6 @@ pub(super) fn cleanup_old_windows(
 			}
 		}
 	}
+
+	key_to_windows.shrink_to_fit();
 }

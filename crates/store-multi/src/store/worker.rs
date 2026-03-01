@@ -103,6 +103,8 @@ pub struct DropActorState {
 	last_flush: Instant,
 	/// Handle to the periodic timer (for cleanup).
 	_timer_handle: Option<TimerHandle>,
+	/// Number of flushes since startup, used to schedule periodic maintenance.
+	flush_count: u64,
 }
 
 impl DropActor {
@@ -141,6 +143,11 @@ impl DropActor {
 
 		Self::process_batch(&self.storage, &mut state.pending_requests, &self.event_bus);
 		state.last_flush = self.clock.instant();
+
+		state.flush_count += 1;
+		if state.flush_count % 100 == 0 {
+			self.storage.maintenance();
+		}
 	}
 
 	#[instrument(name = "drop::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
@@ -213,6 +220,7 @@ impl Actor for DropActor {
 			pending_requests: Vec::with_capacity(self.config.batch_size),
 			last_flush: self.clock.instant(),
 			_timer_handle: Some(timer_handle),
+			flush_count: 0,
 		}
 	}
 
