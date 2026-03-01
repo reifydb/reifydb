@@ -32,7 +32,7 @@ pub fn resolve_unresolved_source(
 	unresolved: &UnresolvedPrimitiveIdentifier,
 ) -> Result<ResolvedPrimitive> {
 	let namespace_str = if !unresolved.namespace.is_empty() {
-		unresolved.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join(".")
+		unresolved.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::")
 	} else {
 		DEFAULT_NAMESPACE.to_string()
 	};

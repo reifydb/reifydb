@@ -94,7 +94,7 @@ impl<'bump> Compiler<'bump> {
 								.iter()
 								.map(|n| n.text())
 								.collect::<Vec<_>>()
-								.join(".")
+								.join("::")
 						};
 						let dict_name = dict_ident.name.text();
 

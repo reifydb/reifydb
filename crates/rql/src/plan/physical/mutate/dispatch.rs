@@ -25,7 +25,7 @@ impl<'bump> Compiler<'bump> {
 		let ns_name = if dispatch.on_event.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			dispatch.on_event.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			dispatch.on_event.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &ns_name)? else {
 			let ns_fragment = Fragment::internal(ns_name.clone());

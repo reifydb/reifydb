@@ -29,7 +29,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if alter.sequence.namespace.is_empty() {
 			DEFAULT_NAMESPACE.to_string()
 		} else {
-			alter.sequence.namespace.iter().map(|f| f.text()).collect::<Vec<_>>().join(".")
+			alter.sequence.namespace.iter().map(|f| f.text()).collect::<Vec<_>>().join("::")
 		};
 
 		// Query the catalog for the actual namespace

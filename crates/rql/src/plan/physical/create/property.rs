@@ -29,7 +29,7 @@ impl<'bump> Compiler<'bump> {
 				let ns = if namespace.is_empty() {
 					"default".to_string()
 				} else {
-					namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+					namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 				};
 				(ns, self.interner.intern_fragment(primitive))
 			}

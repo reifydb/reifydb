@@ -23,7 +23,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if create.flow.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			create.flow.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			create.flow.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = create.flow.namespace.first() {

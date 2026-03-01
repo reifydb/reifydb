@@ -24,7 +24,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if create.ringbuffer.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			create.ringbuffer.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			create.ringbuffer.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = create.ringbuffer.namespace.first() {

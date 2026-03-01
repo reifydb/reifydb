@@ -24,7 +24,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if create.series.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			create.series.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			create.series.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = create.series.namespace.first() {
@@ -49,7 +49,7 @@ impl<'bump> Compiler<'bump> {
 			let tag_namespace_name = if tag_ident.namespace.is_empty() {
 				namespace_name.clone()
 			} else {
-				tag_ident.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+				tag_ident.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 			};
 			let Some(tag_ns) = self.catalog.find_namespace_by_name(rx, &tag_namespace_name)? else {
 				let ns_fragment = if let Some(n) = tag_ident.namespace.first() {

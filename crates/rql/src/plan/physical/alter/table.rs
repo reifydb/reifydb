@@ -26,7 +26,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if alter.table.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			alter.table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			alter.table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = alter.table.namespace.first() {

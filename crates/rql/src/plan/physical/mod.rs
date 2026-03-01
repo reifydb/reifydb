@@ -785,7 +785,7 @@ impl<'bump> Compiler<'bump> {
 									.iter()
 									.map(|s| s.text())
 									.collect::<Vec<_>>()
-									.join(".");
+									.join("::");
 								if self.catalog
 									.find_namespace_by_name(rx, &full_path)?
 									.is_some()
@@ -802,7 +802,7 @@ impl<'bump> Compiler<'bump> {
 										.iter()
 										.map(|s| s.text())
 										.collect::<Vec<_>>()
-										.join(".");
+										.join("::");
 									let ns_fragment = self
 										.interner
 										.intern_fragment(&segments[0]);
@@ -987,7 +987,7 @@ impl<'bump> Compiler<'bump> {
 								.iter()
 								.map(|n| n.text())
 								.collect::<Vec<_>>()
-								.join(".")
+								.join("::")
 						};
 						let namespace_def = self
 							.catalog
@@ -1048,7 +1048,7 @@ impl<'bump> Compiler<'bump> {
 							.iter()
 							.map(|n| n.text())
 							.collect::<Vec<_>>()
-							.join(".")
+							.join("::")
 					};
 					let Some(namespace_def) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
@@ -1101,7 +1101,7 @@ impl<'bump> Compiler<'bump> {
 					let namespace_name = if table.namespace.is_empty() {
 						"default".to_string()
 					} else {
-						table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+						table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 					};
 					let Some(namespace_def) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
@@ -1159,7 +1159,7 @@ impl<'bump> Compiler<'bump> {
 							.iter()
 							.map(|n| n.text())
 							.collect::<Vec<_>>()
-							.join(".")
+							.join("::")
 					};
 					let Some(namespace_def) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
@@ -1217,7 +1217,7 @@ impl<'bump> Compiler<'bump> {
 							.iter()
 							.map(|n| n.text())
 							.collect::<Vec<_>>()
-							.join(".")
+							.join("::")
 					};
 					let Some(namespace_def) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
@@ -1275,7 +1275,7 @@ impl<'bump> Compiler<'bump> {
 							.iter()
 							.map(|n| n.text())
 							.collect::<Vec<_>>()
-							.join(".")
+							.join("::")
 					};
 					let Some(namespace_def) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
@@ -1338,7 +1338,7 @@ impl<'bump> Compiler<'bump> {
 							.iter()
 							.map(|n| n.text())
 							.collect::<Vec<_>>()
-							.join(".")
+							.join("::")
 					};
 					let Some(namespace_def) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
@@ -1400,7 +1400,7 @@ impl<'bump> Compiler<'bump> {
 								.iter()
 								.map(|n| n.text())
 								.collect::<Vec<_>>()
-								.join(".")
+								.join("::")
 						};
 						let Some(namespace_def) =
 							self.catalog.find_namespace_by_name(rx, &namespace_name)?
@@ -1467,7 +1467,7 @@ impl<'bump> Compiler<'bump> {
 							.iter()
 							.map(|n| n.text())
 							.collect::<Vec<_>>()
-							.join(".")
+							.join("::")
 					};
 					let Some(namespace_def) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
@@ -1530,7 +1530,7 @@ impl<'bump> Compiler<'bump> {
 							.iter()
 							.map(|n| n.text())
 							.collect::<Vec<_>>()
-							.join(".")
+							.join("::")
 					};
 					let Some(namespace_def) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?

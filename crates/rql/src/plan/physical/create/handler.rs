@@ -32,7 +32,7 @@ impl<'bump> Compiler<'bump> {
 		let handler_ns_name = if create.procedure.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			create.procedure.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			create.procedure.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &handler_ns_name)? else {
 			let ns_fragment = if let Some(n) = create.procedure.namespace.first() {
@@ -54,7 +54,7 @@ impl<'bump> Compiler<'bump> {
 		let event_ns_name = if on_event.namespace.is_empty() {
 			handler_ns_name.clone()
 		} else {
-			on_event.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			on_event.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(event_ns_def) = self.catalog.find_namespace_by_name(rx, &event_ns_name)? else {
 			let ns_fragment = Fragment::internal(event_ns_name.clone());

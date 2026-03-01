@@ -162,8 +162,12 @@ fn inject_pipeline<'a>(
 /// Check if a policy's scope matches a given target namespace and object.
 fn scope_matches(policy: &PolicyDef, target_ns: &str, target_obj: &str) -> bool {
 	match (&policy.target_namespace, &policy.target_object) {
-		(None, None) => true,                                          // Global
-		(Some(ns), None) => ns == target_ns,                           // Namespace-wide
+		(None, None) => true, // Global
+		(Some(ns), None) => {
+			// Namespace-wide: matches the exact namespace OR any child namespace
+			target_ns == ns
+				|| target_ns.strip_prefix(ns.as_str()).is_some_and(|rest| rest.starts_with("::"))
+		}
 		(Some(ns), Some(obj)) => ns == target_ns && obj == target_obj, // Specific
 		(None, Some(_)) => false,                                      // Invalid (defensive)
 	}

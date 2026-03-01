@@ -22,7 +22,7 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		drop: logical::DropNamespaceNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		let full_name: String = drop.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join(".");
+		let full_name: String = drop.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
 		let namespace_name = self.interner.intern_fragment(drop.segments.last().unwrap()).with_text(&full_name);
 
 		match self.catalog.find_namespace_by_name(rx, &full_name)? {
@@ -52,7 +52,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if drop.table.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			drop.table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			drop.table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.table.namespace.first() {
@@ -99,7 +99,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if drop.view.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			drop.view.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			drop.view.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.view.namespace.first() {
@@ -146,7 +146,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if drop.ringbuffer.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			drop.ringbuffer.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			drop.ringbuffer.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.ringbuffer.namespace.first() {
@@ -197,7 +197,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if drop.dictionary.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			drop.dictionary.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			drop.dictionary.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.dictionary.namespace.first() {
@@ -248,7 +248,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if drop.sumtype.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			drop.sumtype.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			drop.sumtype.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.sumtype.namespace.first() {
@@ -299,7 +299,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if drop.flow.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			drop.flow.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			drop.flow.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.flow.namespace.first() {
@@ -362,7 +362,7 @@ impl<'bump> Compiler<'bump> {
 		let namespace_name = if drop.series.namespace.is_empty() {
 			"default".to_string()
 		} else {
-			drop.series.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join(".")
+			drop.series.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
 		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.series.namespace.first() {
