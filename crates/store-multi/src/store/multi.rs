@@ -115,7 +115,7 @@ impl MultiVersionCommit for StandardMultiStore {
 			return Ok(());
 		};
 
-		let mut pending_set_keys: HashSet<Vec<u8>> = HashSet::new();
+		let mut pending_set_keys: HashSet<CowVec<u8>> = HashSet::new();
 		let mut writes: Vec<StorageWrite> = Vec::new();
 		let mut deletes: Vec<StorageDelete> = Vec::new();
 		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
@@ -133,7 +133,7 @@ impl MultiVersionCommit for StandardMultiStore {
 					values,
 				} => {
 					if is_single_version {
-						pending_set_keys.insert(key.as_ref().to_vec());
+						pending_set_keys.insert(key.0.clone());
 					}
 
 					writes.push(StorageWrite {
@@ -141,11 +141,7 @@ impl MultiVersionCommit for StandardMultiStore {
 						value_bytes: values.len() as u64,
 					});
 
-					// Pass the logical key directly - version is a separate parameter
-					let logical_key = CowVec::new(key.as_ref().to_vec());
-					batches.entry(table)
-						.or_default()
-						.push((logical_key, Some(CowVec::new(values.as_ref().to_vec()))));
+					batches.entry(table).or_default().push((key.0.clone(), Some(values.0.clone())));
 				}
 				Delta::Unset {
 					key,
@@ -156,16 +152,12 @@ impl MultiVersionCommit for StandardMultiStore {
 						value_bytes: values.len() as u64,
 					});
 
-					// Pass the logical key directly - tombstone with version
-					let logical_key = CowVec::new(key.as_ref().to_vec());
-					batches.entry(table).or_default().push((logical_key, None));
+					batches.entry(table).or_default().push((key.0.clone(), None));
 				}
 				Delta::Remove {
 					key,
 				} => {
-					// Pass the logical key directly - tombstone with version
-					let logical_key = CowVec::new(key.as_ref().to_vec());
-					batches.entry(table).or_default().push((logical_key, None));
+					batches.entry(table).or_default().push((key.0.clone(), None));
 				}
 				Delta::Drop {
 					key,
@@ -197,12 +189,11 @@ impl MultiVersionCommit for StandardMultiStore {
 		}
 
 		// Add implicit drops for single-version-semantics keys
-		for key_bytes in pending_set_keys.iter() {
-			let key = CowVec::new(key_bytes.clone());
+		for key in pending_set_keys.iter() {
 			let table = classify_key(&EncodedKey(key.clone()));
 			drop_batch.push(DropRequest {
 				table,
-				key,
+				key: key.clone(),
 				up_to_version: None,
 				keep_last_versions: Some(1),
 				commit_version: version,

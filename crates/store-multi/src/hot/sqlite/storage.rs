@@ -77,6 +77,12 @@ impl SqlitePrimitiveStorage {
 		Self::new(SqliteConfig::in_memory())
 	}
 
+	/// Release unused memory back to the allocator.
+	pub fn shrink_memory(&self) {
+		let conn = self.inner.conn.lock();
+		let _ = conn.pragma_update(None, "shrink_memory", 0);
+	}
+
 	/// Explicitly checkpoint WAL and shrink the page cache before shutdown.
 	pub fn shutdown(&self) {
 		let conn = self.inner.conn.lock();

@@ -71,7 +71,7 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Memory,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
-			cache_size: 50000,
+			cache_size: 10000,
 			wal_autocheckpoint: 10000,
 			page_size: 16384,     // Larger page size for bulk operations
 			mmap_size: 268435456, // 256MB mmap for performance
