@@ -143,7 +143,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 			if txn.contains_key(&key)? {
 				if row_numbers_to_delete.contains(&row_num) {
 					// Delete this row
-					txn.remove_from_ringbuffer(ringbuffer.clone(), row_num)?;
+					txn.remove_from_ringbuffer(&ringbuffer, row_num)?;
 					deleted_count += 1;
 				} else {
 					// Track minimum remaining row number
@@ -172,7 +172,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 			// Only delete if the entry exists
 			if txn.contains_key(&row_key)? {
-				txn.remove_from_ringbuffer(ringbuffer.clone(), row_number)?;
+				txn.remove_from_ringbuffer(&ringbuffer, row_number)?;
 				deleted_count += 1;
 			}
 		}

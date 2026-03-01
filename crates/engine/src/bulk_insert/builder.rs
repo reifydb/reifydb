@@ -251,13 +251,21 @@ fn execute_table_insert<V: ValidationMode>(
 
 	let row_numbers = catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
 
+	// Hoist loop-invariant computations out of the insertion loop
+	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), &table)?;
+	let row_number_schema = if pk_def.is_some() {
+		Some(Schema::testing(&[Type::Uint8]))
+	} else {
+		None
+	};
+
 	// 5. Insert all rows with their row numbers
 	for (row, &row_number) in encoded_rows.iter().zip(row_numbers.iter()) {
-		txn.insert_table(table.clone(), row.clone(), row_number)?;
+		txn.insert_table(&table, &schema, row.clone(), row_number)?;
 
 		// Handle primary key index if table has one
-		if let Some(pk_def) = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), &table)? {
-			let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &schema)?;
+		if let Some(ref pk_def) = pk_def {
+			let index_key = primary_key::encode_primary_key(pk_def, row, &table, &schema)?;
 			let index_entry_key =
 				IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key.clone());
 
@@ -273,9 +281,9 @@ fn execute_table_insert<V: ValidationMode>(
 			}
 
 			// Store the index entry
-			let row_number_schema = Schema::testing(&[Type::Uint8]);
-			let mut row_number_encoded = row_number_schema.allocate();
-			row_number_schema.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+			let rns = row_number_schema.as_ref().unwrap();
+			let mut row_number_encoded = rns.allocate();
+			rns.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 			txn.set(&index_entry_key.encode(), row_number_encoded)?;
 		}
 	}
@@ -369,7 +377,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		// Handle ring buffer overflow - delete oldest entry if full
 		if metadata.is_full() {
 			let oldest_row = RowNumber(metadata.head);
-			txn.remove_from_ringbuffer(ringbuffer.clone(), oldest_row)?;
+			txn.remove_from_ringbuffer(&ringbuffer, oldest_row)?;
 			metadata.head += 1;
 			metadata.count -= 1;
 		}
@@ -378,7 +386,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
 
 		// Store the row
-		txn.insert_ringbuffer_at(ringbuffer.clone(), row_number, row)?;
+		txn.insert_ringbuffer_at(&ringbuffer, &schema, row_number, row)?;
 
 		// Update metadata
 		if metadata.is_empty() {

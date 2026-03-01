@@ -166,7 +166,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 			// If buffer is full, delete the oldest entry first
 			if metadata.is_full() {
 				let oldest_row = RowNumber(metadata.head);
-				txn.remove_from_ringbuffer(ringbuffer.clone(), oldest_row)?;
+				txn.remove_from_ringbuffer(&ringbuffer, oldest_row)?;
 				// Advance head to next oldest item
 				metadata.head += 1;
 				metadata.count -= 1;
@@ -176,7 +176,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 			let row_number = services.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
 
 			// Store the row
-			txn.insert_ringbuffer_at(ringbuffer.clone(), row_number, row)?;
+			txn.insert_ringbuffer_at(&ringbuffer, &schema, row_number, row)?;
 
 			// Update metadata
 			if metadata.is_empty() {

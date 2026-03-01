@@ -195,14 +195,22 @@ pub(crate) fn insert_table<'a>(
 
 	assert_eq!(row_numbers.len(), validated_rows.len());
 
+	// Hoist loop-invariant computations out of PASS 2
+	let pk_def = primary_key::get_primary_key(&services.catalog, txn, &table)?;
+	let row_number_schema = if pk_def.is_some() {
+		Some(Schema::testing(&[Type::Uint8]))
+	} else {
+		None
+	};
+
 	// PASS 2: Insert all validated rows using the pre-allocated row numbers
 	for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
 		// Insert the row directly into storage
-		txn.insert_table(table.clone(), row.clone(), row_number)?;
+		txn.insert_table(&table, &schema, row.clone(), row_number)?;
 
 		// Store primary key index entry if table has one
-		if let Some(pk_def) = primary_key::get_primary_key(&services.catalog, txn, &table)? {
-			let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &schema)?;
+		if let Some(ref pk_def) = pk_def {
+			let index_key = primary_key::encode_primary_key(pk_def, row, &table, &schema)?;
 
 			// Check if primary key already exists
 			let index_entry_key =
@@ -217,9 +225,9 @@ pub(crate) fn insert_table<'a>(
 			}
 
 			// Store the index entry with the row number as value
-			let row_number_schema = Schema::testing(&[Type::Uint8]);
-			let mut row_number_encoded = row_number_schema.allocate();
-			row_number_schema.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+			let rns = row_number_schema.as_ref().unwrap();
+			let mut row_number_encoded = rns.allocate();
+			rns.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
 			txn.set(&index_entry_key.encode(), row_number_encoded)?;
 		}
