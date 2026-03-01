@@ -109,7 +109,7 @@ fn populate_stack(stack: &mut SymbolTable, params: &Params) -> Result<()> {
 }
 
 /// Populate the `$identity` variable in the symbol table so policy bodies
-/// (and user RQL) can reference `$identity.id` and `$identity.name`.
+/// (and user RQL) can reference `$identity.id`, `$identity.name`, and `$identity.roles`.
 fn populate_identity(
 	stack: &mut SymbolTable,
 	catalog: &Catalog,
@@ -123,13 +123,19 @@ fn populate_identity(
 		let columns = Columns::single_row([
 			("id", Value::IdentityId(identity)),
 			("name", Value::none_of(Type::Utf8)),
+			("roles", Value::List(vec![])),
 		]);
 		stack.set("identity".to_string(), Variable::Columns(columns), false)?;
 		return Ok(());
 	}
 	if let Some(user) = catalog.find_user_by_identity(tx, identity)? {
-		let columns =
-			Columns::single_row([("id", Value::IdentityId(identity)), ("name", Value::Utf8(user.name))]);
+		let roles = catalog.find_role_names_for_identity(tx, identity)?;
+		let role_values: Vec<Value> = roles.into_iter().map(Value::Utf8).collect();
+		let columns = Columns::single_row([
+			("id", Value::IdentityId(identity)),
+			("name", Value::Utf8(user.name)),
+			("roles", Value::List(role_values)),
+		]);
 		stack.set("identity".to_string(), Variable::Columns(columns), false)?;
 	}
 	Ok(())

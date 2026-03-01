@@ -261,6 +261,33 @@ impl Catalog {
 		Ok(())
 	}
 
+	#[instrument(name = "catalog::user::find_role_names_for_identity", level = "trace", skip(self, txn))]
+	pub fn find_role_names_for_identity(
+		&self,
+		txn: &mut Transaction<'_>,
+		identity: IdentityId,
+	) -> Result<Vec<String>> {
+		let user = match self.find_user_by_identity(txn, identity)? {
+			Some(u) => u,
+			None => return Ok(vec![]),
+		};
+
+		let version = match txn.reborrow() {
+			Transaction::Admin(admin) => admin.version(),
+			Transaction::Command(cmd) => cmd.version(),
+			Transaction::Query(qry) => qry.version(),
+		};
+
+		let user_roles = self.materialized.find_user_roles_for_user_at(user.id, version);
+		let mut names = Vec::with_capacity(user_roles.len());
+		for ur in user_roles {
+			if let Some(role) = self.materialized.find_role_at(ur.role_id, version) {
+				names.push(role.name);
+			}
+		}
+		Ok(names)
+	}
+
 	pub fn get_user_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<UserDef> {
 		self.find_user_by_name(txn, name)?.ok_or_else(|| {
 			CatalogError::NotFound {
