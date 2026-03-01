@@ -6,6 +6,7 @@
 //! This crate provides JavaScript-compatible bindings for running ReifyDB
 //! queries in a browser or Node.js environment with in-memory storage.
 
+use std::collections::HashMap;
 use reifydb_catalog::schema::SchemaRegistry;
 use reifydb_engine::{engine::StandardEngine, procedure::registry::Procedures};
 use wasm_bindgen::prelude::*;
@@ -160,6 +161,7 @@ impl WasmDB {
 		let flow_config = FlowBuilderConfig {
 			operators_dir: None, // No FFI operators in WASM
 			num_workers: 1,      // Single-threaded for WASM
+			custom_operators: HashMap::new(),
 		};
 		console_log("[WASM] Creating FlowSubsystem...");
 		let mut flow_subsystem = FlowSubsystem::new(flow_config, inner.clone(), &ioc_ref);

@@ -42,6 +42,15 @@ pub use reifydb_store_single as single_storage;
 pub use reifydb_sub_api as sub;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
+#[cfg(feature = "sub_flow")]
+pub use reifydb_sub_flow::{
+	builder::OperatorFactory,
+	operator::stateful::{
+		keyed::KeyedStateful, raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful,
+	},
+	operator::{BoxedOperator, Operator, Operators},
+	transaction::FlowTransaction,
+};
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
 #[cfg(feature = "sub_server_admin")]

@@ -146,13 +146,17 @@ impl FlowSubsystem {
 		let clock = runtime.clock().clone();
 		let clock_for_factory = clock.clone();
 
+		let custom_operators = Arc::new(config.custom_operators);
+		let custom_operators_for_factory = custom_operators.clone();
+
 		let factory_builder = move || {
 			let cat = catalog.clone();
 			let exec = executor.clone();
 			let bus = event_bus.clone();
 			let clk = clock_for_factory.clone();
+			let co = custom_operators_for_factory.clone();
 
-			move || FlowEngine::new(cat, exec, bus, clk)
+			move || FlowEngine::new(cat, exec, bus, clk, co)
 		};
 
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
@@ -210,6 +214,7 @@ impl FlowSubsystem {
 			engine.executor(),
 			engine.event_bus().clone(),
 			runtime.clock().clone(),
+			custom_operators.clone(),
 		)));
 
 		// Registrar: detects transactional flows from CDC and registers them.

@@ -134,17 +134,19 @@ impl testscript::runner::Runner for Runner {
 				writeln!(output, "ok")?;
 			}
 
-			// drop KEY - physically removes the latest version of the entry
+			// drop KEY - physically removes all versions of the entry
 			"drop" => {
 				let mut args = command.consume_args();
 				let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
 				let table = self.parse_table(&mut args)?;
 				args.reject_rest()?;
 
-				// Look up the latest version of this key to drop
+				// Look up all versions of this key and drop them all
 				let all_versions = self.storage.get_all_versions(table, &key)?;
-				if let Some((version, _)) = all_versions.first() {
-					self.storage.drop(HashMap::from([(table, vec![(key.clone(), *version)])]))?;
+				if !all_versions.is_empty() {
+					let versions_to_drop: Vec<_> =
+						all_versions.iter().map(|(v, _)| (key.clone(), *v)).collect();
+					self.storage.drop(HashMap::from([(table, versions_to_drop)]))?;
 				}
 				writeln!(output, "ok")?;
 			}

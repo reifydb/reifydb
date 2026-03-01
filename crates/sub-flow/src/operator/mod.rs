@@ -67,6 +67,7 @@ pub enum Operators {
 	SinkView(SinkViewOperator),
 	SinkSubscription(SinkSubscriptionOperator),
 	Window(WindowOperator),
+	Custom(BoxedOperator),
 }
 
 impl Operators {
@@ -89,6 +90,7 @@ impl Operators {
 			Operators::SourceFlow(op) => op.apply(txn, change),
 			Operators::SourceRingBuffer(op) => op.apply(txn, change),
 			Operators::SourceSeries(op) => op.apply(txn, change),
+			Operators::Custom(op) => op.apply(txn, change),
 		}
 	}
 
@@ -111,6 +113,7 @@ impl Operators {
 			Operators::SourceFlow(op) => op.pull(txn, rows),
 			Operators::SourceRingBuffer(op) => op.pull(txn, rows),
 			Operators::SourceSeries(op) => op.pull(txn, rows),
+			Operators::Custom(op) => op.pull(txn, rows),
 		}
 	}
 }

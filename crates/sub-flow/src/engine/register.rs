@@ -410,36 +410,45 @@ impl FlowEngine {
 				operator,
 				expressions,
 			} => {
-				#[cfg(reifydb_target = "native")]
-				{
-					let parent = self
-						.operators
-						.get(&node.inputs[0])
-						.ok_or_else(|| Error(internal!("Parent operator not found")))?
-						.clone();
+				let config = evaluate_operator_config(
+					expressions.as_slice(),
+					&self.executor.functions,
+					&self.clock,
+				)?;
 
-					if !self.is_ffi_operator(operator.as_str()) {
-						unimplemented!("only ffi operators can be used")
+				if let Some(factory) = self.custom_operators.get(operator.as_str()) {
+					let op = factory(node.id, &config)?;
+					self.operators.insert(node.id, Arc::new(Operators::Custom(op)));
+				} else {
+					#[cfg(reifydb_target = "native")]
+					{
+						let parent = self
+							.operators
+							.get(&node.inputs[0])
+							.ok_or_else(|| Error(internal!("Parent operator not found")))?
+							.clone();
+
+						if !self.is_ffi_operator(operator.as_str()) {
+							return Err(Error(internal!("Unknown operator: {}", operator)));
+						}
+
+						let ffi_op =
+							self.create_ffi_operator(operator.as_str(), node.id, &config)?;
+
+						self.operators.insert(
+							node.id,
+							Arc::new(Operators::Apply(ApplyOperator::new(
+								parent, node.id, ffi_op,
+							))),
+						);
 					}
-
-					let config = evaluate_operator_config(
-						expressions.as_slice(),
-						&self.executor.functions,
-						&self.clock,
-					)?;
-					let operator = self.create_ffi_operator(operator.as_str(), node.id, &config)?;
-
-					self.operators.insert(
-						node.id,
-						Arc::new(Operators::Apply(ApplyOperator::new(
-							parent, node.id, operator,
-						))),
-					);
-				}
-				#[cfg(not(reifydb_target = "native"))]
-				{
-					let _ = (operator, expressions);
-					return Err(Error(internal!("FFI operators are not supported in WASM")));
+					#[cfg(not(reifydb_target = "native"))]
+					{
+						let _ = operator;
+						return Err(Error(internal!(
+							"FFI operators are not supported in WASM"
+						)));
+					}
 				}
 			}
 			Aggregate {

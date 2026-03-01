@@ -3,11 +3,19 @@
 
 //! Builder pattern for configuring the flow subsystem
 
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+
+use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_type::{Result, value::Value};
+
+use crate::operator::BoxedOperator;
+
+pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &HashMap<String, Value>) -> Result<BoxedOperator> + Send + Sync>;
 
 pub struct FlowBuilder {
 	operators_dir: Option<PathBuf>,
 	num_workers: Option<usize>,
+	custom_operators: HashMap<String, OperatorFactory>,
 }
 
 impl Default for FlowBuilder {
@@ -22,6 +30,7 @@ impl FlowBuilder {
 		Self {
 			operators_dir: None,
 			num_workers: None,
+			custom_operators: HashMap::new(),
 		}
 	}
 
@@ -38,11 +47,22 @@ impl FlowBuilder {
 		self
 	}
 
+	/// Register a native Rust operator factory by name.
+	pub fn register_operator(
+		mut self,
+		name: impl Into<String>,
+		factory: impl Fn(FlowNodeId, &HashMap<String, Value>) -> Result<BoxedOperator> + Send + Sync + 'static,
+	) -> Self {
+		self.custom_operators.insert(name.into(), Arc::new(factory));
+		self
+	}
+
 	/// Build the configuration (internal use only)
 	pub(crate) fn build_config(self) -> FlowBuilderConfig {
 		FlowBuilderConfig {
 			operators_dir: self.operators_dir,
 			num_workers: self.num_workers.unwrap_or(1),
+			custom_operators: self.custom_operators,
 		}
 	}
 }
@@ -53,4 +73,6 @@ pub struct FlowBuilderConfig {
 	pub operators_dir: Option<PathBuf>,
 	/// Number of worker threads for flow processing
 	pub num_workers: usize,
+	/// Native Rust operator factories registered via FlowBuilder::register_operator
+	pub custom_operators: HashMap<String, OperatorFactory>,
 }

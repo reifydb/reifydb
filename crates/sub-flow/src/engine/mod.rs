@@ -32,7 +32,10 @@ use tracing::instrument;
 
 #[cfg(reifydb_target = "native")]
 use crate::ffi::loader::ffi_operator_loader;
-use crate::operator::{BoxedOperator, Operators};
+use crate::{
+	builder::OperatorFactory,
+	operator::{BoxedOperator, Operators},
+};
 
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
@@ -46,11 +49,22 @@ pub struct FlowEngine {
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: HashMap<FlowId, CommitVersion>,
 	pub(crate) clock: Clock,
+	pub(crate) custom_operators: Arc<HashMap<String, OperatorFactory>>,
 }
 
 impl FlowEngine {
-	#[instrument(name = "flow::engine::new", level = "debug", skip(catalog, executor, event_bus, clock))]
-	pub fn new(catalog: Catalog, executor: Executor, event_bus: EventBus, clock: Clock) -> Self {
+	#[instrument(
+		name = "flow::engine::new",
+		level = "debug",
+		skip(catalog, executor, event_bus, clock, custom_operators)
+	)]
+	pub fn new(
+		catalog: Catalog,
+		executor: Executor,
+		event_bus: EventBus,
+		clock: Clock,
+		custom_operators: Arc<HashMap<String, OperatorFactory>>,
+	) -> Self {
 		Self {
 			catalog,
 			executor,
@@ -62,6 +76,7 @@ impl FlowEngine {
 			event_bus,
 			flow_creation_versions: HashMap::new(),
 			clock,
+			custom_operators,
 		}
 	}
 

@@ -208,6 +208,7 @@ pub(super) extern "C" fn host_state_prefix(
 				let iter_ptr = host_alloc(std::mem::size_of::<StateIteratorInternal>())
 					as *mut StateIteratorInternal;
 				if iter_ptr.is_null() {
+					state_iterator::free_iterator(handle);
 					return FFI_ERROR_ALLOC;
 				}
 
@@ -306,6 +307,7 @@ pub(super) extern "C" fn host_state_range(
 				let iter_ptr = host_alloc(std::mem::size_of::<StateIteratorInternal>())
 					as *mut StateIteratorInternal;
 				if iter_ptr.is_null() {
+					state_iterator::free_iterator(handle);
 					return FFI_ERROR_ALLOC;
 				}
 

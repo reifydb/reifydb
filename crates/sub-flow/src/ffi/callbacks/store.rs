@@ -145,6 +145,7 @@ pub(super) extern "C" fn host_store_prefix(
 				let iter_ptr =
 					host_alloc(size_of::<StoreIteratorInternal>()) as *mut StoreIteratorInternal;
 				if iter_ptr.is_null() {
+					store_iterator::free_iterator(handle);
 					return FFI_ERROR_ALLOC;
 				}
 
@@ -254,6 +255,7 @@ pub(super) extern "C" fn host_store_range(
 				let iter_ptr =
 					host_alloc(size_of::<StoreIteratorInternal>()) as *mut StoreIteratorInternal;
 				if iter_ptr.is_null() {
+					store_iterator::free_iterator(handle);
 					return FFI_ERROR_ALLOC;
 				}
 

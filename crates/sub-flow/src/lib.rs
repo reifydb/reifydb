@@ -12,7 +12,7 @@ pub mod ffi;
 #[allow(dead_code)]
 pub mod operator;
 pub mod subsystem;
-pub(crate) mod transaction;
-pub(crate) mod transactional;
+pub mod transaction;
 
 pub(crate) use operator::Operator;
+pub(crate) mod transactional;
