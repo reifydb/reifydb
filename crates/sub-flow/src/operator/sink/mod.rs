@@ -40,6 +40,8 @@ use crate::transaction::FlowTransaction;
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
+static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
+static DEFAULT_CLOCK: LazyLock<Clock> = LazyLock::new(Clock::default);
 
 /// Coerce columns to match target schema types
 pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) -> Result<Columns> {
@@ -74,8 +76,8 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
-			functions: &Functions::empty(),
-			clock: &Clock::default(),
+			functions: &EMPTY_FUNCTIONS,
+			clock: &DEFAULT_CLOCK,
 			arena: None,
 			identity: IdentityId::root(),
 		};
@@ -141,8 +143,8 @@ pub(crate) fn coerce_subscription_columns(
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
-			functions: &Functions::empty(),
-			clock: &Clock::default(),
+			functions: &EMPTY_FUNCTIONS,
+			clock: &DEFAULT_CLOCK,
 			arena: None,
 			identity: IdentityId::root(),
 		};

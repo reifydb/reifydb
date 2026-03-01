@@ -92,13 +92,17 @@ where
 	}
 
 	/// Clears `buf` and fills it with all keys in the map, reusing the buffer's allocation.
+	/// Uses shard-level locking to avoid per-element Arc allocation from DashMap::iter().
 	#[inline]
 	pub fn keys_into(&self, buf: &mut Vec<K>)
 	where
 		K: Clone,
 	{
 		buf.clear();
-		buf.extend(self.inner.iter().map(|entry| entry.key().clone()));
+		for shard in self.inner.shards() {
+			let shard = shard.read();
+			buf.extend(shard.iter().map(|(k, _)| k.clone()));
+		}
 	}
 
 	/// Applies a closure to the mutable value associated with the key, returning the result.
