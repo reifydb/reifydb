@@ -4,6 +4,7 @@
 use std::{
 	fmt::{self, Debug},
 	ops::Deref,
+	result::Result as StdResult,
 };
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -46,7 +47,7 @@ where
 }
 
 impl Serialize for BlobContainer<Cow> {
-	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> std::result::Result<Ser::Ok, Ser::Error> {
+	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
 			data: &'a CowVec<Blob>,
@@ -59,7 +60,7 @@ impl Serialize for BlobContainer<Cow> {
 }
 
 impl<'de> Deserialize<'de> for BlobContainer<Cow> {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
 			data: CowVec<Blob>,

@@ -6,7 +6,7 @@
 //! Provides key-value state storage for operators, including get/set/remove/clear operations
 //! and prefix-based iteration.
 
-use std::{ops::Bound, slice::from_raw_parts};
+use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_abi::{
 	constants::{
@@ -67,7 +67,7 @@ pub(super) extern "C" fn host_state_get(
 					return FFI_ERROR_ALLOC;
 				}
 
-				std::ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
+				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
 
 				(*output).ptr = value_ptr;
 				(*output).len = value_bytes.len();
@@ -205,7 +205,7 @@ pub(super) extern "C" fn host_state_prefix(
 				let handle = state_iterator::create_iterator(batch);
 
 				// Allocate internal structure and store handle
-				let iter_ptr = host_alloc(std::mem::size_of::<StateIteratorInternal>())
+				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
 					as *mut StateIteratorInternal;
 				if iter_ptr.is_null() {
 					state_iterator::free_iterator(handle);
@@ -213,7 +213,7 @@ pub(super) extern "C" fn host_state_prefix(
 				}
 
 				// Initialize the iterator structure with the handle
-				std::ptr::write(
+				ptr::write(
 					iter_ptr,
 					StateIteratorInternal {
 						handle,
@@ -304,14 +304,14 @@ pub(super) extern "C" fn host_state_range(
 			Ok(batch) => {
 				let handle = state_iterator::create_iterator(batch);
 
-				let iter_ptr = host_alloc(std::mem::size_of::<StateIteratorInternal>())
+				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
 					as *mut StateIteratorInternal;
 				if iter_ptr.is_null() {
 					state_iterator::free_iterator(handle);
 					return FFI_ERROR_ALLOC;
 				}
 
-				std::ptr::write(
+				ptr::write(
 					iter_ptr,
 					StateIteratorInternal {
 						handle,
@@ -350,7 +350,7 @@ pub(super) extern "C" fn host_state_iterator_next(
 				if key_ptr.is_null() {
 					return FFI_ERROR_ALLOC;
 				}
-				std::ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
+				ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
 				(*key_out).ptr = key_ptr;
 				(*key_out).len = key.len();
 				(*key_out).cap = key.len();
@@ -362,7 +362,7 @@ pub(super) extern "C" fn host_state_iterator_next(
 					host_free(key_ptr, key.len());
 					return FFI_ERROR_ALLOC;
 				}
-				std::ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
+				ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
 				(*value_out).ptr = value_ptr;
 				(*value_out).len = value.len();
 				(*value_out).cap = value.len();
@@ -390,6 +390,6 @@ pub(super) extern "C" fn host_state_iterator_free(iterator: *mut StateIteratorFF
 		state_iterator::free_iterator(handle);
 
 		// Free the internal structure itself
-		host_free(iter_internal as *mut u8, std::mem::size_of::<StateIteratorInternal>());
+		host_free(iter_internal as *mut u8, mem::size_of::<StateIteratorInternal>());
 	}
 }

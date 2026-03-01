@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::ptr;
+use std::{f64, ptr};
 
 use reifydb_type::value::r#type::Type;
 
@@ -40,6 +40,8 @@ impl Schema {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 pub mod tests {
+	use std::f64::consts::{E, PI};
+
 	use reifydb_type::value::r#type::Type;
 
 	use crate::encoded::schema::Schema;
@@ -115,12 +117,12 @@ pub mod tests {
 		let schema = Schema::testing(&[Type::Float8]);
 		let mut row = schema.allocate();
 
-		let pi = std::f64::consts::PI;
+		let pi = PI;
 		schema.set_f64(&mut row, 0, pi);
 		assert_eq!(schema.get_f64(&row, 0), pi);
 
 		let mut row2 = schema.allocate();
-		let e = std::f64::consts::E;
+		let e = E;
 		schema.set_f64(&mut row2, 0, e);
 		assert_eq!(schema.get_f64(&row2, 0), e);
 	}

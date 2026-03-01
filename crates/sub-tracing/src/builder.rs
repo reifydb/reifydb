@@ -7,6 +7,7 @@ use tracing_subscriber::{
 	EnvFilter, Layer, Registry,
 	fmt::{self, format::FmtSpan},
 	layer::SubscriberExt,
+	registry,
 	util::SubscriberInitExt,
 };
 
@@ -139,7 +140,7 @@ impl TracingBuilder {
 			});
 
 		// Build subscriber with external layer and filter
-		let subscriber = tracing_subscriber::registry().with(self.external_layer).with(filter);
+		let subscriber = registry().with(self.external_layer).with(filter);
 
 		// Conditionally create console layer
 		let fmt_layer = if let Some(console_config) = self.console_config {

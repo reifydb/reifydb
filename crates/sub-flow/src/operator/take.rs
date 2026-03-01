@@ -3,6 +3,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
+use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::schema::Schema,
 	interface::{
@@ -71,13 +72,12 @@ impl TakeOperator {
 			return Ok(TakeState::default());
 		}
 
-		postcard::from_bytes(blob.as_ref())
-			.map_err(|e| Error(internal!("Failed to deserialize TakeState: {}", e)))
+		from_bytes(blob.as_ref()).map_err(|e| Error(internal!("Failed to deserialize TakeState: {}", e)))
 	}
 
 	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> Result<()> {
-		let serialized = postcard::to_stdvec(state)
-			.map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
+		let serialized =
+			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
 
 		let mut state_row = self.schema.allocate();
 		let blob = Blob::from(serialized);

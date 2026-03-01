@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::{catalog::user_authentication::UserAuthenticationDef, store::MultiVersionValues};
+use serde_json::from_str;
 
 use crate::store::user_authentication::schema::user_authentication;
 
@@ -20,7 +21,7 @@ pub(crate) fn convert_user_authentication(multi: MultiVersionValues) -> UserAuth
 	let method = user_authentication::SCHEMA.get_utf8(&row, user_authentication::METHOD).to_string();
 	let properties_json = user_authentication::SCHEMA.get_utf8(&row, user_authentication::PROPERTIES).to_string();
 
-	let properties: HashMap<String, String> = serde_json::from_str(&properties_json).unwrap_or_default();
+	let properties: HashMap<String, String> = from_str(&properties_json).unwrap_or_default();
 
 	UserAuthenticationDef {
 		id,

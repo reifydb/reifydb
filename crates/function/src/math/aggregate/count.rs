@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::mem;
+
 use indexmap::IndexMap;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::Value;
@@ -135,7 +137,7 @@ impl AggregateFunction for Count {
 		let mut keys = Vec::with_capacity(self.counts.len());
 		let mut data = ColumnData::int8_with_capacity(self.counts.len());
 
-		for (key, count) in std::mem::take(&mut self.counts) {
+		for (key, count) in mem::take(&mut self.counts) {
 			keys.push(key);
 			data.push_value(Value::Int8(count));
 		}

@@ -3,7 +3,7 @@
 
 use reifydb_type::{Result, error::Error};
 use serde::{
-	Serialize,
+	Serialize, ser,
 	ser::{Impossible, SerializeSeq, SerializeStructVariant, SerializeTuple, SerializeTupleVariant},
 };
 
@@ -16,7 +16,7 @@ pub(crate) struct Serializer {
 	pub(crate) output: Vec<u8>,
 }
 
-impl serde::ser::Serializer for &mut Serializer {
+impl ser::Serializer for &mut Serializer {
 	type Ok = ();
 	type Error = Error;
 

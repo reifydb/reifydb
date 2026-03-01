@@ -22,7 +22,7 @@ use reifydb_type::{
 	value::r#type::Type,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::from_str;
+use serde_json::{from_str, to_string, to_string_pretty};
 
 use super::{
 	AccessPrimitiveExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
@@ -829,13 +829,13 @@ fn parse_type(s: &str) -> Result<Type> {
 /// semantic data suitable for frontend query builders.
 pub fn to_json(expr: &Expression) -> String {
 	let json_expr: JsonExpression = expr.into();
-	serde_json::to_string(&json_expr).expect("JsonExpression should always serialize")
+	to_string(&json_expr).expect("JsonExpression should always serialize")
 }
 
 /// Serialize an Expression to a pretty-printed JSON string.
 pub fn to_json_pretty(expr: &Expression) -> String {
 	let json_expr: JsonExpression = expr.into();
-	serde_json::to_string_pretty(&json_expr).expect("JsonExpression should always serialize")
+	to_string_pretty(&json_expr).expect("JsonExpression should always serialize")
 }
 
 /// Deserialize an Expression from a JSON string.

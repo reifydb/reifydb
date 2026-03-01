@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::time;
+
 use reifydb_core::{
 	common::{WindowSize, WindowSlide, WindowType},
 	interface::catalog::flow::FlowNodeId,
@@ -20,7 +22,7 @@ pub(crate) struct WindowCompiler {
 	pub aggregations: Vec<Expression>,
 	pub min_events: usize,
 	pub max_window_count: Option<usize>,
-	pub max_window_age: Option<std::time::Duration>,
+	pub max_window_age: Option<time::Duration>,
 }
 
 impl From<WindowNode> for WindowCompiler {

@@ -21,7 +21,7 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, error::Error, fragment::Fragment};
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Static methods for consuming subscription data.
 pub struct SubscriptionConsumer;
@@ -42,7 +42,7 @@ impl SubscriptionConsumer {
 		let _sub_def = match find_subscription(&mut Transaction::Command(&mut cmd_txn), db_subscription_id)? {
 			Some(def) => def,
 			None => {
-				tracing::warn!("Subscription {} not found", db_subscription_id);
+				warn!("Subscription {} not found", db_subscription_id);
 				return Ok((Columns::empty(), Vec::new()));
 			}
 		};

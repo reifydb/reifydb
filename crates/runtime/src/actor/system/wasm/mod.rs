@@ -7,9 +7,13 @@
 
 use std::{
 	cell::{Cell, RefCell},
+	error, fmt,
 	rc::Rc,
 	sync::{Arc, atomic::AtomicBool},
+	time,
 };
+
+use tracing::{debug, warn};
 
 use crate::actor::{
 	context::{CancellationToken, Context},
@@ -95,7 +99,7 @@ impl ActorSystem {
 	}
 
 	/// Wait for all actors to finish after shutdown with timeout (no-op in WASM).
-	pub fn join_timeout(&self, _timeout: std::time::Duration) -> Result<(), JoinError> {
+	pub fn join_timeout(&self, _timeout: time::Duration) -> Result<(), JoinError> {
 		Ok(())
 	}
 
@@ -131,7 +135,7 @@ impl ActorSystem {
 			{
 				let mut queue_ref = init_queue_for_processor.borrow_mut();
 				if let Some(ref mut queue) = *queue_ref {
-					tracing::debug!(actor = %_name, "Queueing message during initialization");
+					debug!(actor = %_name, "Queueing message during initialization");
 					queue.push(msg);
 					return;
 				}
@@ -139,7 +143,7 @@ impl ActorSystem {
 
 			// Check cancellation
 			if cancel.is_cancelled() {
-				tracing::debug!(actor = %_name, "Actor cancelled, ignoring message");
+				debug!(actor = %_name, "Actor cancelled, ignoring message");
 				actor_ref_for_closure.mark_stopped();
 				return;
 			}
@@ -148,7 +152,7 @@ impl ActorSystem {
 
 			// State should already be initialized from eager init
 			if state_ref.is_none() {
-				tracing::warn!(actor = %_name, "Actor state unexpectedly not initialized");
+				warn!(actor = %_name, "Actor state unexpectedly not initialized");
 				return;
 			}
 
@@ -156,7 +160,7 @@ impl ActorSystem {
 			if let Some(ref mut s) = *state_ref {
 				match actor_for_processor.handle(s, msg, &ctx_for_processor) {
 					Directive::Stop => {
-						tracing::debug!(actor = %_name, "Actor returned Directive::Stop");
+						debug!(actor = %_name, "Actor returned Directive::Stop");
 						actor_for_processor.post_stop();
 						actor_ref_for_closure.mark_stopped();
 					}
@@ -183,7 +187,7 @@ impl ActorSystem {
 		// Mark initialization complete and drain queued messages
 		let queued_messages = init_queue.borrow_mut().take().unwrap_or_default();
 		if !queued_messages.is_empty() {
-			tracing::debug!(
+			debug!(
 				actor = %_name_for_drain,
 				count = queued_messages.len(),
 				"Draining queued messages after init"
@@ -222,8 +226,8 @@ impl ActorSystem {
 	}
 }
 
-impl std::fmt::Debug for ActorSystem {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for ActorSystem {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("ActorSystem").field("cancelled", &self.is_cancelled()).finish_non_exhaustive()
 	}
 }
@@ -262,25 +266,25 @@ impl JoinError {
 	}
 }
 
-impl std::fmt::Display for JoinError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for JoinError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "actor join failed: {}", self.message)
 	}
 }
 
-impl std::error::Error for JoinError {}
+impl error::Error for JoinError {}
 
 /// WASM join error for compute operations.
 #[derive(Debug)]
 pub struct WasmJoinError;
 
-impl std::fmt::Display for WasmJoinError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for WasmJoinError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "WASM task failed")
 	}
 }
 
-impl std::error::Error for WasmJoinError {}
+impl error::Error for WasmJoinError {}
 
 // =============================================================================
 // WASM ActorRef internals

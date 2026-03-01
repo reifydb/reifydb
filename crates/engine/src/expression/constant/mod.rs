@@ -6,6 +6,8 @@ pub mod temporal;
 pub mod text;
 pub mod uuid;
 
+use std::iter;
+
 use number::NumberParser;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_rql::expression::ConstantExpression;
@@ -81,7 +83,7 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 		}
 		ConstantExpression::Text {
 			fragment,
-		} => ColumnData::utf8(std::iter::repeat(fragment.text()).take(row_count)),
+		} => ColumnData::utf8(iter::repeat(fragment.text()).take(row_count)),
 		ConstantExpression::Temporal {
 			fragment,
 		} => TemporalParser::parse_temporal(fragment.clone(), row_count)?,

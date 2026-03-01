@@ -1,6 +1,6 @@
 #!/bin/bash
-# Check for inline qualified paths (crate::, super::, or reifydb_*::) that
-# should be top-level `use` imports instead.
+# Check for inline qualified paths (crate::, super::, reifydb_*::, std::, or
+# vendored crate paths) that should be top-level `use` imports instead.
 #
 # This script checks ALL .rs files in /crates/ for inline qualifications.
 # Useful for CI validation or manual checks.
@@ -13,6 +13,17 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
 echo "Checking for inline qualified paths in /crates/..."
 echo ""
+
+# Build pattern from vendor/ directory crate names (strip version suffixes, normalize hyphens)
+vendor_pattern=""
+if [ -d "$REPO_ROOT/vendor" ]; then
+    vendor_pattern=$(ls "$REPO_ROOT/vendor" \
+        | sed 's/-[0-9][0-9]*\.[0-9].*//' \
+        | sort -u \
+        | tr '-' '_' \
+        | tr '\n' '|' \
+        | sed 's/|$//')
+fi
 
 # Find all .rs files in /crates/ (excluding specific paths)
 crates_files=$(find "$REPO_ROOT/crates" -name "*.rs" \
@@ -29,9 +40,18 @@ violations_found=false
 violation_count=0
 
 while IFS= read -r file; do
-    result=$(awk '
+    result=$(awk -v vendor_pat="$vendor_pattern" '
     BEGIN {
         in_block_comment = 0
+        in_use_block = 0
+        use_brace_depth = 0
+        in_macro_rules = 0
+        macro_brace_depth = 0
+        if (vendor_pat != "") {
+            external_regex = "(^|[^a-zA-Z0-9_$:])(std|" vendor_pat ")::[^<]"
+        } else {
+            external_regex = "(^|[^a-zA-Z0-9_$:])std::[^<]"
+        }
     }
 
     {
@@ -68,15 +88,64 @@ while IFS= read -r file; do
         # Remove string literals
         gsub(/"[^"]*"/, "", line)
 
-        # Skip lines that are `use` statements
+        # Skip lines inside macro_rules! blocks (body lines need qualified paths for hygiene)
+        if (in_macro_rules) {
+            tmp = line
+            while (match(tmp, /[{}]/)) {
+                ch = substr(tmp, RSTART, 1)
+                if (ch == "{") macro_brace_depth++
+                else macro_brace_depth--
+                tmp = substr(tmp, RSTART + 1)
+            }
+            if (macro_brace_depth <= 0) { in_macro_rules = 0; macro_brace_depth = 0 }
+            next
+        }
+
+        # Skip continuation lines of a multi-line use block
+        if (in_use_block) {
+            tmp = line
+            while (match(tmp, /[{}]/)) {
+                ch = substr(tmp, RSTART, 1)
+                if (ch == "{") use_brace_depth++
+                else use_brace_depth--
+                tmp = substr(tmp, RSTART + 1)
+            }
+            if (use_brace_depth <= 0) { in_use_block = 0; use_brace_depth = 0 }
+            next
+        }
+
+        # Skip lines that are `use` statements (and track multi-line blocks)
         stripped = line
         gsub(/^[[:space:]]+/, "", stripped)
-        if (match(stripped, /^(pub[[:space:]]+)?use[[:space:]]+/)) {
+        if (match(stripped, /^(pub([[:space:]]+|\([^)]*\)[[:space:]]*)?)?use[[:space:]]+/)) {
+            tmp = line
+            while (match(tmp, /[{}]/)) {
+                ch = substr(tmp, RSTART, 1)
+                if (ch == "{") use_brace_depth++
+                else use_brace_depth--
+                tmp = substr(tmp, RSTART + 1)
+            }
+            if (use_brace_depth > 0) in_use_block = 1
             next
         }
 
         # Skip attribute lines
         if (match(stripped, /^#\[/)) {
+            next
+        }
+
+        # Detect start of macro_rules! blocks and skip their bodies
+        if (match(stripped, /^macro_rules![[:space:]]*[a-zA-Z_][a-zA-Z0-9_]*/)) {
+            in_macro_rules = 1
+            macro_brace_depth = 0
+            tmp = line
+            while (match(tmp, /[{}]/)) {
+                ch = substr(tmp, RSTART, 1)
+                if (ch == "{") macro_brace_depth++
+                else macro_brace_depth--
+                tmp = substr(tmp, RSTART + 1)
+            }
+            if (macro_brace_depth <= 0) { in_macro_rules = 0; macro_brace_depth = 0 }
             next
         }
 
@@ -99,8 +168,12 @@ while IFS= read -r file; do
             next
         }
 
-        # Check for remaining crate::, super::, or reifydb_*:: occurrences
-        if (match(line, /(^|[^a-zA-Z0-9_$])crate::/) || match(line, /(^|[^a-zA-Z0-9_$])super::/) || match(line, /(^|[^a-zA-Z0-9_$])reifydb[a-zA-Z0-9_]*::/)) {
+        # Check for remaining crate::, super::, reifydb_*::, std::, or vendored crate:: occurrences
+        # Note: [^a-zA-Z0-9_$:] excludes ':' to avoid flagging nested path components (e.g. ::log:: in local paths)
+        if (match(line, /(^|[^a-zA-Z0-9_$:])crate::/) ||
+            match(line, /(^|[^a-zA-Z0-9_$:])super::/) ||
+            match(line, /(^|[^a-zA-Z0-9_$:])reifydb[a-zA-Z0-9_]*::/) ||
+            match(line, external_regex)) {
             gsub(/[[:space:]]+$/, "", orig_line)
             print lineno ":" orig_line
         }
@@ -133,16 +206,19 @@ if [ "$violations_found" = true ]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Found $violation_count violation(s)"
     echo ""
-    echo "Inline qualified paths (crate::, super::, reifydb_*::) should be"
+    echo "Inline qualified paths (crate::, super::, reifydb_*::, std::, vendored crates) should be"
     echo "replaced with top-level 'use' imports."
     echo ""
     echo "Example:"
     echo "  ❌ let x = crate::ast::Foo::Bar;"
     echo "  ❌ let y = reifydb_core::Value::Int(1);"
+    echo "  ❌ let m = std::collections::HashMap::new();"
     echo "  ✅ use crate::ast::Foo;"
     echo "  ✅ use reifydb_core::Value;"
+    echo "  ✅ use std::collections::HashMap;"
     echo "     let x = Foo::Bar;"
     echo "     let y = Value::Int(1);"
+    echo "     let m = HashMap::new();"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     exit 1
 else

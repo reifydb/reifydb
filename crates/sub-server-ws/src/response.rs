@@ -10,6 +10,7 @@
 use reifydb_sub_server::response::ResponseFrame;
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 use serde::Serialize;
+use serde_json::to_string;
 
 /// WebSocket response envelope (matches client's `Response`)
 #[derive(Debug, Serialize)]
@@ -162,7 +163,7 @@ impl Response {
 	}
 
 	pub fn to_json(&self) -> String {
-		serde_json::to_string(self).expect("Failed to serialize Response")
+		to_string(self).expect("Failed to serialize Response")
 	}
 }
 
@@ -175,6 +176,6 @@ impl ServerPush {
 	}
 
 	pub fn to_json(&self) -> String {
-		serde_json::to_string(self).expect("Failed to serialize ServerPush")
+		to_string(self).expect("Failed to serialize ServerPush")
 	}
 }

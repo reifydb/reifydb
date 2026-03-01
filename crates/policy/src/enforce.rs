@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::Bump;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{interface::catalog::policy::PolicyTargetType, value::column::columns::Columns};
 use reifydb_rql::{
@@ -47,7 +48,7 @@ pub fn enforce_write_policies(
 		.into());
 	}
 
-	let bump = bumpalo::Bump::new();
+	let bump = Bump::new();
 	let target = format!("{}::{}", target_namespace, target_object);
 
 	for (policy, op) in &policies {
@@ -129,7 +130,7 @@ pub fn enforce_session_policy(
 		return Ok(());
 	}
 
-	let bump = bumpalo::Bump::new();
+	let bump = Bump::new();
 	let empty_columns = Columns::empty();
 
 	for (_policy, op) in &policies {
@@ -200,7 +201,7 @@ pub fn enforce_identity_policy(
 		.into());
 	}
 
-	let bump = bumpalo::Bump::new();
+	let bump = Bump::new();
 	let target = format!("{}::{}", target_namespace, target_object);
 	let empty_columns = Columns::empty();
 

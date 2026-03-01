@@ -9,7 +9,7 @@
 
 pub mod memory;
 
-use std::collections::Bound;
+use std::{collections::Bound, sync};
 
 use memory::MemoryCdcStorage;
 use reifydb_core::{
@@ -103,7 +103,7 @@ pub trait CdcStorage: Send + Sync + Clone + 'static {
 }
 
 /// Blanket implementation for CdcStore compatibility with existing traits.
-impl<T: CdcStorage> CdcStorage for std::sync::Arc<T> {
+impl<T: CdcStorage> CdcStorage for sync::Arc<T> {
 	fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
 		(**self).write(cdc)
 	}

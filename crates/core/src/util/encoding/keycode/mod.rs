@@ -17,6 +17,8 @@ pub mod deserializer;
 pub mod serialize;
 pub mod serializer;
 
+use std::{f32, f64};
+
 use reifydb_type::{
 	Result,
 	error::{Error, TypeError},
@@ -200,8 +202,8 @@ pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> Result<T> {
 pub mod tests {
 	use std::borrow::Cow;
 
-	const PI_F32: f32 = std::f32::consts::PI;
-	const PI_F64: f64 = std::f64::consts::PI;
+	const PI_F32: f32 = f32::consts::PI;
+	const PI_F64: f64 = f64::consts::PI;
 
 	use reifydb_type::{
 		util::hex::encode,

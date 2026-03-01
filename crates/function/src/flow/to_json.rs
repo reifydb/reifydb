@@ -3,6 +3,7 @@
 
 use std::time::Duration;
 
+use postcard::from_bytes;
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
 	internal,
@@ -11,7 +12,8 @@ use reifydb_core::{
 };
 use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
 use reifydb_type::{error::Error, value::r#type::Type};
-use serde::Serialize;
+use serde::{Serialize, Serializer};
+use serde_json::{Value as JsonValue, to_string, to_value};
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionResult, propagate_options};
 
@@ -90,7 +92,7 @@ pub enum JsonFlowNodeType {
 
 fn serialize_duration_opt<S>(duration: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
 where
-	S: serde::Serializer,
+	S: Serializer,
 {
 	match duration {
 		Some(d) => serializer.serialize_some(&d.as_secs()),
@@ -252,42 +254,37 @@ impl ScalarFunction for FlowNodeToJson {
 						let bytes = blob.as_bytes();
 
 						// Deserialize from postcard
-						let node_type: FlowNodeType =
-							postcard::from_bytes(bytes).map_err(|e| {
-								Error(internal!(
-									"Failed to deserialize FlowNodeType: {}",
-									e
-								))
-							})?;
+						let node_type: FlowNodeType = from_bytes(bytes).map_err(|e| {
+							Error(internal!("Failed to deserialize FlowNodeType: {}", e))
+						})?;
 
 						// Convert to JsonFlowNodeType for clean serialization
 						let json_node_type: JsonFlowNodeType = (&node_type).into();
 
 						// Serialize to JSON (untagged - extract inner value only)
-						let json_value =
-							serde_json::to_value(&json_node_type).map_err(|e| {
-								Error(internal!(
-									"Failed to serialize FlowNodeType to JSON: {}",
-									e
-								))
-							})?;
+						let json_value = to_value(&json_node_type).map_err(|e| {
+							Error(internal!(
+								"Failed to serialize FlowNodeType to JSON: {}",
+								e
+							))
+						})?;
 
 						// Extract the inner object from the tagged enum {"variant_name": {...}}
 						let inner_value = match json_value {
-							serde_json::Value::Object(map) if map.len() == 1 => map
+							JsonValue::Object(map) if map.len() == 1 => map
 								.into_iter()
 								.next()
 								.map(|(_, v)| v)
-								.unwrap_or(serde_json::Value::Null),
-							serde_json::Value::String(_) => {
+								.unwrap_or(JsonValue::Null),
+							JsonValue::String(_) => {
 								// Unit variants serialize as strings, return null for
 								// untagged
-								serde_json::Value::Null
+								JsonValue::Null
 							}
 							other => other,
 						};
 
-						let json = serde_json::to_string(&inner_value).map_err(|e| {
+						let json = to_string(&inner_value).map_err(|e| {
 							Error(internal!(
 								"Failed to serialize FlowNodeType to JSON: {}",
 								e

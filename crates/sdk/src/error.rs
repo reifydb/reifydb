@@ -3,7 +3,7 @@
 
 //! Error types for the operator SDK
 
-use std::fmt;
+use std::{error, fmt};
 
 use reifydb_core::internal;
 use reifydb_type::error::Error;
@@ -51,7 +51,7 @@ impl fmt::Display for FFIError {
 	}
 }
 
-impl std::error::Error for FFIError {}
+impl error::Error for FFIError {}
 
 /// Convert FFIError to Error
 impl From<FFIError> for Error {

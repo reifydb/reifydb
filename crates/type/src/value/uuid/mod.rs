@@ -3,6 +3,7 @@
 
 use std::{
 	cmp::Ordering,
+	fmt,
 	fmt::{Display, Formatter},
 	ops::Deref,
 };
@@ -65,7 +66,7 @@ impl From<Uuid4> for StdUuid {
 }
 
 impl Display for Uuid4 {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "{}", self.0)
 	}
 }
@@ -122,7 +123,7 @@ impl From<Uuid7> for StdUuid {
 }
 
 impl Display for Uuid7 {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "{}", self.0)
 	}
 }

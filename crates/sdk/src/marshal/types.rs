@@ -297,7 +297,7 @@ impl Arena {
 			for i in 0..row_count {
 				let start = offsets[i] as usize;
 				let end = offsets[i + 1] as usize;
-				let value: Value = postcard::from_bytes(&data[start..end]).unwrap_or(Value::none());
+				let value: Value = from_bytes(&data[start..end]).unwrap_or(Value::none());
 				values.push(Box::new(value));
 			}
 

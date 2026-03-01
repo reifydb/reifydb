@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::{
+	error,
+	fmt::{self, Display, Formatter},
+};
 
 use super::{column::FrameColumn, frame::Frame};
 use crate::value::try_from::{FromValueError, TryFromValue, TryFromValueCoerce};
@@ -27,7 +30,7 @@ pub enum FrameError {
 }
 
 impl Display for FrameError {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			FrameError::ColumnNotFound {
 				name,
@@ -51,7 +54,7 @@ impl Display for FrameError {
 	}
 }
 
-impl std::error::Error for FrameError {}
+impl error::Error for FrameError {}
 
 impl Frame {
 	/// Get a column by name

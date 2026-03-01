@@ -3,6 +3,8 @@
 
 //! Row number provider for stable row numbering in stateful operators
 
+use std::iter;
+
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, key::EncodedKey},
 	interface::catalog::flow::FlowNodeId,
@@ -92,7 +94,7 @@ impl RowNumberProvider {
 		ctx: &mut OperatorContext,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
-		Ok(self.get_or_create_row_numbers_batch(ctx, std::iter::once(key))?.into_iter().next().unwrap())
+		Ok(self.get_or_create_row_numbers_batch(ctx, iter::once(key))?.into_iter().next().unwrap())
 	}
 
 	/// Load the current counter value

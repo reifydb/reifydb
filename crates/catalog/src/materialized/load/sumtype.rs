@@ -13,6 +13,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::SumTypeId;
+use serde_json::from_str;
 use tracing::warn;
 
 use super::MaterializedCatalog;
@@ -41,7 +42,7 @@ fn convert_sumtype(multi: MultiVersionValues) -> SumTypeDef {
 	let namespace = NamespaceId(SCHEMA.get_u64(&row, NAMESPACE));
 	let name = SCHEMA.get_utf8(&row, NAME).to_string();
 	let variants_json = SCHEMA.get_utf8(&row, VARIANTS_JSON);
-	let variants: Vec<VariantDef> = serde_json::from_str(variants_json).unwrap_or_else(|e| {
+	let variants: Vec<VariantDef> = from_str(variants_json).unwrap_or_else(|e| {
 		warn!("Failed to deserialize sumtype variants for {:?}: {}", id, e);
 		vec![]
 	});

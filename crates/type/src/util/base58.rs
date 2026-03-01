@@ -3,6 +3,7 @@
 
 //! Simple base58 encoding/decoding implementation
 
+use std::{error, fmt};
 const BASE58_CHARS: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 /// Encode bytes to base58 string
@@ -85,8 +86,8 @@ pub enum DecodeError {
 	InvalidCharacter(char),
 }
 
-impl std::fmt::Display for DecodeError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for DecodeError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			DecodeError::InvalidCharacter(ch) => {
 				write!(f, "Invalid base58 character: '{}'", ch)
@@ -95,7 +96,7 @@ impl std::fmt::Display for DecodeError {
 	}
 }
 
-impl std::error::Error for DecodeError {}
+impl error::Error for DecodeError {}
 
 #[cfg(test)]
 pub mod tests {

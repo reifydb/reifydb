@@ -3,7 +3,7 @@
 
 //! CDC error types and diagnostics.
 
-use std::fmt::Display;
+use std::{error::Error as StdError, fmt, fmt::Display};
 
 use reifydb_core::common::CommitVersion;
 use reifydb_type::{error, error::Error};
@@ -20,7 +20,7 @@ pub enum CdcError {
 }
 
 impl Display for CdcError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			CdcError::Internal(msg) => write!(f, "CDC storage internal error: {}", msg),
 			CdcError::NotFound(version) => write!(f, "CDC entry not found: {:?}", version),
@@ -29,7 +29,7 @@ impl Display for CdcError {
 	}
 }
 
-impl std::error::Error for CdcError {}
+impl StdError for CdcError {}
 
 impl From<CdcError> for Error {
 	fn from(err: CdcError) -> Self {
@@ -46,6 +46,7 @@ pub type CdcResult<T> = Result<T, CdcError>;
 
 /// CDC-specific diagnostics.
 pub mod diagnostic {
+
 	use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
 	/// CDC storage operation failed

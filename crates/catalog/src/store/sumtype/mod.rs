@@ -9,6 +9,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::value::sumtype::SumTypeId;
+use serde_json::from_str;
 use tracing::warn;
 
 use self::schema::sumtype;
@@ -25,7 +26,7 @@ pub(crate) fn sumtype_def_from_row(row: &EncodedValues) -> SumTypeDef {
 	let namespace = NamespaceId(sumtype::SCHEMA.get_u64(row, sumtype::NAMESPACE));
 	let name = sumtype::SCHEMA.get_utf8(row, sumtype::NAME).to_string();
 	let variants_json = sumtype::SCHEMA.get_utf8(row, sumtype::VARIANTS_JSON);
-	let variants: Vec<VariantDef> = serde_json::from_str(variants_json).unwrap_or_else(|e| {
+	let variants: Vec<VariantDef> = from_str(variants_json).unwrap_or_else(|e| {
 		warn!("Failed to deserialize sumtype variants for {:?}: {}", id, e);
 		vec![]
 	});

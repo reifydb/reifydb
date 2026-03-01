@@ -9,6 +9,7 @@ use std::{
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
+	result::Result as StdResult,
 };
 
 use reifydb_abi::{
@@ -24,7 +25,7 @@ use reifydb_core::{
 use reifydb_engine::vm::executor::Executor;
 use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
 use reifydb_type::{Result, value::row_number::RowNumber};
-use tracing::{Span, error, instrument};
+use tracing::{Span, error, field, instrument};
 
 use crate::{
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
@@ -127,7 +128,7 @@ fn call_vtable(
 /// Unmarshal FFI output to Change
 #[inline]
 #[instrument(name = "flow::ffi::unmarshal", level = "trace", skip_all)]
-fn unmarshal_output(arena: &mut Arena, ffi_output: &ChangeFFI) -> std::result::Result<Change, String> {
+fn unmarshal_output(arena: &mut Arena, ffi_output: &ChangeFFI) -> StdResult<Change, String> {
 	arena.unmarshal_change(ffi_output)
 }
 
@@ -139,7 +140,7 @@ impl Operator for FFIOperator {
 	#[instrument(name = "flow::ffi::apply", level = "debug", skip_all, fields(
 		operator_id = self.operator_id.0,
 		input_diff_count = change.diffs.len(),
-		output_diff_count = tracing::field::Empty
+		output_diff_count = field::Empty
 	))]
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut arena = self.arena.borrow_mut();

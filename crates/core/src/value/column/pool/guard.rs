@@ -8,6 +8,7 @@
 //! pattern for memory pool management.
 
 use std::{
+	fmt,
 	fmt::{Debug, Formatter},
 	ops::{Deref, DerefMut},
 	rc::{Rc, Weak},
@@ -16,7 +17,7 @@ use std::{
 use reifydb_type::value::{
 	container::{
 		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, row::RowNumberContainer,
-		temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer, *,
+		temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 	},
 	date::Date,
 	datetime::DateTime,
@@ -176,7 +177,7 @@ pub struct PooledGuard<T: Releasable> {
 }
 
 impl<T: Releasable> Debug for PooledGuard<T> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		Debug::fmt(&self.container, f)
 	}
 }

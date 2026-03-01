@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	fmt,
+	error, fmt,
 	panic::{AssertUnwindSafe, catch_unwind},
 };
 
@@ -24,7 +24,7 @@ impl<E: fmt::Display> fmt::Display for RetryError<E> {
 	}
 }
 
-impl<E: fmt::Display + fmt::Debug> std::error::Error for RetryError<E> {}
+impl<E: fmt::Display + fmt::Debug> error::Error for RetryError<E> {}
 
 impl<E> From<E> for RetryError<E> {
 	fn from(err: E) -> Self {

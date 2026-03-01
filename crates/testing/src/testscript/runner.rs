@@ -9,7 +9,13 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{env::temp_dir, error::Error, io::Write as _};
+use std::{env::temp_dir, error::Error, fs, io, io::Write as _, panic, path, process, time};
+
+use fs::read_to_string;
+use io::ErrorKind;
+use panic::AssertUnwindSafe;
+use path::Path;
+use time::SystemTime;
 
 use crate::{
 	goldenfile::Mint,
@@ -79,20 +85,20 @@ pub trait Runner {
 /// IO, parser, or runner failure. If the environment variable
 /// `UPDATE_TESTFILES=1` is set, the new output file will replace the input
 /// file.
-pub fn run_path<R: Runner, P: AsRef<std::path::Path>>(runner: &mut R, path: P) -> std::io::Result<()> {
+pub fn run_path<R: Runner, P: AsRef<Path>>(runner: &mut R, path: P) -> io::Result<()> {
 	let path = path.as_ref();
 	let Some(dir) = path.parent() else {
-		return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("invalid path '{path:?}'")));
+		return Err(io::Error::new(ErrorKind::InvalidInput, format!("invalid path '{path:?}'")));
 	};
 	let Some(filename) = path.file_name() else {
-		return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("invalid path '{path:?}'")));
+		return Err(io::Error::new(ErrorKind::InvalidInput, format!("invalid path '{path:?}'")));
 	};
 
 	if filename.to_str().unwrap().ends_with(".skip") {
 		return Ok(());
 	}
 
-	let input = std::fs::read_to_string(dir.join(filename))?;
+	let input = read_to_string(dir.join(filename))?;
 	let output = generate(runner, &input)?;
 
 	Mint::new(dir).new_goldenfile(filename)?.write_all(output.as_bytes())
@@ -102,18 +108,18 @@ pub fn run<R: Runner, S: Into<String>>(runner: R, test: S) {
 	try_run(runner, test).unwrap();
 }
 
-pub fn try_run<R: Runner, S: Into<String>>(mut runner: R, test: S) -> std::io::Result<()> {
+pub fn try_run<R: Runner, S: Into<String>>(mut runner: R, test: S) -> io::Result<()> {
 	let input = test.into();
 
 	let dir = temp_dir();
 	let file_name = format!(
 		"test-{}-{}.txt",
-		std::process::id(),
-		std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+		process::id(),
+		SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_nanos()
 	);
 	let file_path = dir.join(&file_name);
 
-	let mut file = std::fs::File::create(&file_path)?;
+	let mut file = fs::File::create(&file_path)?;
 	file.write_all(input.as_bytes())?;
 
 	let output = generate(&mut runner, &input)?;
@@ -121,7 +127,7 @@ pub fn try_run<R: Runner, S: Into<String>>(mut runner: R, test: S) -> std::io::R
 }
 
 /// Generates output for a testscript input, without comparing them.
-pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<String> {
+pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
 	let mut output = String::with_capacity(input.len()); // common case: output == input
 
 	// Detect end-of-line format.
@@ -132,8 +138,8 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 
 	// Parse the script.
 	let blocks = parse(input).map_err(|e| {
-		std::io::Error::new(
-			std::io::ErrorKind::InvalidInput,
+		io::Error::new(
+			ErrorKind::InvalidInput,
 			format!(
 				"parse error at line {} column {} for {:?}:\n{}\n{}^",
 				e.input.location_line(),
@@ -146,8 +152,7 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 	})?;
 
 	// Call the start_script() hook.
-	runner.start_script()
-		.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("start_script failed: {e}")))?;
+	runner.start_script().map_err(|e| io::Error::new(ErrorKind::Other, format!("start_script failed: {e}")))?;
 
 	for (i, block) in blocks.iter().enumerate() {
 		// There may be a trailing block with no commands if the script
@@ -164,8 +169,8 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 		// Call the start_block() hook.
 		block_output.push_str(&ensure_eol(
 			runner.start_block().map_err(|e| {
-				std::io::Error::new(
-					std::io::ErrorKind::Other,
+				io::Error::new(
+					ErrorKind::Other,
 					format!("start_block failed at line {}: {e}", block.line_number),
 				)
 			})?,
@@ -178,8 +183,8 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 			// Call the start_command() hook.
 			command_output.push_str(&ensure_eol(
 				runner.start_command(command).map_err(|e| {
-					std::io::Error::new(
-						std::io::ErrorKind::Other,
+					io::Error::new(
+						ErrorKind::Other,
 						format!("start_command failed at line {}: {e}", command.line_number),
 					)
 				})?,
@@ -190,12 +195,12 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 			// requested. We assume the command is unwind-safe
 			// when handling panics, it is up to callers to
 			// manage this appropriately.
-			let run = std::panic::AssertUnwindSafe(|| runner.run(command));
-			command_output.push_str(&match std::panic::catch_unwind(run) {
+			let run = AssertUnwindSafe(|| runner.run(command));
+			command_output.push_str(&match panic::catch_unwind(run) {
 				// Unexpected success, error out.
 				Ok(Ok(output)) if command.fail => {
-					return Err(std::io::Error::new(
-						std::io::ErrorKind::Other,
+					return Err(io::Error::new(
+						ErrorKind::Other,
 						format!(
 							"expected command '{}' to fail at line {}, succeeded with: {output}",
 							command.name, command.line_number
@@ -213,8 +218,8 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 
 				// Unexpected error, return it.
 				Ok(Err(e)) => {
-					return Err(std::io::Error::new(
-						std::io::ErrorKind::Other,
+					return Err(io::Error::new(
+						ErrorKind::Other,
 						format!(
 							"command '{}' failed at line {}: {e}",
 							command.name, command.line_number
@@ -228,12 +233,12 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 						.downcast_ref::<&str>()
 						.map(|s| s.to_string())
 						.or_else(|| panic.downcast_ref::<String>().cloned())
-						.unwrap_or_else(|| std::panic::resume_unwind(panic));
+						.unwrap_or_else(|| panic::resume_unwind(panic));
 					format!("Panic: {message}")
 				}
 
 				// Unexpected panic, throw it.
-				Err(panic) => std::panic::resume_unwind(panic),
+				Err(panic) => panic::resume_unwind(panic),
 			});
 
 			// Make sure the command output has a trailing newline,
@@ -243,8 +248,8 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 			// Call the end_command() hook.
 			command_output.push_str(&ensure_eol(
 				runner.end_command(command).map_err(|e| {
-					std::io::Error::new(
-						std::io::ErrorKind::Other,
+					io::Error::new(
+						ErrorKind::Other,
 						format!("end_command failed at line {}: {e}", command.line_number),
 					)
 				})?,
@@ -275,8 +280,8 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 		// Call the end_block() hook.
 		block_output.push_str(&ensure_eol(
 			runner.end_block().map_err(|e| {
-				std::io::Error::new(
-					std::io::ErrorKind::Other,
+				io::Error::new(
+					ErrorKind::Other,
 					format!("end_block failed at line {}: {e}", block.line_number),
 				)
 			})?,
@@ -317,8 +322,7 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 	}
 
 	// Call the end_script() hook.
-	runner.end_script()
-		.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("end_script failed: {e}")))?;
+	runner.end_script().map_err(|e| io::Error::new(ErrorKind::Other, format!("end_script failed: {e}")))?;
 
 	Ok(output)
 }

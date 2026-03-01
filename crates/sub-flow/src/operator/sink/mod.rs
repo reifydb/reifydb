@@ -6,6 +6,7 @@ pub mod view;
 
 use std::sync::LazyLock;
 
+use postcard::from_bytes;
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, schema::Schema},
 	interface::{
@@ -241,8 +242,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 					DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128() as u64).encode();
 				match txn.get(&index_key)? {
 					Some(encoded) => {
-						let value: Value =
-							postcard::from_bytes(&encoded).unwrap_or(Value::none());
+						let value: Value = from_bytes(&encoded).unwrap_or(Value::none());
 						new_data.push_value(value);
 					}
 					None => {

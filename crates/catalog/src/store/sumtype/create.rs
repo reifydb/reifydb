@@ -10,6 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::fragment::Fragment;
+use serde_json::to_string;
 
 use super::schema::{sumtype as sumtype_schema, sumtype_namespace};
 use crate::{
@@ -50,8 +51,7 @@ impl CatalogStore {
 
 		let sumtype_id = SystemSequence::next_sumtype_id(txn)?;
 
-		let variants_json =
-			serde_json::to_string(&to_create.def.variants).expect("failed to serialize variants");
+		let variants_json = to_string(&to_create.def.variants).expect("failed to serialize variants");
 
 		let mut row = sumtype_schema::SCHEMA.allocate();
 		sumtype_schema::SCHEMA.set_u64(&mut row, sumtype_schema::ID, sumtype_id);

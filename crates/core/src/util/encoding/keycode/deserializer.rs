@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use num_bigint::Sign;
+use num_bigint::{BigInt, Sign};
 use reifydb_type::{
 	Result,
 	error::{Error, TypeError},
@@ -22,6 +22,7 @@ use reifydb_type::{
 		uuid::{Uuid4, Uuid7},
 	},
 };
+use uuid::Uuid;
 
 use super::{catalog, deserialize};
 use crate::interface::catalog::{id::IndexId, primitive::PrimitiveId};
@@ -238,7 +239,7 @@ impl<'a> KeyDeserializer<'a> {
 
 	pub fn read_identity_id(&mut self) -> Result<IdentityId> {
 		let bytes = self.read_bytes()?;
-		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
+		let uuid = Uuid::from_slice(&bytes).map_err(|e| {
 			Error::from(TypeError::SerdeKeycode {
 				message: format!("invalid IdentityId at position {}: {}", self.position, e),
 			})
@@ -248,7 +249,7 @@ impl<'a> KeyDeserializer<'a> {
 
 	pub fn read_uuid4(&mut self) -> Result<Uuid4> {
 		let bytes = self.read_bytes()?;
-		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
+		let uuid = Uuid::from_slice(&bytes).map_err(|e| {
 			Error::from(TypeError::SerdeKeycode {
 				message: format!("invalid Uuid4 at position {}: {}", self.position, e),
 			})
@@ -258,7 +259,7 @@ impl<'a> KeyDeserializer<'a> {
 
 	pub fn read_uuid7(&mut self) -> Result<Uuid7> {
 		let bytes = self.read_bytes()?;
-		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
+		let uuid = Uuid::from_slice(&bytes).map_err(|e| {
 			Error::from(TypeError::SerdeKeycode {
 				message: format!("invalid Uuid7 at position {}: {}", self.position, e),
 			})
@@ -281,13 +282,13 @@ impl<'a> KeyDeserializer<'a> {
 			_ => Sign::Plus,
 		};
 
-		Ok(Int(num_bigint::BigInt::from_bytes_be(sign, bytes)))
+		Ok(Int(BigInt::from_bytes_be(sign, bytes)))
 	}
 
 	pub fn read_uint(&mut self) -> Result<Uint> {
 		let len = self.read_u32()? as usize;
 		let bytes = self.read_exact(len)?;
-		Ok(Uint(num_bigint::BigInt::from_bytes_be(Sign::Plus, bytes)))
+		Ok(Uint(BigInt::from_bytes_be(Sign::Plus, bytes)))
 	}
 
 	pub fn read_decimal(&mut self) -> Result<Decimal> {

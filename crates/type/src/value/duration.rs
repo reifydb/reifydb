@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::{
+	cmp,
+	fmt::{self, Display, Formatter},
+	ops,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -170,19 +174,19 @@ impl Duration {
 }
 
 impl PartialOrd for Duration {
-	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+	fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
 		Some(self.cmp(other))
 	}
 }
 
 impl Ord for Duration {
-	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+	fn cmp(&self, other: &Self) -> cmp::Ordering {
 		// Compare months first
 		match self.months.cmp(&other.months) {
-			std::cmp::Ordering::Equal => {
+			cmp::Ordering::Equal => {
 				// Then days
 				match self.days.cmp(&other.days) {
-					std::cmp::Ordering::Equal => {
+					cmp::Ordering::Equal => {
 						// Finally nanos
 						self.nanos.cmp(&other.nanos)
 					}
@@ -194,7 +198,7 @@ impl Ord for Duration {
 	}
 }
 
-impl std::ops::Add for Duration {
+impl ops::Add for Duration {
 	type Output = Self;
 	fn add(self, rhs: Self) -> Self {
 		Self {
@@ -205,7 +209,7 @@ impl std::ops::Add for Duration {
 	}
 }
 
-impl std::ops::Sub for Duration {
+impl ops::Sub for Duration {
 	type Output = Self;
 	fn sub(self, rhs: Self) -> Self {
 		Self {
@@ -216,7 +220,7 @@ impl std::ops::Sub for Duration {
 	}
 }
 
-impl std::ops::Mul<i64> for Duration {
+impl ops::Mul<i64> for Duration {
 	type Output = Self;
 	fn mul(self, rhs: i64) -> Self {
 		Self {
@@ -228,7 +232,7 @@ impl std::ops::Mul<i64> for Duration {
 }
 
 impl Display for Duration {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		// ISO 8601 duration format: P[n]Y[n]M[n]DT[n]H[n]M[n.n]S
 		if self.months == 0 && self.days == 0 && self.nanos == 0 {
 			return write!(f, "PT0S");

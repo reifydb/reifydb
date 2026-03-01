@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::fmt;
+
 use reifydb_type::value::{
 	container::{
 		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, row::RowNumberContainer,
@@ -8,7 +10,6 @@ use reifydb_type::value::{
 	},
 	is::{IsNumber, IsTemporal, IsUuid},
 };
-
 /// Trait for containers that can be created with a specific capacity
 pub trait ContainerCapacity {
 	fn with_capacity(capacity: usize) -> Self;
@@ -35,7 +36,7 @@ impl ContainerCapacity for BoolContainer {
 
 impl<T> ContainerCapacity for NumberContainer<T>
 where
-	T: IsNumber + Clone + std::fmt::Debug + Default,
+	T: IsNumber + Clone + fmt::Debug + Default,
 {
 	fn with_capacity(capacity: usize) -> Self {
 		Self::with_capacity(capacity)
@@ -70,7 +71,7 @@ impl ContainerCapacity for Utf8Container {
 
 impl<T> ContainerCapacity for TemporalContainer<T>
 where
-	T: IsTemporal + Clone + std::fmt::Debug + Default,
+	T: IsTemporal + Clone + fmt::Debug + Default,
 {
 	fn with_capacity(capacity: usize) -> Self {
 		Self::with_capacity(capacity)
@@ -89,7 +90,7 @@ where
 
 impl<T> ContainerCapacity for UuidContainer<T>
 where
-	T: IsUuid + Clone + std::fmt::Debug + Default,
+	T: IsUuid + Clone + fmt::Debug + Default,
 {
 	fn with_capacity(capacity: usize) -> Self {
 		Self::with_capacity(capacity)

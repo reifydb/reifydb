@@ -3,7 +3,7 @@
 
 //! WASM procedure loader — scans a directory for `.wasm` files and builds a procedure registry
 
-use std::path::Path;
+use std::{fs, path::Path};
 
 use reifydb_sdk::error::FFIError;
 use reifydb_type::Result;
@@ -24,7 +24,7 @@ pub fn load_wasm_procedures_from_dir(dir: &Path) -> Result<Procedures> {
 /// Scan a directory for `.wasm` files and register each as a `WasmProcedure` into the given
 /// `ProceduresBuilder`, returning the updated builder.
 pub fn register_wasm_procedures_from_dir(dir: &Path, mut builder: ProceduresBuilder) -> Result<ProceduresBuilder> {
-	let entries = std::fs::read_dir(dir).map_err(|e| {
+	let entries = fs::read_dir(dir).map_err(|e| {
 		FFIError::Other(format!("Failed to read WASM procedure directory {}: {}", dir.display(), e))
 	})?;
 
@@ -41,7 +41,7 @@ pub fn register_wasm_procedures_from_dir(dir: &Path, mut builder: ProceduresBuil
 			None => continue,
 		};
 
-		let wasm_bytes = std::fs::read(&path)
+		let wasm_bytes = fs::read(&path)
 			.map_err(|e| FFIError::Other(format!("Failed to read WASM file {}: {}", path.display(), e)))?;
 
 		let name_for_closure = name.clone();

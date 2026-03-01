@@ -19,7 +19,7 @@ pub mod module;
 pub mod parse;
 pub mod util;
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc, sync::Arc};
 
 use compile::compiler::{CompilationError, Compiler};
 use config::WasmConfig;
@@ -46,8 +46,8 @@ pub enum EnvironmentError {
 	Trapped(Trap),
 }
 
-impl std::fmt::Display for EnvironmentError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for EnvironmentError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			EnvironmentError::LoadError(e) => write!(f, "{}", e),
 			EnvironmentError::Trapped(e) => write!(f, "{}", e),
@@ -82,8 +82,8 @@ pub enum LoadError {
 	Unlinkable(String),
 }
 
-impl std::fmt::Display for LoadError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LoadError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			LoadError::CompilationFailed(e) => write!(f, "{}", e),
 			LoadError::NotFound(e) => write!(f, "{}", e),

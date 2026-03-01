@@ -6,7 +6,7 @@ pub mod create;
 pub mod drop;
 pub mod mutate;
 
-use std::iter::once;
+use std::{collections, fmt, iter::once, marker, time};
 
 use reifydb_catalog::catalog::{
 	Catalog, subscription::SubscriptionColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
@@ -206,7 +206,7 @@ pub struct AlterTableNode<'bump> {
 	pub namespace: ResolvedNamespace,
 	pub table: Fragment,
 	pub action: AlterTableAction,
-	pub _phantom: std::marker::PhantomData<&'bump ()>,
+	pub _phantom: marker::PhantomData<&'bump ()>,
 }
 
 #[derive(Debug)]
@@ -290,8 +290,8 @@ pub enum LetValue<'bump> {
 	EmptyFrame,
 }
 
-impl std::fmt::Display for LetValue<'_> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LetValue<'_> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
 			LetValue::Statement(plan) => write!(f, "Statement({:?})", plan),
@@ -312,8 +312,8 @@ pub enum AssignValue<'bump> {
 	Statement(BumpBox<'bump, PhysicalPlan<'bump>>),
 }
 
-impl std::fmt::Display for AssignValue<'_> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for AssignValue<'_> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			AssignValue::Expression(expr) => write!(f, "{}", expr),
 			AssignValue::Statement(plan) => write!(f, "Statement({:?})", plan),
@@ -500,7 +500,7 @@ pub struct WindowNode<'bump> {
 	pub aggregations: Vec<Expression>,
 	pub min_events: usize,
 	pub max_window_count: Option<usize>,
-	pub max_window_age: Option<std::time::Duration>,
+	pub max_window_age: Option<time::Duration>,
 }
 
 #[derive(Debug)]
@@ -708,7 +708,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::CreateAuthentication(node) => {
 					// Extract method and config from entries
 					let mut method_str = String::new();
-					let mut config = std::collections::HashMap::new();
+					let mut config = collections::HashMap::new();
 					for entry in &node.entries {
 						let key = entry.key.text().to_string();
 						let value = entry.value.value().to_string();
@@ -1851,10 +1851,9 @@ impl<'bump> Compiler<'bump> {
 							logical::AppendSourcePlan::Statement(logical_plans) => {
 								let mut physical_plans = Vec::new();
 								for logical_plan in logical_plans {
-									if let Some(physical_plan) = self.compile(
-										rx,
-										std::iter::once(logical_plan),
-									)? {
+									if let Some(physical_plan) =
+										self.compile(rx, once(logical_plan))?
+									{
 										physical_plans.push(physical_plan);
 									}
 								}

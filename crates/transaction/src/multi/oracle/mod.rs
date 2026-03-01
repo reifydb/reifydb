@@ -10,7 +10,7 @@ use cleanup::cleanup_old_windows;
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
 use reifydb_runtime::{actor::system::ActorSystem, clock::Clock, sync::rwlock::RwLock};
 use reifydb_type::Result;
-use tracing::{Span, instrument};
+use tracing::{Span, field, instrument};
 
 use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvider, watermark::watermark::WaterMark};
 
@@ -151,19 +151,19 @@ where
 	/// Efficient conflict detection using time windows and key indexing
 	#[instrument(name = "transaction::oracle::new_commit", level = "debug", skip(self, done_read, conflicts), fields(
 		%version,
-		read_keys = tracing::field::Empty,
-		write_keys = tracing::field::Empty,
-		relevant_windows = tracing::field::Empty,
-		windows_checked = tracing::field::Empty,
-		txns_checked = tracing::field::Empty,
-		inner_read_lock_us = tracing::field::Empty,
-		find_windows_us = tracing::field::Empty,
-		conflict_check_us = tracing::field::Empty,
-		clock_next_us = tracing::field::Empty,
-		inner_write_lock_us = tracing::field::Empty,
-		add_txn_us = tracing::field::Empty,
-		cleanup_us = tracing::field::Empty,
-		has_conflict = tracing::field::Empty
+		read_keys = field::Empty,
+		write_keys = field::Empty,
+		relevant_windows = field::Empty,
+		windows_checked = field::Empty,
+		txns_checked = field::Empty,
+		inner_read_lock_us = field::Empty,
+		find_windows_us = field::Empty,
+		conflict_check_us = field::Empty,
+		clock_next_us = field::Empty,
+		inner_write_lock_us = field::Empty,
+		add_txn_us = field::Empty,
+		cleanup_us = field::Empty,
+		has_conflict = field::Empty
 	))]
 	pub(crate) fn new_commit(
 		&self,
@@ -415,6 +415,7 @@ pub mod tests {
 			Arc, Barrier,
 			atomic::{AtomicU64, Ordering},
 		},
+		thread,
 		thread::sleep,
 		time::Duration,
 	};
@@ -868,7 +869,7 @@ pub mod tests {
 				// Use unique keys per iteration to avoid conflicts
 				let key = create_test_key(&format!("key_{}_{}", iteration, i));
 
-				let handle = std::thread::spawn(move || {
+				let handle = thread::spawn(move || {
 					let mut conflicts = ConflictManager::new();
 					conflicts.mark_write(&key);
 
@@ -940,7 +941,7 @@ pub mod tests {
 			let barrier_clone = barrier.clone();
 			let key = create_test_key(&format!("order_key_{}", i));
 
-			let handle = std::thread::spawn(move || {
+			let handle = thread::spawn(move || {
 				// Wait for all tasks to be ready
 				barrier_clone.wait();
 

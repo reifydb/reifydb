@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 
 use Leb128Error::IncompleteEncoding;
 
@@ -15,7 +15,7 @@ pub enum Leb128Error {
 }
 
 impl Display for Leb128Error {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			Leb128Error::InvalidEncoding => write!(f, "Invalid leb128 encoding"),
 			IncompleteEncoding => write!(f, "Incomplete leb128 encoding"),

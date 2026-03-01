@@ -5,7 +5,10 @@ use reifydb_type::{
 	Result,
 	error::{Error, TypeError},
 };
-use serde::de::{DeserializeSeed, EnumAccess, IntoDeserializer, SeqAccess, VariantAccess, Visitor};
+use serde::de::{
+	DeserializeSeed, Deserializer as SerdeDeserializer, EnumAccess, IntoDeserializer, SeqAccess, VariantAccess,
+	Visitor,
+};
 
 pub(crate) struct Deserializer<'de> {
 	pub(crate) input: &'de [u8],
@@ -56,7 +59,7 @@ impl<'de> Deserializer<'de> {
 	}
 }
 
-impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
+impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
 	type Error = Error;
 
 	fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value> {

@@ -135,7 +135,7 @@ impl VersionProvider for StandardVersionProvider {
 
 #[cfg(test)]
 pub mod tests {
-	use std::sync::Arc;
+	use std::{sync::Arc, thread};
 
 	use super::*;
 
@@ -212,7 +212,7 @@ pub mod tests {
 		// Spawn multiple tasks to request versions concurrently
 		for _ in 0..10 {
 			let provider_clone = Arc::clone(&provider);
-			let handle = std::thread::spawn(move || {
+			let handle = thread::spawn(move || {
 				let mut versions = vec![];
 				for _ in 0..100 {
 					versions.push(provider_clone.next().unwrap());

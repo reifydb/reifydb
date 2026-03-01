@@ -3,6 +3,7 @@
 
 use std::{
 	hash::Hash,
+	mem,
 	sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -49,7 +50,7 @@ impl<K: Hash + Eq + Clone, V: Clone> LruCache<K, V> {
 
 		// Check if key already exists
 		if let Some(mut entry) = self.map.get_mut(&key) {
-			let old_value = std::mem::replace(&mut entry.value, value);
+			let old_value = mem::replace(&mut entry.value, value);
 			entry.last_access = access;
 			return Some(old_value);
 		}

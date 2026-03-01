@@ -6,7 +6,7 @@
 //! Provides read-only access to the catalog system (namespaces, tables)
 //! with version-based queries for time-travel support.
 
-use std::{slice::from_raw_parts, str::from_utf8};
+use std::{mem, ptr, slice::from_raw_parts, str::from_utf8};
 
 use reifydb_abi::{
 	catalog::{column::ColumnDefFFI, namespace::NamespaceFFI, primary_key::PrimaryKeyFFI, table::TableFFI},
@@ -226,7 +226,7 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 				}
 			}
 			// Free columns array itself
-			host_free(tbl.columns as *mut u8, tbl.column_count * std::mem::size_of::<ColumnDefFFI>());
+			host_free(tbl.columns as *mut u8, tbl.column_count * mem::size_of::<ColumnDefFFI>());
 		}
 
 		// Free primary key
@@ -234,10 +234,10 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 			let pk = &*tbl.primary_key;
 			// Free column IDs array
 			if !pk.column_ids.is_null() && pk.column_count > 0 {
-				host_free(pk.column_ids as *mut u8, pk.column_count * std::mem::size_of::<u64>());
+				host_free(pk.column_ids as *mut u8, pk.column_count * mem::size_of::<u64>());
 			}
 			// Free primary key struct itself
-			host_free(tbl.primary_key as *mut u8, std::mem::size_of::<PrimaryKeyFFI>());
+			host_free(tbl.primary_key as *mut u8, mem::size_of::<PrimaryKeyFFI>());
 		}
 	}
 }
@@ -249,7 +249,7 @@ fn marshal_namespace(namespace: &NamespaceDef) -> NamespaceFFI {
 	let name_ptr = host_alloc(name_bytes.len());
 	if !name_ptr.is_null() {
 		unsafe {
-			std::ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
+			ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 		}
 	}
 
@@ -273,13 +273,13 @@ fn marshal_table(table: &TableDef) -> Result<TableFFI, &'static str> {
 		return Err("Failed to allocate table name");
 	}
 	unsafe {
-		std::ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
+		ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 	}
 
 	// Allocate columns array
 	let columns_count = table.columns.len();
 	let columns_ptr = if columns_count > 0 {
-		let size = columns_count * std::mem::size_of::<ColumnDefFFI>();
+		let size = columns_count * mem::size_of::<ColumnDefFFI>();
 		let ptr = host_alloc(size) as *mut ColumnDefFFI;
 		if ptr.is_null() {
 			// Clean up name before returning error
@@ -296,17 +296,17 @@ fn marshal_table(table: &TableDef) -> Result<TableFFI, &'static str> {
 
 		ptr
 	} else {
-		std::ptr::null_mut()
+		ptr::null_mut()
 	};
 
 	// Marshal primary key if present
 	let (has_pk, pk_ptr) = if let Some(pk) = &table.primary_key {
-		let pk_ptr = host_alloc(std::mem::size_of::<PrimaryKeyFFI>()) as *mut PrimaryKeyFFI;
+		let pk_ptr = host_alloc(mem::size_of::<PrimaryKeyFFI>()) as *mut PrimaryKeyFFI;
 		if pk_ptr.is_null() {
 			// Clean up before returning error
 			host_free(name_ptr, name_bytes.len());
 			if !columns_ptr.is_null() {
-				host_free(columns_ptr as *mut u8, columns_count * std::mem::size_of::<ColumnDefFFI>());
+				host_free(columns_ptr as *mut u8, columns_count * mem::size_of::<ColumnDefFFI>());
 			}
 			return Err("Failed to allocate primary key");
 		}
@@ -317,7 +317,7 @@ fn marshal_table(table: &TableDef) -> Result<TableFFI, &'static str> {
 
 		(1, pk_ptr)
 	} else {
-		(0, std::ptr::null_mut())
+		(0, ptr::null_mut())
 	};
 
 	Ok(TableFFI {
@@ -344,7 +344,7 @@ fn marshal_column(column: &ColumnDef) -> Result<ColumnDefFFI, &'static str> {
 		return Err("Failed to allocate column name");
 	}
 	unsafe {
-		std::ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
+		ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 	}
 
 	// Encode type constraint
@@ -375,7 +375,7 @@ fn marshal_primary_key(pk: &PrimaryKeyDef) -> Result<PrimaryKeyFFI, &'static str
 	// Allocate column IDs array
 	let column_count = pk.columns.len();
 	let column_ids_ptr = if column_count > 0 {
-		let size = column_count * std::mem::size_of::<u64>();
+		let size = column_count * mem::size_of::<u64>();
 		let ptr = host_alloc(size) as *mut u64;
 		if ptr.is_null() {
 			return Err("Failed to allocate primary key column IDs");
@@ -390,7 +390,7 @@ fn marshal_primary_key(pk: &PrimaryKeyDef) -> Result<PrimaryKeyFFI, &'static str
 
 		ptr
 	} else {
-		std::ptr::null_mut()
+		ptr::null_mut()
 	};
 
 	Ok(PrimaryKeyFFI {

@@ -9,6 +9,7 @@
 use core::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
+use xxhash_rust::xxh3;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -59,13 +60,13 @@ impl Hash for Hash128 {
 /// Compute xxHash3 64-bit hash of data.
 #[inline]
 pub fn xxh3_64(data: &[u8]) -> Hash64 {
-	Hash64(xxhash_rust::xxh3::xxh3_64(data))
+	Hash64(xxh3::xxh3_64(data))
 }
 
 /// Compute xxHash3 128-bit hash of data.
 #[inline]
 pub fn xxh3_128(data: &[u8]) -> Hash128 {
-	Hash128(xxhash_rust::xxh3::xxh3_128(data))
+	Hash128(xxh3::xxh3_128(data))
 }
 
 #[cfg(test)]

@@ -35,7 +35,7 @@ use reifydb_runtime::{SharedRuntime, actor::system::ActorHandle};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::Transaction};
 use reifydb_type::Result;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
 	builder::FlowBuilderConfig,
@@ -87,7 +87,7 @@ impl CdcConsume for FlowConsumeDispatcher {
 								}
 								Err(e) => {
 									self.flow_catalog.remove(flow_id);
-									tracing::warn!(
+									warn!(
 										flow_id = flow_id.0,
 										error = %e,
 										"failed to register transactional flow"
@@ -99,7 +99,7 @@ impl CdcConsume for FlowConsumeDispatcher {
 							// Already cached — nothing to do.
 						}
 						Err(e) => {
-							tracing::warn!(
+							warn!(
 								flow_id = flow_id.0,
 								error = %e,
 								"failed to load flow for transactional check"

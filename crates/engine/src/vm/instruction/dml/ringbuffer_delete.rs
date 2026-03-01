@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{collections, sync::Arc};
 
 use reifydb_core::{
 	error::diagnostic::{
@@ -76,7 +76,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 	if let Some(input_plan) = plan.input {
 		// Delete specific rows based on input plan
 		// Collect row numbers to delete from the filter
-		let mut row_numbers_to_delete = std::collections::HashSet::new();
+		let mut row_numbers_to_delete = collections::HashSet::new();
 
 		{
 			let mut input_node = compile(

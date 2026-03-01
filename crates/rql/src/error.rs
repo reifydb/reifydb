@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	fmt,
+	error, fmt,
 	fmt::{Display, Formatter},
 };
 
@@ -28,7 +28,7 @@ pub enum OperationKind {
 }
 
 impl Display for OperationKind {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			OperationKind::Sort => f.write_str("SORT"),
 			OperationKind::Map => f.write_str("MAP"),
@@ -898,7 +898,7 @@ impl fmt::Display for IdentifierError {
 	}
 }
 
-impl std::error::Error for IdentifierError {}
+impl error::Error for IdentifierError {}
 
 impl From<IdentifierError> for Error {
 	fn from(err: IdentifierError) -> Self {

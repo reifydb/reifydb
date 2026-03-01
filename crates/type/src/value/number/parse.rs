@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::{any::TypeId, borrow::Cow, num::IntErrorKind, str::FromStr};
+use std::{any::TypeId, borrow::Cow, mem, num, num::IntErrorKind, ptr, str::FromStr};
 
 use crate::{
 	error::{Error, TypeError},
@@ -104,8 +104,8 @@ fn cast<T: 'static, U: 'static>(v: U) -> T {
 	// SAFETY: caller guarantees that T and U are the same type
 	assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
 	// Use ManuallyDrop to prevent double-free when T and U are non-Copy types
-	let v = std::mem::ManuallyDrop::new(v);
-	unsafe { std::ptr::read(&*v as *const U as *const T) }
+	let v = mem::ManuallyDrop::new(v);
+	unsafe { ptr::read(&*v as *const U as *const T) }
 }
 
 trait TypeInfo {
@@ -176,7 +176,7 @@ impl TypeInfo for f64 {
 #[inline]
 fn parse_signed_generic<'a, T>(fragment: Fragment) -> Result<T, Error>
 where
-	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
+	T: FromStr<Err = num::ParseIntError> + TypeInfo + 'static,
 {
 	// Fragment is already owned, no conversion needed
 	let raw_value = fragment.text();
@@ -276,7 +276,7 @@ where
 #[inline]
 fn parse_unsigned_generic<'a, T>(fragment: Fragment) -> Result<T, Error>
 where
-	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
+	T: FromStr<Err = num::ParseIntError> + TypeInfo + 'static,
 {
 	// Fragment is already owned, no conversion needed
 	let raw_value = fragment.text();
@@ -389,7 +389,7 @@ where
 #[inline]
 fn parse_float_generic<'a, T>(fragment: Fragment) -> Result<T, Error>
 where
-	T: FromStr<Err = std::num::ParseFloatError> + Copy + TypeInfo + PartialEq + 'static,
+	T: FromStr<Err = num::ParseFloatError> + Copy + TypeInfo + PartialEq + 'static,
 {
 	// Fragment is already owned, no conversion needed
 	let raw_value = fragment.text();

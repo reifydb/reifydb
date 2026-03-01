@@ -21,6 +21,7 @@ use reifydb_type::{
 		uuid::{Uuid4, Uuid7},
 	},
 };
+use uuid::Uuid;
 
 use crate::{
 	encoded::{encoded::EncodedValues, schema::Schema},
@@ -192,11 +193,11 @@ impl Columns {
 						BitVec::repeat(size, false),
 					),
 					Type::Uuid4 => ColumnData::uuid4_with_bitvec(
-						vec![Uuid4::from(uuid::Uuid::nil()); size],
+						vec![Uuid4::from(Uuid::nil()); size],
 						BitVec::repeat(size, false),
 					),
 					Type::Uuid7 => ColumnData::uuid7_with_bitvec(
-						vec![Uuid7::from(uuid::Uuid::nil()); size],
+						vec![Uuid7::from(Uuid::nil()); size],
 						BitVec::repeat(size, false),
 					),
 					Type::Blob => ColumnData::blob_with_bitvec(

@@ -43,6 +43,8 @@
 
 use std::{collections::VecDeque, marker::PhantomData};
 
+use crossbeam_channel::unbounded;
+
 #[cfg(reifydb_target = "native")]
 use crate::actor::mailbox::ActorRef;
 #[cfg(reifydb_target = "wasm")]
@@ -231,7 +233,7 @@ impl<M: Send + 'static> TestContext<M> {
 		// Create a dummy actor ref using platform-specific implementation
 		#[cfg(reifydb_target = "native")]
 		let actor_ref = {
-			let (tx, _rx) = crossbeam_channel::unbounded();
+			let (tx, _rx) = unbounded();
 			ActorRef::new(tx)
 		};
 

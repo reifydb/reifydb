@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
@@ -46,7 +46,7 @@ impl Precision {
 }
 
 impl Display for Precision {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		self.0.fmt(f)
 	}
 }

@@ -6,7 +6,9 @@
 
 use std::{
 	collections::HashMap,
+	fs,
 	path::{Path, PathBuf},
+	slice, str,
 	sync::{OnceLock, RwLock},
 };
 
@@ -34,8 +36,8 @@ unsafe fn buffer_to_string(buffer: &BufferFFI) -> String {
 	if buffer.ptr.is_null() || buffer.len == 0 {
 		return String::new();
 	}
-	let slice = unsafe { std::slice::from_raw_parts(buffer.ptr, buffer.len) };
-	std::str::from_utf8(slice).unwrap_or("<invalid UTF-8>").to_string()
+	let slice = unsafe { slice::from_raw_parts(buffer.ptr, buffer.len) };
+	str::from_utf8(slice).unwrap_or("<invalid UTF-8>").to_string()
 }
 
 /// Global singleton FFI procedure loader
@@ -230,7 +232,7 @@ pub fn register_procedures_from_dir(dir: &Path, mut builder: ProceduresBuilder) 
 
 	let mut names = Vec::new();
 
-	let entries = std::fs::read_dir(dir)
+	let entries = fs::read_dir(dir)
 		.map_err(|e| FFIError::Other(format!("Failed to read directory {}: {}", dir.display(), e)))?;
 
 	for entry in entries {

@@ -1,8 +1,9 @@
-use std::{cmp::Ordering, collections::BinaryHeap, sync::Arc, time::Instant};
+use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, io, sync::Arc, time::Instant};
 
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
-use tokio::sync::mpsc;
+use tokio::{select, sync::mpsc, time};
+use tracing::{debug, error, info};
 
 use crate::{
 	context::TaskContext,
@@ -53,7 +54,7 @@ pub async fn run_coordinator(
 	runtime: SharedRuntime,
 	engine: StandardEngine,
 ) {
-	tracing::info!("Task coordinator started");
+	info!("Task coordinator started");
 
 	// Create a channel for task completion notifications
 	let (completion_tx, mut completion_rx) = mpsc::unbounded_channel();
@@ -76,16 +77,16 @@ pub async fn run_coordinator(
 			if entry.next_execution > now {
 				entry.next_execution - now
 			} else {
-				std::time::Duration::ZERO
+				time::Duration::ZERO
 			}
 		});
 
-		tokio::select! {
+		select! {
 		    // Next task is due
 		    _ = async {
 			match sleep_duration {
-			    Some(duration) => tokio::time::sleep(duration).await,
-			    None => std::future::pending::<()>().await, // No tasks, wait forever
+			    Some(duration) => time::sleep(duration).await,
+			    None => future::pending::<()>().await, // No tasks, wait forever
 			}
 		    } => {
 			// Pop the task from the heap
@@ -105,7 +106,7 @@ pub async fn run_coordinator(
 				    completion_tx.clone(),
 				);
 
-				tracing::debug!("Spawned task: {}", task_name);
+				debug!("Spawned task: {}", task_name);
 			    }
 			}
 		    }
@@ -124,13 +125,13 @@ pub async fn run_coordinator(
 				    task_id,
 				});
 
-				tracing::debug!("Rescheduled task: {}", entry.task.name);
+				debug!("Rescheduled task: {}", entry.task.name);
 			    } else {
 				// One-shot task, remove from registry
 				let task_name = entry.task.name.clone();
 				drop(entry); // Release the lock
 				registry.remove(&task_id);
-				tracing::debug!("Completed one-shot task: {}", task_name);
+				debug!("Completed one-shot task: {}", task_name);
 			    }
 			}
 		    }
@@ -142,7 +143,7 @@ pub async fn run_coordinator(
 				let task_id = task.id;
 				let next_execution = Instant::now() + task.schedule.initial_delay();
 
-				tracing::info!("Registering task: {} (id: {})", task.name, task_id);
+				info!("Registering task: {} (id: {})", task.name, task_id);
 
 				// Add to registry
 				registry.insert(task_id, TaskEntry {
@@ -158,7 +159,7 @@ pub async fn run_coordinator(
 			    }
 
 			    CoordinatorMessage::Unregister(task_id) => {
-				tracing::info!("Unregistering task: {}", task_id);
+				info!("Unregistering task: {}", task_id);
 
 				// Remove from registry
 				registry.remove(&task_id);
@@ -174,7 +175,7 @@ pub async fn run_coordinator(
 			    }
 
 			    CoordinatorMessage::Shutdown => {
-				tracing::info!("Task coordinator shutting down");
+				info!("Task coordinator shutting down");
 				break;
 			    }
 			CoordinatorMessage::TaskCompleted{ .. } => {}}
@@ -182,13 +183,13 @@ pub async fn run_coordinator(
 
 		    else => {
 			// Channel closed, shutdown
-			tracing::info!("Coordinator channel closed, shutting down");
+			info!("Coordinator channel closed, shutting down");
 			break;
 		    }
 		}
 	}
 
-	tracing::info!("Task coordinator stopped");
+	info!("Task coordinator stopped");
 }
 
 /// Spawn a task execution
@@ -217,19 +218,18 @@ fn spawn_task(
 				runtime.actor_system()
 					.compute(move || f(ctx_clone))
 					.await
-					.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)
+					.map_err(|e| Box::new(e) as Box<dyn Error + Send>)
 					.and_then(|r| r)
 			}
 			(TaskWork::Async(f), TaskExecutor::Tokio) => f(ctx).await,
-			(TaskWork::Sync(_), TaskExecutor::Tokio) => Err(Box::new(std::io::Error::new(
-				std::io::ErrorKind::InvalidInput,
+			(TaskWork::Sync(_), TaskExecutor::Tokio) => Err(Box::new(io::Error::new(
+				io::ErrorKind::InvalidInput,
 				"Sync work cannot be executed on Tokio executor",
-			)) as Box<dyn std::error::Error + Send>),
-			(TaskWork::Async(_), TaskExecutor::ComputePool) => Err(Box::new(std::io::Error::new(
-				std::io::ErrorKind::InvalidInput,
+			)) as Box<dyn Error + Send>),
+			(TaskWork::Async(_), TaskExecutor::ComputePool) => Err(Box::new(io::Error::new(
+				io::ErrorKind::InvalidInput,
 				"Async work cannot be executed on ComputePool executor",
-			))
-				as Box<dyn std::error::Error + Send>),
+			)) as Box<dyn Error + Send>),
 		};
 
 		let duration = start.elapsed();
@@ -238,10 +238,10 @@ fn spawn_task(
 		// Log result
 		match result {
 			Ok(()) => {
-				tracing::debug!("Task '{}' completed successfully in {:?}", task_name, duration);
+				debug!("Task '{}' completed successfully in {:?}", task_name, duration);
 			}
 			Err(e) => {
-				tracing::error!("Task '{}' failed after {:?}: {}", task_name, duration, e);
+				error!("Task '{}' failed after {:?}: {}", task_name, duration, e);
 			}
 		}
 

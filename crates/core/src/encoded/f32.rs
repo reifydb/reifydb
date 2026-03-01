@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::ptr;
+use std::{f32, ptr};
 
 use reifydb_type::value::r#type::Type;
 
@@ -40,6 +40,8 @@ impl Schema {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 pub mod tests {
+	use std::f32::consts::{E, PI};
+
 	use reifydb_type::value::r#type::Type;
 
 	use crate::encoded::schema::Schema;
@@ -213,16 +215,16 @@ pub mod tests {
 		let mut row = schema.allocate();
 
 		// Test at odd offset (index 1)
-		schema.set_f32(&mut row, 1, std::f32::consts::PI);
-		assert_eq!(schema.get_f32(&row, 1), std::f32::consts::PI);
+		schema.set_f32(&mut row, 1, PI);
+		assert_eq!(schema.get_f32(&row, 1), PI);
 
 		// Test at another odd offset (index 3)
-		schema.set_f32(&mut row, 3, std::f32::consts::E);
-		assert_eq!(schema.get_f32(&row, 3), std::f32::consts::E);
+		schema.set_f32(&mut row, 3, E);
+		assert_eq!(schema.get_f32(&row, 3), E);
 
 		// Verify both values are preserved
-		assert_eq!(schema.get_f32(&row, 1), std::f32::consts::PI);
-		assert_eq!(schema.get_f32(&row, 3), std::f32::consts::E);
+		assert_eq!(schema.get_f32(&row, 1), PI);
+		assert_eq!(schema.get_f32(&row, 3), E);
 	}
 
 	#[test]

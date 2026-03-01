@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use postcard::to_stdvec;
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
@@ -173,7 +174,7 @@ pub(crate) fn compute_join_hash(
 		if matches!(value, Value::None { .. }) {
 			return None;
 		}
-		let bytes = postcard::to_stdvec(&value).ok()?;
+		let bytes = to_stdvec(&value).ok()?;
 		buf.extend_from_slice(&bytes);
 	}
 	Some(xxh3_128(buf))

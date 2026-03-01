@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::Bound;
+use std::{collections::Bound, iter};
 
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
@@ -83,11 +83,7 @@ impl EncodedIndexKeyRange {
 		let start = Bound::Included(EncodedIndexKey::from_bytes(prefix));
 		let end = match prefix.iter().rposition(|&b| b != 0xff) {
 			Some(i) => Bound::Excluded(EncodedIndexKey::from_bytes(
-				&prefix.iter()
-					.take(i)
-					.copied()
-					.chain(std::iter::once(prefix[i] + 1))
-					.collect::<Vec<_>>(),
+				&prefix.iter().take(i).copied().chain(iter::once(prefix[i] + 1)).collect::<Vec<_>>(),
 			)),
 			None => Bound::Unbounded,
 		};

@@ -111,7 +111,10 @@ macro_rules! define_event {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::{Arc, Mutex};
+	use std::{
+		sync::{Arc, Mutex},
+		thread,
+	};
 
 	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
 
@@ -193,7 +196,7 @@ mod tests {
 
 		// Test that we can actually send across threads
 		let event = DefineTestEvent::new(vec![1, 2, 3], "thread_test".to_string());
-		let handle = std::thread::spawn(move || {
+		let handle = thread::spawn(move || {
 			assert_eq!(event.data(), &vec![1, 2, 3]);
 		});
 		handle.join().unwrap();

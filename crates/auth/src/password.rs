@@ -3,7 +3,10 @@
 
 use std::collections::HashMap;
 
-use argon2::{Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version};
+use argon2::{
+	Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version,
+	password_hash::Error as PasswordHashError,
+};
 use reifydb_core::interface::auth::AuthenticationProvider;
 use reifydb_type::{Result, error::Error};
 
@@ -57,7 +60,7 @@ impl AuthenticationProvider for PasswordProvider {
 
 		match argon2.verify_password(credential.as_bytes(), &parsed_hash) {
 			Ok(()) => Ok(true),
-			Err(argon2::password_hash::Error::PasswordInvalid) => Ok(false),
+			Err(PasswordHashError::PasswordInvalid) => Ok(false),
 			Err(e) => Err(Error::from(AuthError::VerificationFailed {
 				reason: e.to_string(),
 			})),

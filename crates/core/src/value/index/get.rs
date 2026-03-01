@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::ptr;
+
 use reifydb_type::value::{
 	date::Date,
 	datetime::DateTime,
@@ -36,7 +38,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 4];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
 		}
 
 		// For DESC, undo the inversion first
@@ -64,7 +66,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 8];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
 
 		// For DESC, undo the inversion first
@@ -111,7 +113,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 2];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 2);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 2);
 		}
 
 		match field.direction {
@@ -135,7 +137,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 4];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
 		}
 
 		match field.direction {
@@ -159,7 +161,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 8];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
 
 		match field.direction {
@@ -183,7 +185,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 16];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
 		}
 
 		match field.direction {
@@ -219,7 +221,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 2];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 2);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 2);
 		}
 
 		match field.direction {
@@ -234,7 +236,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 4];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
 		}
 
 		match field.direction {
@@ -249,7 +251,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 8];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
 
 		match field.direction {
@@ -264,7 +266,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 16];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
 		}
 
 		match field.direction {
@@ -279,7 +281,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 8];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
 
 		match field.direction {
@@ -294,7 +296,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 4];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
 		}
 
 		match field.direction {
@@ -321,8 +323,8 @@ impl EncodedIndexLayout {
 		let mut nano_bytes = [0u8; 4];
 
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), sec_bytes.as_mut_ptr(), 8);
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset + 8), nano_bytes.as_mut_ptr(), 4);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), sec_bytes.as_mut_ptr(), 8);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset + 8), nano_bytes.as_mut_ptr(), 4);
 		}
 
 		match field.direction {
@@ -351,7 +353,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 8];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
 
 		let nanos = match field.direction {
@@ -371,9 +373,9 @@ impl EncodedIndexLayout {
 		let mut nanos_bytes = [0u8; 8];
 
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), months_bytes.as_mut_ptr(), 4);
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset + 4), days_bytes.as_mut_ptr(), 4);
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset + 8), nanos_bytes.as_mut_ptr(), 8);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), months_bytes.as_mut_ptr(), 4);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset + 4), days_bytes.as_mut_ptr(), 4);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset + 8), nanos_bytes.as_mut_ptr(), 8);
 		}
 
 		match field.direction {
@@ -410,7 +412,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 16];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
 		}
 
 		if field.direction == SortDirection::Desc {
@@ -429,7 +431,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 16];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
 		}
 
 		if field.direction == SortDirection::Desc {
@@ -448,7 +450,7 @@ impl EncodedIndexLayout {
 
 		let mut bytes = [0u8; 16];
 		unsafe {
-			std::ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
 		}
 
 		if field.direction == SortDirection::Desc {

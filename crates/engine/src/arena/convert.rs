@@ -3,6 +3,7 @@
 
 use std::fmt::Debug;
 
+use bumpalo::Bump as BumpAlloc;
 use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_type::{
 	storage::{Cow, DataBitVec, DataVec, Storage},
@@ -32,7 +33,7 @@ fn bitvec_to_cow<S: Storage>(src: &S::BitVec) -> BitVec {
 	dst
 }
 
-fn bitvec_to_bump<'bump, S: Storage>(src: &S::BitVec, bump: &'bump bumpalo::Bump) -> BumpBitVec<'bump> {
+fn bitvec_to_bump<'bump, S: Storage>(src: &S::BitVec, bump: &'bump BumpAlloc) -> BumpBitVec<'bump> {
 	let len = DataBitVec::len(src);
 	let mut dst = BumpBitVec::with_capacity_in(len, bump);
 	for i in 0..len {
@@ -49,7 +50,7 @@ fn vec_to_cow<T: Clone + PartialEq + 'static, S: Storage>(src: &S::Vec<T>) -> Co
 
 fn vec_to_bump<'bump, T: Clone + PartialEq + 'static, S: Storage>(
 	src: &S::Vec<T>,
-	bump: &'bump bumpalo::Bump,
+	bump: &'bump BumpAlloc,
 ) -> BumpVec<'bump, T> {
 	let mut dst = BumpVec::with_capacity_in(DataVec::len(src), bump);
 	DataVec::extend_from_slice(&mut dst, DataVec::as_slice(src));
@@ -64,7 +65,7 @@ fn number_to_cow<T: IsNumber + Clone + Debug + Default, S: Storage>(
 
 fn number_to_bump<'bump, T: IsNumber + Clone + Debug + Default, S: Storage>(
 	src: &NumberContainer<T, S>,
-	bump: &'bump bumpalo::Bump,
+	bump: &'bump BumpAlloc,
 ) -> NumberContainer<T, Bump<'bump>> {
 	NumberContainer::from_parts(vec_to_bump::<T, S>(src.data(), bump))
 }
@@ -73,7 +74,7 @@ fn bool_to_cow<S: Storage>(src: &BoolContainer<S>) -> BoolContainer<Cow> {
 	BoolContainer::from_parts(bitvec_to_cow::<S>(src.data()))
 }
 
-fn bool_to_bump<'bump, S: Storage>(src: &BoolContainer<S>, bump: &'bump bumpalo::Bump) -> BoolContainer<Bump<'bump>> {
+fn bool_to_bump<'bump, S: Storage>(src: &BoolContainer<S>, bump: &'bump BumpAlloc) -> BoolContainer<Bump<'bump>> {
 	BoolContainer::from_parts(bitvec_to_bump::<S>(src.data(), bump))
 }
 
@@ -85,7 +86,7 @@ fn temporal_to_cow<T: IsTemporal + Clone + Debug + Default, S: Storage>(
 
 fn temporal_to_bump<'bump, T: IsTemporal + Clone + Debug + Default, S: Storage>(
 	src: &TemporalContainer<T, S>,
-	bump: &'bump bumpalo::Bump,
+	bump: &'bump BumpAlloc,
 ) -> TemporalContainer<T, Bump<'bump>> {
 	TemporalContainer::from_parts(vec_to_bump::<T, S>(src.data(), bump))
 }
@@ -96,7 +97,7 @@ fn uuid_to_cow<T: IsUuid + Clone + Debug + Default, S: Storage>(src: &UuidContai
 
 fn uuid_to_bump<'bump, T: IsUuid + Clone + Debug + Default, S: Storage>(
 	src: &UuidContainer<T, S>,
-	bump: &'bump bumpalo::Bump,
+	bump: &'bump BumpAlloc,
 ) -> UuidContainer<T, Bump<'bump>> {
 	UuidContainer::from_parts(vec_to_bump::<T, S>(src.data(), bump))
 }
@@ -105,7 +106,7 @@ fn utf8_to_cow<S: Storage>(src: &Utf8Container<S>) -> Utf8Container<Cow> {
 	Utf8Container::from_parts(vec_to_cow::<String, S>(src.data()))
 }
 
-fn utf8_to_bump<'bump, S: Storage>(src: &Utf8Container<S>, bump: &'bump bumpalo::Bump) -> Utf8Container<Bump<'bump>> {
+fn utf8_to_bump<'bump, S: Storage>(src: &Utf8Container<S>, bump: &'bump BumpAlloc) -> Utf8Container<Bump<'bump>> {
 	Utf8Container::from_parts(vec_to_bump::<String, S>(src.data(), bump))
 }
 
@@ -113,7 +114,7 @@ fn blob_to_cow<S: Storage>(src: &BlobContainer<S>) -> BlobContainer<Cow> {
 	BlobContainer::from_parts(vec_to_cow::<Blob, S>(src.data()))
 }
 
-fn blob_to_bump<'bump, S: Storage>(src: &BlobContainer<S>, bump: &'bump bumpalo::Bump) -> BlobContainer<Bump<'bump>> {
+fn blob_to_bump<'bump, S: Storage>(src: &BlobContainer<S>, bump: &'bump BumpAlloc) -> BlobContainer<Bump<'bump>> {
 	BlobContainer::from_parts(vec_to_bump::<Blob, S>(src.data(), bump))
 }
 
@@ -123,7 +124,7 @@ fn identity_id_to_cow<S: Storage>(src: &IdentityIdContainer<S>) -> IdentityIdCon
 
 fn identity_id_to_bump<'bump, S: Storage>(
 	src: &IdentityIdContainer<S>,
-	bump: &'bump bumpalo::Bump,
+	bump: &'bump BumpAlloc,
 ) -> IdentityIdContainer<Bump<'bump>> {
 	IdentityIdContainer::from_parts(vec_to_bump::<IdentityId, S>(src.data(), bump))
 }
@@ -132,7 +133,7 @@ fn any_to_cow<S: Storage>(src: &AnyContainer<S>) -> AnyContainer<Cow> {
 	AnyContainer::from_parts(vec_to_cow::<Box<Value>, S>(src.data()))
 }
 
-fn any_to_bump<'bump, S: Storage>(src: &AnyContainer<S>, bump: &'bump bumpalo::Bump) -> AnyContainer<Bump<'bump>> {
+fn any_to_bump<'bump, S: Storage>(src: &AnyContainer<S>, bump: &'bump BumpAlloc) -> AnyContainer<Bump<'bump>> {
 	AnyContainer::from_parts(vec_to_bump::<Box<Value>, S>(src.data(), bump))
 }
 
@@ -142,7 +143,7 @@ fn dictionary_to_cow<S: Storage>(src: &DictionaryContainer<S>) -> DictionaryCont
 
 fn dictionary_to_bump<'bump, S: Storage>(
 	src: &DictionaryContainer<S>,
-	bump: &'bump bumpalo::Bump,
+	bump: &'bump BumpAlloc,
 ) -> DictionaryContainer<Bump<'bump>> {
 	DictionaryContainer::from_parts(vec_to_bump::<DictionaryEntryId, S>(src.data(), bump), src.dictionary_id())
 }
@@ -218,10 +219,7 @@ pub fn column_data_to_cow<S: Storage>(src: &ColumnData<S>) -> ColumnData<Cow> {
 	}
 }
 
-pub fn column_data_to_bump<'bump, S: Storage>(
-	src: &ColumnData<S>,
-	bump: &'bump bumpalo::Bump,
-) -> ColumnData<Bump<'bump>> {
+pub fn column_data_to_bump<'bump, S: Storage>(src: &ColumnData<S>, bump: &'bump BumpAlloc) -> ColumnData<Bump<'bump>> {
 	match src {
 		ColumnData::Bool(c) => ColumnData::Bool(bool_to_bump(c, bump)),
 		ColumnData::Float4(c) => ColumnData::Float4(number_to_bump(c, bump)),
@@ -296,7 +294,7 @@ pub fn column_to_cow<S: Storage>(src: &Column<S>) -> Column<Cow> {
 	Column::new(src.name().clone(), column_data_to_cow(src.data()))
 }
 
-pub fn column_to_bump<'bump, S: Storage>(src: &Column<S>, bump: &'bump bumpalo::Bump) -> Column<Bump<'bump>> {
+pub fn column_to_bump<'bump, S: Storage>(src: &Column<S>, bump: &'bump BumpAlloc) -> Column<Bump<'bump>> {
 	Column::new(src.name().clone(), column_data_to_bump(src.data(), bump))
 }
 
@@ -310,7 +308,7 @@ mod tests {
 	#[test]
 	fn test_column_data_cow_roundtrip() {
 		let original = ColumnData::int4(vec![10, 20, 30]);
-		let bump_alloc = bumpalo::Bump::new();
+		let bump_alloc = BumpAlloc::new();
 
 		// Cow -> Bump
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);
@@ -324,7 +322,7 @@ mod tests {
 	#[test]
 	fn test_column_data_bool_roundtrip() {
 		let original = ColumnData::bool(vec![true, false, true]);
-		let bump_alloc = bumpalo::Bump::new();
+		let bump_alloc = BumpAlloc::new();
 
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);
 		let cow_data = column_data_to_cow::<Bump>(&bump_data);
@@ -334,7 +332,7 @@ mod tests {
 	#[test]
 	fn test_column_data_utf8_roundtrip() {
 		let original = ColumnData::utf8(vec![String::from("hello"), String::from("world")]);
-		let bump_alloc = bumpalo::Bump::new();
+		let bump_alloc = BumpAlloc::new();
 
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);
 		let cow_data = column_data_to_cow::<Bump>(&bump_data);
@@ -344,7 +342,7 @@ mod tests {
 	#[test]
 	fn test_column_data_float8_roundtrip() {
 		let original = ColumnData::float8(vec![1.5, 2.7, 3.9]);
-		let bump_alloc = bumpalo::Bump::new();
+		let bump_alloc = BumpAlloc::new();
 
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);
 		let cow_data = column_data_to_cow::<Bump>(&bump_data);
@@ -354,7 +352,7 @@ mod tests {
 	#[test]
 	fn test_column_data_none_roundtrip() {
 		let original = ColumnData::none_typed(Type::Boolean, 5);
-		let bump_alloc = bumpalo::Bump::new();
+		let bump_alloc = BumpAlloc::new();
 
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);
 		let cow_data = column_data_to_cow::<Bump>(&bump_data);
@@ -364,7 +362,7 @@ mod tests {
 	#[test]
 	fn test_column_roundtrip() {
 		let original = Column::int4("age", vec![25, 30, 35]);
-		let bump_alloc = bumpalo::Bump::new();
+		let bump_alloc = BumpAlloc::new();
 
 		let bump_col = column_to_bump::<Cow>(&original, &bump_alloc);
 		let cow_col = column_to_cow::<Bump>(&bump_col);

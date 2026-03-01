@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::env;
+
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
@@ -45,8 +47,8 @@ pub fn internal_with_context(
 		env!("CARGO_PKG_VERSION"),
 		option_env!("GIT_HASH").unwrap_or("unknown"),
 		option_env!("BUILD_DATE").unwrap_or("unknown"),
-		std::env::consts::OS,
-		std::env::consts::ARCH
+		env::consts::OS,
+		env::consts::ARCH
 	);
 
 	Diagnostic {

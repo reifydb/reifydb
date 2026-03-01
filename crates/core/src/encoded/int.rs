@@ -116,6 +116,7 @@ impl Schema {
 
 #[cfg(test)]
 pub mod tests {
+	use num_bigint::BigInt;
 	use reifydb_type::value::{int::Int, r#type::Type};
 
 	use crate::encoded::schema::Schema;
@@ -173,7 +174,7 @@ pub mod tests {
 
 		// Create a value larger than i128 can hold
 		let huge_str = "999999999999999999999999999999999999999999999999";
-		let huge = Int::from(num_bigint::BigInt::parse_bytes(huge_str.as_bytes(), 10).unwrap());
+		let huge = Int::from(BigInt::parse_bytes(huge_str.as_bytes(), 10).unwrap());
 
 		schema.set_int(&mut row, 0, &huge);
 		assert!(row.is_defined(0));
@@ -265,9 +266,8 @@ pub mod tests {
 		// Huge negative (dynamic)
 		let mut row3 = schema.allocate();
 		let huge_neg_str = "-999999999999999999999999999999999999999999999999";
-		let huge_neg = Int::from(
-			-num_bigint::BigInt::parse_bytes(huge_neg_str.trim_start_matches('-').as_bytes(), 10).unwrap(),
-		);
+		let huge_neg =
+			Int::from(-BigInt::parse_bytes(huge_neg_str.trim_start_matches('-').as_bytes(), 10).unwrap());
 		schema.set_int(&mut row3, 0, &huge_neg);
 		assert_eq!(schema.get_int(&row3, 0), huge_neg);
 	}

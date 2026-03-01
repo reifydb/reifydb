@@ -16,6 +16,7 @@
 use std::ops::Bound;
 
 use reifydb_core::common::CommitVersion;
+use rusqlite::{Result as SqliteResult, ToSql, types};
 
 #[inline]
 pub(super) fn version_to_bytes(version: CommitVersion) -> [u8; 8] {
@@ -98,8 +99,8 @@ pub(super) enum QueryParam {
 	Version([u8; 8]),
 }
 
-impl rusqlite::ToSql for QueryParam {
-	fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+impl ToSql for QueryParam {
+	fn to_sql(&self) -> SqliteResult<types::ToSqlOutput<'_>> {
 		match self {
 			QueryParam::Blob(v) => v.to_sql(),
 			QueryParam::Version(v) => v.as_slice().to_sql(),

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{collections, sync::Arc};
 
 use reifydb_catalog::{
 	catalog::Catalog,
@@ -168,7 +168,7 @@ fn expand_patch_sumtype_assignments(
 				}));
 
 				// Build field lookup from constructor
-				let field_map: std::collections::HashMap<String, &Expression> = ctor
+				let field_map: collections::HashMap<String, &Expression> = ctor
 					.columns
 					.iter()
 					.map(|(name, expr)| (name.text().to_lowercase(), expr))

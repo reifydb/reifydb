@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::mem;
+
 use indexmap::IndexMap;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{Value, r#type::Type};
@@ -88,7 +90,7 @@ impl AggregateFunction for Sum {
 		let mut keys = Vec::with_capacity(self.sums.len());
 		let mut data = ColumnData::none_typed(Type::Boolean, 0);
 
-		for (key, sum) in std::mem::take(&mut self.sums) {
+		for (key, sum) in mem::take(&mut self.sums) {
 			keys.push(key);
 			data.push_value(sum);
 		}

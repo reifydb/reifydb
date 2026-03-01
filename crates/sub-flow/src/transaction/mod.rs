@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::mem;
+
 use pending::{Pending, PendingWrite};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{common::CommitVersion, interface::change::Change};
@@ -219,11 +221,11 @@ impl FlowTransaction {
 			Self::Deferred {
 				pending,
 				..
-			} => std::mem::take(pending),
+			} => mem::take(pending),
 			Self::Transactional {
 				pending,
 				..
-			} => std::mem::take(pending),
+			} => mem::take(pending),
 		}
 	}
 

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::{
+	fmt,
+	fmt::{Display, Formatter},
+};
 
 use reifydb_type::{
 	error::{Diagnostic, Error, IntoDiagnostic},
@@ -30,7 +33,7 @@ pub enum CatalogObjectKind {
 }
 
 impl Display for CatalogObjectKind {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			CatalogObjectKind::Namespace => f.write_str("namespace"),
 			CatalogObjectKind::Table => f.write_str("table"),

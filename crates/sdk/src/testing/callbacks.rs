@@ -23,12 +23,12 @@ use reifydb_type::util::cowvec::CowVec;
 #[unsafe(no_mangle)]
 extern "C" fn test_alloc(size: usize) -> *mut u8 {
 	if size == 0 {
-		return std::ptr::null_mut();
+		return ptr::null_mut();
 	}
 
 	let layout = match Layout::from_size_align(size, 8) {
 		Ok(layout) => layout,
-		Err(_) => return std::ptr::null_mut(),
+		Err(_) => return ptr::null_mut(),
 	};
 
 	unsafe { alloc(layout) }
@@ -58,17 +58,17 @@ extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *m
 
 	if new_size == 0 {
 		test_free(ptr, old_size);
-		return std::ptr::null_mut();
+		return ptr::null_mut();
 	}
 
 	let old_layout = match Layout::from_size_align(old_size, 8) {
 		Ok(layout) => layout,
-		Err(_) => return std::ptr::null_mut(),
+		Err(_) => return ptr::null_mut(),
 	};
 
 	let new_layout = match Layout::from_size_align(new_size, 8) {
 		Ok(layout) => layout,
-		Err(_) => return std::ptr::null_mut(),
+		Err(_) => return ptr::null_mut(),
 	};
 
 	unsafe { system_realloc(ptr, old_layout, new_layout.size()) }
@@ -115,7 +115,7 @@ extern "C" fn test_state_get(
 					return -2; // Allocation failed
 				}
 
-				std::ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
+				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
 
 				(*output).ptr = value_ptr;
 				(*output).len = value_bytes.len();
@@ -290,7 +290,7 @@ extern "C" fn test_state_iterator_next(
 		if key_ptr.is_null() {
 			return -2; // Allocation failed
 		}
-		std::ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
+		ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
 		(*key_out).ptr = key_ptr;
 		(*key_out).len = key.len();
 		(*key_out).cap = key.len();
@@ -302,7 +302,7 @@ extern "C" fn test_state_iterator_next(
 			test_free(key_ptr, key.len());
 			return -2; // Allocation failed
 		}
-		std::ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
+		ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
 		(*value_out).ptr = value_ptr;
 		(*value_out).len = value.len();
 		(*value_out).cap = value.len();
@@ -475,6 +475,8 @@ extern "C" fn test_store_iterator_next(
 extern "C" fn test_store_iterator_free(_iterator: *mut StoreIteratorFFI) {
 	unimplemented!()
 }
+
+use std::ptr;
 
 use reifydb_abi::{
 	callbacks::{

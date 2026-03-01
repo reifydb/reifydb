@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{fmt, str, sync::Arc};
 
 use crate::{
 	HostMemory, HostTable,
@@ -38,8 +38,8 @@ pub enum CompilationError {
 	OutOfBoundsTableAccess,
 }
 
-impl std::fmt::Display for CompilationError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for CompilationError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			CompilationError::PlaceHolder => todo!(),
 			CompilationError::OutOfBoundsMemoryAccess => write!(f, "out of bounds memory access"),
@@ -108,8 +108,8 @@ impl Compiler {
 						panic!("not found func types in type_section")
 					};
 
-					let mod_str = std::str::from_utf8(&*module_name).unwrap().to_string();
-					let field_str = std::str::from_utf8(&*field).unwrap().to_string();
+					let mod_str = str::from_utf8(&*module_name).unwrap().to_string();
+					let field_str = str::from_utf8(&*field).unwrap().to_string();
 					function_imports.push((mod_str.clone(), field_str.clone()));
 
 					let func = Function::External(FunctionExternal {
@@ -131,8 +131,8 @@ impl Compiler {
 					functions.push(Arc::new(func));
 				}
 				WasmImportDescriptor::Table(table) => {
-					let mod_name = std::str::from_utf8(&*module_name).unwrap_or("");
-					let field_name = std::str::from_utf8(&*field).unwrap_or("");
+					let mod_name = str::from_utf8(&*module_name).unwrap_or("");
+					let field_name = str::from_utf8(&*field).unwrap_or("");
 					table_imports.push((mod_name.to_string(), field_name.to_string()));
 					let min = host_tables
 						.iter()
@@ -154,8 +154,8 @@ impl Compiler {
 					});
 				}
 				WasmImportDescriptor::Memory(mem) => {
-					let mod_name = std::str::from_utf8(&*module_name).unwrap_or("");
-					let field_name = std::str::from_utf8(&*field).unwrap_or("");
+					let mod_name = str::from_utf8(&*module_name).unwrap_or("");
+					let field_name = str::from_utf8(&*field).unwrap_or("");
 					memory_imports.push((mod_name.to_string(), field_name.to_string()));
 					let min_pages = host_memories
 						.iter()
@@ -174,8 +174,8 @@ impl Compiler {
 					});
 				}
 				WasmImportDescriptor::Global(global) => {
-					let mod_name = std::str::from_utf8(&*module_name).unwrap_or("");
-					let field_name = std::str::from_utf8(&*field).unwrap_or("");
+					let mod_name = str::from_utf8(&*module_name).unwrap_or("");
+					let field_name = str::from_utf8(&*field).unwrap_or("");
 					global_imports.push((mod_name.to_string(), field_name.to_string()));
 					let value = host_globals
 						.iter()
@@ -241,7 +241,7 @@ impl Compiler {
 		let mut exports = Vec::with_capacity(wasm.exports.len());
 		let ref sections = wasm.exports;
 		for export in sections {
-			let name = std::str::from_utf8(&*export.name).unwrap().to_string();
+			let name = str::from_utf8(&*export.name).unwrap().to_string();
 			let export_inst = Export {
 				name: name.clone(),
 				data: match export.desc {

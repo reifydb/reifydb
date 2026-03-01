@@ -3,6 +3,7 @@
 
 //! Guest-side RQL execution via FFI callbacks
 
+use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{constants::FFI_OK, data::buffer::BufferFFI};
 use reifydb_type::{params::Params, value::frame::frame::Frame};
 
@@ -13,7 +14,7 @@ use crate::{
 
 /// Execute an RQL statement through the host's RQL callback.
 pub(crate) fn raw_rql(ctx: &OperatorContext, rql: &str, params: Params) -> Result<Vec<Frame>> {
-	let params_bytes = postcard::to_stdvec(&params)
+	let params_bytes = to_stdvec(&params)
 		.map_err(|e| FFIError::Serialization(format!("failed to serialize params: {}", e)))?;
 
 	let mut output = BufferFFI::empty();
@@ -30,7 +31,7 @@ pub(crate) fn raw_rql(ctx: &OperatorContext, rql: &str, params: Params) -> Resul
 
 		if result == FFI_OK {
 			let result_bytes = output.as_slice();
-			let frames: Vec<Frame> = postcard::from_bytes(result_bytes)
+			let frames: Vec<Frame> = from_bytes(result_bytes)
 				.map_err(|e| FFIError::Serialization(format!("failed to deserialize result: {}", e)))?;
 			Ok(frames)
 		} else {

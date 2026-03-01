@@ -2,9 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	fmt,
+	cmp, fmt,
 	fmt::{Display, Formatter},
 	ops::Deref,
+	result::Result as StdResult,
 };
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
@@ -124,13 +125,13 @@ impl DictionaryEntryId {
 }
 
 impl PartialOrd for DictionaryEntryId {
-	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+	fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
 		Some(self.cmp(other))
 	}
 }
 
 impl Ord for DictionaryEntryId {
-	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+	fn cmp(&self, other: &Self) -> cmp::Ordering {
 		self.to_u128().cmp(&other.to_u128())
 	}
 }
@@ -141,8 +142,8 @@ impl Default for DictionaryEntryId {
 	}
 }
 
-impl std::fmt::Display for DictionaryEntryId {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for DictionaryEntryId {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::U1(v) => write!(f, "{}", v),
 			Self::U2(v) => write!(f, "{}", v),
@@ -204,7 +205,7 @@ impl From<u64> for DictionaryId {
 }
 
 impl Serialize for DictionaryId {
-	fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+	fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{
@@ -213,7 +214,7 @@ impl Serialize for DictionaryId {
 }
 
 impl<'de> Deserialize<'de> for DictionaryId {
-	fn deserialize<D>(deserializer: D) -> std::result::Result<DictionaryId, D::Error>
+	fn deserialize<D>(deserializer: D) -> StdResult<DictionaryId, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
@@ -226,7 +227,7 @@ impl<'de> Deserialize<'de> for DictionaryId {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> StdResult<Self::Value, E> {
 				Ok(DictionaryId(value))
 			}
 		}

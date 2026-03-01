@@ -5,19 +5,21 @@
 
 use std::time::Duration;
 
+use parking_lot::Condvar;
+
 use crate::sync::mutex::MutexGuard;
 
-/// Native condition variable implementation wrapping parking_lot::Condvar.
+/// Native condition variable implementation wrapping Condvar.
 #[derive(Debug)]
 pub struct CondvarInner {
-	inner: parking_lot::Condvar,
+	inner: Condvar,
 }
 
 impl CondvarInner {
 	/// Creates a new condition variable.
 	pub fn new() -> Self {
 		Self {
-			inner: parking_lot::Condvar::new(),
+			inner: Condvar::new(),
 		}
 	}
 

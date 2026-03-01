@@ -144,7 +144,9 @@ impl WithEventBus for SingleTransaction {
 #[cfg(test)]
 pub mod tests {
 	use std::{
+		iter,
 		sync::{Arc, Barrier},
+		thread,
 		time::Duration,
 	};
 
@@ -202,7 +204,7 @@ pub mod tests {
 		let svl = create_test_svl();
 
 		// Should panic when trying to create transaction with empty keys
-		let _tx = svl.begin_query(std::iter::empty());
+		let _tx = svl.begin_query(iter::empty());
 	}
 
 	#[test]
@@ -211,7 +213,7 @@ pub mod tests {
 		let svl = create_test_svl();
 
 		// Should panic when trying to create transaction with empty keys
-		let _tx = svl.begin_command(std::iter::empty());
+		let _tx = svl.begin_command(iter::empty());
 	}
 
 	#[test]
@@ -318,7 +320,7 @@ pub mod tests {
 			let key_clone = key.clone();
 			let value_clone = value.clone();
 
-			let handle = std::thread::spawn(move || {
+			let handle = thread::spawn(move || {
 				let mut tx = svl_clone.begin_query(vec![&key_clone]).unwrap();
 				let result = tx.get(&key_clone).unwrap();
 				assert!(result.is_some());
@@ -344,7 +346,7 @@ pub mod tests {
 			let key = make_key(&format!("key_{}", i));
 			let value = make_value(&format!("value_{}", i));
 
-			let handle = std::thread::spawn(move || {
+			let handle = thread::spawn(move || {
 				let mut tx = svl_clone.begin_command(vec![&key]).unwrap();
 				tx.set(&key, value).unwrap();
 				tx.commit().unwrap();
@@ -392,7 +394,7 @@ pub mod tests {
 			let key_clone = key1.clone();
 			let value_clone = value1.clone();
 
-			let handle = std::thread::spawn(move || {
+			let handle = thread::spawn(move || {
 				let mut tx = svl_clone.begin_query(vec![&key_clone]).unwrap();
 				let result = tx.get(&key_clone).unwrap();
 				assert!(result.is_some());
@@ -404,7 +406,7 @@ pub mod tests {
 		// Spawn a writer for key2 (different key, should not block readers)
 		let svl_clone = Arc::clone(&svl);
 		let new_value = make_value("new_value2");
-		let handle = std::thread::spawn(move || {
+		let handle = thread::spawn(move || {
 			let mut tx = svl_clone.begin_command(vec![&key2]).unwrap();
 			tx.set(&key2, new_value).unwrap();
 			tx.commit().unwrap();
@@ -428,7 +430,7 @@ pub mod tests {
 			let key = make_key(&format!("key_{}", i % 3)); // Some key overlap
 			let value = make_value(&format!("value_{}", i));
 
-			let handle = std::thread::spawn(move || {
+			let handle = thread::spawn(move || {
 				// Alternate between reads and writes
 				if i % 2 == 0 {
 					let mut tx = svl_clone.begin_command(vec![&key]).unwrap();
@@ -458,7 +460,7 @@ pub mod tests {
 		let svl1 = Arc::clone(&svl);
 		let key1 = key.clone();
 		let barrier1 = Arc::clone(&barrier);
-		let handle1 = std::thread::spawn(move || {
+		let handle1 = thread::spawn(move || {
 			let mut tx = svl1.begin_command(vec![&key1]).unwrap();
 			tx.set(&key1, make_value("value1")).unwrap();
 
@@ -466,7 +468,7 @@ pub mod tests {
 			barrier1.wait();
 
 			// Hold the transaction (and locks) for a bit
-			std::thread::sleep(Duration::from_millis(100));
+			thread::sleep(Duration::from_millis(100));
 
 			tx.commit().unwrap();
 		});
@@ -475,12 +477,12 @@ pub mod tests {
 		let svl2 = Arc::clone(&svl);
 		let key2 = key.clone();
 		let barrier2 = Arc::clone(&barrier);
-		let handle2 = std::thread::spawn(move || {
+		let handle2 = thread::spawn(move || {
 			// Wait for thread 1 to acquire its lock
 			barrier2.wait();
 
 			// Small delay to ensure thread 1 is holding the lock
-			std::thread::sleep(Duration::from_millis(10));
+			thread::sleep(Duration::from_millis(10));
 
 			// This should block until thread 1 commits
 			let mut tx = svl2.begin_command(vec![&key2]).unwrap();
@@ -516,7 +518,7 @@ pub mod tests {
 		let svl1 = Arc::clone(&svl);
 		let key1 = key.clone();
 		let barrier1 = Arc::clone(&barrier);
-		let handle1 = std::thread::spawn(move || {
+		let handle1 = thread::spawn(move || {
 			let mut tx = svl1.begin_command(vec![&key1]).unwrap();
 			tx.set(&key1, make_value("updated")).unwrap();
 
@@ -524,7 +526,7 @@ pub mod tests {
 			barrier1.wait();
 
 			// Hold the transaction for a bit
-			std::thread::sleep(Duration::from_millis(100));
+			thread::sleep(Duration::from_millis(100));
 
 			tx.commit().unwrap();
 		});
@@ -533,12 +535,12 @@ pub mod tests {
 		let svl2 = Arc::clone(&svl);
 		let key2 = key.clone();
 		let barrier2 = Arc::clone(&barrier);
-		let handle2 = std::thread::spawn(move || {
+		let handle2 = thread::spawn(move || {
 			// Wait for thread 1 to acquire its lock
 			barrier2.wait();
 
 			// Small delay to ensure thread 1 is holding the lock
-			std::thread::sleep(Duration::from_millis(10));
+			thread::sleep(Duration::from_millis(10));
 
 			// This should block until thread 1 commits
 			let mut tx = svl2.begin_query(vec![&key2]).unwrap();
@@ -574,7 +576,7 @@ pub mod tests {
 			let key_clone = key.clone();
 			let barrier_clone = Arc::clone(&barrier);
 
-			let handle = std::thread::spawn(move || {
+			let handle = thread::spawn(move || {
 				let mut tx = svl_clone.begin_query(vec![&key_clone]).unwrap();
 
 				// Wait for all readers to start
@@ -586,7 +588,7 @@ pub mod tests {
 				assert_eq!(result.unwrap().values, make_value("shared"));
 
 				// Hold for a bit to ensure overlap
-				std::thread::sleep(Duration::from_millis(50));
+				thread::sleep(Duration::from_millis(50));
 			});
 			handles.push(handle);
 		}
@@ -608,11 +610,11 @@ pub mod tests {
 		let key1_clone = key1.clone();
 		let key2_clone = key2.clone();
 		let barrier1 = Arc::clone(&barrier);
-		let handle1 = std::thread::spawn(move || {
+		let handle1 = thread::spawn(move || {
 			barrier1.wait();
 			let mut tx = svl1.begin_command(vec![&key1_clone, &key2_clone]).unwrap();
 			tx.set(&key1_clone, make_value("from_thread1")).unwrap();
-			std::thread::sleep(Duration::from_millis(10)); // Hold locks briefly
+			thread::sleep(Duration::from_millis(10)); // Hold locks briefly
 			tx.commit().unwrap();
 		});
 
@@ -622,11 +624,11 @@ pub mod tests {
 		let key1_clone2 = key1.clone();
 		let key2_clone2 = key2.clone();
 		let barrier2 = Arc::clone(&barrier);
-		let handle2 = std::thread::spawn(move || {
+		let handle2 = thread::spawn(move || {
 			barrier2.wait();
 			let mut tx = svl2.begin_command(vec![&key2_clone2, &key1_clone2]).unwrap();
 			tx.set(&key2_clone2, make_value("from_thread2")).unwrap();
-			std::thread::sleep(Duration::from_millis(10)); // Hold locks briefly
+			thread::sleep(Duration::from_millis(10)); // Hold locks briefly
 			tx.commit().unwrap();
 		});
 
@@ -655,11 +657,11 @@ pub mod tests {
 		let k1_1 = key1.clone();
 		let k2_1 = key2.clone();
 		let barrier1 = Arc::clone(&barrier);
-		let handle1 = std::thread::spawn(move || {
+		let handle1 = thread::spawn(move || {
 			barrier1.wait();
 			let mut tx = svl1.begin_command(vec![&k1_1, &k2_1]).unwrap();
 			tx.set(&k1_1, make_value("t1")).unwrap();
-			std::thread::sleep(Duration::from_millis(10));
+			thread::sleep(Duration::from_millis(10));
 			tx.commit().unwrap();
 		});
 
@@ -668,11 +670,11 @@ pub mod tests {
 		let k2_2 = key2.clone();
 		let k3_2 = key3.clone();
 		let barrier2 = Arc::clone(&barrier);
-		let handle2 = std::thread::spawn(move || {
+		let handle2 = thread::spawn(move || {
 			barrier2.wait();
 			let mut tx = svl2.begin_command(vec![&k2_2, &k3_2]).unwrap();
 			tx.set(&k2_2, make_value("t2")).unwrap();
-			std::thread::sleep(Duration::from_millis(10));
+			thread::sleep(Duration::from_millis(10));
 			tx.commit().unwrap();
 		});
 
@@ -680,11 +682,11 @@ pub mod tests {
 		// With sorted locking, this should not create a circular dependency
 		let svl3 = Arc::clone(&svl);
 		let barrier3 = Arc::clone(&barrier);
-		let handle3 = std::thread::spawn(move || {
+		let handle3 = thread::spawn(move || {
 			barrier3.wait();
 			let mut tx = svl3.begin_command(vec![&key3, &key1]).unwrap();
 			tx.set(&key3, make_value("t3")).unwrap();
-			std::thread::sleep(Duration::from_millis(10));
+			thread::sleep(Duration::from_millis(10));
 			tx.commit().unwrap();
 		});
 
@@ -702,7 +704,7 @@ pub mod tests {
 		// Thread 1: Acquire lock and drop without commit
 		let svl1 = Arc::clone(&svl);
 		let key_clone = key.clone();
-		let handle1 = std::thread::spawn(move || {
+		let handle1 = thread::spawn(move || {
 			let mut tx = svl1.begin_command(vec![&key_clone]).unwrap();
 			tx.set(&key_clone, make_value("dropped")).unwrap();
 			// Transaction dropped here without commit
@@ -711,13 +713,13 @@ pub mod tests {
 		handle1.join().unwrap();
 
 		// Small delay to ensure drop completes
-		std::thread::sleep(Duration::from_millis(10));
+		thread::sleep(Duration::from_millis(10));
 
 		// Thread 2: Should be able to acquire the lock immediately
 		// If locks weren't released on drop, this would block indefinitely
 		let svl2 = Arc::clone(&svl);
 		let key_clone2 = key.clone();
-		let handle2 = std::thread::spawn(move || {
+		let handle2 = thread::spawn(move || {
 			let mut tx = svl2.begin_command(vec![&key_clone2]).unwrap();
 			tx.set(&key_clone2, make_value("success")).unwrap();
 			tx.commit().unwrap();

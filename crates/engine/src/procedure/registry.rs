@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, ops::Deref, sync::Arc};
+use std::{collections::HashMap, mem, ops::Deref, sync::Arc};
 
 use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_type::value::sumtype::SumTypeId;
@@ -94,7 +94,7 @@ impl ProceduresBuilder {
 
 	/// Resolve deferred handlers against the loaded catalog.
 	pub fn resolve(mut self, catalog: &MaterializedCatalog) -> Result<Self, String> {
-		let deferred = std::mem::take(&mut self.deferred_handlers);
+		let deferred = mem::take(&mut self.deferred_handlers);
 		for (event_path, factory) in deferred {
 			let (sumtype_id, variant_tag) = resolve_event_path(&event_path, catalog)?;
 			self.inner.handlers.entry((sumtype_id, variant_tag)).or_default().push(factory);

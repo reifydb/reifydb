@@ -10,7 +10,9 @@ use std::{ops::Bound, sync::Arc};
 use reifydb_core::internal_error;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_type::{Result, util::cowvec::CowVec};
-use rusqlite::{Connection, Error::QueryReturnedNoRows, params};
+use rusqlite::{
+	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction, params,
+};
 use tracing::instrument;
 
 use super::{
@@ -184,7 +186,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 			Err(e) => return Err(internal_error!("Failed to prepare query: {}", e)),
 		};
 
-		let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+		let params_refs: Vec<&dyn ToSql> = params.iter().map(|p| p as &dyn ToSql).collect();
 
 		let entries: Vec<RawEntry> = stmt
 			.query_map(params_refs.as_slice(), |row| {
@@ -256,7 +258,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 			Err(e) => return Err(internal_error!("Failed to prepare query: {}", e)),
 		};
 
-		let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+		let params_refs: Vec<&dyn ToSql> = params.iter().map(|p| p as &dyn ToSql).collect();
 
 		let entries: Vec<RawEntry> = stmt
 			.query_map(params_refs.as_slice(), |row| {
@@ -348,10 +350,10 @@ fn bound_to_owned(bound: Bound<&[u8]>) -> Bound<Vec<u8>> {
 
 /// Insert entries into a table within an existing transaction
 fn insert_entries_in_tx(
-	tx: &rusqlite::Transaction,
+	tx: &SqliteTransaction,
 	table_name: &str,
 	entries: &[(CowVec<u8>, Option<CowVec<u8>>)],
-) -> rusqlite::Result<()> {
+) -> SqliteResult<()> {
 	for (key, value) in entries {
 		match value {
 			Some(v) => {

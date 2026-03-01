@@ -6,7 +6,7 @@
 //! Provides read-only access to the underlying store for operators,
 //! including get, contains_key, prefix, and range operations.
 
-use std::{ops::Bound, slice::from_raw_parts};
+use std::{ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_abi::{
 	constants::{
@@ -61,7 +61,7 @@ pub(super) extern "C" fn host_store_get(
 					return FFI_ERROR_ALLOC;
 				}
 
-				std::ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
+				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
 
 				(*output).ptr = value_ptr;
 				(*output).len = value_bytes.len();
@@ -150,7 +150,7 @@ pub(super) extern "C" fn host_store_prefix(
 				}
 
 				// Initialize the iterator structure with the handle
-				std::ptr::write(
+				ptr::write(
 					iter_ptr,
 					StoreIteratorInternal {
 						handle,
@@ -260,7 +260,7 @@ pub(super) extern "C" fn host_store_range(
 				}
 
 				// Initialize the iterator structure with the handle
-				std::ptr::write(
+				ptr::write(
 					iter_ptr,
 					StoreIteratorInternal {
 						handle,
@@ -300,7 +300,7 @@ pub(super) extern "C" fn host_store_iterator_next(
 				if key_ptr.is_null() {
 					return FFI_ERROR_ALLOC;
 				}
-				std::ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
+				ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
 				(*key_out).ptr = key_ptr;
 				(*key_out).len = key.len();
 				(*key_out).cap = key.len();
@@ -312,7 +312,7 @@ pub(super) extern "C" fn host_store_iterator_next(
 					host_free(key_ptr, key.len());
 					return FFI_ERROR_ALLOC;
 				}
-				std::ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
+				ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
 				(*value_out).ptr = value_ptr;
 				(*value_out).len = value.len();
 				(*value_out).cap = value.len();

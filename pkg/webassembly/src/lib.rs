@@ -7,6 +7,7 @@
 //! queries in a browser or Node.js environment with in-memory storage.
 
 use std::collections::HashMap;
+
 use reifydb_catalog::schema::SchemaRegistry;
 use reifydb_engine::{engine::StandardEngine, procedure::registry::Procedures};
 use wasm_bindgen::prelude::*;

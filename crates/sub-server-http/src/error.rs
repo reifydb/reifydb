@@ -6,6 +6,8 @@
 //! This module provides error types that implement Axum's `IntoResponse` trait
 //! for consistent error responses across all HTTP endpoints.
 
+use std::{error, fmt};
+
 use axum::{
 	Json,
 	http::StatusCode,
@@ -14,6 +16,7 @@ use axum::{
 use reifydb_sub_server::{auth::AuthError, execute::ExecuteError};
 use reifydb_type::error::Diagnostic;
 use serde::Serialize;
+use tracing::{debug, error};
 
 /// JSON error response body.
 #[derive(Debug, Serialize)]
@@ -67,8 +70,8 @@ impl From<ExecuteError> for AppError {
 	}
 }
 
-impl std::fmt::Display for AppError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for AppError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			AppError::Auth(e) => write!(f, "Authentication error: {}", e),
 			AppError::Execute(e) => write!(f, "Execution error: {}", e),
@@ -79,7 +82,7 @@ impl std::fmt::Display for AppError {
 	}
 }
 
-impl std::error::Error for AppError {}
+impl error::Error for AppError {}
 
 impl IntoResponse for AppError {
 	fn into_response(self) -> Response {
@@ -89,7 +92,7 @@ impl IntoResponse for AppError {
 			statement,
 		}) = self
 		{
-			tracing::debug!("Engine error: {}", diagnostic.message);
+			debug!("Engine error: {}", diagnostic.message);
 			// Clone the diagnostic and attach the statement
 			let mut diag = (*diagnostic).clone();
 			if diag.statement.is_none() && !statement.is_empty() {
@@ -124,7 +127,7 @@ impl IntoResponse for AppError {
 				(StatusCode::BAD_REQUEST, "QUERY_CANCELLED", "Query was cancelled")
 			}
 			AppError::Execute(ExecuteError::Disconnected) => {
-				tracing::error!("Query stream disconnected unexpectedly");
+				error!("Query stream disconnected unexpectedly");
 				(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error")
 			}
 			AppError::Execute(ExecuteError::Engine {
@@ -142,7 +145,7 @@ impl IntoResponse for AppError {
 				return (StatusCode::BAD_REQUEST, body).into_response();
 			}
 			AppError::Internal(msg) => {
-				tracing::error!("Internal error: {}", msg);
+				error!("Internal error: {}", msg);
 				(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error")
 			}
 		};
@@ -154,12 +157,14 @@ impl IntoResponse for AppError {
 
 #[cfg(test)]
 pub mod tests {
+	use serde_json::to_string;
+
 	use super::*;
 
 	#[test]
 	fn test_error_response_serialization() {
 		let resp = ErrorResponse::new("TEST_CODE", "Test error message");
-		let json = serde_json::to_string(&resp).unwrap();
+		let json = to_string(&resp).unwrap();
 		assert!(json.contains("TEST_CODE"));
 		assert!(json.contains("Test error message"));
 	}

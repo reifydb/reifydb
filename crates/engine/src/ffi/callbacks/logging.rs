@@ -5,6 +5,8 @@
 //!
 //! Allows FFI operators to emit log messages at various severity levels.
 
+use std::slice;
+
 use tracing::{debug, error, info, trace, warn};
 
 /// Log a message from an FFI operator
@@ -22,7 +24,7 @@ pub extern "C" fn host_log_message(operator_id: u64, level: u32, message: *const
 
 	// Convert message to string using provided length
 	let msg_str = unsafe {
-		let bytes = std::slice::from_raw_parts(message, message_len);
+		let bytes = slice::from_raw_parts(message, message_len);
 		String::from_utf8_lossy(bytes)
 	};
 

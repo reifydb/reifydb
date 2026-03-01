@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::encoded::EncodedValues,
 	interface::catalog::dictionary::DictionaryDef,
@@ -43,8 +44,7 @@ pub(crate) trait DictionaryOperations {
 impl DictionaryOperations for CommandTransaction {
 	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId> {
 		// 1. Serialize value and compute hash
-		let value_bytes =
-			postcard::to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		// 2. Check if value already exists (lookup by hash)
@@ -88,7 +88,7 @@ impl DictionaryOperations for CommandTransaction {
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
 		match self.get(&index_key)? {
 			Some(v) => {
-				let value: Value = postcard::from_bytes(&v.values)
+				let value: Value = from_bytes(&v.values)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -101,8 +101,7 @@ impl DictionaryOperations for CommandTransaction {
 		dictionary: &DictionaryDef,
 		value: &Value,
 	) -> Result<Option<DictionaryEntryId>> {
-		let value_bytes =
-			postcard::to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
@@ -120,8 +119,7 @@ impl DictionaryOperations for CommandTransaction {
 impl DictionaryOperations for AdminTransaction {
 	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId> {
 		// 1. Serialize value and compute hash
-		let value_bytes =
-			postcard::to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		// 2. Check if value already exists (lookup by hash)
@@ -162,7 +160,7 @@ impl DictionaryOperations for AdminTransaction {
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
 		match self.get(&index_key)? {
 			Some(v) => {
-				let value: Value = postcard::from_bytes(&v.values)
+				let value: Value = from_bytes(&v.values)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -175,8 +173,7 @@ impl DictionaryOperations for AdminTransaction {
 		dictionary: &DictionaryDef,
 		value: &Value,
 	) -> Result<Option<DictionaryEntryId>> {
-		let value_bytes =
-			postcard::to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
@@ -210,7 +207,7 @@ impl DictionaryOperations for Transaction<'_> {
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128() as u64);
 		match self.get(&index_key)? {
 			Some(v) => {
-				let value: Value = postcard::from_bytes(&v.values)
+				let value: Value = from_bytes(&v.values)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -224,8 +221,7 @@ impl DictionaryOperations for Transaction<'_> {
 		value: &Value,
 	) -> Result<Option<DictionaryEntryId>> {
 		// Both command and query transactions can read
-		let value_bytes =
-			postcard::to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);

@@ -13,6 +13,8 @@ pub mod r#macro;
 pub mod render;
 pub mod util;
 
+use std::{array::TryFromSliceError, error, fmt, mem, num, string};
+
 use render::DefaultRenderer;
 
 use crate::{fragment::Fragment, value::r#type::Type};
@@ -64,7 +66,7 @@ impl Default for Diagnostic {
 }
 
 impl Display for Diagnostic {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.write_fmt(format_args!("{}", self.code))
 	}
 }
@@ -77,7 +79,7 @@ impl Diagnostic {
 
 		// Recursively set statement for all nested diagnostics
 		if let Some(ref mut cause) = self.cause {
-			let mut updated_cause = std::mem::replace(cause.as_mut(), Diagnostic::default());
+			let mut updated_cause = mem::replace(cause.as_mut(), Diagnostic::default());
 			updated_cause.with_statement(statement);
 			*cause = Box::new(updated_cause);
 		}
@@ -124,7 +126,7 @@ pub enum UnaryOp {
 }
 
 impl Display for UnaryOp {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			UnaryOp::Not => f.write_str("NOT"),
 		}
@@ -167,7 +169,7 @@ impl BinaryOp {
 }
 
 impl Display for BinaryOp {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.write_str(self.symbol())
 	}
 }
@@ -181,7 +183,7 @@ pub enum LogicalOp {
 }
 
 impl Display for LogicalOp {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			LogicalOp::Not => f.write_str("NOT"),
 			LogicalOp::And => f.write_str("AND"),
@@ -200,7 +202,7 @@ pub enum OperandCategory {
 }
 
 impl Display for OperandCategory {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			OperandCategory::Number => f.write_str("number"),
 			OperandCategory::Text => f.write_str("text"),
@@ -667,7 +669,7 @@ impl DerefMut for Error {
 }
 
 impl Display for Error {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let out = DefaultRenderer::render_string(&self.0);
 		f.write_str(out.as_str())
 	}
@@ -679,7 +681,7 @@ impl Error {
 	}
 }
 
-impl std::error::Error for Error {}
+impl error::Error for Error {}
 
 impl de::Error for Error {
 	fn custom<T: Display>(msg: T) -> Self {
@@ -699,8 +701,8 @@ impl ser::Error for Error {
 	}
 }
 
-impl From<std::num::TryFromIntError> for Error {
-	fn from(err: std::num::TryFromIntError) -> Self {
+impl From<num::TryFromIntError> for Error {
+	fn from(err: num::TryFromIntError) -> Self {
 		TypeError::IntegerConversion {
 			message: err.to_string(),
 		}
@@ -708,8 +710,8 @@ impl From<std::num::TryFromIntError> for Error {
 	}
 }
 
-impl From<std::array::TryFromSliceError> for Error {
-	fn from(err: std::array::TryFromSliceError) -> Self {
+impl From<TryFromSliceError> for Error {
+	fn from(err: TryFromSliceError) -> Self {
 		TypeError::ArrayConversion {
 			message: err.to_string(),
 		}
@@ -717,8 +719,8 @@ impl From<std::array::TryFromSliceError> for Error {
 	}
 }
 
-impl From<std::string::FromUtf8Error> for Error {
-	fn from(err: std::string::FromUtf8Error) -> Self {
+impl From<string::FromUtf8Error> for Error {
+	fn from(err: string::FromUtf8Error) -> Self {
 		TypeError::Utf8Conversion {
 			message: err.to_string(),
 		}
@@ -732,24 +734,24 @@ impl From<TypeError> for Error {
 	}
 }
 
-impl From<std::num::TryFromIntError> for TypeError {
-	fn from(err: std::num::TryFromIntError) -> Self {
+impl From<num::TryFromIntError> for TypeError {
+	fn from(err: num::TryFromIntError) -> Self {
 		TypeError::IntegerConversion {
 			message: err.to_string(),
 		}
 	}
 }
 
-impl From<std::array::TryFromSliceError> for TypeError {
-	fn from(err: std::array::TryFromSliceError) -> Self {
+impl From<TryFromSliceError> for TypeError {
+	fn from(err: TryFromSliceError) -> Self {
 		TypeError::ArrayConversion {
 			message: err.to_string(),
 		}
 	}
 }
 
-impl From<std::string::FromUtf8Error> for TypeError {
-	fn from(err: std::string::FromUtf8Error) -> Self {
+impl From<string::FromUtf8Error> for TypeError {
+	fn from(err: string::FromUtf8Error) -> Self {
 		TypeError::Utf8Conversion {
 			message: err.to_string(),
 		}

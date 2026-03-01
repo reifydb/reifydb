@@ -3,7 +3,7 @@
 
 use std::{fmt, ops::Deref};
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 
 /// Standard column name for RowNumber columns
 pub static ROW_NUMBER_COLUMN_NAME: &str = "rownum";
@@ -92,7 +92,7 @@ impl<'de> Deserialize<'de> for RowNumber {
 
 			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
 			where
-				E: serde::de::Error,
+				E: de::Error,
 			{
 				if value == 0 {
 					Err(E::custom("Row numbers must be greater than 0"))

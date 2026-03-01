@@ -6,6 +6,7 @@ use std::{
 	fmt::{self, Debug},
 	mem::transmute_copy,
 	ops::Deref,
+	result::Result as StdResult,
 };
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -55,7 +56,7 @@ where
 }
 
 impl<T: IsUuid + Serialize> Serialize for UuidContainer<T, Cow> {
-	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> std::result::Result<Ser::Ok, Ser::Error> {
+	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a, T: Clone + PartialEq + Serialize> {
 			data: &'a CowVec<T>,
@@ -68,7 +69,7 @@ impl<T: IsUuid + Serialize> Serialize for UuidContainer<T, Cow> {
 }
 
 impl<'de, T: IsUuid + Deserialize<'de>> Deserialize<'de> for UuidContainer<T, Cow> {
-	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper<T: Clone + PartialEq> {
 			data: CowVec<T>,

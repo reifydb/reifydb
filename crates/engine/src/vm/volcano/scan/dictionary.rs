@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use postcard::from_bytes;
 use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::resolved::ResolvedDictionary,
@@ -94,7 +95,7 @@ impl QueryNode for DictionaryScanNode {
 				let entry_id = DictionaryEntryId::from_u128(key.id as u128, dict_def.id_type.clone())?;
 
 				// Decode the value from the entry
-				let value: Value = postcard::from_bytes(&entry.values).map_err(|e| {
+				let value: Value = from_bytes(&entry.values).map_err(|e| {
 					internal_error!("Failed to deserialize dictionary value: {}", e)
 				})?;
 

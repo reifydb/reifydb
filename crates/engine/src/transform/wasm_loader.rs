@@ -3,7 +3,7 @@
 
 //! WASM transform loader — scans a directory for `.wasm` files and builds a transform registry
 
-use std::path::Path;
+use std::{fs, path::Path};
 
 use reifydb_sdk::error::FFIError;
 use reifydb_type::Result;
@@ -15,7 +15,7 @@ use super::{registry::Transforms, wasm::WasmTransform};
 ///
 /// The transform name is derived from the file stem (e.g. `my_transform.wasm` → `"my_transform"`).
 pub fn load_transforms_from_dir(dir: &Path) -> Result<Transforms> {
-	let entries = std::fs::read_dir(dir).map_err(|e| {
+	let entries = fs::read_dir(dir).map_err(|e| {
 		FFIError::Other(format!("Failed to read WASM transform directory {}: {}", dir.display(), e))
 	})?;
 
@@ -34,7 +34,7 @@ pub fn load_transforms_from_dir(dir: &Path) -> Result<Transforms> {
 			None => continue,
 		};
 
-		let wasm_bytes = std::fs::read(&path)
+		let wasm_bytes = fs::read(&path)
 			.map_err(|e| FFIError::Other(format!("Failed to read WASM file {}: {}", path.display(), e)))?;
 
 		let name_for_closure = name.clone();

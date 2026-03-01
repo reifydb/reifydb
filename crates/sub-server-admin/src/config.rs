@@ -3,7 +3,7 @@
 
 //! Configuration for the admin server subsystem.
 
-use std::time::Duration;
+use std::{fmt, time::Duration};
 
 use reifydb_runtime::SharedRuntime;
 
@@ -24,8 +24,8 @@ pub struct AdminConfig {
 	pub runtime: Option<SharedRuntime>,
 }
 
-impl std::fmt::Debug for AdminConfig {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for AdminConfig {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("AdminConfig")
 			.field("bind_addr", &self.bind_addr)
 			.field("max_connections", &self.max_connections)

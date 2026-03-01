@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
@@ -193,7 +193,7 @@ impl DateTime {
 }
 
 impl Display for DateTime {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let date = self.date();
 		let time = self.time();
 
@@ -217,7 +217,7 @@ struct DateTimeVisitor;
 impl<'de> Visitor<'de> for DateTimeVisitor {
 	type Value = DateTime;
 
-	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 		formatter.write_str("a datetime in ISO 8601 format (YYYY-MM-DDTHH:MM:SS[.nnnnnnnnn]Z)")
 	}
 
@@ -308,6 +308,8 @@ impl<'de> Deserialize<'de> for DateTime {
 
 #[cfg(test)]
 pub mod tests {
+	use serde_json::{from_str, to_string};
+
 	use super::*;
 
 	#[test]
@@ -523,10 +525,10 @@ pub mod tests {
 	#[test]
 	fn test_serde_roundtrip() {
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap();
-		let json = serde_json::to_string(&datetime).unwrap();
+		let json = to_string(&datetime).unwrap();
 		assert_eq!(json, "\"2024-03-15T14:30:45.123456789Z\"");
 
-		let recovered: DateTime = serde_json::from_str(&json).unwrap();
+		let recovered: DateTime = from_str(&json).unwrap();
 		assert_eq!(datetime, recovered);
 	}
 }

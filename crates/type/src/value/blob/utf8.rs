@@ -15,7 +15,7 @@ impl Blob {
 	}
 
 	pub fn to_utf8(&self) -> Result<String, Error> {
-		match std::str::from_utf8(self.as_bytes()) {
+		match str::from_utf8(self.as_bytes()) {
 			Ok(s) => Ok(s.to_string()),
 			Err(e) => Err(TypeError::BlobEncoding {
 				kind: BlobEncodingKind::InvalidUtf8Sequence {

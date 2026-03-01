@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::fmt;
+
 use crate::module::{
 	BranchingDepth, FunctionIndex, FunctionTypeIndex, GlobalIndex, LocalIndex, MemoryIndex, TableIndex,
 	memory::MemoryOffset,
@@ -45,8 +47,8 @@ pub enum ValueType {
 	RefFunc,
 }
 
-impl std::fmt::Display for ValueType {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for ValueType {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			ValueType::I32 => write!(f, "i32"),
 			ValueType::I64 => write!(f, "i64"),

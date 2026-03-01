@@ -10,7 +10,7 @@ use reifydb_rql::flow::{
 	node::{FlowNode, FlowNodeType::SourceInlineData},
 };
 use reifydb_type::Result;
-use tracing::{Span, instrument};
+use tracing::{Span, field, instrument};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
@@ -20,7 +20,7 @@ impl FlowEngine {
 		origin = ?change.origin,
 		version = change.version.0,
 		diff_count = change.diffs.len(),
-		nodes_processed = tracing::field::Empty
+		nodes_processed = field::Empty
 	))]
 	pub fn process(&self, txn: &mut FlowTransaction, change: Change, flow_id: FlowId) -> Result<()> {
 		let mut nodes_processed = 0;
@@ -81,9 +81,9 @@ impl FlowEngine {
 		node_id = ?node.id,
 		node_type = ?node.ty,
 		input_diffs = change.diffs.len(),
-		output_diffs = tracing::field::Empty,
-		lock_wait_us = tracing::field::Empty,
-		apply_time_us = tracing::field::Empty
+		output_diffs = field::Empty,
+		lock_wait_us = field::Empty,
+		apply_time_us = field::Empty
 	))]
 	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Change) -> Result<Change> {
 		let lock_start = self.clock.instant();
@@ -101,9 +101,9 @@ impl FlowEngine {
 		flow_id = ?flow.id,
 		node_id = ?node.id,
 		input_diffs = change.diffs.len(),
-		output_diffs = tracing::field::Empty,
+		output_diffs = field::Empty,
 		downstream_count = node.outputs.len(),
-		propagation_time_us = tracing::field::Empty
+		propagation_time_us = field::Empty
 	))]
 	fn process_change(
 		&self,

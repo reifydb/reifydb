@@ -29,9 +29,10 @@ use tokio::{
 	net::TcpListener,
 	select,
 	sync::{Semaphore, oneshot, watch},
+	task,
 	time::interval,
 };
-use tracing::info;
+use tracing::{debug, info, warn};
 
 use crate::{handler::handle_connection, subscription::registry::SubscriptionRegistry};
 
@@ -216,7 +217,7 @@ impl Subsystem for WsSubsystem {
 
 					result = poller_shutdown_rx.changed() => {
 						if result.is_err() || *poller_shutdown_rx.borrow() {
-							tracing::debug!("Subscription poller shutting down");
+							debug!("Subscription poller shutting down");
 							break;
 						}
 					}
@@ -226,7 +227,7 @@ impl Subsystem for WsSubsystem {
 					let e = poller_state.engine_clone();
 					let s = poller_state.actor_system();
 					let r = poller_registry.clone();
-					let _ = tokio::task::spawn_blocking(move || {
+					let _ = task::spawn_blocking(move || {
 						p.poll_all(&e, &s, r.as_ref());
 					}).await;
 					}
@@ -244,7 +245,7 @@ impl Subsystem for WsSubsystem {
 					// Check shutdown first
 					result = rx.changed() => {
 						if result.is_err() || *rx.borrow() {
-							tracing::info!("WebSocket server shutting down");
+							info!("WebSocket server shutting down");
 							break;
 						}
 					}
@@ -257,7 +258,7 @@ impl Subsystem for WsSubsystem {
 								let permit = match semaphore.clone().try_acquire_owned() {
 									Ok(p) => p,
 									Err(_) => {
-										tracing::warn!("Connection limit reached, rejecting {}", peer);
+										warn!("Connection limit reached, rejecting {}", peer);
 										// Connection will be dropped, closing it
 										continue;
 									}
@@ -271,7 +272,7 @@ impl Subsystem for WsSubsystem {
 								let runtime_handle = runtime_inner.clone();
 
 								active.fetch_add(1, Ordering::SeqCst);
-								tracing::debug!("Accepted connection from {}", peer);
+								debug!("Accepted connection from {}", peer);
 
 								runtime_handle.spawn(async move {
 									handle_connection(stream, conn_state, conn_registry, conn_poller, shutdown_rx).await;
@@ -280,7 +281,7 @@ impl Subsystem for WsSubsystem {
 								});
 							}
 							Err(e) => {
-								tracing::warn!("Accept error: {}", e);
+								warn!("Accept error: {}", e);
 							}
 						}
 					}

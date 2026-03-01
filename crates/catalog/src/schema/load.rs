@@ -4,7 +4,7 @@
 //! Schema Registry loading from storage.
 
 use reifydb_transaction::transaction::Transaction;
-use tracing::instrument;
+use tracing::{Span, field, instrument};
 
 use super::SchemaRegistry;
 use crate::{Result, store::schema::find::load_all_schemas};
@@ -21,12 +21,12 @@ impl SchemaRegistryLoader {
 		name = "schema_registry::load_all",
 		level = "debug",
 		skip(rx, registry),
-		fields(schema_count = tracing::field::Empty)
+		fields(schema_count = field::Empty)
 	)]
 	pub fn load_all(rx: &mut Transaction<'_>, registry: &SchemaRegistry) -> Result<()> {
 		let schemas = load_all_schemas(rx)?;
 
-		tracing::Span::current().record("schema_count", schemas.len());
+		Span::current().record("schema_count", schemas.len());
 
 		for schema in schemas {
 			registry.cache_schema(schema);

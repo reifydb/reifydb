@@ -8,8 +8,10 @@ use std::{
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
+	slice,
 };
 
+use postcard::from_bytes;
 use reifydb_abi::{context::context::ContextFFI, data::column::ColumnsFFI, procedure::vtable::ProcedureVTableFFI};
 use reifydb_type::params::Params;
 use tracing::error;
@@ -58,8 +60,8 @@ pub extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 		let params: Params = if params_ptr.is_null() || params_len == 0 {
 			Params::None
 		} else {
-			let bytes = unsafe { std::slice::from_raw_parts(params_ptr, params_len) };
-			match postcard::from_bytes(bytes) {
+			let bytes = unsafe { slice::from_raw_parts(params_ptr, params_len) };
+			match from_bytes(bytes) {
 				Ok(p) => p,
 				Err(e) => {
 					error!(?e, "Failed to deserialize procedure params");

@@ -12,7 +12,9 @@ use std::{collections::HashMap, ops::Bound, sync::Arc};
 use reifydb_core::{common::CommitVersion, error::diagnostic::internal::internal};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_type::{Result, error, util::cowvec::CowVec};
-use rusqlite::{Connection, Error::QueryReturnedNoRows, params};
+use rusqlite::{
+	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction, params,
+};
 use tracing::instrument;
 
 use super::{
@@ -97,7 +99,7 @@ impl SqlitePrimitiveStorage {
 	}
 
 	/// Create a table with the versioned schema if it doesn't exist.
-	fn create_table_if_needed(conn: &Connection, table_name: &str) -> rusqlite::Result<()> {
+	fn create_table_if_needed(conn: &Connection, table_name: &str) -> SqliteResult<()> {
 		conn.execute(
 			&format!(
 				"CREATE TABLE IF NOT EXISTS \"{}\" (
@@ -238,7 +240,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 			Err(e) => return Err(error!(internal(format!("Failed to prepare query: {}", e)))),
 		};
 
-		let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+		let params_refs: Vec<&dyn ToSql> = params.iter().map(|p| p as &dyn ToSql).collect();
 
 		let entries: Vec<RawEntry> = stmt
 			.query_map(params_refs.as_slice(), |row| {
@@ -320,7 +322,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 			Err(e) => return Err(error!(internal(format!("Failed to prepare query: {}", e)))),
 		};
 
-		let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+		let params_refs: Vec<&dyn ToSql> = params.iter().map(|p| p as &dyn ToSql).collect();
 
 		let entries: Vec<RawEntry> = stmt
 			.query_map(params_refs.as_slice(), |row| {
@@ -493,11 +495,11 @@ fn bound_to_owned(bound: Bound<&[u8]>) -> Bound<Vec<u8>> {
 
 /// Insert versioned entries into a table within an existing transaction
 fn insert_versioned_entries_in_tx(
-	tx: &rusqlite::Transaction,
+	tx: &SqliteTransaction,
 	table_name: &str,
 	version: CommitVersion,
 	entries: &[(CowVec<u8>, Option<CowVec<u8>>)],
-) -> rusqlite::Result<()> {
+) -> SqliteResult<()> {
 	let version_bytes = version_to_bytes(version);
 	let sql = format!("INSERT OR REPLACE INTO \"{}\" (key, version, value) VALUES (?1, ?2, ?3)", table_name);
 	let mut stmt = tx.prepare(&sql)?;

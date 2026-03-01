@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{env, fs, io::Write, path::Path};
+use std::{env, fs, io, io::Write, path, path::Path};
 
 use fs::create_dir_all;
 
@@ -56,7 +56,7 @@ fn main() {
 	}
 }
 
-fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
 	create_dir_all(&dst)?;
 	for entry in fs::read_dir(src)? {
 		let entry = entry?;
@@ -74,7 +74,7 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result
 	Ok(())
 }
 
-fn generate_asset_manifest(webapp_path: &Path) -> std::io::Result<()> {
+fn generate_asset_manifest(webapp_path: &Path) -> io::Result<()> {
 	let manifest_path = webapp_path.join("asset_manifest.rs");
 	let mut manifest = fs::File::create(&manifest_path)?;
 
@@ -103,11 +103,7 @@ fn generate_asset_manifest(webapp_path: &Path) -> std::io::Result<()> {
 	Ok(())
 }
 
-fn collect_assets(
-	base: &Path,
-	dir: &Path,
-	assets: &mut Vec<(String, std::path::PathBuf, String)>,
-) -> std::io::Result<()> {
+fn collect_assets(base: &Path, dir: &Path, assets: &mut Vec<(String, path::PathBuf, String)>) -> io::Result<()> {
 	for entry in fs::read_dir(dir)? {
 		let entry = entry?;
 		let path = entry.path();
@@ -166,7 +162,7 @@ fn get_mime_type(path: &str) -> &'static str {
 	}
 }
 
-fn generate_empty_asset_manifest(webapp_path: &Path) -> std::io::Result<()> {
+fn generate_empty_asset_manifest(webapp_path: &Path) -> io::Result<()> {
 	let manifest_path = webapp_path.join("asset_manifest.rs");
 	let mut manifest = fs::File::create(&manifest_path)?;
 

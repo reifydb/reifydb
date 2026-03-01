@@ -6,13 +6,16 @@ use std::{
 		BTreeMap,
 		btree_map::{Iter, Range},
 	},
+	mem::take,
 	ops::RangeBounds,
+	slice, vec,
 };
 
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, key::EncodedKey},
 	interface::change::Change,
 };
+use vec::Drain;
 
 /// Represents a pending operation on a key
 #[derive(Debug, Clone)]
@@ -38,7 +41,7 @@ impl ViewChanges {
 		self.0.extend(iter);
 	}
 
-	pub fn drain(&mut self) -> std::vec::Drain<'_, Change> {
+	pub fn drain(&mut self) -> Drain<'_, Change> {
 		self.0.drain(..)
 	}
 
@@ -50,14 +53,14 @@ impl ViewChanges {
 		self.0.len()
 	}
 
-	pub fn iter(&self) -> std::slice::Iter<'_, Change> {
+	pub fn iter(&self) -> slice::Iter<'_, Change> {
 		self.0.iter()
 	}
 }
 
 impl IntoIterator for ViewChanges {
 	type Item = Change;
-	type IntoIter = std::vec::IntoIter<Change>;
+	type IntoIter = vec::IntoIter<Change>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.0.into_iter()
@@ -125,7 +128,7 @@ impl Pending {
 
 	/// Take all view changes, leaving an empty collection
 	pub fn take_view_changes(&mut self) -> ViewChanges {
-		std::mem::take(&mut self.view_changes)
+		take(&mut self.view_changes)
 	}
 
 	/// Append a view change
@@ -141,6 +144,8 @@ impl Pending {
 
 #[cfg(test)]
 pub mod tests {
+	use std::vec;
+
 	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
 	use reifydb_type::util::cowvec::CowVec;
 

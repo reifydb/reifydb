@@ -4,6 +4,7 @@
 //! WASM clock implementation.
 
 use std::{
+	fmt,
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -11,9 +12,11 @@ use std::{
 	time::Duration,
 };
 
+use js_sys::Date;
+
 #[inline(always)]
 fn platform_now_nanos() -> u128 {
-	let millis = js_sys::Date::now();
+	let millis = Date::now();
 	(millis * 1_000_000.0) as u128
 }
 
@@ -54,7 +57,7 @@ impl Clock {
 		match self {
 			Clock::Real => Instant {
 				inner: InstantInner::Real {
-					millis: js_sys::Date::now(),
+					millis: Date::now(),
 				},
 			},
 			Clock::Mock(mock) => Instant {
@@ -178,7 +181,7 @@ impl Instant {
 			InstantInner::Real {
 				millis,
 			} => {
-				let now = js_sys::Date::now();
+				let now = Date::now();
 				let elapsed_millis = (now - millis).max(0.0);
 				Duration::from_millis(elapsed_millis as u64)
 			}
@@ -225,8 +228,8 @@ impl Instant {
 	}
 }
 
-impl std::fmt::Debug for Instant {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Instant {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match &self.inner {
 			InstantInner::Real {
 				millis,

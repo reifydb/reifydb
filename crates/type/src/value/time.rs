@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
@@ -103,7 +103,7 @@ impl Time {
 }
 
 impl Display for Time {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let hours = self.hour();
 		let minutes = self.minute();
 		let seconds = self.second();
@@ -128,7 +128,7 @@ struct TimeVisitor;
 impl<'de> Visitor<'de> for TimeVisitor {
 	type Value = Time;
 
-	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 		formatter.write_str("a time in ISO 8601 format (HH:MM:SS or HH:MM:SS.nnnnnnnnn)")
 	}
 
@@ -187,6 +187,8 @@ impl<'de> Deserialize<'de> for Time {
 
 #[cfg(test)]
 pub mod tests {
+	use serde_json::{from_str, to_string};
+
 	use super::*;
 
 	#[test]
@@ -431,10 +433,10 @@ pub mod tests {
 	#[test]
 	fn test_serde_roundtrip() {
 		let time = Time::new(14, 30, 45, 123456789).unwrap();
-		let json = serde_json::to_string(&time).unwrap();
+		let json = to_string(&time).unwrap();
 		assert_eq!(json, "\"14:30:45.123456789\"");
 
-		let recovered: Time = serde_json::from_str(&json).unwrap();
+		let recovered: Time = from_str(&json).unwrap();
 		assert_eq!(time, recovered);
 	}
 }

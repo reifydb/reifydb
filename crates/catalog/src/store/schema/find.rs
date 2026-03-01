@@ -16,7 +16,7 @@ use reifydb_type::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
 };
-use tracing::{Span, instrument};
+use tracing::{Span, field, instrument};
 
 use super::schema::{schema_field, schema_header};
 use crate::Result;
@@ -30,8 +30,8 @@ use crate::Result;
 	skip(txn),
 	fields(
 		fingerprint = ?fingerprint,
-		found = tracing::field::Empty,
-		field_count = tracing::field::Empty
+		found = field::Empty,
+		field_count = field::Empty
 	)
 )]
 pub(crate) fn find_schema_by_fingerprint(
@@ -95,8 +95,8 @@ pub(crate) fn find_schema_by_fingerprint(
 	level = "debug",
 	skip(rx),
 	fields(
-		schema_count = tracing::field::Empty,
-		total_fields = tracing::field::Empty
+		schema_count = field::Empty,
+		total_fields = field::Empty
 	)
 )]
 pub fn load_all_schemas(rx: &mut Transaction<'_>) -> Result<Vec<Schema>> {
@@ -164,8 +164,8 @@ pub fn load_all_schemas(rx: &mut Transaction<'_>) -> Result<Vec<Schema>> {
 	}
 
 	let total_fields: usize = schemas.iter().map(|s| s.field_count()).sum();
-	tracing::Span::current().record("schema_count", schemas.len());
-	tracing::Span::current().record("total_fields", total_fields);
+	Span::current().record("schema_count", schemas.len());
+	Span::current().record("total_fields", total_fields);
 
 	Ok(schemas)
 }

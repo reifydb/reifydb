@@ -3,6 +3,7 @@
 
 //! Loader module for reconstructing Flows from catalog nodes and edges
 
+use postcard::from_bytes;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{interface::catalog::flow::FlowId, internal};
 use reifydb_transaction::transaction::Transaction;
@@ -25,7 +26,7 @@ pub fn load_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, flow_id: Flow
 
 	// Deserialize and add all nodes
 	for node_def in node_defs {
-		let node_type: FlowNodeType = postcard::from_bytes(node_def.data.as_ref())
+		let node_type: FlowNodeType = from_bytes(node_def.data.as_ref())
 			.map_err(|e| Error(internal!("Failed to deserialize FlowNodeType: {}", e)))?;
 
 		let node = FlowNode::new(node_def.id, node_type);

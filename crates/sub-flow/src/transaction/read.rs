@@ -3,9 +3,13 @@
 
 use std::{
 	cmp::Ordering,
+	collections, iter,
 	ops::Bound::{Excluded, Included, Unbounded},
+	vec,
 };
 
+use collections::BTreeMap;
+use iter::Peekable;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{
@@ -16,6 +20,7 @@ use reifydb_core::{
 	key::{Key, kind::KeyKind},
 };
 use reifydb_type::Result;
+use vec::IntoIter;
 
 use super::{FlowTransaction, PendingWrite};
 
@@ -180,7 +185,7 @@ impl FlowTransaction {
 				state_query,
 				..
 			} => {
-				let merged: std::collections::BTreeMap<EncodedKey, PendingWrite> = pending
+				let merged: BTreeMap<EncodedKey, PendingWrite> = pending
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
 					.collect();
@@ -210,7 +215,7 @@ impl FlowTransaction {
 				..
 			} => {
 				// Collect base layer entries in range, then let flow pending shadow base for same keys
-				let mut merged: std::collections::BTreeMap<EncodedKey, PendingWrite> = base_pending
+				let mut merged: BTreeMap<EncodedKey, PendingWrite> = base_pending
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
 					.collect();
@@ -255,7 +260,7 @@ impl FlowTransaction {
 				state_query,
 				..
 			} => {
-				let merged: std::collections::BTreeMap<EncodedKey, PendingWrite> = pending
+				let merged: BTreeMap<EncodedKey, PendingWrite> = pending
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
 					.collect();
@@ -284,7 +289,7 @@ impl FlowTransaction {
 				state_query,
 				..
 			} => {
-				let mut merged: std::collections::BTreeMap<EncodedKey, PendingWrite> = base_pending
+				let mut merged: BTreeMap<EncodedKey, PendingWrite> = base_pending
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
 					.collect();
@@ -317,8 +322,8 @@ struct FlowMergePendingIterator<I>
 where
 	I: Iterator<Item = Result<MultiVersionValues>>,
 {
-	storage_iter: std::iter::Peekable<I>,
-	pending_iter: std::iter::Peekable<std::vec::IntoIter<(EncodedKey, PendingWrite)>>,
+	storage_iter: Peekable<I>,
+	pending_iter: Peekable<IntoIter<(EncodedKey, PendingWrite)>>,
 	version: CommitVersion,
 }
 
@@ -415,8 +420,8 @@ struct FlowMergePendingIteratorRev<I>
 where
 	I: Iterator<Item = Result<MultiVersionValues>>,
 {
-	storage_iter: std::iter::Peekable<I>,
-	pending_iter: std::iter::Peekable<std::vec::IntoIter<(EncodedKey, PendingWrite)>>,
+	storage_iter: Peekable<I>,
+	pending_iter: Peekable<IntoIter<(EncodedKey, PendingWrite)>>,
 	version: CommitVersion,
 }
 

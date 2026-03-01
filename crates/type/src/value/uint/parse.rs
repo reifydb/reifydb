@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
 
 use crate::{
 	error::{Error, TypeError},
@@ -43,7 +43,7 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 	if value.starts_with('-') && value != "-0.0" && value != "-0" {
 		// Quick check for other obvious negative values
 		if let Ok(bigint) = value.parse::<BigInt>() {
-			if bigint.sign() == num_bigint::Sign::Minus {
+			if bigint.sign() == Sign::Minus {
 				return Err(TypeError::NumberOutOfRange {
 					target: Type::Uint,
 					fragment,
@@ -60,7 +60,7 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 		Ok(v) => {
 			// Double check that the BigInt is non-negative (should
 			// be guaranteed by the prefix check)
-			if v.sign() == num_bigint::Sign::Minus {
+			if v.sign() == Sign::Minus {
 				return Err(TypeError::NumberOutOfRange {
 					target: Type::Uint,
 					fragment,

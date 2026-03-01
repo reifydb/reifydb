@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::mem::take;
+use std::mem::{take, transmute};
 
 use indexmap::IndexMap;
 use reifydb_core::interface::store::{
@@ -40,9 +40,7 @@ impl KeyWriteLock {
 		// SAFETY: We're extending the guard's lifetime to 'static.
 		// This is sound because we're also storing the Arc, which keeps
 		// the underlying RwLock alive for as long as this struct exists.
-		let guard = unsafe {
-			std::mem::transmute::<RwLockWriteGuard<'_, ()>, RwLockWriteGuard<'static, ()>>(guard)
-		};
+		let guard = unsafe { transmute::<RwLockWriteGuard<'_, ()>, RwLockWriteGuard<'static, ()>>(guard) };
 
 		Self {
 			_arc: arc,

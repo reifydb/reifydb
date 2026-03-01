@@ -5,16 +5,18 @@
 
 use std::ops::{Deref, DerefMut};
 
-/// Native reader-writer lock implementation wrapping parking_lot::RwLock.
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+/// Native reader-writer lock implementation wrapping RwLock.
 pub struct RwLockInner<T> {
-	inner: parking_lot::RwLock<T>,
+	inner: RwLock<T>,
 }
 
 impl<T> RwLockInner<T> {
 	/// Creates a new reader-writer lock.
 	pub fn new(value: T) -> Self {
 		Self {
-			inner: parking_lot::RwLock::new(value),
+			inner: RwLock::new(value),
 		}
 	}
 
@@ -49,7 +51,7 @@ impl<T> RwLockInner<T> {
 
 /// Native guard providing read access to the data protected by an RwLock.
 pub struct RwLockReadGuardInner<'a, T> {
-	inner: parking_lot::RwLockReadGuard<'a, T>,
+	inner: RwLockReadGuard<'a, T>,
 }
 
 impl<'a, T> Deref for RwLockReadGuardInner<'a, T> {
@@ -62,7 +64,7 @@ impl<'a, T> Deref for RwLockReadGuardInner<'a, T> {
 
 /// Native guard providing write access to the data protected by an RwLock.
 pub struct RwLockWriteGuardInner<'a, T> {
-	inner: parking_lot::RwLockWriteGuard<'a, T>,
+	inner: RwLockWriteGuard<'a, T>,
 }
 
 impl<'a, T> Deref for RwLockWriteGuardInner<'a, T> {

@@ -6,7 +6,7 @@
 //! Low-level state operations that directly call host FFI callbacks.
 //! These functions should not be used directly - use the State API instead.
 
-use std::{ops::Bound, ptr::null_mut, slice::from_raw_parts};
+use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_abi::{
 	constants::{FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK},
@@ -222,13 +222,13 @@ pub(crate) fn raw_state_range(
 
 	unsafe {
 		let (start_ptr, start_len, start_bound_type) = match start {
-			Bound::Unbounded => (std::ptr::null(), 0, BOUND_UNBOUNDED),
+			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),
 			Bound::Included(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_INCLUDED),
 			Bound::Excluded(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_EXCLUDED),
 		};
 
 		let (end_ptr, end_len, end_bound_type) = match end {
-			Bound::Unbounded => (std::ptr::null(), 0, BOUND_UNBOUNDED),
+			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),
 			Bound::Included(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_INCLUDED),
 			Bound::Excluded(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_EXCLUDED),
 		};

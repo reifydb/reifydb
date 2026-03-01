@@ -3,7 +3,9 @@
 
 use std::{
 	cmp::Ordering,
+	fmt,
 	fmt::{Display, Formatter},
+	hash,
 	ops::{Add, Deref, Div, Mul, Sub},
 	str::FromStr,
 };
@@ -97,13 +99,13 @@ impl Ord for Decimal {
 }
 
 impl Display for Decimal {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		self.0.fmt(f)
 	}
 }
 
-impl std::hash::Hash for Decimal {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl hash::Hash for Decimal {
+	fn hash<H: hash::Hasher>(&self, state: &mut H) {
 		self.0.to_string().hash(state);
 	}
 }
@@ -304,7 +306,7 @@ struct DecimalVisitor;
 impl<'de> Visitor<'de> for DecimalVisitor {
 	type Value = Decimal;
 
-	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 		formatter.write_str("a decimal number as a string")
 	}
 
@@ -327,6 +329,9 @@ impl<'de> Deserialize<'de> for Decimal {
 
 #[cfg(test)]
 pub mod tests {
+	use postcard::{from_bytes, to_stdvec};
+	use serde_json::{from_str, to_string};
+
 	use super::*;
 
 	#[test]
@@ -361,84 +366,84 @@ pub mod tests {
 	#[test]
 	fn test_serde_json() {
 		let decimal = Decimal::from_str("123.456789").unwrap();
-		let json = serde_json::to_string(&decimal).unwrap();
+		let json = to_string(&decimal).unwrap();
 		assert_eq!(json, "\"123.456789\"");
 
-		let deserialized: Decimal = serde_json::from_str(&json).unwrap();
+		let deserialized: Decimal = from_str(&json).unwrap();
 		assert_eq!(deserialized, decimal);
 	}
 
 	#[test]
 	fn test_serde_json_negative() {
 		let decimal = Decimal::from_str("-987.654321").unwrap();
-		let json = serde_json::to_string(&decimal).unwrap();
+		let json = to_string(&decimal).unwrap();
 		assert_eq!(json, "\"-987.654321\"");
 
-		let deserialized: Decimal = serde_json::from_str(&json).unwrap();
+		let deserialized: Decimal = from_str(&json).unwrap();
 		assert_eq!(deserialized, decimal);
 	}
 
 	#[test]
 	fn test_serde_json_zero() {
 		let decimal = Decimal::zero();
-		let json = serde_json::to_string(&decimal).unwrap();
+		let json = to_string(&decimal).unwrap();
 		assert_eq!(json, "\"0\"");
 
-		let deserialized: Decimal = serde_json::from_str(&json).unwrap();
+		let deserialized: Decimal = from_str(&json).unwrap();
 		assert_eq!(deserialized, decimal);
 	}
 
 	#[test]
 	fn test_serde_json_high_precision() {
 		let decimal = Decimal::from_str("123456789.123456789123456789").unwrap();
-		let json = serde_json::to_string(&decimal).unwrap();
+		let json = to_string(&decimal).unwrap();
 
-		let deserialized: Decimal = serde_json::from_str(&json).unwrap();
+		let deserialized: Decimal = from_str(&json).unwrap();
 		assert_eq!(deserialized, decimal);
 	}
 
 	#[test]
 	fn test_serde_postcard() {
 		let decimal = Decimal::from_str("123.456789").unwrap();
-		let encoded = postcard::to_stdvec(&decimal).unwrap();
+		let encoded = to_stdvec(&decimal).unwrap();
 
-		let decoded: Decimal = postcard::from_bytes(&encoded).unwrap();
+		let decoded: Decimal = from_bytes(&encoded).unwrap();
 		assert_eq!(decoded, decimal);
 	}
 
 	#[test]
 	fn test_serde_postcard_negative() {
 		let decimal = Decimal::from_str("-987.654321").unwrap();
-		let encoded = postcard::to_stdvec(&decimal).unwrap();
+		let encoded = to_stdvec(&decimal).unwrap();
 
-		let decoded: Decimal = postcard::from_bytes(&encoded).unwrap();
+		let decoded: Decimal = from_bytes(&encoded).unwrap();
 		assert_eq!(decoded, decimal);
 	}
 
 	#[test]
 	fn test_serde_postcard_zero() {
 		let decimal = Decimal::zero();
-		let encoded = postcard::to_stdvec(&decimal).unwrap();
+		let encoded = to_stdvec(&decimal).unwrap();
 
-		let decoded: Decimal = postcard::from_bytes(&encoded).unwrap();
+		let decoded: Decimal = from_bytes(&encoded).unwrap();
 		assert_eq!(decoded, decimal);
 	}
 
 	#[test]
 	fn test_serde_postcard_high_precision() {
 		let decimal = Decimal::from_str("123456789.123456789123456789").unwrap();
-		let encoded = postcard::to_stdvec(&decimal).unwrap();
+		let encoded = to_stdvec(&decimal).unwrap();
 
-		let decoded: Decimal = postcard::from_bytes(&encoded).unwrap();
+		let decoded: Decimal = from_bytes(&encoded).unwrap();
 		assert_eq!(decoded, decimal);
 	}
 
 	#[test]
 	fn test_serde_postcard_large_number() {
 		let decimal = Decimal::from_str("999999999999999999999999999999.999999999999999999999999").unwrap();
-		let encoded = postcard::to_stdvec(&decimal).unwrap();
+		let encoded = to_stdvec(&decimal).unwrap();
 
-		let decoded: Decimal = postcard::from_bytes(&encoded).unwrap();
+		let decoded: Decimal = from_bytes(&encoded).unwrap();
 		assert_eq!(decoded, decimal);
 	}
 }

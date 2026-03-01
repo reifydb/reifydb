@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use std::{
+	fmt,
 	fmt::Debug,
 	sync::{
 		Arc,
@@ -68,7 +69,7 @@ pub struct WaterMark {
 }
 
 impl Debug for WaterMark {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("WaterMark")
 			.field("done_until", &self.shared.done_until.load(Ordering::Relaxed))
 			.field("last_index", &self.shared.last_index.load(Ordering::Relaxed))
@@ -163,7 +164,7 @@ impl WaterMark {
 
 #[cfg(test)]
 pub mod tests {
-	use std::{sync::atomic::AtomicUsize, thread::sleep, time::Duration};
+	use std::{sync::atomic::AtomicUsize, thread, thread::sleep, time::Duration};
 
 	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, clock::Clock};
 
@@ -228,7 +229,7 @@ pub mod tests {
 		// Spawn tasks that perform concurrent begin/done operations
 		for task_id in 0..NUM_TASKS {
 			let wm = watermark.clone();
-			let handle = std::thread::spawn(move || {
+			let handle = thread::spawn(move || {
 				for i in 0..OPS_PER_TASK {
 					let version = CommitVersion((task_id * OPS_PER_TASK + i) as u64 + 1);
 					wm.begin(version);
@@ -269,7 +270,7 @@ pub mod tests {
 		for version in 1..=10 {
 			let wm = watermark.clone();
 			let counter = success_count.clone();
-			let handle = std::thread::spawn(move || {
+			let handle = thread::spawn(move || {
 				// Use timeout to avoid hanging if something goes wrong
 				if wm.wait_for_mark_timeout(CommitVersion(version), Duration::from_secs(5)) {
 					counter.fetch_add(1, Ordering::Relaxed);

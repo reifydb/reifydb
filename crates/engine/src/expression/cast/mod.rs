@@ -14,7 +14,10 @@ use reifydb_type::{
 	error::TypeError, fragment::LazyFragment, storage::DataBitVec, util::bitvec::BitVec, value::r#type::Type,
 };
 
-use crate::{Result, expression::context::EvalContext};
+use crate::{
+	Result,
+	expression::{cast::uuid::to_uuid, context::EvalContext},
+};
 
 pub fn cast_column_data(
 	ctx: &EvalContext,
@@ -113,8 +116,8 @@ pub fn cast_column_data(
 		(_, t) if t.is_bool() => boolean::to_boolean(data, lazy_fragment),
 		(_, t) if t.is_utf8() => text::to_text(data, lazy_fragment),
 		(_, t) if t.is_temporal() => temporal::to_temporal(data, target, lazy_fragment),
-		(_, t) if t.is_uuid() => uuid::to_uuid(data, target, lazy_fragment),
-		(source, t) if source.is_uuid() || t.is_uuid() => uuid::to_uuid(data, target, lazy_fragment),
+		(_, t) if t.is_uuid() => to_uuid(data, target, lazy_fragment),
+		(source, t) if source.is_uuid() || t.is_uuid() => to_uuid(data, target, lazy_fragment),
 		_ => Err(TypeError::UnsupportedCast {
 			from: source_type,
 			to: target,

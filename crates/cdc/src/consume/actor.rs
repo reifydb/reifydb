@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{ops::Bound, time::Duration};
+use std::{mem, ops::Bound, time::Duration};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -178,7 +178,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 				if let PollState::WaitingForConsume {
 					latest_version,
 					count,
-				} = std::mem::replace(&mut *state, PollState::Ready)
+				} = mem::replace(&mut *state, PollState::Ready)
 				{
 					self.finish_consume(state, ctx, latest_version, count, result);
 				}

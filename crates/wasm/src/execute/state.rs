@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::{cell::RefCell, fmt, rc::Rc, result::Result as StdResult, sync::Arc};
 
 use crate::{
 	execute::Result,
@@ -26,8 +26,8 @@ pub enum StateError {
 	NotFoundTypes,
 }
 
-impl std::fmt::Display for StateError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for StateError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			StateError::NotFoundFunction(name) => write!(f, "Function not found: {}", name),
 			StateError::NotFoundModule(name) => write!(f, "Module not found: {}", name),
@@ -74,7 +74,7 @@ pub struct State {
 }
 
 impl State {
-	pub fn new(module: &Module) -> std::result::Result<Self, StateError> {
+	pub fn new(module: &Module) -> StdResult<Self, StateError> {
 		Ok(Self {
 			exports: module.exports.to_vec().into_boxed_slice(),
 			functions: module.functions.clone(),
@@ -87,21 +87,21 @@ impl State {
 		})
 	}
 
-	pub fn function(&self, idx: FunctionIndex) -> std::result::Result<Arc<Function>, Trap> {
+	pub fn function(&self, idx: FunctionIndex) -> StdResult<Arc<Function>, Trap> {
 		self.functions
 			.get(idx as usize)
 			.ok_or(Trap::NotFound(TrapNotFound::FunctionLocal(idx)))
 			.map(|arc| arc.clone())
 	}
 
-	pub fn function_type(&self, idx: FunctionTypeIndex) -> std::result::Result<FunctionType, Trap> {
+	pub fn function_type(&self, idx: FunctionTypeIndex) -> StdResult<FunctionType, Trap> {
 		self.function_types
 			.get(idx as usize)
 			.ok_or(Trap::NotFound(TrapNotFound::FunctionType(idx)))
 			.map(|ft| ft.clone())
 	}
 
-	pub fn export(&self, name: impl Into<String>) -> std::result::Result<Export, Trap> {
+	pub fn export(&self, name: impl Into<String>) -> StdResult<Export, Trap> {
 		let name = name.into();
 		self.exports
 			.iter()
@@ -110,19 +110,15 @@ impl State {
 			.ok_or(Trap::NotFound(TrapNotFound::ExportedFunction(name)))
 	}
 
-	pub fn memory_rc(&self, idx: MemoryIndex) -> std::result::Result<&Rc<RefCell<Memory>>, Trap> {
+	pub fn memory_rc(&self, idx: MemoryIndex) -> StdResult<&Rc<RefCell<Memory>>, Trap> {
 		self.memories.get(idx).ok_or(Trap::NotFound(TrapNotFound::Memory(idx)))
 	}
 
-	pub fn table_rc(&self, idx: TableIndex) -> std::result::Result<&Rc<RefCell<Table>>, Trap> {
+	pub fn table_rc(&self, idx: TableIndex) -> StdResult<&Rc<RefCell<Table>>, Trap> {
 		self.tables.get(idx).ok_or(Trap::NotFound(TrapNotFound::Table(idx)))
 	}
 
-	pub fn table_at(
-		&self,
-		table_idx: TableIndex,
-		element_idx: TableElementIndex,
-	) -> std::result::Result<Value, Trap> {
+	pub fn table_at(&self, table_idx: TableIndex, element_idx: TableElementIndex) -> StdResult<Value, Trap> {
 		let table_rc = self.table_rc(table_idx)?;
 		let table = table_rc.borrow();
 

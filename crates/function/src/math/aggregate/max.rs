@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::mem;
+
 use indexmap::IndexMap;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::Value;
@@ -81,7 +83,7 @@ impl AggregateFunction for Max {
 		let mut keys = Vec::with_capacity(self.maxs.len());
 		let mut data = ColumnData::float8_with_capacity(self.maxs.len());
 
-		for (key, max) in std::mem::take(&mut self.maxs) {
+		for (key, max) in mem::take(&mut self.maxs) {
 			keys.push(key);
 			data.push_value(Value::float8(max));
 		}

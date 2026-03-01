@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{cell::RefCell, mem, rc::Rc, sync::Arc};
+use std::{cell::RefCell, mem, rc::Rc, result::Result as StdResult, sync::Arc};
 
 use crate::{
 	config::WasmConfig,
@@ -124,11 +124,7 @@ impl Exec {
 		Ok(())
 	}
 
-	pub fn invoke(
-		&mut self,
-		name: impl Into<String>,
-		args: impl AsRef<[Value]>,
-	) -> std::result::Result<Box<[Value]>, Trap> {
+	pub fn invoke(&mut self, name: impl Into<String>, args: impl AsRef<[Value]>) -> StdResult<Box<[Value]>, Trap> {
 		self.call_depth = 0;
 		let name = name.into();
 
@@ -414,7 +410,7 @@ impl Exec {
 		memory.grow_checked(pages, max_pages)
 	}
 
-	pub fn function(&self, idx: FunctionIndex) -> std::result::Result<Arc<Function>, Trap> {
+	pub fn function(&self, idx: FunctionIndex) -> StdResult<Arc<Function>, Trap> {
 		self.state.function(idx)
 	}
 

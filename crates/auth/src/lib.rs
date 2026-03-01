@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
+extern crate core;
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 

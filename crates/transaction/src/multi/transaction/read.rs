@@ -58,8 +58,7 @@ impl MultiReadTransaction {
 	}
 
 	pub fn scan(&self) -> Result<MultiVersionBatch> {
-		let items: Vec<_> =
-			self.range(EncodedKeyRange::all(), 1024).collect::<std::result::Result<Vec<_>, _>>()?;
+		let items: Vec<_> = self.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -67,8 +66,7 @@ impl MultiReadTransaction {
 	}
 
 	pub fn scan_rev(&self) -> Result<MultiVersionBatch> {
-		let items: Vec<_> =
-			self.range_rev(EncodedKeyRange::all(), 1024).collect::<std::result::Result<Vec<_>, _>>()?;
+		let items: Vec<_> = self.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -76,9 +74,7 @@ impl MultiReadTransaction {
 	}
 
 	pub fn prefix(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
-		let items: Vec<_> = self
-			.range(EncodedKeyRange::prefix(prefix), 1024)
-			.collect::<std::result::Result<Vec<_>, _>>()?;
+		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -86,9 +82,8 @@ impl MultiReadTransaction {
 	}
 
 	pub fn prefix_rev(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
-		let items: Vec<_> = self
-			.range_rev(EncodedKeyRange::prefix(prefix), 1024)
-			.collect::<std::result::Result<Vec<_>, _>>()?;
+		let items: Vec<_> =
+			self.range_rev(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,

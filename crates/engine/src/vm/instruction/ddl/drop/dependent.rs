@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 
+use postcard::from_bytes;
 use reifydb_catalog::{catalog::Catalog, store::column::list::ColumnInfo};
 use reifydb_core::{
 	interface::catalog::flow::{FlowDef, FlowNodeDef},
@@ -47,7 +48,7 @@ pub(crate) fn find_flow_dependents(
 	let mut dependents = Vec::new();
 	let mut seen_flows = HashSet::new();
 	for node in nodes {
-		let node_type: FlowNodeType = postcard::from_bytes(node.data.as_ref())
+		let node_type: FlowNodeType = from_bytes(node.data.as_ref())
 			.map_err(|e| internal_error!("Failed to deserialize flow node type: {}", e))?;
 		if check(&node_type) && seen_flows.insert(node.flow) {
 			if let Some(flow) = flows.iter().find(|f| f.id == node.flow) {

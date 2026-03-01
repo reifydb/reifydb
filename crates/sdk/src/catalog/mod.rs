@@ -9,7 +9,7 @@
 pub mod namespace;
 pub mod table;
 
-use std::slice::from_raw_parts;
+use std::{slice::from_raw_parts, str};
 
 use reifydb_abi::catalog::{column::ColumnDefFFI, primary_key::PrimaryKeyFFI};
 use reifydb_core::{
@@ -137,7 +137,7 @@ pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnDefFFI) -> Result<ColumnDe
 		&[]
 	};
 
-	let name = std::str::from_utf8(name_bytes)
+	let name = str::from_utf8(name_bytes)
 		.map_err(|_| FFIError::Other("Invalid UTF-8 in column name".to_string()))?
 		.to_string();
 

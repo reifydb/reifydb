@@ -4,6 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use indexmap::IndexMap;
+use postcard::to_stdvec;
 use reifydb_core::{
 	common::JoinType,
 	encoded::{key::EncodedKey, schema::Schema},
@@ -190,7 +191,7 @@ impl JoinOperator {
 					break;
 				}
 
-				let bytes = postcard::to_stdvec(&value)
+				let bytes = to_stdvec(&value)
 					.map_err(|e| Error(internal!("Failed to encode value for hash: {}", e)))?;
 				hasher.extend_from_slice(&bytes);
 			}

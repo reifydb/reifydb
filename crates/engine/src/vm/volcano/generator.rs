@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
@@ -72,10 +72,8 @@ impl QueryNode for GeneratorNode {
 			columns: Columns::empty(), // No input columns for generator functions
 			row_count: 1,              // Single evaluation context
 			take: None,
-			params: unsafe { std::mem::transmute::<&Params, &'a Params>(&stored_ctx.params) },
-			symbol_table: unsafe {
-				std::mem::transmute::<&SymbolTable, &'a SymbolTable>(&stored_ctx.stack)
-			},
+			params: unsafe { mem::transmute::<&Params, &'a Params>(&stored_ctx.params) },
+			symbol_table: unsafe { mem::transmute::<&SymbolTable, &'a SymbolTable>(&stored_ctx.stack) },
 			is_aggregate_context: false,
 			functions: &stored_ctx.services.functions,
 			clock: &stored_ctx.services.clock,
@@ -99,8 +97,8 @@ impl QueryNode for GeneratorNode {
 		let columns = generator.generate(GeneratorContext {
 			fragment: self.function_name.clone(),
 			params: evaluated_params,
-			txn: unsafe { std::mem::transmute::<&mut Transaction, &'a mut Transaction<'a>>(txn) },
-			catalog: unsafe { std::mem::transmute::<&Catalog, &'a Catalog>(&stored_ctx.services.catalog) },
+			txn: unsafe { mem::transmute::<&mut Transaction, &'a mut Transaction<'a>>(txn) },
+			catalog: unsafe { mem::transmute::<&Catalog, &'a Catalog>(&stored_ctx.services.catalog) },
 			identity: stored_ctx.identity,
 		})?;
 

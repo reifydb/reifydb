@@ -6,6 +6,7 @@ use std::{
 		Bound,
 		Bound::{Excluded, Included, Unbounded},
 	},
+	iter,
 	ops::{Deref, RangeBounds},
 };
 
@@ -597,11 +598,7 @@ impl EncodedKeyRange {
 		let start = Bound::Included(EncodedKey::new(prefix));
 		let end = match prefix.iter().rposition(|&b| b != 0xff) {
 			Some(i) => Bound::Excluded(EncodedKey::new(
-				prefix.iter()
-					.take(i)
-					.copied()
-					.chain(std::iter::once(prefix[i] + 1))
-					.collect::<Vec<_>>(),
+				prefix.iter().take(i).copied().chain(iter::once(prefix[i] + 1)).collect::<Vec<_>>(),
 			)),
 			None => Bound::Unbounded,
 		};

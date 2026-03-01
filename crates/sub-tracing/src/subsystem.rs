@@ -15,7 +15,7 @@ use std::{
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
-use tracing::instrument;
+use tracing::{info, instrument};
 
 /// Tracing subsystem that integrates tracing_subscriber with ReifyDB
 ///
@@ -58,7 +58,7 @@ impl Subsystem for TracingSubsystem {
 		// by the builder
 		self.running.store(true, Ordering::Release);
 
-		tracing::info!("Tracing subsystem started");
+		info!("Tracing subsystem started");
 
 		Ok(())
 	}
@@ -70,7 +70,7 @@ impl Subsystem for TracingSubsystem {
 			return Ok(());
 		}
 
-		tracing::info!("Tracing subsystem shutting down");
+		info!("Tracing subsystem shutting down");
 
 		// tracing_subscriber handles cleanup automatically when dropped
 		// We just need to mark ourselves as not running

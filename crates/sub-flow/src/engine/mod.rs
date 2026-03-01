@@ -10,6 +10,7 @@ use std::{
 	sync::Arc,
 };
 
+use postcard::to_stdvec;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::CommitVersion,
@@ -93,7 +94,7 @@ impl FlowEngine {
 		let mut loader_write = loader.write().unwrap();
 
 		// Serialize config to postcard
-		let config_bytes = postcard::to_stdvec(config)
+		let config_bytes = to_stdvec(config)
 			.map_err(|e| Error(internal!("Failed to serialize operator config: {:?}", e)))?;
 
 		let operator = loader_write

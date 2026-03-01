@@ -21,7 +21,7 @@ pub mod user;
 pub mod user_role;
 pub mod view;
 
-use std::sync::Arc;
+use std::{ops, sync::Arc};
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
@@ -164,7 +164,7 @@ pub struct MaterializedCatalogInner {
 	pub(crate) vtable_user_by_name: SkipMap<(NamespaceId, String), VTableId>,
 }
 
-impl std::ops::Deref for MaterializedCatalog {
+impl ops::Deref for MaterializedCatalog {
 	type Target = MaterializedCatalogInner;
 
 	fn deref(&self) -> &Self::Target {

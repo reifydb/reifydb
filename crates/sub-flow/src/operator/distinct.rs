@@ -4,6 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use indexmap::IndexMap;
+use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::schema::Schema,
 	interface::{
@@ -71,7 +72,7 @@ impl SerializedRow {
 		let values: Vec<Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
 
 		// Serialize values directly with postcard
-		let values_bytes = postcard::to_stdvec(&values).expect("Failed to serialize column values");
+		let values_bytes = to_stdvec(&values).expect("Failed to serialize column values");
 
 		Self {
 			number,
@@ -82,8 +83,7 @@ impl SerializedRow {
 	/// Convert back to Columns - no Row allocation
 	fn to_columns(&self, layout: &DistinctLayout) -> Columns {
 		// Deserialize values
-		let values: Vec<Value> =
-			postcard::from_bytes(&self.values_bytes).expect("Failed to deserialize column values");
+		let values: Vec<Value> = from_bytes(&self.values_bytes).expect("Failed to deserialize column values");
 
 		let mut columns_vec = Vec::with_capacity(layout.names.len());
 		for (i, (name, typ)) in layout.names.iter().zip(layout.types.iter()).enumerate() {
@@ -273,13 +273,12 @@ impl DistinctOperator {
 			return Ok(DistinctState::default());
 		}
 
-		postcard::from_bytes(blob.as_ref())
-			.map_err(|e| Error(internal!("Failed to deserialize DistinctState: {}", e)))
+		from_bytes(blob.as_ref()).map_err(|e| Error(internal!("Failed to deserialize DistinctState: {}", e)))
 	}
 
 	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> Result<()> {
-		let serialized = postcard::to_stdvec(state)
-			.map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
+		let serialized =
+			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
 
 		let mut state_row = self.schema.allocate();
 		let blob = Blob::from(serialized);

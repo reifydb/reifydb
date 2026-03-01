@@ -1,5 +1,6 @@
 use std::{
 	error::Error,
+	fmt,
 	future::Future,
 	pin::Pin,
 	sync::{
@@ -28,8 +29,8 @@ impl Default for TaskId {
 	}
 }
 
-impl std::fmt::Display for TaskId {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TaskId {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "task-{}", self.0)
 	}
 }
@@ -51,8 +52,8 @@ pub enum TaskWork {
 	),
 }
 
-impl std::fmt::Debug for TaskWork {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for TaskWork {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			TaskWork::Sync(_) => write!(f, "TaskWork::Sync"),
 			TaskWork::Async(_) => write!(f, "TaskWork::Async"),
@@ -83,8 +84,8 @@ pub struct ScheduledTask {
 	pub executor: TaskExecutor,
 }
 
-impl std::fmt::Debug for ScheduledTask {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for ScheduledTask {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("ScheduledTask")
 			.field("id", &self.id)
 			.field("name", &self.name)

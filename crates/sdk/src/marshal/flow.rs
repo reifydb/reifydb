@@ -3,7 +3,10 @@
 
 //! Flow change marshalling between Rust and FFI types
 
-use std::slice::{from_raw_parts, from_raw_parts_mut};
+use std::{
+	ptr,
+	slice::{from_raw_parts, from_raw_parts_mut},
+};
 
 use reifydb_abi::{
 	data::column::ColumnsFFI,
@@ -46,7 +49,7 @@ impl Arena {
 
 			diffs_array
 		} else {
-			std::ptr::null_mut()
+			ptr::null_mut()
 		};
 
 		ChangeFFI {

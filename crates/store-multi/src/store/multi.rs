@@ -20,7 +20,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::util::{cowvec::CowVec, hex};
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use super::{
 	StandardMultiStore,
@@ -203,7 +203,7 @@ impl MultiVersionCommit for StandardMultiStore {
 
 		if !drop_batch.is_empty() {
 			if self.drop_actor.send_blocking(DropMessage::Batch(drop_batch)).is_err() {
-				tracing::warn!("Failed to send drop batch");
+				warn!("Failed to send drop batch");
 			}
 		}
 

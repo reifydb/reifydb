@@ -12,6 +12,7 @@ use std::{
 	},
 };
 
+use axum::serve;
 use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
@@ -20,6 +21,7 @@ use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::{Result, error::Error};
 use tokio::{net::TcpListener, sync::oneshot};
+use tracing::{error, info};
 
 use crate::{routes::router, state::AdminState};
 
@@ -125,7 +127,7 @@ impl Subsystem for AdminSubsystem {
 			err
 		})?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
-		tracing::info!("Admin server bound to {}", actual_addr);
+		info!("Admin server bound to {}", actual_addr);
 
 		let (shutdown_tx, shutdown_rx) = oneshot::channel();
 		let (complete_tx, complete_rx) = oneshot::channel();
@@ -140,20 +142,20 @@ impl Subsystem for AdminSubsystem {
 
 			// Create router and serve
 			let app = router(state);
-			let server = axum::serve(listener, app).with_graceful_shutdown(async {
+			let server = serve(listener, app).with_graceful_shutdown(async {
 				shutdown_rx.await.ok();
-				tracing::info!("Admin server received shutdown signal");
+				info!("Admin server received shutdown signal");
 			});
 
 			// Run until shutdown
 			if let Err(e) = server.await {
-				tracing::error!("Admin server error: {}", e);
+				error!("Admin server error: {}", e);
 			}
 
 			// Mark as stopped
 			running.store(false, Ordering::SeqCst);
 			let _ = complete_tx.send(());
-			tracing::info!("Admin server stopped");
+			info!("Admin server stopped");
 		});
 
 		self.shutdown_tx = Some(shutdown_tx);

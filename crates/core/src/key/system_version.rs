@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de};
 
 use super::{EncodableKey, KeyKind};
 use crate::{
@@ -27,12 +27,12 @@ impl From<SystemVersion> for u8 {
 	}
 }
 impl TryFrom<u8> for SystemVersion {
-	type Error = serde::de::value::Error;
+	type Error = de::value::Error;
 
 	fn try_from(value: u8) -> Result<Self, Self::Error> {
 		match value {
 			0x01 => Ok(Self::Storage),
-			_ => Err(serde::de::Error::custom(format!("Invalid SystemVersion value: {value:#04x}"))),
+			_ => Err(de::Error::custom(format!("Invalid SystemVersion value: {value:#04x}"))),
 		}
 	}
 }

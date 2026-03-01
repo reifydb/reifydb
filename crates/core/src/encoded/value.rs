@@ -303,6 +303,8 @@ impl Schema {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 pub mod tests {
+	use std::f64::consts::E;
+
 	use reifydb_type::value::{
 		Value,
 		blob::Blob,
@@ -528,11 +530,8 @@ pub mod tests {
 		let schema = Schema::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
 		let mut row = schema.allocate();
 
-		let values = vec![
-			Value::Boolean(false),
-			Value::Int4(999),
-			Value::Float8(OrderedF64::try_from(std::f64::consts::E).unwrap()),
-		];
+		let values =
+			vec![Value::Boolean(false), Value::Int4(999), Value::Float8(OrderedF64::try_from(E).unwrap())];
 
 		schema.set_values(&mut row, &values);
 
@@ -542,7 +541,7 @@ pub mod tests {
 
 		assert_eq!(schema.get_bool(&row, 0), false);
 		assert_eq!(schema.get_i32(&row, 1), 999);
-		assert_eq!(schema.get_f64(&row, 2), std::f64::consts::E);
+		assert_eq!(schema.get_f64(&row, 2), E);
 	}
 
 	#[test]

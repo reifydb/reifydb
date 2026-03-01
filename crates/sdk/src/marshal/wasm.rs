@@ -7,9 +7,9 @@
 //! convert between `Columns` and a flat `Vec<u8>` using u32 offsets (no pointers),
 //! suitable for passing through WASM linear memory.
 
-use std::mem::size_of;
+use std::{mem::size_of, ptr, slice, str};
 
-use postcard::from_bytes;
+use postcard::{from_bytes, to_allocvec};
 use reifydb_abi::data::{
 	column::ColumnTypeCode,
 	wasm::{COLUMN_WASM_SIZE, COLUMNS_WASM_HEADER_SIZE, ColumnWasm, ColumnsWasm},
@@ -177,7 +177,7 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 		let name = if desc.name_len > 0 {
 			let start = desc.name_offset as usize;
 			let end = start + desc.name_len as usize;
-			let s = std::str::from_utf8(&bytes[start..end]).unwrap_or("");
+			let s = str::from_utf8(&bytes[start..end]).unwrap_or("");
 			Fragment::internal(s)
 		} else {
 			Fragment::internal("")
@@ -386,7 +386,7 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnData) -> (u3
 			offsets.push(0);
 			for i in 0..container.len() {
 				let value = container.get(i);
-				let serialized = postcard::to_allocvec(&value).unwrap_or_default();
+				let serialized = to_allocvec(&value).unwrap_or_default();
 				data_bytes.extend_from_slice(&serialized);
 				offsets.push(data_bytes.len() as u64);
 			}
@@ -413,7 +413,7 @@ fn marshal_numeric_to_buf<T: Copy>(buf: &mut Vec<u8>, slice: &[T]) -> (u32, u32,
 	}
 	let offset = buf.len() as u32;
 	let src = slice.as_ptr() as *const u8;
-	buf.extend_from_slice(unsafe { std::slice::from_raw_parts(src, byte_len) });
+	buf.extend_from_slice(unsafe { slice::from_raw_parts(src, byte_len) });
 	(offset, byte_len as u32, 0, 0)
 }
 
@@ -457,7 +457,7 @@ fn marshal_serialized_to_buf<T: Serialize>(buf: &mut Vec<u8>, values: &[T]) -> (
 	let mut data: Vec<u8> = Vec::new();
 	offsets.push(0);
 	for value in values {
-		let serialized = postcard::to_allocvec(value).unwrap_or_default();
+		let serialized = to_allocvec(value).unwrap_or_default();
 		data.extend_from_slice(&serialized);
 		offsets.push(data.len() as u64);
 	}
@@ -474,7 +474,7 @@ fn marshal_data_with_offsets_to_buf(buf: &mut Vec<u8>, data: &[u8], offsets: &[u
 	let offsets_offset = buf.len() as u32;
 	let offsets_byte_len = offsets.len() * size_of::<u64>();
 	let src = offsets.as_ptr() as *const u8;
-	buf.extend_from_slice(unsafe { std::slice::from_raw_parts(src, offsets_byte_len) });
+	buf.extend_from_slice(unsafe { slice::from_raw_parts(src, offsets_byte_len) });
 	let offsets_len = offsets_byte_len as u32;
 
 	(data_offset, data_len, offsets_offset, offsets_len)
@@ -640,7 +640,7 @@ fn unmarshal_numeric<T: Copy + Default + IsNumber>(data: &[u8], row_count: usize
 	let count = data.len() / size_of::<T>();
 	let mut values = vec![T::default(); count];
 	unsafe {
-		std::ptr::copy_nonoverlapping(data.as_ptr(), values.as_mut_ptr() as *mut u8, count * size_of::<T>());
+		ptr::copy_nonoverlapping(data.as_ptr(), values.as_mut_ptr() as *mut u8, count * size_of::<T>());
 	}
 	NumberContainer::new(values)
 }
@@ -654,7 +654,7 @@ fn unmarshal_utf8(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> Utf8Co
 	for i in 0..row_count {
 		let start = offsets[i] as usize;
 		let end = offsets[i + 1] as usize;
-		let s = std::str::from_utf8(&data[start..end]).unwrap_or("").to_string();
+		let s = str::from_utf8(&data[start..end]).unwrap_or("").to_string();
 		strings.push(s);
 	}
 	Utf8Container::new(strings)
@@ -667,7 +667,7 @@ fn unmarshal_date(data: &[u8], row_count: usize) -> TemporalContainer<Date> {
 	let count = data.len() / size_of::<i32>();
 	let mut raw = vec![0i32; count];
 	unsafe {
-		std::ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<i32>());
+		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<i32>());
 	}
 	let dates: Vec<Date> = raw.iter().map(|&days| Date::from_days_since_epoch(days).unwrap_or_default()).collect();
 	TemporalContainer::new(dates)
@@ -680,7 +680,7 @@ fn unmarshal_datetime(data: &[u8], row_count: usize) -> TemporalContainer<DateTi
 	let count = data.len() / size_of::<i64>();
 	let mut raw = vec![0i64; count];
 	unsafe {
-		std::ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<i64>());
+		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<i64>());
 	}
 	let datetimes: Vec<DateTime> = raw.iter().map(|&ts| DateTime::from_timestamp(ts).unwrap_or_default()).collect();
 	TemporalContainer::new(datetimes)
@@ -693,7 +693,7 @@ fn unmarshal_time(data: &[u8], row_count: usize) -> TemporalContainer<Time> {
 	let count = data.len() / size_of::<u64>();
 	let mut raw = vec![0u64; count];
 	unsafe {
-		std::ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<u64>());
+		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<u64>());
 	}
 	let times: Vec<Time> = raw.iter().map(|&ns| Time::from_nanos_since_midnight(ns).unwrap_or_default()).collect();
 	TemporalContainer::new(times)
@@ -801,7 +801,7 @@ fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> AnyCont
 	for i in 0..row_count {
 		let start = offsets[i] as usize;
 		let end = offsets[i + 1] as usize;
-		let value: Value = postcard::from_bytes(&data[start..end]).unwrap_or_else(|_| Value::none());
+		let value: Value = from_bytes(&data[start..end]).unwrap_or_else(|_| Value::none());
 		values.push(Box::new(value));
 	}
 	AnyContainer::new(values)

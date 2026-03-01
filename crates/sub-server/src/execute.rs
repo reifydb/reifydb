@@ -7,7 +7,7 @@
 //! The engine uses a compute pool for sync execution, streaming results back
 //! through async channels.
 
-use std::{sync::Arc, time::Duration};
+use std::{error, fmt, sync::Arc, time::Duration};
 
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSystem;
@@ -36,8 +36,8 @@ pub enum ExecuteError {
 	},
 }
 
-impl std::fmt::Display for ExecuteError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for ExecuteError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			ExecuteError::Timeout => write!(f, "Query execution timed out"),
 			ExecuteError::Cancelled => write!(f, "Query was cancelled"),
@@ -50,7 +50,7 @@ impl std::fmt::Display for ExecuteError {
 	}
 }
 
-impl std::error::Error for ExecuteError {}
+impl error::Error for ExecuteError {}
 
 impl From<Error> for ExecuteError {
 	fn from(err: Error) -> Self {
@@ -62,7 +62,7 @@ impl From<Error> for ExecuteError {
 }
 
 /// Result type for execute operations.
-pub type ExecuteResult<T> = std::result::Result<T, ExecuteError>;
+pub type ExecuteResult<T> = Result<T, ExecuteError>;
 
 /// Execute a query with timeout.
 ///

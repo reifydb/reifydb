@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::{borrow::Borrow, ops::Deref, sync::Arc};
+use std::{borrow::Borrow, mem, ops::Deref, sync::Arc, vec};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -34,7 +34,7 @@ where
 		// For SIMD, we want capacity aligned to at least 32 bytes
 		// (256-bit SIMD) This ensures we can engine data in chunks
 		// without bounds checking
-		let simd_alignment = 32 / std::mem::size_of::<T>().max(1);
+		let simd_alignment = 32 / mem::size_of::<T>().max(1);
 		let aligned_capacity = ((capacity + simd_alignment - 1) / simd_alignment) * simd_alignment;
 		Self {
 			inner: Arc::new(Vec::with_capacity(aligned_capacity)),
@@ -212,7 +212,7 @@ impl<T: Clone + PartialEq> CowVec<T> {
 
 impl<T: Clone + PartialEq> IntoIterator for CowVec<T> {
 	type Item = T;
-	type IntoIter = std::vec::IntoIter<T>;
+	type IntoIter = vec::IntoIter<T>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		match Arc::try_unwrap(self.inner) {

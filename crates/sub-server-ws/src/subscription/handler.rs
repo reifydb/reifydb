@@ -14,7 +14,7 @@ use reifydb_type::{
 	value::{Value, identity::IdentityId, uuid::Uuid7},
 };
 use tokio::sync::mpsc;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use crate::{
 	handler::error_to_response,
@@ -108,11 +108,7 @@ pub(crate) async fn handle_subscribe(
 				// Register with poller
 				poller.register(subscription_id);
 
-				tracing::info!(
-					"Connection {} subscribed: subscription_id={}",
-					connection_id,
-					subscription_id
-				);
+				info!("Connection {} subscribed: subscription_id={}", connection_id, subscription_id);
 
 				Some(Response::subscribed(request_id, subscription_id.to_string()).to_json())
 			} else {

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
+	fmt,
 	fmt::Debug,
 	ops::{Deref, DerefMut},
 };
@@ -30,7 +31,7 @@ pub struct Mutex<T> {
 
 impl<T: Debug> Debug for Mutex<T> {
 	#[inline]
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.inner.fmt(f)
 	}
 }

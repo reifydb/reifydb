@@ -6,12 +6,15 @@ use std::{
 	ops::Deref,
 };
 
+use bumpalo::Bump as BumpAlloc;
 use reifydb_type::storage::{DataBitVec, DataVec, Storage};
+
+type BumpaloVec<'bump, T> = bumpalo::collections::Vec<'bump, T>;
 
 pub mod convert;
 
 pub struct BumpVec<'bump, T: Clone + PartialEq> {
-	inner: bumpalo::collections::Vec<'bump, T>,
+	inner: BumpaloVec<'bump, T>,
 }
 
 impl<'bump, T: Clone + PartialEq + Debug> Debug for BumpVec<'bump, T> {
@@ -21,20 +24,20 @@ impl<'bump, T: Clone + PartialEq + Debug> Debug for BumpVec<'bump, T> {
 }
 
 impl<'bump, T: Clone + PartialEq> BumpVec<'bump, T> {
-	pub fn with_capacity_in(capacity: usize, bump: &'bump bumpalo::Bump) -> Self {
+	pub fn with_capacity_in(capacity: usize, bump: &'bump BumpAlloc) -> Self {
 		Self {
-			inner: bumpalo::collections::Vec::with_capacity_in(capacity, bump),
+			inner: BumpaloVec::with_capacity_in(capacity, bump),
 		}
 	}
 
-	fn bump(&self) -> &'bump bumpalo::Bump {
+	fn bump(&self) -> &'bump BumpAlloc {
 		self.inner.bump()
 	}
 }
 
 impl<'bump, T: Clone + PartialEq> Clone for BumpVec<'bump, T> {
 	fn clone(&self) -> Self {
-		let mut new = bumpalo::collections::Vec::with_capacity_in(self.inner.len(), self.bump());
+		let mut new = BumpaloVec::with_capacity_in(self.inner.len(), self.bump());
 		new.extend(self.inner.iter().cloned());
 		Self {
 			inner: new,
@@ -59,7 +62,7 @@ impl<'bump, T: Clone + PartialEq> Deref for BumpVec<'bump, T> {
 impl<'bump, T: Clone + PartialEq> DataVec<T> for BumpVec<'bump, T> {
 	fn spawn(&self, capacity: usize) -> Self {
 		Self {
-			inner: bumpalo::collections::Vec::with_capacity_in(capacity, self.bump()),
+			inner: BumpaloVec::with_capacity_in(capacity, self.bump()),
 		}
 	}
 
@@ -97,7 +100,7 @@ impl<'bump, T: Clone + PartialEq> DataVec<T> for BumpVec<'bump, T> {
 }
 
 pub struct BumpBitVec<'bump> {
-	bits: bumpalo::collections::Vec<'bump, u8>,
+	bits: BumpaloVec<'bump, u8>,
 	len: usize,
 }
 
@@ -108,22 +111,22 @@ impl<'bump> Debug for BumpBitVec<'bump> {
 }
 
 impl<'bump> BumpBitVec<'bump> {
-	pub fn with_capacity_in(capacity: usize, bump: &'bump bumpalo::Bump) -> Self {
+	pub fn with_capacity_in(capacity: usize, bump: &'bump BumpAlloc) -> Self {
 		let byte_capacity = (capacity + 7) / 8;
 		Self {
-			bits: bumpalo::collections::Vec::with_capacity_in(byte_capacity, bump),
+			bits: BumpaloVec::with_capacity_in(byte_capacity, bump),
 			len: 0,
 		}
 	}
 
-	fn bump(&self) -> &'bump bumpalo::Bump {
+	fn bump(&self) -> &'bump BumpAlloc {
 		self.bits.bump()
 	}
 }
 
 impl<'bump> Clone for BumpBitVec<'bump> {
 	fn clone(&self) -> Self {
-		let mut new_bits = bumpalo::collections::Vec::with_capacity_in(self.bits.len(), self.bump());
+		let mut new_bits = BumpaloVec::with_capacity_in(self.bits.len(), self.bump());
 		new_bits.extend(self.bits.iter().copied());
 		Self {
 			bits: new_bits,
@@ -210,7 +213,7 @@ impl<'bump> DataBitVec for BumpBitVec<'bump> {
 	}
 
 	fn count_ones(&self) -> usize {
-		let mut count: usize = self.bits.iter().map(|&byte| byte.count_ones() as usize).sum();
+		let mut count: usize = self.bits.iter().map(|&byte: &u8| byte.count_ones() as usize).sum();
 
 		// Adjust for partial last byte
 		let full_bytes = self.len / 8;
@@ -239,14 +242,14 @@ impl<'bump> DataBitVec for BumpBitVec<'bump> {
 }
 
 #[derive(Clone)]
-pub struct Bump<'bump>(&'bump bumpalo::Bump);
+pub struct Bump<'bump>(&'bump BumpAlloc);
 
 impl<'bump> Bump<'bump> {
-	pub fn new(bump: &'bump bumpalo::Bump) -> Self {
+	pub fn new(bump: &'bump BumpAlloc) -> Self {
 		Self(bump)
 	}
 
-	pub fn inner(&self) -> &'bump bumpalo::Bump {
+	pub fn inner(&self) -> &'bump BumpAlloc {
 		self.0
 	}
 }
@@ -257,13 +260,13 @@ impl<'bump> Storage for Bump<'bump> {
 }
 
 pub struct QueryArena {
-	bump: bumpalo::Bump,
+	bump: BumpAlloc,
 }
 
 impl QueryArena {
 	pub fn new() -> Self {
 		Self {
-			bump: bumpalo::Bump::with_capacity(64 * 1024),
+			bump: BumpAlloc::with_capacity(64 * 1024),
 		}
 	}
 
@@ -271,7 +274,7 @@ impl QueryArena {
 		self.bump.reset();
 	}
 
-	pub fn bump(&self) -> &bumpalo::Bump {
+	pub fn bump(&self) -> &BumpAlloc {
 		&self.bump
 	}
 }
@@ -293,7 +296,7 @@ mod tests {
 
 		#[test]
 		fn test_push_and_get() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut v: BumpVec<i32> = BumpVec::with_capacity_in(4, &bump);
 			v.push(10);
 			v.push(20);
@@ -308,7 +311,7 @@ mod tests {
 
 		#[test]
 		fn test_extend_from_slice() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut v: BumpVec<i32> = BumpVec::with_capacity_in(8, &bump);
 			v.push(1);
 			DataVec::extend_from_slice(&mut v, &[2, 3, 4]);
@@ -317,7 +320,7 @@ mod tests {
 
 		#[test]
 		fn test_spawn() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let v: BumpVec<i32> = BumpVec::with_capacity_in(4, &bump);
 			let v2 = DataVec::<i32>::spawn(&v, 8);
 			assert_eq!(DataVec::len(&v2), 0);
@@ -326,7 +329,7 @@ mod tests {
 
 		#[test]
 		fn test_clone() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut v: BumpVec<i32> = BumpVec::with_capacity_in(4, &bump);
 			v.push(1);
 			v.push(2);
@@ -337,7 +340,7 @@ mod tests {
 
 		#[test]
 		fn test_clear() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut v: BumpVec<i32> = BumpVec::with_capacity_in(4, &bump);
 			v.push(1);
 			v.push(2);
@@ -347,7 +350,7 @@ mod tests {
 
 		#[test]
 		fn test_deref() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut v: BumpVec<i32> = BumpVec::with_capacity_in(4, &bump);
 			v.push(10);
 			v.push(20);
@@ -357,7 +360,7 @@ mod tests {
 
 		#[test]
 		fn test_eq() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut v1: BumpVec<i32> = BumpVec::with_capacity_in(4, &bump);
 			v1.push(1);
 			v1.push(2);
@@ -374,7 +377,7 @@ mod tests {
 
 		#[test]
 		fn test_take() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut v: BumpVec<i32> = BumpVec::with_capacity_in(4, &bump);
 			v.push(10);
 			v.push(20);
@@ -393,7 +396,7 @@ mod tests {
 
 		#[test]
 		fn test_push_and_get() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv = BumpBitVec::with_capacity_in(8, &bump);
 			bv.push(true);
 			bv.push(false);
@@ -407,7 +410,7 @@ mod tests {
 
 		#[test]
 		fn test_set() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv = BumpBitVec::with_capacity_in(8, &bump);
 			bv.push(false);
 			bv.push(false);
@@ -424,7 +427,7 @@ mod tests {
 
 		#[test]
 		fn test_cross_byte_boundary() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv = BumpBitVec::with_capacity_in(16, &bump);
 			for i in 0..17 {
 				bv.push(i % 3 == 0);
@@ -438,7 +441,7 @@ mod tests {
 
 		#[test]
 		fn test_count_ones() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv = BumpBitVec::with_capacity_in(16, &bump);
 			bv.push(true);
 			bv.push(false);
@@ -452,7 +455,7 @@ mod tests {
 
 		#[test]
 		fn test_count_ones_cross_byte() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv = BumpBitVec::with_capacity_in(16, &bump);
 			for i in 0..17 {
 				bv.push(i % 3 == 0);
@@ -463,7 +466,7 @@ mod tests {
 
 		#[test]
 		fn test_extend_from() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv1 = BumpBitVec::with_capacity_in(8, &bump);
 			bv1.push(true);
 			bv1.push(false);
@@ -482,7 +485,7 @@ mod tests {
 
 		#[test]
 		fn test_clone() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv = BumpBitVec::with_capacity_in(8, &bump);
 			bv.push(true);
 			bv.push(false);
@@ -497,7 +500,7 @@ mod tests {
 
 		#[test]
 		fn test_clear() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv = BumpBitVec::with_capacity_in(8, &bump);
 			bv.push(true);
 			bv.push(false);
@@ -507,7 +510,7 @@ mod tests {
 
 		#[test]
 		fn test_spawn() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let bv = BumpBitVec::with_capacity_in(8, &bump);
 			let bv2 = DataBitVec::spawn(&bv, 16);
 			assert_eq!(DataBitVec::len(&bv2), 0);
@@ -516,7 +519,7 @@ mod tests {
 
 		#[test]
 		fn test_iter() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv = BumpBitVec::with_capacity_in(8, &bump);
 			bv.push(true);
 			bv.push(false);
@@ -529,7 +532,7 @@ mod tests {
 
 		#[test]
 		fn test_eq() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv1 = BumpBitVec::with_capacity_in(8, &bump);
 			bv1.push(true);
 			bv1.push(false);
@@ -546,7 +549,7 @@ mod tests {
 
 		#[test]
 		fn test_take() {
-			let bump = bumpalo::Bump::new();
+			let bump = BumpAlloc::new();
 			let mut bv = BumpBitVec::with_capacity_in(8, &bump);
 			bv.push(true);
 			bv.push(false);
@@ -569,7 +572,7 @@ mod tests {
 
 		#[test]
 		fn test_number_container_with_bump() {
-			let bump_alloc = bumpalo::Bump::new();
+			let bump_alloc = BumpAlloc::new();
 			let data = BumpVec::with_capacity_in(4, &bump_alloc);
 			let mut container: NumberContainer<i32, Bump<'_>> = NumberContainer::from_parts(data);
 
@@ -583,7 +586,7 @@ mod tests {
 
 		#[test]
 		fn test_bool_container_with_bump() {
-			let bump_alloc = bumpalo::Bump::new();
+			let bump_alloc = BumpAlloc::new();
 			let data = BumpBitVec::with_capacity_in(4, &bump_alloc);
 			let mut container: BoolContainer<Bump<'_>> = BoolContainer::from_parts(data);
 

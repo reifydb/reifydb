@@ -3,14 +3,16 @@
 
 //! SQLite connection utilities.
 
+use std::fs;
+
 use reifydb_core::internal_error;
 use reifydb_type::Result;
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags as SqliteOpenFlags};
 
 use super::{DbPath, OpenFlags};
 
 /// Connect to a SQLite database asynchronously.
-pub(super) fn connect(path: &DbPath, flags: rusqlite::OpenFlags) -> Result<Connection> {
+pub(super) fn connect(path: &DbPath, flags: SqliteOpenFlags) -> Result<Connection> {
 	fn connection_failed(path: String, error: String) -> String {
 		format!("Failed to connect to database at {}: {}", path, error)
 	}
@@ -21,7 +23,7 @@ pub(super) fn connect(path: &DbPath, flags: rusqlite::OpenFlags) -> Result<Conne
 			let is_uri = path_str.contains(':');
 
 			if is_uri {
-				let uri_flags = flags | rusqlite::OpenFlags::SQLITE_OPEN_URI;
+				let uri_flags = flags | SqliteOpenFlags::SQLITE_OPEN_URI;
 				let path_string = path_str.to_string();
 				Connection::open_with_flags(path_string, uri_flags).map_err(|e| {
 					internal_error!("{}", connection_failed(path_str.to_string(), e.to_string()))
@@ -56,13 +58,13 @@ pub(super) fn resolve_db_path(db_path: DbPath) -> DbPath {
 	match db_path {
 		DbPath::Tmpfs(path) => {
 			if let Some(parent) = path.parent() {
-				std::fs::create_dir_all(parent).ok();
+				fs::create_dir_all(parent).ok();
 			}
 			DbPath::Tmpfs(path)
 		}
 		DbPath::Memory(path) => {
 			if let Some(parent) = path.parent() {
-				std::fs::create_dir_all(parent).ok();
+				fs::create_dir_all(parent).ok();
 			}
 			DbPath::Memory(path)
 		}
@@ -71,11 +73,11 @@ pub(super) fn resolve_db_path(db_path: DbPath) -> DbPath {
 			if is_uri {
 				DbPath::File(config_path)
 			} else if config_path.extension().is_none() {
-				std::fs::create_dir_all(&config_path).ok();
+				fs::create_dir_all(&config_path).ok();
 				DbPath::File(config_path.join("primitive.db"))
 			} else {
 				if let Some(parent) = config_path.parent() {
-					std::fs::create_dir_all(parent).ok();
+					fs::create_dir_all(parent).ok();
 				}
 				DbPath::File(config_path)
 			}
@@ -84,29 +86,29 @@ pub(super) fn resolve_db_path(db_path: DbPath) -> DbPath {
 }
 
 /// Convert our OpenFlags to rusqlite OpenFlags.
-pub(super) fn convert_flags(flags: &OpenFlags) -> rusqlite::OpenFlags {
-	let mut rusqlite_flags = rusqlite::OpenFlags::empty();
+pub(super) fn convert_flags(flags: &OpenFlags) -> SqliteOpenFlags {
+	let mut rusqlite_flags = SqliteOpenFlags::empty();
 
 	if flags.read_write {
-		rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE;
+		rusqlite_flags |= SqliteOpenFlags::SQLITE_OPEN_READ_WRITE;
 	}
 	if flags.create {
-		rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_CREATE;
+		rusqlite_flags |= SqliteOpenFlags::SQLITE_OPEN_CREATE;
 	}
 	if flags.full_mutex {
-		rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX;
+		rusqlite_flags |= SqliteOpenFlags::SQLITE_OPEN_FULL_MUTEX;
 	}
 	if flags.no_mutex {
-		rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+		rusqlite_flags |= SqliteOpenFlags::SQLITE_OPEN_NO_MUTEX;
 	}
 	if flags.shared_cache {
-		rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_SHARED_CACHE;
+		rusqlite_flags |= SqliteOpenFlags::SQLITE_OPEN_SHARED_CACHE;
 	}
 	if flags.private_cache {
-		rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_PRIVATE_CACHE;
+		rusqlite_flags |= SqliteOpenFlags::SQLITE_OPEN_PRIVATE_CACHE;
 	}
 	if flags.uri {
-		rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_URI;
+		rusqlite_flags |= SqliteOpenFlags::SQLITE_OPEN_URI;
 	}
 
 	rusqlite_flags

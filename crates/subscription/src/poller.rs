@@ -12,7 +12,7 @@ use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{actor::system::ActorSystem, sync::map::Map};
 use reifydb_type::Result;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::{
 	consumer::SubscriptionConsumer,
@@ -149,7 +149,7 @@ impl SubscriptionPoller {
 				}
 			}
 			DeliveryResult::BackPressure => {
-				tracing::warn!("Back pressure for subscription {}, will retry", subscription_id);
+				warn!("Back pressure for subscription {}, will retry", subscription_id);
 			}
 			DeliveryResult::Disconnected => {
 				debug!("Consumer disconnected for subscription {}, unregistering", subscription_id);

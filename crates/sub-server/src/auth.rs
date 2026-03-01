@@ -12,6 +12,8 @@
 //! proper implementation of token validation before production use. The `validate_*`
 //! functions are stubs that should be connected to actual authentication services.
 
+use std::{error::Error as StdError, fmt};
+
 use reifydb_type::value::identity::IdentityId;
 
 /// Authentication error types.
@@ -29,8 +31,8 @@ pub enum AuthError {
 	InsufficientPermissions,
 }
 
-impl std::fmt::Display for AuthError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for AuthError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			AuthError::InvalidHeader => write!(f, "Invalid authorization header"),
 			AuthError::MissingCredentials => write!(f, "Authentication required"),
@@ -41,10 +43,10 @@ impl std::fmt::Display for AuthError {
 	}
 }
 
-impl std::error::Error for AuthError {}
+impl StdError for AuthError {}
 
 /// Result type for authentication operations.
-pub type AuthResult<T> = std::result::Result<T, AuthError>;
+pub type AuthResult<T> = Result<T, AuthError>;
 
 /// Extract identity from HTTP Authorization header value.
 ///

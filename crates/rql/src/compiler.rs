@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashSet, fmt::Debug, sync::Arc};
+use std::{collections::HashSet, fmt, fmt::Debug, mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::util::lru::LruCache;
@@ -69,7 +69,7 @@ struct CompilerInner {
 }
 
 impl Debug for CompilerInner {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("CompilerInner")
 			.field("catalog", &self.catalog)
 			.field("cache_len", &self.cache.len())
@@ -366,7 +366,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		// Non-query nodes cannot be materialized to QueryPlan
 		other => panic!(
 			"cannot materialize non-query PhysicalPlan to QueryPlan: {:?}",
-			std::mem::discriminant(&other)
+			mem::discriminant(&other)
 		),
 	}
 }

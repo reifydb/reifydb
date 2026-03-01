@@ -8,7 +8,7 @@
 //! - [`CoordinatorMsg`]: Messages (Consume, PoolReply)
 //! - [`FlowConsumeRef`]: Thin `CdcConsume` impl that forwards to the actor
 
-use std::{cmp::min, collections::HashMap, ops::Bound, sync::Arc};
+use std::{cmp::min, collections, collections::HashMap, fmt, mem, ops::Bound, sync::Arc};
 
 use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, consumer::CdcConsume},
@@ -38,7 +38,7 @@ use reifydb_runtime::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, error::Error};
-use tracing::{Span, debug, info, instrument};
+use tracing::{Span, debug, field, info, instrument, warn};
 
 use super::{
 	instruction::{FlowInstruction, WorkerBatch},
@@ -130,7 +130,7 @@ enum Phase {
 }
 
 /// Helper to create an error result for coordinator replies.
-fn coordinator_error(msg: impl std::fmt::Display) -> Result<()> {
+fn coordinator_error(msg: impl fmt::Display) -> Result<()> {
 	Err(Error(internal!("{}", msg)))
 }
 
@@ -212,10 +212,10 @@ impl CoordinatorActor {
 	/// Handle Consume message — start of the multi-phase pipeline.
 	#[instrument(name = "flow::coordinator::consume", level = "debug", skip(self, state, ctx, cdcs, reply), fields(
 		cdc_count = cdcs.len(),
-		version_start = tracing::field::Empty,
-		version_end = tracing::field::Empty,
-		batch_count = tracing::field::Empty,
-		elapsed_us = tracing::field::Empty
+		version_start = field::Empty,
+		version_end = field::Empty,
+		batch_count = field::Empty,
+		elapsed_us = field::Empty
 	))]
 	fn handle_consume(
 		&self,
@@ -366,7 +366,7 @@ impl CoordinatorActor {
 		ctx: &Context<CoordinatorMsg>,
 		response: PoolResponse,
 	) {
-		let phase = std::mem::replace(&mut state.phase, Phase::Idle);
+		let phase = mem::replace(&mut state.phase, Phase::Idle);
 
 		match phase {
 			Phase::RegisteringFlows {
@@ -617,7 +617,7 @@ impl CoordinatorActor {
 					BACKFILL_CHUNK_SIZE,
 				)
 				.unwrap_or_else(|e| {
-					tracing::warn!(error = %e, "Failed to read CDC range for backfill");
+					warn!(error = %e, "Failed to read CDC range for backfill");
 					CdcBatch::empty()
 				});
 
@@ -773,13 +773,13 @@ impl CoordinatorActor {
 	/// Filter CDC changes to only those relevant to a specific flow.
 	#[instrument(name = "flow::coordinator::filter_cdc", level = "trace", skip(self, state, changes), fields(
 		input = changes.len(),
-		output = tracing::field::Empty
+		output = field::Empty
 	))]
 	fn filter_cdc_for_flow(&self, state: &CoordinatorState, flow_id: FlowId, changes: &[Change]) -> Vec<Change> {
 		let dependency_graph = state.analyzer.get_dependency_graph();
 
 		// Get all sources this flow depends on
-		let mut flow_sources: std::collections::HashSet<PrimitiveId> = std::collections::HashSet::new();
+		let mut flow_sources: collections::HashSet<PrimitiveId> = collections::HashSet::new();
 
 		// Add table sources
 		for (table_id, flow_ids) in &dependency_graph.source_tables {
@@ -854,9 +854,9 @@ impl CoordinatorActor {
 	/// Route CDC changes to flows and group by worker.
 	#[instrument(name = "flow::coordinator::route_and_group", level = "debug", skip(self, state, changes), fields(
 		changes = changes.len(),
-		active_flows = tracing::field::Empty,
-		batches = tracing::field::Empty,
-		elapsed_us = tracing::field::Empty
+		active_flows = field::Empty,
+		batches = field::Empty,
+		elapsed_us = field::Empty
 	))]
 	fn route_and_group_changes(
 		&self,

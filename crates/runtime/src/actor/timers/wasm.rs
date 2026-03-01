@@ -6,6 +6,7 @@
 use std::{cell::RefCell, rc::Rc, sync::atomic::Ordering, time::Duration};
 
 use wasm_bindgen::prelude::*;
+use web_sys::window;
 
 use super::{TimerHandle, next_timer_id};
 use crate::actor::mailbox::ActorRef;
@@ -28,7 +29,7 @@ pub fn schedule_once_fn<M: Send + 'static, F: FnOnce() -> M + Send + 'static>(
 		}
 	}) as Box<dyn FnOnce()>);
 
-	let window = web_sys::window().expect("no global `window` exists");
+	let window = window().expect("no global `window` exists");
 	let _ = window
 		.set_timeout_with_callback_and_timeout_and_arguments_0(closure.as_ref().unchecked_ref(), delay_ms);
 
@@ -52,7 +53,7 @@ pub fn schedule_repeat<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, interv
 		if cancelled.load(Ordering::SeqCst) {
 			// Cancel the interval
 			if let Some(id) = *interval_id_clone.borrow() {
-				let window = web_sys::window().expect("no global `window` exists");
+				let window = window().expect("no global `window` exists");
 				window.clear_interval_with_handle(id);
 			}
 			return;
@@ -61,13 +62,13 @@ pub fn schedule_repeat<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, interv
 		if actor_ref.send(msg.clone()).is_err() {
 			// Actor is dead, cancel the interval
 			if let Some(id) = *interval_id_clone.borrow() {
-				let window = web_sys::window().expect("no global `window` exists");
+				let window = window().expect("no global `window` exists");
 				window.clear_interval_with_handle(id);
 			}
 		}
 	}) as Box<dyn FnMut()>);
 
-	let window = web_sys::window().expect("no global `window` exists");
+	let window = window().expect("no global `window` exists");
 	let id = window
 		.set_interval_with_callback_and_timeout_and_arguments_0(
 			closure.as_ref().unchecked_ref(),

@@ -104,7 +104,7 @@ impl Procedure for NativeProcedureFFI {
 		memory::set_current_arena(&mut *arena as *mut Arena);
 
 		// Serialize params to postcard bytes
-		let params_bytes = postcard::to_stdvec(ctx.params)
+		let params_bytes = to_stdvec(ctx.params)
 			.map_err(|e| FFIError::Other(format!("Failed to serialize params: {}", e)))?;
 
 		// Build ContextFFI with real callbacks
@@ -162,6 +162,7 @@ impl Procedure for NativeProcedureFFI {
 
 // ---- Stub callbacks for state/store/catalog (not used by procedures) ----
 
+use postcard::to_stdvec;
 use reifydb_abi::{
 	catalog::{namespace::NamespaceFFI, table::TableFFI},
 	context::iterators::{StateIteratorFFI, StoreIteratorFFI},

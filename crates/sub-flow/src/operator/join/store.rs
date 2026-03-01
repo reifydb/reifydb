@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::{key::EncodedKey, schema::Schema},
 	interface::catalog::flow::FlowNodeId,
@@ -55,7 +56,7 @@ impl Store {
 				if blob.is_empty() {
 					return Ok(None);
 				}
-				let entry: JoinSideEntry = postcard::from_bytes(blob.as_ref())
+				let entry: JoinSideEntry = from_bytes(blob.as_ref())
 					.map_err(|e| Error(internal!("Failed to deserialize JoinSideEntry: {}", e)))?;
 				Ok(Some(entry))
 			}
@@ -67,8 +68,8 @@ impl Store {
 		let key = self.make_key(hash);
 
 		// Serialize JoinSideEntry
-		let serialized = postcard::to_stdvec(entry)
-			.map_err(|e| Error(internal!("Failed to serialize JoinSideEntry: {}", e)))?;
+		let serialized =
+			to_stdvec(entry).map_err(|e| Error(internal!("Failed to serialize JoinSideEntry: {}", e)))?;
 
 		// Store as a blob in an EncodedRow
 		let schema = Schema::testing(&[Type::Blob]);

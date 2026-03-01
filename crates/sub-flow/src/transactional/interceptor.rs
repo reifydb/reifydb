@@ -36,6 +36,7 @@ use reifydb_transaction::{
 	multi::transaction::read::MultiReadTransaction,
 };
 use reifydb_type::Result;
+use tracing::warn;
 
 use crate::{
 	engine::FlowEngine,
@@ -286,7 +287,7 @@ impl PostCommitInterceptor for TransactionalFlowPostCommitInterceptor {
 			if flow_change.op == OperationType::Create {
 				if let Some(flow_def) = &flow_change.post {
 					if let Err(e) = self.registrar.try_register_by_id(flow_def.id) {
-						tracing::warn!(
+						warn!(
 							flow_id = flow_def.id.0,
 							error = %e,
 							"failed to register transactional flow on commit"

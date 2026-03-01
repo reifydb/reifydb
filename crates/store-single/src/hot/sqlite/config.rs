@@ -3,6 +3,8 @@
 
 use std::path::{Path, PathBuf};
 
+use uuid::Uuid;
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum DbPath {
 	File(PathBuf),
@@ -49,10 +51,7 @@ impl SqliteConfig {
 	/// - Automatic cleanup on drop
 	pub fn in_memory() -> Self {
 		Self {
-			path: DbPath::Memory(PathBuf::from(format!(
-				"/dev/shm/reifydb_mem_{}.db",
-				uuid::Uuid::new_v4()
-			))),
+			path: DbPath::Memory(PathBuf::from(format!("/dev/shm/reifydb_mem_{}.db", Uuid::new_v4()))),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
@@ -73,10 +72,7 @@ impl SqliteConfig {
 	/// - Automatic cleanup on drop
 	pub fn test() -> Self {
 		Self {
-			path: DbPath::Memory(PathBuf::from(format!(
-				"/dev/shm/reifydb_test_{}.db",
-				uuid::Uuid::new_v4()
-			))),
+			path: DbPath::Memory(PathBuf::from(format!("/dev/shm/reifydb_test_{}.db", Uuid::new_v4()))),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,

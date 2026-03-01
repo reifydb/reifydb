@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use num_bigint::Sign;
 use reifydb_type::value::{
 	Value,
 	blob::Blob,
@@ -232,7 +233,7 @@ impl KeySerializer {
 		let (sign, bytes) = int.to_bytes_be();
 		// Encode sign as a byte (0 for negative, 1 for positive)
 		self.buffer.push(match sign {
-			num_bigint::Sign::Minus => 0,
+			Sign::Minus => 0,
 			_ => 1,
 		});
 		self.extend_u32(bytes.len() as u32);

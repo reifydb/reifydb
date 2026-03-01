@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use rand::Rng;
+use rand::{Rng, rng};
 use reifydb_core::interface::auth::AuthenticationProvider;
 use reifydb_type::{Result, error::Error};
 
@@ -18,7 +18,7 @@ impl AuthenticationProvider for TokenProvider {
 
 	fn create(&self, _config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
 		let mut bytes = [0u8; 32];
-		rand::rng().fill_bytes(&mut bytes);
+		rng().fill_bytes(&mut bytes);
 
 		// Encode as hex for readability
 		let token: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();

@@ -14,7 +14,10 @@ pub mod scripting;
 pub mod series_predicate;
 pub mod variable;
 
-use std::fmt::{Display, Formatter};
+use std::{
+	fmt,
+	fmt::{Display, Formatter},
+};
 
 use query::window::WindowNode;
 use reifydb_catalog::catalog::{
@@ -474,7 +477,7 @@ pub enum LetValue<'bump> {
 }
 
 impl<'bump> Display for LetValue<'bump> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
 			LetValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
@@ -490,7 +493,7 @@ pub enum AssignValue<'bump> {
 }
 
 impl<'bump> Display for AssignValue<'bump> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			AssignValue::Expression(expr) => write!(f, "{}", expr),
 			AssignValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),

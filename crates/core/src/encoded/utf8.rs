@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::str;
+
 use reifydb_type::value::r#type::Type;
 
 use crate::encoded::{encoded::EncodedValues, schema::Schema};
@@ -43,7 +45,7 @@ impl Schema {
 		let string_start = dynamic_start + offset;
 		let string_slice = &row.as_slice()[string_start..string_start + length];
 
-		unsafe { std::str::from_utf8_unchecked(string_slice) }
+		unsafe { str::from_utf8_unchecked(string_slice) }
 	}
 
 	pub fn try_get_utf8<'a>(&'a self, row: &'a EncodedValues, index: usize) -> Option<&'a str> {

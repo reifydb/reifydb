@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::{
+	error,
+	fmt::{self, Display, Formatter},
+};
 
 use super::frame::Frame;
 use crate::value::try_from::FromValueError;
@@ -23,7 +26,7 @@ pub enum FromFrameError {
 }
 
 impl Display for FromFrameError {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			FromFrameError::MissingColumn {
 				column,
@@ -42,7 +45,7 @@ impl Display for FromFrameError {
 	}
 }
 
-impl std::error::Error for FromFrameError {}
+impl error::Error for FromFrameError {}
 
 /// Trait for types that can be deserialized from a Frame.
 ///

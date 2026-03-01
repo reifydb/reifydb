@@ -332,10 +332,13 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 mod tests {
 	use std::sync::{atomic::AtomicUsize, mpsc};
 
+	use parking_lot::Mutex;
+	use rayon::ThreadPoolBuilder;
+
 	use super::*;
 
 	fn test_pool() -> Arc<ThreadPool> {
-		Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap())
+		Arc::new(ThreadPoolBuilder::new().num_threads(2).build().unwrap())
 	}
 
 	#[test]
@@ -436,19 +439,19 @@ mod tests {
 		let pool = test_pool();
 		let mut scheduler = SchedulerHandle::new(pool);
 
-		let results = Arc::new(std::sync::Mutex::new(Vec::new()));
+		let results = Arc::new(Mutex::new(Vec::new()));
 
 		for i in 0..5 {
 			let results_clone = results.clone();
 			let delay = Duration::from_millis((5 - i) * 10); // Reverse order
 			scheduler.schedule_once(delay, move || {
-				results_clone.lock().unwrap().push(i);
+				results_clone.lock().push(i);
 			});
 		}
 
 		thread::sleep(Duration::from_millis(100));
 
-		let results = results.lock().unwrap();
+		let results = results.lock();
 		// Timers should fire in deadline order (4, 3, 2, 1, 0)
 		assert_eq!(*results, vec![4, 3, 2, 1, 0]);
 

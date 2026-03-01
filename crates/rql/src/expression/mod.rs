@@ -60,7 +60,7 @@ pub struct AliasExpression {
 }
 
 impl Display for AliasExpression {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		Display::fmt(&self.alias, f)
 	}
 }
@@ -486,7 +486,7 @@ impl ColumnExpression {
 }
 
 impl Display for Expression {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			Expression::AccessSource(AccessPrimitiveExpression {
 				column,

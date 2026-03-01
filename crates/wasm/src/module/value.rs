@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::fmt::{self, Display, Formatter};
 
 use crate::module::{FunctionIndex, function::ExternalIndex, types::ValueType};
 
@@ -17,7 +17,7 @@ pub enum Value {
 }
 
 impl Display for Value {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			Value::I32(v) => write!(f, "i32({})", v),
 			Value::I64(v) => write!(f, "i64({})", v),

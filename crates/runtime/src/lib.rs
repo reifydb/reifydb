@@ -120,13 +120,16 @@ impl SharedRuntimeConfig {
 }
 
 // WASM runtime types - single-threaded execution support
+use std::fmt;
 #[cfg(target_arch = "wasm32")]
 use std::{pin::Pin, task::Poll};
 
 #[cfg(target_arch = "wasm32")]
 use futures_util::future::LocalBoxFuture;
 #[cfg(not(target_arch = "wasm32"))]
-use tokio::runtime::Runtime;
+use tokio::runtime::{self as tokio_runtime, Runtime};
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::task::JoinHandle;
 
 /// WASM-compatible handle (placeholder).
 #[cfg(target_arch = "wasm32")]
@@ -145,7 +148,7 @@ pub struct WasmJoinHandle<T> {
 impl<T> Future for WasmJoinHandle<T> {
 	type Output = Result<T, WasmJoinError>;
 
-	fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+	fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
 		match self.future.as_mut().poll(cx) {
 			Poll::Ready(v) => Poll::Ready(Ok(v)),
 			Poll::Pending => Poll::Pending,
@@ -159,14 +162,14 @@ impl<T> Future for WasmJoinHandle<T> {
 pub struct WasmJoinError;
 
 #[cfg(target_arch = "wasm32")]
-impl std::fmt::Display for WasmJoinError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for WasmJoinError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "WASM task failed")
 	}
 }
 
 #[cfg(target_arch = "wasm32")]
-impl std::error::Error for WasmJoinError {}
+impl error::Error for WasmJoinError {}
 
 /// Inner shared state for the runtime (native).
 #[cfg(not(target_arch = "wasm32"))]
@@ -215,7 +218,7 @@ impl SharedRuntime {
 	/// Panics if the runtime cannot be created (native only).
 	#[cfg(not(target_arch = "wasm32"))]
 	pub fn from_config(config: SharedRuntimeConfig) -> Self {
-		let tokio = tokio::runtime::Builder::new_multi_thread()
+		let tokio = tokio_runtime::Builder::new_multi_thread()
 			.worker_threads(config.async_threads)
 			.thread_name("async")
 			.enable_all()
@@ -255,10 +258,10 @@ impl SharedRuntime {
 	/// Get a handle to the async runtime.
 	///
 	/// Returns a platform-specific handle type:
-	/// - Native: `tokio::runtime::Handle`
+	/// - Native: `tokio_runtime::Handle`
 	/// - WASM: `WasmHandle`
 	#[cfg(not(target_arch = "wasm32"))]
-	pub fn handle(&self) -> tokio::runtime::Handle {
+	pub fn handle(&self) -> tokio_runtime::Handle {
 		self.0.tokio.handle().clone()
 	}
 
@@ -271,10 +274,10 @@ impl SharedRuntime {
 	/// Spawn a future onto the runtime.
 	///
 	/// Returns a platform-specific join handle type:
-	/// - Native: `tokio::task::JoinHandle`
+	/// - Native: `JoinHandle`
 	/// - WASM: `WasmJoinHandle`
 	#[cfg(not(target_arch = "wasm32"))]
-	pub fn spawn<F>(&self, future: F) -> tokio::task::JoinHandle<F::Output>
+	pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
 	where
 		F: Future + Send + 'static,
 		F::Output: Send + 'static,
@@ -329,8 +332,8 @@ impl SharedRuntime {
 	}
 }
 
-impl std::fmt::Debug for SharedRuntime {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for SharedRuntime {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("SharedRuntime").finish_non_exhaustive()
 	}
 }

@@ -3,15 +3,20 @@
 
 //! Native mutex implementation using parking_lot.
 
-use std::ops::{Deref, DerefMut};
+use std::{
+	fmt,
+	ops::{Deref, DerefMut},
+};
 
-/// Native mutex implementation wrapping parking_lot::Mutex.
+use parking_lot::{Mutex, MutexGuard};
+
+/// Native mutex implementation wrapping Mutex.
 pub struct MutexInner<T> {
-	inner: parking_lot::Mutex<T>,
+	inner: Mutex<T>,
 }
 
-impl<T: std::fmt::Debug> std::fmt::Debug for MutexInner<T> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: fmt::Debug> fmt::Debug for MutexInner<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.inner.fmt(f)
 	}
 }
@@ -20,7 +25,7 @@ impl<T> MutexInner<T> {
 	/// Creates a new mutex.
 	pub fn new(value: T) -> Self {
 		Self {
-			inner: parking_lot::Mutex::new(value),
+			inner: Mutex::new(value),
 		}
 	}
 
@@ -41,7 +46,7 @@ impl<T> MutexInner<T> {
 
 /// Native guard providing mutable access to the data protected by a Mutex.
 pub struct MutexGuardInner<'a, T> {
-	pub(in crate::sync) inner: parking_lot::MutexGuard<'a, T>,
+	pub(in crate::sync) inner: MutexGuard<'a, T>,
 }
 
 impl<'a, T> Deref for MutexGuardInner<'a, T> {

@@ -4,6 +4,7 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	time::Instant,
 };
 
 use dashmap::DashMap;
@@ -17,7 +18,7 @@ use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
 use tokio::{sync::mpsc, task::JoinHandle};
-use tracing::instrument;
+use tracing::{info, instrument};
 
 use crate::{
 	coordinator,
@@ -87,14 +88,14 @@ impl Subsystem for TaskSubsystem {
 			return Ok(());
 		}
 
-		tracing::info!("Starting task subsystem");
+		info!("Starting task subsystem");
 
 		// Create coordinator channel
 		let (coordinator_tx, coordinator_rx) = mpsc::channel(100);
 
 		// Register initial tasks in the registry
 		for task in self.initial_tasks.drain(..) {
-			let next_execution = std::time::Instant::now() + task.schedule.initial_delay();
+			let next_execution = Instant::now() + task.schedule.initial_delay();
 			self.registry.insert(
 				task.id,
 				TaskEntry {
@@ -122,7 +123,7 @@ impl Subsystem for TaskSubsystem {
 		self.coordinator_handle = Some(join_handle);
 		self.running.store(true, Ordering::Release);
 
-		tracing::info!("Task subsystem started");
+		info!("Task subsystem started");
 
 		Ok(())
 	}
@@ -134,7 +135,7 @@ impl Subsystem for TaskSubsystem {
 			return Ok(());
 		}
 
-		tracing::info!("Shutting down task subsystem");
+		info!("Shutting down task subsystem");
 
 		// Send shutdown message to coordinator
 		if let Some(coordinator_tx) = self.coordinator_tx.take() {
@@ -148,7 +149,7 @@ impl Subsystem for TaskSubsystem {
 
 		self.handle = None;
 
-		tracing::info!("Task subsystem shut down");
+		info!("Task subsystem shut down");
 
 		Ok(())
 	}

@@ -3,8 +3,9 @@
 
 //! Column marshalling and unmarshalling
 
-use std::mem::size_of;
+use std::{mem::size_of, ptr, slice, str};
 
+use postcard::to_allocvec;
 use reifydb_abi::data::{
 	buffer::BufferFFI,
 	column::{ColumnDataFFI, ColumnFFI, ColumnTypeCode, ColumnsFFI},
@@ -59,7 +60,7 @@ impl Arena {
 			}
 			ptr as *const u64
 		} else {
-			std::ptr::null()
+			ptr::null()
 		};
 
 		// Marshal each column
@@ -92,7 +93,7 @@ impl Arena {
 		// Unmarshal row numbers
 		let row_numbers: Vec<RowNumber> = if !ffi.row_numbers.is_null() && ffi.row_count > 0 {
 			unsafe {
-				let slice = std::slice::from_raw_parts(ffi.row_numbers, ffi.row_count);
+				let slice = slice::from_raw_parts(ffi.row_numbers, ffi.row_count);
 				slice.iter().map(|&n| RowNumber(n)).collect()
 			}
 		} else {
@@ -102,7 +103,7 @@ impl Arena {
 		// Unmarshal columns
 		let mut columns: Vec<Column> = Vec::with_capacity(ffi.column_count);
 		unsafe {
-			let cols_slice = std::slice::from_raw_parts(ffi.columns, ffi.column_count);
+			let cols_slice = slice::from_raw_parts(ffi.columns, ffi.column_count);
 			for col_ffi in cols_slice {
 				columns.push(self.unmarshal_column(col_ffi, ffi.row_count));
 			}
@@ -180,8 +181,8 @@ impl Arena {
 		// Unmarshal name
 		let name = if !ffi.name.ptr.is_null() && ffi.name.len > 0 {
 			unsafe {
-				let bytes = std::slice::from_raw_parts(ffi.name.ptr, ffi.name.len);
-				let s = std::str::from_utf8(bytes).unwrap_or("");
+				let bytes = slice::from_raw_parts(ffi.name.ptr, ffi.name.len);
+				let s = str::from_utf8(bytes).unwrap_or("");
 				Fragment::internal(s)
 			}
 		} else {
@@ -361,7 +362,7 @@ impl Arena {
 				let ptr = self.alloc(byte_count);
 				if !ptr.is_null() {
 					unsafe {
-						std::ptr::write_bytes(ptr, 0, byte_count);
+						ptr::write_bytes(ptr, 0, byte_count);
 					}
 					for i in 0..len {
 						if let Some(val) = container.get(i) {
@@ -508,7 +509,7 @@ impl Arena {
 				offsets.push(0);
 				for i in 0..container.len() {
 					let value = container.get(i);
-					let serialized = postcard::to_allocvec(&value).unwrap_or_default();
+					let serialized = to_allocvec(&value).unwrap_or_default();
 					data_bytes.extend_from_slice(&serialized);
 					offsets.push(data_bytes.len() as u64);
 				}
@@ -538,7 +539,7 @@ impl Arena {
 		let ptr = self.alloc(byte_len);
 		if !ptr.is_null() {
 			unsafe {
-				std::ptr::copy_nonoverlapping(slice.as_ptr() as *const u8, ptr, byte_len);
+				ptr::copy_nonoverlapping(slice.as_ptr() as *const u8, ptr, byte_len);
 			}
 		}
 		(
@@ -586,7 +587,7 @@ impl Arena {
 
 		offsets.push(0);
 		for value in values {
-			let serialized = postcard::to_allocvec(value).unwrap_or_default();
+			let serialized = to_allocvec(value).unwrap_or_default();
 			data.extend_from_slice(&serialized);
 			offsets.push(data.len() as u64);
 		}
@@ -601,7 +602,7 @@ impl Arena {
 		let offsets_ptr = self.alloc(offsets_byte_len) as *mut u64;
 		if !offsets_ptr.is_null() {
 			unsafe {
-				std::ptr::copy_nonoverlapping(offsets.as_ptr(), offsets_ptr, offsets.len());
+				ptr::copy_nonoverlapping(offsets.as_ptr(), offsets_ptr, offsets.len());
 			}
 		}
 
@@ -625,7 +626,7 @@ impl Arena {
 		let ptr = self.alloc(byte_count);
 		if !ptr.is_null() {
 			unsafe {
-				std::ptr::write_bytes(ptr, 0, byte_count);
+				ptr::write_bytes(ptr, 0, byte_count);
 			}
 			for i in 0..len {
 				if bitvec.get(i) {
@@ -648,7 +649,7 @@ impl Arena {
 			return BitVec::empty();
 		}
 		unsafe {
-			let bytes = std::slice::from_raw_parts(ffi.ptr, ffi.len);
+			let bytes = slice::from_raw_parts(ffi.ptr, ffi.len);
 			BitVec::from_raw(bytes.to_vec(), row_count)
 		}
 	}

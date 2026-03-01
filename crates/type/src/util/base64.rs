@@ -3,6 +3,7 @@
 
 //! Simple base64 encoding/decoding implementation
 
+use std::{error, fmt};
 const BASE64_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const BASE64_URL_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -157,8 +158,8 @@ pub enum DecodeError {
 	InvalidPadding,
 }
 
-impl std::fmt::Display for DecodeError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for DecodeError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			DecodeError::InvalidCharacter(ch) => {
 				write!(f, "Invalid base64 character: '{}'", ch)
@@ -171,7 +172,7 @@ impl std::fmt::Display for DecodeError {
 	}
 }
 
-impl std::error::Error for DecodeError {}
+impl error::Error for DecodeError {}
 
 // Convenience module to match the original API
 pub mod engine {

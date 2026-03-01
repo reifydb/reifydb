@@ -247,12 +247,14 @@ fn extract_identity(headers: &HeaderMap) -> Result<IdentityId, AppError> {
 
 #[cfg(test)]
 pub mod tests {
+	use serde_json::{from_str, to_string};
+
 	use super::*;
 
 	#[test]
 	fn test_statement_request_deserialization() {
 		let json = r#"{"statements": ["SELECT 1"]}"#;
-		let request: StatementRequest = serde_json::from_str(json).unwrap();
+		let request: StatementRequest = from_str(json).unwrap();
 		assert_eq!(request.statements, vec!["SELECT 1"]);
 		assert!(request.params.is_none());
 	}
@@ -262,7 +264,7 @@ pub mod tests {
 		let response = QueryResponse {
 			frames: Vec::new(),
 		};
-		let json = serde_json::to_string(&response).unwrap();
+		let json = to_string(&response).unwrap();
 		assert!(json.contains("frames"));
 	}
 
@@ -271,7 +273,7 @@ pub mod tests {
 		let response = HealthResponse {
 			status: "ok",
 		};
-		let json = serde_json::to_string(&response).unwrap();
+		let json = to_string(&response).unwrap();
 		assert_eq!(json, r#"{"status":"ok"}"#);
 	}
 }

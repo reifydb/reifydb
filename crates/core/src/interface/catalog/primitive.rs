@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::fmt;
+
 use reifydb_type::{Result, value::dictionary::DictionaryId};
 use serde::{Deserialize, Serialize};
 
@@ -25,8 +27,8 @@ pub enum PrimitiveId {
 	Series(SeriesId),
 }
 
-impl std::fmt::Display for PrimitiveId {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for PrimitiveId {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			PrimitiveId::Table(id) => write!(f, "{}", id.0),
 			PrimitiveId::View(id) => write!(f, "{}", id.0),

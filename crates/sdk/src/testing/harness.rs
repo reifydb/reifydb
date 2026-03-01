@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, ffi::c_void, marker::PhantomData};
+use std::{collections::HashMap, ffi::c_void, marker::PhantomData, ptr};
 
+use ptr::null;
 use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
 	common::CommitVersion,
@@ -227,7 +228,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 		// The txn_ptr points to the TestContext
 		let ffi_context = Box::new(ContextFFI {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
-			executor_ptr: std::ptr::null(),
+			executor_ptr: null(),
 			operator_id: self.node_id.0,
 			callbacks: create_test_callbacks(),
 		});

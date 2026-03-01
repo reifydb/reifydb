@@ -4,6 +4,7 @@
 use std::{
 	any::{Any, TypeId},
 	collections::HashMap,
+	sync,
 	sync::Arc,
 };
 
@@ -13,6 +14,7 @@ use reifydb_runtime::actor::{
 	system::ActorSystem,
 	traits::{Actor, Directive},
 };
+use sync::mpsc::Sender;
 
 pub mod flow;
 pub mod lifecycle;
@@ -88,7 +90,7 @@ enum EventBusMsg {
 	Register {
 		installer: Box<dyn FnOnce(&mut HashMap<TypeId, Box<dyn EventListenerList>>) + Send>,
 	},
-	WaitForCompletion(std::sync::mpsc::Sender<()>),
+	WaitForCompletion(Sender<()>),
 }
 
 struct EventBusActor;
@@ -169,7 +171,7 @@ impl EventBus {
 	}
 
 	pub fn wait_for_completion(&self) {
-		let (tx, rx) = std::sync::mpsc::channel();
+		let (tx, rx) = sync::mpsc::channel();
 		let _ = self.actor_ref.send(EventBusMsg::WaitForCompletion(tx));
 		let _ = rx.recv();
 	}
@@ -177,7 +179,10 @@ impl EventBus {
 
 #[cfg(test)]
 pub mod tests {
-	use std::sync::{Arc, Mutex};
+	use std::{
+		sync::{Arc, Mutex},
+		thread,
+	};
 
 	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
 
@@ -282,7 +287,7 @@ pub mod tests {
 
 		for _ in 0..10 {
 			let event_bus = event_bus.clone();
-			handles.push(std::thread::spawn(move || {
+			handles.push(thread::spawn(move || {
 				let listener = TestEventListener::default();
 				event_bus.register::<TestEvent, TestEventListener>(listener);
 			}));
@@ -308,7 +313,7 @@ pub mod tests {
 
 		for _ in 0..10 {
 			let event_bus = event_bus.clone();
-			handles.push(std::thread::spawn(move || {
+			handles.push(thread::spawn(move || {
 				event_bus.emit(TestEvent::new());
 			}));
 		}

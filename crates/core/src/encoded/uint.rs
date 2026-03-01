@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use num_bigint::BigUint;
+use num_bigint::{BigInt, BigUint};
 use num_traits::ToPrimitive;
 use reifydb_type::value::{r#type::Type, uint::Uint};
 
@@ -92,7 +92,7 @@ impl Schema {
 			let value = packed & INLINE_VALUE_MASK;
 			// Convert to BigUint then to Uint
 			let unsigned = BigUint::from(value);
-			Uint::from(num_bigint::BigInt::from(unsigned))
+			Uint::from(BigInt::from(unsigned))
 		} else {
 			// MODE_DYNAMIC: Extract offset and length for dynamic
 			// storage
@@ -104,7 +104,7 @@ impl Schema {
 
 			// Parse as unsigned bytes
 			let unsigned = BigUint::from_bytes_le(data_bytes);
-			Uint::from(num_bigint::BigInt::from(unsigned))
+			Uint::from(BigInt::from(unsigned))
 		}
 	}
 
@@ -120,6 +120,7 @@ impl Schema {
 
 #[cfg(test)]
 pub mod tests {
+	use num_bigint::BigInt;
 	use num_traits::Zero;
 	use reifydb_type::value::{r#type::Type, uint::Uint};
 
@@ -173,11 +174,8 @@ pub mod tests {
 		// Create a value that requires dynamic storage (>127 bits)
 		// Using string representation for very large numbers
 		let huge = Uint::from(
-			num_bigint::BigInt::parse_bytes(
-				b"123456789012345678901234567890123456789012345678901234567890",
-				10,
-			)
-			.unwrap(),
+			BigInt::parse_bytes(b"123456789012345678901234567890123456789012345678901234567890", 10)
+				.unwrap(),
 		);
 
 		schema.set_uint(&mut row, 0, &huge);

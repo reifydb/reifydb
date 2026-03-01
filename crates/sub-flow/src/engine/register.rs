@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
+use postcard::from_bytes;
 use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
@@ -65,7 +66,7 @@ impl FlowEngine {
 		Ok(())
 	}
 
-	#[instrument(name = "flow::register::add_node", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?std::mem::discriminant(&node.ty)))]
+	#[instrument(name = "flow::register::add_node", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
 	fn add(&mut self, txn: &mut CommandTransaction, flow: &FlowDag, node: &FlowNode) -> Result<()> {
 		debug_assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
@@ -114,9 +115,9 @@ impl FlowEngine {
 							if flow_node.node_type == 1
 								|| flow_node.node_type == 17 || flow_node.node_type == 18
 							{
-								if let Ok(nt) = postcard::from_bytes::<FlowNodeType>(
-									&flow_node.data,
-								) {
+								if let Ok(nt) =
+									from_bytes::<FlowNodeType>(&flow_node.data)
+								{
 									match nt {
 										SourceTable {
 											table: t,

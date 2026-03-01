@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
+	fmt,
 	fmt::{Display, Formatter},
 	ops::Deref,
 };
@@ -83,7 +84,7 @@ impl From<Blob> for Vec<u8> {
 }
 
 impl Display for Blob {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "0x{}", util::hex::encode(self.as_bytes()))
 	}
 }

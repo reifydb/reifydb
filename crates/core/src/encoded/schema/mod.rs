@@ -15,6 +15,7 @@ mod from;
 
 use std::{
 	alloc::{Layout, alloc_zeroed, handle_alloc_error},
+	fmt,
 	fmt::Debug,
 	ops::Deref,
 	sync::{Arc, OnceLock},
@@ -110,7 +111,7 @@ impl Clone for Schema {
 }
 
 impl Debug for Schema {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.0.fmt(f)
 	}
 }

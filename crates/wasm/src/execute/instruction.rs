@@ -9,6 +9,8 @@
 
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Sub};
 
+use libm::{ceil, ceilf, copysign, copysignf, fabs, fabsf, floor, floorf, trunc, truncf};
+
 use crate::{
 	execute::exec::Exec,
 	module::{
@@ -604,19 +606,19 @@ where
 
 impl FloatExtension for f32 {
 	fn abs(self) -> Self {
-		libm::fabsf(self)
+		fabsf(self)
 	}
 
 	fn ceil(self) -> Self {
-		libm::ceilf(self)
+		ceilf(self)
 	}
 
 	fn copysign(self, other: Self) -> Self {
-		libm::copysignf(self, other)
+		copysignf(self, other)
 	}
 
 	fn floor(self) -> Self {
-		libm::floorf(self)
+		floorf(self)
 	}
 
 	fn min(self, other: Self) -> Self {
@@ -653,7 +655,7 @@ impl FloatExtension for f32 {
 	}
 
 	fn trunc(self) -> Self {
-		libm::truncf(self)
+		truncf(self)
 	}
 
 	fn nan(self) -> Self {
@@ -663,19 +665,19 @@ impl FloatExtension for f32 {
 
 impl FloatExtension for f64 {
 	fn abs(self) -> Self {
-		libm::fabs(self)
+		fabs(self)
 	}
 
 	fn ceil(self) -> Self {
-		libm::ceil(self)
+		ceil(self)
 	}
 
 	fn copysign(self, other: Self) -> Self {
-		libm::copysign(self, other)
+		copysign(self, other)
 	}
 
 	fn floor(self) -> Self {
-		libm::floor(self)
+		floor(self)
 	}
 
 	fn min(self, other: Self) -> Self {
@@ -712,7 +714,7 @@ impl FloatExtension for f64 {
 	}
 
 	fn trunc(self) -> Self {
-		libm::trunc(self)
+		trunc(self)
 	}
 
 	fn nan(self) -> Self {

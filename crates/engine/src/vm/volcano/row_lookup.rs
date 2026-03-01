@@ -8,7 +8,7 @@
 //! - `RowListLookupNode`: Multiple discrete rows O(k) lookup
 //! - `RowRangeScanNode`: Row number range scan
 
-use std::sync::Arc;
+use std::{iter, sync::Arc};
 
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, schema::Schema},
@@ -85,16 +85,16 @@ impl QueryNode for RowPointLookupNode {
 		}
 		self.exhausted = true;
 
-		let source_id = get_source_id(&self.source)?;
+		let source_id = get_primitive_id(&self.source)?;
 		let encoded_key = RowKey::encoded(source_id, RowNumber(self.row_number));
 
 		// O(1) point lookup
 		if let Some(multi_values) = rx.get(&encoded_key)? {
-			let mut columns = columns_from_source(&self.source);
+			let mut columns = columns_from_primitive(&self.source);
 			let schema = self.get_or_load_schema(rx, &multi_values.values)?;
 			columns.append_rows(
 				&schema,
-				std::iter::once(multi_values.values),
+				iter::once(multi_values.values),
 				vec![RowNumber(self.row_number)],
 			)?;
 
@@ -168,7 +168,7 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let source_id = get_source_id(&self.source)?;
+		let source_id = get_primitive_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -196,7 +196,7 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let mut columns = columns_from_source(&self.source);
+		let mut columns = columns_from_primitive(&self.source);
 		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
 		columns.append_rows(&schema, batch_rows.into_iter(), found_row_numbers)?;
 
@@ -271,7 +271,7 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let source_id = get_source_id(&self.source)?;
+		let source_id = get_primitive_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -301,7 +301,7 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let mut columns = columns_from_source(&self.source);
+		let mut columns = columns_from_primitive(&self.source);
 		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
 		columns.append_rows(&schema, batch_rows.into_iter(), found_row_numbers)?;
 
@@ -334,7 +334,7 @@ fn build_headers_and_storage_types<'a>(source: &ResolvedPrimitive) -> Result<(Co
 	Ok((headers, storage_types))
 }
 
-fn get_source_id(source: &ResolvedPrimitive) -> Result<PrimitiveId> {
+fn get_primitive_id(source: &ResolvedPrimitive) -> Result<PrimitiveId> {
 	match source {
 		ResolvedPrimitive::Table(table) => Ok(table.def().id.into()),
 		ResolvedPrimitive::View(view) => Ok(view.def().id.into()),
@@ -343,7 +343,7 @@ fn get_source_id(source: &ResolvedPrimitive) -> Result<PrimitiveId> {
 	}
 }
 
-fn columns_from_source<'a>(source: &ResolvedPrimitive) -> Columns {
+fn columns_from_primitive<'a>(source: &ResolvedPrimitive) -> Columns {
 	match source {
 		ResolvedPrimitive::Table(table) => Columns::from_table(table),
 		ResolvedPrimitive::View(view) => Columns::from_view(view),

@@ -3,9 +3,12 @@
 
 //! Native mailbox implementation using crossbeam-channel.
 
-use std::{fmt, sync::Arc, time::Duration};
+use std::{fmt, sync, sync::Arc, time::Duration};
 
-use crossbeam_channel::{Receiver, bounded, unbounded};
+use crossbeam_channel::{
+	Receiver, RecvTimeoutError as CcRecvTimeoutError, SendError as CcSendError, Sender,
+	TryRecvError as CcTryRecvError, TrySendError as CcTrySendError, bounded, unbounded,
+};
 
 use super::{ActorRef, RecvError, RecvTimeoutError, SendError, TryRecvError};
 
@@ -15,8 +18,8 @@ use super::{ActorRef, RecvError, RecvTimeoutError, SendError, TryRecvError};
 /// The notify callback is shared (via Arc) so that all clones of an ActorRef
 /// see the callback once it is set — even clones created before `set_notify`.
 pub struct ActorRefInner<M> {
-	pub(crate) tx: crossbeam_channel::Sender<M>,
-	notify: Arc<std::sync::OnceLock<Arc<dyn Fn() + Send + Sync>>>,
+	pub(crate) tx: Sender<M>,
+	notify: Arc<sync::OnceLock<Arc<dyn Fn() + Send + Sync>>>,
 }
 
 impl<M> Clone for ActorRefInner<M> {
@@ -36,10 +39,10 @@ impl<M> fmt::Debug for ActorRefInner<M> {
 
 impl<M: Send> ActorRefInner<M> {
 	/// Create a new ActorRefInner from a sender.
-	pub(crate) fn new(tx: crossbeam_channel::Sender<M>) -> Self {
+	pub(crate) fn new(tx: Sender<M>) -> Self {
 		Self {
 			tx,
-			notify: Arc::new(std::sync::OnceLock::new()),
+			notify: Arc::new(sync::OnceLock::new()),
 		}
 	}
 
@@ -58,8 +61,8 @@ impl<M: Send> ActorRefInner<M> {
 				}
 				Ok(())
 			}
-			Err(crossbeam_channel::TrySendError::Disconnected(m)) => Err(SendError::Closed(m)),
-			Err(crossbeam_channel::TrySendError::Full(m)) => Err(SendError::Full(m)),
+			Err(CcTrySendError::Disconnected(m)) => Err(SendError::Closed(m)),
+			Err(CcTrySendError::Full(m)) => Err(SendError::Full(m)),
 		}
 	}
 
@@ -72,7 +75,7 @@ impl<M: Send> ActorRefInner<M> {
 				}
 				Ok(())
 			}
-			Err(crossbeam_channel::SendError(m)) => Err(SendError::Closed(m)),
+			Err(CcSendError(m)) => Err(SendError::Closed(m)),
 		}
 	}
 
@@ -92,8 +95,8 @@ impl<M> Mailbox<M> {
 	pub fn try_recv(&self) -> Result<M, TryRecvError> {
 		match self.rx.try_recv() {
 			Ok(msg) => Ok(msg),
-			Err(crossbeam_channel::TryRecvError::Empty) => Err(TryRecvError::Empty),
-			Err(crossbeam_channel::TryRecvError::Disconnected) => Err(TryRecvError::Closed),
+			Err(CcTryRecvError::Empty) => Err(TryRecvError::Empty),
+			Err(CcTryRecvError::Disconnected) => Err(TryRecvError::Closed),
 		}
 	}
 
@@ -109,8 +112,8 @@ impl<M> Mailbox<M> {
 	pub fn recv_timeout(&self, timeout: Duration) -> Result<M, RecvTimeoutError> {
 		match self.rx.recv_timeout(timeout) {
 			Ok(msg) => Ok(msg),
-			Err(crossbeam_channel::RecvTimeoutError::Timeout) => Err(RecvTimeoutError::Timeout),
-			Err(crossbeam_channel::RecvTimeoutError::Disconnected) => Err(RecvTimeoutError::Closed),
+			Err(CcRecvTimeoutError::Timeout) => Err(RecvTimeoutError::Timeout),
+			Err(CcRecvTimeoutError::Disconnected) => Err(RecvTimeoutError::Closed),
 		}
 	}
 }

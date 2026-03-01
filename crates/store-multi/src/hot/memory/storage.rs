@@ -12,7 +12,7 @@ use std::{cmp::Reverse, collections::HashMap, ops::Bound, sync::Arc};
 
 use reifydb_core::common::CommitVersion;
 use reifydb_type::{Result, util::cowvec::CowVec};
-use tracing::{Span, instrument};
+use tracing::{Span, field, instrument};
 
 use super::entry::{CurrentMap, Entries, Entry, HistoricalMap, entry_id_to_key};
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
@@ -160,7 +160,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::multi::memory::set", level = "trace", skip(self, batches), fields(
 		table_count = batches.len(),
-		total_entry_count = tracing::field::Empty,
+		total_entry_count = field::Empty,
 		version = version.0
 	))]
 	fn set(
@@ -482,7 +482,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::multi::memory::drop", level = "debug", skip(self, batches), fields(
 		table_count = batches.len(),
-		total_entry_count = tracing::field::Empty
+		total_entry_count = field::Empty
 	))]
 	fn drop(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();

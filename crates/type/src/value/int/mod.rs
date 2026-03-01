@@ -3,6 +3,7 @@
 
 use std::{
 	cmp::Ordering,
+	fmt,
 	fmt::{Display, Formatter},
 	hash::{Hash, Hasher},
 	ops::Deref,
@@ -145,7 +146,7 @@ impl From<Int> for StdBigInt {
 }
 
 impl Display for Int {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "{}", self.0)
 	}
 }

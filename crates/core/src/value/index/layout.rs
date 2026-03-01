@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{ops::Deref, sync::Arc};
+use std::{alloc, ops::Deref, sync::Arc};
 
 use reifydb_type::{Result, util::cowvec::CowVec, value::r#type::Type};
 
@@ -95,11 +95,11 @@ impl EncodedIndexLayoutInner {
 	}
 
 	pub fn allocate_key(&self) -> EncodedIndexKey {
-		let layout = std::alloc::Layout::from_size_align(self.total_size, self.alignment).unwrap();
+		let layout = alloc::Layout::from_size_align(self.total_size, self.alignment).unwrap();
 		unsafe {
-			let ptr = std::alloc::alloc_zeroed(layout);
+			let ptr = alloc::alloc_zeroed(layout);
 			if ptr.is_null() {
-				std::alloc::handle_alloc_error(layout);
+				alloc::handle_alloc_error(layout);
 			}
 			let vec = Vec::from_raw_parts(ptr, self.total_size, self.total_size);
 			EncodedIndexKey(CowVec::new(vec))

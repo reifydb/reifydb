@@ -6,7 +6,9 @@
 //! Since WASM is single-threaded, this is a simple wrapper around RefCell.
 
 use std::{
+	cell,
 	cell::RefMut,
+	fmt,
 	ops::{Deref, DerefMut},
 };
 
@@ -14,11 +16,11 @@ use crate::sync;
 
 /// WASM mutex implementation using RefCell (no actual locking needed).
 pub struct MutexInner<T> {
-	inner: std::cell::RefCell<T>,
+	inner: cell::RefCell<T>,
 }
 
-impl<T: std::fmt::Debug> std::fmt::Debug for MutexInner<T> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: fmt::Debug> fmt::Debug for MutexInner<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("MutexInner").field("data", &self.inner).finish()
 	}
 }
@@ -27,7 +29,7 @@ impl<T> MutexInner<T> {
 	/// Creates a new mutex.
 	pub fn new(value: T) -> Self {
 		Self {
-			inner: std::cell::RefCell::new(value),
+			inner: cell::RefCell::new(value),
 		}
 	}
 

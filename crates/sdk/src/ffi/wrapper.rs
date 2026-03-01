@@ -9,10 +9,12 @@
 //! - `> 0`: Recoverable error (reserved for future use)
 
 use std::{
+	any,
 	cell::RefCell,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
+	slice,
 };
 
 use reifydb_abi::{
@@ -93,7 +95,7 @@ fn marshal_output(arena: &mut Arena, output_change: &Change, output: *mut Change
 }
 
 #[instrument(name = "flow::operator::ffi::apply", level = "debug", skip_all, fields(
-	operator_type = std::any::type_name::<O>(),
+	operator_type = any::type_name::<O>(),
 	input_diffs,
 	output_diffs
 ))]
@@ -145,7 +147,7 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 }
 
 #[instrument(name = "flow::operator::ffi::pull", level = "debug", skip_all, fields(
-	operator_type = std::any::type_name::<O>(),
+	operator_type = any::type_name::<O>(),
 	row_count = count,
 	rows_returned
 ))]
@@ -165,10 +167,7 @@ pub extern "C" fn ffi_pull<O: FFIOperator>(
 
 			// Convert row numbers
 			let numbers: Vec<RowNumber> = if !row_numbers.is_null() && count > 0 {
-				std::slice::from_raw_parts(row_numbers, count)
-					.iter()
-					.map(|&n| RowNumber::from(n))
-					.collect()
+				slice::from_raw_parts(row_numbers, count).iter().map(|&n| RowNumber::from(n)).collect()
 			} else {
 				Vec::new()
 			};

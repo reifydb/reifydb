@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::{
+	fmt,
+	fmt::{Display, Formatter},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +55,7 @@ pub enum ColumnSaturationPolicy {
 }
 
 impl Display for ColumnPropertyKind {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			ColumnPropertyKind::Saturation(_) => f.write_str("saturation"),
 		}

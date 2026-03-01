@@ -146,9 +146,7 @@ impl MultiWriteTransaction {
 	}
 
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
-		let items: Vec<_> = self
-			.range(EncodedKeyRange::prefix(prefix), 1024)
-			.collect::<std::result::Result<Vec<_>, _>>()?;
+		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -156,9 +154,8 @@ impl MultiWriteTransaction {
 	}
 
 	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
-		let items: Vec<_> = self
-			.range_rev(EncodedKeyRange::prefix(prefix), 1024)
-			.collect::<std::result::Result<Vec<_>, _>>()?;
+		let items: Vec<_> =
+			self.range_rev(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -219,7 +216,7 @@ impl MultiWriteTransaction {
 	}
 }
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, iter, vec};
 
 use reifydb_core::interface::store::MultiVersionValues;
 
@@ -227,7 +224,7 @@ use crate::multi::{pending::PendingWrites, types::Pending};
 
 /// Iterator that merges pending writes with storage iterator.
 struct MergePendingIterator<I> {
-	pending_iter: std::iter::Peekable<std::vec::IntoIter<(EncodedKey, Pending)>>,
+	pending_iter: iter::Peekable<vec::IntoIter<(EncodedKey, Pending)>>,
 	storage_iter: I,
 	next_storage: Option<MultiVersionValues>,
 	reverse: bool,

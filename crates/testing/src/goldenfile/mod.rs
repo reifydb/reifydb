@@ -7,7 +7,7 @@ use std::{
 	io::{self, Write},
 	path::{Path, PathBuf},
 	process::id,
-	thread,
+	thread, time,
 	time::SystemTime,
 };
 
@@ -48,7 +48,7 @@ impl Mint {
 				let tempdir = env::temp_dir().join(format!(
 					"goldenfiles-{}-{}-{:?}",
 					id(),
-					SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
+					SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_nanos(),
 					thread::current().id()
 				));
 				fs::create_dir_all(&tempdir).ok();

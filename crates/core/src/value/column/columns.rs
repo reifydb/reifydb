@@ -4,6 +4,7 @@
 use std::{
 	collections::HashMap,
 	hash::Hash,
+	mem,
 	ops::{Deref, Index, IndexMut},
 };
 
@@ -194,8 +195,7 @@ impl Columns {
 		for (i, name) in headers.columns.iter().enumerate() {
 			if i < self.len() {
 				let column = &mut self[i];
-				let data =
-					std::mem::replace(column.data_mut(), ColumnData::none_typed(Type::Boolean, 0));
+				let data = mem::replace(column.data_mut(), ColumnData::none_typed(Type::Boolean, 0));
 
 				*column = Column {
 					name: name.clone(),

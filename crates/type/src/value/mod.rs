@@ -35,6 +35,8 @@ pub mod r#type;
 pub mod uint;
 pub mod uuid;
 
+use std::{fmt, hash, mem};
+
 use blob::Blob;
 use date::Date;
 use datetime::DateTime;
@@ -283,9 +285,9 @@ impl PartialEq for Value {
 
 impl Eq for Value {}
 
-impl std::hash::Hash for Value {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		std::mem::discriminant(self).hash(state);
+impl hash::Hash for Value {
+	fn hash<H: hash::Hasher>(&self, state: &mut H) {
+		mem::discriminant(self).hash(state);
 		match self {
 			Value::None {
 				..
@@ -441,7 +443,7 @@ impl Ord for Value {
 }
 
 impl Display for Value {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			Value::Boolean(true) => f.write_str("true"),
 			Value::Boolean(false) => f.write_str("false"),

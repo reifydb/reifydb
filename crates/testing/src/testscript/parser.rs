@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{collections::HashSet, fmt};
+use std::{collections::HashSet, error, fmt};
 
 use crate::testscript::command::{Argument, Block, Command};
 
@@ -28,7 +28,7 @@ impl fmt::Display for ParseError {
 	}
 }
 
-impl std::error::Error for ParseError {}
+impl error::Error for ParseError {}
 
 #[derive(Debug, Clone)]
 pub struct LocatedSpan {

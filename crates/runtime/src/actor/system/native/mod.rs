@@ -9,11 +9,15 @@ mod pool;
 
 use std::{
 	any::Any,
+	error, fmt,
 	fmt::{Debug, Formatter},
+	mem,
 	sync::{Arc, Mutex},
+	time,
 	time::Duration,
 };
 
+use crossbeam_channel::{Receiver, RecvTimeoutError as CcRecvTimeoutError};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use tokio::{sync::Semaphore, task};
 
@@ -39,7 +43,7 @@ struct ActorSystemInner {
 	scheduler: SchedulerHandle,
 	wakers: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
 	keepalive: Mutex<Vec<Box<dyn Any + Send + Sync>>>,
-	done_rxs: Mutex<Vec<crossbeam_channel::Receiver<()>>>,
+	done_rxs: Mutex<Vec<Receiver<()>>>,
 }
 
 /// Unified system for all concurrent work.
@@ -111,7 +115,7 @@ impl ActorSystem {
 		self.inner.cancel.cancel();
 
 		// Drain wakers: wake all parked actors and release the closures in one step.
-		let wakers = std::mem::take(&mut *self.inner.wakers.lock().unwrap());
+		let wakers = mem::take(&mut *self.inner.wakers.lock().unwrap());
 		for waker in &wakers {
 			waker();
 		}
@@ -134,7 +138,7 @@ impl ActorSystem {
 	}
 
 	/// Register a done receiver for an actor, used by `join()` to wait for all actors.
-	pub(crate) fn register_done_rx(&self, rx: crossbeam_channel::Receiver<()>) {
+	pub(crate) fn register_done_rx(&self, rx: Receiver<()>) {
 		self.inner.done_rxs.lock().unwrap().push(rx);
 	}
 
@@ -145,16 +149,16 @@ impl ActorSystem {
 
 	/// Wait for all actors to finish after shutdown, with a custom timeout.
 	pub fn join_timeout(&self, timeout: Duration) -> Result<(), JoinError> {
-		let deadline = std::time::Instant::now() + timeout;
-		let rxs: Vec<_> = std::mem::take(&mut *self.inner.done_rxs.lock().unwrap());
+		let deadline = time::Instant::now() + timeout;
+		let rxs: Vec<_> = mem::take(&mut *self.inner.done_rxs.lock().unwrap());
 		for rx in rxs {
-			let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+			let remaining = deadline.saturating_duration_since(time::Instant::now());
 			match rx.recv_timeout(remaining) {
 				Ok(()) => {}
-				Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+				Err(CcRecvTimeoutError::Disconnected) => {
 					// Cell dropped without sending — actor already cleaned up
 				}
-				Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+				Err(CcRecvTimeoutError::Timeout) => {
 					return Err(JoinError::new("timed out waiting for actors to stop"));
 				}
 			}
@@ -217,7 +221,7 @@ impl ActorSystem {
 }
 
 impl Debug for ActorSystem {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("ActorSystem").field("cancelled", &self.is_cancelled()).finish_non_exhaustive()
 	}
 }
@@ -240,16 +244,18 @@ impl JoinError {
 	}
 }
 
-impl std::fmt::Display for JoinError {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for JoinError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "actor join failed: {}", self.message)
 	}
 }
 
-impl std::error::Error for JoinError {}
+impl error::Error for JoinError {}
 
 #[cfg(test)]
 mod tests {
+	use std::sync;
+
 	use super::*;
 	use crate::{
 		SharedRuntimeConfig,
@@ -261,7 +267,7 @@ mod tests {
 	#[derive(Debug)]
 	enum CounterMsg {
 		Inc,
-		Get(std::sync::mpsc::Sender<i64>),
+		Get(sync::mpsc::Sender<i64>),
 		Stop,
 	}
 
@@ -300,7 +306,7 @@ mod tests {
 		actor_ref.send(CounterMsg::Inc).unwrap();
 		actor_ref.send(CounterMsg::Inc).unwrap();
 
-		let (tx, rx) = std::sync::mpsc::channel();
+		let (tx, rx) = sync::mpsc::channel();
 		actor_ref.send(CounterMsg::Get(tx)).unwrap();
 
 		let value = rx.recv().unwrap();

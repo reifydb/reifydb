@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
@@ -648,20 +648,20 @@ impl Vm {
 						let mut func_result = Vec::new();
 						self.run(services, tx, &func_def.body, params, &mut func_result)?;
 
-						let stack_value = match std::mem::replace(
-							&mut self.control_flow,
-							ControlFlow::Normal,
-						) {
-							ControlFlow::Return(c) => Variable::Scalar(
-								c.unwrap_or(Columns::scalar(Value::none())),
-							),
-							_ => {
-								if let Some(frame) = func_result.last() {
-									if !frame.columns.is_empty()
-										&& frame.columns[0].data.len() > 0
-									{
-										let cols: Vec<Column> =
-											frame.columns
+						let stack_value =
+							match mem::replace(&mut self.control_flow, ControlFlow::Normal)
+							{
+								ControlFlow::Return(c) => Variable::Scalar(
+									c.unwrap_or(Columns::scalar(Value::none())),
+								),
+								_ => {
+									if let Some(frame) = func_result.last() {
+										if !frame.columns.is_empty()
+											&& frame.columns[0].data.len()
+												> 0
+										{
+											let cols: Vec<Column> = frame
+												.columns
 												.iter()
 												.map(|fc| {
 													let mut data = ColumnData::none_typed(Type::Boolean, 0);
@@ -674,17 +674,19 @@ impl Vm {
 													Column::new(fc.name.as_str(), data)
 												})
 												.collect();
-										Variable::Columns(Columns::new(cols))
+											Variable::Columns(Columns::new(
+												cols,
+											))
+										} else {
+											Variable::scalar(Value::none())
+										}
 									} else {
-										Variable::scalar(Value::none())
+										self.stack.pop().ok().unwrap_or(
+											Variable::scalar(Value::none()),
+										)
 									}
-								} else {
-									self.stack.pop().ok().unwrap_or(
-										Variable::scalar(Value::none()),
-									)
 								}
-							}
-						};
+							};
 
 						self.ip = saved_ip;
 						let _ = self.symbol_table.exit_scope();
@@ -722,20 +724,20 @@ impl Vm {
 							&mut closure_result,
 						)?;
 
-						let stack_value = match std::mem::replace(
-							&mut self.control_flow,
-							ControlFlow::Normal,
-						) {
-							ControlFlow::Return(c) => Variable::Scalar(
-								c.unwrap_or(Columns::scalar(Value::none())),
-							),
-							_ => {
-								if let Some(frame) = closure_result.last() {
-									if !frame.columns.is_empty()
-										&& frame.columns[0].data.len() > 0
-									{
-										let cols: Vec<Column> =
-											frame.columns
+						let stack_value =
+							match mem::replace(&mut self.control_flow, ControlFlow::Normal)
+							{
+								ControlFlow::Return(c) => Variable::Scalar(
+									c.unwrap_or(Columns::scalar(Value::none())),
+								),
+								_ => {
+									if let Some(frame) = closure_result.last() {
+										if !frame.columns.is_empty()
+											&& frame.columns[0].data.len()
+												> 0
+										{
+											let cols: Vec<Column> = frame
+												.columns
 												.iter()
 												.map(|fc| {
 													let mut data = ColumnData::none_typed(Type::Boolean, 0);
@@ -748,17 +750,19 @@ impl Vm {
 													Column::new(fc.name.as_str(), data)
 												})
 												.collect();
-										Variable::Columns(Columns::new(cols))
+											Variable::Columns(Columns::new(
+												cols,
+											))
+										} else {
+											Variable::scalar(Value::none())
+										}
 									} else {
-										Variable::scalar(Value::none())
+										self.stack.pop().ok().unwrap_or(
+											Variable::scalar(Value::none()),
+										)
 									}
-								} else {
-									self.stack.pop().ok().unwrap_or(
-										Variable::scalar(Value::none()),
-									)
 								}
-							}
-						};
+							};
 
 						self.ip = saved_ip;
 						let _ = self.symbol_table.exit_scope();
@@ -838,7 +842,7 @@ impl Vm {
 
 									// Collect result (same pattern
 									// as DEF functions)
-									let stack_value = match std::mem::replace(
+									let stack_value = match mem::replace(
 										&mut self.control_flow,
 										ControlFlow::Normal,
 									) {

@@ -54,6 +54,7 @@
 
 use std::hash::Hash;
 
+use postcard::{from_bytes, to_allocvec};
 use reifydb_core::{
 	encoded::{encoded::EncodedValues, key::IntoEncodedKey},
 	util::lru::LruCache,
@@ -110,7 +111,7 @@ where
 		match state.get(&encoded_key)? {
 			Some(encoded_values) => {
 				// Deserialize and cache
-				let value: V = postcard::from_bytes(encoded_values.as_ref()).map_err(|e| {
+				let value: V = from_bytes(encoded_values.as_ref()).map_err(|e| {
 					FFIError::Serialization(format!("deserialization failed: {}", e))
 				})?;
 				self.cache.put(key.clone(), value.clone());
@@ -132,7 +133,7 @@ where
 	/// * `value` - The value to store
 	pub fn set(&mut self, ctx: &mut OperatorContext, key: &K, value: &V) -> Result<()> {
 		// Serialize the value
-		let bytes = postcard::to_allocvec(value)
+		let bytes = to_allocvec(value)
 			.map_err(|e| FFIError::Serialization(format!("serialization failed: {}", e)))?;
 		let encoded_values = EncodedValues(CowVec::new(bytes));
 

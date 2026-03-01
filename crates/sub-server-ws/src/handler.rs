@@ -26,6 +26,7 @@ use reifydb_type::{
 	params::Params,
 	value::{identity::IdentityId, uuid::Uuid7},
 };
+use serde_json::from_str;
 use tokio::{
 	net::TcpStream,
 	select,
@@ -33,7 +34,7 @@ use tokio::{
 	time::timeout,
 };
 use tokio_tungstenite::{accept_async, tungstenite::Message};
-use tracing::{debug, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
 	protocol::{Request, RequestPayload},
@@ -234,7 +235,7 @@ async fn process_message(
 	poller: &SubscriptionPoller,
 	push_tx: mpsc::Sender<PushMessage>,
 ) -> Option<String> {
-	let request: Request = match serde_json::from_str(text) {
+	let request: Request = match from_str(text) {
 		Ok(r) => r,
 		Err(e) => {
 			return Some(build_error("0", "PARSE_ERROR", &format!("Invalid JSON: {}", e)));
@@ -393,7 +394,7 @@ async fn process_message(
 					);
 				}
 
-				tracing::info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
+				info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
 				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
 			} else {
 				Some(build_error(
@@ -416,7 +417,7 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 			Response::internal_error(id, "QUERY_CANCELLED", "Query was cancelled").to_json()
 		}
 		ExecuteError::Disconnected => {
-			tracing::error!("Query stream disconnected unexpectedly");
+			error!("Query stream disconnected unexpectedly");
 			Response::internal_error(id, "INTERNAL_ERROR", "Internal server error").to_json()
 		}
 		ExecuteError::Engine {

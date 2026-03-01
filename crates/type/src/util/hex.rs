@@ -3,7 +3,10 @@
 
 //! Simple hex encoding/decoding implementation
 
-use std::fmt::{self, Write};
+use std::{
+	error,
+	fmt::{self, Write},
+};
 
 /// Zero-allocation hex display wrapper.
 pub struct DisplayHex<'a>(&'a [u8]);
@@ -69,8 +72,8 @@ pub enum DecodeError {
 	OddLength,
 }
 
-impl std::fmt::Display for DecodeError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for DecodeError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			DecodeError::InvalidCharacter(ch) => {
 				write!(f, "Invalid hex character: '{}'", ch)
@@ -82,7 +85,7 @@ impl std::fmt::Display for DecodeError {
 	}
 }
 
-impl std::error::Error for DecodeError {}
+impl error::Error for DecodeError {}
 
 #[cfg(test)]
 pub mod tests {

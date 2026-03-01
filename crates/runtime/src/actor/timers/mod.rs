@@ -17,6 +17,7 @@
 //! [`Context::schedule_repeat`]: crate::actor::context::Context::schedule_repeat
 
 use std::{
+	fmt,
 	fmt::Debug,
 	sync::{
 		Arc,
@@ -71,7 +72,7 @@ impl TimerHandle {
 }
 
 impl Debug for TimerHandle {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("TimerHandle").field("id", &self.id).field("cancelled", &self.is_cancelled()).finish()
 	}
 }

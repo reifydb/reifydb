@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::mem;
+
 use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionValues};
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
 use reifydb_type::{Result, util::hex};
@@ -32,8 +34,7 @@ impl KeyReadLock {
 		// SAFETY: We're extending the guard's lifetime to 'static.
 		// This is sound because we're also storing the Arc, which keeps
 		// the underlying RwLock alive for as long as this struct exists.
-		let guard =
-			unsafe { std::mem::transmute::<RwLockReadGuard<'_, ()>, RwLockReadGuard<'static, ()>>(guard) };
+		let guard = unsafe { mem::transmute::<RwLockReadGuard<'_, ()>, RwLockReadGuard<'static, ()>>(guard) };
 
 		Self {
 			_arc: arc,

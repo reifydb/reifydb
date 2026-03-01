@@ -9,6 +9,7 @@ use reifydb_core::{
 	key::user_authentication::UserAuthenticationKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use serde_json::to_string;
 
 use crate::{
 	CatalogStore, Result,
@@ -28,10 +29,9 @@ impl CatalogStore {
 		let id = SystemSequence::next_user_authentication_id(txn)?;
 
 		// Serialize properties as JSON
-		let properties_json =
-			serde_json::to_string(&properties).map_err(|e| AuthError::SerializeProperties {
-				reason: e.to_string(),
-			})?;
+		let properties_json = to_string(&properties).map_err(|e| AuthError::SerializeProperties {
+			reason: e.to_string(),
+		})?;
 
 		let mut row = SCHEMA.allocate();
 		SCHEMA.set_u64(&mut row, ID, id);

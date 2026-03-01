@@ -10,7 +10,7 @@
 
 pub mod load;
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
@@ -26,7 +26,7 @@ use reifydb_type::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
 };
-use tracing::{Span, instrument};
+use tracing::{Span, field, instrument};
 
 use crate::{
 	Result,
@@ -98,12 +98,12 @@ impl SchemaRegistry {
 		name = "schema_registry::get_or_create",
 		level = "debug",
 		skip(fields),
-		fields(fingerprint = tracing::field::Empty, field_count = fields.len())
+		fields(fingerprint = field::Empty, field_count = fields.len())
 	)]
 	pub fn get_or_create(&self, fields: Vec<SchemaField>) -> Result<Schema> {
 		let schema = Schema::new(fields);
 		let fingerprint = schema.fingerprint();
-		Span::current().record("fingerprint", tracing::field::debug(&fingerprint));
+		Span::current().record("fingerprint", field::debug(&fingerprint));
 
 		// Fast path
 		if let Some(entry) = self.0.cache.get(&fingerprint) {
@@ -156,8 +156,8 @@ impl SchemaRegistry {
 		skip(txn),
 		fields(
 			fingerprint = ?fingerprint,
-			cache_hit = tracing::field::Empty,
-			field_count = tracing::field::Empty
+			cache_hit = field::Empty,
+			field_count = field::Empty
 		)
 	)]
 	pub fn get_or_load(&self, fingerprint: SchemaFingerprint, txn: &mut Transaction<'_>) -> Result<Option<Schema>> {
@@ -262,8 +262,8 @@ impl SchemaRegistry {
 	}
 }
 
-impl std::fmt::Debug for SchemaRegistry {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for SchemaRegistry {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("SchemaRegistry").field("cache_size", &self.0.cache.len()).finish_non_exhaustive()
 	}
 }

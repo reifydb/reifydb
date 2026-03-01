@@ -87,7 +87,7 @@ pub mod tests {
 		let counter_clone = counter.clone();
 
 		thread::spawn(move || {
-			std::thread::sleep(Duration::from_millis(50));
+			thread::sleep(Duration::from_millis(50));
 			*counter_clone.lock().unwrap() = 5;
 		});
 

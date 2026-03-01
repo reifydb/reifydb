@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::mem;
+
 use reifydb_type::{storage::DataBitVec, util::bitvec::BitVec};
 
 use crate::value::column::data::{ColumnData, with_container};
@@ -20,7 +22,7 @@ impl ColumnData {
 				// Promote bare container to Option-wrapped, then push none
 				let len = self.len();
 				let mut bitvec = BitVec::repeat(len, true);
-				let mut inner = std::mem::replace(self, ColumnData::bool(vec![]));
+				let mut inner = mem::replace(self, ColumnData::bool(vec![]));
 				// Push a default value to the inner container directly (avoid recursion)
 				with_container!(&mut inner, |c| c.push_default());
 				DataBitVec::push(&mut bitvec, false);

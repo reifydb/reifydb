@@ -6,7 +6,10 @@
 //! Provides a simple arena allocator that is automatically cleaned up
 //! after each FFI operator invocation.
 
-use std::alloc::Layout;
+use std::{
+	alloc::Layout,
+	ptr::{copy_nonoverlapping, null_mut},
+};
 
 use bumpalo::Bump;
 
@@ -31,7 +34,7 @@ impl Arena {
 	/// Returns null for zero-sized allocations
 	pub fn alloc(&self, size: usize) -> *mut u8 {
 		if size == 0 {
-			return std::ptr::null_mut();
+			return null_mut();
 		}
 		let layout = Layout::from_size_align(size, 8).unwrap();
 		self.bump.alloc_layout(layout).as_ptr()
@@ -40,12 +43,12 @@ impl Arena {
 	/// Allocate and copy bytes into the arena
 	pub fn copy_bytes(&self, bytes: &[u8]) -> *mut u8 {
 		if bytes.is_empty() {
-			return std::ptr::null_mut();
+			return null_mut();
 		}
 		let ptr = self.alloc(bytes.len());
 		if !ptr.is_null() {
 			unsafe {
-				std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
+				copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
 			}
 		}
 		ptr

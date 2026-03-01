@@ -58,7 +58,7 @@ macro_rules! impl_safe_div_unsigned {
 impl_safe_div_signed!(i8, i16, i32, i64, i128);
 impl_safe_div_unsigned!(u8, u16, u32, u64, u128);
 
-use bigdecimal::Zero;
+use bigdecimal::{BigDecimal, Zero};
 use num_bigint::BigInt;
 
 use crate::value::{decimal::Decimal, int::Int, uint::Uint};
@@ -137,7 +137,7 @@ impl SafeDiv for Decimal {
 
 	fn wrapping_div(&self, r: &Self) -> Self {
 		if r.inner().is_zero() {
-			Decimal::from(bigdecimal::BigDecimal::from(0))
+			Decimal::from(BigDecimal::from(0))
 		} else {
 			let result = self.inner() / r.inner();
 			Decimal::from(result)

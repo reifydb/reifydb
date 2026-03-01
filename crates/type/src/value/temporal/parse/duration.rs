@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
+use std::collections;
+
 use crate::{
 	error::{Error, TemporalKind, TypeError},
 	fragment::Fragment,
@@ -9,7 +11,7 @@ use crate::{
 
 fn validate_component_order(
 	component: char,
-	seen: &mut std::collections::HashSet<char>,
+	seen: &mut collections::HashSet<char>,
 	last_order: &mut u8,
 	current_order: u8,
 	fragment: Fragment,
@@ -76,8 +78,8 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 	let mut in_time_part = false;
 	let mut current_position = 1; // Start after 'P'
 
-	let mut seen_date_components = std::collections::HashSet::new();
-	let mut seen_time_components = std::collections::HashSet::new();
+	let mut seen_date_components = collections::HashSet::new();
+	let mut seen_time_components = collections::HashSet::new();
 	let mut last_date_component_order = 0u8;
 	let mut last_time_component_order = 0u8;
 

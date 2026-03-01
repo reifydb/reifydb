@@ -71,7 +71,7 @@ impl<M: fmt::Debug> fmt::Display for SendError<M> {
 	}
 }
 
-impl<M: fmt::Debug> std::error::Error for SendError<M> {}
+impl<M: fmt::Debug> error::Error for SendError<M> {}
 
 /// Error returned when an ask (request-response) fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,7 +91,7 @@ impl fmt::Display for AskError {
 	}
 }
 
-impl std::error::Error for AskError {}
+impl error::Error for AskError {}
 
 /// Error when trying to receive without blocking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,7 +166,7 @@ impl<M> ActorRef<M> {
 impl<M: Send> ActorRef<M> {
 	/// Create a new ActorRef from a crossbeam sender (native only).
 	#[inline]
-	pub(crate) fn new(tx: crossbeam_channel::Sender<M>) -> Self {
+	pub(crate) fn new(tx: Sender<M>) -> Self {
 		Self {
 			inner: native::ActorRefInner::new(tx),
 		}
@@ -174,7 +174,7 @@ impl<M: Send> ActorRef<M> {
 
 	/// Set the notify callback, called on successful send to wake the actor.
 	#[inline]
-	pub(crate) fn set_notify(&self, f: std::sync::Arc<dyn Fn() + Send + Sync>) {
+	pub(crate) fn set_notify(&self, f: sync::Arc<dyn Fn() + Send + Sync>) {
 		self.inner.set_notify(f)
 	}
 
@@ -272,6 +272,11 @@ impl<M> ActorRef<M> {
 	}
 }
 
+use std::error;
+#[cfg(reifydb_target = "native")]
+use std::sync;
+
+use crossbeam_channel::Sender;
 #[cfg(reifydb_target = "native")]
 pub(crate) use native::create_mailbox;
 #[cfg(reifydb_target = "wasm")]

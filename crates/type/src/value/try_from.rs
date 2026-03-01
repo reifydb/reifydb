@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt::{Display, Formatter};
+use std::{
+	error,
+	fmt::{self, Display, Formatter},
+};
 
 use crate::value::{
 	Value,
@@ -36,7 +39,7 @@ pub enum FromValueError {
 }
 
 impl Display for FromValueError {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			FromValueError::TypeMismatch {
 				expected,
@@ -54,7 +57,7 @@ impl Display for FromValueError {
 	}
 }
 
-impl std::error::Error for FromValueError {}
+impl error::Error for FromValueError {}
 
 /// Trait for strict extraction of Rust types from Value.
 ///

@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub mod get;
 pub mod promote;
 
+use std::fmt;
+
 use crate::value::Value;
 
 /// All possible RQL data types
@@ -335,7 +337,7 @@ impl Type {
 }
 
 impl Display for Type {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			Type::Boolean => f.write_str("Boolean"),
 			Type::Float4 => f.write_str("Float4"),

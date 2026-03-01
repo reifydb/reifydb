@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
+	fmt,
 	fmt::{Display, Formatter},
 	time::{SystemTime, UNIX_EPOCH},
 };
@@ -165,7 +166,7 @@ impl Date {
 }
 
 impl Display for Date {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let (year, month, day) = Self::days_since_epoch_to_ymd(self.days_since_epoch);
 		if year < 0 {
 			write!(f, "-{:04}-{:02}-{:02}", -year, month, day)
@@ -190,7 +191,7 @@ struct DateVisitor;
 impl<'de> Visitor<'de> for DateVisitor {
 	type Value = Date;
 
-	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 		formatter.write_str("a date in ISO 8601 format (YYYY-MM-DD)")
 	}
 
@@ -234,6 +235,8 @@ impl<'de> Deserialize<'de> for Date {
 
 #[cfg(test)]
 pub mod tests {
+	use serde_json::{from_str, to_string};
+
 	use super::*;
 
 	#[test]
@@ -394,10 +397,10 @@ pub mod tests {
 	#[test]
 	fn test_serde_roundtrip() {
 		let date = Date::new(2024, 3, 15).unwrap();
-		let json = serde_json::to_string(&date).unwrap();
+		let json = to_string(&date).unwrap();
 		assert_eq!(json, "\"2024-03-15\"");
 
-		let recovered: Date = serde_json::from_str(&json).unwrap();
+		let recovered: Date = from_str(&json).unwrap();
 		assert_eq!(date, recovered);
 	}
 }

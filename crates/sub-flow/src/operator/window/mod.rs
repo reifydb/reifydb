@@ -25,8 +25,9 @@ use tumbling::apply_tumbling_window;
 
 static EMPTY_PARAMS: Params = Params::None;
 
-use std::sync::LazyLock;
+use std::{ops, sync::LazyLock, time};
 
+use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::{
 		encoded::EncodedValues,
@@ -156,7 +157,7 @@ pub struct WindowOperator {
 	pub row_number_provider: RowNumberProvider,
 	pub min_events: usize,               // Minimum events required before window becomes visible
 	pub max_window_count: Option<usize>, // Maximum number of windows to keep per group
-	pub max_window_age: Option<std::time::Duration>, // Maximum age of windows before expiration
+	pub max_window_age: Option<time::Duration>, // Maximum age of windows before expiration
 	pub clock: Clock,
 }
 
@@ -171,7 +172,7 @@ impl WindowOperator {
 		aggregations: Vec<Expression>,
 		min_events: usize,
 		max_window_count: Option<usize>,
-		max_window_age: Option<std::time::Duration>,
+		max_window_age: Option<time::Duration>,
 		clock: Clock,
 		functions: Functions,
 	) -> Self {
@@ -477,8 +478,7 @@ impl WindowOperator {
 
 			// all group keys and clean up expired windows for each group
 			let before_key = self.create_window_key(Hash128::from(0u128), expire_before / window_size_ms);
-			let range =
-				EncodedKeyRange::new(std::ops::Bound::Excluded(before_key), std::ops::Bound::Unbounded);
+			let range = EncodedKeyRange::new(ops::Bound::Excluded(before_key), ops::Bound::Unbounded);
 
 			let _expired_count = self.expire_range(txn, range)?;
 		}
@@ -499,8 +499,7 @@ impl WindowOperator {
 			return Ok(WindowState::default());
 		}
 
-		postcard::from_bytes(blob.as_ref())
-			.map_err(|e| Error(internal!("Failed to deserialize WindowState: {}", e)))
+		from_bytes(blob.as_ref()).map_err(|e| Error(internal!("Failed to deserialize WindowState: {}", e)))
 	}
 
 	/// Save window state to storage
@@ -510,8 +509,8 @@ impl WindowOperator {
 		window_key: &EncodedKey,
 		state: &WindowState,
 	) -> Result<()> {
-		let serialized = postcard::to_stdvec(state)
-			.map_err(|e| Error(internal!("Failed to serialize WindowState: {}", e)))?;
+		let serialized =
+			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize WindowState: {}", e)))?;
 
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
@@ -532,14 +531,14 @@ impl WindowOperator {
 			if blob.is_empty() {
 				0
 			} else {
-				postcard::from_bytes(blob.as_ref()).unwrap_or(0)
+				from_bytes(blob.as_ref()).unwrap_or(0)
 			}
 		};
 
 		let new_count = current_count + 1;
 
-		let serialized = postcard::to_stdvec(&new_count)
-			.map_err(|e| Error(internal!("Failed to serialize count: {}", e)))?;
+		let serialized =
+			to_stdvec(&new_count).map_err(|e| Error(internal!("Failed to serialize count: {}", e)))?;
 
 		let mut count_state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);

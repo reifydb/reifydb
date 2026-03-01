@@ -5,6 +5,7 @@
 
 use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
+use postcard::from_bytes;
 use reifydb_abi::{
 	constants::CURRENT_API,
 	data::buffer::BufferFFI,
@@ -92,7 +93,7 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 		// SAFETY: caller guarantees config_ptr is valid for config_len bytes
 		let config_bytes = unsafe { slice::from_raw_parts(config_ptr, config_len) };
 
-		match postcard::from_bytes::<HashMap<String, Value>>(config_bytes) {
+		match from_bytes::<HashMap<String, Value>>(config_bytes) {
 			Ok(decoded_config) => decoded_config,
 			Err(e) => {
 				panic!(

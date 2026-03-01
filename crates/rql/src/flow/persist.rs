@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 
+use postcard::to_stdvec;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::catalog::flow::{FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId},
@@ -63,7 +64,7 @@ pub fn persist_flow(
 		node_map.insert(compiled_node.local_id, real_node_id);
 
 		// Serialize the node type
-		let data = postcard::to_stdvec(&compiled_node.node_type)
+		let data = to_stdvec(&compiled_node.node_type)
 			.map_err(|e| Error(internal!("Failed to serialize FlowNodeType: {}", e)))?;
 
 		// Create and persist the catalog entry

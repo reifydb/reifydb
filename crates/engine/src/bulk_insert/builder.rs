@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::marker::PhantomData;
+use std::{any, marker::PhantomData};
 
+use any::TypeId;
 use reifydb_catalog::{
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
@@ -54,6 +55,7 @@ pub struct Trusted;
 impl ValidationMode for Trusted {}
 
 pub mod sealed {
+
 	use super::{Trusted, Validated};
 	pub trait Sealed {}
 	impl Sealed for Validated {}
@@ -137,19 +139,14 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 
 		// Process all pending table inserts
 		for pending in self.pending_tables {
-			let table_result =
-				execute_table_insert::<V>(&catalog, &mut txn, &pending, std::any::TypeId::of::<V>())?;
+			let table_result = execute_table_insert::<V>(&catalog, &mut txn, &pending, TypeId::of::<V>())?;
 			result.tables.push(table_result);
 		}
 
 		// Process all pending ring buffer inserts
 		for pending in self.pending_ringbuffers {
-			let rb_result = execute_ringbuffer_insert::<V>(
-				&catalog,
-				&mut txn,
-				&pending,
-				std::any::TypeId::of::<V>(),
-			)?;
+			let rb_result =
+				execute_ringbuffer_insert::<V>(&catalog, &mut txn, &pending, TypeId::of::<V>())?;
 			result.ringbuffers.push(rb_result);
 		}
 
@@ -165,7 +162,7 @@ fn execute_table_insert<V: ValidationMode>(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
-	type_id: std::any::TypeId,
+	type_id: TypeId,
 ) -> Result<TableInsertResult> {
 	// 1. Look up namespace and table from catalog
 	let namespace = catalog
@@ -190,7 +187,7 @@ fn execute_table_insert<V: ValidationMode>(
 	let schema = get_or_create_table_schema(catalog, &table, &mut Transaction::Command(txn))?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
-	let is_validated = type_id == std::any::TypeId::of::<Validated>();
+	let is_validated = type_id == TypeId::of::<Validated>();
 	let coerced_rows = if is_validated {
 		validate_and_coerce_rows(&pending.rows, &table)?
 	} else {
@@ -300,7 +297,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,
-	type_id: std::any::TypeId,
+	type_id: TypeId,
 ) -> Result<RingBufferInsertResult> {
 	let namespace = catalog
 		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
@@ -333,7 +330,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	let schema = get_or_create_ringbuffer_schema(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
-	let is_validated = type_id == std::any::TypeId::of::<Validated>();
+	let is_validated = type_id == TypeId::of::<Validated>();
 	let coerced_rows = if is_validated {
 		validate_and_coerce_rows_rb(&pending.rows, &ringbuffer)?
 	} else {

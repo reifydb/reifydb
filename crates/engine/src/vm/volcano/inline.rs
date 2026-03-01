@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{BTreeSet, HashMap, HashSet},
+	mem,
 	sync::Arc,
 };
 
@@ -93,7 +94,7 @@ impl InlineDataNode {
 		}
 
 		for row in &mut self.rows {
-			let original = std::mem::take(row);
+			let original = mem::take(row);
 			let mut expanded = Vec::with_capacity(original.len());
 
 			for alias_expr in original {

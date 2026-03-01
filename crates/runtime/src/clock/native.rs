@@ -4,10 +4,12 @@
 //! Native clock implementation.
 
 use std::{
+	fmt,
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
 	},
+	time,
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -52,7 +54,7 @@ impl Clock {
 	pub fn instant(&self) -> Instant {
 		match self {
 			Clock::Real => Instant {
-				inner: InstantInner::Real(std::time::Instant::now()),
+				inner: InstantInner::Real(time::Instant::now()),
 			},
 			Clock::Mock(mock) => Instant {
 				inner: InstantInner::Mock {
@@ -154,7 +156,7 @@ impl MockClock {
 
 #[derive(Clone)]
 enum InstantInner {
-	Real(std::time::Instant),
+	Real(time::Instant),
 	Mock {
 		captured_nanos: u128,
 		clock: MockClock,
@@ -204,8 +206,8 @@ impl Instant {
 	}
 }
 
-impl std::fmt::Debug for Instant {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Instant {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match &self.inner {
 			InstantInner::Real(instant) => f.debug_tuple("Instant::Real").field(instant).finish(),
 			InstantInner::Mock {

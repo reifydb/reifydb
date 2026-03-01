@@ -11,7 +11,7 @@ use reifydb_core::{
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_type::Result;
-use tracing::{Span, instrument};
+use tracing::{Span, field, instrument};
 
 use super::FlowTransaction;
 
@@ -20,7 +20,7 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
-		found = tracing::field::Empty
+		found = field::Empty
 	))]
 	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedValues>> {
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
@@ -56,7 +56,7 @@ impl FlowTransaction {
 	/// Scan all state for a specific flow node
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
 		node_id = id.0,
-		result_count = tracing::field::Empty
+		result_count = field::Empty
 	))]
 	pub fn state_scan(&mut self, id: FlowNodeId) -> Result<MultiVersionBatch> {
 		let range = FlowNodeStateKey::node_range(id);
@@ -92,7 +92,7 @@ impl FlowTransaction {
 	/// Clear all state for a specific flow node
 	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
 		node_id = id.0,
-		keys_removed = tracing::field::Empty
+		keys_removed = field::Empty
 	))]
 	pub fn state_clear(&mut self, id: FlowNodeId) -> Result<()> {
 		// Phase 1: Scan to collect all keys

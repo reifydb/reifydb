@@ -22,7 +22,7 @@ use reifydb_runtime::{
 	clock::{Clock, Instant},
 };
 use reifydb_type::util::hex::encode;
-use tracing::{Span, instrument};
+use tracing::{Span, field, instrument};
 
 use super::{
 	instruction::WorkerBatch,
@@ -224,8 +224,8 @@ impl PoolActor {
 	/// Handle Submit by sending to workers asynchronously.
 	#[instrument(name = "flow::pool::submit", level = "debug", skip(self, state, ctx, batches, reply), fields(
 		batches = batches.len(),
-		instructions = tracing::field::Empty,
-		elapsed_us = tracing::field::Empty
+		instructions = field::Empty,
+		elapsed_us = field::Empty
 	))]
 	fn handle_submit_async(
 		&self,

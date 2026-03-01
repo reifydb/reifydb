@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::error::Error;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de};
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -138,7 +138,7 @@ impl TryFrom<u8> for KeyKind {
 			0x39 => Ok(Self::Migration),
 			0x3A => Ok(Self::MigrationEvent),
 			0x3B => Ok(Self::UserAuthentication),
-			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
+			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}
 }

@@ -3,7 +3,8 @@
 
 use std::{fmt, ops::Deref, str::FromStr};
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
+use uuid::Uuid;
 
 use crate::value::uuid::Uuid7;
 
@@ -34,7 +35,7 @@ impl IdentityId {
 		let bytes = [
 			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		];
-		IdentityId(Uuid7(uuid::Uuid::from_bytes(bytes)))
+		IdentityId(Uuid7(Uuid::from_bytes(bytes)))
 	}
 
 	/// Sentinel for root identity: maximum valid UUID v7
@@ -43,7 +44,7 @@ impl IdentityId {
 		let bytes = [
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F, 0xFF, 0xBF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		];
-		IdentityId(Uuid7(uuid::Uuid::from_bytes(bytes)))
+		IdentityId(Uuid7(Uuid::from_bytes(bytes)))
 	}
 
 	pub fn is_anonymous(&self) -> bool {
@@ -112,10 +113,10 @@ impl<'de> Deserialize<'de> for IdentityId {
 
 			fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
 			where
-				E: serde::de::Error,
+				E: de::Error,
 			{
-				let uuid = uuid::Uuid::from_str(value)
-					.map_err(|e| E::custom(format!("invalid UUID: {}", e)))?;
+				let uuid =
+					Uuid::from_str(value).map_err(|e| E::custom(format!("invalid UUID: {}", e)))?;
 
 				if uuid.get_version_num() != 7 {
 					return Err(E::custom(format!(
@@ -129,9 +130,9 @@ impl<'de> Deserialize<'de> for IdentityId {
 
 			fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
 			where
-				E: serde::de::Error,
+				E: de::Error,
 			{
-				let uuid = uuid::Uuid::from_slice(value)
+				let uuid = Uuid::from_slice(value)
 					.map_err(|e| E::custom(format!("invalid UUID bytes: {}", e)))?;
 
 				// Verify it's a v7 UUID or nil

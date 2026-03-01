@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::mem;
+
 use indexmap::IndexMap;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::Value;
@@ -97,7 +99,7 @@ impl AggregateFunction for Min {
 		let mut keys = Vec::with_capacity(self.mins.len());
 		let mut data = ColumnData::float8_with_capacity(self.mins.len());
 
-		for (key, min) in std::mem::take(&mut self.mins) {
+		for (key, min) in mem::take(&mut self.mins) {
 			keys.push(key);
 			data.push_value(Value::float8(min));
 		}

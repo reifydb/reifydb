@@ -3,6 +3,8 @@
 
 #![forbid(unsafe_code)]
 
+use std::fmt;
+
 use types::{FunctionType, Instruction, ValueType};
 
 pub mod function;
@@ -50,8 +52,8 @@ pub enum Trap {
 	UnresolvedHostFunction(String, String),
 }
 
-impl std::fmt::Display for Trap {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Trap {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Trap::CallDepthExceeded => write!(f, "call depth exceeded"),
 			Trap::Conversion => write!(f, "invalid conversion to integer"),
@@ -78,8 +80,8 @@ pub enum TrapDivisionByZero {
 	Integer,
 }
 
-impl std::fmt::Display for TrapDivisionByZero {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TrapDivisionByZero {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			TrapDivisionByZero::Integer => write!(f, "integer divide by zero"),
 		}
@@ -99,8 +101,8 @@ pub enum TrapNotFound {
 	TableElement(TableIndex, TableElementIndex),
 }
 
-impl std::fmt::Display for TrapNotFound {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TrapNotFound {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			TrapNotFound::ExportedFunction(name) => {
 				write!(f, "unknown function: exported function '{}' not found", name)
@@ -122,8 +124,8 @@ pub enum TrapNotImplemented {
 	Instruction(Instruction),
 }
 
-impl std::fmt::Display for TrapNotImplemented {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TrapNotImplemented {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			TrapNotImplemented::Instruction(i) => {
 				write!(f, "instruction not implemented {:?}", i)
@@ -138,8 +140,8 @@ pub enum TrapOutOfRange {
 	Table(TableIndex),
 }
 
-impl std::fmt::Display for TrapOutOfRange {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TrapOutOfRange {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			TrapOutOfRange::Memory(_) => write!(f, "out of bounds memory access"),
 			TrapOutOfRange::Table(_) => write!(f, "out of bounds table access"),
@@ -153,8 +155,8 @@ pub enum TrapOverflow {
 	Stack,
 }
 
-impl std::fmt::Display for TrapOverflow {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TrapOverflow {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			TrapOverflow::Integer => write!(f, "integer overflow"),
 			TrapOverflow::Stack => write!(f, "stack overflow"),
@@ -168,8 +170,8 @@ pub enum TrapType {
 	MismatchIndirectCallType(FunctionType, FunctionType),
 }
 
-impl std::fmt::Display for TrapType {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TrapType {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			TrapType::MismatchValueType(expected, actual) => {
 				write!(f, "expected type {:?}, got {:?}", expected, actual)
@@ -186,8 +188,8 @@ pub enum TrapUnderflow {
 	Stack,
 }
 
-impl std::fmt::Display for TrapUnderflow {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TrapUnderflow {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			TrapUnderflow::Stack => write!(f, "stack underflow"),
 		}

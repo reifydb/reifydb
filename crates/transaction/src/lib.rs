@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use std::{
+	fmt,
 	fmt::{Display, Formatter},
 	ops::Deref,
 };
@@ -13,6 +14,7 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_type::{error::Error, value::uuid::Uuid7};
+use uuid::Uuid;
 
 pub mod change;
 pub mod delta;
@@ -51,19 +53,19 @@ impl TransactionId {
 impl TryFrom<&[u8]> for TransactionId {
 	type Error = Error;
 
-	fn try_from(bytes: &[u8]) -> std::result::Result<Self, Self::Error> {
+	fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
 		if bytes.len() != 16 {
 			return_internal_error!("Invalid transaction ID length: expected 16 bytes, got {}", bytes.len());
 		}
 		let mut uuid_bytes = [0u8; 16];
 		uuid_bytes.copy_from_slice(bytes);
-		let uuid = uuid::Uuid::from_bytes(uuid_bytes);
+		let uuid = Uuid::from_bytes(uuid_bytes);
 		Ok(Self(Uuid7::from(uuid)))
 	}
 }
 
 impl Display for TransactionId {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "{}", self.0)
 	}
 }

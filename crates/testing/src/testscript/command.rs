@@ -12,6 +12,8 @@
 use std::{
 	collections::{BTreeSet, HashSet, VecDeque},
 	error::Error,
+	fmt,
+	str::FromStr,
 };
 
 /// A block, consisting of multiple commands.
@@ -50,8 +52,8 @@ pub struct Command {
 	pub line_number: u32,
 }
 
-impl std::fmt::Debug for Command {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Command {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("Command")
             .field("name", &self.name)
             .field("args", &self.args)
@@ -103,8 +105,8 @@ impl Argument {
 	/// boxed error to ease error handling in a [`Runner`](crate::Runner).
 	pub fn parse<T>(&self) -> Result<T, Box<dyn Error>>
 	where
-		T: std::str::FromStr,
-		<T as std::str::FromStr>::Err: std::fmt::Display,
+		T: FromStr,
+		<T as FromStr>::Err: fmt::Display,
 	{
 		self.value.parse().map_err(|e| format!("invalid argument '{}': {e}", self.value).into())
 	}
@@ -151,8 +153,8 @@ impl<'a> ArgumentConsumer<'a> {
 	/// parsing errors, the argument is not removed.
 	pub fn lookup_parse<T>(&mut self, key: &str) -> Result<Option<T>, Box<dyn Error>>
 	where
-		T: std::str::FromStr,
-		<T as std::str::FromStr>::Err: std::fmt::Display,
+		T: FromStr,
+		<T as FromStr>::Err: fmt::Display,
 	{
 		let value = self
 			.args

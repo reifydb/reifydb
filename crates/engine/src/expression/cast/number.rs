@@ -1297,6 +1297,8 @@ where
 #[cfg(test)]
 pub mod tests {
 	mod convert {
+		use std::mem;
+
 		use reifydb_type::{
 			Result,
 			fragment::Fragment,
@@ -1412,13 +1414,13 @@ pub mod tests {
 			{
 				// Only simulate conversion failure for i8 == 42
 				// or i16 == 42
-				if std::mem::size_of::<From>() == 1 {
-					let raw: i8 = unsafe { std::mem::transmute_copy(&val) };
+				if mem::size_of::<From>() == 1 {
+					let raw: i8 = unsafe { mem::transmute_copy(&val) };
 					if raw == 42 {
 						return Ok(None);
 					}
-				} else if std::mem::size_of::<From>() == 2 {
-					let raw: i16 = unsafe { std::mem::transmute_copy(&val) };
+				} else if mem::size_of::<From>() == 2 {
+					let raw: i16 = unsafe { mem::transmute_copy(&val) };
 					if raw == 42 {
 						return Ok(None);
 					}

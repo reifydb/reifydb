@@ -5,6 +5,9 @@
 //!
 //! Allows FFI procedures to execute RQL within the current transaction.
 
+use std::{panic, ptr, slice, str};
+
+use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{
 	constants::{FFI_ERROR_INTERNAL, FFI_ERROR_INVALID_UTF8, FFI_OK},
 	context::context::ContextFFI,
@@ -29,15 +32,15 @@ pub extern "C" fn host_rql(
 	params_len: usize,
 	result_out: *mut BufferFFI,
 ) -> i32 {
-	let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+	let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
 		if ctx.is_null() || rql_ptr.is_null() || result_out.is_null() {
 			return FFI_ERROR_INTERNAL;
 		}
 
 		unsafe {
 			// Reconstruct RQL string
-			let rql_bytes = std::slice::from_raw_parts(rql_ptr, rql_len);
-			let rql_str = match std::str::from_utf8(rql_bytes) {
+			let rql_bytes = slice::from_raw_parts(rql_ptr, rql_len);
+			let rql_str = match str::from_utf8(rql_bytes) {
 				Ok(s) => s,
 				Err(_) => return FFI_ERROR_INVALID_UTF8,
 			};
@@ -46,8 +49,8 @@ pub extern "C" fn host_rql(
 			let params: Params = if params_ptr.is_null() || params_len == 0 {
 				Params::None
 			} else {
-				let params_bytes = std::slice::from_raw_parts(params_ptr, params_len);
-				match postcard::from_bytes(params_bytes) {
+				let params_bytes = slice::from_raw_parts(params_ptr, params_len);
+				match from_bytes(params_bytes) {
 					Ok(p) => p,
 					Err(e) => {
 						error!("host_rql: failed to deserialize params: {}", e);
@@ -71,7 +74,7 @@ pub extern "C" fn host_rql(
 			};
 
 			// Serialize result frames with postcard
-			let result_bytes = match postcard::to_stdvec(&frames) {
+			let result_bytes = match to_stdvec(&frames) {
 				Ok(b) => b,
 				Err(e) => {
 					error!("host_rql: failed to serialize result: {}", e);
@@ -85,7 +88,7 @@ pub extern "C" fn host_rql(
 				return FFI_ERROR_INTERNAL;
 			}
 			if !result_bytes.is_empty() {
-				std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), out_ptr, result_bytes.len());
+				ptr::copy_nonoverlapping(result_bytes.as_ptr(), out_ptr, result_bytes.len());
 			}
 
 			*result_out = BufferFFI {

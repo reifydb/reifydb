@@ -5,6 +5,8 @@
 
 use std::{
 	any::Any,
+	error,
+	result::Result as StdResult,
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicBool, Ordering},
@@ -27,6 +29,7 @@ use reifydb_core::{
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::{Result, error::Error};
+use tracing::{debug, error, info};
 
 use crate::config::OtelConfig;
 
@@ -106,7 +109,7 @@ impl OtelSubsystem {
 
 	/// Build the OTLP tracer provider
 	#[cfg(feature = "otlp")]
-	fn build_otlp_tracer_provider(&self) -> std::result::Result<SdkTracerProvider, Box<dyn std::error::Error>> {
+	fn build_otlp_tracer_provider(&self) -> StdResult<SdkTracerProvider, Box<dyn error::Error>> {
 		// Build resource with service name and version
 		let resource = Resource::builder()
 			.with_service_name(self.config.service_name.clone())
@@ -198,7 +201,7 @@ impl Subsystem for OtelSubsystem {
 		*self.tracer_provider.lock().unwrap() = Some(provider);
 
 		self.running.store(true, Ordering::SeqCst);
-		tracing::info!(
+		info!(
 			service = %self.config.service_name,
 			endpoint = %self.config.endpoint,
 			exporter = ?self.config.exporter_type,
@@ -216,9 +219,9 @@ impl Subsystem for OtelSubsystem {
 		if let Some(provider) = self.tracer_provider.lock().unwrap().take() {
 			// This ensures all pending traces are exported
 			if let Err(e) = provider.shutdown() {
-				tracing::error!("Error shutting down tracer provider: {:?}", e);
+				error!("Error shutting down tracer provider: {:?}", e);
 			} else {
-				tracing::debug!("Tracer provider shutdown complete");
+				debug!("Tracer provider shutdown complete");
 			}
 		}
 

@@ -3,7 +3,7 @@
 
 //! Namespace FFI operations
 
-use std::{mem::MaybeUninit, slice::from_raw_parts};
+use std::{mem::MaybeUninit, slice::from_raw_parts, str};
 
 use reifydb_abi::{
 	catalog::namespace::NamespaceFFI,
@@ -96,7 +96,7 @@ unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<NamespaceDef, FFI
 		&[]
 	};
 
-	let name = std::str::from_utf8(name_bytes)
+	let name = str::from_utf8(name_bytes)
 		.map_err(|_| FFIError::Other("Invalid UTF-8 in namespace name".to_string()))?
 		.to_string();
 

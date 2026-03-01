@@ -9,6 +9,7 @@
 //! falls behind. Backpressure monitoring provides visibility into worker health.
 
 use std::{
+	collections,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -200,7 +201,7 @@ impl MetricsWorker {
 							// Collect dropped keys first - if a key is dropped in this
 							// batch, any write to that key is a fresh insert (not an
 							// update to the old entry)
-							let dropped_keys: std::collections::HashSet<_> = ops
+							let dropped_keys: collections::HashSet<_> = ops
 								.iter()
 								.filter_map(|op| match op {
 									MultiStorageOperation::Drop {

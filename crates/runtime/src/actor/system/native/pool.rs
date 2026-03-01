@@ -11,7 +11,7 @@ use std::sync::{
 	atomic::{AtomicU8, Ordering},
 };
 
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender, TryRecvError as CcTryRecvError, bounded};
 use rayon::ThreadPool;
 use tracing::debug;
 
@@ -38,8 +38,8 @@ struct ActorCell<A: Actor> {
 	ctx: Context<A::Message>,
 	cancel: CancellationToken,
 	schedule_state: AtomicU8,
-	completion_tx: crossbeam_channel::Sender<()>,
-	done_tx: crossbeam_channel::Sender<()>,
+	completion_tx: Sender<()>,
+	done_tx: Sender<()>,
 	pool: Arc<ThreadPool>,
 }
 
@@ -91,12 +91,12 @@ where
 					Directive::Yield | Directive::Park | Directive::Stop => break,
 				}
 			}
-			Err(crossbeam_channel::TryRecvError::Empty) => {
+			Err(CcTryRecvError::Empty) => {
 				// No messages — run idle handler
 				flow = cell.actor.idle(&cell.ctx);
 				break;
 			}
-			Err(crossbeam_channel::TryRecvError::Disconnected) => {
+			Err(CcTryRecvError::Disconnected) => {
 				// All senders dropped
 				debug!("Pool actor mailbox closed, stopping");
 				flow = Directive::Stop;
@@ -171,7 +171,7 @@ where
 /// Handle to an actor running on the shared pool.
 pub struct PoolActorHandle<M> {
 	pub actor_ref: ActorRef<M>,
-	completion_rx: crossbeam_channel::Receiver<()>,
+	completion_rx: Receiver<()>,
 }
 
 impl<M> PoolActorHandle<M> {
@@ -200,8 +200,8 @@ where
 	let rx = mailbox.rx;
 	let pool = Arc::clone(system.pool());
 
-	let (completion_tx, completion_rx) = crossbeam_channel::bounded(1);
-	let (done_tx, done_rx) = crossbeam_channel::bounded(1);
+	let (completion_tx, completion_rx) = bounded(1);
+	let (done_tx, done_rx) = bounded(1);
 	system.register_done_rx(done_rx);
 
 	let cell = Arc::new(ActorCell {

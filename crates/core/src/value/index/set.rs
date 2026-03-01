@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::ptr;
+use std::{f64, ptr};
 
 use reifydb_type::value::{
 	date::Date,
@@ -857,6 +857,8 @@ pub mod tests {
 	}
 
 	mod f64 {
+		use std::f64::consts::PI;
+
 		use reifydb_type::value::r#type::Type;
 
 		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
@@ -866,7 +868,7 @@ pub mod tests {
 			let layout = EncodedIndexLayout::new(&[Type::Float8], &[SortDirection::Asc]).unwrap();
 			let mut key = layout.allocate_key();
 
-			layout.set_f64(&mut key, 0, std::f64::consts::PI);
+			layout.set_f64(&mut key, 0, PI);
 
 			let offset = layout.fields[0].offset;
 			// PI in IEEE 754: 0x400921FB54442D18 -> flip sign bit
@@ -878,7 +880,7 @@ pub mod tests {
 			let layout = EncodedIndexLayout::new(&[Type::Float8], &[SortDirection::Desc]).unwrap();
 			let mut key = layout.allocate_key();
 
-			layout.set_f64(&mut key, 0, std::f64::consts::PI);
+			layout.set_f64(&mut key, 0, PI);
 
 			let offset = layout.fields[0].offset;
 			// PI: ASC encoding then invert for DESC

@@ -12,6 +12,7 @@ use reifydb_sub_server::response::{ResponseColumn, ResponseFrame};
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_type::value::uuid::Uuid7;
 use tokio::sync::mpsc;
+use tracing::{debug, info, warn};
 
 /// Unique identifier for a WebSocket connection.
 pub type ConnectionId = Uuid7;
@@ -77,7 +78,7 @@ impl SubscriptionRegistry {
 		// Track subscription for connection cleanup
 		self.connections.entry(connection_id).or_default().push(subscription_id);
 
-		tracing::debug!("Registered subscription {} for connection {}", subscription_id, connection_id);
+		debug!("Registered subscription {} for connection {}", subscription_id, connection_id);
 	}
 
 	/// Get the push channel for a subscription.
@@ -109,7 +110,7 @@ impl SubscriptionRegistry {
 				self.connections.remove(&connection_id);
 			}
 
-			tracing::debug!("Unsubscribed subscription {}", subscription_id);
+			debug!("Unsubscribed subscription {}", subscription_id);
 			true
 		} else {
 			false
@@ -125,7 +126,7 @@ impl SubscriptionRegistry {
 			for sub_id in &subscription_ids {
 				self.subscriptions.remove(sub_id);
 			}
-			tracing::debug!("Cleaned up subscriptions for disconnected connection {}", connection_id);
+			debug!("Cleaned up subscriptions for disconnected connection {}", connection_id);
 			subscription_ids
 		} else {
 			Vec::new()
@@ -147,7 +148,7 @@ impl SubscriptionRegistry {
 
 			// Try to send, ignore if channel is full or closed
 			if let Err(e) = state.push_tx.try_send(msg) {
-				tracing::warn!("Failed to push to subscription {}: {}", subscription_id, e);
+				warn!("Failed to push to subscription {}: {}", subscription_id, e);
 			}
 		}
 	}
@@ -167,7 +168,7 @@ impl SubscriptionRegistry {
 	/// Log registry stats for debugging resource usage.
 	#[allow(dead_code)]
 	pub fn log_stats(&self) {
-		tracing::info!(
+		info!(
 			"Registry stats: {} subscriptions, {} connections",
 			self.subscriptions.len(),
 			self.connections.len()

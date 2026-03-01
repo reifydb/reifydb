@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::mem;
+
 use reifydb_type::{Result, storage::DataBitVec, util::bitvec::BitVec};
 
 use crate::{
@@ -159,7 +161,7 @@ impl ColumnData {
 				let r_len = r_inner.len();
 				let mut l_bitvec = BitVec::repeat(l_len, true);
 				DataBitVec::extend_from(&mut l_bitvec, &r_bitvec);
-				let inner = std::mem::replace(self, ColumnData::bool(vec![]));
+				let inner = mem::replace(self, ColumnData::bool(vec![]));
 				let mut boxed_inner = Box::new(inner);
 
 				if boxed_inner.get_type() != r_inner.get_type()

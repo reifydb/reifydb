@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::time;
+
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},
 	interface::catalog::{
@@ -78,7 +80,7 @@ pub enum FlowNodeType {
 		aggregations: Vec<Expression>,
 		min_events: usize,
 		max_window_count: Option<usize>,
-		max_window_age: Option<std::time::Duration>,
+		max_window_age: Option<time::Duration>,
 	},
 }
 

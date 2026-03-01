@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::collections;
+
+use collections::HashSet;
 use reifydb_core::{
 	interface::catalog::{
 		id::{ColumnId, PrimaryKeyId},
@@ -45,7 +48,7 @@ impl CatalogStore {
 		// Get the columns for the table/view and validate all primary
 		// key columns belong to it
 		let source_columns = Self::list_columns(&mut Transaction::Admin(&mut *txn), to_create.primitive)?;
-		let source_column_ids: std::collections::HashSet<_> = source_columns.iter().map(|c| c.id).collect();
+		let source_column_ids: HashSet<_> = source_columns.iter().map(|c| c.id).collect();
 
 		// Validate that all columns belong to the table/view
 		for column_id in &to_create.column_ids {

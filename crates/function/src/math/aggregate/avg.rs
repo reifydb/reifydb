@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::mem;
+
 use indexmap::IndexMap;
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::Value;
@@ -150,7 +152,7 @@ impl AggregateFunction for Avg {
 		let mut keys = Vec::with_capacity(self.sums.len());
 		let mut data = ColumnData::float8_with_capacity(self.sums.len());
 
-		for (key, sum) in std::mem::take(&mut self.sums) {
+		for (key, sum) in mem::take(&mut self.sums) {
 			let count = self.counts.swap_remove(&key).unwrap_or(0);
 			let avg = if count > 0 {
 				sum / count as f64

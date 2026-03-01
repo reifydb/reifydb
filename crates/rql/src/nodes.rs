@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::{collections, fmt, time};
+
 use reifydb_catalog::catalog::{
 	ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, subscription::SubscriptionColumnToCreate,
 	table::TableColumnToCreate, view::ViewColumnToCreate,
@@ -336,8 +338,8 @@ pub enum LetValue {
 	EmptyFrame,
 }
 
-impl std::fmt::Display for LetValue {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for LetValue {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
 			LetValue::Statement(query) => write!(f, "Statement({:?})", query),
@@ -358,8 +360,8 @@ pub enum AssignValue {
 	Statement(QueryPlan),
 }
 
-impl std::fmt::Display for AssignValue {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for AssignValue {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			AssignValue::Expression(expr) => write!(f, "{}", expr),
 			AssignValue::Statement(query) => write!(f, "Statement({:?})", query),
@@ -618,7 +620,7 @@ pub struct WindowNode {
 	pub aggregations: Vec<Expression>,
 	pub min_events: usize,
 	pub max_window_count: Option<usize>,
-	pub max_window_age: Option<std::time::Duration>,
+	pub max_window_age: Option<time::Duration>,
 }
 
 /// O(1) point lookup by row number: `filter rownum == N`
@@ -835,7 +837,7 @@ pub struct DropRoleNode {
 pub struct CreateAuthenticationNode {
 	pub user: Fragment,
 	pub method: Fragment,
-	pub config: std::collections::HashMap<String, String>,
+	pub config: collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]

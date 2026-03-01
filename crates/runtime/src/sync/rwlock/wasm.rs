@@ -6,20 +6,21 @@
 //! Since WASM is single-threaded, this is a simple wrapper around RefCell.
 
 use std::{
+	cell,
 	cell::{Ref, RefMut},
 	ops::{Deref, DerefMut},
 };
 
 /// WASM reader-writer lock implementation using RefCell (no actual locking needed).
 pub struct RwLockInner<T> {
-	inner: std::cell::RefCell<T>,
+	inner: cell::RefCell<T>,
 }
 
 impl<T> RwLockInner<T> {
 	/// Creates a new reader-writer lock.
 	pub fn new(value: T) -> Self {
 		Self {
-			inner: std::cell::RefCell::new(value),
+			inner: cell::RefCell::new(value),
 		}
 	}
 

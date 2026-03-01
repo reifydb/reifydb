@@ -4,8 +4,10 @@
 use std::{
 	cmp::Reverse,
 	collections::{BinaryHeap, HashMap, HashSet, VecDeque},
+	ops,
 };
 
+use ops::Range;
 use reifydb_core::interface::catalog::flow::{FlowEdgeId, FlowNodeId};
 
 use super::node::FlowEdge;
@@ -233,7 +235,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 		}
 	}
 
-	pub fn edge_indices(&self) -> std::ops::Range<usize> {
+	pub fn edge_indices(&self) -> Range<usize> {
 		0..self.edges.len()
 	}
 

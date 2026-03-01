@@ -8,6 +8,7 @@
 use std::{
 	alloc::{Layout, alloc, dealloc, realloc as system_realloc},
 	cell::RefCell,
+	ptr,
 };
 
 use reifydb_sdk::ffi::arena::Arena;
@@ -36,7 +37,7 @@ pub fn clear_current_arena() {
 #[unsafe(no_mangle)]
 pub extern "C" fn host_alloc(size: usize) -> *mut u8 {
 	if size == 0 {
-		return std::ptr::null_mut();
+		return ptr::null_mut();
 	}
 
 	// Try to use the thread-local arena first
@@ -47,7 +48,7 @@ pub extern "C" fn host_alloc(size: usize) -> *mut u8 {
 			// Fallback to system allocator if no arena set
 			let layout = match Layout::from_size_align(size, 8) {
 				Ok(layout) => layout,
-				Err(_) => return std::ptr::null_mut(),
+				Err(_) => return ptr::null_mut(),
 			};
 			unsafe { alloc(layout) }
 		}
@@ -87,7 +88,7 @@ pub extern "C" fn host_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -
 
 	if new_size == 0 {
 		host_free(ptr, old_size);
-		return std::ptr::null_mut();
+		return ptr::null_mut();
 	}
 
 	// Check if using arena
@@ -98,7 +99,7 @@ pub extern "C" fn host_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -
 			if !new_ptr.is_null() {
 				let copy_size = old_size.min(new_size);
 				unsafe {
-					std::ptr::copy_nonoverlapping(ptr, new_ptr, copy_size);
+					ptr::copy_nonoverlapping(ptr, new_ptr, copy_size);
 				}
 			}
 			// Note: old arena memory will be freed when arena is cleared
@@ -107,11 +108,11 @@ pub extern "C" fn host_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -
 			// Use system realloc
 			let old_layout = match Layout::from_size_align(old_size, 8) {
 				Ok(layout) => layout,
-				Err(_) => return std::ptr::null_mut(),
+				Err(_) => return ptr::null_mut(),
 			};
 			let new_layout = match Layout::from_size_align(new_size, 8) {
 				Ok(layout) => layout,
-				Err(_) => return std::ptr::null_mut(),
+				Err(_) => return ptr::null_mut(),
 			};
 			unsafe { system_realloc(ptr, old_layout, new_layout.size()) }
 		}

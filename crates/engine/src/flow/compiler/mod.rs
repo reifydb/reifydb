@@ -27,6 +27,7 @@ use reifydb_type::{Result, error::Error, value::blob::Blob};
 pub mod operator;
 pub mod primitive;
 
+use postcard::to_stdvec;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::flow::compiler::{
@@ -126,7 +127,7 @@ impl FlowCompiler {
 		let flow_id = self.builder.id();
 
 		// Serialize the node type to blob
-		let data = postcard::to_stdvec(&node_type)
+		let data = to_stdvec(&node_type)
 			.map_err(|e| Error(internal!("Failed to serialize FlowNodeType: {}", e)))?;
 
 		// Create the catalog entry

@@ -3,6 +3,7 @@
 
 //! WASM procedure implementation that executes WebAssembly modules as stored procedures
 
+use postcard::to_stdvec;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_sdk::{error::FFIError, marshal::wasm::unmarshal_columns_from_bytes};
 use reifydb_transaction::transaction::Transaction;
@@ -43,7 +44,7 @@ unsafe impl Sync for WasmProcedure {}
 
 impl Procedure for WasmProcedure {
 	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns> {
-		let params_bytes = postcard::to_stdvec(ctx.params).map_err(|e| {
+		let params_bytes = to_stdvec(ctx.params).map_err(|e| {
 			FFIError::Other(format!("WASM procedure '{}' failed to serialize params: {}", self.name, e))
 		})?;
 

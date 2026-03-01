@@ -8,6 +8,7 @@ pub mod wrapper;
 
 use std::collections::HashMap;
 
+use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{constants::FFI_OK, context::context::ContextFFI, data::buffer::BufferFFI};
 use reifydb_core::value::column::columns::Columns;
 use reifydb_type::{
@@ -65,7 +66,7 @@ impl FFIProcedureContext {
 
 /// Execute an RQL statement through the host's RQL callback (procedure variant).
 pub(crate) fn raw_procedure_rql(ctx: &FFIProcedureContext, rql: &str, params: Params) -> Result<Vec<Frame>> {
-	let params_bytes = postcard::to_stdvec(&params)
+	let params_bytes = to_stdvec(&params)
 		.map_err(|e| FFIError::Serialization(format!("failed to serialize params: {}", e)))?;
 
 	let mut output = BufferFFI::empty();
@@ -82,7 +83,7 @@ pub(crate) fn raw_procedure_rql(ctx: &FFIProcedureContext, rql: &str, params: Pa
 
 		if result == FFI_OK {
 			let result_bytes = output.as_slice();
-			let frames: Vec<Frame> = postcard::from_bytes(result_bytes)
+			let frames: Vec<Frame> = from_bytes(result_bytes)
 				.map_err(|e| FFIError::Serialization(format!("failed to deserialize result: {}", e)))?;
 			Ok(frames)
 		} else {

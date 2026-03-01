@@ -2,7 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
+	cmp,
 	cmp::Ordering,
+	fmt,
 	fmt::{Display, Formatter},
 	ops::Deref,
 	sync::Arc,
@@ -108,7 +110,7 @@ impl Fragment {
 	/// length
 	pub fn sub_fragment(&self, offset: usize, length: usize) -> Fragment {
 		let text = self.text();
-		let end = std::cmp::min(offset + length, text.len());
+		let end = cmp::min(offset + length, text.len());
 		let sub_text = if offset < text.len() {
 			&text[offset..end]
 		} else {
@@ -236,7 +238,7 @@ impl AsRef<str> for Fragment {
 }
 
 impl Display for Fragment {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		Display::fmt(self.text(), f)
 	}
 }
