@@ -397,15 +397,39 @@ impl TierStorage for SqlitePrimitiveStorage {
 
 		for (table, entries) in batches {
 			let table_name = entry_id_to_name(table);
-			let sql = format!("DELETE FROM \"{}\" WHERE key = ?1 AND version = ?2", table_name);
-			let mut stmt = match tx.prepare(&sql) {
+
+			let max_version_sql = format!("SELECT MAX(version) FROM \"{}\" WHERE key = ?1", table_name);
+			let delete_all_sql = format!("DELETE FROM \"{}\" WHERE key = ?1", table_name);
+			let delete_one_sql = format!("DELETE FROM \"{}\" WHERE key = ?1 AND version = ?2", table_name);
+
+			let mut max_version_stmt = match tx.prepare(&max_version_sql) {
 				Ok(s) => s,
 				Err(e) if e.to_string().contains("no such table") => continue,
-				Err(e) => return Err(error!(internal(format!("Failed to prepare delete: {}", e)))),
+				Err(e) => return Err(error!(internal(format!("Failed to prepare query: {}", e)))),
 			};
+			let mut delete_all_stmt = tx
+				.prepare(&delete_all_sql)
+				.map_err(|e| error!(internal(format!("Failed to prepare delete: {}", e))))?;
+			let mut delete_one_stmt = tx
+				.prepare(&delete_one_sql)
+				.map_err(|e| error!(internal(format!("Failed to prepare delete: {}", e))))?;
+
 			for (key, version) in entries {
 				let version_bytes = version_to_bytes(version);
-				if let Err(e) = stmt.execute(params![key.as_slice(), version_bytes.as_slice()]) {
+
+				let max_version: Option<Vec<u8>> = max_version_stmt
+					.query_row(params![key.as_slice()], |row| row.get(0))
+					.unwrap_or(None);
+
+				let is_latest = max_version.as_deref() == Some(version_bytes.as_slice());
+
+				let result = if is_latest {
+					delete_all_stmt.execute(params![key.as_slice()])
+				} else {
+					delete_one_stmt.execute(params![key.as_slice(), version_bytes.as_slice()])
+				};
+
+				if let Err(e) = result {
 					if !e.to_string().contains("no such table") {
 						return Err(error!(internal(format!("Failed to delete entry: {}", e))));
 					}
