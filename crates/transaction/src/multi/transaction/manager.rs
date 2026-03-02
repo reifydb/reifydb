@@ -426,6 +426,9 @@ where
 				self.conflicts = conflicts;
 				return Err(TransactionError::Conflict.into());
 			}
+			CreateCommitResult::TooOld => {
+				return Err(TransactionError::TooOld.into());
+			}
 			CreateCommitResult::Success(version) => {
 				let pending_writes = mem::take(&mut self.pending_writes);
 				let duplicate_writes = mem::take(&mut self.duplicates);

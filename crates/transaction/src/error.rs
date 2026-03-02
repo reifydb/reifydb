@@ -17,6 +17,9 @@ pub enum TransactionError {
 	#[error("Transaction contains too many writes and exceeds size limits")]
 	TooLarge,
 
+	#[error("Transaction open too long - conflict history has been evicted")]
+	TooOld,
+
 	#[error("Transaction was already committed")]
 	AlreadyCommitted,
 
@@ -66,6 +69,19 @@ impl IntoDiagnostic for TransactionError {
 				fragment: Fragment::None,
 				label: None,
 				help: Some("Split the transaction into smaller batches".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			TransactionError::TooOld => Diagnostic {
+				code: "TXN_004".to_string(),
+				statement: None,
+				message: "Transaction open too long - the conflict history for this read snapshot has been evicted".to_string(),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("Start a new transaction".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

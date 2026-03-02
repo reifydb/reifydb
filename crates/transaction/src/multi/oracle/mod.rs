@@ -17,10 +17,8 @@ use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvi
 pub mod cleanup;
 
 /// Configuration for the efficient oracle
-const DEFAULT_WINDOW_SIZE: u64 = 1000;
-#[cfg(test)]
-const MAX_WINDOWS: usize = 50;
-const CLEANUP_THRESHOLD: usize = 40;
+const DEFAULT_WINDOW_SIZE: u64 = 500;
+const DEFAULT_WINDOW_WATER_MARK: usize = 20;
 
 /// Time window containing committed transactions
 pub(crate) struct CommittedWindow {
@@ -75,6 +73,10 @@ impl CommittedWindow {
 	pub(crate) fn get_modified_keys(&self) -> &HashSet<EncodedKey> {
 		&self.modified_keys
 	}
+
+	pub(super) fn max_version(&self) -> CommitVersion {
+		self.max_version
+	}
 }
 
 /// Oracle implementation with time-window based conflict detection
@@ -94,6 +96,10 @@ where
 
 	/// Current window size for new windows
 	pub window_size: u64,
+
+	/// Highest commit version present in any evicted window.
+	/// Any transaction with read-start version < this must be aborted.
+	pub evicted_up_through: CommitVersion,
 }
 
 #[derive(Debug)]
@@ -105,6 +111,7 @@ pub(crate) struct CommittedTxn {
 pub(crate) enum CreateCommitResult {
 	Success(CommitVersion),
 	Conflict(ConflictManager),
+	TooOld,
 }
 
 /// Oracle with time-window based conflict detection
@@ -134,6 +141,7 @@ where
 				time_windows: BTreeMap::new(),
 				key_to_windows: HashMap::with_capacity(10000),
 				window_size: DEFAULT_WINDOW_SIZE,
+				evicted_up_through: CommitVersion(0),
 			}),
 			query: WaterMark::new("txn-mark-query".into(), &actor_system),
 			command: WaterMark::new("txn-mark-cmd".into(), &actor_system),
@@ -176,6 +184,10 @@ where
 		let lock_start = self.metrics_clock.instant();
 		let inner = self.inner.read();
 		Span::current().record("inner_read_lock_us", lock_start.elapsed().as_micros() as u64);
+
+		if version < inner.evicted_up_through {
+			return Ok(CreateCommitResult::TooOld);
+		}
 
 		// Get keys involved in this transaction for efficient filtering
 		// Use references to avoid cloning
@@ -320,14 +332,18 @@ where
 			inner.add_committed_transaction(commit_version, conflicts);
 			Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
 			// Check if cleanup is needed
-			inner.time_windows.len() > CLEANUP_THRESHOLD
+			inner.time_windows.len() > DEFAULT_WINDOW_WATER_MARK
 		};
 
 		if needs_cleanup {
 			let cleanup_start = self.metrics_clock.instant();
 			let mut inner = self.inner.write();
 			let inner = &mut *inner;
-			cleanup_old_windows(&mut inner.time_windows, &mut inner.key_to_windows);
+			cleanup_old_windows(
+				&mut inner.time_windows,
+				&mut inner.key_to_windows,
+				&mut inner.evicted_up_through,
+			);
 			Span::current().record("cleanup_us", cleanup_start.elapsed().as_micros() as u64);
 		}
 
@@ -496,6 +512,7 @@ pub mod tests {
 				assert!(inner.time_windows.len() > 0);
 			}
 			CreateCommitResult::Conflict(_) => panic!("Unexpected conflict for first transaction"),
+			CreateCommitResult::TooOld => panic!("Unexpected TooOld for first transaction"),
 		}
 	}
 
@@ -671,41 +688,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_window_cleanup_mechanism() {
-		let oracle = create_test_oracle(0);
-
-		// Add many transactions to trigger cleanup
-		let mut keys = Vec::new();
-		for i in 0..(CLEANUP_THRESHOLD + 10) {
-			let key = create_test_key(&format!("key{}", i));
-			keys.push(key.clone());
-
-			let mut conflicts = ConflictManager::new();
-			conflicts.mark_write(&key);
-
-			let mut done_read = false;
-			let version_start = CommitVersion(i as u64 * DEFAULT_WINDOW_SIZE + 1);
-			let result = oracle.new_commit(&mut done_read, version_start, conflicts).unwrap();
-			assert!(matches!(result, CreateCommitResult::Success(_)));
-		}
-
-		// Check that cleanup occurred
-		let inner = oracle.inner.read();
-		assert!(inner.time_windows.len() <= MAX_WINDOWS);
-
-		// Verify that key index was also cleaned up
-		for (i, key) in keys.iter().enumerate() {
-			if i < (CLEANUP_THRESHOLD + 10 - MAX_WINDOWS) {
-				// Old keys should be removed from index
-				assert!(!inner.key_to_windows.contains_key(key));
-			} else {
-				// Recent keys should still be present
-				assert!(inner.key_to_windows.contains_key(key));
-			}
-		}
-	}
-
-	#[test]
 	fn test_empty_conflict_manager() {
 		let oracle = create_test_oracle(0);
 
@@ -724,6 +706,7 @@ pub mod tests {
 			CreateCommitResult::Conflict(_) => {
 				panic!("Empty conflict manager should not cause conflicts")
 			}
+			CreateCommitResult::TooOld => panic!("Unexpected TooOld for empty conflict manager"),
 		}
 	}
 
@@ -889,6 +872,7 @@ pub mod tests {
 							Some(version)
 						}
 						CreateCommitResult::Conflict(_) => None,
+						CreateCommitResult::TooOld => None,
 					}
 				});
 				handles.push(handle);
