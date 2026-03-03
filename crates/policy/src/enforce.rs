@@ -31,7 +31,7 @@ pub fn enforce_write_policies(
 	target_type: PolicyTargetType,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
-	if identity.is_root() {
+	if identity.is_privileged() {
 		return Ok(());
 	}
 
@@ -114,7 +114,7 @@ pub fn enforce_session_policy(
 	default_deny: bool,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
-	if identity.is_root() {
+	if identity.is_privileged() {
 		return Ok(());
 	}
 
@@ -184,7 +184,7 @@ pub fn enforce_identity_policy(
 	target_type: PolicyTargetType,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
-	if identity.is_root() {
+	if identity.is_privileged() {
 		return Ok(());
 	}
 

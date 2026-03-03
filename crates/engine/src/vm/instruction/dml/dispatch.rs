@@ -9,11 +9,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
-	fragment::Fragment,
-	params::Params,
-	value::{Value, identity::IdentityId},
-};
+use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 use crate::{
 	Result,
@@ -78,7 +74,7 @@ pub(crate) fn dispatch(
 			functions: &services.functions,
 			clock: &services.clock,
 			arena: None,
-			identity: IdentityId::anonymous(),
+			identity: vm.identity,
 		};
 		let col = evaluate(&eval_ctx, expr, &services.functions, &services.clock)?;
 		event_columns.push(Column::new(Fragment::internal(field_name), col.data));
@@ -123,13 +119,13 @@ pub(crate) fn dispatch(
 		// Build named params from event payload (single-row columns → scalar values)
 		let mut named_map = HashMap::new();
 		for col in event_payload.columns.iter() {
-			let key = format!("event_{}", col.name.text());
+			let key = col.name.text().to_string();
 			if let Some(val) = col.data.iter().next() {
 				named_map.insert(key, val);
 			}
 		}
 		let call_params = Params::Named(named_map);
-		let identity = IdentityId::anonymous();
+		let identity = vm.identity;
 		let executor = Executor::from_services(services.clone());
 
 		for native_proc in native_handlers {

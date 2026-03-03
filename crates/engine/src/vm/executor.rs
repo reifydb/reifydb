@@ -116,7 +116,7 @@ fn populate_identity(
 	tx: &mut Transaction<'_>,
 	identity: IdentityId,
 ) -> Result<()> {
-	if identity.is_root() {
+	if identity.is_privileged() {
 		return Ok(());
 	}
 	if identity.is_anonymous() {

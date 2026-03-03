@@ -36,7 +36,7 @@ pub fn inject_read_policies<'a>(
 	identity: IdentityId,
 ) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
 	// Root bypasses all policies
-	if identity.is_root() {
+	if identity.is_privileged() {
 		return Ok(plans);
 	}
 
@@ -186,7 +186,7 @@ pub fn resolve_write_policies(
 	operation: &str,
 	target_type: PolicyTargetType,
 ) -> Result<Vec<(PolicyDef, PolicyOperationDef)>> {
-	if identity.is_root() {
+	if identity.is_privileged() {
 		return Ok(vec![]);
 	}
 

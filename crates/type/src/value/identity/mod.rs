@@ -47,12 +47,30 @@ impl IdentityId {
 		IdentityId(Uuid7(Uuid::from_bytes(bytes)))
 	}
 
+	/// Sentinel for system identity: used for internal engine-initiated operations.
+	/// `ffffffff-fffe-7fff-bfff-ffffffffffff`
+	pub fn system() -> Self {
+		let bytes = [
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0x7F, 0xFF, 0xBF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		];
+		IdentityId(Uuid7(Uuid::from_bytes(bytes)))
+	}
+
 	pub fn is_anonymous(&self) -> bool {
 		*self == Self::anonymous()
 	}
 
 	pub fn is_root(&self) -> bool {
 		*self == Self::root()
+	}
+
+	pub fn is_system(&self) -> bool {
+		*self == Self::system()
+	}
+
+	/// Returns true for any privileged identity that bypasses policy enforcement.
+	pub fn is_privileged(&self) -> bool {
+		self.is_root() || self.is_system()
 	}
 }
 

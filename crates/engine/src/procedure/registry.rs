@@ -152,7 +152,8 @@ fn resolve_event_path(path: &str, catalog: &MaterializedCatalog) -> Result<(SumT
 		.find_sumtype_by_name(namespace_def.id, event_name)
 		.ok_or_else(|| format!("SumType '{}' not found in namespace '{}'", event_name, namespace_name))?;
 
-	let variant = sumtype_def.variants.iter().find(|v| v.name == variant_name).ok_or_else(|| {
+	let variant_name_lower = variant_name.to_lowercase();
+	let variant = sumtype_def.variants.iter().find(|v| v.name == variant_name_lower).ok_or_else(|| {
 		format!("Variant '{}' not found in sumtype '{}::{}'", variant_name, namespace_name, event_name)
 	})?;
 
