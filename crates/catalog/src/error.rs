@@ -179,6 +179,16 @@ pub enum CatalogError {
 
 	#[error("unknown config key `{0}`")]
 	ConfigKeyNotFound(String),
+
+	#[error("config value for key `{0}` cannot be none")]
+	ConfigValueInvalid(String),
+
+	#[error("config value for key `{key}` must be of type `{expected}`, got `{actual}`")]
+	ConfigTypeMismatch {
+		key: String,
+		expected: Type,
+		actual: Type,
+	},
 }
 
 impl IntoDiagnostic for CatalogError {
@@ -800,6 +810,39 @@ impl IntoDiagnostic for CatalogError {
 				fragment: Fragment::None,
 				label: Some("unknown config key".to_string()),
 				help: Some("query system.config to see all registered configuration keys".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::ConfigValueInvalid(key) => Diagnostic {
+				code: "CA_051".to_string(),
+				statement: None,
+				message: format!("config value for key `{}` cannot be none", key),
+				fragment: Fragment::None,
+				label: Some("invalid config value".to_string()),
+				help: Some("provide a concrete value such as an integer or boolean".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::ConfigTypeMismatch {
+				key,
+				expected,
+				actual,
+			} => Diagnostic {
+				code: "CA_052".to_string(),
+				statement: None,
+				message: format!(
+					"config value for key `{}` must be of type `{}`, got `{}`",
+					key, expected, actual
+				),
+				fragment: Fragment::None,
+				label: Some("type mismatch".to_string()),
+				help: Some(format!("provide a value of type `{}`", expected)),
 				column: None,
 				notes: vec![],
 				cause: None,

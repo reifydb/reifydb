@@ -17,7 +17,7 @@ use crate::{
 	vtable::{Batch, VTable, VTableContext},
 };
 
-/// Virtual table that exposes procedures with trigger = Call
+/// Virtual table that exposes procedures with trigger = Call or NativeCall
 pub struct Procedures {
 	pub(crate) definition: Arc<VTableDef>,
 	pub(crate) catalog: Catalog,
@@ -51,7 +51,10 @@ impl VTable for Procedures {
 
 		for entry in self.catalog.materialized.procedures.iter() {
 			if let Some(proc_def) = entry.value().get_latest() {
-				if matches!(proc_def.trigger, ProcedureTrigger::Call) {
+				if matches!(
+					proc_def.trigger,
+					ProcedureTrigger::Call | ProcedureTrigger::NativeCall { .. }
+				) {
 					ids.push(proc_def.id.0);
 					namespace_ids.push(proc_def.namespace.0);
 					names.push(proc_def.name.clone());

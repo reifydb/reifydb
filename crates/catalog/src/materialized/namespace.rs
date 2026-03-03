@@ -41,6 +41,35 @@ impl MaterializedCatalog {
 		})
 	}
 
+	/// Find a child namespace by parent ID and local name at a specific version
+	pub fn find_child_namespace_at(
+		&self,
+		parent_id: NamespaceId,
+		name: &str,
+		version: CommitVersion,
+	) -> Option<NamespaceDef> {
+		self.namespaces.iter().find_map(|entry| {
+			let ns = entry.value().get(version)?;
+			if ns.name == name && ns.parent_id == parent_id {
+				Some(ns)
+			} else {
+				None
+			}
+		})
+	}
+
+	/// Find a child namespace by parent ID and local name (returns latest version)
+	pub fn find_child_namespace(&self, parent_id: NamespaceId, name: &str) -> Option<NamespaceDef> {
+		self.namespaces.iter().find_map(|entry| {
+			let ns = entry.value().get_latest()?;
+			if ns.name == name && ns.parent_id == parent_id {
+				Some(ns)
+			} else {
+				None
+			}
+		})
+	}
+
 	pub fn set_namespace(&self, id: NamespaceId, version: CommitVersion, namespace: Option<NamespaceDef>) {
 		// Look up the current namespace to update the index
 		if let Some(entry) = self.namespaces.get(&id) {

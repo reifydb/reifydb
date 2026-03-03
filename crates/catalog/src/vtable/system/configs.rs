@@ -59,8 +59,8 @@ impl VTable for Configs {
 
 		for cfg in &configs {
 			keys.push(cfg.key.as_str());
-			values.push(serde_json::to_string(&cfg.value).unwrap_or_default().as_str());
-			default_values.push(serde_json::to_string(&cfg.default_value).unwrap_or_default().as_str());
+			values.push(cfg.value.as_string().as_str());
+			default_values.push(cfg.default_value.as_string().as_str());
 			descriptions.push(cfg.description);
 			requires_restarts.push(cfg.requires_restart);
 		}

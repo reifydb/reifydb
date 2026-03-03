@@ -15,6 +15,10 @@ pub enum ProcedureTrigger {
 		sumtype_id: SumTypeId,
 		variant_tag: u8,
 	},
+	/// Invoked via CALL but dispatched to a registered native (Rust) implementation
+	NativeCall {
+		native_name: String,
+	},
 }
 
 impl Default for ProcedureTrigger {

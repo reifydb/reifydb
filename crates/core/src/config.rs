@@ -111,6 +111,11 @@ impl SystemConfig {
 		self.0.entries.get(key).and_then(|entry| entry.value().versions.get_latest())
 	}
 
+	/// Get the registered default value for a config key.
+	pub fn get_default(&self, key: &str) -> Option<Value> {
+		self.0.entries.get(key).map(|entry| entry.value().default_value.clone())
+	}
+
 	/// Get the value for a config key as of a specific snapshot version.
 	pub fn get_at(&self, key: &str, version: CommitVersion) -> Option<Value> {
 		self.0.entries.get(key).and_then(|entry| entry.value().versions.get(version))

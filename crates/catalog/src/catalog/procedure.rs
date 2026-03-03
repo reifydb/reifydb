@@ -115,11 +115,10 @@ impl Catalog {
 		}
 	}
 
-	/// Splits a `::` qualified name (e.g., `"ns::proc"` or `"a::b::proc"`) into (namespace_name, entity_name).
-	/// The namespace part converts `::` to `.` to match stored namespace names.
+	/// Splits a `::` qualified name (e.g., `"ns::proc"` or `"a::b::proc"`) into (namespace_path, entity_name).
 	/// Returns `None` if there's no `::` separator (unqualified name).
 	pub fn split_qualified_name(qualified_name: &str) -> Option<(String, &str)> {
-		qualified_name.rsplit_once("::").map(|(ns_part, entity_name)| (ns_part.replace("::", "."), entity_name))
+		qualified_name.rsplit_once("::").map(|(ns_part, entity_name)| (ns_part.to_string(), entity_name))
 	}
 
 	/// Convenience: splits "ns::name" into namespace + name, resolves namespace, then calls find_procedure_by_name
@@ -130,7 +129,7 @@ impl Catalog {
 		qualified_name: &str,
 	) -> Result<Option<ProcedureDef>> {
 		if let Some((ns_name, proc_name)) = Self::split_qualified_name(qualified_name) {
-			if let Some(ns) = self.find_namespace_by_name(txn, &ns_name)? {
+			if let Some(ns) = self.find_namespace_by_path(txn, &ns_name)? {
 				return self.find_procedure_by_name(txn, ns.id, proc_name);
 			}
 			Ok(None)

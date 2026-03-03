@@ -8,6 +8,7 @@ pub mod identity_inject;
 #[cfg(reifydb_target = "native")]
 pub mod loader;
 pub mod registry;
+pub mod system;
 pub mod wasm;
 pub mod wasm_loader;
 

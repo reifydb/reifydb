@@ -6,7 +6,7 @@ use std::{collections::HashMap, mem, sync::Arc};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::internal::internal_with_context,
-	interface::catalog::policy::PolicyTargetType,
+	interface::catalog::{policy::PolicyTargetType, procedure::ProcedureTrigger},
 	internal_error,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
@@ -798,106 +798,156 @@ impl Vm {
 									PolicyTargetType::Procedure,
 								)?;
 
-							// Catalog-stored RQL procedure
-							let source = proc_def.body.clone();
-							let compiled = services.compiler.compile(tx, &source)?;
-							match compiled {
-								CompilationResult::Ready(compiled_list) => {
-									// Save IP
-									let saved_ip = self.ip;
-
-									// Enter function scope
-									self.symbol_table
-										.enter_scope(ScopeType::Function);
-
-									// Bind procedure params to call
-									// args
-									for (param_def, arg) in proc_def
-										.params
-										.iter()
-										.zip(args.into_iter())
+							match &proc_def.trigger {
+								ProcedureTrigger::NativeCall {
+									native_name,
+								} => {
+									let native_name = native_name.clone();
+									if let Some(proc_impl) = services
+										.procedures
+										.get_procedure(&native_name)
 									{
-										self.symbol_table.set(
-											param_def.name.clone(),
-											Variable::scalar(arg),
-											true,
-										)?;
+										let call_params =
+											Params::Positional(args);
+										let identity = self.identity;
+										let executor = Executor::from_services(
+											services.clone(),
+										);
+										let ctx = ProcedureContext {
+											identity,
+											params: &call_params,
+											catalog: &services.catalog,
+											functions: &services.functions,
+											clock: &services.clock,
+											executor: &executor,
+										};
+										let columns =
+											proc_impl.call(&ctx, tx)?;
+										self.stack.push(Variable::Columns(
+											columns,
+										));
+									} else {
+										return Err(internal_error!(
+											"NativeCall procedure '{}' has no registered implementation",
+											native_name
+										));
 									}
-
-									// Execute compiled instructions
-									let mut proc_result = Vec::new();
-									for compiled in compiled_list.iter() {
-										self.ip = 0;
-										self.run(
-											services,
-											tx,
-											&compiled.instructions,
-											params,
-											&mut proc_result,
-										)?;
-										if !self.control_flow.is_normal() {
-											break;
-										}
-									}
-
-									// Collect result (same pattern
-									// as DEF functions)
-									let stack_value = match mem::replace(
-										&mut self.control_flow,
-										ControlFlow::Normal,
-									) {
-										ControlFlow::Return(c) => {
-											Variable::Scalar(c.unwrap_or(
-												Columns::scalar(
-													Value::none(),
-												),
-											))
-										}
-										_ => {
-											if let Some(frame) =
-												proc_result.last()
-											{
-												if !frame
-													.columns
-													.is_empty() && frame
-													.columns[0]
-													.data
-													.len()
-													> 0
-												{
-													let cols: Vec<Column> =
-														frame.columns
-															.iter()
-															.map(|fc| {
-																let mut data = ColumnData::none_typed(Type::Boolean, 0);
-																for i in 0..fc.data.len() {
-																	data.push_value(fc.data.get_value(i));
-																}
-																Column::new(fc.name.as_str(), data)
-															})
-															.collect();
-													Variable::Columns(Columns::new(cols))
-												} else {
-													Variable::scalar(Value::none())
-												}
-											} else {
-												self.stack.pop().ok().unwrap_or(
-													Variable::scalar(Value::none()),
-												)
-											}
-										}
-									};
-
-									// Restore IP and exit scope
-									self.ip = saved_ip;
-									let _ = self.symbol_table.exit_scope();
-
-									self.stack.push(stack_value);
 								}
-								CompilationResult::Incremental(_) => {
-									return Err(internal_error!(
-										"Procedure body should not require incremental compilation"
-									));
+								_ => {
+									// Catalog-stored RQL procedure
+									let source = proc_def.body.clone();
+									let compiled = services
+										.compiler
+										.compile(tx, &source)?;
+									match compiled {
+										CompilationResult::Ready(
+											compiled_list,
+										) => {
+											// Save IP
+											let saved_ip = self.ip;
+
+											// Enter function scope
+											self.symbol_table.enter_scope(
+												ScopeType::Function,
+											);
+
+											// Bind procedure params to call
+											// args
+											for (param_def, arg) in proc_def
+												.params
+												.iter()
+												.zip(args.into_iter())
+											{
+												self.symbol_table.set(
+													param_def.name.clone(),
+													Variable::scalar(arg),
+													true,
+												)?;
+											}
+
+											// Execute compiled instructions
+											let mut proc_result =
+												Vec::new();
+											for compiled in
+												compiled_list.iter()
+											{
+												self.ip = 0;
+												self.run(
+													services,
+													tx,
+													&compiled.instructions,
+													params,
+													&mut proc_result,
+												)?;
+												if !self.control_flow
+													.is_normal()
+												{
+													break;
+												}
+											}
+
+											// Collect result (same pattern
+											// as DEF functions)
+											let stack_value = match mem::replace(
+												&mut self.control_flow,
+												ControlFlow::Normal,
+											) {
+												ControlFlow::Return(c) => {
+													Variable::Scalar(c.unwrap_or(
+														Columns::scalar(
+															Value::none(),
+														),
+													))
+												}
+												_ => {
+													if let Some(frame) =
+														proc_result.last()
+													{
+														if !frame
+															.columns
+															.is_empty() && frame
+															.columns[0]
+															.data
+															.len()
+															> 0
+														{
+															let cols: Vec<Column> =
+																frame.columns
+																	.iter()
+																	.map(|fc| {
+																		let mut data = ColumnData::none_typed(Type::Boolean, 0);
+																		for i in 0..fc.data.len() {
+																			data.push_value(fc.data.get_value(i));
+																		}
+																		Column::new(fc.name.as_str(), data)
+																	})
+																	.collect();
+															Variable::Columns(Columns::new(cols))
+														} else {
+															Variable::scalar(Value::none())
+														}
+													} else {
+														self.stack.pop().ok().unwrap_or(
+															Variable::scalar(Value::none()),
+														)
+													}
+												}
+											};
+
+											// Restore IP and exit scope
+											self.ip = saved_ip;
+											let _ = self
+												.symbol_table
+												.exit_scope();
+
+											self.stack.push(stack_value);
+										}
+										CompilationResult::Incremental(_) => {
+											return Err(internal_error!(
+												"Procedure body should not require incremental compilation"
+											));
+										}
+									}
 								}
 							}
 						} else if let Some(proc_impl) = services.get_procedure(func_name) {

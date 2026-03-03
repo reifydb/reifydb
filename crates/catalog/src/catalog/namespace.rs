@@ -185,6 +185,73 @@ impl Catalog {
 		}
 	}
 
+	/// Resolve a `::` separated path (e.g. `"system::config"`) to a `NamespaceDef` by walking
+	/// parent → child hierarchically. Each segment after the first is looked up as a child of the
+	/// previous segment's namespace.
+	pub fn find_namespace_by_path(&self, txn: &mut Transaction<'_>, path: &str) -> Result<Option<NamespaceDef>> {
+		let mut segments = path.split("::");
+		let first = match segments.next() {
+			Some(s) => s,
+			None => return Ok(None),
+		};
+
+		let mut current = match self.find_namespace_by_name(txn, first)? {
+			Some(ns) => ns,
+			None => return Ok(None),
+		};
+
+		for segment in segments {
+			match self.find_child_namespace_step(txn, current.id, segment)? {
+				Some(ns) => current = ns,
+				None => return Ok(None),
+			}
+		}
+
+		Ok(Some(current))
+	}
+
+	fn find_child_namespace_step(
+		&self,
+		txn: &mut Transaction<'_>,
+		parent_id: NamespaceId,
+		name: &str,
+	) -> Result<Option<NamespaceDef>> {
+		match txn.reborrow() {
+			Transaction::Command(cmd) => {
+				if let Some(ns) =
+					self.materialized.find_child_namespace_at(parent_id, name, cmd.version())
+				{
+					return Ok(Some(ns));
+				}
+				let all = CatalogStore::list_namespaces_all(&mut Transaction::Command(&mut *cmd))?;
+				Ok(all.into_iter().find(|ns| ns.name == name && ns.parent_id == parent_id))
+			}
+			Transaction::Admin(admin) => {
+				if let Some(ns) = admin.changes.namespace_def.iter().rev().find_map(|change| {
+					change.post.as_ref().filter(|ns| ns.name == name && ns.parent_id == parent_id)
+				}) {
+					return Ok(Some(ns.clone()));
+				}
+				if let Some(ns) =
+					self.materialized.find_child_namespace_at(parent_id, name, admin.version())
+				{
+					return Ok(Some(ns));
+				}
+				let all = CatalogStore::list_namespaces_all(&mut Transaction::Admin(&mut *admin))?;
+				Ok(all.into_iter().find(|ns| ns.name == name && ns.parent_id == parent_id))
+			}
+			Transaction::Query(qry) => {
+				if let Some(ns) =
+					self.materialized.find_child_namespace_at(parent_id, name, qry.version())
+				{
+					return Ok(Some(ns));
+				}
+				let all = CatalogStore::list_namespaces_all(&mut Transaction::Query(&mut *qry))?;
+				Ok(all.into_iter().find(|ns| ns.name == name && ns.parent_id == parent_id))
+			}
+		}
+	}
+
 	#[instrument(name = "catalog::namespace::get", level = "trace", skip(self, txn))]
 	pub fn get_namespace(&self, txn: &mut Transaction<'_>, id: NamespaceId) -> Result<NamespaceDef> {
 		self.find_namespace(txn, id)?.ok_or_else(|| {
