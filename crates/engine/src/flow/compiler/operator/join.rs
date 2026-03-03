@@ -63,26 +63,37 @@ fn extract_source_name(plan: &QueryPlan) -> Option<String> {
 	}
 }
 
-// Extract the left and right column references from join conditions
+/// Recursively collect all Equal leaves from an And tree.
+fn collect_equal_conditions(expr: &Expression, out: &mut Vec<Expression>) {
+	match expr {
+		Expression::And(and) => {
+			collect_equal_conditions(&and.left, out);
+			collect_equal_conditions(&and.right, out);
+		}
+		other => out.push(other.clone()),
+	}
+}
+
+/// Extract left and right key expressions from join conditions.
+/// Handles multi-column joins where conditions are combined with And.
 fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, Vec<Expression>) {
 	let mut left_keys = Vec::new();
 	let mut right_keys = Vec::new();
 
+	// Flatten any And trees into individual conditions
+	let mut flat = Vec::new();
 	for condition in conditions {
+		collect_equal_conditions(condition, &mut flat);
+	}
+
+	for condition in flat {
 		match condition {
 			Expression::Equal(eq) => {
-				// For equality conditions, extract the left and
-				// right expressions
 				left_keys.push(*eq.left.clone());
 				right_keys.push(*eq.right.clone());
 			}
-			// For now, we only support simple equality joins
-			// More complex conditions could be added later
 			_ => {
-				// If it's not an equality, we'll add the whole
-				// condition to both sides This maintains
-				// backwards compatibility but may not work
-				// correctly
+				// Non-equality condition: pass through to both sides (existing fallback)
 				left_keys.push(condition.clone());
 				right_keys.push(condition.clone());
 			}
