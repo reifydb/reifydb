@@ -9,6 +9,7 @@ pub mod apply;
 pub mod distinct;
 pub mod extend;
 pub mod filter;
+pub mod gate;
 pub mod join;
 pub mod map;
 pub mod sort;

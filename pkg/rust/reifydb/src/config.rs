@@ -4,5 +4,5 @@
 use reifydb_core::config::SystemConfig;
 
 pub(crate) fn register_defaults(config: &SystemConfig) {
-	reifydb_transaction::register_oracle_defaults(config);
+	reifydb_transaction::multi::transaction::register_oracle_defaults(config);
 }

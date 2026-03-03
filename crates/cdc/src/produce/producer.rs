@@ -463,8 +463,7 @@ pub mod tests {
 	use reifydb_store_single::SingleStore;
 	use reifydb_transaction::{
 		interceptor::interceptors::Interceptors,
-		multi::transaction::MultiTransaction,
-		register_oracle_defaults,
+		multi::transaction::{MultiTransaction, register_oracle_defaults},
 		single::SingleTransaction,
 		transaction::{command::CommandTransaction, query::QueryTransaction},
 	};

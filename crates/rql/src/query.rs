@@ -3,7 +3,7 @@
 
 use crate::nodes::{
 	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, DictionaryScanNode, DistinctNode, EnvironmentNode,
-	ExtendNode, FilterNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode, JoinLeftNode,
+	ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode, JoinLeftNode,
 	JoinNaturalNode, MapNode, PatchNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
 	RowRangeScanNode, ScalarizeNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode,
 	VariableNode, ViewScanNode, WindowNode,
@@ -30,6 +30,7 @@ pub enum QueryPlan {
 	Assert(AssertNode),
 	Distinct(DistinctNode),
 	Filter(FilterNode),
+	Gate(GateNode),
 	JoinInner(JoinInnerNode),
 	JoinLeft(JoinLeftNode),
 	JoinNatural(JoinNaturalNode),

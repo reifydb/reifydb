@@ -460,7 +460,7 @@ pub mod tests {
 	use reifydb_core::encoded::key::EncodedKeyRange;
 	use reifydb_runtime::SharedRuntimeConfig;
 
-	use super::*;
+	use super::{register_defaults, *};
 	use crate::multi::transaction::version::VersionProvider;
 
 	// Mock version provider for testing
@@ -495,7 +495,7 @@ pub mod tests {
 		let clock = MockVersionProvider::new(start);
 		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let config = SystemConfig::new();
-		super::register_defaults(&config);
+		register_defaults(&config);
 		Oracle::new(clock, actor_system, Clock::default(), config)
 	}
 

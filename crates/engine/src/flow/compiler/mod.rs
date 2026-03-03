@@ -33,8 +33,8 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use crate::flow::compiler::{
 	operator::{
 		aggregate::AggregateCompiler, append::AppendCompiler, apply::ApplyCompiler, distinct::DistinctCompiler,
-		extend::ExtendCompiler, filter::FilterCompiler, join::JoinCompiler, map::MapCompiler,
-		sort::SortCompiler, take::TakeCompiler, window::WindowCompiler,
+		extend::ExtendCompiler, filter::FilterCompiler, gate::GateCompiler, join::JoinCompiler,
+		map::MapCompiler, sort::SortCompiler, take::TakeCompiler, window::WindowCompiler,
 	},
 	primitive::{
 		inline_data::InlineDataCompiler, ringbuffer_scan::RingBufferScanCompiler,
@@ -205,6 +205,7 @@ impl FlowCompiler {
 			QueryPlan::ViewScan(view_scan) => ViewScanCompiler::from(view_scan).compile(self, txn),
 			QueryPlan::InlineData(inline_data) => InlineDataCompiler::from(inline_data).compile(self, txn),
 			QueryPlan::Filter(filter) => FilterCompiler::from(filter).compile(self, txn),
+			QueryPlan::Gate(gate) => GateCompiler::from(gate).compile(self, txn),
 			QueryPlan::Map(map) => MapCompiler::from(map).compile(self, txn),
 			QueryPlan::Extend(extend) => ExtendCompiler::from(extend).compile(self, txn),
 			QueryPlan::Apply(apply) => ApplyCompiler::from(apply).compile(self, txn),

@@ -13,6 +13,7 @@ pub mod extend;
 #[cfg(reifydb_target = "native")]
 pub mod ffi;
 pub mod filter;
+pub mod gate;
 pub mod join;
 pub mod map;
 pub mod scan;
@@ -27,6 +28,7 @@ use apply::ApplyOperator;
 use distinct::DistinctOperator;
 use extend::ExtendOperator;
 use filter::FilterOperator;
+use gate::GateOperator;
 use join::operator::JoinOperator;
 use map::MapOperator;
 use reifydb_core::interface::change::Change;
@@ -56,6 +58,7 @@ pub enum Operators {
 	SourceRingBuffer(PrimitiveRingBufferOperator),
 	SourceSeries(PrimitiveSeriesOperator),
 	Filter(FilterOperator),
+	Gate(GateOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),
 	Join(JoinOperator),
@@ -74,6 +77,7 @@ impl Operators {
 	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		match self {
 			Operators::Filter(op) => op.apply(txn, change),
+			Operators::Gate(op) => op.apply(txn, change),
 			Operators::Map(op) => op.apply(txn, change),
 			Operators::Extend(op) => op.apply(txn, change),
 			Operators::Join(op) => op.apply(txn, change),
@@ -97,6 +101,7 @@ impl Operators {
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		match self {
 			Operators::Filter(op) => op.pull(txn, rows),
+			Operators::Gate(op) => op.pull(txn, rows),
 			Operators::Map(op) => op.pull(txn, rows),
 			Operators::Extend(op) => op.pull(txn, rows),
 			Operators::Join(op) => op.pull(txn, rows),

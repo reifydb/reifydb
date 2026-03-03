@@ -7,7 +7,11 @@
 //! current values. Subsystems register their configs at startup, and the
 //! bootstrap process applies any persisted overrides from storage.
 
-use std::sync::Arc;
+use std::{
+	fmt,
+	fmt::{Debug, Formatter},
+	sync::Arc,
+};
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_type::value::Value;
@@ -47,8 +51,8 @@ struct SystemConfigInner {
 #[derive(Clone)]
 pub struct SystemConfig(Arc<SystemConfigInner>);
 
-impl std::fmt::Debug for SystemConfig {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for SystemConfig {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("SystemConfig").finish()
 	}
 }

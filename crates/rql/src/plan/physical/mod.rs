@@ -138,6 +138,7 @@ pub enum PhysicalPlan<'bump> {
 	Assert(AssertNode<'bump>),
 	Distinct(DistinctNode<'bump>),
 	Filter(FilterNode<'bump>),
+	Gate(GateNode<'bump>),
 	IndexScan(IndexScanNode),
 	RowPointLookup(RowPointLookupNode),
 	RowListLookup(RowListLookupNode),
@@ -425,6 +426,12 @@ pub struct AssertNode<'bump> {
 
 #[derive(Debug)]
 pub struct FilterNode<'bump> {
+	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub conditions: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct GateNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub conditions: Vec<Expression>,
 }
@@ -912,6 +919,14 @@ impl<'bump> Compiler<'bump> {
 					// Default: generic filter
 					stack.push(PhysicalPlan::Filter(FilterNode {
 						conditions: vec![filter.condition],
+						input: self.bump_box(input),
+					}));
+				}
+
+				LogicalPlan::Gate(gate) => {
+					let input = stack.pop().unwrap();
+					stack.push(PhysicalPlan::Gate(GateNode {
+						conditions: vec![gate.condition],
 						input: self.bump_box(input),
 					}));
 				}

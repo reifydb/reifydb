@@ -11,7 +11,7 @@ use crate::{
 	bump::Bump,
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, Compiler, CreateColumnPropertyNode,
-		CreateIndexNode, CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
+		CreateIndexNode, CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GateNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
 		PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
 	},
@@ -371,6 +371,13 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			output.push_str(&format!("{}{} Filter\n", prefix, branch));
 			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition.to_string()));
 		}
+		LogicalPlan::Gate(GateNode {
+			condition,
+		}) => {
+			output.push_str(&format!("{}{} Filter\n", prefix, branch));
+			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition.to_string()));
+		}
+
 		LogicalPlan::Map(MapNode {
 			map,
 		}) => {

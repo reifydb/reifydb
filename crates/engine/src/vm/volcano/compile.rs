@@ -36,11 +36,12 @@ use reifydb_rql::{
 	expression::{AliasExpression, ConstantExpression, Expression, IdentExpression},
 	nodes::{
 		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, ExtendNode as RqlExtendNode,
-		FilterNode as RqlFilterNode, GeneratorNode as RqlGeneratorNode, InlineDataNode as RqlInlineDataNode,
-		JoinInnerNode as RqlJoinInnerNode, JoinLeftNode as RqlJoinLeftNode,
-		JoinNaturalNode as RqlJoinNaturalNode, MapNode as RqlMapNode, PatchNode as RqlPatchNode,
-		RowListLookupNode as RqlRowListLookupNode, RowPointLookupNode as RqlRowPointLookupNode,
-		RowRangeScanNode as RqlRowRangeScanNode, SortNode as RqlSortNode, TakeNode as RqlTakeNode,
+		FilterNode as RqlFilterNode, GateNode as RqlGateNode, GeneratorNode as RqlGeneratorNode,
+		InlineDataNode as RqlInlineDataNode, JoinInnerNode as RqlJoinInnerNode,
+		JoinLeftNode as RqlJoinLeftNode, JoinNaturalNode as RqlJoinNaturalNode, MapNode as RqlMapNode,
+		PatchNode as RqlPatchNode, RowListLookupNode as RqlRowListLookupNode,
+		RowPointLookupNode as RqlRowPointLookupNode, RowRangeScanNode as RqlRowRangeScanNode,
+		SortNode as RqlSortNode, TakeNode as RqlTakeNode,
 	},
 	query::QueryPlan as RqlQueryPlan,
 };
@@ -297,6 +298,13 @@ pub(crate) fn compile<'a>(
 						.expect("resolve IS variant tags");
 				}
 			}
+			let input_node = compile(*input, rx, context);
+			Box::new(FilterNode::new(input_node, conditions))
+		}
+		RqlQueryPlan::Gate(RqlGateNode {
+			conditions,
+			input,
+		}) => {
 			let input_node = compile(*input, rx, context);
 			Box::new(FilterNode::new(input_node, conditions))
 		}

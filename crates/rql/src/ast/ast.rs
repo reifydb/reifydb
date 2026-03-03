@@ -84,6 +84,7 @@ pub enum Ast<'bump> {
 	Describe(AstDescribe<'bump>),
 	Distinct(AstDistinct<'bump>),
 	Filter(AstFilter<'bump>),
+	Gate(AstGate<'bump>),
 	For(AstFor<'bump>),
 	From(AstFrom<'bump>),
 	Identifier(UnqualifiedIdentifier<'bump>),
@@ -161,6 +162,7 @@ impl<'bump> Ast<'bump> {
 			},
 			Ast::Distinct(node) => &node.token,
 			Ast::Filter(node) => &node.token,
+			Ast::Gate(node) => &node.token,
 			Ast::For(node) => &node.token,
 			Ast::From(node) => node.token(),
 			Ast::Aggregate(node) => &node.token,
@@ -1301,6 +1303,12 @@ impl<'bump> AstDrop<'bump> {
 
 #[derive(Debug)]
 pub struct AstFilter<'bump> {
+	pub token: Token<'bump>,
+	pub node: BumpBox<'bump, Ast<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstGate<'bump> {
 	pub token: Token<'bump>,
 	pub node: BumpBox<'bump, Ast<'bump>>,
 }

@@ -36,6 +36,9 @@ pub enum FlowNodeType {
 	Filter {
 		conditions: Vec<Expression>,
 	},
+	Gate {
+		conditions: Vec<Expression>,
+	},
 	Map {
 		expressions: Vec<Expression>,
 	},
@@ -106,6 +109,9 @@ impl FlowNodeType {
 			FlowNodeType::Filter {
 				..
 			} => 4,
+			FlowNodeType::Gate {
+				..
+			} => 19,
 			FlowNodeType::Map {
 				..
 			} => 5,

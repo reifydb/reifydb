@@ -65,8 +65,9 @@ impl WasmDB {
 		use reifydb_core::{config::SystemConfig, event::EventBus, util::ioc::IocContainer};
 		use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 		use reifydb_transaction::{
-			interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
-			register_oracle_defaults, single::SingleTransaction,
+			interceptor::factory::InterceptorFactory,
+			multi::transaction::{MultiTransaction, register_oracle_defaults},
+			single::SingleTransaction,
 		};
 
 		// Set panic hook for better error messages in browser console
@@ -108,14 +109,14 @@ impl WasmDB {
 			eventbus.clone(),
 			actor_system.clone(),
 			runtime.clock().clone(),
-			system_config,
+			system_config.clone(),
 		)
 		.map_err(|e| JsError::from_error(&e))?;
 
 		// Setup IoC container
 		let mut ioc = IocContainer::new();
 
-		let materialized_catalog = MaterializedCatalog::default();
+		let materialized_catalog = MaterializedCatalog::new(system_config);
 		ioc = ioc.register(materialized_catalog.clone());
 
 		ioc = ioc.register(runtime.clone());

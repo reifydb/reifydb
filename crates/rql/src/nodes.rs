@@ -425,6 +425,12 @@ pub struct FilterNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct GateNode {
+	pub input: Box<QueryPlan>,
+	pub conditions: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
 pub struct DeleteTableNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub target: Option<ResolvedTable>,

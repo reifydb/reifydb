@@ -26,7 +26,7 @@ use version::{StandardVersionProvider, VersionProvider};
 
 use crate::{
 	TransactionId,
-	multi::{oracle::*, types::*},
+	multi::{oracle, oracle::*, types::*},
 	single::SingleTransaction,
 };
 
@@ -213,7 +213,7 @@ impl MultiTransaction {
 		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let event_bus = EventBus::new(&actor_system);
 		let system_config = SystemConfig::new();
-		crate::multi::oracle::register_defaults(&system_config);
+		oracle::register_defaults(&system_config);
 		Self::new(
 			multi_store,
 			SingleTransaction::new(single_store, event_bus.clone()),
@@ -256,7 +256,7 @@ impl MultiTransaction {
 
 /// Register oracle config defaults into a SystemConfig registry.
 pub fn register_oracle_defaults(config: &SystemConfig) {
-	crate::multi::oracle::register_defaults(config)
+	oracle::register_defaults(config)
 }
 
 impl MultiTransaction {

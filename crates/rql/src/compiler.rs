@@ -296,6 +296,10 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 			conditions: node.conditions,
 		}),
+		PhysicalPlan::Gate(node) => QueryPlan::Gate(nodes::GateNode {
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+			conditions: node.conditions,
+		}),
 		PhysicalPlan::JoinInner(node) => QueryPlan::JoinInner(nodes::JoinInnerNode {
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))),
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))),
@@ -1240,6 +1244,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::Gate(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Gate(node))));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::JoinInner(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinInner(node))));
 				self.emit(Instruction::Emit);
@@ -1516,6 +1524,9 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::Filter(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))));
+			}
+			PhysicalPlan::Gate(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Gate(node))));
 			}
 			PhysicalPlan::JoinInner(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinInner(node))));

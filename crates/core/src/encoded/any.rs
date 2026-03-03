@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::str;
+
 use reifydb_type::value::{
 	Value,
 	blob::Blob,
@@ -214,7 +216,7 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 
 		Type::Utf8 => {
 			let len = u32::from_le_bytes([p[0], p[1], p[2], p[3]]) as usize;
-			let s = std::str::from_utf8(&p[4..4 + len]).unwrap();
+			let s = str::from_utf8(&p[4..4 + len]).unwrap();
 			Value::Utf8(s.to_string())
 		}
 		Type::Blob => {

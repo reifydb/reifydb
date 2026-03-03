@@ -41,6 +41,9 @@ pub enum JsonFlowNodeType {
 	Filter {
 		conditions: Vec<JsonExpression>,
 	},
+	Gate {
+		conditions: Vec<JsonExpression>,
+	},
 	Map {
 		expressions: Vec<JsonExpression>,
 	},
@@ -132,6 +135,11 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 			FlowNodeType::Filter {
 				conditions,
 			} => JsonFlowNodeType::Filter {
+				conditions: conditions.iter().map(|e| e.into()).collect(),
+			},
+			FlowNodeType::Gate {
+				conditions,
+			} => JsonFlowNodeType::Gate {
 				conditions: conditions.iter().map(|e| e.into()).collect(),
 			},
 			FlowNodeType::Map {

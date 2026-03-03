@@ -17,7 +17,7 @@ use reifydb_rql::flow::{
 	node::{
 		FlowNode,
 		FlowNodeType::{
-			self, Aggregate, Append, Apply, Distinct, Extend, Filter, Join, Map, SinkSubscription,
+			self, Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkSubscription,
 			SinkView, Sort, SourceFlow, SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable,
 			SourceView, Take, Window,
 		},
@@ -37,6 +37,7 @@ use crate::{
 		distinct::DistinctOperator,
 		extend::ExtendOperator,
 		filter::FilterOperator,
+		gate::GateOperator,
 		join::operator::JoinOperator,
 		map::MapOperator,
 		scan::{
@@ -249,6 +250,25 @@ impl FlowEngine {
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::Filter(FilterOperator::new(
+						parent,
+						node.id,
+						conditions,
+						self.executor.functions.clone(),
+						self.clock.clone(),
+					))),
+				);
+			}
+			Gate {
+				conditions,
+			} => {
+				let parent = self
+					.operators
+					.get(&node.inputs[0])
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.clone();
+				self.operators.insert(
+					node.id,
+					Arc::new(Operators::Gate(GateOperator::new(
 						parent,
 						node.id,
 						conditions,

@@ -39,8 +39,7 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
-	multi::transaction::MultiTransaction,
-	register_oracle_defaults,
+	multi::transaction::{MultiTransaction, register_oracle_defaults},
 	single::SingleTransaction,
 	transaction::{admin::AdminTransaction, command::CommandTransaction},
 };

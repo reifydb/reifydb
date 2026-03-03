@@ -16,8 +16,8 @@ use crate::{
 		logical::compile_logical,
 		physical::{
 			AggregateNode, AppendPhysicalNode, ApplyNode, AssertNode, DistinctNode, ExtendNode, FilterNode,
-			JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, PhysicalPlan, SortNode,
-			TakeNode, compile_physical,
+			GateNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, PhysicalPlan,
+			SortNode, TakeNode, compile_physical,
 		},
 	},
 };
@@ -270,6 +270,20 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		}) => {
 			let label = format!(
 				"Filter [{}]",
+				conditions.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
+			);
+			write_node_header(output, prefix, is_last, &label);
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				render_physical_plan_inner(input, child_prefix, true, output);
+			});
+		}
+
+		PhysicalPlan::Gate(GateNode {
+			conditions,
+			input,
+		}) => {
+			let label = format!(
+				"Gate [{}]",
 				conditions.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")
 			);
 			write_node_header(output, prefix, is_last, &label);

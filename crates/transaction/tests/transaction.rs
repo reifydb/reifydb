@@ -33,8 +33,9 @@ use reifydb_testing::testscript::{
 	runner::{Runner, run_path},
 };
 use reifydb_transaction::{
-	multi::transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
-	register_oracle_defaults,
+	multi::transaction::{
+		MultiTransaction, read::MultiReadTransaction, register_oracle_defaults, write::MultiWriteTransaction,
+	},
 	single::SingleTransaction,
 };
 

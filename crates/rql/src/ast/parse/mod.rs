@@ -23,6 +23,7 @@ pub mod drop;
 pub mod extend;
 pub mod filter;
 pub mod from;
+pub mod gate;
 pub mod grant;
 pub mod identifier;
 pub mod infix;

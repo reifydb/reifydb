@@ -48,6 +48,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::Drop(_) => "Drop",
 		Ast::Describe(_) => "Describe",
 		Ast::Filter(_) => "Filter",
+		Ast::Gate(_) => "Gate",
 		Ast::For(_) => "For",
 		Ast::From(_) => "From",
 		Ast::Identifier(_) => "Identifier",
@@ -184,6 +185,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 			}
 		}
 		Ast::Filter(f) => ref_children.push(&f.node),
+		Ast::Gate(f) => ref_children.push(&f.node),
 		Ast::From(from) => {
 			match from {
 				AstFrom::Source {
