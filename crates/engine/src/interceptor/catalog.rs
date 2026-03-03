@@ -151,6 +151,36 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_migration_event(id, version, change.post.clone());
 		}
 
+		for change in &ctx.changes.sumtype_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|s| s.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_sumtype(id, version, change.post.clone());
+		}
+
+		for change in &ctx.changes.subscription_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|s| s.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_subscription(id, version, change.post.clone());
+		}
+
+		for change in &ctx.changes.flow_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|f| f.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_flow(id, version, change.post.clone());
+		}
+
 		Ok(())
 	}
 }

@@ -117,7 +117,7 @@ pub(crate) fn dispatch(
 	}
 
 	// Fire native (runtime-registered) handlers
-	let native_handlers = services.procedures.get_handlers(plan.on_sumtype_id, variant_tag);
+	let native_handlers = services.get_handlers(plan.on_sumtype_id, variant_tag);
 	let native_count = native_handlers.len();
 	if !native_handlers.is_empty() {
 		// Build named params from event payload (single-row columns → scalar values)

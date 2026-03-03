@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, mem, ops::Deref, sync::Arc};
+use std::{
+	collections::HashMap,
+	mem,
+	ops::Deref,
+	sync::{Arc, Mutex},
+};
 
 use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_type::value::sumtype::SumTypeId;
@@ -20,10 +25,7 @@ impl Procedures {
 
 	pub fn builder() -> ProceduresBuilder {
 		ProceduresBuilder {
-			inner: ProceduresInner {
-				procedures: HashMap::new(),
-				handlers: HashMap::new(),
-			},
+			procedures: HashMap::new(),
 			deferred_handlers: Vec::new(),
 		}
 	}
@@ -37,23 +39,54 @@ impl Deref for Procedures {
 	}
 }
 
-#[derive(Clone)]
-pub struct ProceduresInner {
+struct RegistryState {
 	procedures: HashMap<String, ProcedureFactory>,
-	handlers: HashMap<(SumTypeId, u8), Vec<ProcedureFactory>>,
+	resolved_handlers: HashMap<(SumTypeId, u8), Vec<ProcedureFactory>>,
+	deferred_handlers: Vec<(String, ProcedureFactory)>,
+}
+
+pub struct ProceduresInner {
+	state: Arc<Mutex<RegistryState>>,
+}
+
+impl Clone for ProceduresInner {
+	fn clone(&self) -> Self {
+		Self {
+			state: Arc::clone(&self.state),
+		}
+	}
 }
 
 impl ProceduresInner {
 	pub fn get_procedure(&self, name: &str) -> Option<Box<dyn Procedure>> {
-		self.procedures.get(name).map(|func| func())
+		self.state.lock().unwrap().procedures.get(name).map(|f| f())
 	}
 
 	pub fn has_procedure(&self, name: &str) -> bool {
-		self.procedures.contains_key(name)
+		self.state.lock().unwrap().procedures.contains_key(name)
 	}
 
-	pub fn get_handlers(&self, sumtype_id: SumTypeId, variant_tag: u8) -> Vec<Box<dyn Procedure>> {
-		self.handlers
+	pub fn get_handlers(
+		&self,
+		catalog: &MaterializedCatalog,
+		sumtype_id: SumTypeId,
+		variant_tag: u8,
+	) -> Vec<Box<dyn Procedure>> {
+		let mut state = self.state.lock().unwrap();
+		if !state.deferred_handlers.is_empty() {
+			let deferred = mem::take(&mut state.deferred_handlers);
+			let mut still_deferred = Vec::new();
+			for (path, factory) in deferred {
+				match resolve_event_path(&path, catalog) {
+					Ok((sid, tag)) => {
+						state.resolved_handlers.entry((sid, tag)).or_default().push(factory);
+					}
+					Err(_) => still_deferred.push((path, factory)),
+				}
+			}
+			state.deferred_handlers = still_deferred;
+		}
+		state.resolved_handlers
 			.get(&(sumtype_id, variant_tag))
 			.map(|factories| factories.iter().map(|f| f()).collect())
 			.unwrap_or_default()
@@ -61,7 +94,7 @@ impl ProceduresInner {
 }
 
 pub struct ProceduresBuilder {
-	inner: ProceduresInner,
+	procedures: HashMap<String, ProcedureFactory>,
 	deferred_handlers: Vec<(String, ProcedureFactory)>,
 }
 
@@ -71,9 +104,7 @@ impl ProceduresBuilder {
 		F: Fn() -> P + Send + Sync + 'static,
 		P: Procedure + 'static,
 	{
-		self.inner
-			.procedures
-			.insert(name.to_string(), Arc::new(move || Box::new(init()) as Box<dyn Procedure>));
+		self.procedures.insert(name.to_string(), Arc::new(move || Box::new(init()) as Box<dyn Procedure>));
 
 		self
 	}
@@ -81,7 +112,7 @@ impl ProceduresBuilder {
 	/// Register an event handler by path.
 	///
 	/// `event_path` uses the format `"namespace::event_name::VariantName"`.
-	/// The handler is deferred until `resolve()` is called with a loaded catalog.
+	/// The handler is resolved lazily on first dispatch.
 	pub fn with_handler<F, P>(mut self, event_path: &str, init: F) -> Self
 	where
 		F: Fn() -> P + Send + Sync + 'static,
@@ -92,18 +123,14 @@ impl ProceduresBuilder {
 		self
 	}
 
-	/// Resolve deferred handlers against the loaded catalog.
-	pub fn resolve(mut self, catalog: &MaterializedCatalog) -> Result<Self, String> {
-		let deferred = mem::take(&mut self.deferred_handlers);
-		for (event_path, factory) in deferred {
-			let (sumtype_id, variant_tag) = resolve_event_path(&event_path, catalog)?;
-			self.inner.handlers.entry((sumtype_id, variant_tag)).or_default().push(factory);
-		}
-		Ok(self)
-	}
-
 	pub fn build(self) -> Procedures {
-		Procedures(Arc::new(self.inner))
+		Procedures(Arc::new(ProceduresInner {
+			state: Arc::new(Mutex::new(RegistryState {
+				procedures: self.procedures,
+				resolved_handlers: HashMap::new(),
+				deferred_handlers: self.deferred_handlers,
+			})),
+		}))
 	}
 }
 

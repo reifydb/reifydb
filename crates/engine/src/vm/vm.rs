@@ -900,9 +900,7 @@ impl Vm {
 									));
 								}
 							}
-						} else if let Some(proc_impl) =
-							services.procedures.get_procedure(func_name)
-						{
+						} else if let Some(proc_impl) = services.get_procedure(func_name) {
 							// Runtime-registered native procedure (no catalog entry needed)
 							let call_params = Params::Positional(args);
 							let identity = self.identity;

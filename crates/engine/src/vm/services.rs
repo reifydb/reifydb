@@ -14,8 +14,12 @@ use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
+use reifydb_type::value::sumtype::SumTypeId;
 
-use crate::{procedure::registry::Procedures, transform::registry::Transforms};
+use crate::{
+	procedure::{Procedure, registry::Procedures},
+	transform::registry::Transforms,
+};
 
 /// Services is a container for shared resources used throughout the execution engine.
 ///
@@ -59,6 +63,14 @@ impl Services {
 			ioc,
 			auth_registry: AuthenticationRegistry::new(),
 		}
+	}
+
+	pub fn get_handlers(&self, sumtype_id: SumTypeId, variant_tag: u8) -> Vec<Box<dyn Procedure>> {
+		self.procedures.get_handlers(&self.catalog.materialized, sumtype_id, variant_tag)
+	}
+
+	pub fn get_procedure(&self, name: &str) -> Option<Box<dyn Procedure>> {
+		self.procedures.get_procedure(name)
 	}
 
 	#[allow(dead_code)]

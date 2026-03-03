@@ -310,9 +310,6 @@ impl DatabaseBuilder {
 				procedures_builder = configurator(procedures_builder);
 			}
 
-			procedures_builder =
-				procedures_builder.resolve(&catalog).map_err(|e| reifydb_core::internal_error!(e))?;
-
 			procedures_builder.build()
 		};
 
