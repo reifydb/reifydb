@@ -32,7 +32,7 @@ pub mod tests {
 		assert_eq!(schema.try_get_bool(&row, 0), Some(true));
 
 		// Set as undefined
-		schema.set_undefined(&mut row, 0);
+		schema.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
 		assert_eq!(schema.try_get_bool(&row, 0), None);
 	}
@@ -48,7 +48,7 @@ pub mod tests {
 		assert_eq!(schema.try_get_i32(&row, 0), Some(12345));
 
 		// Set as undefined
-		schema.set_undefined(&mut row, 0);
+		schema.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
 		assert_eq!(schema.try_get_i32(&row, 0), None);
 	}
@@ -64,7 +64,7 @@ pub mod tests {
 		assert_eq!(schema.try_get_utf8(&row, 0), Some("hello world"));
 
 		// Set as undefined
-		schema.set_undefined(&mut row, 0);
+		schema.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
 		assert_eq!(schema.try_get_utf8(&row, 0), None);
 	}
@@ -84,7 +84,7 @@ pub mod tests {
 		assert!(row.is_defined(2));
 
 		// Set middle field as undefined
-		schema.set_undefined(&mut row, 1);
+		schema.set_none(&mut row, 1);
 
 		assert!(row.is_defined(0));
 		assert!(!row.is_defined(1));
@@ -110,9 +110,9 @@ pub mod tests {
 		assert!(row.is_defined(2));
 
 		// Set all as undefined
-		schema.set_undefined(&mut row, 0);
-		schema.set_undefined(&mut row, 1);
-		schema.set_undefined(&mut row, 2);
+		schema.set_none(&mut row, 0);
+		schema.set_none(&mut row, 1);
+		schema.set_none(&mut row, 2);
 
 		assert!(!row.is_defined(0));
 		assert!(!row.is_defined(1));
@@ -129,7 +129,7 @@ pub mod tests {
 		schema.set_i64(&mut row, 0, 100);
 		assert_eq!(schema.try_get_i64(&row, 0), Some(100));
 
-		schema.set_undefined(&mut row, 0);
+		schema.set_none(&mut row, 0);
 		assert_eq!(schema.try_get_i64(&row, 0), None);
 
 		schema.set_i64(&mut row, 0, 200);
@@ -159,8 +159,8 @@ pub mod tests {
 		assert!(row.is_defined(3));
 
 		// Set some as undefined
-		schema.set_undefined(&mut row, 0);
-		schema.set_undefined(&mut row, 2);
+		schema.set_none(&mut row, 0);
+		schema.set_none(&mut row, 2);
 
 		// Check results
 		assert!(!row.is_defined(0));
@@ -194,7 +194,7 @@ pub mod tests {
 		assert!(row.is_defined(2));
 
 		// Set UUID7 as undefined
-		schema.set_undefined(&mut row, 1);
+		schema.set_none(&mut row, 1);
 
 		// Check results
 		assert!(row.is_defined(0));
@@ -226,8 +226,8 @@ pub mod tests {
 		assert!(row.is_defined(2));
 
 		// Set some as undefined
-		schema.set_undefined(&mut row, 0);
-		schema.set_undefined(&mut row, 2);
+		schema.set_none(&mut row, 0);
+		schema.set_none(&mut row, 2);
 
 		// Check results
 		assert!(!row.is_defined(0));
@@ -251,7 +251,7 @@ pub mod tests {
 		assert_eq!(schema.try_get_blob(&row, 0), Some(blob.clone()));
 
 		// Set as undefined
-		schema.set_undefined(&mut row, 0);
+		schema.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
 		assert_eq!(schema.try_get_blob(&row, 0), None);
 
@@ -275,7 +275,7 @@ pub mod tests {
 
 		// Set every other field as undefined
 		for i in (0..5).step_by(2) {
-			schema.set_undefined(&mut row, i);
+			schema.set_none(&mut row, i);
 		}
 
 		// Check pattern: undefined, defined, undefined, defined,

@@ -212,7 +212,7 @@ pub mod tests {
 		assert_eq!(schema.try_get_utf8(&row, 2), Some("also defined"));
 
 		// Set field as undefined
-		schema.set_undefined(&mut row, 0);
+		schema.set_none(&mut row, 0);
 		assert_eq!(schema.try_get_utf8(&row, 0), None);
 		assert_eq!(schema.try_get_utf8(&row, 2), Some("also defined"));
 	}

@@ -46,13 +46,16 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::retention::{CleanupMode, RetentionPolicy};
+	use reifydb_core::{
+		config::SystemConfig,
+		retention::{CleanupMode, RetentionPolicy},
+	};
 
 	use super::*;
 
 	#[test]
 	fn test_set_and_find_operator_retention_policy() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let operator = FlowNodeId(100);
 		let policy = RetentionPolicy::KeepVersions {
 			count: 5,
@@ -77,7 +80,7 @@ pub mod tests {
 
 	#[test]
 	fn test_operator_retention_policy_update() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let operator = FlowNodeId(42);
 
 		// Set initial policy
@@ -110,7 +113,7 @@ pub mod tests {
 
 	#[test]
 	fn test_operator_retention_policy_deletion() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let operator = FlowNodeId(999);
 
 		// Create and set policy
@@ -135,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_operator_retention_policy_versioning() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let operator = FlowNodeId(777);
 
 		// Create multiple versions

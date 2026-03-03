@@ -13,6 +13,7 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path:
 
 use reifydb_core::{
 	common::CommitVersion,
+	config::SystemConfig,
 	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
@@ -33,6 +34,7 @@ use reifydb_testing::testscript::{
 };
 use reifydb_transaction::{
 	multi::transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
+	register_oracle_defaults,
 	single::SingleTransaction,
 };
 
@@ -51,12 +53,15 @@ fn test_serializable(path: &Path) {
 	let single_store = SingleStore::testing_memory();
 	let bus = EventBus::new(&ActorSystem::new(SharedRuntimeConfig::default().actor_system_config()));
 	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+	let system_config = SystemConfig::new();
+	register_oracle_defaults(&system_config);
 	let engine = MultiTransaction::new(
 		multi_store,
 		SingleTransaction::new(single_store, bus.clone()),
 		bus,
 		actor_system,
 		Clock::default(),
+		system_config,
 	)
 	.unwrap();
 

@@ -16,8 +16,8 @@ use super::{
 	Batch, VTable, VTableContext,
 	system::{
 		cdc_consumers::CdcConsumers, column_properties::ColumnProperties, columns::ColumnsTable,
-		dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, enums::Enums,
-		events::Events, flow_edges::FlowEdges, flow_lags::FlowLags,
+		configs::Configs, dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats,
+		enums::Enums, events::Events, flow_edges::FlowEdges, flow_lags::FlowLags,
 		flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes, flow_nodes::FlowNodes,
 		flow_operator_inputs::FlowOperatorInputs, flow_operator_outputs::FlowOperatorOutputs,
 		flow_operators::FlowOperators, flow_storage_stats::FlowStorageStats, flows::Flows, handlers::Handlers,
@@ -90,6 +90,8 @@ pub enum VTables {
 	PolicyOperations(PolicyOperations),
 	Migrations(Migrations),
 
+	Configs(Configs),
+
 	/// User-defined virtual table (callback-based)
 	UserDefined {
 		def: Arc<VTableDef>,
@@ -149,6 +151,7 @@ impl VTables {
 			Self::Policies(t) => &t.definition,
 			Self::PolicyOperations(t) => &t.definition,
 			Self::Migrations(t) => &t.definition,
+			Self::Configs(t) => &t.definition,
 			Self::UserDefined {
 				def,
 				..
@@ -204,6 +207,7 @@ impl VTables {
 			Self::Policies(t) => t.initialize(txn, ctx),
 			Self::PolicyOperations(t) => t.initialize(txn, ctx),
 			Self::Migrations(t) => t.initialize(txn, ctx),
+			Self::Configs(t) => t.initialize(txn, ctx),
 			Self::UserDefined {
 				params: stored_params,
 				exhausted,
@@ -273,6 +277,7 @@ impl VTables {
 			Self::Procedures(t) => t.next(txn),
 			Self::PolicyOperations(t) => t.next(txn),
 			Self::Migrations(t) => t.next(txn),
+			Self::Configs(t) => t.next(txn),
 			Self::UserDefined {
 				data_fn,
 				params: stored_params,

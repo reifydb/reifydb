@@ -145,7 +145,7 @@ fn test_validity_bit_stress() {
 		if i % 2 == 0 {
 			schema.set_i32(&mut row, i, i as i32);
 		} else {
-			schema.set_undefined(&mut row, i);
+			schema.set_none(&mut row, i);
 		}
 	}
 
@@ -163,7 +163,7 @@ fn test_validity_bit_stress() {
 	// Flip all validity bits
 	for i in 0..field_count {
 		if i % 2 == 0 {
-			schema.set_undefined(&mut row, i);
+			schema.set_none(&mut row, i);
 		} else {
 			schema.set_i32(&mut row, i, -(i as i32));
 		}

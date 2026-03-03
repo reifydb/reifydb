@@ -3,6 +3,7 @@
 
 pub mod change;
 pub mod column;
+pub mod config;
 pub mod dictionary;
 pub mod flow;
 pub mod handler;

@@ -213,7 +213,7 @@ pub mod tests {
 		assert_eq!(schema.try_get_blob(&row, 2), Some(blob.clone()));
 
 		// Set field as undefined
-		schema.set_undefined(&mut row, 0);
+		schema.set_none(&mut row, 0);
 		assert_eq!(schema.try_get_blob(&row, 0), None);
 		assert_eq!(schema.try_get_blob(&row, 2), Some(blob));
 	}

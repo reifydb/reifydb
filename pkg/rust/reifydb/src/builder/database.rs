@@ -18,6 +18,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	CoreVersion,
+	config::SystemConfig,
 	event::{
 		EventBus,
 		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
@@ -50,10 +51,10 @@ use reifydb_sub_tracing::builder::TracingBuilder;
 use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
 	TransactionVersion,
-	interceptor::builder::InterceptorBuilder,
+	interceptor::{builder::InterceptorBuilder, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	transaction::{Transaction, query::QueryTransaction},
+	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
 use tracing::debug;
 
@@ -85,9 +86,15 @@ pub struct DatabaseBuilder {
 
 impl DatabaseBuilder {
 	#[allow(unused_mut)]
-	pub fn new(multi: MultiTransaction, single: SingleTransaction, eventbus: EventBus) -> Self {
+	pub fn new(
+		system_config: SystemConfig,
+		multi: MultiTransaction,
+		single: SingleTransaction,
+		eventbus: EventBus,
+	) -> Self {
 		let ioc = IocContainer::new()
-			.register(MaterializedCatalog::new())
+			.register(system_config.clone())
+			.register(MaterializedCatalog::new(system_config))
 			.register(SchemaRegistry::new(single.clone()))
 			.register(eventbus)
 			.register(multi)
@@ -242,6 +249,7 @@ impl DatabaseBuilder {
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
 		Self::load_materialized_catalog(&multi, &single, &catalog)?;
+		Self::bootstrap_config_defaults(&multi, &single, &catalog, &eventbus)?;
 		Self::load_schema_registry(&multi, &single, &schema_registry)?;
 
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
@@ -407,6 +415,24 @@ impl DatabaseBuilder {
 		self.ioc.register(system_catalog);
 
 		Ok(Database::new(engine, subsystems, health_monitor, runtime, actor_system, self.migrations))
+	}
+
+	/// Write any registered config defaults to storage for keys not yet stored (first-start only).
+	fn bootstrap_config_defaults(
+		multi: &MultiTransaction,
+		single: &SingleTransaction,
+		catalog: &MaterializedCatalog,
+		eventbus: &EventBus,
+	) -> crate::Result<()> {
+		let mut admin = AdminTransaction::new(
+			multi.clone(),
+			single.clone(),
+			eventbus.clone(),
+			Interceptors::default(),
+		)?;
+		MaterializedCatalogLoader::bootstrap_missing_defaults(&mut admin, catalog)?;
+		admin.commit()?;
+		Ok(())
 	}
 
 	/// Load the materialized catalog from storage

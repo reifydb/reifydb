@@ -176,6 +176,9 @@ pub enum CatalogError {
 		dependents: String,
 		fragment: Fragment,
 	},
+
+	#[error("unknown config key `{0}`")]
+	ConfigKeyNotFound(String),
 }
 
 impl IntoDiagnostic for CatalogError {
@@ -789,6 +792,19 @@ impl IntoDiagnostic for CatalogError {
 					operator_chain: None,
 				}
 			}
+
+			CatalogError::ConfigKeyNotFound(key) => Diagnostic {
+				code: "CA_050".to_string(),
+				statement: None,
+				message: format!("unknown config key `{}`", key),
+				fragment: Fragment::None,
+				label: Some("unknown config key".to_string()),
+				help: Some("query system.config to see all registered configuration keys".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 
 			CatalogError::InUse {
 				kind,

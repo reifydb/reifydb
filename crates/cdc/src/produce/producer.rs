@@ -454,13 +454,17 @@ pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
 	use reifydb_catalog::schema::SchemaRegistry;
-	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+	use reifydb_core::{
+		config::SystemConfig,
+		encoded::{encoded::EncodedValues, key::EncodedKey},
+	};
 	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, clock::Clock};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_store_single::SingleStore;
 	use reifydb_transaction::{
 		interceptor::interceptors::Interceptors,
 		multi::transaction::MultiTransaction,
+		register_oracle_defaults,
 		single::SingleTransaction,
 		transaction::{command::CommandTransaction, query::QueryTransaction},
 	};
@@ -492,12 +496,15 @@ pub mod tests {
 			let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 			let event_bus = EventBus::new(&actor_system);
 			let single = SingleTransaction::new(single_store, event_bus.clone());
+			let system_config = SystemConfig::new();
+			register_oracle_defaults(&system_config);
 			let multi = MultiTransaction::new(
 				multi_store,
 				single.clone(),
 				event_bus.clone(),
 				actor_system,
 				Clock::default(),
+				system_config,
 			)
 			.unwrap();
 			Self {

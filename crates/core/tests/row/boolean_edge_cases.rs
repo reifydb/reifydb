@@ -19,7 +19,7 @@ fn test_boolean_bit_patterns() {
 	assert_eq!(schema.get_bool(&row, 0), false);
 
 	// Test that undefined is different from false
-	schema.set_undefined(&mut row, 0);
+	schema.set_none(&mut row, 0);
 	assert!(schema.try_get_bool(&row, 0).is_none());
 }
 

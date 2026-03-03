@@ -498,7 +498,7 @@ impl EncodedIndexLayout {
 		}
 	}
 
-	pub fn set_undefined(&self, key: &mut EncodedIndexKey, index: usize) {
+	pub fn set_none(&self, key: &mut EncodedIndexKey, index: usize) {
 		let field = &self.fields[index];
 		key.set_valid(index, false);
 
@@ -1206,7 +1206,7 @@ pub mod tests {
 			assert!(key.is_defined(0));
 
 			// Now set it to undefined
-			layout.set_undefined(&mut key, 0);
+			layout.set_none(&mut key, 0);
 			assert!(!key.is_defined(0));
 
 			// Check that the data is zeroed

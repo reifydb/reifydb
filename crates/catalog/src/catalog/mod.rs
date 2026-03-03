@@ -12,6 +12,7 @@
 
 pub mod authentication;
 pub mod column;
+pub mod config;
 pub mod dictionary;
 pub mod flow;
 pub mod flow_edge;
@@ -34,6 +35,8 @@ pub mod user;
 pub mod view;
 pub mod vtable;
 
+use reifydb_core::config::SystemConfig;
+
 use crate::{materialized::MaterializedCatalog, schema::SchemaRegistry};
 
 #[derive(Debug, Clone)]
@@ -51,6 +54,6 @@ impl Catalog {
 	}
 
 	pub fn testing() -> Self {
-		Self::new(MaterializedCatalog::default(), SchemaRegistry::testing())
+		Self::new(MaterializedCatalog::new(SystemConfig::new()), SchemaRegistry::testing())
 	}
 }

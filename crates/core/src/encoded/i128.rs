@@ -158,7 +158,7 @@ pub mod tests {
 		assert_eq!(schema.try_get_i128(&row, 0), Some(value));
 		assert_eq!(schema.try_get_i128(&row, 1), None);
 
-		schema.set_undefined(&mut row, 0);
+		schema.set_none(&mut row, 0);
 		assert_eq!(schema.try_get_i128(&row, 0), None);
 	}
 

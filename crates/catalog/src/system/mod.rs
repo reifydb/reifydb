@@ -8,6 +8,7 @@ use reifydb_core::interface::{catalog::vtable::VTableDef, version::SystemVersion
 pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;
+pub mod configs;
 pub mod dictionaries;
 pub mod enums;
 pub mod events;
@@ -55,6 +56,7 @@ pub mod views;
 use cdc_consumers::cdc_consumers;
 use column_properties::column_properties;
 use columns::columns;
+use configs::configs;
 use dictionaries::dictionaries;
 use enums::enums;
 use events::events;
@@ -344,6 +346,18 @@ pub mod ids {
 			pub const ALL: [ColumnId; 4] = [NAME, VERSION, DESCRIPTION, TYPE];
 		}
 
+		pub mod configs {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const KEY: ColumnId = ColumnId(1);
+			pub const VALUE: ColumnId = ColumnId(2);
+			pub const DEFAULT_VALUE: ColumnId = ColumnId(3);
+			pub const DESCRIPTION: ColumnId = ColumnId(4);
+			pub const REQUIRES_RESTART: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [KEY, VALUE, DEFAULT_VALUE, DESCRIPTION, REQUIRES_RESTART];
+		}
+
 		pub mod primitive_retention_policies {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -628,8 +642,9 @@ pub mod ids {
 		pub const POLICY_OPERATIONS: VTableId = VTableId(44);
 		pub const MIGRATIONS: VTableId = VTableId(45);
 		pub const USER_AUTHENTICATIONS: VTableId = VTableId(46);
+		pub const CONFIGS: VTableId = VTableId(47);
 
-		pub const ALL: [VTableId; 46] = [
+		pub const ALL: [VTableId; 47] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -676,6 +691,7 @@ pub mod ids {
 			POLICY_OPERATIONS,
 			MIGRATIONS,
 			USER_AUTHENTICATIONS,
+			CONFIGS,
 		];
 	}
 }
@@ -930,5 +946,10 @@ impl SystemCatalog {
 	/// Get the user_authentications virtual table definition
 	pub fn get_system_user_authentications_table_def() -> Arc<VTableDef> {
 		user_authentications()
+	}
+
+	/// Get the configs virtual table definition
+	pub fn get_system_configs_table_def() -> Arc<VTableDef> {
+		configs()
 	}
 }

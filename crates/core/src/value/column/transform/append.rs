@@ -1422,7 +1422,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Boolean, Type::Boolean]);
 			let mut row_one = schema.allocate();
 			schema.set_bool(&mut row_one, 0, true);
-			schema.set_undefined(&mut row_one, 1);
+			schema.set_none(&mut row_one, 1);
 
 			test_instance.append_rows(&schema, [row_one], vec![]).unwrap();
 
@@ -1441,7 +1441,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Float4, Type::Float4]);
 			let mut row = schema.allocate();
 			schema.set_f32(&mut row, 0, 1.5);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1459,7 +1459,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Float8, Type::Float8]);
 			let mut row = schema.allocate();
 			schema.set_f64(&mut row, 0, 2.5);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1477,7 +1477,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Int1, Type::Int1]);
 			let mut row = schema.allocate();
 			schema.set_i8(&mut row, 0, 42);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1495,7 +1495,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Int2, Type::Int2]);
 			let mut row = schema.allocate();
 			schema.set_i16(&mut row, 0, -1234i16);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1513,7 +1513,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Int4, Type::Int4]);
 			let mut row = schema.allocate();
 			schema.set_i32(&mut row, 0, 56789);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1531,7 +1531,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Int8, Type::Int8]);
 			let mut row = schema.allocate();
 			schema.set_i64(&mut row, 0, -987654321);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1549,7 +1549,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Int16, Type::Int16]);
 			let mut row = schema.allocate();
 			schema.set_i128(&mut row, 0, 123456789012345678901234567890i128);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1570,7 +1570,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Utf8, Type::Utf8]);
 			let mut row = schema.allocate();
 			schema.set_utf8(&mut row, 0, "reifydb");
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1591,7 +1591,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Uint1, Type::Uint1]);
 			let mut row = schema.allocate();
 			schema.set_u8(&mut row, 0, 255);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1609,7 +1609,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Uint2, Type::Uint2]);
 			let mut row = schema.allocate();
 			schema.set_u16(&mut row, 0, 65535u16);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1627,7 +1627,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Uint4, Type::Uint4]);
 			let mut row = schema.allocate();
 			schema.set_u32(&mut row, 0, 4294967295u32);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1645,7 +1645,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Uint8, Type::Uint8]);
 			let mut row = schema.allocate();
 			schema.set_u64(&mut row, 0, 18446744073709551615u64);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
@@ -1666,7 +1666,7 @@ pub mod tests {
 			let schema = Schema::testing(&[Type::Uint16, Type::Uint16]);
 			let mut row = schema.allocate();
 			schema.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
-			schema.set_undefined(&mut row, 1);
+			schema.set_none(&mut row, 1);
 
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 

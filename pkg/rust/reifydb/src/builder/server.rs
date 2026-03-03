@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 
+use reifydb_core::config::SystemConfig;
 use reifydb_engine::procedure::registry::ProceduresBuilder;
 use reifydb_function::registry::FunctionsBuilder;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
@@ -175,13 +176,16 @@ impl ServerBuilder {
 		let actor_system = runtime.actor_system().scope();
 		let (multi_store, single_store, transaction_single, eventbus) =
 			self.storage_factory.create(&actor_system);
+		let system_config = SystemConfig::new();
+		crate::config::register_defaults(&system_config);
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			actor_system.clone(),
 			runtime.clock().clone(),
+			system_config.clone(),
 		);
 
-		let mut database_builder = DatabaseBuilder::new(multi, single, eventbus)
+		let mut database_builder = DatabaseBuilder::new(system_config, multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone())
 			.with_actor_system(actor_system)

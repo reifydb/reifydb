@@ -4,6 +4,7 @@
 pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;
+pub mod configs;
 pub mod dictionaries;
 pub mod dictionary_storage_stats;
 pub mod enums;

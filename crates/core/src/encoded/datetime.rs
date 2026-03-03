@@ -165,7 +165,7 @@ pub mod tests {
 		assert_eq!(schema.try_get_datetime(&row, 0), Some(datetime));
 		assert_eq!(schema.try_get_datetime(&row, 1), None);
 
-		schema.set_undefined(&mut row, 0);
+		schema.set_none(&mut row, 0);
 		assert_eq!(schema.try_get_datetime(&row, 0), None);
 	}
 

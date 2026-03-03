@@ -154,7 +154,7 @@ pub fn encode_primary_key(
 			Type::Option(_) => {
 				// None values in primary key will be
 				// handled later with constraints
-				index_layout.set_undefined(&mut index_key, pk_idx);
+				index_layout.set_none(&mut index_key, pk_idx);
 			}
 			Type::DictionaryId => {
 				panic!("DictionaryId columns cannot be used in primary keys");

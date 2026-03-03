@@ -47,6 +47,7 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::Subscription
 			| KeyKind::SubscriptionColumn
 			| KeyKind::SubscriptionRow
+			| KeyKind::Config
 	)
 }
 
@@ -123,10 +124,11 @@ pub mod tests {
 			KeyKind::PolicyOp => {}
 			KeyKind::Migration => {}
 			KeyKind::UserAuthentication => {}
-			KeyKind::MigrationEvent => {} /* When adding a new variant, add it here.
-			                               * The compiler will error if you forget.
-			                               * Then add a test and update should_exclude_from_cdc() if
-			                               * needed. */
+			KeyKind::MigrationEvent => {}
+			KeyKind::Config => {} /* When adding a new variant, add it here.
+			                       * The compiler will error if you forget.
+			                       * Then add a test and update should_exclude_from_cdc() if
+			                       * needed. */
 		}
 	}
 
@@ -435,5 +437,11 @@ pub mod tests {
 	#[test]
 	fn test_exclude_flow_version() {
 		assert!(should_exclude_from_cdc(KeyKind::FlowVersion));
+	}
+
+	// Config overrides (excluded)
+	#[test]
+	fn test_exclude_config() {
+		assert!(should_exclude_from_cdc(KeyKind::Config));
 	}
 }

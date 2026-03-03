@@ -9,8 +9,8 @@ use reifydb_catalog::{
 		VTableContext,
 		system::{
 			cdc_consumers::CdcConsumers, column_properties::ColumnProperties, columns::ColumnsTable,
-			dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, enums::Enums,
-			events::Events, flow_edges::FlowEdges, flow_lags::FlowLags,
+			configs::Configs, dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats,
+			enums::Enums, events::Events, flow_edges::FlowEdges, flow_lags::FlowLags,
 			flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes,
 			flow_nodes::FlowNodes, flow_operator_inputs::FlowOperatorInputs,
 			flow_operator_outputs::FlowOperatorOutputs, flow_operators::FlowOperators,
@@ -577,6 +577,7 @@ pub(crate) fn compile<'a>(
 					"policies" => VTables::Policies(Policies::new()),
 					"policy_operations" => VTables::PolicyOperations(PolicyOperations::new()),
 					"migrations" => VTables::Migrations(Migrations::new()),
+					"configs" => VTables::Configs(Configs::new(context.services.ioc.clone())),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {

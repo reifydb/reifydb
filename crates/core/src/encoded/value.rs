@@ -37,7 +37,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Float4, Value::Float4(v)) => self.set_f32(row, index, v.value()),
 			(
@@ -45,7 +45,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Float8, Value::Float8(v)) => self.set_f64(row, index, v.value()),
 			(
@@ -53,7 +53,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Int1, Value::Int1(v)) => self.set_i8(row, index, *v),
 			(
@@ -61,7 +61,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Int2, Value::Int2(v)) => self.set_i16(row, index, *v),
 			(
@@ -69,7 +69,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Int4, Value::Int4(v)) => self.set_i32(row, index, *v),
 			(
@@ -77,7 +77,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Int8, Value::Int8(v)) => self.set_i64(row, index, *v),
 			(
@@ -85,7 +85,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Int16, Value::Int16(v)) => self.set_i128(row, index, *v),
 			(
@@ -93,7 +93,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Utf8, Value::Utf8(v)) => self.set_utf8(row, index, v),
 			(
@@ -101,7 +101,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Uint1, Value::Uint1(v)) => self.set_u8(row, index, *v),
 			(
@@ -109,7 +109,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Uint2, Value::Uint2(v)) => self.set_u16(row, index, *v),
 			(
@@ -117,7 +117,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Uint4, Value::Uint4(v)) => self.set_u32(row, index, *v),
 			(
@@ -125,7 +125,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Uint8, Value::Uint8(v)) => self.set_u64(row, index, *v),
 			(
@@ -133,7 +133,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Uint16, Value::Uint16(v)) => self.set_u128(row, index, *v),
 			(
@@ -141,7 +141,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Date, Value::Date(v)) => self.set_date(row, index, v.clone()),
 			(
@@ -149,7 +149,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, v.clone()),
 			(
@@ -157,7 +157,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Time, Value::Time(v)) => self.set_time(row, index, v.clone()),
 			(
@@ -165,7 +165,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Duration, Value::Duration(v)) => self.set_duration(row, index, v.clone()),
 			(
@@ -173,7 +173,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, v.clone()),
 			(
@@ -181,7 +181,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Uuid7, Value::Uuid7(v)) => self.set_uuid7(row, index, v.clone()),
 			(
@@ -189,7 +189,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Blob, Value::Blob(v)) => self.set_blob(row, index, v),
 			(
@@ -197,7 +197,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(Type::Int, Value::Int(v)) => self.set_int(row, index, v),
 			(Type::Uint, Value::Uint(v)) => self.set_uint(row, index, v),
@@ -206,13 +206,13 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 			(
 				Type::Uint,
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
 			(
 				Type::Decimal {
@@ -227,7 +227,7 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 			(Type::DictionaryId, Value::DictionaryId(id)) => self.set_dictionary_id(row, index, id),
 
 			(
@@ -235,15 +235,15 @@ impl Schema {
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
 
-			(Type::Any, Value::Any(_)) => unreachable!("Any type cannot be stored in database"),
 			(
 				Type::Any,
 				Value::None {
 					..
 				},
-			) => self.set_undefined(row, index),
+			) => self.set_none(row, index),
+			(Type::Any, Value::Any(inner)) => self.set_any(row, index, inner),
 			(ty, val) => unreachable!("{ty:?}, {val:?}"),
 		}
 	}
@@ -294,7 +294,7 @@ impl Schema {
 			} => Value::Decimal(self.get_decimal(row, index)),
 			Type::DictionaryId => Value::DictionaryId(self.get_dictionary_id(row, index)),
 			Type::Option(_) => unreachable!("Option type already unwrapped"),
-			Type::Any => unreachable!("Any type cannot be stored in database"),
+			Type::Any => Value::Any(Box::new(self.get_any(row, index))),
 			Type::List(_) => unreachable!("List type cannot be stored in database"),
 		}
 	}
@@ -412,7 +412,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_set_undefined_with_utf8_fields() {
+	fn test_set_none_with_utf8_fields() {
 		let schema = Schema::testing(&[Type::Utf8, Type::Boolean, Type::Utf8]);
 		let mut row = schema.allocate();
 

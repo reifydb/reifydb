@@ -181,6 +181,10 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_flow(id, version, change.post.clone());
 		}
 
+		for (key, value) in &ctx.changes.config_changes {
+			self.catalog.system_config().update(key, version, value.clone());
+		}
+
 		Ok(())
 	}
 }

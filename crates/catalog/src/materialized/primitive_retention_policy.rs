@@ -46,6 +46,7 @@ impl MaterializedCatalog {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
+		config::SystemConfig,
 		interface::catalog::id::TableId,
 		retention::{CleanupMode, RetentionPolicy},
 	};
@@ -54,7 +55,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_primitive_retention_policy() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let source = PrimitiveId::Table(TableId(1));
 		let policy = RetentionPolicy::KeepVersions {
 			count: 10,
@@ -79,7 +80,7 @@ pub mod tests {
 
 	#[test]
 	fn test_primitive_retention_policy_update() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let source = PrimitiveId::Table(TableId(42));
 
 		// Set initial policy
@@ -112,7 +113,7 @@ pub mod tests {
 
 	#[test]
 	fn test_primitive_retention_policy_deletion() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let source = PrimitiveId::Table(TableId(99));
 
 		// Create and set policy
@@ -137,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_primitive_retention_policy_versioning() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let source = PrimitiveId::Table(TableId(100));
 
 		// Create multiple versions

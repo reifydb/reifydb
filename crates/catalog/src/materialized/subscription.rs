@@ -40,6 +40,7 @@ impl MaterializedCatalog {
 pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
+		config::SystemConfig,
 		interface::catalog::{id::SubscriptionColumnId, subscription::SubscriptionColumnDef},
 	};
 	use reifydb_type::value::r#type::Type;
@@ -68,7 +69,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_subscription() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let subscription_id = SubscriptionId(1);
 		let subscription = create_test_subscription(subscription_id);
 
@@ -90,7 +91,7 @@ pub mod tests {
 
 	#[test]
 	fn test_subscription_deletion() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let subscription_id = SubscriptionId(2);
 
 		// Create and set subscription
@@ -112,7 +113,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_subscriptions() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 
 		let id1 = SubscriptionId(10);
 		let id2 = SubscriptionId(11);
@@ -135,7 +136,7 @@ pub mod tests {
 
 	#[test]
 	fn test_subscription_version_isolation() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let subscription_id = SubscriptionId(20);
 
 		// Create subscription v1 with one column

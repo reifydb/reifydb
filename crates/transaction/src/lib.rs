@@ -24,6 +24,8 @@ pub mod multi;
 pub mod single;
 pub mod transaction;
 
+pub use multi::transaction::register_oracle_defaults;
+
 /// A unique identifier for a transaction using UUIDv7 for time-ordered
 /// uniqueness
 #[repr(transparent)]

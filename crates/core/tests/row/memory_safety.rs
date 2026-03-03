@@ -88,7 +88,7 @@ fn test_unaligned_access_all_types() {
 				assert_eq!(schema.get_utf8(&row, 1), "test");
 			}
 			_ => {
-				schema.set_undefined(&mut row, 1);
+				schema.set_none(&mut row, 1);
 				assert!(!row.is_defined(1));
 			}
 		}

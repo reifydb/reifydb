@@ -281,7 +281,7 @@ impl Schema {
 	}
 
 	/// Set a field as undefined (not set)
-	pub fn set_undefined(&self, row: &mut EncodedValues, index: usize) {
+	pub fn set_none(&self, row: &mut EncodedValues, index: usize) {
 		row.set_valid(index, false);
 	}
 

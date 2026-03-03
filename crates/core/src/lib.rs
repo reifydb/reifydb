@@ -6,6 +6,7 @@
 use crate::interface::version::{ComponentType, HasVersion, SystemVersion};
 
 pub mod common;
+pub mod config;
 pub mod delta;
 pub mod encoded;
 pub mod error;

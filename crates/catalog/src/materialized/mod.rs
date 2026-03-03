@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+pub mod config;
 pub mod dictionary;
 pub mod flow;
 pub mod handler;
@@ -25,7 +26,10 @@ use std::{ops, sync::Arc};
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
+	common::CommitVersion,
+	config::SystemConfig,
 	interface::catalog::{
+		config::ConfigDef,
 		dictionary::DictionaryDef,
 		flow::{FlowDef, FlowId, FlowNodeId},
 		handler::HandlerDef,
@@ -52,7 +56,7 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId},
+	value::{Value, dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId},
 };
 
 use crate::{
@@ -87,6 +91,8 @@ pub struct MaterializedCatalog(Arc<MaterializedCatalogInner>);
 
 #[derive(Debug)]
 pub struct MaterializedCatalogInner {
+	/// Runtime configuration registry (shared with the oracle)
+	pub(crate) system_config: SystemConfig,
 	/// MultiVersion namespace definitions indexed by namespace ID
 	pub(crate) namespaces: SkipMap<NamespaceId, MultiVersionNamespaceDef>,
 	/// Index from namespace name to namespace ID for fast name lookups
@@ -172,14 +178,8 @@ impl ops::Deref for MaterializedCatalog {
 	}
 }
 
-impl Default for MaterializedCatalog {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl MaterializedCatalog {
-	pub fn new() -> Self {
+	pub fn new(system_config: SystemConfig) -> Self {
 		let system_namespace = NamespaceDef::system();
 		let system_namespace_id = system_namespace.id;
 
@@ -199,6 +199,7 @@ impl MaterializedCatalog {
 		namespaces_by_name.insert("default".to_string(), default_namespace_id);
 
 		Self(Arc::new(MaterializedCatalogInner {
+			system_config,
 			namespaces,
 			namespaces_by_name,
 			procedures: SkipMap::new(),
@@ -316,5 +317,25 @@ impl MaterializedCatalog {
 	/// List all user-defined virtual tables
 	pub fn list_vtable_user_all(&self) -> Vec<Arc<VTableDef>> {
 		self.vtable_user.iter().map(|e| e.value().clone()).collect()
+	}
+
+	/// Access the system config registry.
+	pub fn system_config(&self) -> SystemConfig {
+		self.0.system_config.clone()
+	}
+
+	/// List all registered configurations with their current values.
+	pub fn list_configs(&self) -> Vec<ConfigDef> {
+		self.0.system_config.list_all()
+	}
+
+	/// List all registered configurations with values as of a specific snapshot version.
+	pub fn list_configs_at(&self, version: CommitVersion) -> Vec<ConfigDef> {
+		self.0.system_config.list_all_at(version)
+	}
+
+	/// Get the current value for a config key.
+	pub fn get_config(&self, key: &str) -> Option<Value> {
+		self.0.system_config.get(key)
 	}
 }

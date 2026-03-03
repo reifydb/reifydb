@@ -13,6 +13,7 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::{
 	common::CommitVersion,
+	config::SystemConfig,
 	encoded::key::EncodedKey,
 	event::EventBus,
 	interface::store::{MultiVersionContains, MultiVersionGet},
@@ -88,10 +89,14 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock, actor_system, metrics_clock))]
-	pub fn new(clock: L, actor_system: ActorSystem, metrics_clock: Clock) -> Result<Self> {
+	#[instrument(
+		name = "transaction::manager::new",
+		level = "debug",
+		skip(clock, actor_system, metrics_clock, config)
+	)]
+	pub fn new(clock: L, actor_system: ActorSystem, metrics_clock: Clock, config: SystemConfig) -> Result<Self> {
 		let version = clock.next()?;
-		let oracle = Oracle::new(clock, actor_system, metrics_clock);
+		let oracle = Oracle::new(clock, actor_system, metrics_clock, config);
 		oracle.query.done(version);
 		oracle.command.done(version);
 		Ok(Self {
@@ -102,6 +107,11 @@ where
 	/// Get the actor system
 	pub fn actor_system(&self) -> ActorSystem {
 		self.inner.actor_system()
+	}
+
+	/// Get the shared system config from the oracle.
+	pub fn system_config(&self) -> SystemConfig {
+		self.inner.system_config()
 	}
 
 	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
@@ -175,9 +185,10 @@ impl Inner {
 		event_bus: EventBus,
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
+		config: SystemConfig,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
-		let tm = TransactionManager::new(version_provider, actor_system, metrics_clock)?;
+		let tm = TransactionManager::new(version_provider, actor_system, metrics_clock, config)?;
 
 		Ok(Self {
 			tm,
@@ -201,12 +212,15 @@ impl MultiTransaction {
 		let single_store = SingleStore::testing_memory();
 		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let event_bus = EventBus::new(&actor_system);
+		let system_config = SystemConfig::new();
+		crate::multi::oracle::register_defaults(&system_config);
 		Self::new(
 			multi_store,
 			SingleTransaction::new(single_store, event_bus.clone()),
 			event_bus,
 			actor_system,
 			Clock::default(),
+			system_config,
 		)
 		.unwrap()
 	}
@@ -216,7 +230,7 @@ impl MultiTransaction {
 	#[instrument(
 		name = "transaction::new",
 		level = "debug",
-		skip(store, single, event_bus, actor_system, metrics_clock)
+		skip(store, single, event_bus, actor_system, metrics_clock, system_config)
 	)]
 	pub fn new(
 		store: MultiStore,
@@ -224,14 +238,25 @@ impl MultiTransaction {
 		event_bus: EventBus,
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
+		system_config: SystemConfig,
 	) -> Result<Self> {
-		Ok(Self(Arc::new(Inner::new(store, single, event_bus, actor_system, metrics_clock)?)))
+		Ok(Self(Arc::new(Inner::new(store, single, event_bus, actor_system, metrics_clock, system_config)?)))
 	}
 
 	/// Get the actor system
 	pub fn actor_system(&self) -> ActorSystem {
 		self.0.actor_system()
 	}
+
+	/// Get the shared system config from the oracle.
+	pub fn system_config(&self) -> SystemConfig {
+		self.0.tm.system_config()
+	}
+}
+
+/// Register oracle config defaults into a SystemConfig registry.
+pub fn register_oracle_defaults(config: &SystemConfig) {
+	crate::multi::oracle::register_defaults(config)
 }
 
 impl MultiTransaction {

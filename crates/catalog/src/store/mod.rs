@@ -3,6 +3,7 @@
 
 pub mod column;
 pub(crate) mod column_property;
+pub(crate) mod config;
 pub(crate) mod dictionary;
 pub(crate) mod flow;
 pub(crate) mod flow_edge;

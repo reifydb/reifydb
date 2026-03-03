@@ -17,6 +17,7 @@ use reifydb_cdc::{
 	storage::CdcStore,
 };
 use reifydb_core::{
+	config::SystemConfig,
 	event::{
 		EventBus,
 		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
@@ -39,6 +40,7 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
+	register_oracle_defaults,
 	single::SingleTransaction,
 	transaction::{admin::AdminTransaction, command::CommandTransaction},
 };
@@ -56,9 +58,17 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
-	let multi =
-		MultiTransaction::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default())
-			.unwrap();
+	let system_config = SystemConfig::new();
+	register_oracle_defaults(&system_config);
+	let multi = MultiTransaction::new(
+		multi_store,
+		single.clone(),
+		event_bus.clone(),
+		actor_system,
+		Clock::default(),
+		system_config,
+	)
+	.unwrap();
 
 	AdminTransaction::new(multi, single, event_bus, Interceptors::new()).unwrap()
 }
@@ -73,12 +83,20 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 	});
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
-	let multi =
-		MultiTransaction::new(multi_store, single.clone(), event_bus.clone(), actor_system, Clock::default())
-			.unwrap();
+	let system_config = SystemConfig::new();
+	register_oracle_defaults(&system_config);
+	let multi = MultiTransaction::new(
+		multi_store,
+		single.clone(),
+		event_bus.clone(),
+		actor_system,
+		Clock::default(),
+		system_config,
+	)
+	.unwrap();
 	let mut result = AdminTransaction::new(multi, single.clone(), event_bus.clone(), Interceptors::new()).unwrap();
 
-	let materialized_catalog = MaterializedCatalog::new();
+	let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
 	let schema_registry = SchemaRegistry::new(single);
 	let catalog = Catalog::new(materialized_catalog, schema_registry);
 
@@ -139,18 +157,21 @@ pub fn create_test_engine() -> StandardEngine {
 			.compute_max_in_flight(32)
 			.mock_clock(1000),
 	);
+	let system_config = SystemConfig::new();
+	register_oracle_defaults(&system_config);
 	let multi = MultiTransaction::new(
 		multi_store.clone(),
 		single.clone(),
 		eventbus.clone(),
 		actor_system,
 		runtime.clock().clone(),
+		system_config,
 	)
 	.unwrap();
 
 	let mut ioc = IocContainer::new();
 
-	let materialized_catalog = MaterializedCatalog::new();
+	let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
 	ioc = ioc.register(materialized_catalog.clone());
 
 	let schema_registry = SchemaRegistry::new(single.clone());

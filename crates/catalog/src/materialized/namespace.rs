@@ -62,6 +62,8 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_core::config::SystemConfig;
+
 	use super::*;
 
 	fn create_test_namespace(id: NamespaceId, name: &str) -> NamespaceDef {
@@ -74,7 +76,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_namespace() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let namespace_id = NamespaceId(1);
 		let namespace = create_test_namespace(namespace_id, "test_namespace");
 
@@ -97,7 +99,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_namespace_by_name() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let namespace_id = NamespaceId(1);
 		let namespace = create_test_namespace(namespace_id, "named_namespace");
 
@@ -115,7 +117,7 @@ pub mod tests {
 
 	#[test]
 	fn test_namespace_rename() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let namespace_id = NamespaceId(1);
 
 		// Create and set initial namespace
@@ -146,7 +148,7 @@ pub mod tests {
 
 	#[test]
 	fn test_namespace_deletion() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let namespace_id = NamespaceId(1);
 
 		// Create and set namespace
@@ -170,7 +172,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_namespaces() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 
 		let namespace1 = create_test_namespace(NamespaceId(1), "namespace1");
 		let namespace2 = create_test_namespace(NamespaceId(2), "namespace2");
@@ -189,7 +191,7 @@ pub mod tests {
 
 	#[test]
 	fn test_namespace_versioning() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let namespace_id = NamespaceId(10);
 
 		// Create multiple versions
@@ -216,7 +218,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_namespace() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let namespace_id = NamespaceId(100);
 
 		// Empty catalog should return None
@@ -236,7 +238,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_namespace_deleted() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let namespace_id = NamespaceId(1);
 
 		let namespace = create_test_namespace(namespace_id, "test_namespace");
@@ -251,7 +253,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_namespace_by_name() {
-		let catalog = MaterializedCatalog::new();
+		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let namespace_id = NamespaceId(1);
 
 		// Empty catalog should return None

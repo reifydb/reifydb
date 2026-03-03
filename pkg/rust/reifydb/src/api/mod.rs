@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::event::EventBus;
+use reifydb_core::{config::SystemConfig, event::EventBus};
 use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
 use reifydb_store_multi::{
 	MultiStore,
@@ -134,7 +134,10 @@ pub(crate) fn transaction(
 	input: (MultiStore, SingleStore, SingleTransaction, EventBus),
 	actor_system: ActorSystem,
 	clock: Clock,
+	system_config: SystemConfig,
 ) -> (MultiTransaction, SingleTransaction, EventBus) {
-	let multi = MultiTransaction::new(input.0, input.2.clone(), input.3.clone(), actor_system, clock).unwrap();
+	let multi =
+		MultiTransaction::new(input.0, input.2.clone(), input.3.clone(), actor_system, clock, system_config)
+			.unwrap();
 	(multi, input.2, input.3)
 }

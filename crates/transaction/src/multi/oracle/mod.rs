@@ -7,9 +7,9 @@ use std::{
 };
 
 use cleanup::cleanup_old_windows;
-use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
+use reifydb_core::{common::CommitVersion, config::SystemConfig, encoded::key::EncodedKey, util::bloom::BloomFilter};
 use reifydb_runtime::{actor::system::ActorSystem, clock::Clock, sync::rwlock::RwLock};
-use reifydb_type::Result;
+use reifydb_type::{Result, value::Value};
 use tracing::{Span, field, instrument};
 
 use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvider, watermark::watermark::WaterMark};
@@ -17,8 +17,24 @@ use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvi
 pub mod cleanup;
 
 /// Configuration for the efficient oracle
-const DEFAULT_WINDOW_SIZE: u64 = 500;
-const DEFAULT_WINDOW_WATER_MARK: usize = 20;
+pub(crate) const DEFAULT_WINDOW_SIZE: u64 = 500;
+pub(crate) const DEFAULT_WINDOW_WATER_MARK: usize = 20;
+
+/// Register oracle config defaults into a SystemConfig registry.
+pub(crate) fn register_defaults(config: &SystemConfig) {
+	config.register(
+		"ORACLE_WINDOW_SIZE",
+		Value::Uint8(DEFAULT_WINDOW_SIZE),
+		"Number of transactions per conflict-detection window.",
+		false,
+	);
+	config.register(
+		"ORACLE_WATER_MARK",
+		Value::Uint8(DEFAULT_WINDOW_WATER_MARK as u64),
+		"Number of conflict windows retained before cleanup is triggered.",
+		false,
+	);
+}
 
 /// Time window containing committed transactions
 pub(crate) struct CommittedWindow {
@@ -94,9 +110,6 @@ where
 	/// Index: key -> set of window versions that modified this key
 	pub key_to_windows: HashMap<EncodedKey, BTreeSet<CommitVersion>>,
 
-	/// Current window size for new windows
-	pub window_size: u64,
-
 	/// Highest commit version present in any evicted window.
 	/// Any transaction with read-start version < this must be aborted.
 	pub evicted_up_through: CommitVersion,
@@ -125,13 +138,14 @@ where
 	shutdown_signal: Arc<RwLock<bool>>,
 	actor_system: ActorSystem,
 	metrics_clock: Clock,
+	system_config: SystemConfig,
 }
 
 impl<L> Oracle<L>
 where
 	L: VersionProvider,
 {
-	pub fn new(clock: L, actor_system: ActorSystem, metrics_clock: Clock) -> Self {
+	pub fn new(clock: L, actor_system: ActorSystem, metrics_clock: Clock, system_config: SystemConfig) -> Self {
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
 		Self {
@@ -140,7 +154,6 @@ where
 				last_cleanup: CommitVersion(0),
 				time_windows: BTreeMap::new(),
 				key_to_windows: HashMap::with_capacity(10000),
-				window_size: DEFAULT_WINDOW_SIZE,
 				evicted_up_through: CommitVersion(0),
 			}),
 			query: WaterMark::new("txn-mark-query".into(), &actor_system),
@@ -148,7 +161,13 @@ where
 			shutdown_signal,
 			actor_system,
 			metrics_clock,
+			system_config,
 		}
+	}
+
+	/// Return the shared system config so callers can wire it to the catalog.
+	pub fn system_config(&self) -> SystemConfig {
+		self.system_config.clone()
 	}
 
 	/// Get the actor system
@@ -329,10 +348,12 @@ where
 			Span::current().record("inner_write_lock_us", write_lock_start.elapsed().as_micros() as u64);
 
 			let add_start = self.metrics_clock.instant();
-			inner.add_committed_transaction(commit_version, conflicts);
+			let window_size = self.system_config.require_uint8("ORACLE_WINDOW_SIZE");
+			inner.add_committed_transaction(commit_version, conflicts, window_size);
 			Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
 			// Check if cleanup is needed
-			inner.time_windows.len() > DEFAULT_WINDOW_WATER_MARK
+			let water_mark = self.system_config.require_uint8("ORACLE_WATER_MARK") as usize;
+			inner.time_windows.len() > water_mark
 		};
 
 		if needs_cleanup {
@@ -390,9 +411,9 @@ where
 	L: VersionProvider,
 {
 	/// Add a committed transaction to the appropriate time window
-	fn add_committed_transaction(&mut self, version: CommitVersion, conflicts: ConflictManager) {
+	fn add_committed_transaction(&mut self, version: CommitVersion, conflicts: ConflictManager, window_size: u64) {
 		// Determine which window this transaction belongs to
-		let window_start = CommitVersion((version.0 / self.window_size) * self.window_size);
+		let window_start = CommitVersion((version.0 / window_size) * window_size);
 
 		// Get or create the window
 		let window =
@@ -473,7 +494,9 @@ pub mod tests {
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
 		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
-		Oracle::new(clock, actor_system, Clock::default())
+		let config = SystemConfig::new();
+		super::register_defaults(&config);
+		Oracle::new(clock, actor_system, Clock::default(), config)
 	}
 
 	#[test]

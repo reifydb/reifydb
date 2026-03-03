@@ -55,6 +55,7 @@ pub mod cdc_exclude;
 pub mod column;
 pub mod column_sequence;
 pub mod columns;
+pub mod config;
 pub mod dictionary;
 pub mod flow;
 pub mod flow_edge;
@@ -340,6 +341,10 @@ impl Key {
 			KeyKind::PolicyOp => PolicyOpKey::decode(&key).map(Self::PolicyOp),
 			KeyKind::Migration | KeyKind::MigrationEvent => {
 				// Migration keys are used directly via EncodableKey trait, not through Key enum
+				None
+			}
+			KeyKind::Config => {
+				// Config keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
 		}

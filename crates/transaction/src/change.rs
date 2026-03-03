@@ -26,7 +26,7 @@ use reifydb_core::{
 		view::ViewDef,
 	},
 };
-use reifydb_type::value::{dictionary::DictionaryId, row_number::RowNumber, sumtype::SumTypeId};
+use reifydb_type::value::{Value, dictionary::DictionaryId, row_number::RowNumber, sumtype::SumTypeId};
 
 use crate::TransactionId;
 
@@ -219,6 +219,8 @@ pub trait TransactionalMigrationChanges {
 pub struct TransactionalDefChanges {
 	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
+	/// Config key/value changes to be applied post-commit with the commit version
+	pub config_changes: Vec<(String, Value)>,
 	/// All dictionary definition changes in order (no coalescing)
 	pub dictionary_def: Vec<Change<DictionaryDef>>,
 	/// All flow definition changes in order (no coalescing)
@@ -259,6 +261,10 @@ pub struct TransactionalDefChanges {
 }
 
 impl TransactionalDefChanges {
+	pub fn add_config_change(&mut self, key: String, value: Value) {
+		self.config_changes.push((key, value));
+	}
+
 	pub fn add_dictionary_def_change(&mut self, change: Change<DictionaryDef>) {
 		let id = change
 			.post
@@ -639,6 +645,7 @@ impl TransactionalDefChanges {
 	pub fn new(txn_id: TransactionId) -> Self {
 		Self {
 			txn_id,
+			config_changes: Vec::new(),
 			dictionary_def: Vec::new(),
 			flow_def: Vec::new(),
 			handler_def: Vec::new(),
@@ -734,6 +741,7 @@ impl TransactionalDefChanges {
 
 	/// Clear all changes (for rollback)
 	pub fn clear(&mut self) {
+		self.config_changes.clear();
 		self.dictionary_def.clear();
 		self.flow_def.clear();
 		self.handler_def.clear();
