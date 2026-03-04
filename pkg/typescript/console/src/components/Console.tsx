@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Client } from '@reifydb/client';
 import type { Executor } from '../types';
+import { WsExecutor, type WsClient } from '../executor/ws-executor';
 import { ConsoleProvider, useConsoleStore } from '../state/use-console-store';
 import { loadHistory, saveHistory } from '../state/history';
 import { SplitPane } from './layout/SplitPane';
@@ -12,6 +14,8 @@ import { EditorToolbar } from './editor/EditorToolbar';
 import { ResultsPanel } from './results/ResultsPanel';
 import { SchemaBrowser } from './schema/SchemaBrowser';
 import { HistoryPanel } from './history/HistoryPanel';
+import { ConnectionPanel } from './connection/ConnectionPanel';
+import type { ConnectionMode, ConnectionStatus } from './connection/ConnectionPanel';
 
 export interface ConsoleProps {
   executor: Executor;
@@ -25,8 +29,40 @@ const TABS = [
   { id: 'schema', label: 'Schema' },
 ];
 
+const WS_URL_STORAGE_KEY = 'rdb-console-ws-url';
+
 function ConsoleInner({ executor, historyKey }: { executor: Executor; historyKey?: string }) {
   const { state, dispatch } = useConsoleStore();
+
+  const [connectionMode, setConnectionMode] = useState<ConnectionMode>('wasm');
+  const [wsUrl, setWsUrl] = useState(() => {
+    try {
+      return localStorage.getItem(WS_URL_STORAGE_KEY) || 'ws://localhost:8090';
+    } catch {
+      return 'ws://localhost:8090';
+    }
+  });
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connected');
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [activeExecutor, setActiveExecutor] = useState<Executor>(executor);
+  const [showConnectionPanel, setShowConnectionPanel] = useState(false);
+  const wsClientRef = useRef<{ disconnect(): void } | null>(null);
+
+  // Persist wsUrl to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(WS_URL_STORAGE_KEY, wsUrl);
+    } catch {
+      // ignore
+    }
+  }, [wsUrl]);
+
+  // Keep activeExecutor in sync if prop changes while in wasm mode
+  useEffect(() => {
+    if (connectionMode === 'wasm') {
+      setActiveExecutor(executor);
+    }
+  }, [executor, connectionMode]);
 
   // Load history on mount
   useEffect(() => {
@@ -41,12 +77,66 @@ function ConsoleInner({ executor, historyKey }: { executor: Executor; historyKey
     saveHistory(state.history, historyKey);
   }, [state.history, historyKey]);
 
+  const handleConnect = useCallback(async () => {
+    if (!wsUrl.trim()) return;
+    setConnectionStatus('connecting');
+    setConnectionError(null);
+
+    try {
+      // Disconnect previous WS client if any
+      if (wsClientRef.current) {
+        wsClientRef.current.disconnect();
+        wsClientRef.current = null;
+      }
+
+      const client = await Client.connect_ws(wsUrl, { timeoutMs: 30_000 });
+      wsClientRef.current = client;
+      const wsExecutor = new WsExecutor(client as unknown as WsClient);
+      setActiveExecutor(wsExecutor);
+      setConnectionStatus('connected');
+    } catch (err) {
+      setConnectionStatus('error');
+      setConnectionError(err instanceof Error ? err.message : String(err));
+    }
+  }, [wsUrl]);
+
+  const handleDisconnect = useCallback(() => {
+    if (wsClientRef.current) {
+      wsClientRef.current.disconnect();
+      wsClientRef.current = null;
+    }
+    setActiveExecutor(executor);
+    setConnectionMode('wasm');
+    setConnectionStatus('connected');
+    setConnectionError(null);
+  }, [executor]);
+
+  const handleModeChange = useCallback((mode: ConnectionMode) => {
+    if (mode === 'wasm' && connectionMode === 'websocket') {
+      // Switching back to wasm — disconnect if connected
+      if (wsClientRef.current) {
+        wsClientRef.current.disconnect();
+        wsClientRef.current = null;
+      }
+      setActiveExecutor(executor);
+      setConnectionStatus('connected');
+      setConnectionError(null);
+    } else if (mode === 'websocket' && connectionMode === 'wasm') {
+      // Switching to websocket mode — not connected yet
+      setConnectionStatus('disconnected');
+      setConnectionError(null);
+    }
+    setConnectionMode(mode);
+  }, [connectionMode, executor]);
+
+  const connectionLabel = connectionMode === 'wasm' ? 'wasm' : wsUrl;
+
   const handleRun = useCallback(async () => {
     if (state.isExecuting || !state.code.trim()) return;
     dispatch({ type: 'EXECUTE_START' });
 
     try {
-      const result = await executor.execute(state.code);
+      const result = await activeExecutor.execute(state.code);
       if (result.success) {
         dispatch({ type: 'EXECUTE_SUCCESS', result, query: state.code });
       } else {
@@ -64,7 +154,7 @@ function ConsoleInner({ executor, historyKey }: { executor: Executor; historyKey
       });
     }
 
-  }, [state.isExecuting, state.code, executor, dispatch]);
+  }, [state.isExecuting, state.code, activeExecutor, dispatch]);
 
   const handleClear = useCallback(() => {
     dispatch({ type: 'CLEAR_RESULTS' });
@@ -76,7 +166,29 @@ function ConsoleInner({ executor, historyKey }: { executor: Executor; historyKey
 
   const editorPane = (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <EditorToolbar onRun={handleRun} onClear={handleClear} isExecuting={state.isExecuting} />
+      <div style={{ position: 'relative' }}>
+        <EditorToolbar
+          onRun={handleRun}
+          onClear={handleClear}
+          isExecuting={state.isExecuting}
+          connectionLabel={connectionLabel}
+          connectionStatus={connectionStatus}
+          onToggleConnectionPanel={() => setShowConnectionPanel((v) => !v)}
+        />
+        {showConnectionPanel && (
+          <ConnectionPanel
+            mode={connectionMode}
+            wsUrl={wsUrl}
+            status={connectionStatus}
+            error={connectionError}
+            onModeChange={handleModeChange}
+            onUrlChange={setWsUrl}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+            onClose={() => setShowConnectionPanel(false)}
+          />
+        )}
+      </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <QueryEditor
           code={state.code}
@@ -100,7 +212,7 @@ function ConsoleInner({ executor, historyKey }: { executor: Executor; historyKey
         ) : state.activeTab === 'history' ? (
           <HistoryPanel entries={state.history} onSelect={handleSelectHistory} />
         ) : (
-          <SchemaBrowser executor={executor} />
+          <SchemaBrowser executor={activeExecutor} />
         )}
       </div>
     </div>

@@ -24,6 +24,7 @@
     "@monaco-editor/react": ">=4.0.0"
   },
   "dependencies": {
+    "@reifydb/client": "workspace:*",
     "@reifydb/core": "workspace:*"
   },
   "devDependencies": {

@@ -1,16 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+import type { ConnectionStatus } from '../connection/ConnectionPanel';
+
 interface EditorToolbarProps {
   onRun: () => void;
   onClear: () => void;
   isExecuting: boolean;
+  connectionLabel: string;
+  connectionStatus: ConnectionStatus;
+  onToggleConnectionPanel: () => void;
 }
 
-export function EditorToolbar({ onRun, onClear, isExecuting }: EditorToolbarProps) {
+export function EditorToolbar({
+  onRun,
+  onClear,
+  isExecuting,
+  connectionLabel,
+  connectionStatus,
+  onToggleConnectionPanel,
+}: EditorToolbarProps) {
   return (
     <div className="rdb-editor-toolbar">
-      <span className="rdb-editor-toolbar__hint">ctrl+enter to run</span>
+      <div className="rdb-editor-toolbar__left">
+        <button
+          className="rdb-editor-toolbar__connection"
+          onClick={onToggleConnectionPanel}
+        >
+          <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connectionStatus}`}>●</span>
+          <span>[{connectionLabel}]</span>
+        </button>
+        <span className="rdb-editor-toolbar__hint">ctrl+enter to run</span>
+      </div>
       <div className="rdb-editor-toolbar__actions">
         <button
           className="rdb-editor-toolbar__btn rdb-editor-toolbar__btn--secondary"

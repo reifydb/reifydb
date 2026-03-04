@@ -13,8 +13,8 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	Result,
 	catalog::Catalog,
-	system::{SystemCatalog, ids::vtable},
-	vtable::{Batch, VTable, VTableContext},
+	system::SystemCatalog,
+	vtable::{Batch, VTable, VTableContext, VTableRegistry},
 };
 
 /// Virtual table that exposes information about all virtual tables (system and user-defined)
@@ -40,7 +40,7 @@ impl VTable for TablesVirtual {
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -51,33 +51,10 @@ impl VTable for TablesVirtual {
 		let mut names = Vec::new();
 		let mut kinds = Vec::new();
 
-		// Add system virtual tables
-		let system_tables = [
-			(vtable::SEQUENCES, "sequences"),
-			(vtable::NAMESPACES, "namespaces"),
-			(vtable::TABLES, "tables"),
-			(vtable::VIEWS, "views"),
-			(vtable::FLOWS, "flows"),
-			(vtable::COLUMNS, "columns"),
-			(vtable::COLUMN_PROPERTIES, "column_properties"),
-			(vtable::PRIMARY_KEYS, "primary_keys"),
-			(vtable::PRIMARY_KEY_COLUMNS, "primary_key_columns"),
-			(vtable::VERSIONS, "versions"),
-			(vtable::PRIMITIVE_RETENTION_POLICIES, "primitive_retention_policies"),
-			(vtable::OPERATOR_RETENTION_POLICIES, "operator_retention_policies"),
-			(vtable::CDC_CONSUMERS, "cdc_consumers"),
-			(vtable::FLOW_OPERATORS, "flow_operators"),
-			(vtable::FLOW_NODES, "flow_nodes"),
-			(vtable::FLOW_EDGES, "flow_edges"),
-			(vtable::DICTIONARIES, "dictionaries"),
-			(vtable::VIRTUAL_TABLES, "virtual_tables"),
-			(vtable::VIRTUAL_TABLE_COLUMNS, "virtual_table_columns"),
-		];
-
-		for (id, name) in system_tables {
-			ids.push(id.0);
-			namespaces.push(1u64); // system namespace
-			names.push(name.to_string());
+		for vtable_def in VTableRegistry::list_vtables(txn)? {
+			ids.push(vtable_def.id.0);
+			namespaces.push(vtable_def.namespace.0);
+			names.push(vtable_def.name.clone());
 			kinds.push("system".to_string());
 		}
 

@@ -612,10 +612,45 @@
   flex-shrink: 0;
 }
 
+.rdb-editor-toolbar__left {
+  display: flex;
+  align-items: center;
+  gap: var(--rdb-space-3);
+}
+
 .rdb-editor-toolbar__actions {
   display: flex;
   gap: var(--rdb-space-2);
 }
+
+/* Connection button in toolbar */
+
+.rdb-editor-toolbar__connection {
+  display: flex;
+  align-items: center;
+  gap: var(--rdb-space-1);
+  font-family: var(--rdb-font-mono);
+  font-size: var(--rdb-font-size-xs);
+  color: var(--rdb-color-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.rdb-editor-toolbar__connection:hover {
+  color: var(--rdb-color-text);
+}
+
+.rdb-editor-toolbar__connection-dot {
+  font-size: 0.6em;
+}
+
+.rdb-editor-toolbar__connection-dot--connected { color: var(--rdb-color-success); }
+.rdb-editor-toolbar__connection-dot--connecting { color: var(--rdb-color-primary); }
+.rdb-editor-toolbar__connection-dot--error { color: var(--rdb-color-error); }
+.rdb-editor-toolbar__connection-dot--disconnected { color: var(--rdb-color-muted); }
 
 .rdb-editor-toolbar__btn {
   font-family: var(--rdb-font-mono);
@@ -651,5 +686,132 @@
 .rdb-editor-toolbar__hint {
   font-size: var(--rdb-font-size-xs);
   color: var(--rdb-color-muted);
+}
+
+/* === Connection Panel === */
+
+.rdb-connection-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--rdb-color-bg-elevated);
+  border-bottom: 1px dashed var(--rdb-color-border);
+  padding: var(--rdb-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--rdb-space-2);
+  font-size: var(--rdb-font-size-xs);
+}
+
+.rdb-connection-panel__header {
+  color: var(--rdb-color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rdb-connection-panel__modes {
+  display: flex;
+  gap: var(--rdb-space-2);
+}
+
+.rdb-connection-panel__mode-btn {
+  font-family: var(--rdb-font-mono);
+  font-size: var(--rdb-font-size-xs);
+  padding: var(--rdb-space-1) var(--rdb-space-3);
+  border: 1px solid var(--rdb-color-border);
+  color: var(--rdb-color-muted);
+  background: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.rdb-connection-panel__mode-btn:hover {
+  color: var(--rdb-color-text);
+  border-color: var(--rdb-color-text);
+}
+
+.rdb-connection-panel__mode-btn--active {
+  color: var(--rdb-color-primary);
+  border-color: var(--rdb-color-primary);
+}
+
+.rdb-connection-panel__url-row {
+  display: flex;
+  align-items: center;
+  gap: var(--rdb-space-2);
+}
+
+.rdb-connection-panel__url-label {
+  color: var(--rdb-color-muted);
+  flex-shrink: 0;
+}
+
+.rdb-connection-panel__url-input {
+  flex: 1;
+  font-family: var(--rdb-font-mono);
+  font-size: var(--rdb-font-size-xs);
+  padding: var(--rdb-space-1) var(--rdb-space-2);
+  background: var(--rdb-color-bg);
+  border: 1px solid var(--rdb-color-border);
+  color: var(--rdb-color-text);
+  outline: none;
+}
+
+.rdb-connection-panel__url-input:focus {
+  border-color: var(--rdb-color-primary);
+}
+
+.rdb-connection-panel__url-input:disabled {
+  opacity: 0.5;
+}
+
+.rdb-connection-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.rdb-connection-panel__action-btn {
+  font-family: var(--rdb-font-mono);
+  font-size: var(--rdb-font-size-xs);
+  padding: var(--rdb-space-1) var(--rdb-space-3);
+  border: 1px solid var(--rdb-color-primary);
+  color: var(--rdb-color-primary);
+  background: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.rdb-connection-panel__action-btn:hover:not(:disabled) {
+  background: var(--rdb-color-primary);
+  color: var(--rdb-color-bg);
+}
+
+.rdb-connection-panel__action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rdb-connection-panel__status {
+  display: flex;
+  align-items: center;
+  gap: var(--rdb-space-1);
+  color: var(--rdb-color-muted);
+}
+
+.rdb-connection-panel__status-dot {
+  font-size: 0.8em;
+}
+
+.rdb-connection-panel__status-dot--connected { color: var(--rdb-color-success); }
+.rdb-connection-panel__status-dot--connecting { color: var(--rdb-color-primary); }
+.rdb-connection-panel__status-dot--error { color: var(--rdb-color-error); }
+.rdb-connection-panel__status-dot--disconnected { color: var(--rdb-color-muted); }
+
+.rdb-connection-panel__error {
+  color: var(--rdb-color-error);
+  white-space: pre-wrap;
+  font-family: var(--rdb-font-mono);
 }
 

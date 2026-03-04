@@ -338,10 +338,11 @@ export class WsClient {
         }
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("ReifyDB query timeout"));
-            }, this.options.timeoutMs);
+            }, timeoutMs);
 
             this.pending.set(id, (res) => {
                 clearTimeout(timeout);

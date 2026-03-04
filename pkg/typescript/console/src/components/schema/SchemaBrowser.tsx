@@ -16,7 +16,7 @@ interface ColumnInfo {
 
 interface SourceInfo {
   name: string;
-  category: 'table' | 'view' | 'vtable' | 'ringbuffer';
+  category: 'table' | 'view' | 'vtable' | 'ringbuffer' | 'procedure' | 'handler' | 'enum' | 'event' | 'dictionary' | 'migration';
   columns: ColumnInfo[];
 }
 
@@ -100,6 +100,12 @@ const CATEGORY_GROUPS: { key: SourceInfo['category']; label: string }[] = [
   { key: 'vtable', label: 'Virtual Tables' },
   { key: 'view', label: 'Views' },
   { key: 'ringbuffer', label: 'Ring Buffers' },
+  { key: 'procedure', label: 'Procedures' },
+  { key: 'handler', label: 'Handlers' },
+  { key: 'enum', label: 'Enums' },
+  { key: 'event', label: 'Events' },
+  { key: 'dictionary', label: 'Dictionaries' },
+  { key: 'migration', label: 'Migrations' },
 ];
 
 export function SchemaBrowser({ executor }: SchemaBrowserProps) {
@@ -109,7 +115,7 @@ export function SchemaBrowser({ executor }: SchemaBrowserProps) {
   const loadSchema = async () => {
     setLoading(true);
     try {
-      const [nsRows, tableRows, viewRows, vtableRows, rbRows, colRows, vtableColRows] = await Promise.all([
+      const [nsRows, tableRows, viewRows, vtableRows, rbRows, colRows, vtableColRows, procRows, handlerRows, enumRows, eventRows, dictRows, migrationRows] = await Promise.all([
         queryRows(executor, 'FROM system::namespaces MAP { id, name }'),
         queryRows(executor, 'FROM system::tables MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::views MAP { id, namespace_id, name, kind }'),
@@ -117,6 +123,12 @@ export function SchemaBrowser({ executor }: SchemaBrowserProps) {
         queryRows(executor, 'FROM system::ringbuffers MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::columns MAP { source_id, source_type, name, type, position }'),
         queryRows(executor, 'FROM system::virtual_table_columns MAP { vtable_id, name, type, position }'),
+        queryRows(executor, 'FROM system::procedures MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::handlers MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::enums MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::events MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::dictionaries MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::migrations MAP { name }'),
       ]);
 
       // Build namespace map: id → name
@@ -172,6 +184,38 @@ export function SchemaBrowser({ executor }: SchemaBrowserProps) {
       }
       for (const row of rbRows) {
         addSource(extractNum(row.id), extractNum(row.namespace_id), extractStr(row.name), 'ringbuffer', SOURCE_TYPE_RINGBUFFER);
+      }
+
+      const addLeafSource = (nsId: number, name: string, category: SourceInfo['category']) => {
+        if (!nsSources.has(nsId)) nsSources.set(nsId, []);
+        nsSources.get(nsId)!.push({ name: extractStr(name), category, columns: [] });
+      };
+
+      for (const row of procRows) {
+        addLeafSource(extractNum(row.namespace_id), extractStr(row.name), 'procedure');
+      }
+      for (const row of handlerRows) {
+        addLeafSource(extractNum(row.namespace_id), extractStr(row.name), 'handler');
+      }
+      for (const row of enumRows) {
+        addLeafSource(extractNum(row.namespace_id), extractStr(row.name), 'enum');
+      }
+      for (const row of eventRows) {
+        addLeafSource(extractNum(row.namespace_id), extractStr(row.name), 'event');
+      }
+      for (const row of dictRows) {
+        addLeafSource(extractNum(row.namespace_id), extractStr(row.name), 'dictionary');
+      }
+
+      // Migrations have no namespace_id — assign to "system" namespace
+      let systemNsId: number | undefined;
+      for (const [id, name] of nsMap) {
+        if (name === 'system') { systemNsId = id; break; }
+      }
+      if (systemNsId !== undefined) {
+        for (const row of migrationRows) {
+          addLeafSource(systemNsId, extractStr(row.name), 'migration');
+        }
       }
 
       // Build final namespace list (include all namespaces, even empty ones)
@@ -238,15 +282,17 @@ export function SchemaBrowser({ executor }: SchemaBrowserProps) {
                 <SchemaNode key={key} label={`${label} (${sources.length})`} labelClass="rdb-schema__node-label--category">
                   {sources.map(source => (
                     <SchemaNode key={source.name} label={source.name}>
-                      {source.columns.map(col => (
-                        <SchemaNode
-                          key={col.name}
-                          label={col.name}
-                          labelClass="rdb-schema__node-label--column"
-                          type={col.type}
-                          typeClass={typeColorClass(col.type)}
-                        />
-                      ))}
+                      {source.columns.length > 0
+                        ? source.columns.map(col => (
+                          <SchemaNode
+                            key={col.name}
+                            label={col.name}
+                            labelClass="rdb-schema__node-label--column"
+                            type={col.type}
+                            typeClass={typeColorClass(col.type)}
+                          />
+                        ))
+                        : undefined}
                     </SchemaNode>
                   ))}
                 </SchemaNode>

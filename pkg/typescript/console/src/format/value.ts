@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-import { Value } from '@reifydb/core';
 
 export interface ValueStyle {
   color?: string;
@@ -55,47 +54,16 @@ export function formatValue(value: unknown): string {
   if (value === null || value === undefined) {
     return 'none';
   }
-  const str = value instanceof Value ? value.toString()
-    : typeof value === 'object' ? JSON.stringify(value)
-    : String(value);
-
-  // Safety net: convert raw WASM DateTime repr to readable format
-  const dtMatch = str.match(/DateTime\(.*?seconds:\s*(\d+)/);
-  if (dtMatch) {
-    const d = new Date(Number(dtMatch[1]) * 1000);
-    return d.toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
+  // Duck-type Value objects by checking for .type (same approach as getValueStyle).
+  // Handles BigInt-backed types (Int8, Uint8, etc.) that crash JSON.stringify.
+  if (typeof value === 'object' && typeof (value as any).type === 'string') {
+    return value.toString();
   }
-  // Safety net: convert raw WASM Date repr to readable format
-  const dateMatch = str.match(/Date\(.*?days_since_epoch:\s*(\d+)/);
-  if (dateMatch) {
-    return new Date(Number(dateMatch[1]) * 86400000).toISOString().slice(0, 10);
+  if (typeof value === 'bigint') {
+    return value.toString();
   }
-  // Safety net: convert raw WASM Time repr to readable format
-  const timeMatch = str.match(/Time\(.*?nanos_since_midnight:\s*(\d+)/);
-  if (timeMatch) {
-    const totalNanos = Number(timeMatch[1]);
-    const totalSeconds = Math.floor(totalNanos / 1e9);
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
   }
-  // Safety net: convert raw WASM Duration repr to readable format
-  const durMatch = str.match(/Duration\(.*?months:\s*(\d+).*?days:\s*(\d+).*?nanos:\s*(\d+)/);
-  if (durMatch) {
-    const months = Number(durMatch[1]);
-    const days = Number(durMatch[2]);
-    const nanos = Number(durMatch[3]);
-    const totalSeconds = Math.floor(nanos / 1e9);
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-    const parts: string[] = [];
-    if (months > 0) parts.push(`${months} month${months !== 1 ? 's' : ''}`);
-    if (days > 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`);
-    const time = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    if (h > 0 || m > 0 || s > 0) parts.push(time);
-    return parts.length > 0 ? parts.join(' ') : '0 days';
-  }
-  return str;
+  return String(value);
 }
