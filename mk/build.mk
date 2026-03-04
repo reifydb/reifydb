@@ -5,7 +5,7 @@
 .PHONY: build build-workspace build-pkg-typescript build-wasm
 
 # Main build target - builds everything
-build: build-workspace build-pkg-typescript
+build: build-workspace build-wasm build-pkg-typescript
 	@echo "✅ All packages built successfully!"
 
 # Build entire Rust workspace (includes crates/, bin/, and pkg/rust/)
