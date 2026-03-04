@@ -24,6 +24,7 @@ use reifydb_catalog::{
 			sequences::Sequences, series::Series, table_storage_stats::TableStorageStats, tables::Tables,
 			tables_virtual::TablesVirtual, tags::Tags, types::Types, user_roles::UserRoles, users::Users,
 			versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
+			virtual_table_columns::VirtualTableColumns,
 		},
 		tables::VTables,
 	},
@@ -586,6 +587,9 @@ pub(crate) fn compile<'a>(
 					"policy_operations" => VTables::PolicyOperations(PolicyOperations::new()),
 					"migrations" => VTables::Migrations(Migrations::new()),
 					"configs" => VTables::Configs(Configs::new(context.services.ioc.clone())),
+					"virtual_table_columns" => VTables::VirtualTableColumns(
+						VirtualTableColumns::new(context.services.catalog.clone()),
+					),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {

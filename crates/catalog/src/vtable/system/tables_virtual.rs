@@ -71,6 +71,7 @@ impl VTable for TablesVirtual {
 			(vtable::FLOW_EDGES, "flow_edges"),
 			(vtable::DICTIONARIES, "dictionaries"),
 			(vtable::VIRTUAL_TABLES, "virtual_tables"),
+			(vtable::VIRTUAL_TABLE_COLUMNS, "virtual_table_columns"),
 		];
 
 		for (id, name) in system_tables {

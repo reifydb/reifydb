@@ -1,0 +1,69 @@
+{
+  "name": "@reifydb/console",
+  "version": "0.3.0",
+  "description": "Database console and embeddable snippet component for ReifyDB",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "pnpm build",
+    "publish:npm": "pnpm publish --access public"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0",
+    "monaco-editor": ">=0.40.0",
+    "@monaco-editor/react": ">=4.0.0"
+  },
+  "dependencies": {
+    "@reifydb/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "monaco-editor": "^0.55.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "reifydb",
+    "database",
+    "console",
+    "editor",
+    "react",
+    "typescript"
+  ],
+  "files": [
+    "dist/",
+    "package.json",
+    "readme.md",
+    "license.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reifydb/reifydb.git",
+    "directory": "pkg/typescript/console"
+  },
+  "homepage": "https://github.com/reifydb/reifydb#readme",
+  "bugs": {
+    "url": "https://github.com/reifydb/reifydb/issues"
+  }
+}

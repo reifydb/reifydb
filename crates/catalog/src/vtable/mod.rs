@@ -83,7 +83,13 @@ impl VTableRegistry {
 				Some(SystemCatalog::get_system_operator_retention_policies_table_def())
 			}
 			CDC_CONSUMERS => Some(SystemCatalog::get_system_cdc_consumers_table_def()),
+			FLOWS => Some(SystemCatalog::get_system_flows_table_def()),
 			FLOW_OPERATORS => Some(SystemCatalog::get_system_flow_operators_table_def()),
+			FLOW_NODES => Some(SystemCatalog::get_system_flow_nodes_table_def()),
+			FLOW_EDGES => Some(SystemCatalog::get_system_flow_edges_table_def()),
+			FLOW_NODE_TYPES => Some(SystemCatalog::get_system_flow_node_types_table_def()),
+			FLOW_OPERATOR_INPUTS => Some(SystemCatalog::get_system_flow_operator_inputs_table_def()),
+			FLOW_OPERATOR_OUTPUTS => Some(SystemCatalog::get_system_flow_operator_outputs_table_def()),
 			DICTIONARIES => Some(SystemCatalog::get_system_dictionaries_table_def()),
 			RINGBUFFERS => Some(SystemCatalog::get_system_ringbuffers_table_def()),
 			SCHEMAS => Some(SystemCatalog::get_system_schemas_table_def()),
@@ -98,6 +104,22 @@ impl VTableRegistry {
 			USER_ROLES => Some(SystemCatalog::get_system_user_roles_table_def()),
 			POLICIES => Some(SystemCatalog::get_system_policies_table_def()),
 			POLICY_OPERATIONS => Some(SystemCatalog::get_system_policy_operations_table_def()),
+			VIRTUAL_TABLES => Some(SystemCatalog::get_system_virtual_tables_table_def()),
+			VIRTUAL_TABLE_COLUMNS => Some(SystemCatalog::get_system_virtual_table_columns_table_def()),
+			TYPES => Some(SystemCatalog::get_system_types_table_def()),
+			TABLE_STORAGE_STATS => Some(SystemCatalog::get_system_table_storage_stats_table_def()),
+			VIEW_STORAGE_STATS => Some(SystemCatalog::get_system_view_storage_stats_table_def()),
+			FLOW_STORAGE_STATS => Some(SystemCatalog::get_system_flow_storage_stats_table_def()),
+			FLOW_NODE_STORAGE_STATS => Some(SystemCatalog::get_system_flow_node_storage_stats_table_def()),
+			INDEX_STORAGE_STATS => Some(SystemCatalog::get_system_index_storage_stats_table_def()),
+			RINGBUFFER_STORAGE_STATS => {
+				Some(SystemCatalog::get_system_ringbuffer_storage_stats_table_def())
+			}
+			DICTIONARY_STORAGE_STATS => {
+				Some(SystemCatalog::get_system_dictionary_storage_stats_table_def())
+			}
+			MIGRATIONS => Some(SystemCatalog::get_system_migrations_table_def()),
+			USER_AUTHENTICATIONS => Some(SystemCatalog::get_system_user_authentications_table_def()),
 			_ => None,
 		})
 	}
@@ -118,7 +140,13 @@ impl VTableRegistry {
 			SystemCatalog::get_system_primitive_retention_policies_table_def(),
 			SystemCatalog::get_system_operator_retention_policies_table_def(),
 			SystemCatalog::get_system_cdc_consumers_table_def(),
+			SystemCatalog::get_system_flows_table_def(),
 			SystemCatalog::get_system_flow_operators_table_def(),
+			SystemCatalog::get_system_flow_nodes_table_def(),
+			SystemCatalog::get_system_flow_edges_table_def(),
+			SystemCatalog::get_system_flow_node_types_table_def(),
+			SystemCatalog::get_system_flow_operator_inputs_table_def(),
+			SystemCatalog::get_system_flow_operator_outputs_table_def(),
 			SystemCatalog::get_system_dictionaries_table_def(),
 			SystemCatalog::get_system_ringbuffers_table_def(),
 			SystemCatalog::get_system_schemas_table_def(),
@@ -133,6 +161,18 @@ impl VTableRegistry {
 			SystemCatalog::get_system_user_roles_table_def(),
 			SystemCatalog::get_system_policies_table_def(),
 			SystemCatalog::get_system_policy_operations_table_def(),
+			SystemCatalog::get_system_virtual_tables_table_def(),
+			SystemCatalog::get_system_virtual_table_columns_table_def(),
+			SystemCatalog::get_system_types_table_def(),
+			SystemCatalog::get_system_table_storage_stats_table_def(),
+			SystemCatalog::get_system_view_storage_stats_table_def(),
+			SystemCatalog::get_system_flow_storage_stats_table_def(),
+			SystemCatalog::get_system_flow_node_storage_stats_table_def(),
+			SystemCatalog::get_system_index_storage_stats_table_def(),
+			SystemCatalog::get_system_ringbuffer_storage_stats_table_def(),
+			SystemCatalog::get_system_dictionary_storage_stats_table_def(),
+			SystemCatalog::get_system_migrations_table_def(),
+			SystemCatalog::get_system_user_authentications_table_def(),
 		])
 	}
 }

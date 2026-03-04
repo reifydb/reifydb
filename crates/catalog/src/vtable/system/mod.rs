@@ -49,3 +49,4 @@ pub mod users;
 pub mod versions;
 pub mod view_storage_stats;
 pub mod views;
+pub mod virtual_table_columns;

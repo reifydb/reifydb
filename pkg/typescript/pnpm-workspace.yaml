@@ -1,6 +1,7 @@
 packages:
   - core
   - client
+  - console
   - react
   - shell
   - wasm

@@ -52,6 +52,7 @@ pub mod user_roles;
 pub mod users;
 pub mod versions;
 pub mod views;
+pub mod virtual_table_columns;
 
 use cdc_consumers::cdc_consumers;
 use column_properties::column_properties;
@@ -99,6 +100,7 @@ use user_roles::user_roles;
 use users::users;
 use versions::versions;
 use views::views;
+use virtual_table_columns::virtual_table_columns;
 
 use crate::system::ringbuffers::ringbuffers;
 
@@ -551,6 +553,18 @@ pub mod ids {
 
 			pub const ALL: [ColumnId; 3] = [POLICY_ID, OPERATION, BODY_SOURCE];
 		}
+
+		pub mod virtual_table_columns {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const VTABLE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const TYPE: ColumnId = ColumnId(4);
+			pub const POSITION: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [ID, VTABLE_ID, NAME, TYPE, POSITION];
+		}
 	}
 
 	pub mod sequences {
@@ -643,8 +657,9 @@ pub mod ids {
 		pub const MIGRATIONS: VTableId = VTableId(45);
 		pub const USER_AUTHENTICATIONS: VTableId = VTableId(46);
 		pub const CONFIGS: VTableId = VTableId(47);
+		pub const VIRTUAL_TABLE_COLUMNS: VTableId = VTableId(48);
 
-		pub const ALL: [VTableId; 47] = [
+		pub const ALL: [VTableId; 48] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -692,6 +707,7 @@ pub mod ids {
 			MIGRATIONS,
 			USER_AUTHENTICATIONS,
 			CONFIGS,
+			VIRTUAL_TABLE_COLUMNS,
 		];
 	}
 }
@@ -951,5 +967,10 @@ impl SystemCatalog {
 	/// Get the configs virtual table definition
 	pub fn get_system_configs_table_def() -> Arc<VTableDef> {
 		configs()
+	}
+
+	/// Get the virtual_table_columns virtual table definition
+	pub fn get_system_virtual_table_columns_table_def() -> Arc<VTableDef> {
+		virtual_table_columns()
 	}
 }

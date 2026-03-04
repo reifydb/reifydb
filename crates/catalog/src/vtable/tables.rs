@@ -29,7 +29,7 @@ use super::{
 		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences, series::Series,
 		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, tags::Tags,
 		types::Types, user_roles::UserRoles, users::Users, versions::Versions,
-		view_storage_stats::ViewStorageStats, views::Views,
+		view_storage_stats::ViewStorageStats, views::Views, virtual_table_columns::VirtualTableColumns,
 	},
 };
 use crate::Result;
@@ -91,6 +91,7 @@ pub enum VTables {
 	Migrations(Migrations),
 
 	Configs(Configs),
+	VirtualTableColumns(VirtualTableColumns),
 
 	/// User-defined virtual table (callback-based)
 	UserDefined {
@@ -152,6 +153,7 @@ impl VTables {
 			Self::PolicyOperations(t) => &t.definition,
 			Self::Migrations(t) => &t.definition,
 			Self::Configs(t) => &t.definition,
+			Self::VirtualTableColumns(t) => &t.definition,
 			Self::UserDefined {
 				def,
 				..
@@ -208,6 +210,7 @@ impl VTables {
 			Self::PolicyOperations(t) => t.initialize(txn, ctx),
 			Self::Migrations(t) => t.initialize(txn, ctx),
 			Self::Configs(t) => t.initialize(txn, ctx),
+			Self::VirtualTableColumns(t) => t.initialize(txn, ctx),
 			Self::UserDefined {
 				params: stored_params,
 				exhausted,
@@ -278,6 +281,7 @@ impl VTables {
 			Self::PolicyOperations(t) => t.next(txn),
 			Self::Migrations(t) => t.next(txn),
 			Self::Configs(t) => t.next(txn),
+			Self::VirtualTableColumns(t) => t.next(txn),
 			Self::UserDefined {
 				data_fn,
 				params: stored_params,

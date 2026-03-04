@@ -11,9 +11,10 @@
     "test:integration": "pnpm -r --stream test:integration",
     "test:coverage": "pnpm -r --stream test:coverage",
     "test:watch": "pnpm -r --stream test:unit:watch",
-    "publish:all": "pnpm login && pnpm publish:core && pnpm publish:client && pnpm publish:react",
+    "publish:all": "pnpm login && pnpm publish:core && pnpm publish:client && pnpm publish:console && pnpm publish:react && pnpm publish:shell && pnpm publish:wasm",
     "publish:core": "pnpm --filter @reifydb/core publish:npm",
     "publish:client": "pnpm --filter @reifydb/client publish:npm",
+    "publish:console": "pnpm --filter @reifydb/console publish:npm",
     "publish:react": "pnpm --filter @reifydb/react publish:npm",
     "publish:shell": "pnpm --filter @reifydb/shell publish:npm",
     "publish:wasm": "pnpm --filter @reifydb/wasm publish:npm"
