@@ -47,8 +47,16 @@ wasm-pack build \
 
 echo
 echo "WASM build complete!"
+
+# Copy bundler output to @reifydb/wasm package
+TS_WASM_DIR="$REPO_ROOT/pkg/typescript/wasm/wasm"
+echo "Copying bundler output to $TS_WASM_DIR..."
+mkdir -p "$TS_WASM_DIR"
+cp -r dist/bundler/* "$TS_WASM_DIR/"
+
 echo
 echo "Outputs:"
 echo "  - pkg/webassembly/dist/web/       - For browsers with ES modules"
 echo "  - pkg/webassembly/dist/node/      - For Node.js"
 echo "  - pkg/webassembly/dist/bundler/   - For webpack/Vite/etc"
+echo "  - pkg/typescript/wasm/wasm/       - Bundler output for @reifydb/wasm"

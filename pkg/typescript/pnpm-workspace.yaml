@@ -3,6 +3,7 @@ packages:
   - client
   - react
   - shell
+  - wasm
 
 overrides:
   '@reifydb/core': link:core
