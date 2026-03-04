@@ -48,7 +48,9 @@ pub mod sync;
 
 pub mod actor;
 
-use std::{future::Future, mem::ManuallyDrop, sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc};
+#[cfg(not(target_arch = "wasm32"))]
+use std::{mem::ManuallyDrop, time::Duration};
 
 use crate::{
 	actor::system::{ActorSystem, ActorSystemConfig},
@@ -122,7 +124,10 @@ impl SharedRuntimeConfig {
 // WASM runtime types - single-threaded execution support
 use std::fmt;
 #[cfg(target_arch = "wasm32")]
-use std::{pin::Pin, task::Poll};
+use std::{
+	pin::Pin,
+	task::{Context, Poll},
+};
 
 #[cfg(target_arch = "wasm32")]
 use futures_util::future::LocalBoxFuture;
@@ -169,7 +174,7 @@ impl fmt::Display for WasmJoinError {
 }
 
 #[cfg(target_arch = "wasm32")]
-impl error::Error for WasmJoinError {}
+impl std::error::Error for WasmJoinError {}
 
 /// Inner shared state for the runtime (native).
 #[cfg(not(target_arch = "wasm32"))]

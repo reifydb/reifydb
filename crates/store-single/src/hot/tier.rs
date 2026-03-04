@@ -10,9 +10,11 @@ use std::ops::Bound;
 
 use reifydb_type::{Result, util::cowvec::CowVec};
 
+use super::memory::storage::MemoryPrimitiveStorage;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use super::sqlite::config::SqliteConfig;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use super::sqlite::storage::SqlitePrimitiveStorage;
-use super::{memory::storage::MemoryPrimitiveStorage, sqlite::config::SqliteConfig};
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 /// Hot storage tier.

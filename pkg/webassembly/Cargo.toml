@@ -39,6 +39,7 @@ console_error_panic_hook = { workspace = true, optional = true }
 serde-wasm-bindgen = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
+getrandom = { workspace = true }
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3"
+wasm-bindgen-test = { workspace = true }

@@ -28,12 +28,13 @@ use reifydb_type::{Result, error::Error};
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
+#[cfg(reifydb_target = "native")]
+use crate::operator::apply::ApplyOperator;
 use crate::{
 	engine::FlowEngine,
 	operator::{
 		Operators,
 		append::AppendOperator,
-		apply::ApplyOperator,
 		distinct::DistinctOperator,
 		extend::ExtendOperator,
 		filter::FilterOperator,

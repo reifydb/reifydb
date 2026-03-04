@@ -43,6 +43,7 @@
 
 use std::{collections::VecDeque, marker::PhantomData};
 
+#[cfg(reifydb_target = "native")]
 use crossbeam_channel::unbounded;
 
 #[cfg(reifydb_target = "native")]

@@ -276,6 +276,7 @@ use std::error;
 #[cfg(reifydb_target = "native")]
 use std::sync;
 
+#[cfg(reifydb_target = "native")]
 use crossbeam_channel::Sender;
 #[cfg(reifydb_target = "native")]
 pub(crate) use native::create_mailbox;

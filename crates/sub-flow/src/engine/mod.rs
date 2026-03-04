@@ -10,8 +10,11 @@ use std::{
 	sync::Arc,
 };
 
+#[cfg(reifydb_target = "native")]
 use postcard::to_stdvec;
 use reifydb_catalog::catalog::Catalog;
+#[cfg(reifydb_target = "native")]
+use reifydb_core::internal;
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -20,7 +23,6 @@ use reifydb_core::{
 		id::{TableId, ViewId},
 		primitive::PrimitiveId,
 	},
-	internal,
 };
 use reifydb_engine::vm::executor::Executor;
 use reifydb_rql::flow::{
@@ -28,15 +30,15 @@ use reifydb_rql::flow::{
 	flow::FlowDag,
 };
 use reifydb_runtime::clock::Clock;
+#[cfg(reifydb_target = "native")]
 use reifydb_type::{Result, error::Error, value::Value};
 use tracing::instrument;
 
 #[cfg(reifydb_target = "native")]
 use crate::ffi::loader::ffi_operator_loader;
-use crate::{
-	builder::OperatorFactory,
-	operator::{BoxedOperator, Operators},
-};
+#[cfg(reifydb_target = "native")]
+use crate::operator::BoxedOperator;
+use crate::{builder::OperatorFactory, operator::Operators};
 
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
@@ -114,6 +116,7 @@ impl FlowEngine {
 
 	/// FFI operators are not supported in WASM
 	#[cfg(not(reifydb_target = "native"))]
+	#[allow(dead_code)]
 	pub(crate) fn is_ffi_operator(&self, _operator: &str) -> bool {
 		false
 	}
