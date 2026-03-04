@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 // Components
-export { Console, type ConsoleProps } from './components/Console';
+export { Console, type ConsoleProps, type ConnectionConfig } from './components/Console';
 export { Snippet, type SnippetProps } from './components/Snippet';
 
 // Executors

@@ -9,6 +9,7 @@ interface EditorToolbarProps {
   isExecuting: boolean;
   connectionLabel: string;
   connectionStatus: ConnectionStatus;
+  connectionLocked?: boolean;
   onToggleConnectionPanel: () => void;
 }
 
@@ -18,18 +19,26 @@ export function EditorToolbar({
   isExecuting,
   connectionLabel,
   connectionStatus,
+  connectionLocked,
   onToggleConnectionPanel,
 }: EditorToolbarProps) {
   return (
     <div className="rdb-editor-toolbar">
       <div className="rdb-editor-toolbar__left">
-        <button
-          className="rdb-editor-toolbar__connection"
-          onClick={onToggleConnectionPanel}
-        >
-          <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connectionStatus}`}>●</span>
-          <span>[{connectionLabel}]</span>
-        </button>
+        {connectionLocked ? (
+          <span className="rdb-editor-toolbar__connection rdb-editor-toolbar__connection--locked">
+            <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connectionStatus}`}>●</span>
+            <span>[{connectionLabel}]</span>
+          </span>
+        ) : (
+          <button
+            className="rdb-editor-toolbar__connection"
+            onClick={onToggleConnectionPanel}
+          >
+            <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connectionStatus}`}>●</span>
+            <span>[{connectionLabel}]</span>
+          </button>
+        )}
         <span className="rdb-editor-toolbar__hint">ctrl+enter to run</span>
       </div>
       <div className="rdb-editor-toolbar__actions">

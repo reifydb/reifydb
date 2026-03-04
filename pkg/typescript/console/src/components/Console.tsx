@@ -17,10 +17,15 @@ import { HistoryPanel } from './history/HistoryPanel';
 import { ConnectionPanel } from './connection/ConnectionPanel';
 import type { ConnectionMode, ConnectionStatus } from './connection/ConnectionPanel';
 
+export type ConnectionConfig =
+  | { mode: 'wasm' }
+  | { mode: 'websocket'; url: string };
+
 export interface ConsoleProps {
   executor: Executor;
   initialCode?: string;
   historyKey?: string;
+  connection?: ConnectionConfig;
 }
 
 const TABS = [
@@ -31,31 +36,40 @@ const TABS = [
 
 const WS_URL_STORAGE_KEY = 'rdb-console-ws-url';
 
-function ConsoleInner({ executor, historyKey }: { executor: Executor; historyKey?: string }) {
+function ConsoleInner({ executor, historyKey, connection }: { executor: Executor; historyKey?: string; connection?: ConnectionConfig }) {
   const { state, dispatch } = useConsoleStore();
+  const connectionLocked = connection != null;
+  const lockedWsUrl = connection?.mode === 'websocket' ? connection.url : null;
 
-  const [connectionMode, setConnectionMode] = useState<ConnectionMode>('wasm');
+  const [connectionMode, setConnectionMode] = useState<ConnectionMode>(
+    connection ? connection.mode : 'wasm',
+  );
   const [wsUrl, setWsUrl] = useState(() => {
+    if (connection?.mode === 'websocket') return connection.url;
     try {
       return localStorage.getItem(WS_URL_STORAGE_KEY) || 'ws://localhost:8090';
     } catch {
       return 'ws://localhost:8090';
     }
   });
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connected');
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
+    connection?.mode === 'websocket' ? 'connecting' : 'connected',
+  );
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [activeExecutor, setActiveExecutor] = useState<Executor>(executor);
   const [showConnectionPanel, setShowConnectionPanel] = useState(false);
   const wsClientRef = useRef<{ disconnect(): void } | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Persist wsUrl to localStorage
+  // Persist wsUrl to localStorage (only when not locked)
   useEffect(() => {
+    if (connectionLocked) return;
     try {
       localStorage.setItem(WS_URL_STORAGE_KEY, wsUrl);
     } catch {
       // ignore
     }
-  }, [wsUrl]);
+  }, [wsUrl, connectionLocked]);
 
   // Keep activeExecutor in sync if prop changes while in wasm mode
   useEffect(() => {
@@ -63,6 +77,63 @@ function ConsoleInner({ executor, historyKey }: { executor: Executor; historyKey
       setActiveExecutor(executor);
     }
   }, [executor, connectionMode]);
+
+  // Auto-connect for locked websocket mode
+  useEffect(() => {
+    if (!lockedWsUrl) return;
+    const url = lockedWsUrl;
+
+    let cancelled = false;
+    let backoff = 1000;
+    const maxBackoff = 30000;
+
+    async function connect() {
+      if (cancelled) return;
+      setConnectionStatus('connecting');
+      setConnectionError(null);
+
+      try {
+        if (wsClientRef.current) {
+          wsClientRef.current.disconnect();
+          wsClientRef.current = null;
+        }
+
+        const client = await Client.connect_ws(url, { timeoutMs: 30_000 });
+        if (cancelled) {
+          client.disconnect();
+          return;
+        }
+        wsClientRef.current = client;
+        const wsExecutor = new WsExecutor(client as unknown as WsClient);
+        setActiveExecutor(wsExecutor);
+        setConnectionStatus('connected');
+        backoff = 1000; // reset backoff on success
+      } catch (err) {
+        if (cancelled) return;
+        setConnectionStatus('error');
+        setConnectionError(err instanceof Error ? err.message : String(err));
+        // Auto-reconnect with backoff
+        reconnectTimerRef.current = setTimeout(() => {
+          connect();
+        }, backoff);
+        backoff = Math.min(backoff * 2, maxBackoff);
+      }
+    }
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (wsClientRef.current) {
+        wsClientRef.current.disconnect();
+        wsClientRef.current = null;
+      }
+    };
+  }, [lockedWsUrl]);
 
   // Load history on mount
   useEffect(() => {
@@ -173,9 +244,10 @@ function ConsoleInner({ executor, historyKey }: { executor: Executor; historyKey
           isExecuting={state.isExecuting}
           connectionLabel={connectionLabel}
           connectionStatus={connectionStatus}
+          connectionLocked={connectionLocked}
           onToggleConnectionPanel={() => setShowConnectionPanel((v) => !v)}
         />
-        {showConnectionPanel && (
+        {!connectionLocked && showConnectionPanel && (
           <ConnectionPanel
             mode={connectionMode}
             wsUrl={wsUrl}
@@ -227,10 +299,10 @@ function ConsoleInner({ executor, historyKey }: { executor: Executor; historyKey
   );
 }
 
-export function Console({ executor, initialCode, historyKey }: ConsoleProps) {
+export function Console({ executor, initialCode, historyKey, connection }: ConsoleProps) {
   return (
     <ConsoleProvider initialCode={initialCode}>
-      <ConsoleInner executor={executor} historyKey={historyKey} />
+      <ConsoleInner executor={executor} historyKey={historyKey} connection={connection} />
     </ConsoleProvider>
   );
 }

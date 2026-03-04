@@ -10,7 +10,9 @@ pub mod column_properties;
 pub mod columns;
 pub mod configs;
 pub mod dictionaries;
+pub mod enum_variants;
 pub mod enums;
+pub mod event_variants;
 pub mod events;
 pub mod flow_edges;
 pub mod flow_lags;
@@ -45,6 +47,7 @@ pub mod storage_stats_table;
 pub mod storage_stats_view;
 pub mod tables;
 pub mod tables_virtual;
+pub mod tag_variants;
 pub mod tags;
 pub mod types;
 pub mod user_authentications;
@@ -59,7 +62,9 @@ use column_properties::column_properties;
 use columns::columns;
 use configs::configs;
 use dictionaries::dictionaries;
+use enum_variants::enum_variants;
 use enums::enums;
+use event_variants::event_variants;
 use events::events;
 use flow_edges::flow_edges;
 use flow_lags::flow_lags;
@@ -93,6 +98,7 @@ use storage_stats_table::table_storage_stats;
 use storage_stats_view::view_storage_stats;
 use tables::tables;
 use tables_virtual::virtual_tables;
+use tag_variants::tag_variants;
 use tags::tags;
 use types::types;
 use user_authentications::user_authentications;
@@ -208,6 +214,21 @@ pub mod ids {
 				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
 		}
 
+		pub mod enum_variants {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const VARIANT_TAG: ColumnId = ColumnId(2);
+			pub const VARIANT_NAME: ColumnId = ColumnId(3);
+			pub const FIELD_COUNT: ColumnId = ColumnId(4);
+			pub const FIELD_INDEX: ColumnId = ColumnId(5);
+			pub const FIELD_NAME: ColumnId = ColumnId(6);
+			pub const FIELD_TYPE: ColumnId = ColumnId(7);
+
+			pub const ALL: [ColumnId; 7] =
+				[ID, VARIANT_TAG, VARIANT_NAME, FIELD_COUNT, FIELD_INDEX, FIELD_NAME, FIELD_TYPE];
+		}
+
 		pub mod enums {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -216,6 +237,21 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(3);
 
 			pub const ALL: [ColumnId; 3] = [ID, NAMESPACE_ID, NAME];
+		}
+
+		pub mod event_variants {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const VARIANT_TAG: ColumnId = ColumnId(2);
+			pub const VARIANT_NAME: ColumnId = ColumnId(3);
+			pub const FIELD_COUNT: ColumnId = ColumnId(4);
+			pub const FIELD_INDEX: ColumnId = ColumnId(5);
+			pub const FIELD_NAME: ColumnId = ColumnId(6);
+			pub const FIELD_TYPE: ColumnId = ColumnId(7);
+
+			pub const ALL: [ColumnId; 7] =
+				[ID, VARIANT_TAG, VARIANT_NAME, FIELD_COUNT, FIELD_INDEX, FIELD_NAME, FIELD_TYPE];
 		}
 
 		pub mod events {
@@ -236,6 +272,21 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(3);
 
 			pub const ALL: [ColumnId; 3] = [ID, NAMESPACE_ID, NAME];
+		}
+
+		pub mod tag_variants {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const VARIANT_TAG: ColumnId = ColumnId(2);
+			pub const VARIANT_NAME: ColumnId = ColumnId(3);
+			pub const FIELD_COUNT: ColumnId = ColumnId(4);
+			pub const FIELD_INDEX: ColumnId = ColumnId(5);
+			pub const FIELD_NAME: ColumnId = ColumnId(6);
+			pub const FIELD_TYPE: ColumnId = ColumnId(7);
+
+			pub const ALL: [ColumnId; 7] =
+				[ID, VARIANT_TAG, VARIANT_NAME, FIELD_COUNT, FIELD_INDEX, FIELD_NAME, FIELD_TYPE];
 		}
 
 		pub mod tags {
@@ -658,8 +709,11 @@ pub mod ids {
 		pub const USER_AUTHENTICATIONS: VTableId = VTableId(46);
 		pub const CONFIGS: VTableId = VTableId(47);
 		pub const VIRTUAL_TABLE_COLUMNS: VTableId = VTableId(48);
+		pub const ENUM_VARIANTS: VTableId = VTableId(49);
+		pub const EVENT_VARIANTS: VTableId = VTableId(50);
+		pub const TAG_VARIANTS: VTableId = VTableId(51);
 
-		pub const ALL: [VTableId; 48] = [
+		pub const ALL: [VTableId; 51] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -708,6 +762,9 @@ pub mod ids {
 			USER_AUTHENTICATIONS,
 			CONFIGS,
 			VIRTUAL_TABLE_COLUMNS,
+			ENUM_VARIANTS,
+			EVENT_VARIANTS,
+			TAG_VARIANTS,
 		];
 	}
 }
@@ -904,9 +961,19 @@ impl SystemCatalog {
 		enums()
 	}
 
+	/// Get the enum_variants virtual table definition
+	pub fn get_system_enum_variants_table_def() -> Arc<VTableDef> {
+		enum_variants()
+	}
+
 	/// Get the events virtual table definition
 	pub fn get_system_events_table_def() -> Arc<VTableDef> {
 		events()
+	}
+
+	/// Get the event_variants virtual table definition
+	pub fn get_system_event_variants_table_def() -> Arc<VTableDef> {
+		event_variants()
 	}
 
 	/// Get the procedures virtual table definition
@@ -922,6 +989,11 @@ impl SystemCatalog {
 	/// Get the tags virtual table definition
 	pub fn get_system_tags_table_def() -> Arc<VTableDef> {
 		tags()
+	}
+
+	/// Get the tag_variants virtual table definition
+	pub fn get_system_tag_variants_table_def() -> Arc<VTableDef> {
+		tag_variants()
 	}
 
 	/// Get the series virtual table definition
