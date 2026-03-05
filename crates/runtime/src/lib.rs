@@ -174,7 +174,10 @@ impl fmt::Display for WasmJoinError {
 }
 
 #[cfg(target_arch = "wasm32")]
-impl std::error::Error for WasmJoinError {}
+use std::error::Error;
+
+#[cfg(target_arch = "wasm32")]
+impl Error for WasmJoinError {}
 
 /// Inner shared state for the runtime (native).
 #[cfg(not(target_arch = "wasm32"))]
