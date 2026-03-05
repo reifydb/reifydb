@@ -76,8 +76,10 @@ echo -e "${YELLOW}[3/4] Updating TypeScript package versions...${NC}"
 TS_PACKAGES=(
     "pkg/typescript/core/package.json"
     "pkg/typescript/client/package.json"
+    "pkg/typescript/console/package.json"
     "pkg/typescript/react/package.json"
-    "crates/sub-admin/webapp/package.json"
+    "pkg/typescript/shell/package.json"
+    "pkg/typescript/wasm/package.json"
 )
 
 for package_file in "${TS_PACKAGES[@]}"; do

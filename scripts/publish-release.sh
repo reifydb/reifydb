@@ -193,48 +193,24 @@ if [ $SKIP_PNPM -eq 0 ]; then
     echo ""
     echo -e "${YELLOW}[Phase 2/2] Publishing TypeScript packages to pnpm${NC}"
 
-    # Order matters: core -> client -> react
-    PNPM_PACKAGES=("core" "client" "react")
+    # Publish all TS packages via the root publish:all script
+    # Order: core → client → console → react → shell → wasm
+    cd "$ROOT_DIR/pkg/typescript"
 
-    for package in "${PNPM_PACKAGES[@]}"; do
-        PACKAGE_DIR="$ROOT_DIR/pkg/typescript/$package"
-        PACKAGE_NAME="@reifydb/$package"
+    echo -e "${BLUE}  Building all TypeScript packages...${NC}"
+    run_cmd "pnpm run build"
 
-        echo -e "${BLUE}  Publishing $PACKAGE_NAME...${NC}"
+    echo -e "${BLUE}  Publishing all TypeScript packages...${NC}"
+    if run_cmd "pnpm run publish:all"; then
+        log_publish "pnpm:all" "SUCCESS"
+        echo -e "${GREEN}  ✓ All TypeScript packages published successfully${NC}"
+    else
+        log_publish "pnpm:all" "FAILED"
+        echo -e "${RED}  ✗ Failed to publish TypeScript packages${NC}"
+        FAILED_PACKAGES="$FAILED_PACKAGES pnpm:all"
+    fi
 
-        # Check if already published
-        if was_published "pnpm:$PACKAGE_NAME"; then
-            echo -e "${GREEN}    ✓ Already published (from previous run)${NC}"
-            continue
-        fi
-
-        if [ ! -d "$PACKAGE_DIR" ]; then
-            echo -e "${YELLOW}    ⚠ Skipping $PACKAGE_NAME (directory not found)${NC}"
-            continue
-        fi
-
-        cd "$PACKAGE_DIR"
-
-        # Build the package first
-        if [ -f "package.json" ] && grep -q '"build"' package.json; then
-            echo -e "${BLUE}    Building package...${NC}"
-            if ! run_cmd "pnpm run build"; then
-                echo -e "${YELLOW}    ⚠ Build failed, attempting to publish anyway${NC}"
-            fi
-        fi
-
-        # Publish to pnpm (without any tag, just semantic version)
-        if run_cmd "pnpm publish --access public --no-git-checks"; then
-            log_publish "pnpm:$PACKAGE_NAME" "SUCCESS"
-            echo -e "${GREEN}    ✓ Published $PACKAGE_NAME${NC}"
-        else
-            log_publish "pnpm:$PACKAGE_NAME" "FAILED"
-            echo -e "${RED}    ✗ Failed to publish $PACKAGE_NAME${NC}"
-            FAILED_PACKAGES="$FAILED_PACKAGES pnpm:$PACKAGE_NAME"
-        fi
-
-        cd "$ROOT_DIR"
-    done
+    cd "$ROOT_DIR"
 else
     echo -e "${YELLOW}[Phase 2/2] Skipping pnpm packages (--skip-pnpm)${NC}"
 fi

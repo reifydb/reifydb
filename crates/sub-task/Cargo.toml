@@ -1,5 +1,6 @@
 [package]
 name = "reifydb-sub-task"
+description = "Task execution subsystem for ReifyDB"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
