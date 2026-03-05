@@ -64,6 +64,25 @@ impl From<Error> for ExecuteError {
 /// Result type for execute operations.
 pub type ExecuteResult<T> = Result<T, ExecuteError>;
 
+/// Retry a closure up to 3 times on `TXN_001` transaction conflict errors.
+fn retry_on_conflict<F>(mut f: F) -> Result<Vec<Frame>, Error>
+where
+	F: FnMut() -> Result<Vec<Frame>, Error>,
+{
+	let mut last_err = None;
+	for attempt in 0..3u32 {
+		match f() {
+			Ok(frames) => return Ok(frames),
+			Err(err) if err.code == "TXN_001" => {
+				tracing::warn!(attempt = attempt + 1, "Transaction conflict detected, retrying");
+				last_err = Some(err);
+			}
+			Err(err) => return Err(err),
+		}
+	}
+	Err(last_err.unwrap())
+}
+
 /// Execute a query with timeout.
 ///
 /// This function:
@@ -150,7 +169,7 @@ pub async fn execute_admin(
 	let combined = statements.join("; ");
 
 	// Execute synchronous admin operation on actor system's compute pool with timeout
-	let task = system.compute(move || engine.admin_as(identity, &combined, params));
+	let task = system.compute(move || retry_on_conflict(|| engine.admin_as(identity, &combined, params.clone())));
 
 	let result = time::timeout(timeout, task).await;
 
@@ -192,7 +211,7 @@ pub async fn execute_command(
 	let combined = statements.join("; ");
 
 	// Execute synchronous command on actor system's compute pool with timeout
-	let task = system.compute(move || engine.command_as(identity, &combined, params));
+	let task = system.compute(move || retry_on_conflict(|| engine.command_as(identity, &combined, params.clone())));
 
 	let result = time::timeout(timeout, task).await;
 

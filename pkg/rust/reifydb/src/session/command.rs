@@ -7,9 +7,12 @@ use reifydb_engine::{
 };
 use reifydb_type::value::identity::IdentityId;
 
+use super::retry::RetryPolicy;
+
 pub struct CommandSession {
 	pub(crate) engine: StandardEngine,
 	pub(crate) identity: IdentityId,
+	pub(crate) retry: RetryPolicy,
 }
 
 impl CommandSession {

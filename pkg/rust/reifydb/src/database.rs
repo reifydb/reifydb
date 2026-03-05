@@ -37,7 +37,7 @@ use crate::{
 	health::{ComponentHealth, HealthMonitor},
 	session::{
 		AdminSession, CommandSession, IntoAdminSession, IntoCommandSession, IntoQuerySession, QuerySession,
-		Session,
+		RetryPolicy, Session,
 	},
 	subsystem::Subsystems,
 };
@@ -252,12 +252,16 @@ impl Database {
 
 	/// Execute an admin (DDL + DML + Query) operation as root user.
 	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		self.engine.admin_as(IdentityId::root(), rql, params.into())
+		let params = params.into();
+		let engine = &self.engine;
+		RetryPolicy::default().execute(rql, || engine.admin_as(IdentityId::root(), rql, params.clone()))
 	}
 
 	/// Execute a transactional command (DML + Query) as root user.
 	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		self.engine.command_as(IdentityId::root(), rql, params.into())
+		let params = params.into();
+		let engine = &self.engine;
+		RetryPolicy::default().execute(rql, || engine.command_as(IdentityId::root(), rql, params.clone()))
 	}
 
 	/// Execute a read-only query as root user.
@@ -272,7 +276,9 @@ impl Database {
 		rql: &str,
 		params: impl Into<Params>,
 	) -> reifydb_type::Result<Vec<Frame>> {
-		self.engine.admin_as(identity, rql, params.into())
+		let params = params.into();
+		let engine = &self.engine;
+		RetryPolicy::default().execute(rql, || engine.admin_as(identity, rql, params.clone()))
 	}
 
 	/// Execute a transactional command (DML + Query) as a specific identity.
@@ -282,7 +288,9 @@ impl Database {
 		rql: &str,
 		params: impl Into<Params>,
 	) -> reifydb_type::Result<Vec<Frame>> {
-		self.engine.command_as(identity, rql, params.into())
+		let params = params.into();
+		let engine = &self.engine;
+		RetryPolicy::default().execute(rql, || engine.command_as(identity, rql, params.clone()))
 	}
 
 	/// Execute a read-only query as a specific identity.
@@ -309,7 +317,8 @@ impl Database {
 	/// The full `create subscription { } as { <query> };` statement is assembled internally.
 	pub fn subscribe_as(&self, identity: IdentityId, query: &str, batch_size: usize) -> Result<SubscriptionCursor> {
 		let rql = format!("create subscription {{}} as {{ {} }};", query);
-		let frames = self.engine.admin_as(identity, &rql, Params::None)?;
+		let engine = &self.engine;
+		let frames = RetryPolicy::default().execute(&rql, || engine.admin_as(identity, &rql, Params::None))?;
 		let frame = &frames[0];
 		let sub_id: u64 = frame
 			.get::<u64>("subscription_id", 0)

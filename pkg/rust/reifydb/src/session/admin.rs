@@ -4,7 +4,10 @@
 use reifydb_engine::engine::StandardEngine;
 use reifydb_type::value::identity::IdentityId;
 
+use super::retry::RetryPolicy;
+
 pub struct AdminSession {
 	pub(crate) engine: StandardEngine,
 	pub(crate) identity: IdentityId,
+	pub(crate) retry: RetryPolicy,
 }

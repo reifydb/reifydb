@@ -12,6 +12,7 @@ mod admin;
 mod command;
 #[allow(dead_code)]
 mod query;
+mod retry;
 
 pub use admin::AdminSession;
 pub use command::CommandSession;
@@ -21,6 +22,7 @@ use reifydb_type::{
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId},
 };
+pub use retry::{Backoff, RetryPolicy};
 use tracing::instrument;
 
 pub trait Session {
@@ -37,12 +39,19 @@ impl AdminSession {
 		Self {
 			engine,
 			identity,
+			retry: RetryPolicy::default(),
 		}
+	}
+
+	pub fn with_retry(mut self, policy: RetryPolicy) -> Self {
+		self.retry = policy;
+		self
 	}
 
 	#[instrument(name = "api::session::admin", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::error::Error> {
-		self.engine.admin_as(self.identity, rql, params.into())
+		let params = params.into();
+		self.retry.execute(rql, || self.engine.admin_as(self.identity, rql, params.clone()))
 	}
 }
 
@@ -52,12 +61,19 @@ impl CommandSession {
 		Self {
 			engine,
 			identity,
+			retry: RetryPolicy::default(),
 		}
+	}
+
+	pub fn with_retry(mut self, policy: RetryPolicy) -> Self {
+		self.retry = policy;
+		self
 	}
 
 	#[instrument(name = "api::session::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::error::Error> {
-		self.engine.command_as(self.identity, rql, params.into())
+		let params = params.into();
+		self.retry.execute(rql, || self.engine.command_as(self.identity, rql, params.clone()))
 	}
 }
 
