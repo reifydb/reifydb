@@ -116,8 +116,8 @@
 }
 
 .rdb-snippet__run-btn:disabled {
-  border-color: rgba(251, 146, 60, 0.5);
-  color: rgba(251, 146, 60, 0.7);
+  border-color: rgba(20, 184, 166, 0.5);
+  color: rgba(20, 184, 166, 0.7);
   cursor: wait;
 }
 
@@ -435,7 +435,7 @@
   font-size: var(--rdb-font-size-xs);
   cursor: pointer;
   padding: var(--rdb-space-1) var(--rdb-space-2);
-  border-radius: 2px;
+  border-radius: 0;
   transition: background 0.1s;
 }
 
@@ -681,6 +681,35 @@
 .rdb-editor-toolbar__btn--secondary:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.1);
   color: var(--rdb-color-text);
+}
+
+/* Light theme overrides for hardcoded rgba values */
+.rdb-theme-light .rdb-results__table td {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.rdb-theme-light .rdb-results__table tr:hover td {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.rdb-theme-light .rdb-history__entry {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.rdb-theme-light .rdb-history__entry:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.rdb-theme-light .rdb-schema__node-header:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.rdb-theme-light .rdb-snippet__overlay {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.rdb-theme-light .rdb-editor-toolbar__btn--secondary:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .rdb-editor-toolbar__hint {

@@ -20,17 +20,17 @@ export function getValueStyle(value: unknown): ValueStyle {
       case 'None':
         return { color: 'var(--rdb-color-muted)', italic: true };
       case 'Boolean':
-        return { color: '#818CF8' };
+        return { color: 'var(--rdb-color-value-boolean)' };
       case 'Int1': case 'Int2': case 'Int4': case 'Int8': case 'Int16':
       case 'Uint1': case 'Uint2': case 'Uint4': case 'Uint8': case 'Uint16':
       case 'Float4': case 'Float8': case 'Decimal':
-        return { color: '#F472B6' };
+        return { color: 'var(--rdb-color-value-number)' };
       case 'Date': case 'DateTime': case 'Time': case 'Duration':
-        return { color: '#06B6D4' };
+        return { color: 'var(--rdb-color-value-date)' };
       case 'Uuid4': case 'Uuid7': case 'IdentityId':
-        return { color: '#14B8A6' };
+        return { color: 'var(--rdb-color-value-uuid)' };
       case 'Utf8':
-        return { color: '#34D399' };
+        return { color: 'var(--rdb-color-value-string)' };
       case 'Blob':
         return { color: 'var(--rdb-color-secondary)' };
     }
@@ -40,11 +40,11 @@ export function getValueStyle(value: unknown): ValueStyle {
   switch (typeof value) {
     case 'number':
     case 'bigint':
-      return { color: '#F472B6' };
+      return { color: 'var(--rdb-color-value-number)' };
     case 'boolean':
-      return { color: '#818CF8' };
+      return { color: 'var(--rdb-color-value-boolean)' };
     case 'string':
-      return { color: '#34D399' };
+      return { color: 'var(--rdb-color-value-string)' };
     default:
       return {};
   }

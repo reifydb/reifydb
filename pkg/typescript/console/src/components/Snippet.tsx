@@ -7,6 +7,7 @@ import type { editor } from 'monaco-editor';
 import { registerRqlLanguage } from '../monaco/register';
 import { SnippetResults } from './SnippetResults';
 import type { Executor, ExecutionResult } from '../types';
+import type { RdbTheme } from './Console';
 
 export interface SnippetProps {
   executor: Executor;
@@ -14,6 +15,7 @@ export interface SnippetProps {
   title?: string;
   description?: string;
   className?: string;
+  theme?: RdbTheme;
 }
 
 interface QueryResult {
@@ -27,6 +29,7 @@ export function Snippet({
   title = 'reifydb playground',
   description,
   className,
+  theme = 'light',
 }: SnippetProps) {
   const [code, setCode] = useState(initialCode);
   const [result, setResult] = useState<QueryResult | null>(null);
@@ -109,7 +112,7 @@ export function Snippet({
   const maxKeyLength = columns.length > 0 ? Math.max(...columns.map(c => c.length)) : 0;
 
   const content = (
-    <div className={`rdb-snippet${isFullscreen ? ' rdb-snippet--fullscreen' : ''}${className ? ` ${className}` : ''}`}>
+    <div className={`rdb-snippet${isFullscreen ? ' rdb-snippet--fullscreen' : ''}${theme === 'light' ? ' rdb-theme-light' : ''}${className ? ` ${className}` : ''}`}>
       {/* Header */}
       <div className="rdb-snippet__header">
         <div className="rdb-snippet__title">
@@ -157,7 +160,7 @@ export function Snippet({
         <Editor
           height="100%"
           language="rql"
-          theme="premium-dark"
+          theme={theme === 'light' ? 'premium-light' : 'premium-dark'}
           value={code}
           onChange={(value) => setCode(value || '')}
           beforeMount={handleBeforeMount}

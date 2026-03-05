@@ -10,9 +10,10 @@ interface QueryEditorProps {
   code: string;
   onChange: (code: string) => void;
   onRun: () => void;
+  theme?: 'light' | 'dark';
 }
 
-export function QueryEditor({ code, onChange, onRun }: QueryEditorProps) {
+export function QueryEditor({ code, onChange, onRun, theme = 'light' }: QueryEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const onRunRef = useRef(onRun);
   onRunRef.current = onRun;
@@ -39,7 +40,7 @@ export function QueryEditor({ code, onChange, onRun }: QueryEditorProps) {
     <Editor
       height="100%"
       language="rql"
-      theme="premium-dark"
+      theme={theme === 'light' ? 'premium-light' : 'premium-dark'}
       value={code}
       onChange={(value) => onChange(value || '')}
       beforeMount={handleBeforeMount}

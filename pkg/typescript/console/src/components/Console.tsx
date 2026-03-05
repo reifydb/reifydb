@@ -21,11 +21,14 @@ export type ConnectionConfig =
   | { mode: 'wasm' }
   | { mode: 'websocket'; url: string };
 
+export type RdbTheme = 'light' | 'dark';
+
 export interface ConsoleProps {
   executor: Executor;
   initialCode?: string;
   historyKey?: string;
   connection?: ConnectionConfig;
+  theme?: RdbTheme;
 }
 
 const TABS = [
@@ -36,7 +39,7 @@ const TABS = [
 
 const WS_URL_STORAGE_KEY = 'rdb-console-ws-url';
 
-function ConsoleInner({ executor, historyKey, connection }: { executor: Executor; historyKey?: string; connection?: ConnectionConfig }) {
+function ConsoleInner({ executor, historyKey, connection, theme = 'light' }: { executor: Executor; historyKey?: string; connection?: ConnectionConfig; theme?: RdbTheme }) {
   const { state, dispatch } = useConsoleStore();
   const connectionLocked = connection != null;
   const lockedWsUrl = connection?.mode === 'websocket' ? connection.url : null;
@@ -266,6 +269,7 @@ function ConsoleInner({ executor, historyKey, connection }: { executor: Executor
           code={state.code}
           onChange={(code) => dispatch({ type: 'SET_CODE', code })}
           onRun={handleRun}
+          theme={theme}
         />
       </div>
     </div>
@@ -291,7 +295,7 @@ function ConsoleInner({ executor, historyKey, connection }: { executor: Executor
   );
 
   return (
-    <div className="rdb-console">
+    <div className={`rdb-console${theme === 'light' ? ' rdb-theme-light' : ''}`}>
       <div className="rdb-console__main">
         <SplitPane top={editorPane} bottom={bottomPane} initialSplit={45} />
       </div>
@@ -299,10 +303,10 @@ function ConsoleInner({ executor, historyKey, connection }: { executor: Executor
   );
 }
 
-export function Console({ executor, initialCode, historyKey, connection }: ConsoleProps) {
+export function Console({ executor, initialCode, historyKey, connection, theme }: ConsoleProps) {
   return (
     <ConsoleProvider initialCode={initialCode}>
-      <ConsoleInner executor={executor} historyKey={historyKey} connection={connection} />
+      <ConsoleInner executor={executor} historyKey={historyKey} connection={connection} theme={theme} />
     </ConsoleProvider>
   );
 }
