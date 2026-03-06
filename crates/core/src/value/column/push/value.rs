@@ -118,6 +118,7 @@ impl ColumnData {
 					Value::Uint(_) => ColumnData::uint(vec![Uint::default(); len]),
 					Value::Decimal(_) => ColumnData::decimal(vec![Decimal::default(); len]),
 					Value::Any(_) => ColumnData::any(vec![Box::new(Value::none()); len]),
+					Value::Record(_) => ColumnData::any(vec![Box::new(Value::none()); len]),
 					_ => unreachable!(),
 				};
 				new_inner.push_value(value);
@@ -177,6 +178,7 @@ impl ColumnData {
 			} => self.push_none(),
 			Value::Type(t) => self.push_value(Value::Any(Box::new(Value::Type(t)))),
 			Value::List(v) => self.push_value(Value::Any(Box::new(Value::List(v)))),
+			Value::Record(v) => self.push_value(Value::Any(Box::new(Value::Record(v)))),
 			Value::Any(v) => match self {
 				ColumnData::Any(container) => container.push(v),
 				_ => unreachable!("Cannot push Any value to non-Any column"),

@@ -165,6 +165,9 @@ pub fn encode_primary_key(
 			Type::List(_) => {
 				panic!("List type cannot be used in primary keys");
 			}
+			Type::Record(_) => {
+				panic!("Record type cannot be used in primary keys");
+			}
 		}
 	}
 

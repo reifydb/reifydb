@@ -507,7 +507,8 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 		}
 		| Type::Any
 		| Type::DictionaryId
-		| Type::List(_) => {
+		| Type::List(_)
+		| Type::Record(_) => {
 			// For arbitrary-precision types, Any, and DictionaryId, store as Utf8
 			let values: Vec<_> = data
 				.into_iter()

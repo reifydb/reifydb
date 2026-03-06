@@ -118,6 +118,8 @@ pub enum Value {
 	Type(Type),
 	/// An ordered list of values
 	List(Vec<Value>),
+	/// A record (named fields with values)
+	Record(Vec<(String, Value)>),
 }
 
 fn default_none_inner() -> Type {
@@ -236,6 +238,10 @@ impl Value {
 	pub fn list(items: Vec<Value>) -> Self {
 		Value::List(items)
 	}
+
+	pub fn record(fields: Vec<(String, Value)>) -> Self {
+		Value::Record(fields)
+	}
 }
 
 impl PartialEq for Value {
@@ -278,6 +284,7 @@ impl PartialEq for Value {
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l == r,
 			(Value::Type(l), Value::Type(r)) => l == r,
 			(Value::List(l), Value::List(r)) => l == r,
+			(Value::Record(l), Value::Record(r)) => l == r,
 			_ => false,
 		}
 	}
@@ -321,6 +328,12 @@ impl hash::Hash for Value {
 			Value::DictionaryId(v) => v.hash(state),
 			Value::Type(v) => v.hash(state),
 			Value::List(v) => v.hash(state),
+			Value::Record(fields) => {
+				for (k, v) in fields {
+					k.hash(state);
+					v.hash(state);
+				}
+			}
 		}
 	}
 }
@@ -355,8 +368,9 @@ impl PartialOrd for Value {
 			(Value::Decimal(l), Value::Decimal(r)) => l.partial_cmp(r),
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().partial_cmp(&r.to_u128()),
 			(Value::Type(l), Value::Type(r)) => l.partial_cmp(r),
-			(Value::List(_), Value::List(_)) => None, // Lists are not orderable
-			(Value::Any(_), Value::Any(_)) => None,   // Any values are not comparable
+			(Value::List(_), Value::List(_)) => None,     // Lists are not orderable
+			(Value::Record(_), Value::Record(_)) => None, // Records are not orderable
+			(Value::Any(_), Value::Any(_)) => None,       // Any values are not comparable
 			(
 				Value::None {
 					..
@@ -436,6 +450,7 @@ impl Ord for Value {
 			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().cmp(&r.to_u128()),
 			(Value::Type(l), Value::Type(r)) => l.cmp(r),
 			(Value::List(_), Value::List(_)) => unreachable!("List values are not orderable"),
+			(Value::Record(_), Value::Record(_)) => unreachable!("Record values are not orderable"),
 			(Value::Any(_), Value::Any(_)) => unreachable!("Any values are not orderable"),
 			_ => unimplemented!(),
 		}
@@ -484,6 +499,16 @@ impl Display for Value {
 				}
 				f.write_str(")")
 			}
+			Value::Record(fields) => {
+				f.write_str("{")?;
+				for (i, (key, value)) in fields.iter().enumerate() {
+					if i > 0 {
+						f.write_str(", ")?;
+					}
+					write!(f, "{}: {}", key, value)?;
+				}
+				f.write_str("}")
+			}
 			Value::None {
 				..
 			} => f.write_str("none"),
@@ -528,6 +553,9 @@ impl Value {
 			Value::List(items) => {
 				let element_type = items.first().map(|v| v.get_type()).unwrap_or(Type::Any);
 				Type::list_of(element_type)
+			}
+			Value::Record(fields) => {
+				Type::Record(fields.iter().map(|(k, v)| (k.clone(), v.get_type())).collect())
 			}
 		}
 	}

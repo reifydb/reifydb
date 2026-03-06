@@ -45,6 +45,11 @@ impl AsString for Value {
 				let inner: Vec<String> = items.iter().map(|v| v.as_string()).collect();
 				format!("({})", inner.join(", "))
 			}
+			Value::Record(fields) => {
+				let inner: Vec<String> =
+					fields.iter().map(|(k, v)| format!("{}: {}", k, v.as_string())).collect();
+				format!("{{{}}}", inner.join(", "))
+			}
 		}
 	}
 }

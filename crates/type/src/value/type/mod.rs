@@ -76,6 +76,8 @@ pub enum Type {
 	DictionaryId,
 	/// An ordered list of values of a given element type
 	List(Box<Type>),
+	/// A record type with named fields
+	Record(Vec<(String, Type)>),
 }
 
 impl Type {
@@ -211,6 +213,7 @@ impl Type {
 			Type::Any => 26,
 			Type::DictionaryId => 27,
 			Type::List(_) => 28,
+			Type::Record(_) => 29,
 		}
 	}
 }
@@ -249,6 +252,7 @@ impl Type {
 			26 => Type::Any,
 			27 => Type::DictionaryId,
 			28 => Type::list_of(Type::Any),
+			29 => Type::Record(Vec::new()),
 			_ => unreachable!(),
 		}
 	}
@@ -291,6 +295,7 @@ impl Type {
 			Type::Option(inner) => inner.size(), // size determined by inner type
 			Type::Any => 8,                      // pointer size on 64-bit systems
 			Type::List(_) => 8,                  // pointer size (Vec is heap-allocated)
+			Type::Record(_) => 8,                // pointer size (Vec is heap-allocated)
 			Type::DictionaryId => 16,            /* max possible; actual size determined by constraint's
 			                                       * id_type */
 		}
@@ -331,7 +336,8 @@ impl Type {
 			Type::Option(inner) => inner.alignment(),
 			Type::Any => 8, // pointer alignment
 			Type::DictionaryId => 16,
-			Type::List(_) => 8, // pointer alignment
+			Type::List(_) => 8,   // pointer alignment
+			Type::Record(_) => 8, // pointer alignment
 		}
 	}
 }
@@ -368,6 +374,16 @@ impl Display for Type {
 			Type::Any => f.write_str("Any"),
 			Type::DictionaryId => f.write_str("DictionaryId"),
 			Type::List(inner) => write!(f, "List({inner})"),
+			Type::Record(fields) => {
+				f.write_str("Record(")?;
+				for (i, (name, ty)) in fields.iter().enumerate() {
+					if i > 0 {
+						f.write_str(", ")?;
+					}
+					write!(f, "{}: {}", name, ty)?;
+				}
+				f.write_str(")")
+			}
 		}
 	}
 }
@@ -409,6 +425,9 @@ impl From<&Value> for Type {
 			Value::List(items) => {
 				let element_type = items.first().map(|v| Type::from(v)).unwrap_or(Type::Any);
 				Type::list_of(element_type)
+			}
+			Value::Record(fields) => {
+				Type::Record(fields.iter().map(|(k, v)| (k.clone(), Type::from(v))).collect())
 			}
 		}
 	}

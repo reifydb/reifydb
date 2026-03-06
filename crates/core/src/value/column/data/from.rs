@@ -40,6 +40,7 @@ impl ColumnData {
 			Value::Type(t) => ColumnData::any(vec![Box::new(Value::Type(t)); row_count]),
 			Value::Any(v) => ColumnData::any(vec![v.clone(); row_count]),
 			Value::List(v) => ColumnData::any(vec![Box::new(Value::List(v)); row_count]),
+			Value::Record(v) => ColumnData::any(vec![Box::new(Value::Record(v)); row_count]),
 		}
 	}
 }

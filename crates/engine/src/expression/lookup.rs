@@ -136,6 +136,9 @@ fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> Res
 		Type::List(_) => {
 			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
 		}
+		Type::Record(_) => {
+			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
+		}
 	}
 }
 

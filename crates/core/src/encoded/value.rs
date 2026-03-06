@@ -296,6 +296,7 @@ impl Schema {
 			Type::Option(_) => unreachable!("Option type already unwrapped"),
 			Type::Any => Value::Any(Box::new(self.get_any(row, index))),
 			Type::List(_) => unreachable!("List type cannot be stored in database"),
+			Type::Record(_) => unreachable!("Record type cannot be stored in database"),
 		}
 	}
 }
