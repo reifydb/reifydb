@@ -635,9 +635,24 @@ pub struct TableVirtualPushdownContext {
 }
 
 #[derive(Debug, Clone)]
+pub enum TakeLimit {
+	Literal(usize),
+	Variable(String),
+}
+
+impl fmt::Display for TakeLimit {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			TakeLimit::Literal(n) => write!(f, "{}", n),
+			TakeLimit::Variable(name) => write!(f, "${}", name),
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 pub struct TakeNode {
 	pub input: Box<QueryPlan>,
-	pub take: usize,
+	pub take: TakeLimit,
 }
 
 #[derive(Debug, Clone)]

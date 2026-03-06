@@ -56,6 +56,7 @@ use crate::{
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
 	diagnostic::AstError,
 	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
+	nodes::TakeLimit,
 	plan::logical::alter::table::AlterTableNode,
 };
 
@@ -775,7 +776,7 @@ pub struct JoinNaturalNode<'bump> {
 
 #[derive(Debug)]
 pub struct TakeNode {
-	pub take: usize,
+	pub take: TakeLimit,
 }
 
 #[derive(Debug)]

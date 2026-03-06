@@ -43,7 +43,7 @@ use reifydb_rql::{
 		JoinLeftNode as RqlJoinLeftNode, JoinNaturalNode as RqlJoinNaturalNode, MapNode as RqlMapNode,
 		PatchNode as RqlPatchNode, RowListLookupNode as RqlRowListLookupNode,
 		RowPointLookupNode as RqlRowPointLookupNode, RowRangeScanNode as RqlRowRangeScanNode,
-		SortNode as RqlSortNode, TakeNode as RqlTakeNode,
+		SortNode as RqlSortNode, TakeLimit, TakeNode as RqlTakeNode,
 	},
 	query::QueryPlan as RqlQueryPlan,
 };
@@ -52,34 +52,37 @@ use reifydb_type::{fragment::Fragment, value::constraint::Constraint};
 use tracing::instrument;
 
 use super::{apply_transform::ApplyTransformNode, filter::resolve_is_variant_tags};
-use crate::vm::volcano::{
-	aggregate::AggregateNode,
-	assert::{AssertNode, AssertWithoutInputNode},
-	distinct::DistinctNode,
-	environment::EnvironmentNode,
-	extend::{ExtendNode, ExtendWithoutInputNode},
-	filter::FilterNode,
-	generator::GeneratorNode,
-	inline::InlineDataNode,
-	join::{
-		hash::{self, HashJoinNode},
-		natural::NaturalJoinNode,
-		nested_loop::NestedLoopJoinNode,
+use crate::vm::{
+	stack::Variable,
+	volcano::{
+		aggregate::AggregateNode,
+		assert::{AssertNode, AssertWithoutInputNode},
+		distinct::DistinctNode,
+		environment::EnvironmentNode,
+		extend::{ExtendNode, ExtendWithoutInputNode},
+		filter::FilterNode,
+		generator::GeneratorNode,
+		inline::InlineDataNode,
+		join::{
+			hash::{self, HashJoinNode},
+			natural::NaturalJoinNode,
+			nested_loop::NestedLoopJoinNode,
+		},
+		map::{MapNode, MapWithoutInputNode},
+		patch::PatchNode,
+		query::{QueryContext, QueryNode},
+		row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
+		scalarize::ScalarizeNode,
+		scan::{
+			dictionary::DictionaryScanNode, index::IndexScanNode, remote::RemoteFetchNode,
+			ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode,
+			table::TableScanNode, view::ViewScanNode, vtable::VirtualScanNode,
+		},
+		sort::SortNode,
+		take::TakeNode,
+		top_k::TopKNode,
+		variable::VariableNode,
 	},
-	map::{MapNode, MapWithoutInputNode},
-	patch::PatchNode,
-	query::{QueryContext, QueryNode},
-	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
-	scalarize::ScalarizeNode,
-	scan::{
-		dictionary::DictionaryScanNode, index::IndexScanNode, remote::RemoteFetchNode,
-		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
-		view::ViewScanNode, vtable::VirtualScanNode,
-	},
-	sort::SortNode,
-	take::TakeNode,
-	top_k::TopKNode,
-	variable::VariableNode,
 };
 
 // Extract the source name from a query plan if it's a scan node
@@ -317,12 +320,25 @@ pub(crate) fn compile<'a>(
 			take,
 			input,
 		}) => {
+			let limit = match take {
+				TakeLimit::Literal(n) => n,
+				TakeLimit::Variable(ref name) => context
+					.stack
+					.get(name)
+					.and_then(|var| match var {
+						Variable::Scalar(cols) | Variable::Columns(cols) => {
+							cols.scalar_value().to_usize()
+						}
+						_ => None,
+					})
+					.expect(&format!("TAKE variable ${} must be a numeric value", name)),
+			};
 			if let RqlQueryPlan::Sort(sort_node) = *input {
 				let input_node = compile(*sort_node.input, rx, context);
-				return Box::new(TopKNode::new(input_node, sort_node.by, take));
+				return Box::new(TopKNode::new(input_node, sort_node.by, limit));
 			}
 			let input_node = compile(*input, rx, context);
-			Box::new(TakeNode::new(input_node, take))
+			Box::new(TakeNode::new(input_node, limit))
 		}
 
 		RqlQueryPlan::Sort(RqlSortNode {

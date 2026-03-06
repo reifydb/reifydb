@@ -2,7 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{flow::node::FlowNodeType::Take, nodes::TakeNode, query::QueryPlan};
+use reifydb_rql::{
+	flow::node::FlowNodeType::Take,
+	nodes::{TakeLimit, TakeNode},
+	query::QueryPlan,
+};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
 
@@ -15,9 +19,13 @@ pub(crate) struct TakeCompiler {
 
 impl From<TakeNode> for TakeCompiler {
 	fn from(node: TakeNode) -> Self {
+		let limit = match node.take {
+			TakeLimit::Literal(n) => n,
+			TakeLimit::Variable(_) => unreachable!(),
+		};
 		Self {
 			input: node.input,
-			limit: node.take,
+			limit,
 		}
 	}
 }

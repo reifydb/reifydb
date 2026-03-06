@@ -1394,9 +1394,15 @@ impl<'bump> AstFrom<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AstTakeValue<'bump> {
+	Literal(usize),
+	Variable(Token<'bump>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstTake<'bump> {
 	pub token: Token<'bump>,
-	pub take: usize,
+	pub take: AstTakeValue<'bump>,
 }
 
 #[derive(Debug)]

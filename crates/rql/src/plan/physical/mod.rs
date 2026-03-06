@@ -462,7 +462,7 @@ pub struct JoinNaturalNode<'bump> {
 #[derive(Debug)]
 pub struct TakeNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
-	pub take: usize,
+	pub take: nodes::TakeLimit,
 }
 
 #[derive(Debug)]

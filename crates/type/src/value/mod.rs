@@ -6,6 +6,7 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
+use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 pub mod as_string;
 pub mod blob;
@@ -243,6 +244,55 @@ impl Value {
 
 	pub fn record(fields: Vec<(String, Value)>) -> Self {
 		Value::Record(fields)
+	}
+
+	pub fn to_usize(&self) -> Option<usize> {
+		match self {
+			Value::Uint1(v) => Some(*v as usize),
+			Value::Uint2(v) => Some(*v as usize),
+			Value::Uint4(v) => Some(*v as usize),
+			Value::Uint8(v) => usize::try_from(*v).ok(),
+			Value::Uint16(v) => usize::try_from(*v).ok(),
+			Value::Int1(v) => usize::try_from(*v).ok(),
+			Value::Int2(v) => usize::try_from(*v).ok(),
+			Value::Int4(v) => usize::try_from(*v).ok(),
+			Value::Int8(v) => usize::try_from(*v).ok(),
+			Value::Int16(v) => usize::try_from(*v).ok(),
+			Value::Float4(v) => {
+				let f = v.value();
+				if f >= 0.0 {
+					Some(f as usize)
+				} else {
+					None
+				}
+			}
+			Value::Float8(v) => {
+				let f = v.value();
+				if f >= 0.0 {
+					Some(f as usize)
+				} else {
+					None
+				}
+			}
+			Value::Int(v) => v.0.to_u64().and_then(|n| usize::try_from(n).ok()),
+			Value::Uint(v) => v.0.to_u64().and_then(|n| usize::try_from(n).ok()),
+			Value::Decimal(v) => v.0.to_u64().and_then(|n| usize::try_from(n).ok()),
+			Value::Utf8(s) => {
+				let s = s.trim();
+				if let Ok(n) = s.parse::<u64>() {
+					usize::try_from(n).ok()
+				} else if let Ok(f) = s.parse::<f64>() {
+					if f >= 0.0 {
+						Some(f as usize)
+					} else {
+						None
+					}
+				} else {
+					None
+				}
+			}
+			_ => None,
+		}
 	}
 }
 
@@ -575,5 +625,212 @@ impl Value {
 			}
 			Value::Tuple(items) => Type::Tuple(items.iter().map(|v| v.get_type()).collect()),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::str::FromStr;
+
+	use super::*;
+
+	// Happy path — one per numeric type
+
+	#[test]
+	fn to_usize_uint1() {
+		assert_eq!(Value::uint1(42u8).to_usize(), Some(42));
+	}
+
+	#[test]
+	fn to_usize_uint2() {
+		assert_eq!(Value::uint2(1000u16).to_usize(), Some(1000));
+	}
+
+	#[test]
+	fn to_usize_uint4() {
+		assert_eq!(Value::uint4(100_000u32).to_usize(), Some(100_000));
+	}
+
+	#[test]
+	fn to_usize_uint8() {
+		assert_eq!(Value::uint8(1_000_000u64).to_usize(), Some(1_000_000));
+	}
+
+	#[test]
+	fn to_usize_uint16() {
+		assert_eq!(Value::Uint16(500u128).to_usize(), Some(500));
+	}
+
+	#[test]
+	fn to_usize_int1() {
+		assert_eq!(Value::int1(100i8).to_usize(), Some(100));
+	}
+
+	#[test]
+	fn to_usize_int2() {
+		assert_eq!(Value::int2(5000i16).to_usize(), Some(5000));
+	}
+
+	#[test]
+	fn to_usize_int4() {
+		assert_eq!(Value::int4(50_000i32).to_usize(), Some(50_000));
+	}
+
+	#[test]
+	fn to_usize_int8() {
+		assert_eq!(Value::int8(1_000_000i64).to_usize(), Some(1_000_000));
+	}
+
+	#[test]
+	fn to_usize_int16() {
+		assert_eq!(Value::Int16(999i128).to_usize(), Some(999));
+	}
+
+	#[test]
+	fn to_usize_float4() {
+		assert_eq!(Value::float4(42.0f32).to_usize(), Some(42));
+	}
+
+	#[test]
+	fn to_usize_float8() {
+		assert_eq!(Value::float8(42.0f64).to_usize(), Some(42));
+	}
+
+	#[test]
+	fn to_usize_int_bigint() {
+		assert_eq!(Value::Int(Int::from_i64(42)).to_usize(), Some(42));
+	}
+
+	#[test]
+	fn to_usize_uint_bigint() {
+		assert_eq!(Value::Uint(Uint::from_u64(42)).to_usize(), Some(42));
+	}
+
+	#[test]
+	fn to_usize_decimal() {
+		assert_eq!(Value::Decimal(Decimal::from_i64(42)).to_usize(), Some(42));
+	}
+
+	// Edge cases & errors — negative numbers
+
+	#[test]
+	fn to_usize_int1_negative() {
+		assert_eq!(Value::int1(-1i8).to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_int2_negative() {
+		assert_eq!(Value::int2(-100i16).to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_int4_negative() {
+		assert_eq!(Value::int4(-1i32).to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_int8_negative() {
+		assert_eq!(Value::int8(-1i64).to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_int16_negative() {
+		assert_eq!(Value::Int16(-1i128).to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_float4_negative() {
+		assert_eq!(Value::float4(-1.0f32).to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_float8_negative() {
+		assert_eq!(Value::float8(-1.0f64).to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_int_bigint_negative() {
+		assert_eq!(Value::Int(Int::from_i64(-5)).to_usize(), None);
+	}
+
+	// Edge cases — zero boundary
+
+	#[test]
+	fn to_usize_zero() {
+		assert_eq!(Value::uint1(0u8).to_usize(), Some(0));
+	}
+
+	#[test]
+	fn to_usize_int1_zero() {
+		assert_eq!(Value::int1(0i8).to_usize(), Some(0));
+	}
+
+	#[test]
+	fn to_usize_float4_zero() {
+		assert_eq!(Value::float4(0.0f32).to_usize(), Some(0));
+	}
+
+	// Edge cases — non-numeric types return None
+
+	#[test]
+	fn to_usize_boolean_none() {
+		assert_eq!(Value::bool(true).to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_utf8_integer() {
+		assert_eq!(Value::utf8("42").to_usize(), Some(42));
+	}
+
+	#[test]
+	fn to_usize_utf8_float() {
+		assert_eq!(Value::utf8("3.7").to_usize(), Some(3));
+	}
+
+	#[test]
+	fn to_usize_utf8_negative() {
+		assert_eq!(Value::utf8("-5").to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_utf8_negative_float() {
+		assert_eq!(Value::utf8("-1.5").to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_utf8_whitespace() {
+		assert_eq!(Value::utf8("  42  ").to_usize(), Some(42));
+	}
+
+	#[test]
+	fn to_usize_utf8_zero() {
+		assert_eq!(Value::utf8("0").to_usize(), Some(0));
+	}
+
+	#[test]
+	fn to_usize_utf8_non_numeric() {
+		assert_eq!(Value::utf8("hello").to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_utf8_empty() {
+		assert_eq!(Value::utf8("").to_usize(), None);
+	}
+
+	#[test]
+	fn to_usize_none_none() {
+		assert_eq!(Value::none().to_usize(), None);
+	}
+
+	// Edge cases — fractional truncation
+
+	#[test]
+	fn to_usize_float8_fractional() {
+		assert_eq!(Value::float8(3.7f64).to_usize(), Some(3));
+	}
+
+	#[test]
+	fn to_usize_decimal_fractional() {
+		assert_eq!(Value::Decimal(Decimal::from_str("3.7").unwrap()).to_usize(), Some(3));
 	}
 }

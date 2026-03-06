@@ -4,7 +4,7 @@
 use crate::{
 	Result,
 	ast::{
-		ast::{Ast, AstLiteral, AstTake},
+		ast::{Ast, AstLiteral, AstTake, AstTakeValue},
 		parse::{Parser, Precedence},
 	},
 	error::RqlError,
@@ -40,11 +40,15 @@ impl<'bump> Parser<'bump> {
 					}
 					Ok(AstTake {
 						token,
-						take: take_value as usize,
+						take: AstTakeValue::Literal(take_value as usize),
 					})
 				}
 				_ => unimplemented!(),
 			},
+			Ast::Variable(var) => Ok(AstTake {
+				token,
+				take: AstTakeValue::Variable(var.token),
+			}),
 			_ => unimplemented!(),
 		}
 	}
@@ -66,7 +70,7 @@ pub mod tests {
 
 		let result = result.pop().unwrap();
 		let take = result.first_unchecked().as_take();
-		assert_eq!(take.take, 10);
+		assert_eq!(take.take, AstTakeValue::Literal(10));
 	}
 
 	#[test]
@@ -80,7 +84,7 @@ pub mod tests {
 
 		let result = result.pop().unwrap();
 		let take = result.first_unchecked().as_take();
-		assert_eq!(take.take, 10);
+		assert_eq!(take.take, AstTakeValue::Literal(10));
 	}
 
 	#[test]
@@ -94,7 +98,7 @@ pub mod tests {
 
 		let result = result.pop().unwrap();
 		let take = result.first_unchecked().as_take();
-		assert_eq!(take.take, 0);
+		assert_eq!(take.take, AstTakeValue::Literal(0));
 	}
 
 	#[test]
