@@ -56,6 +56,8 @@ pub use reifydb_sub_flow::{
 pub use reifydb_sub_server as sub_server;
 #[cfg(feature = "sub_server_admin")]
 pub use reifydb_sub_server_admin as sub_server_admin;
+#[cfg(feature = "sub_server_grpc")]
+pub use reifydb_sub_server_grpc as sub_server_grpc;
 #[cfg(feature = "sub_server_http")]
 pub use reifydb_sub_server_http as sub_server_http;
 #[cfg(feature = "sub_server_otel")]

@@ -18,7 +18,8 @@ echo ""
 crates_files=$(find "$REPO_ROOT/crates" -name "*.rs" \
     -not -path "*/tests/*" \
     -not -path "*/test_utils/*" \
-    -not -path "*/vendor/*" 2>/dev/null || true)
+    -not -path "*/vendor/*" \
+    -not -path "*/generated/*" 2>/dev/null || true)
 
 if [ -z "$crates_files" ]; then
     echo "No Rust files found in /crates/"

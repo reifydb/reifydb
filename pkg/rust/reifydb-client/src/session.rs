@@ -27,23 +27,7 @@ use reifydb_type::{
 	},
 };
 
-/// Result type for admin operations
-#[derive(Debug)]
-pub struct AdminResult {
-	pub frames: Vec<Frame>,
-}
-
-/// Result type for command operations
-#[derive(Debug)]
-pub struct CommandResult {
-	pub frames: Vec<Frame>,
-}
-
-/// Result type for query operations
-#[derive(Debug)]
-pub struct QueryResult {
-	pub frames: Vec<Frame>,
-}
+use crate::{AdminResult, CommandResult, QueryResult};
 
 // Helper functions for parsing responses - made public for ws module
 pub fn parse_admin_response(response: crate::Response) -> Result<AdminResult, Error> {

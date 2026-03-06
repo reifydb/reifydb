@@ -1794,6 +1794,7 @@ dependencies = [
  "reifydb-sub-flow",
  "reifydb-sub-server",
  "reifydb-sub-server-admin",
+ "reifydb-sub-server-grpc",
  "reifydb-sub-server-http",
  "reifydb-sub-server-otel",
  "reifydb-sub-server-ws",
@@ -1871,7 +1872,10 @@ name = "reifydb-client"
 version = "0.4.0"
 dependencies = [
  "futures-util",
+ "num-bigint",
+ "prost",
  "reifydb",
+ "reifydb-client",
  "reifydb-client-derive",
  "reifydb-testing",
  "reifydb-type",
@@ -1881,6 +1885,9 @@ dependencies = [
  "test_each_file",
  "tokio",
  "tokio-tungstenite",
+ "tonic",
+ "tonic-prost",
+ "uuid",
 ]
 
 [[package]]
@@ -2212,6 +2219,27 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+]
+
+[[package]]
+name = "reifydb-sub-server-grpc"
+version = "0.4.0"
+dependencies = [
+ "num-bigint",
+ "prost",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-runtime",
+ "reifydb-sub-api",
+ "reifydb-sub-server",
+ "reifydb-type",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2927,8 +2955,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb7613188ce9f7df5bfe185db26c5814347d110db17920415cf2fbcad85e7203"
 dependencies = [
  "async-trait",
+ "axum",
  "base64 0.22.1",
  "bytes",
+ "h2",
  "http",
  "http-body",
  "http-body-util",
@@ -2937,6 +2967,7 @@ dependencies = [
  "hyper-util",
  "percent-encoding",
  "pin-project",
+ "socket2",
  "sync_wrapper",
  "tokio",
  "tokio-stream",

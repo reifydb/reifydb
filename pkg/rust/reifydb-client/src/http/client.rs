@@ -9,12 +9,9 @@ use reifydb_type::{
 use reqwest::Client as ReqwestClient;
 
 use crate::{
-	AdminRequest, AdminResponse, CommandRequest, CommandResponse, ErrResponse, QueryRequest, QueryResponse,
-	Response, ResponsePayload, params_to_wire,
-	session::{
-		AdminResult, CommandResult, QueryResult, parse_admin_response, parse_command_response,
-		parse_query_response,
-	},
+	AdminRequest, AdminResponse, AdminResult, CommandRequest, CommandResponse, CommandResult, ErrResponse,
+	QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, params_to_wire,
+	session::{parse_admin_response, parse_command_response, parse_query_response},
 };
 
 /// HTTP-specific error response matching the server's format

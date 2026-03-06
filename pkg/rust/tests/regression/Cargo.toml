@@ -8,8 +8,8 @@ repository.workspace = true
 publish = false
 
 [dev-dependencies]
-reifydb = { path = "../../reifydb", features = ["sub_server_http", "sub_server_ws"] }
-reifydb-client = { path = "../../reifydb-client" }
+reifydb = { path = "../../reifydb", features = ["sub_server_http", "sub_server_ws", "sub_server_grpc"] }
+reifydb-client = { path = "../../reifydb-client", features = ["grpc", "http", "ws"] }
 reifydb-testing = { path = "../../../../crates/testing" }
 test_each_file = { version = "0.3.5" }
 tokio = { workspace = true }

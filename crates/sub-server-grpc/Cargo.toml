@@ -1,0 +1,36 @@
+[package]
+name = "reifydb-sub-server-grpc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "gRPC server subsystem for ReifyDB"
+
+[features]
+default = []
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-type = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-sub-server = { workspace = true }
+
+# gRPC
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+prost = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+
+# Serialization
+serde_json = { workspace = true }
+
+# Types
+uuid = { workspace = true }
+num-bigint = { workspace = true }
+
+# Logging
+tracing = { workspace = true }

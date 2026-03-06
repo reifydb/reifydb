@@ -8,7 +8,8 @@
 use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
 use reifydb::{
-	Database, WithSubsystem, server, sub_server_http::factory::HttpConfig, sub_server_ws::factory::WsConfig,
+	Database, WithSubsystem, server, sub_server_grpc::factory::GrpcConfig, sub_server_http::factory::HttpConfig,
+	sub_server_ws::factory::WsConfig,
 };
 use reifydb_client::{Frame, Params, Value};
 use reifydb_testing::testscript::command::Command;
@@ -17,6 +18,7 @@ use tokio::runtime::Runtime;
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 	server::memory()
 		.with_flow(|f| f)
+		.with_grpc(GrpcConfig::default().bind_addr("[::1]:0"))
 		.with_http(HttpConfig::default().bind_addr("::1:0"))
 		.with_ws(WsConfig::default().bind_addr("::1:0"))
 		.build()
@@ -28,6 +30,13 @@ pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
 	Ok(server.sub_server_ws().unwrap().port().unwrap())
+}
+
+/// Start server and return gRPC port
+#[allow(dead_code)]
+pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
+	server.start()?;
+	Ok(server.sub_server_grpc().unwrap().port().unwrap())
 }
 
 /// Start server and return HTTP port

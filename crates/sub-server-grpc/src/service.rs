@@ -1,0 +1,121 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
+use reifydb_sub_server::{
+	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
+	execute::{execute_admin, execute_command, execute_query},
+	state::AppState,
+};
+use reifydb_type::{params::Params, value::identity::IdentityId};
+use tonic::{Request, Response, Status};
+
+use crate::{
+	convert::{frames_to_proto, proto_params_to_params},
+	error::GrpcError,
+	generated::{
+		AdminRequest, AdminResponse, CommandRequest, CommandResponse, Params as ProtoParams, QueryRequest,
+		QueryResponse, reify_db_server::ReifyDb,
+	},
+};
+
+pub struct ReifyDbService {
+	state: AppState,
+}
+
+impl ReifyDbService {
+	pub fn new(state: AppState) -> Self {
+		Self {
+			state,
+		}
+	}
+
+	fn extract_identity<T>(&self, request: &Request<T>) -> Result<IdentityId, GrpcError> {
+		let metadata = request.metadata();
+
+		if let Some(auth) = metadata.get("authorization") {
+			let header = auth.to_str().map_err(|_| GrpcError::Unauthenticated(AuthError::InvalidHeader))?;
+			return Ok(extract_identity_from_auth_header(header)?);
+		}
+
+		if let Some(api_key) = metadata.get("x-api-key") {
+			let key = api_key.to_str().map_err(|_| GrpcError::Unauthenticated(AuthError::InvalidHeader))?;
+			return Ok(extract_identity_from_api_key(key)?);
+		}
+
+		Err(GrpcError::Unauthenticated(AuthError::MissingCredentials))
+	}
+
+	fn extract_params(params: Option<ProtoParams>) -> Result<Params, GrpcError> {
+		match params {
+			None => Ok(Params::None),
+			Some(p) => proto_params_to_params(p),
+		}
+	}
+}
+
+#[tonic::async_trait]
+impl ReifyDb for ReifyDbService {
+	async fn admin(&self, request: Request<AdminRequest>) -> Result<Response<AdminResponse>, Status> {
+		let identity = self.extract_identity(&request)?;
+		let inner = request.into_inner();
+		let params = Self::extract_params(inner.params)?;
+
+		let frames = execute_admin(
+			self.state.actor_system(),
+			self.state.engine_clone(),
+			inner.statements,
+			identity,
+			params,
+			self.state.query_timeout(),
+		)
+		.await
+		.map_err(GrpcError::from)?;
+
+		Ok(Response::new(AdminResponse {
+			frames: frames_to_proto(frames),
+		}))
+	}
+
+	async fn command(&self, request: Request<CommandRequest>) -> Result<Response<CommandResponse>, Status> {
+		let identity = self.extract_identity(&request)?;
+		let inner = request.into_inner();
+		let params = Self::extract_params(inner.params)?;
+
+		let frames = execute_command(
+			self.state.actor_system(),
+			self.state.engine_clone(),
+			inner.statements,
+			identity,
+			params,
+			self.state.query_timeout(),
+		)
+		.await
+		.map_err(GrpcError::from)?;
+
+		Ok(Response::new(CommandResponse {
+			frames: frames_to_proto(frames),
+		}))
+	}
+
+	async fn query(&self, request: Request<QueryRequest>) -> Result<Response<QueryResponse>, Status> {
+		let identity = self.extract_identity(&request)?;
+		let inner = request.into_inner();
+		let params = Self::extract_params(inner.params)?;
+
+		let statements = inner.statements.join("; ");
+		let frames = execute_query(
+			self.state.actor_system(),
+			self.state.engine_clone(),
+			statements,
+			identity,
+			params,
+			self.state.query_timeout(),
+		)
+		.await
+		.map_err(GrpcError::from)?;
+
+		Ok(Response::new(QueryResponse {
+			frames: frames_to_proto(frames),
+		}))
+	}
+}

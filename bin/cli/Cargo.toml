@@ -12,7 +12,7 @@ name = "reifydb-cli"
 path = "src/main.rs"
 
 [dependencies]
-reifydb-client = { workspace = true }
+reifydb-client = { workspace = true, features = ["ws"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 rustyline = "14.0"
 terminal_size = "0.4"

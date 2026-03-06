@@ -17,6 +17,7 @@ use reifydb_type::{
 	value::{frame::frame::Frame, identity::IdentityId},
 };
 use tokio::time;
+use tracing::warn;
 
 /// Error types for query/command execution.
 #[derive(Debug)]
@@ -74,7 +75,7 @@ where
 		match f() {
 			Ok(frames) => return Ok(frames),
 			Err(err) if err.code == "TXN_001" => {
-				tracing::warn!(attempt = attempt + 1, "Transaction conflict detected, retrying");
+				warn!(attempt = attempt + 1, "Transaction conflict detected, retrying");
 				last_err = Some(err);
 			}
 			Err(err) => return Err(err),

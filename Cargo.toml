@@ -35,6 +35,7 @@ members = [
     "crates/sub-task",
     "crates/sub-tracing",
     "crates/sub-server",
+    "crates/sub-server-grpc",
     "crates/sub-server-http",
     "crates/sub-server-otel",
     "crates/sub-server-ws",
@@ -89,6 +90,7 @@ default-members = [
     "crates/sub-task",
     "crates/sub-tracing",
     "crates/sub-server",
+    "crates/sub-server-grpc",
     "crates/sub-server-http",
     "crates/sub-server-otel",
     "crates/sub-server-ws",
@@ -177,6 +179,7 @@ reifydb-sub-flow = { version = "0.4.0", path = "crates/sub-flow" }
 reifydb-sub-task = { version = "0.4.0", path = "crates/sub-task" }
 reifydb-sub-tracing = { version = "0.4.0", path = "crates/sub-tracing" }
 reifydb-sub-server = { version = "0.4.0", path = "crates/sub-server" }
+reifydb-sub-server-grpc = { version = "0.4.0", path = "crates/sub-server-grpc" }
 reifydb-sub-server-http = { version = "0.4.0", path = "crates/sub-server-http" }
 reifydb-sub-server-otel = { version = "0.4.0", path = "crates/sub-server-otel" }
 reifydb-sub-server-ws = { version = "0.4.0", path = "crates/sub-server-ws" }
@@ -221,7 +224,11 @@ httparse = { version = "1.10.1" }
 
 # Async runtime and networking (tokio stack)
 tokio = { version = "1.48.0", features = ["rt-multi-thread", "net", "sync", "macros", "time", "tracing"] }
+tokio-stream = { version = "0.1.17" }
 tokio-tungstenite = { version = "0.28.0" }
+tonic = { version = "0.14.2", default-features = false, features = ["default"] }
+tonic-prost = { version = "0.14.2" }
+prost = { version = "0.14.1" }
 
 axum = { version = "0.8.7" }
 reqwest = { version = "0.13", default-features = false, features = ["json"] }

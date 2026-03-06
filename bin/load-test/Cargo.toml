@@ -15,7 +15,7 @@ name = "reifydb-load-test"
 path = "src/main.rs"
 
 [dependencies]
-reifydb-client = { workspace = true }
+reifydb-client = { workspace = true, features = ["http", "ws"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 tokio = { workspace = true }
 rand = { workspace = true }

@@ -12,6 +12,8 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 use reifydb_sub_flow::builder::FlowBuilder;
 #[cfg(feature = "sub_server_admin")]
 use reifydb_sub_server_admin::{config::AdminConfig, factory::AdminSubsystemFactory};
+#[cfg(feature = "sub_server_grpc")]
+use reifydb_sub_server_grpc::factory::{GrpcConfig, GrpcSubsystemFactory};
 #[cfg(feature = "sub_server_http")]
 use reifydb_sub_server_http::factory::{HttpConfig, HttpSubsystemFactory};
 #[cfg(feature = "sub_server_otel")]
@@ -102,6 +104,14 @@ impl ServerBuilder {
 	#[cfg(reifydb_target = "native")]
 	pub fn with_procedure_dir(mut self, dir: impl Into<PathBuf>) -> Self {
 		self.procedure_dir = Some(dir.into());
+		self
+	}
+
+	/// Configure and add a gRPC subsystem.
+	#[cfg(feature = "sub_server_grpc")]
+	pub fn with_grpc(mut self, config: GrpcConfig) -> Self {
+		let factory = GrpcSubsystemFactory::new(config);
+		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
 

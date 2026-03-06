@@ -1,0 +1,30 @@
+syntax = "proto3";
+package reifydb.v1;
+
+service ReifyDB {
+  rpc Admin(AdminRequest) returns (AdminResponse);
+  rpc Command(CommandRequest) returns (CommandResponse);
+  rpc Query(QueryRequest) returns (QueryResponse);
+}
+
+message AdminRequest  { repeated string statements = 1; optional Params params = 2; }
+message AdminResponse { repeated Frame frames = 1; }
+message CommandRequest  { repeated string statements = 1; optional Params params = 2; }
+message CommandResponse { repeated Frame frames = 1; }
+message QueryRequest  { repeated string statements = 1; optional Params params = 2; }
+message QueryResponse { repeated Frame frames = 1; }
+
+message Params {
+  oneof params { PositionalParams positional = 1; NamedParams named = 2; }
+}
+message PositionalParams { repeated TypedValue values = 1; }
+message NamedParams      { map<string, TypedValue> values = 1; }
+message TypedValue       { uint32 type = 1; bytes value = 2; }
+
+message Frame       { repeated uint64 row_numbers = 1; repeated FrameColumn columns = 2; }
+message FrameColumn {
+  string name    = 1;
+  uint32 type    = 2;
+  bytes  data    = 3;
+  bytes  bitvec  = 4;
+}

@@ -16,6 +16,8 @@ use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
 use reifydb_sub_api::subsystem::HealthStatus;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::subsystem::FlowSubsystem;
+#[cfg(feature = "sub_server_grpc")]
+use reifydb_sub_server_grpc::subsystem::GrpcSubsystem;
 #[cfg(feature = "sub_server_http")]
 use reifydb_sub_server_http::subsystem::HttpSubsystem;
 #[cfg(feature = "sub_server_ws")]
@@ -57,6 +59,11 @@ impl Database {
 	#[cfg(feature = "sub_flow")]
 	pub fn sub_flow(&self) -> Option<&FlowSubsystem> {
 		self.subsystem::<FlowSubsystem>()
+	}
+
+	#[cfg(feature = "sub_server_grpc")]
+	pub fn sub_server_grpc(&self) -> Option<&GrpcSubsystem> {
+		self.subsystem::<GrpcSubsystem>()
 	}
 
 	#[cfg(feature = "sub_server_http")]

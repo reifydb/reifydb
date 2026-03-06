@@ -8,12 +8,10 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{
-	AdminRequest, AuthRequest, ChangePayload, CommandRequest, QueryRequest, Request, RequestPayload, Response,
-	ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest, params_to_wire,
-	session::{
-		AdminResult, CommandResult, QueryResult, parse_admin_response, parse_command_response,
-		parse_query_response,
-	},
+	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, QueryRequest,
+	QueryResult, Request, RequestPayload, Response, ResponsePayload, ServerPush, SubscribeRequest,
+	UnsubscribeRequest, params_to_wire,
+	session::{parse_admin_response, parse_command_response, parse_query_response},
 	utils::generate_request_id,
 };
 

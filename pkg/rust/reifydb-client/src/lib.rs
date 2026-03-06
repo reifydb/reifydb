@@ -1,16 +1,26 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
+#[cfg(feature = "grpc")]
+pub mod grpc;
+#[cfg(feature = "http")]
 pub mod http;
+#[cfg(any(feature = "http", feature = "ws"))]
 mod session;
+#[cfg(feature = "ws")]
 mod utils;
+#[cfg(feature = "ws")]
 pub mod ws;
 
 // Re-export client types
+#[cfg(feature = "grpc")]
+pub use grpc::GrpcClient;
+#[cfg(feature = "http")]
 pub use http::HttpClient;
 // Re-export derive macro
 pub use reifydb_client_derive::FromFrame;
 // Re-export commonly used types from reifydb-type
 pub use reifydb_type as r#type;
+#[cfg(any(feature = "http", feature = "ws"))]
 use reifydb_type::error::Diagnostic;
 pub use reifydb_type::{
 	params::Params,
@@ -30,15 +40,34 @@ pub use reifydb_type::{
 		r#type::Type,
 	},
 };
+#[cfg(any(feature = "http", feature = "ws"))]
 use serde::{Deserialize, Serialize};
-// Re-export result types
-pub use session::{AdminResult, CommandResult, QueryResult};
+#[cfg(feature = "ws")]
 pub use ws::WsClient;
 
+/// Result type for admin operations
+#[derive(Debug)]
+pub struct AdminResult {
+	pub frames: Vec<Frame>,
+}
+
+/// Result type for command operations
+#[derive(Debug)]
+pub struct CommandResult {
+	pub frames: Vec<Frame>,
+}
+
+/// Result type for query operations
+#[derive(Debug)]
+pub struct QueryResult {
+	pub frames: Vec<Frame>,
+}
+
 // ============================================================================
-// Wire format types for WebSocket protocol
+// Wire format types for HTTP/WebSocket protocol
 // ============================================================================
 
+#[cfg(any(feature = "http", feature = "ws"))]
 /// Wire format for a single typed value: `{"type": "Int2", "value": "1234"}`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WireValue {
@@ -47,6 +76,7 @@ pub struct WireValue {
 	pub value: String,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 /// Wire format for query parameters.
 ///
 /// Either positional or named:
@@ -59,6 +89,7 @@ pub enum WireParams {
 	Named(std::collections::HashMap<String, WireValue>),
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 fn value_to_wire(value: Value) -> WireValue {
 	let (type_name, value_str): (&str, String) = match &value {
 		Value::None {
@@ -100,6 +131,7 @@ fn value_to_wire(value: Value) -> WireValue {
 	}
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 pub fn params_to_wire(params: Params) -> Option<WireParams> {
 	match params {
 		Params::None => None,
@@ -116,6 +148,7 @@ pub fn params_to_wire(params: Params) -> Option<WireParams> {
 // Request Types (matching server)
 // ============================================================================
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
 	pub id: String,
@@ -123,6 +156,7 @@ pub struct Request {
 	pub payload: RequestPayload,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum RequestPayload {
@@ -134,34 +168,40 @@ pub enum RequestPayload {
 	Unsubscribe(UnsubscribeRequest),
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminRequest {
 	pub statements: Vec<String>,
 	pub params: Option<WireParams>,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthRequest {
 	pub token: Option<String>,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandRequest {
 	pub statements: Vec<String>,
 	pub params: Option<WireParams>,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryRequest {
 	pub statements: Vec<String>,
 	pub params: Option<WireParams>,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SubscribeRequest {
 	pub query: String,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UnsubscribeRequest {
 	pub subscription_id: String,
@@ -171,6 +211,7 @@ pub struct UnsubscribeRequest {
 // Response Types (matching server)
 // ============================================================================
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
 	pub id: String,
@@ -178,6 +219,7 @@ pub struct Response {
 	pub payload: ResponsePayload,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum ResponsePayload {
@@ -190,45 +232,54 @@ pub enum ResponsePayload {
 	Unsubscribed(UnsubscribedResponse),
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminResponse {
 	pub frames: Vec<WebsocketFrame>,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthResponse {}
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrResponse {
 	pub diagnostic: Diagnostic,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandResponse {
 	pub frames: Vec<WebsocketFrame>,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryResponse {
 	pub frames: Vec<WebsocketFrame>,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SubscribedResponse {
 	pub subscription_id: String,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UnsubscribedResponse {
 	pub subscription_id: String,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebsocketFrame {
 	pub row_numbers: Vec<u64>,
 	pub columns: Vec<WebsocketColumn>,
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebsocketColumn {
 	pub name: String,
@@ -240,6 +291,7 @@ pub struct WebsocketColumn {
 // Server Push Types (server-initiated, no request id)
 // ============================================================================
 
+#[cfg(any(feature = "http", feature = "ws"))]
 /// Server-initiated push message (no request id).
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
@@ -247,6 +299,7 @@ pub enum ServerPush {
 	Change(ChangePayload),
 }
 
+#[cfg(any(feature = "http", feature = "ws"))]
 /// Payload for subscription change notifications.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChangePayload {
