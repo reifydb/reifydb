@@ -873,7 +873,9 @@ impl ColumnData {
 				inner: Box::new(ColumnData::with_capacity(*inner, capacity)),
 				bitvec: BitVec::with_capacity(capacity),
 			},
-			Type::Any | Type::List(_) | Type::Record(_) => Self::any_with_capacity(capacity),
+			Type::Any | Type::List(_) | Type::Record(_) | Type::Tuple(_) => {
+				Self::any_with_capacity(capacity)
+			}
 		}
 	}
 

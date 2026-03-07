@@ -99,6 +99,15 @@ fn simplified_name<'a>(expr: &Expression) -> Fragment {
 				.collect::<Vec<_>>()
 				.join(",")
 		)),
+		Expression::List(list_expr) => Fragment::internal(format!(
+			"[{}]",
+			list_expr
+				.expressions
+				.iter()
+				.map(|e| simplified_name(e).text().to_string())
+				.collect::<Vec<_>>()
+				.join(",")
+		)),
 		Expression::GreaterThan(expr) => Fragment::internal(format!(
 			"{}>{}",
 			simplified_name(&expr.left).text(),

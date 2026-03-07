@@ -91,6 +91,8 @@ pub enum Expression {
 
 	Tuple(TupleExpression),
 
+	List(ListExpression),
+
 	Prefix(PrefixExpression),
 
 	GreaterThan(GreaterThanExpression),
@@ -555,6 +557,7 @@ impl Display for Expression {
 				write!(f, "({} - {})", left, right)
 			}
 			Expression::Tuple(tuple) => write!(f, "({})", tuple),
+			Expression::List(list) => write!(f, "{}", list),
 			Expression::Prefix(prefix) => write!(f, "{}", prefix),
 			Expression::GreaterThan(GreaterThanExpression {
 				left,
@@ -896,6 +899,19 @@ impl Display for TupleExpression {
 	}
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListExpression {
+	pub expressions: Vec<Expression>,
+	pub fragment: Fragment,
+}
+
+impl Display for ListExpression {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let items = self.expressions.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(", ");
+		write!(f, "[{}]", items)
+	}
+}
+
 pub struct ExpressionCompiler {}
 
 impl ExpressionCompiler {
@@ -1126,7 +1142,7 @@ impl ExpressionCompiler {
 				for ast in list.nodes {
 					expressions.push(Self::compile(ast)?);
 				}
-				Ok(Expression::Tuple(TupleExpression {
+				Ok(Expression::List(ListExpression {
 					expressions,
 					fragment: list.token.fragment.to_owned(),
 				}))
@@ -1496,6 +1512,11 @@ impl ExpressionCompiler {
 				Self::rewrite_field_refs(&mut e.expression, bindings);
 			}
 			Expression::Tuple(e) => {
+				for expr in &mut e.expressions {
+					Self::rewrite_field_refs(expr, bindings);
+				}
+			}
+			Expression::List(e) => {
 				for expr in &mut e.expressions {
 					Self::rewrite_field_refs(expr, bindings);
 				}

@@ -41,7 +41,7 @@ fn to_json_pretty(value: &Value, indent: usize) -> String {
 		Value::DictionaryId(id) => format!("\"{}\"", id),
 		Value::Type(t) => format!("\"{}\"", t),
 		Value::Any(v) => to_json_pretty(v, indent),
-		Value::List(items) => {
+		Value::List(items) | Value::Tuple(items) => {
 			if items.is_empty() {
 				return "[]".to_string();
 			}

@@ -303,7 +303,7 @@ fn value_to_typed_value(value: Value) -> TypedValue {
 		Value::Any(inner) => return value_to_typed_value(*inner),
 		Value::DictionaryId(id) => (Type::DictionaryId.to_u8() as u32, id.to_u128().to_le_bytes().to_vec()),
 		Value::Type(t) => (Type::Any.to_u8() as u32, vec![t.to_u8()]),
-		Value::List(items) => {
+		Value::List(items) | Value::Tuple(items) => {
 			let mut buf = Vec::new();
 			buf.extend_from_slice(&(items.len() as u32).to_le_bytes());
 			for item in &items {
@@ -587,7 +587,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			// Fallback: store as Utf8 for now (dictionary IDs need context)
 			FrameColumnData::Utf8(Utf8Container::new(vec![]))
 		}
-		Type::List(_) | Type::Record(_) => FrameColumnData::Utf8(Utf8Container::new(vec![])),
+		Type::List(_) | Type::Record(_) | Type::Tuple(_) => FrameColumnData::Utf8(Utf8Container::new(vec![])),
 	}
 }
 
@@ -754,7 +754,7 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			let (inner_val, consumed) = decode_any_value(&data[pos..]);
 			(Value::Any(Box::new(inner_val)), pos + consumed)
 		}
-		Type::DictionaryId | Type::List(_) | Type::Record(_) => {
+		Type::DictionaryId | Type::List(_) | Type::Record(_) | Type::Tuple(_) => {
 			// Shouldn't be nested in Any but handle gracefully
 			(
 				Value::None {

@@ -836,6 +836,7 @@ impl ColumnData {
 			Type::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
 			Type::List(_) => Self::any(vec![Box::new(Value::List(vec![])); len]),
 			Type::Record(_) => Self::any(vec![Box::new(Value::Record(vec![])); len]),
+			Type::Tuple(_) => Self::any(vec![Box::new(Value::Tuple(vec![])); len]),
 			Type::Option(inner) => return Self::none_typed(*inner, len),
 		};
 		ColumnData::Option {

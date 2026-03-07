@@ -64,6 +64,11 @@ impl Expression {
 					expr.expressions.iter().map(|e| e.full_fragment_owned()).collect::<Vec<_>>();
 				Fragment::merge_all(fragments)
 			}
+			Expression::List(expr) => {
+				let fragments =
+					expr.expressions.iter().map(|e| e.full_fragment_owned()).collect::<Vec<_>>();
+				Fragment::merge_all(fragments)
+			}
 			Expression::Type(expr) => expr.fragment.clone(),
 
 			Expression::Prefix(expr) => expr.full_fragment_owned(),

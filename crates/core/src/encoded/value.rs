@@ -297,6 +297,7 @@ impl Schema {
 			Type::Any => Value::Any(Box::new(self.get_any(row, index))),
 			Type::List(_) => unreachable!("List type cannot be stored in database"),
 			Type::Record(_) => unreachable!("Record type cannot be stored in database"),
+			Type::Tuple(_) => unreachable!("Tuple type cannot be stored in database"),
 		}
 	}
 }

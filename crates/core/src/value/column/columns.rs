@@ -92,6 +92,7 @@ impl Columns {
 			Value::Type(v) => ColumnData::any(vec![Box::new(Value::Type(v))]),
 			Value::List(v) => ColumnData::any(vec![Box::new(Value::List(v))]),
 			Value::Record(v) => ColumnData::any(vec![Box::new(Value::Record(v))]),
+			Value::Tuple(v) => ColumnData::any(vec![Box::new(Value::Tuple(v))]),
 		};
 		let column = Column {
 			name: Fragment::internal("value"),
@@ -176,6 +177,7 @@ impl Columns {
 				Value::Any(v) => ColumnData::any(vec![v]),
 				Value::List(v) => ColumnData::any(vec![Box::new(Value::List(v))]),
 				Value::Record(v) => ColumnData::any(vec![Box::new(Value::Record(v))]),
+				Value::Tuple(v) => ColumnData::any(vec![Box::new(Value::Tuple(v))]),
 			};
 
 			let column = Column {

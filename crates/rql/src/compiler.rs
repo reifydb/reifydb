@@ -630,9 +630,10 @@ impl InstructionCompiler {
 			}
 			Expression::In(i) => {
 				self.compile_expression(&i.value);
-				// The list is a Tuple expression
+				// The list is a Tuple or List expression
 				let items = match i.list.as_ref() {
 					Expression::Tuple(t) => &t.expressions,
+					Expression::List(l) => &l.expressions,
 					_ => {
 						// Single-item list
 						self.compile_expression(&i.list);
@@ -713,6 +714,10 @@ impl InstructionCompiler {
 					// Multi-element tuple - not supported in scripting context
 					self.emit(Instruction::PushNone);
 				}
+			}
+			// List: bracketed expressions - not supported in scripting context
+			Expression::List(_) => {
+				self.emit(Instruction::PushNone);
 			}
 			Expression::Map(m) => {
 				if m.expressions.len() == 1 {

@@ -443,7 +443,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					for i in 0..len {
 						let items: Vec<Value> =
 							columns.iter().map(|col| col.data().get_value(i)).collect();
-						data.push(Box::new(Value::List(items)));
+						data.push(Box::new(Value::Tuple(items)));
 					}
 
 					Ok(Column {
@@ -452,6 +452,33 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					})
 				})
 			}
+		}
+
+		Expression::List(e) => {
+			let compiled: Vec<CompiledExpr> = e
+				.expressions
+				.iter()
+				.map(|expr| compile_expression(_ctx, expr))
+				.collect::<Result<Vec<_>>>()?;
+			let fragment = e.fragment.clone();
+			CompiledExpr::new(move |ctx| {
+				let columns: Vec<Column> =
+					compiled.iter().map(|expr| expr.execute(ctx)).collect::<Result<Vec<_>>>()?;
+
+				let len = columns.first().map_or(1, |c| c.data().len());
+				let mut data: Vec<Box<Value>> = Vec::with_capacity(len);
+
+				for i in 0..len {
+					let items: Vec<Value> =
+						columns.iter().map(|col| col.data().get_value(i)).collect();
+					data.push(Box::new(Value::List(items)));
+				}
+
+				Ok(Column {
+					name: fragment.clone(),
+					data: ColumnData::any(data),
+				})
+			})
 		}
 
 		Expression::Between(e) => {
@@ -536,6 +563,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		Expression::In(e) => {
 			let list_expressions = match e.list.as_ref() {
 				Expression::Tuple(tuple) => &tuple.expressions,
+				Expression::List(list) => &list.expressions,
 				_ => from_ref(e.list.as_ref()),
 			};
 			let value = compile_expression(_ctx, &e.value)?;
@@ -604,6 +632,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		Expression::Contains(e) => {
 			let list_expressions = match e.list.as_ref() {
 				Expression::Tuple(tuple) => &tuple.expressions,
+				Expression::List(list) => &list.expressions,
 				_ => from_ref(e.list.as_ref()),
 			};
 			let value = compile_expression(_ctx, &e.value)?;
@@ -1147,8 +1176,10 @@ fn list_contains_element(list_col: &Column, element_col: &Column, fragment: &Fra
 
 		let contained = match &list_value {
 			Value::List(items) => list_items_contain(items, &element_value, fragment),
+			Value::Tuple(items) => list_items_contain(items, &element_value, fragment),
 			Value::Any(boxed) => match boxed.as_ref() {
 				Value::List(items) => list_items_contain(items, &element_value, fragment),
+				Value::Tuple(items) => list_items_contain(items, &element_value, fragment),
 				_ => false,
 			},
 			_ => false,

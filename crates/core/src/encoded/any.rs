@@ -148,7 +148,8 @@ pub fn encode_value(value: &Value) -> Vec<u8> {
 		}
 		| Value::Type(_)
 		| Value::List(_)
-		| Value::Record(_) => unreachable!("unsupported value type in Any encoding: {:?}", value),
+		| Value::Record(_)
+		| Value::Tuple(_) => unreachable!("unsupported value type in Any encoding: {:?}", value),
 	}
 }
 

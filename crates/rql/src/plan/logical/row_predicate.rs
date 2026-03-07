@@ -79,14 +79,20 @@ fn extract_from_in(in_expr: &InExpression) -> Option<RowPredicate> {
 	// The list should be a tuple/list of constants
 	match in_expr.list.as_ref() {
 		Expression::Tuple(tuple) => extract_list_from_tuple(tuple),
+		Expression::List(list) => extract_list_from_expressions(&list.expressions),
 		_ => None,
 	}
 }
 
 /// Extracts row numbers from a tuple expression.
 fn extract_list_from_tuple(tuple: &TupleExpression) -> Option<RowPredicate> {
-	let mut values = Vec::with_capacity(tuple.expressions.len());
-	for expr in &tuple.expressions {
+	extract_list_from_expressions(&tuple.expressions)
+}
+
+/// Extracts row numbers from a slice of expressions.
+fn extract_list_from_expressions(expressions: &[Expression]) -> Option<RowPredicate> {
+	let mut values = Vec::with_capacity(expressions.len());
+	for expr in expressions {
 		match extract_constant_u64(expr) {
 			Some(v) => values.push(v),
 			None => return None, // Non-constant in list, can't optimize
@@ -151,6 +157,7 @@ pub mod tests {
 	use reifydb_type::fragment::Fragment;
 
 	use super::*;
+	use crate::expression::ListExpression;
 
 	fn make_rownum_column() -> Expression {
 		let column = ColumnIdentifier {
@@ -205,13 +212,13 @@ pub mod tests {
 
 	#[test]
 	fn test_list_lookup() {
-		let tuple = TupleExpression {
+		let list = ListExpression {
 			expressions: vec![make_constant(1), make_constant(5), make_constant(10)],
 			fragment: Fragment::internal("[]"),
 		};
 		let in_expr = InExpression {
 			value: Box::new(make_rownum_column()),
-			list: Box::new(Expression::Tuple(tuple)),
+			list: Box::new(Expression::List(list)),
 			negated: false,
 			fragment: Fragment::internal("in"),
 		};

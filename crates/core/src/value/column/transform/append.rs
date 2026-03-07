@@ -232,10 +232,12 @@ impl Columns {
 						}
 						col_data
 					}
-					Type::Any | Type::List(_) | Type::Record(_) => ColumnData::any_with_bitvec(
-						vec![Box::new(Value::none()); size],
-						BitVec::repeat(size, false),
-					),
+					Type::Any | Type::List(_) | Type::Record(_) | Type::Tuple(_) => {
+						ColumnData::any_with_bitvec(
+							vec![Box::new(Value::none()); size],
+							BitVec::repeat(size, false),
+						)
+					}
 				};
 
 				*column = column.with_new_data(new_data);

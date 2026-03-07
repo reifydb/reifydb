@@ -187,7 +187,7 @@ fn typed_value_to_value(tv: TypedValue) -> Result<Value, GrpcError> {
 			let big = BigInt::from_signed_bytes_le(data);
 			Ok(Value::Uint(Uint(big)))
 		}
-		Type::Any | Type::DictionaryId | Type::List(_) | Type::Record(_) => {
+		Type::Any | Type::DictionaryId | Type::List(_) | Type::Record(_) | Type::Tuple(_) => {
 			Err(GrpcError::UnsupportedParamType(ty))
 		}
 	}
@@ -576,7 +576,7 @@ fn encode_any_value(val: &Value, buf: &mut Vec<u8>) {
 			buf.extend_from_slice(&v.to_le_bytes());
 		}
 		Value::Type(t) => buf.push(t.to_u8()),
-		Value::List(items) => {
+		Value::List(items) | Value::Tuple(items) => {
 			buf.extend_from_slice(&(items.len() as u32).to_le_bytes());
 			for item in items {
 				encode_any_value(item, buf);

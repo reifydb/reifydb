@@ -29,9 +29,9 @@ use super::{
 	CastExpression, ColumnExpression, ConstantExpression, ContainsExpression, DivExpression, ElseIfExpression,
 	EqExpression, Expression, ExtendExpression, FieldAccessExpression, GreaterThanEqExpression,
 	GreaterThanExpression, IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression,
-	MapExpression, MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression,
-	PrefixOperator, RemExpression, SubExpression, TupleExpression, TypeExpression, VariableExpression,
-	XorExpression,
+	ListExpression, MapExpression, MulExpression, NotEqExpression, OrExpression, ParameterExpression,
+	PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression, TypeExpression,
+	VariableExpression, XorExpression,
 };
 
 /// JSON-serializable expression for query builders.
@@ -155,6 +155,9 @@ pub enum JsonExpression {
 		args: Vec<JsonExpression>,
 	},
 	Tuple {
+		expressions: Vec<JsonExpression>,
+	},
+	List {
 		expressions: Vec<JsonExpression>,
 	},
 	Prefix {
@@ -363,6 +366,9 @@ impl From<&Expression> for JsonExpression {
 				args: e.args.iter().map(|a| a.into()).collect(),
 			},
 			Expression::Tuple(e) => JsonExpression::Tuple {
+				expressions: e.expressions.iter().map(|a| a.into()).collect(),
+			},
+			Expression::List(e) => JsonExpression::List {
 				expressions: e.expressions.iter().map(|a| a.into()).collect(),
 			},
 			Expression::Prefix(e) => {
@@ -649,6 +655,15 @@ impl TryFrom<JsonExpression> for Expression {
 			JsonExpression::Tuple {
 				expressions,
 			} => Expression::Tuple(TupleExpression {
+				expressions: expressions
+					.into_iter()
+					.map(|a| a.try_into())
+					.collect::<Result<Vec<_>>>()?,
+				fragment: Fragment::None,
+			}),
+			JsonExpression::List {
+				expressions,
+			} => Expression::List(ListExpression {
 				expressions: expressions
 					.into_iter()
 					.map(|a| a.try_into())

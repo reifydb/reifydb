@@ -120,6 +120,8 @@ pub enum Value {
 	List(Vec<Value>),
 	/// A record (named fields with values)
 	Record(Vec<(String, Value)>),
+	/// A tuple of heterogeneous values
+	Tuple(Vec<Value>),
 }
 
 fn default_none_inner() -> Type {
@@ -285,6 +287,7 @@ impl PartialEq for Value {
 			(Value::Type(l), Value::Type(r)) => l == r,
 			(Value::List(l), Value::List(r)) => l == r,
 			(Value::Record(l), Value::Record(r)) => l == r,
+			(Value::Tuple(l), Value::Tuple(r)) => l == r,
 			_ => false,
 		}
 	}
@@ -334,6 +337,7 @@ impl hash::Hash for Value {
 					v.hash(state);
 				}
 			}
+			Value::Tuple(v) => v.hash(state),
 		}
 	}
 }
@@ -370,6 +374,7 @@ impl PartialOrd for Value {
 			(Value::Type(l), Value::Type(r)) => l.partial_cmp(r),
 			(Value::List(_), Value::List(_)) => None,     // Lists are not orderable
 			(Value::Record(_), Value::Record(_)) => None, // Records are not orderable
+			(Value::Tuple(_), Value::Tuple(_)) => None,   // Tuples are not orderable
 			(Value::Any(_), Value::Any(_)) => None,       // Any values are not comparable
 			(
 				Value::None {
@@ -451,6 +456,7 @@ impl Ord for Value {
 			(Value::Type(l), Value::Type(r)) => l.cmp(r),
 			(Value::List(_), Value::List(_)) => unreachable!("List values are not orderable"),
 			(Value::Record(_), Value::Record(_)) => unreachable!("Record values are not orderable"),
+			(Value::Tuple(_), Value::Tuple(_)) => unreachable!("Tuple values are not orderable"),
 			(Value::Any(_), Value::Any(_)) => unreachable!("Any values are not orderable"),
 			_ => unimplemented!(),
 		}
@@ -509,6 +515,16 @@ impl Display for Value {
 				}
 				f.write_str("}")
 			}
+			Value::Tuple(items) => {
+				f.write_str("(")?;
+				for (i, item) in items.iter().enumerate() {
+					if i > 0 {
+						f.write_str(", ")?;
+					}
+					Display::fmt(item, f)?;
+				}
+				f.write_str(")")
+			}
 			Value::None {
 				..
 			} => f.write_str("none"),
@@ -557,6 +573,7 @@ impl Value {
 			Value::Record(fields) => {
 				Type::Record(fields.iter().map(|(k, v)| (k.clone(), v.get_type())).collect())
 			}
+			Value::Tuple(items) => Type::Tuple(items.iter().map(|v| v.get_type()).collect()),
 		}
 	}
 }

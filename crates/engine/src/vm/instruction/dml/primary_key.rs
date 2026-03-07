@@ -168,6 +168,9 @@ pub fn encode_primary_key(
 			Type::Record(_) => {
 				panic!("Record type cannot be used in primary keys");
 			}
+			Type::Tuple(_) => {
+				panic!("Tuple type cannot be used in primary keys");
+			}
 		}
 	}
 

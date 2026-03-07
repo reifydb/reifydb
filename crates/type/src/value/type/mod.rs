@@ -78,6 +78,8 @@ pub enum Type {
 	List(Box<Type>),
 	/// A record type with named fields
 	Record(Vec<(String, Type)>),
+	/// A tuple of heterogeneous types
+	Tuple(Vec<Type>),
 }
 
 impl Type {
@@ -214,6 +216,7 @@ impl Type {
 			Type::DictionaryId => 27,
 			Type::List(_) => 28,
 			Type::Record(_) => 29,
+			Type::Tuple(_) => 30,
 		}
 	}
 }
@@ -253,6 +256,7 @@ impl Type {
 			27 => Type::DictionaryId,
 			28 => Type::list_of(Type::Any),
 			29 => Type::Record(Vec::new()),
+			30 => Type::Tuple(Vec::new()),
 			_ => unreachable!(),
 		}
 	}
@@ -296,6 +300,7 @@ impl Type {
 			Type::Any => 8,                      // pointer size on 64-bit systems
 			Type::List(_) => 8,                  // pointer size (Vec is heap-allocated)
 			Type::Record(_) => 8,                // pointer size (Vec is heap-allocated)
+			Type::Tuple(_) => 8,                 // pointer size (Vec is heap-allocated)
 			Type::DictionaryId => 16,            /* max possible; actual size determined by constraint's
 			                                       * id_type */
 		}
@@ -338,6 +343,7 @@ impl Type {
 			Type::DictionaryId => 16,
 			Type::List(_) => 8,   // pointer alignment
 			Type::Record(_) => 8, // pointer alignment
+			Type::Tuple(_) => 8,  // pointer alignment
 		}
 	}
 }
@@ -381,6 +387,16 @@ impl Display for Type {
 						f.write_str(", ")?;
 					}
 					write!(f, "{}: {}", name, ty)?;
+				}
+				f.write_str(")")
+			}
+			Type::Tuple(types) => {
+				f.write_str("Tuple(")?;
+				for (i, ty) in types.iter().enumerate() {
+					if i > 0 {
+						f.write_str(", ")?;
+					}
+					write!(f, "{}", ty)?;
 				}
 				f.write_str(")")
 			}
@@ -429,6 +445,7 @@ impl From<&Value> for Type {
 			Value::Record(fields) => {
 				Type::Record(fields.iter().map(|(k, v)| (k.clone(), Type::from(v))).collect())
 			}
+			Value::Tuple(items) => Type::Tuple(items.iter().map(Type::from).collect()),
 		}
 	}
 }

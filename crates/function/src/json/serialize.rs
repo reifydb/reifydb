@@ -43,6 +43,10 @@ fn to_json(value: &Value) -> String {
 			let inner: Vec<String> = items.iter().map(|v| to_json(v)).collect();
 			format!("[{}]", inner.join(", "))
 		}
+		Value::Tuple(items) => {
+			let inner: Vec<String> = items.iter().map(|v| to_json(v)).collect();
+			format!("[{}]", inner.join(", "))
+		}
 		Value::Record(fields) => {
 			let inner: Vec<String> = fields
 				.iter()

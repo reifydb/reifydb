@@ -43,6 +43,10 @@ impl AsString for Value {
 			Value::Any(v) => v.as_string(),
 			Value::List(items) => {
 				let inner: Vec<String> = items.iter().map(|v| v.as_string()).collect();
+				format!("[{}]", inner.join(", "))
+			}
+			Value::Tuple(items) => {
+				let inner: Vec<String> = items.iter().map(|v| v.as_string()).collect();
 				format!("({})", inner.join(", "))
 			}
 			Value::Record(fields) => {
