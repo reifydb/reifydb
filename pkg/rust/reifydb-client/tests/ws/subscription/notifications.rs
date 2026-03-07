@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
 use super::{SubscriptionTestHarness, find_column, get_op_value};

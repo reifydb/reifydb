@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 export {NONE_VALUE} from './constant';
 export {decode} from './decoder';

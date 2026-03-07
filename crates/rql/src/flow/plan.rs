@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
 //! Compiled flow plan types for 2-phase flow compilation.

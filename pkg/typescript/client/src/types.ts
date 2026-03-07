@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
 import { ReifyError } from "@reifydb/core";

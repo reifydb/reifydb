@@ -47,7 +47,7 @@
     "access": "public",
     "linkWorkspacePackages": false
   },
-  "license": "AGPL-3.0-or-later",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/reifydb/reifydb.git",

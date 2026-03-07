@@ -4,4 +4,4 @@ description = "C ABI definitions for ReifyDB FFI operators"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-license = "MIT"
+license = "Apache-2.0"

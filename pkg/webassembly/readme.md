@@ -71,4 +71,4 @@ Full API documentation and guides: [docs/](./docs/)
 
 ## License
 
-AGPL-3
+Apache-2.0

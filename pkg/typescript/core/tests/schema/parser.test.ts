@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import {describe, expect, it} from 'vitest';
 import {parseValue} from '../../src/schema/parser';
