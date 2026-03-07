@@ -40,11 +40,11 @@ fn test_subscription_int_types() {
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frame;
-		assert_eq!(find_column(frame, "i1").unwrap().data[0], "127");
-		assert_eq!(find_column(frame, "i2").unwrap().data[0], "32767");
-		assert_eq!(find_column(frame, "i4").unwrap().data[0], "2147483647");
-		assert_eq!(find_column(frame, "i8").unwrap().data[0], "9223372036854775807");
+		let body = &change.unwrap().body;
+		assert_eq!(find_column(body, "i1").unwrap().data[0], "127");
+		assert_eq!(find_column(body, "i2").unwrap().data[0], "32767");
+		assert_eq!(find_column(body, "i4").unwrap().data[0], "2147483647");
+		assert_eq!(find_column(body, "i8").unwrap().data[0], "9223372036854775807");
 
 		client.unsubscribe(&sub_id).await.unwrap();
 		client.close().await.unwrap();
@@ -88,11 +88,11 @@ fn test_subscription_uint_types() {
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frame;
-		assert_eq!(find_column(frame, "u1").unwrap().data[0], "255");
-		assert_eq!(find_column(frame, "u2").unwrap().data[0], "65535");
-		assert_eq!(find_column(frame, "u4").unwrap().data[0], "4294967295");
-		assert_eq!(find_column(frame, "u8").unwrap().data[0], "18446744073709551615");
+		let body = &change.unwrap().body;
+		assert_eq!(find_column(body, "u1").unwrap().data[0], "255");
+		assert_eq!(find_column(body, "u2").unwrap().data[0], "65535");
+		assert_eq!(find_column(body, "u4").unwrap().data[0], "4294967295");
+		assert_eq!(find_column(body, "u8").unwrap().data[0], "18446744073709551615");
 
 		client.unsubscribe(&sub_id).await.unwrap();
 		client.close().await.unwrap();
@@ -124,9 +124,9 @@ fn test_subscription_float_types() {
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frame;
-		let f4_val: f32 = find_column(frame, "f4").unwrap().data[0].parse().unwrap();
-		let f8_val: f64 = find_column(frame, "f8").unwrap().data[0].parse().unwrap();
+		let body = &change.unwrap().body;
+		let f4_val: f32 = find_column(body, "f4").unwrap().data[0].parse().unwrap();
+		let f8_val: f64 = find_column(body, "f8").unwrap().data[0].parse().unwrap();
 
 		assert!((f4_val - 3.14).abs() < 0.01);
 		assert!((f8_val - 2.718281828459045).abs() < 0.0001);
@@ -161,9 +161,9 @@ fn test_subscription_string_types() {
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frame;
-		assert_eq!(find_column(frame, "s").unwrap().data[0], "hello world");
-		assert_eq!(find_column(frame, "s2").unwrap().data[0], "test data");
+		let body = &change.unwrap().body;
+		assert_eq!(find_column(body, "s").unwrap().data[0], "hello world");
+		assert_eq!(find_column(body, "s2").unwrap().data[0], "test data");
 
 		client.unsubscribe(&sub_id).await.unwrap();
 		client.close().await.unwrap();
@@ -202,9 +202,9 @@ fn test_subscription_temporal() {
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frame;
-		assert!(find_column(frame, "d").unwrap().data[0].contains("2025"));
-		assert!(find_column(frame, "t").unwrap().data[0].contains("14"));
+		let body = &change.unwrap().body;
+		assert!(find_column(body, "d").unwrap().data[0].contains("2025"));
+		assert!(find_column(body, "t").unwrap().data[0].contains("14"));
 
 		client.unsubscribe(&sub_id).await.unwrap();
 		client.close().await.unwrap();
@@ -242,9 +242,9 @@ fn test_subscription_uuid() {
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some());
 
-		let frame = &change.unwrap().frame;
-		let u4_val = &find_column(frame, "u4").unwrap().data[0];
-		let u7_val = &find_column(frame, "u7").unwrap().data[0];
+		let body = &change.unwrap().body;
+		let u4_val = &find_column(body, "u4").unwrap().data[0];
+		let u7_val = &find_column(body, "u7").unwrap().data[0];
 
 		// UUIDs should have the transaction format with hyphens
 		assert!(u4_val.contains("-"), "UUID4 should contain hyphens");

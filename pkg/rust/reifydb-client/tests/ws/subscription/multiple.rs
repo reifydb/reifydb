@@ -120,7 +120,7 @@ fn test_changes_routed_to_correct_subscription() {
 		assert_eq!(change.subscription_id, sub_id1, "Change should be routed to correct subscription");
 
 		// Verify the data
-		let id_col = find_column(&change.frame, "id").unwrap();
+		let id_col = find_column(&change.body, "id").unwrap();
 		assert_eq!(id_col.data[0], "100");
 
 		client.unsubscribe(&sub_id1).await.unwrap();

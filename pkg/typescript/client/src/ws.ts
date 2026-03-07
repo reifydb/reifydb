@@ -361,7 +361,8 @@ export class WsClient {
             throw new Error(`Unexpected response type: ${response.type}`);
         }
 
-        return response.payload.frames.map((frame) =>
+        const frames = response.payload.body?.frames || [];
+        return frames.map((frame: any) =>
             columnsToRows(frame.columns)
         );
     }
@@ -553,7 +554,7 @@ export class WsClient {
     }
 
     private handleChangeMessage(msg: ChangeMessage): void {
-        const {subscription_id, frame} = msg.payload;
+        const {subscription_id, body} = msg.payload;
         const state = this.subscriptions.get(subscription_id);
 
         if (!state) {
@@ -561,8 +562,12 @@ export class WsClient {
             return;
         }
 
+        const frames = body?.frames || [];
+        if (frames.length === 0) return;
+        const frame = frames[0];
+
         // Extract _op column to determine operation type
-        const opColumn = frame.columns.find(c => c.name === "_op");
+        const opColumn = frame.columns.find((c: any) => c.name === "_op");
         if (!opColumn || opColumn.data.length === 0) {
             console.error('Missing or empty _op column:', { opColumn, frame });
             return;

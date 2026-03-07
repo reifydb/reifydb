@@ -10,9 +10,38 @@ use reqwest::Client as ReqwestClient;
 
 use crate::{
 	AdminRequest, AdminResponse, AdminResult, CommandRequest, CommandResponse, CommandResult, ErrResponse,
-	QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, params_to_wire,
+	QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, WebsocketFrame, params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 };
+
+/// HTTP-specific response format (server returns `{ "frames": [...] }`)
+#[derive(Debug, serde::Deserialize)]
+struct HttpFrameResponse {
+	frames: Vec<WebsocketFrame>,
+}
+
+impl HttpFrameResponse {
+	fn into_admin(self) -> AdminResponse {
+		AdminResponse {
+			content_type: "application/vnd.reifydb.frames+json".to_string(),
+			body: serde_json::json!({ "frames": self.frames }),
+		}
+	}
+
+	fn into_command(self) -> CommandResponse {
+		CommandResponse {
+			content_type: "application/vnd.reifydb.frames+json".to_string(),
+			body: serde_json::json!({ "frames": self.frames }),
+		}
+	}
+
+	fn into_query(self) -> QueryResponse {
+		QueryResponse {
+			content_type: "application/vnd.reifydb.frames+json".to_string(),
+			body: serde_json::json!({ "frames": self.frames }),
+		}
+	}
+}
 
 /// HTTP-specific error response matching the server's format
 #[derive(Debug, serde::Deserialize)]
@@ -228,8 +257,8 @@ impl HttpClient {
 		let url = format!("{}/v1/admin", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
 
-		match serde_json::from_str::<AdminResponse>(&response_body) {
-			Ok(response) => Ok(response),
+		match serde_json::from_str::<HttpFrameResponse>(&response_body) {
+			Ok(response) => Ok(response.into_admin()),
 			Err(_) => Err(self.parse_error_response(&response_body)),
 		}
 	}
@@ -239,9 +268,8 @@ impl HttpClient {
 		let url = format!("{}/v1/command", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
 
-		// Try to parse as CommandResponse first, then as error
-		match serde_json::from_str::<CommandResponse>(&response_body) {
-			Ok(response) => Ok(response),
+		match serde_json::from_str::<HttpFrameResponse>(&response_body) {
+			Ok(response) => Ok(response.into_command()),
 			Err(_) => Err(self.parse_error_response(&response_body)),
 		}
 	}
@@ -251,9 +279,8 @@ impl HttpClient {
 		let url = format!("{}/v1/query", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
 
-		// Try to parse as QueryResponse first, then as error
-		match serde_json::from_str::<QueryResponse>(&response_body) {
-			Ok(response) => Ok(response),
+		match serde_json::from_str::<HttpFrameResponse>(&response_body) {
+			Ok(response) => Ok(response.into_query()),
 			Err(_) => Err(self.parse_error_response(&response_body)),
 		}
 	}

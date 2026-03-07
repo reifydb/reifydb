@@ -23,7 +23,8 @@ pub enum PushMessage {
 	/// A change notification for a subscription.
 	Change {
 		subscription_id: SubscriptionId,
-		frame: ResponseFrame,
+		content_type: String,
+		body: serde_json::Value,
 	},
 }
 
@@ -136,14 +137,15 @@ impl SubscriptionRegistry {
 	/// Broadcast a message to all active subscriptions.
 	///
 	/// Used by the test push thread to send periodic updates.
-	pub async fn broadcast(&self, frame: ResponseFrame) {
+	pub async fn broadcast(&self, content_type: String, body: serde_json::Value) {
 		for entry in self.subscriptions.iter() {
 			let subscription_id = *entry.key();
 			let state = entry.value();
 
 			let msg = PushMessage::Change {
 				subscription_id,
-				frame: frame.clone(),
+				content_type: content_type.clone(),
+				body: body.clone(),
 			};
 
 			// Try to send, ignore if channel is full or closed
@@ -217,9 +219,12 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 			columns: response_columns,
 		};
 
+		let body = serde_json::json!({ "frames": [frame] });
+
 		let msg = PushMessage::Change {
 			subscription_id: *subscription_id,
-			frame,
+			content_type: "application/vnd.reifydb.frames+json".to_string(),
+			body,
 		};
 
 		match push_tx.try_send(msg) {
@@ -251,27 +256,29 @@ pub mod tests {
 		registry.subscribe(sub_id, connection_id, "FROM test".to_string(), tx);
 		assert_eq!(registry.subscription_count(), 1);
 
-		// Broadcast with a ResponseFrame
-		let frame = ResponseFrame {
-			row_numbers: vec![0],
-			columns: vec![ResponseColumn {
-				name: "answer".to_string(),
-				r#type: Type::Int8,
-				data: vec!["42".to_string()],
-			}],
-		};
-		registry.broadcast(frame).await;
+		// Broadcast with a content_type + body
+		let body = serde_json::json!({
+			"frames": [{
+				"row_numbers": [0],
+				"columns": [{
+					"name": "answer",
+					"type": "Int8",
+					"data": ["42"]
+				}]
+			}]
+		});
+		registry.broadcast("application/vnd.reifydb.frames+json".to_string(), body.clone()).await;
 
 		// Should receive message
 		let msg = rx.try_recv().unwrap();
 		match msg {
 			PushMessage::Change {
 				subscription_id,
-				frame,
+				body: received_body,
+				..
 			} => {
 				assert_eq!(subscription_id, sub_id);
-				assert_eq!(frame.columns[0].name, "answer");
-				assert_eq!(frame.columns[0].data[0], "42");
+				assert_eq!(received_body, body);
 			}
 		}
 

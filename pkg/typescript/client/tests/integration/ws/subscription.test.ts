@@ -1068,10 +1068,10 @@ describe('WebSocket Subscriptions', () => {
 
             await Promise.all(promises);
 
-            await tracker.waitForCall();
+            await tracker.waitForRows(10);
 
-            // Rapid inserts are batched by the server into a single callback
-            expect(tracker.getCallCount()).toBe(1);
+            // Rapid inserts may arrive in one or more batches depending on server poll timing
+            expect(tracker.getCallCount()).toBeGreaterThanOrEqual(1);
             expect(tracker.getAllRows().length).toBe(10);
 
             // Verify all rows have correct values

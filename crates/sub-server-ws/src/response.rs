@@ -7,10 +7,12 @@
 //! protocol compatibility. Changes to these types should be coordinated
 //! with the client implementation.
 
-use reifydb_sub_server::response::ResponseFrame;
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 use serde::Serialize;
 use serde_json::to_string;
+
+pub const CONTENT_TYPE_FRAMES: &str = "application/vnd.reifydb.frames+json";
+pub const CONTENT_TYPE_JSON: &str = "application/json";
 
 /// WebSocket response envelope (matches client's `Response`)
 #[derive(Debug, Serialize)]
@@ -43,17 +45,20 @@ pub struct ErrResponse {
 
 #[derive(Debug, Serialize)]
 pub struct AdminResponse {
-	pub frames: Vec<ResponseFrame>,
+	pub content_type: String,
+	pub body: serde_json::Value,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CommandResponse {
-	pub frames: Vec<ResponseFrame>,
+	pub content_type: String,
+	pub body: serde_json::Value,
 }
 
 #[derive(Debug, Serialize)]
 pub struct QueryResponse {
-	pub frames: Vec<ResponseFrame>,
+	pub content_type: String,
+	pub body: serde_json::Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,7 +82,8 @@ pub enum ServerPush {
 #[derive(Debug, Serialize)]
 pub struct ChangePayload {
 	pub subscription_id: String,
-	pub frame: ResponseFrame,
+	pub content_type: String,
+	pub body: serde_json::Value,
 }
 
 impl Response {
@@ -88,29 +94,32 @@ impl Response {
 		}
 	}
 
-	pub fn admin(id: impl Into<String>, frames: Vec<ResponseFrame>) -> Self {
+	pub fn admin(id: impl Into<String>, content_type: impl Into<String>, body: serde_json::Value) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Admin(AdminResponse {
-				frames,
+				content_type: content_type.into(),
+				body,
 			}),
 		}
 	}
 
-	pub fn query(id: impl Into<String>, frames: Vec<ResponseFrame>) -> Self {
+	pub fn query(id: impl Into<String>, content_type: impl Into<String>, body: serde_json::Value) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Query(QueryResponse {
-				frames,
+				content_type: content_type.into(),
+				body,
 			}),
 		}
 	}
 
-	pub fn command(id: impl Into<String>, frames: Vec<ResponseFrame>) -> Self {
+	pub fn command(id: impl Into<String>, content_type: impl Into<String>, body: serde_json::Value) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Command(CommandResponse {
-				frames,
+				content_type: content_type.into(),
+				body,
 			}),
 		}
 	}
@@ -168,10 +177,15 @@ impl Response {
 }
 
 impl ServerPush {
-	pub fn change(subscription_id: impl Into<String>, frame: ResponseFrame) -> Self {
+	pub fn change(
+		subscription_id: impl Into<String>,
+		content_type: impl Into<String>,
+		body: serde_json::Value,
+	) -> Self {
 		Self::Change(ChangePayload {
 			subscription_id: subscription_id.into(),
-			frame,
+			content_type: content_type.into(),
+			body,
 		})
 	}
 

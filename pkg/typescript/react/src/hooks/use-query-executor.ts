@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-import {useState, useCallback, useRef} from 'react';
+import {useState, useCallback, useRef, useEffect} from 'react';
 import {Column, SchemaNode} from '@reifydb/core';
 import {ConnectionConfig} from '../connection/connection';
 import {useConnection} from './use-connection';
@@ -35,6 +35,10 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
     });
 
     const abortControllerRef = useRef<AbortController | null>(null);
+    const isMountedRef = useRef(true);
+    useEffect(() => {
+        return () => { isMountedRef.current = false; };
+    }, []);
 
     const query = useCallback(
         (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): void => {
@@ -105,6 +109,7 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                         }
                     });
 
+                    if (!isMountedRef.current) return;
                     setState({
                         isExecuting: false,
                         results,
@@ -125,6 +130,7 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
 
                     console.error('Query execution failed:', errorMessage);
 
+                    if (!isMountedRef.current) return;
                     setState({
                         isExecuting: false,
                         results: undefined,

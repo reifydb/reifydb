@@ -45,6 +45,10 @@ pub struct AdminRequest {
 	pub statements: Vec<String>,
 	/// Optional parameters for the statements.
 	pub params: Option<WireParams>,
+	/// Optional response format (e.g., "json" for JSON body passthrough).
+	pub format: Option<String>,
+	/// When true with format="json", return the first element directly instead of an array.
+	pub unwrap: Option<bool>,
 }
 
 /// Authentication request payload.
@@ -61,6 +65,10 @@ pub struct CommandRequest {
 	pub statements: Vec<String>,
 	/// Optional parameters for the statements.
 	pub params: Option<WireParams>,
+	/// Optional response format (e.g., "json" for JSON body passthrough).
+	pub format: Option<String>,
+	/// When true with format="json", return the first element directly instead of an array.
+	pub unwrap: Option<bool>,
 }
 
 /// Query (read) request payload.
@@ -70,6 +78,10 @@ pub struct QueryRequest {
 	pub statements: Vec<String>,
 	/// Optional parameters for the queries.
 	pub params: Option<WireParams>,
+	/// Optional response format (e.g., "json" for JSON body passthrough).
+	pub format: Option<String>,
+	/// When true with format="json", return the first element directly instead of an array.
+	pub unwrap: Option<bool>,
 }
 
 /// Subscribe request payload.

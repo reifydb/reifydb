@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::id::SubscriptionId as DbSubscriptionId;
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
 	execute::{ExecuteError, execute_admin, execute_command, execute_query},
-	response::convert_frames,
+	response::{convert_frames, resolve_response_json},
 	state::AppState,
 	subscribe::cleanup_subscription,
 };
@@ -29,7 +29,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
 	protocol::{Request, RequestPayload},
-	response::{Response, ServerPush},
+	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, Response, ServerPush},
 	subscription::{
 		handler::handle_subscribe,
 		registry::{PushMessage, SubscriptionRegistry},
@@ -105,8 +105,8 @@ pub async fn handle_connection(
 			Some(push) = push_rx.recv() => {
 
 				let msg = match push {
-					PushMessage::Change { subscription_id, frame } => {
-						ServerPush::change(subscription_id.to_string(), frame).to_json()
+					PushMessage::Change { subscription_id, content_type, body } => {
+						ServerPush::change(subscription_id.to_string(), content_type, body).to_json()
 					}
 				};
 				if sender.send(Message::Text(msg.into())).await.is_err() {
@@ -228,6 +228,8 @@ async fn process_message(
 				}
 			};
 
+			let format = a.format.clone();
+			let unwrap = a.unwrap.unwrap_or(false);
 			let params = match a.params {
 				None => Params::None,
 				Some(wp) => match wp.into_params() {
@@ -248,8 +250,9 @@ async fn process_message(
 			.await
 			{
 				Ok(frames) => {
-					let ws_frames = convert_frames(frames);
-					Some(Response::admin(&request.id, ws_frames).to_json())
+					let (content_type, body) =
+						build_response_body(frames, format.as_deref(), unwrap);
+					Some(Response::admin(&request.id, content_type, body).to_json())
 				}
 				Err(e) => Some(error_to_response(&request.id, e)),
 			}
@@ -267,6 +270,8 @@ async fn process_message(
 				}
 			};
 
+			let format = q.format.clone();
+			let unwrap = q.unwrap.unwrap_or(false);
 			let params = match q.params {
 				None => Params::None,
 				Some(wp) => match wp.into_params() {
@@ -281,8 +286,9 @@ async fn process_message(
 				.await
 			{
 				Ok(frames) => {
-					let ws_frames = convert_frames(frames);
-					Some(Response::query(&request.id, ws_frames).to_json())
+					let (content_type, body) =
+						build_response_body(frames, format.as_deref(), unwrap);
+					Some(Response::query(&request.id, content_type, body).to_json())
 				}
 				Err(e) => Some(error_to_response(&request.id, e)),
 			}
@@ -300,6 +306,8 @@ async fn process_message(
 				}
 			};
 
+			let format = c.format.clone();
+			let unwrap = c.unwrap.unwrap_or(false);
 			let params = match c.params {
 				None => Params::None,
 				Some(wp) => match wp.into_params() {
@@ -320,8 +328,9 @@ async fn process_message(
 			.await
 			{
 				Ok(frames) => {
-					let ws_frames = convert_frames(frames);
-					Some(Response::command(&request.id, ws_frames).to_json())
+					let (content_type, body) =
+						build_response_body(frames, format.as_deref(), unwrap);
+					Some(Response::command(&request.id, content_type, body).to_json())
 				}
 				Err(e) => Some(error_to_response(&request.id, e)),
 			}
@@ -402,4 +411,33 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 /// Build an error response JSON string.
 pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
 	Response::internal_error(id, code, message).to_json()
+}
+
+/// Build response body with content_type based on format parameter.
+///
+/// When `format` is `Some("json")`, resolves the body column to raw JSON.
+/// Otherwise, converts frames to the standard frame format.
+fn build_response_body(
+	frames: Vec<reifydb_type::value::frame::frame::Frame>,
+	format: Option<&str>,
+	unwrap: bool,
+) -> (String, serde_json::Value) {
+	if format == Some("json") {
+		match resolve_response_json(frames, unwrap) {
+			Ok(resolved) => {
+				// Parse the raw JSON string into a serde_json::Value to embed in the envelope
+				let body = serde_json::from_str(&resolved.body)
+					.unwrap_or(serde_json::Value::String(resolved.body));
+				(CONTENT_TYPE_JSON.to_string(), body)
+			}
+			Err(e) => {
+				// Return error as a JSON string in the body
+				(CONTENT_TYPE_JSON.to_string(), serde_json::Value::String(e))
+			}
+		}
+	} else {
+		let ws_frames = convert_frames(frames);
+		let body = serde_json::json!({ "frames": ws_frames });
+		(CONTENT_TYPE_FRAMES.to_string(), body)
+	}
 }

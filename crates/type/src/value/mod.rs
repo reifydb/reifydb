@@ -533,6 +533,67 @@ impl Display for Value {
 }
 
 impl Value {
+	pub fn to_json_value(&self) -> serde_json::Value {
+		match self {
+			Value::None {
+				..
+			} => serde_json::Value::Null,
+			Value::Boolean(b) => serde_json::Value::Bool(*b),
+			Value::Int1(i) => serde_json::json!(*i),
+			Value::Int2(i) => serde_json::json!(*i),
+			Value::Int4(i) => serde_json::json!(*i),
+			Value::Int8(i) => serde_json::json!(*i),
+			Value::Int16(i) => serde_json::Value::String(i.to_string()),
+			Value::Uint1(u) => serde_json::json!(*u),
+			Value::Uint2(u) => serde_json::json!(*u),
+			Value::Uint4(u) => serde_json::json!(*u),
+			Value::Uint8(u) => serde_json::json!(*u),
+			Value::Uint16(u) => serde_json::Value::String(u.to_string()),
+			Value::Float4(f) => {
+				let v: f32 = **f;
+				if v.is_finite() {
+					serde_json::json!(v)
+				} else {
+					serde_json::Value::Null
+				}
+			}
+			Value::Float8(f) => {
+				let v: f64 = **f;
+				if v.is_finite() {
+					serde_json::json!(v)
+				} else {
+					serde_json::Value::Null
+				}
+			}
+			Value::Utf8(s) => serde_json::Value::String(s.clone()),
+			Value::Int(i) => serde_json::Value::String(i.to_string()),
+			Value::Uint(u) => serde_json::Value::String(u.to_string()),
+			Value::Decimal(d) => serde_json::Value::String(d.to_string()),
+			Value::Uuid4(u) => serde_json::Value::String(u.to_string()),
+			Value::Uuid7(u) => serde_json::Value::String(u.to_string()),
+			Value::IdentityId(id) => serde_json::Value::String(id.to_string()),
+			Value::Date(d) => serde_json::Value::String(d.to_string()),
+			Value::DateTime(dt) => serde_json::Value::String(dt.to_string()),
+			Value::Time(t) => serde_json::Value::String(t.to_string()),
+			Value::Duration(d) => serde_json::Value::String(d.to_string()),
+			Value::Blob(b) => serde_json::Value::String(b.to_string()),
+			Value::DictionaryId(id) => serde_json::Value::String(id.to_string()),
+			Value::Type(t) => serde_json::Value::String(t.to_string()),
+			Value::Any(v) => v.to_json_value(),
+			Value::List(items) => {
+				serde_json::Value::Array(items.iter().map(|v| v.to_json_value()).collect())
+			}
+			Value::Record(fields) => {
+				let map: serde_json::Map<String, serde_json::Value> =
+					fields.iter().map(|(k, v)| (k.clone(), v.to_json_value())).collect();
+				serde_json::Value::Object(map)
+			}
+			Value::Tuple(items) => {
+				serde_json::Value::Array(items.iter().map(|v| v.to_json_value()).collect())
+			}
+		}
+	}
+
 	pub fn get_type(&self) -> Type {
 		match self {
 			Value::None {

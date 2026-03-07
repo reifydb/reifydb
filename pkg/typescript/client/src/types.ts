@@ -13,6 +13,8 @@ export interface AdminRequest {
     payload: {
         statements: string[];
         params?: Params;
+        format?: string;
+        unwrap?: boolean;
     }
 }
 
@@ -20,7 +22,8 @@ export interface AdminResponse {
     id: string;
     type: "Admin";
     payload: {
-        frames: Frame[];
+        content_type: string;
+        body: any;
     };
 }
 
@@ -30,6 +33,8 @@ export interface CommandRequest {
     payload: {
         statements: string[];
         params?: Params;
+        format?: string;
+        unwrap?: boolean;
     }
 }
 
@@ -37,7 +42,8 @@ export interface CommandResponse {
     id: string;
     type: "Command";
     payload: {
-        frames: Frame[];
+        content_type: string;
+        body: any;
     };
 }
 
@@ -47,6 +53,8 @@ export interface QueryRequest {
     payload: {
         statements: string[];
         params?: Params;
+        format?: string;
+        unwrap?: boolean;
     }
 }
 
@@ -54,7 +62,8 @@ export interface QueryResponse {
     id: string;
     type: "Query";
     payload: {
-        frames: Frame[];
+        content_type: string;
+        body: any;
     };
 }
 
@@ -95,7 +104,8 @@ export interface ChangeMessage {
     type: "Change";
     payload: {
         subscription_id: string;
-        frame: Frame;
+        content_type: string;
+        body: any;
     };
 }
 

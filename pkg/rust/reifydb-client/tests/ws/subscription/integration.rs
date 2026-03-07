@@ -67,13 +67,13 @@ fn test_basic_receive_insert_notifications() {
 		let change = ctx.recv().await.expect("Should receive insert notification");
 
 		// Verify the data
-		let id_col = find_column(&change.frame, "id").expect("id column should exist");
+		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.data[0], "1");
 
-		let name_col = find_column(&change.frame, "name").expect("name column should exist");
+		let name_col = find_column(&change.body, "name").expect("name column should exist");
 		assert_eq!(name_col.data[0], "test");
 
-		let value_col = find_column(&change.frame, "value").expect("value column should exist");
+		let value_col = find_column(&change.body, "value").expect("value column should exist");
 		assert_eq!(value_col.data[0], "100");
 
 		ctx.close(&sub_id).await
@@ -92,14 +92,14 @@ fn test_op_insert_callback() {
 		assert_eq!(change.subscription_id, sub_id);
 
 		// Verify _op column indicates INSERT (1)
-		let op = get_op_value(&change.frame, 0);
+		let op = get_op_value(&change.body, 0);
 		assert_eq!(op, Some(1), "_op should be 1 for INSERT");
 
 		// Verify both rows
-		let id_col = find_column(&change.frame, "id").expect("id column should exist");
+		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.data.len(), 2, "Should have 2 rows");
 
-		let name_col = find_column(&change.frame, "name").expect("name column should exist");
+		let name_col = find_column(&change.body, "name").expect("name column should exist");
 		assert!(name_col.data.contains(&"alice".to_string()));
 		assert!(name_col.data.contains(&"bob".to_string()));
 
@@ -116,7 +116,7 @@ fn test_op_update_callback() {
 		// Insert initial data
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
-		let insert_op = get_op_value(&insert_change.frame, 0);
+		let insert_op = get_op_value(&insert_change.body, 0);
 		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
 
 		// Update data
@@ -126,11 +126,11 @@ fn test_op_update_callback() {
 		assert_eq!(update_change.subscription_id, sub_id);
 
 		// Verify _op column indicates UPDATE (2)
-		let op = get_op_value(&update_change.frame, 0);
+		let op = get_op_value(&update_change.body, 0);
 		assert_eq!(op, Some(2), "_op should be 2 for UPDATE");
 
 		// Verify updated name
-		let name_col = find_column(&update_change.frame, "name").expect("name column should exist");
+		let name_col = find_column(&update_change.body, "name").expect("name column should exist");
 		assert_eq!(name_col.data[0], "alice_updated");
 
 		ctx.close(&sub_id).await
@@ -146,7 +146,7 @@ fn test_op_remove_callback() {
 		// Insert initial data
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
-		let insert_op = get_op_value(&insert_change.frame, 0);
+		let insert_op = get_op_value(&insert_change.body, 0);
 		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
 
 		// Delete data
@@ -156,7 +156,7 @@ fn test_op_remove_callback() {
 		assert_eq!(delete_change.subscription_id, sub_id);
 
 		// Verify _op column indicates DELETE (3)
-		let op = get_op_value(&delete_change.frame, 0);
+		let op = get_op_value(&delete_change.body, 0);
 		assert_eq!(op, Some(3), "_op should be 3 for DELETE");
 
 		ctx.close(&sub_id).await
@@ -172,17 +172,17 @@ fn test_op_multiple_types_in_sequence() {
 		// Insert
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
 		let insert_change = ctx.recv().await.expect("Should receive insert");
-		assert_eq!(get_op_value(&insert_change.frame, 0), Some(1));
+		assert_eq!(get_op_value(&insert_change.body, 0), Some(1));
 
 		// Update
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
 		let update_change = ctx.recv().await.expect("Should receive update");
-		assert_eq!(get_op_value(&update_change.frame, 0), Some(2));
+		assert_eq!(get_op_value(&update_change.body, 0), Some(2));
 
 		// Remove
 		ctx.delete(&table, "id == 1").await?;
 		let delete_change = ctx.recv().await.expect("Should receive delete");
-		assert_eq!(get_op_value(&delete_change.frame, 0), Some(3));
+		assert_eq!(get_op_value(&delete_change.body, 0), Some(3));
 
 		ctx.close(&sub_id).await
 	});
@@ -201,11 +201,11 @@ fn test_op_batch_consecutive_rows() {
 		let change = ctx.recv().await.expect("Should receive batch notification");
 
 		// Should be batched into one notification with all 10 rows
-		let id_col = find_column(&change.frame, "id").expect("id column should exist");
+		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.data.len(), 10, "Should have 10 rows");
 
 		// Verify all 10 user rows
-		let name_col = find_column(&change.frame, "name").expect("name column should exist");
+		let name_col = find_column(&change.body, "name").expect("name column should exist");
 		for i in 1..=10 {
 			assert!(name_col.data.contains(&format!("user{}", i)), "Should contain user{}", i);
 		}
@@ -342,7 +342,7 @@ fn test_reconnection_resubscribe_after_disconnect() {
 			.expect("Should receive notification after reconnect");
 		assert_eq!(change.subscription_id, sub_id2);
 
-		let name_col = find_column(&change.frame, "name").expect("name column should exist");
+		let name_col = find_column(&change.body, "name").expect("name column should exist");
 		assert_eq!(name_col.data[0], "after_reconnect");
 
 		client2.unsubscribe(&sub_id2).await.unwrap();
@@ -555,10 +555,10 @@ fn test_edge_empty_result_sets() {
 		let change = recv_with_timeout(&mut ctx.client, 5000).await.expect("Should receive matching data");
 
 		// Verify matching row data
-		let id_col = find_column(&change.frame, "id").expect("id column should exist");
+		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.data[0], "1001");
 
-		let value_col = find_column(&change.frame, "value").expect("value column should exist");
+		let value_col = find_column(&change.body, "value").expect("value column should exist");
 		assert_eq!(value_col.data[0], "200");
 
 		ctx.client.unsubscribe(&sub_id).await?;
@@ -580,7 +580,7 @@ fn test_edge_large_batch_of_changes() {
 		let change = ctx.recv().await.expect("Should receive batch notification");
 
 		// Should have received all 100 rows
-		let id_col = find_column(&change.frame, "id").expect("id column should exist");
+		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.data.len(), 100, "Should have 100 rows");
 
 		// Verify sample rows
@@ -620,10 +620,8 @@ fn test_edge_rapid_successive_changes() {
 		let changes = recv_multiple_with_timeout(&mut client, 10, 15000).await;
 
 		// Count total rows received
-		let total_rows: usize = changes
-			.iter()
-			.map(|c| find_column(&c.frame, "id").map(|col| col.data.len()).unwrap_or(0))
-			.sum();
+		let total_rows: usize =
+			changes.iter().map(|c| find_column(&c.body, "id").map(|col| col.data.len()).unwrap_or(0)).sum();
 		assert_eq!(total_rows, 10, "Should have received all 10 rows");
 
 		client.unsubscribe(&sub_id).await.unwrap();

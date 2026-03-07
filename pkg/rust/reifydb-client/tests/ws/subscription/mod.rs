@@ -64,17 +64,54 @@ pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, tim
 	results
 }
 
-/// Find a column by name in a WebsocketFrame
-pub fn find_column<'a>(
-	frame: &'a reifydb_client::WebsocketFrame,
-	name: &str,
-) -> Option<&'a reifydb_client::WebsocketColumn> {
-	frame.columns.iter().find(|c| c.name == name)
+/// A column extracted from the JSON body of a ChangePayload.
+pub struct JsonColumn {
+	pub name: String,
+	pub r#type: String,
+	pub data: Vec<String>,
 }
 
-/// Get the _op column value from a change frame (1=insert, 2=update, 3=delete)
-pub fn get_op_value(frame: &reifydb_client::WebsocketFrame, row_index: usize) -> Option<i32> {
-	find_column(frame, "_op").and_then(|col| col.data.get(row_index)).and_then(|s| s.parse::<i32>().ok())
+/// Extract all columns from the first frame in a ChangePayload body.
+/// The body is expected to be `{ "frames": [{ "row_numbers": [...], "columns": [...] }] }`
+/// where each column is `{ "name": "...", "type": "...", "data": [...] }`.
+pub fn extract_columns(body: &serde_json::Value) -> Vec<JsonColumn> {
+	let frames = body.get("frames").and_then(|f| f.as_array());
+	let frame = frames.and_then(|f| f.first());
+	let columns = frame.and_then(|f| f.get("columns")).and_then(|c| c.as_array());
+	match columns {
+		Some(cols) => cols
+			.iter()
+			.map(|c| JsonColumn {
+				name: c.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string(),
+				r#type: c.get("type").and_then(|t| t.as_str()).unwrap_or("").to_string(),
+				data: c.get("data")
+					.and_then(|d| d.as_array())
+					.map(|arr| {
+						arr.iter()
+							.map(|v| match v {
+								serde_json::Value::String(s) => s.clone(),
+								serde_json::Value::Number(n) => n.to_string(),
+								serde_json::Value::Bool(b) => b.to_string(),
+								serde_json::Value::Null => "null".to_string(),
+								other => other.to_string(),
+							})
+							.collect()
+					})
+					.unwrap_or_default(),
+			})
+			.collect(),
+		None => Vec::new(),
+	}
+}
+
+/// Find a column by name from a ChangePayload body.
+pub fn find_column(body: &serde_json::Value, name: &str) -> Option<JsonColumn> {
+	extract_columns(body).into_iter().find(|c| c.name == name)
+}
+
+/// Get the _op column value from a change body (1=insert, 2=update, 3=delete)
+pub fn get_op_value(body: &serde_json::Value, row_index: usize) -> Option<i32> {
+	find_column(body, "_op").and_then(|col| col.data.get(row_index).cloned()).and_then(|s| s.parse::<i32>().ok())
 }
 
 /// Test harness for subscription tests that abstracts away boilerplate

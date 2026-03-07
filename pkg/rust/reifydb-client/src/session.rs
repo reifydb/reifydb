@@ -33,11 +33,11 @@ use crate::{AdminResult, CommandResult, QueryResult};
 pub fn parse_admin_response(response: crate::Response) -> Result<AdminResult, Error> {
 	match response.payload {
 		crate::ResponsePayload::Admin(admin_response) => Ok(AdminResult {
-			frames: convert_admin_response(admin_response),
+			frames: convert_envelope_response(admin_response.body),
 		}),
 		// Admin responses may come back as Command responses from the server
 		crate::ResponsePayload::Command(cmd_response) => Ok(AdminResult {
-			frames: convert_command_response(cmd_response),
+			frames: convert_envelope_response(cmd_response.body),
 		}),
 		crate::ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
@@ -52,7 +52,7 @@ pub fn parse_admin_response(response: crate::Response) -> Result<AdminResult, Er
 pub fn parse_command_response(response: crate::Response) -> Result<CommandResult, Error> {
 	match response.payload {
 		crate::ResponsePayload::Command(cmd_response) => Ok(CommandResult {
-			frames: convert_command_response(cmd_response),
+			frames: convert_envelope_response(cmd_response.body),
 		}),
 		crate::ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
@@ -67,7 +67,7 @@ pub fn parse_command_response(response: crate::Response) -> Result<CommandResult
 pub fn parse_query_response(response: crate::Response) -> Result<QueryResult, Error> {
 	match response.payload {
 		crate::ResponsePayload::Query(query_response) => {
-			let frames = convert_query_response(query_response);
+			let frames = convert_envelope_response(query_response.body);
 			Ok(QueryResult {
 				frames,
 			})
@@ -82,10 +82,21 @@ pub fn parse_query_response(response: crate::Response) -> Result<QueryResult, Er
 	}
 }
 
-pub fn convert_admin_response(payload: crate::AdminResponse) -> Vec<Frame> {
-	let mut result = Vec::new();
+/// Convert envelope body (which contains `{ "frames": [...] }`) to Vec<Frame>.
+fn convert_envelope_response(body: serde_json::Value) -> Vec<Frame> {
+	// Extract the "frames" array from the body object
+	let frames_value = match body {
+		serde_json::Value::Object(ref map) => map.get("frames"),
+		_ => None,
+	};
 
-	for frame in payload.frames {
+	let ws_frames: Vec<crate::WebsocketFrame> = match frames_value {
+		Some(v) => serde_json::from_value(v.clone()).unwrap_or_default(),
+		None => return Vec::new(),
+	};
+
+	let mut result = Vec::new();
+	for frame in ws_frames {
 		let columns = frame
 			.columns
 			.into_iter()
@@ -96,47 +107,7 @@ pub fn convert_admin_response(payload: crate::AdminResponse) -> Vec<Frame> {
 			.collect();
 
 		let row_numbers = frame.row_numbers.into_iter().map(RowNumber::new).collect();
-		result.push(Frame::with_row_numbers(columns, row_numbers))
-	}
-
-	result
-}
-
-pub fn convert_command_response(payload: crate::CommandResponse) -> Vec<Frame> {
-	let mut result = Vec::new();
-
-	for frame in payload.frames {
-		let columns = frame
-			.columns
-			.into_iter()
-			.map(|col| FrameColumn {
-				name: col.name,
-				data: convert_column_to_data(col.r#type, col.data),
-			})
-			.collect();
-
-		let row_numbers = frame.row_numbers.into_iter().map(RowNumber::new).collect();
-		result.push(Frame::with_row_numbers(columns, row_numbers))
-	}
-
-	result
-}
-
-pub fn convert_query_response(payload: crate::QueryResponse) -> Vec<Frame> {
-	let mut result = Vec::new();
-
-	for frame in payload.frames {
-		let columns = frame
-			.columns
-			.into_iter()
-			.map(|col| FrameColumn {
-				name: col.name,
-				data: convert_column_to_data(col.r#type, col.data),
-			})
-			.collect();
-
-		let row_numbers = frame.row_numbers.into_iter().map(RowNumber::new).collect();
-		result.push(Frame::with_row_numbers(columns, row_numbers))
+		result.push(Frame::with_row_numbers(columns, row_numbers));
 	}
 
 	result

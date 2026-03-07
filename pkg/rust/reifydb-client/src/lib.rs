@@ -225,7 +225,8 @@ pub enum ResponsePayload {
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminResponse {
-	pub frames: Vec<WebsocketFrame>,
+	pub content_type: String,
+	pub body: serde_json::Value,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -241,13 +242,15 @@ pub struct ErrResponse {
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandResponse {
-	pub frames: Vec<WebsocketFrame>,
+	pub content_type: String,
+	pub body: serde_json::Value,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryResponse {
-	pub frames: Vec<WebsocketFrame>,
+	pub content_type: String,
+	pub body: serde_json::Value,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -290,6 +293,6 @@ pub enum ServerPush {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChangePayload {
 	pub subscription_id: String,
-	/// The frame containing change data.
-	pub frame: WebsocketFrame,
+	pub content_type: String,
+	pub body: serde_json::Value,
 }

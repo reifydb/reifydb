@@ -10,14 +10,14 @@
 
 use axum::{
 	Json,
-	extract::State,
-	http::{HeaderMap, StatusCode},
+	extract::{Query, State},
+	http::{HeaderMap, StatusCode, header},
 	response::IntoResponse,
 };
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
 	execute::{execute_admin, execute_command, execute_query},
-	response::{ResponseFrame, convert_frames},
+	response::{ResponseFrame, convert_frames, resolve_response_json},
 	state::AppState,
 	wire::WireParams,
 };
@@ -41,6 +41,13 @@ pub struct StatementRequest {
 pub struct QueryResponse {
 	/// Result frames from query execution.
 	pub frames: Vec<ResponseFrame>,
+}
+
+/// Query parameters for response format control.
+#[derive(Debug, Deserialize)]
+pub struct FormatParams {
+	pub format: Option<String>,
+	pub unwrap: Option<bool>,
 }
 
 /// Health check response.
@@ -94,9 +101,10 @@ pub async fn health() -> impl IntoResponse {
 /// ```
 pub async fn handle_query(
 	State(state): State<AppState>,
+	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
-) -> Result<Json<QueryResponse>, AppError> {
+) -> Result<axum::response::Response, AppError> {
 	// Extract identity from headers
 	let identity = extract_identity(&headers)?;
 
@@ -120,9 +128,16 @@ pub async fn handle_query(
 	)
 	.await?;
 
-	Ok(Json(QueryResponse {
-		frames: convert_frames(frames),
-	}))
+	if format_params.format.as_deref() == Some("json") {
+		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
+			.map_err(|e| AppError::BadRequest(e))?;
+		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
+	} else {
+		Ok(Json(QueryResponse {
+			frames: convert_frames(frames),
+		})
+		.into_response())
+	}
 }
 
 /// Execute an admin operation.
@@ -137,9 +152,10 @@ pub async fn handle_query(
 /// - `X-Api-Key: <key>` header
 pub async fn handle_admin(
 	State(state): State<AppState>,
+	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
-) -> Result<Json<QueryResponse>, AppError> {
+) -> Result<axum::response::Response, AppError> {
 	// Extract identity from headers
 	let identity = extract_identity(&headers)?;
 
@@ -160,9 +176,16 @@ pub async fn handle_admin(
 	)
 	.await?;
 
-	Ok(Json(QueryResponse {
-		frames: convert_frames(frames),
-	}))
+	if format_params.format.as_deref() == Some("json") {
+		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
+			.map_err(|e| AppError::BadRequest(e))?;
+		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
+	} else {
+		Ok(Json(QueryResponse {
+			frames: convert_frames(frames),
+		})
+		.into_response())
+	}
 }
 
 /// Execute a write command.
@@ -193,9 +216,10 @@ pub async fn handle_admin(
 /// ```
 pub async fn handle_command(
 	State(state): State<AppState>,
+	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
-) -> Result<Json<QueryResponse>, AppError> {
+) -> Result<axum::response::Response, AppError> {
 	// Extract identity from headers
 	let identity = extract_identity(&headers)?;
 
@@ -216,9 +240,16 @@ pub async fn handle_command(
 	)
 	.await?;
 
-	Ok(Json(QueryResponse {
-		frames: convert_frames(frames),
-	}))
+	if format_params.format.as_deref() == Some("json") {
+		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
+			.map_err(|e| AppError::BadRequest(e))?;
+		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
+	} else {
+		Ok(Json(QueryResponse {
+			frames: convert_frames(frames),
+		})
+		.into_response())
+	}
 }
 
 /// Extract identity from request headers.

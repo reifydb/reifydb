@@ -35,7 +35,7 @@ fn test_filtered_subscription() {
 		assert!(change.is_some(), "Should receive matching insert");
 
 		let change = change.unwrap();
-		let id_col = find_column(&change.frame, "id").unwrap();
+		let id_col = find_column(&change.body, "id").unwrap();
 		assert_eq!(id_col.data[0], "15");
 
 		client.unsubscribe(&sub_id).await.unwrap();

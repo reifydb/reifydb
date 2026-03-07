@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-import {useState, useCallback, useRef} from 'react';
+import {useState, useCallback, useRef, useEffect} from 'react';
 import {Column, SchemaNode} from '@reifydb/core';
 import {ConnectionConfig} from '../connection/connection';
 import {useConnection} from './use-connection';
@@ -35,6 +35,10 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
     });
 
     const abortControllerRef = useRef<AbortController | null>(null);
+    const isMountedRef = useRef(true);
+    useEffect(() => {
+        return () => { isMountedRef.current = false; };
+    }, []);
 
     const command = useCallback(
         (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): void => {
@@ -107,6 +111,7 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
                         }
                     });
 
+                    if (!isMountedRef.current) return;
                     setState({
                         isExecuting: false,
                         results,
@@ -127,6 +132,7 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
 
                     console.error('Command execution failed:', errorMessage);
 
+                    if (!isMountedRef.current) return;
                     setState({
                         isExecuting: false,
                         results: undefined,

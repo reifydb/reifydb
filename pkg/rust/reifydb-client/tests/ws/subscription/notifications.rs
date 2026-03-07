@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_client::Type;
-
 use super::{SubscriptionTestHarness, find_column, get_op_value};
 
 #[test]
@@ -17,14 +15,14 @@ fn test_recv_insert_notification() {
 		assert_eq!(change.subscription_id, sub_id);
 
 		// Verify _op column indicates INSERT (1)
-		let op = get_op_value(&change.frame, 0);
+		let op = get_op_value(&change.body, 0);
 		assert_eq!(op, Some(1), "_op should be 1 for INSERT");
 
 		// Verify data columns
-		let id_col = find_column(&change.frame, "id").expect("id column should exist");
+		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.data[0], "1");
 
-		let name_col = find_column(&change.frame, "name").expect("name column should exist");
+		let name_col = find_column(&change.body, "name").expect("name column should exist");
 		assert_eq!(name_col.data[0], "test");
 
 		ctx.close(&sub_id).await
@@ -42,7 +40,7 @@ fn test_recv_update_notification() {
 
 		// Receive INSERT notification first
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
-		let insert_op = get_op_value(&insert_change.frame, 0);
+		let insert_op = get_op_value(&insert_change.body, 0);
 		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
 
 		// Update data
@@ -53,11 +51,11 @@ fn test_recv_update_notification() {
 		assert_eq!(update_change.subscription_id, sub_id);
 
 		// Verify _op column indicates UPDATE (2)
-		let op = get_op_value(&update_change.frame, 0);
+		let op = get_op_value(&update_change.body, 0);
 		assert_eq!(op, Some(2), "_op should be 2 for UPDATE");
 
 		// Verify updated name
-		let name_col = find_column(&update_change.frame, "name").expect("name column should exist");
+		let name_col = find_column(&update_change.body, "name").expect("name column should exist");
 		assert_eq!(name_col.data[0], "alice_updated");
 
 		ctx.close(&sub_id).await
@@ -75,7 +73,7 @@ fn test_recv_delete_notification() {
 
 		// Receive INSERT notification first
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
-		let insert_op = get_op_value(&insert_change.frame, 0);
+		let insert_op = get_op_value(&insert_change.body, 0);
 		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
 
 		// Delete data
@@ -86,7 +84,7 @@ fn test_recv_delete_notification() {
 		assert_eq!(delete_change.subscription_id, sub_id);
 
 		// Verify _op column indicates DELETE (3)
-		let op = get_op_value(&delete_change.frame, 0);
+		let op = get_op_value(&delete_change.body, 0);
 		assert_eq!(op, Some(3), "_op should be 3 for DELETE");
 
 		ctx.close(&sub_id).await
@@ -107,7 +105,7 @@ fn test_recv_multiple_rows() {
 		let change = ctx.recv().await.expect("Should receive batch notification");
 
 		// Verify all 3 rows are in the change
-		let id_col = find_column(&change.frame, "id").expect("id column should exist");
+		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.data.len(), 3, "Should have 3 rows");
 
 		ctx.close(&sub_id).await
@@ -125,17 +123,17 @@ fn test_recv_preserves_data_types() {
 		let change = ctx.recv().await.expect("Should receive notification");
 
 		// Verify types are preserved
-		let id_col = find_column(&change.frame, "id").unwrap();
+		let id_col = find_column(&change.body, "id").unwrap();
 		assert_eq!(id_col.data[0], "42");
-		assert_eq!(id_col.r#type, Type::Int4, "id should be Int4");
+		assert_eq!(id_col.r#type, "Int4", "id should be Int4");
 
-		let value_col = find_column(&change.frame, "value").unwrap();
+		let value_col = find_column(&change.body, "value").unwrap();
 		assert_eq!(value_col.data[0], "9999999999");
-		assert_eq!(value_col.r#type, Type::Int8, "value should be Int8");
+		assert_eq!(value_col.r#type, "Int8", "value should be Int8");
 
-		let name_col = find_column(&change.frame, "name").unwrap();
+		let name_col = find_column(&change.body, "name").unwrap();
 		assert_eq!(name_col.data[0], "test");
-		assert_eq!(name_col.r#type, Type::Utf8, "name should be Utf8");
+		assert_eq!(name_col.r#type, "Utf8", "name should be Utf8");
 
 		ctx.close(&sub_id).await
 	});
