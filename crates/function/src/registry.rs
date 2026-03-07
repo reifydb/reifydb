@@ -5,7 +5,7 @@ use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use crate::{
 	AggregateFunction, GeneratorFunction, ScalarFunction, blob, clock, date, datetime, duration, flow, identity,
-	is, math, meta, series, subscription, text, time,
+	is, json, math, meta, series, subscription, text, time,
 };
 
 #[derive(Clone)]
@@ -181,6 +181,10 @@ impl Functions {
 			.register_scalar("is::type", is::r#type::IsType::new)
 			.register_scalar("is::root", is::root::IsRoot::new)
 			.register_scalar("is::anonymous", is::anonymous::IsAnonymous::new)
+			.register_scalar("json::object", json::object::JsonObject::new)
+			.register_scalar("json::array", json::array::JsonArray::new)
+			.register_scalar("json::pretty", json::pretty::JsonPretty::new)
+			.register_scalar("json::serialize", json::serialize::JsonSerialize::new)
 			.register_scalar("gen::series", series::Series::new)
 			.register_generator("generate_series", series::GenerateSeries::new)
 			.register_generator("inspect_subscription", subscription::inspect::InspectSubscription::new)

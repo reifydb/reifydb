@@ -490,14 +490,14 @@ impl Display for Value {
 			Value::DictionaryId(value) => Display::fmt(value, f),
 			Value::Type(value) => Display::fmt(value, f),
 			Value::List(items) => {
-				f.write_str("(")?;
+				f.write_str("[")?;
 				for (i, item) in items.iter().enumerate() {
 					if i > 0 {
 						f.write_str(", ")?;
 					}
 					Display::fmt(item, f)?;
 				}
-				f.write_str(")")
+				f.write_str("]")
 			}
 			Value::Record(fields) => {
 				f.write_str("{")?;

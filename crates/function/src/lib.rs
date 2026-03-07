@@ -26,6 +26,7 @@ pub mod error;
 pub mod flow;
 pub mod identity;
 pub mod is;
+pub mod json;
 pub mod math;
 pub mod meta;
 pub mod registry;
