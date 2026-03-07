@@ -3,10 +3,10 @@
 
 use std::{error::Error, future::Future, sync::Arc, time::Duration};
 
-use reifydb_client::{ChangePayload, WsClient};
+use reifydb_client::{Frame, FrameColumn, GrpcClient, GrpcSubscription, Value};
 use tokio::{runtime::Runtime, time::timeout};
 
-use crate::common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
+use crate::common::{cleanup_server, create_server_instance, start_server_and_get_grpc_port};
 
 mod basic;
 mod data_types;
@@ -25,7 +25,11 @@ pub fn unique_table_name(prefix: &str) -> String {
 }
 
 /// Create a test table with given columns in the 'test' namespace
-pub async fn create_test_table(client: &WsClient, name: &str, columns: &[(&str, &str)]) -> Result<(), Box<dyn Error>> {
+pub async fn create_test_table(
+	client: &GrpcClient,
+	name: &str,
+	columns: &[(&str, &str)],
+) -> Result<(), Box<dyn Error>> {
 	// Create namespace if needed (ignore error if exists)
 	let _ = client.admin("create namespace test", None).await;
 
@@ -36,15 +40,15 @@ pub async fn create_test_table(client: &WsClient, name: &str, columns: &[(&str, 
 }
 
 /// Wait for a change with timeout
-pub async fn recv_with_timeout(client: &mut WsClient, timeout_ms: u64) -> Option<ChangePayload> {
-	match timeout(Duration::from_millis(timeout_ms), client.recv()).await {
+pub async fn recv_with_timeout(sub: &mut GrpcSubscription, timeout_ms: u64) -> Option<Vec<Frame>> {
+	match timeout(Duration::from_millis(timeout_ms), sub.recv()).await {
 		Ok(result) => result,
 		Err(_) => None,
 	}
 }
 
 /// Wait for multiple changes with timeout
-pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, timeout_ms: u64) -> Vec<ChangePayload> {
+pub async fn recv_multiple_with_timeout(sub: &mut GrpcSubscription, count: usize, timeout_ms: u64) -> Vec<Vec<Frame>> {
 	let mut results = Vec::new();
 	let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
 
@@ -54,8 +58,8 @@ pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, tim
 			break;
 		}
 
-		match timeout(remaining, client.recv()).await {
-			Ok(Some(change)) => results.push(change),
+		match timeout(remaining, sub.recv()).await {
+			Ok(Some(frames)) => results.push(frames),
 			Ok(None) => break,
 			Err(_) => break,
 		}
@@ -64,17 +68,17 @@ pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, tim
 	results
 }
 
-/// Find a column by name in a WebsocketFrame
-pub fn find_column<'a>(
-	frame: &'a reifydb_client::WebsocketFrame,
-	name: &str,
-) -> Option<&'a reifydb_client::WebsocketColumn> {
+/// Find a column by name in a Frame
+pub fn find_column<'a>(frame: &'a Frame, name: &str) -> Option<&'a FrameColumn> {
 	frame.columns.iter().find(|c| c.name == name)
 }
 
 /// Get the _op column value from a change frame (1=insert, 2=update, 3=delete)
-pub fn get_op_value(frame: &reifydb_client::WebsocketFrame, row_index: usize) -> Option<i32> {
-	find_column(frame, "_op").and_then(|col| col.data.get(row_index)).and_then(|s| s.parse::<i32>().ok())
+pub fn get_op_value(frame: &Frame, row_index: usize) -> Option<u8> {
+	find_column(frame, "_op").map(|col| match col.data.get_value(row_index) {
+		Value::Uint1(v) => v,
+		other => panic!("Expected Uint1 for _op, got {:?}", other),
+	})
 }
 
 /// Test harness for subscription tests that abstracts away boilerplate
@@ -90,11 +94,11 @@ impl SubscriptionTestHarness {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
 		let mut server = create_server_instance(&runtime);
-		let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
+		let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 		runtime.block_on(async {
-			let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
-			client.authenticate("mysecrettoken").await.unwrap();
+			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+			client.authenticate("mysecrettoken");
 
 			let ctx = TestContext::new(client);
 			test_fn(ctx).await.unwrap();
@@ -106,12 +110,12 @@ impl SubscriptionTestHarness {
 
 /// Context provided to each test with convenience methods
 pub struct TestContext {
-	pub client: WsClient,
+	pub client: GrpcClient,
 	table_prefix: String,
 }
 
 impl TestContext {
-	fn new(client: WsClient) -> Self {
+	fn new(client: GrpcClient) -> Self {
 		Self {
 			client,
 			table_prefix: unique_table_name("t"),
@@ -133,10 +137,10 @@ impl TestContext {
 		Ok(full_name)
 	}
 
-	/// Subscribe to a table, waits for settle, returns subscription ID
-	pub async fn subscribe(&mut self, table: &str) -> Result<String, Box<dyn Error>> {
-		let sub_id = self.client.subscribe(&format!("from test::{}", table)).await?;
-		Ok(sub_id)
+	/// Subscribe to a table, returns a GrpcSubscription
+	pub async fn subscribe(&self, table: &str) -> Result<GrpcSubscription, Box<dyn Error>> {
+		let sub = self.client.subscribe(&format!("from test::{}", table)).await?;
+		Ok(sub)
 	}
 
 	/// Insert rows using RQL: `INSERT test::table [{row1}, {row2}]`
@@ -160,14 +164,7 @@ impl TestContext {
 	}
 
 	/// Receive next change notification with 5s timeout
-	pub async fn recv(&mut self) -> Option<ChangePayload> {
-		recv_with_timeout(&mut self.client, 5000).await
-	}
-
-	/// Unsubscribe and close the client
-	pub async fn close(self, sub_id: &str) -> Result<(), Box<dyn Error>> {
-		self.client.unsubscribe(sub_id).await?;
-		self.client.close().await?;
-		Ok(())
+	pub async fn recv(sub: &mut GrpcSubscription) -> Option<Vec<Frame>> {
+		recv_with_timeout(sub, 5000).await
 	}
 }

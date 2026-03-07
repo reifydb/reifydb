@@ -382,10 +382,6 @@ fn compile_instructions(plan: PhysicalPlan<'_>) -> Result<Vec<Instruction>> {
 	Ok(compiler.instructions)
 }
 
-// ============================================================================
-// Instruction Compilation
-// ============================================================================
-
 /// Context for tracking loop information during compilation
 struct LoopContext {
 	/// Address of the condition check / ForNext (target for Continue)

@@ -152,10 +152,6 @@ where
 	}
 }
 
-// ============================================================================
-// Transaction - The main multi-version transaction type
-// ============================================================================
-
 pub struct MultiTransaction(Arc<Inner>);
 
 pub struct Inner {

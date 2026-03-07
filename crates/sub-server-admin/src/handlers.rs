@@ -22,10 +22,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{assets, state::AdminState};
 
-// ============================================================================
-// Authentication
-// ============================================================================
-
 /// Login request body.
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
@@ -105,10 +101,6 @@ pub async fn handle_auth_status(State(state): State<AdminState>) -> impl IntoRes
 	)
 }
 
-// ============================================================================
-// Query Execution
-// ============================================================================
-
 /// Execute request body.
 #[derive(Debug, Deserialize)]
 pub struct ExecuteRequest {
@@ -130,10 +122,6 @@ pub async fn handle_execute(
 		})),
 	)
 }
-
-// ============================================================================
-// Static Files
-// ============================================================================
 
 const FALLBACK_HTML: &str = r#"<!DOCTYPE html>
 <html>

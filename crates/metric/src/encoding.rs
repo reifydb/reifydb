@@ -40,10 +40,6 @@ const ID_SOURCE: u8 = 0x00;
 const ID_FLOW_NODE: u8 = 0x01;
 const ID_SYSTEM: u8 = 0x02;
 
-// ============================================================================
-// Multi Storage Stats Key Encoding
-// ============================================================================
-
 /// Encode a per-type stats key.
 /// Format: `[VERSION][0x25][0x01][tier:1][key_kind:1]`
 pub fn encode_type_stats_key(tier: Tier, kind: KeyKind) -> Vec<u8> {
@@ -68,10 +64,6 @@ pub fn storage_stats_key_prefix() -> Vec<u8> {
 	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_OBJECT]
 }
 
-// ============================================================================
-// CDC Stats Key Encoding
-// ============================================================================
-
 /// Encode a CDC stats key.
 /// Format: `[VERSION][0x25][0x03][id:variable]`
 pub fn encode_cdc_stats_key(id: MetricId) -> Vec<u8> {
@@ -84,10 +76,6 @@ pub fn encode_cdc_stats_key(id: MetricId) -> Vec<u8> {
 pub fn cdc_stats_key_prefix() -> Vec<u8> {
 	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_CDC]
 }
-
-// ============================================================================
-// Key Decoding
-// ============================================================================
 
 /// Decode a per-type stats key back into (Tier, KeyKind).
 /// Returns None if the key is malformed or not a type stats key.
@@ -128,10 +116,6 @@ pub fn decode_cdc_stats_key(key: &[u8]) -> Option<MetricId> {
 	}
 	decode_object_id(&key[3..])
 }
-
-// ============================================================================
-// Value Encoding/Decoding
-// ============================================================================
 
 /// StorageStats is 48 bytes (6 x u64).
 pub const STORAGE_STATS_SIZE: usize = 48;
@@ -187,10 +171,6 @@ pub fn decode_cdc_stats(bytes: &[u8]) -> Option<CdcStats> {
 	})
 }
 
-// ============================================================================
-// Tier Encoding
-// ============================================================================
-
 fn tier_to_byte(tier: Tier) -> u8 {
 	match tier {
 		Tier::Hot => 0x00,
@@ -207,10 +187,6 @@ fn byte_to_tier(b: u8) -> Option<Tier> {
 		_ => None,
 	}
 }
-
-// ============================================================================
-// Id Encoding
-// ============================================================================
 
 fn encode_object_id(buf: &mut Vec<u8>, id: MetricId) {
 	match id {

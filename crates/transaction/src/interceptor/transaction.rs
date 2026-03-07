@@ -14,10 +14,6 @@ use crate::{
 	interceptor::chain::InterceptorChain,
 };
 
-// ============================================================================
-// PRE COMMIT
-// ============================================================================
-
 /// Context for pre-commit interceptors.
 ///
 /// `flow_changes` carries the table-level changes accumulated during the transaction
@@ -118,10 +114,6 @@ where
 {
 	ClosurePreCommitInterceptor::new(f)
 }
-
-// ============================================================================
-// POST COMMIT
-// ============================================================================
 
 /// Context for post-commit interceptors
 pub struct PostCommitContext {

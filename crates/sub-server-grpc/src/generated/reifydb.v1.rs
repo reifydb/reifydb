@@ -35,6 +35,36 @@ pub struct QueryResponse {
     #[prost(message, repeated, tag = "1")]
     pub frames: ::prost::alloc::vec::Vec<Frame>,
 }
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SubscribeRequest {
+    #[prost(string, tag = "1")]
+    pub query: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubscriptionEvent {
+    #[prost(oneof = "subscription_event::Event", tags = "1, 2")]
+    pub event: ::core::option::Option<subscription_event::Event>,
+}
+/// Nested message and enum types in `SubscriptionEvent`.
+pub mod subscription_event {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Event {
+        #[prost(message, tag = "1")]
+        Subscribed(super::SubscribedEvent),
+        #[prost(message, tag = "2")]
+        Change(super::ChangeEvent),
+    }
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SubscribedEvent {
+    #[prost(uint64, tag = "1")]
+    pub subscription_id: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ChangeEvent {
+    #[prost(message, repeated, tag = "1")]
+    pub frames: ::prost::alloc::vec::Vec<Frame>,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Params {
     #[prost(oneof = "params::Params", tags = "1, 2")]
@@ -74,7 +104,7 @@ pub struct Frame {
     #[prost(message, repeated, tag = "2")]
     pub columns: ::prost::alloc::vec::Vec<FrameColumn>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FrameColumn {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
@@ -236,6 +266,30 @@ pub mod reify_db_client {
             req.extensions_mut().insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Query"));
             self.inner.unary(req, path, codec).await
         }
+        pub async fn subscribe(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SubscribeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<tonic::codec::Streaming<super::SubscriptionEvent>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/reifydb.v1.ReifyDB/Subscribe",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Subscribe"));
+            self.inner.server_streaming(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -263,6 +317,16 @@ pub mod reify_db_server {
             &self,
             request: tonic::Request<super::QueryRequest>,
         ) -> std::result::Result<tonic::Response<super::QueryResponse>, tonic::Status>;
+        /// Server streaming response type for the Subscribe method.
+        type SubscribeStream: tonic::codegen::tokio_stream::Stream<
+                Item = std::result::Result<super::SubscriptionEvent, tonic::Status>,
+            >
+            + std::marker::Send
+            + 'static;
+        async fn subscribe(
+            &self,
+            request: tonic::Request<super::SubscribeRequest>,
+        ) -> std::result::Result<tonic::Response<Self::SubscribeStream>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct ReifyDbServer<T> {
@@ -465,6 +529,52 @@ pub mod reify_db_server {
                                 max_encoding_message_size,
                             );
                         let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/reifydb.v1.ReifyDB/Subscribe" => {
+                    #[allow(non_camel_case_types)]
+                    struct SubscribeSvc<T: ReifyDb>(pub Arc<T>);
+                    impl<
+                        T: ReifyDb,
+                    > tonic::server::ServerStreamingService<super::SubscribeRequest>
+                    for SubscribeSvc<T> {
+                        type Response = super::SubscriptionEvent;
+                        type ResponseStream = T::SubscribeStream;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::ResponseStream>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::SubscribeRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ReifyDb>::subscribe(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = SubscribeSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.server_streaming(method, req).await;
                         Ok(res)
                     };
                     Box::pin(fut)

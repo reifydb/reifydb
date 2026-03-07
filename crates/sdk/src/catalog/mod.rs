@@ -124,10 +124,6 @@ impl<'a> Catalog<'a> {
 	}
 }
 
-// ============================================================================
-// Shared unmarshal functions
-// ============================================================================
-
 /// Unmarshal ColumnDefFFI to ColumnDef
 pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnDefFFI) -> Result<ColumnDef, FFIError> {
 	// Convert name BufferFFI to String

@@ -247,8 +247,6 @@ impl SingleVersionRangeRev for StandardSingleStore {
 
 impl SingleVersionStore for StandardSingleStore {}
 
-// ===== Helper functions =====
-
 /// Helper to convert owned Bound to ref
 fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	match bound {

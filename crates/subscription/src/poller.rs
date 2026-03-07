@@ -6,12 +6,16 @@
 //! Polls all registered subscriptions and delivers data via the
 //! `SubscriptionDelivery` trait, decoupled from any specific transport.
 
-use std::sync::Mutex;
+use std::{
+	sync::{Arc, Mutex},
+	time::Duration,
+};
 
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{actor::system::ActorSystem, sync::map::Map};
 use reifydb_type::Result;
+use tokio::{select, sync::watch, task, time::interval};
 use tracing::{debug, error, warn};
 
 use crate::{
@@ -75,6 +79,40 @@ impl SubscriptionPoller {
 		for &subscription_id in keys_buf.iter() {
 			if let Err(e) = self.poll_single(subscription_id, engine, system, delivery) {
 				error!("Failed to poll subscription {}: {:?}", subscription_id, e);
+			}
+		}
+	}
+
+	/// Run the poller loop. Returns when the stop signal is received.
+	pub async fn run_loop(
+		self: Arc<Self>,
+		engine: StandardEngine,
+		system: ActorSystem,
+		delivery: Arc<dyn SubscriptionDelivery + Send + Sync>,
+		poll_interval: Duration,
+		mut stop_rx: watch::Receiver<bool>,
+	) {
+		let mut tick = interval(poll_interval);
+		loop {
+			select! {
+				biased;
+
+				result = stop_rx.changed() => {
+					if result.is_err() || *stop_rx.borrow() {
+						debug!("Subscription poller shutting down");
+						break;
+					}
+				}
+
+				_ = tick.tick() => {
+					let p = self.clone();
+					let e = engine.clone();
+					let s = system.clone();
+					let d = delivery.clone();
+					let _ = task::spawn_blocking(move || {
+						p.poll_all(&e, &s, d.as_ref());
+					}).await;
+				}
 			}
 		}
 	}

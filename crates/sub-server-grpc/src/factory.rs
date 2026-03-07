@@ -19,6 +19,8 @@ pub struct GrpcConfig {
 	pub query_timeout: Duration,
 	pub request_timeout: Duration,
 	pub runtime: Option<SharedRuntime>,
+	pub poll_interval: Duration,
+	pub poll_batch_size: usize,
 }
 
 impl Default for GrpcConfig {
@@ -29,6 +31,8 @@ impl Default for GrpcConfig {
 			query_timeout: Duration::from_secs(30),
 			request_timeout: Duration::from_secs(60),
 			runtime: None,
+			poll_interval: Duration::from_millis(10),
+			poll_batch_size: 100,
 		}
 	}
 }
@@ -62,6 +66,16 @@ impl GrpcConfig {
 		self.runtime = Some(runtime);
 		self
 	}
+
+	pub fn poll_interval(mut self, interval: Duration) -> Self {
+		self.poll_interval = interval;
+		self
+	}
+
+	pub fn poll_batch_size(mut self, size: usize) -> Self {
+		self.poll_batch_size = size;
+		self
+	}
 }
 
 pub struct GrpcSubsystemFactory {
@@ -89,7 +103,13 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 		let runtime = self.config.runtime.unwrap_or(ioc_runtime);
 
 		let state = AppState::new(runtime.actor_system(), engine, query_config);
-		let subsystem = GrpcSubsystem::new(self.config.bind_addr.clone(), state, runtime);
+		let subsystem = GrpcSubsystem::new(
+			self.config.bind_addr.clone(),
+			state,
+			runtime,
+			self.config.poll_interval,
+			self.config.poll_batch_size,
+		);
 
 		Ok(Box::new(subsystem))
 	}

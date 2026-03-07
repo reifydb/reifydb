@@ -4,4 +4,4 @@
 mod client;
 pub mod generated;
 
-pub use client::GrpcClient;
+pub use client::{GrpcClient, GrpcSubscription};

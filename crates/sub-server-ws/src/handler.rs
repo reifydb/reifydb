@@ -4,25 +4,16 @@
 use std::{sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
-use reifydb_catalog::{drop_flow_by_name, drop_subscription};
-use reifydb_core::{
-	error::diagnostic::internal::internal,
-	interface::catalog::{
-		id::SubscriptionId as DbSubscriptionId,
-		subscription::{subscription_flow_name, subscription_flow_namespace},
-	},
-};
-use reifydb_engine::engine::StandardEngine;
+use reifydb_core::interface::catalog::id::SubscriptionId as DbSubscriptionId;
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
 	execute::{ExecuteError, execute_admin, execute_command, execute_query},
 	response::convert_frames,
 	state::AppState,
+	subscribe::cleanup_subscription,
 };
 use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{
-	Result,
-	error::Error,
 	params::Params,
 	value::{identity::IdentityId, uuid::Uuid7},
 };
@@ -185,38 +176,12 @@ pub async fn handle_connection(
 		poller.unregister(&subscription_id);
 
 		// Delete the subscription and its associated flow from database
-		if let Err(e) = cleanup_subscription_from_db(&state, subscription_id).await {
+		if let Err(e) = cleanup_subscription(&state, subscription_id).await {
 			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
 		}
 	}
 
 	debug!("WebSocket connection {} from {:?} cleaned up", connection_id, peer);
-}
-
-/// Cleanup a subscription from the database (synchronous).
-fn cleanup_subscription_from_db_sync(engine: &StandardEngine, subscription_id: DbSubscriptionId) -> Result<()> {
-	let mut txn = engine.begin_admin()?;
-
-	// Delete the associated flow (named after the subscription ID)
-	let flow_name = subscription_flow_name(subscription_id);
-	let namespace_id = subscription_flow_namespace();
-	drop_flow_by_name(&mut txn, namespace_id, &flow_name)?;
-
-	// Drop the subscription (metadata, columns, rows)
-	drop_subscription(&mut txn, subscription_id)?;
-
-	txn.commit()?;
-	Ok(())
-}
-
-/// Cleanup a subscription from the database.
-async fn cleanup_subscription_from_db(state: &AppState, subscription_id: DbSubscriptionId) -> Result<()> {
-	let engine = state.engine_clone();
-	let system = state.actor_system();
-
-	system.compute(move || cleanup_subscription_from_db_sync(&engine, subscription_id))
-		.await
-		.map_err(|e| Error(internal(format!("Compute pool error: {:?}", e))))?
 }
 
 /// Connection ID type alias for clarity.
@@ -387,7 +352,7 @@ async fn process_message(
 
 			if removed {
 				// Cleanup the subscription from the database
-				if let Err(e) = cleanup_subscription_from_db(state, subscription_id).await {
+				if let Err(e) = cleanup_subscription(state, subscription_id).await {
 					warn!(
 						"Failed to cleanup subscription {} from database: {:?}",
 						subscription_id, e

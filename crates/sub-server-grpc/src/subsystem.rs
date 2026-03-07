@@ -8,6 +8,7 @@ use std::{
 		Arc, RwLock,
 		atomic::{AtomicBool, Ordering},
 	},
+	time::Duration,
 };
 
 use reifydb_core::{
@@ -17,13 +18,19 @@ use reifydb_core::{
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
+use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{Result, error::Error};
-use tokio::{net::TcpListener, sync::oneshot};
+use tokio::{
+	net::TcpListener,
+	sync::{oneshot, watch},
+};
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::Server;
 use tracing::{error, info};
 
-use crate::{generated::reify_db_server::ReifyDbServer, service::ReifyDbService};
+use crate::{
+	generated::reify_db_server::ReifyDbServer, service::ReifyDbService, subscription::GrpcSubscriptionRegistry,
+};
 
 pub struct GrpcSubsystem {
 	bind_addr: String,
@@ -33,10 +40,18 @@ pub struct GrpcSubsystem {
 	shutdown_tx: Option<oneshot::Sender<()>>,
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
 	runtime: SharedRuntime,
+	poll_interval: Duration,
+	poll_batch_size: usize,
 }
 
 impl GrpcSubsystem {
-	pub fn new(bind_addr: String, state: AppState, runtime: SharedRuntime) -> Self {
+	pub fn new(
+		bind_addr: String,
+		state: AppState,
+		runtime: SharedRuntime,
+		poll_interval: Duration,
+		poll_batch_size: usize,
+	) -> Self {
 		Self {
 			bind_addr,
 			actual_addr: RwLock::new(None),
@@ -45,6 +60,8 @@ impl GrpcSubsystem {
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
 			runtime,
+			poll_interval,
+			poll_batch_size,
 		}
 	}
 
@@ -113,10 +130,32 @@ impl Subsystem for GrpcSubsystem {
 		let running = self.running.clone();
 		let runtime = self.runtime.clone();
 
+		// Create subscription infrastructure
+		let registry = Arc::new(GrpcSubscriptionRegistry::new());
+		let poller = Arc::new(SubscriptionPoller::new(self.poll_batch_size));
+
+		// Spawn the subscription poller task
+		let poller_clone = poller.clone();
+		let poller_state = state.clone();
+		let poller_registry = registry.clone();
+		let poll_interval = self.poll_interval;
+		let (poller_stop_tx, poller_stop_rx) = watch::channel(false);
+		runtime.spawn(async move {
+			poller_clone
+				.run_loop(
+					poller_state.engine_clone(),
+					poller_state.actor_system(),
+					poller_registry,
+					poll_interval,
+					poller_stop_rx,
+				)
+				.await;
+		});
+
 		runtime.spawn(async move {
 			running.store(true, Ordering::SeqCst);
 
-			let service = ReifyDbService::new(state);
+			let service = ReifyDbService::new(state, registry, poller);
 			let incoming = TcpListenerStream::new(listener);
 
 			let result = Server::builder()
@@ -126,6 +165,9 @@ impl Subsystem for GrpcSubsystem {
 					info!("gRPC server received shutdown signal");
 				})
 				.await;
+
+			// Stop the poller
+			let _ = poller_stop_tx.send(true);
 
 			if let Err(e) = result {
 				error!("gRPC server error: {}", e);

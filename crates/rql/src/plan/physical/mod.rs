@@ -60,10 +60,6 @@ use crate::{
 	},
 };
 
-// ============================================================================
-// Bump-allocated PhysicalPlan types
-// ============================================================================
-
 /// Bump-allocated physical plan — the intermediate representation between
 /// logical planning and instruction compilation. Uses `BumpBox`/`Vec` for
 /// tree structure while keeping `Fragment` (Arc<str>) for identifiers
@@ -515,10 +511,6 @@ pub struct ScalarizeNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub fragment: Fragment,
 }
-
-// ============================================================================
-// Compiler
-// ============================================================================
 
 pub(crate) struct Compiler<'bump> {
 	pub catalog: Catalog,

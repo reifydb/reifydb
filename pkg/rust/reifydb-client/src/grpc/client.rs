@@ -30,8 +30,9 @@ use tonic::{metadata::MetadataValue, transport::Channel};
 
 use super::generated::{
 	AdminRequest as ProtoAdminRequest, CommandRequest as ProtoCommandRequest, Frame as ProtoFrame, NamedParams,
-	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest, TypedValue,
-	params::Params as ProtoParamsOneof, reify_db_client::ReifyDbClient,
+	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
+	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue, params::Params as ProtoParamsOneof,
+	reify_db_client::ReifyDbClient, subscription_event,
 };
 use crate::{AdminResult, CommandResult, QueryResult};
 
@@ -167,11 +168,76 @@ impl GrpcClient {
 		})
 	}
 
+	pub async fn subscribe(&self, query: &str) -> Result<GrpcSubscription, Error> {
+		let request = ProtoSubscribeRequest {
+			query: query.to_string(),
+		};
+
+		let mut client = self.inner.clone();
+		let mut req = tonic::Request::new(request);
+		self.attach_auth(&mut req);
+
+		let response = client.subscribe(req).await.map_err(status_to_error)?;
+		let mut stream = response.into_inner();
+
+		// Consume the initial SubscribedEvent to extract subscription_id
+		let first = stream.message().await.map_err(status_to_error)?.ok_or_else(|| {
+			Error(Diagnostic {
+				code: "GRPC_SUBSCRIBE".to_string(),
+				message: "Stream closed before receiving subscription ID".to_string(),
+				..Default::default()
+			})
+		})?;
+
+		let subscription_id = match first.event {
+			Some(subscription_event::Event::Subscribed(s)) => s.subscription_id,
+			_ => {
+				return Err(Error(Diagnostic {
+					code: "GRPC_SUBSCRIBE".to_string(),
+					message: "Expected SubscribedEvent as first message".to_string(),
+					..Default::default()
+				}));
+			}
+		};
+
+		Ok(GrpcSubscription {
+			subscription_id,
+			stream,
+		})
+	}
+
 	fn attach_auth<T>(&self, request: &mut tonic::Request<T>) {
 		if let Some(ref token) = self.token {
 			let bearer = format!("Bearer {}", token);
 			if let Ok(value) = bearer.parse::<MetadataValue<tonic::metadata::Ascii>>() {
 				request.metadata_mut().insert("authorization", value);
+			}
+		}
+	}
+}
+
+pub struct GrpcSubscription {
+	subscription_id: u64,
+	stream: tonic::codec::Streaming<SubscriptionEvent>,
+}
+
+impl GrpcSubscription {
+	pub fn subscription_id(&self) -> u64 {
+		self.subscription_id
+	}
+
+	pub async fn recv(&mut self) -> Option<Vec<Frame>> {
+		loop {
+			let msg = self.stream.message().await.ok()??;
+			match msg.event {
+				Some(subscription_event::Event::Change(change)) => {
+					return Some(proto_frames_to_frames(change.frames));
+				}
+				Some(subscription_event::Event::Subscribed(_)) => {
+					// Unexpected but skip
+					continue;
+				}
+				None => continue,
 			}
 		}
 	}

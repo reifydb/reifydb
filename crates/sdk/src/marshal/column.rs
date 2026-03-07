@@ -117,10 +117,6 @@ impl Arena {
 	}
 }
 
-// ============================================================================
-// Individual Column marshalling
-// ============================================================================
-
 impl Arena {
 	pub(super) fn marshal_column(&mut self, column: &Column) -> ColumnFFI {
 		// Marshal column name
@@ -346,10 +342,6 @@ impl Arena {
 		}
 	}
 }
-
-// ============================================================================
-// ColumnData byte-level marshalling helpers
-// ============================================================================
 
 impl Arena {
 	pub(super) fn marshal_column_data_bytes(&mut self, data: &ColumnData) -> (BufferFFI, BufferFFI) {

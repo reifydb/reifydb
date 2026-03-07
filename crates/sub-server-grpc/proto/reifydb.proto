@@ -5,6 +5,7 @@ service ReifyDB {
   rpc Admin(AdminRequest) returns (AdminResponse);
   rpc Command(CommandRequest) returns (CommandResponse);
   rpc Query(QueryRequest) returns (QueryResponse);
+  rpc Subscribe(SubscribeRequest) returns (stream SubscriptionEvent);
 }
 
 message AdminRequest  { repeated string statements = 1; optional Params params = 2; }
@@ -13,6 +14,16 @@ message CommandRequest  { repeated string statements = 1; optional Params params
 message CommandResponse { repeated Frame frames = 1; }
 message QueryRequest  { repeated string statements = 1; optional Params params = 2; }
 message QueryResponse { repeated Frame frames = 1; }
+
+message SubscribeRequest { string query = 1; }
+message SubscriptionEvent {
+  oneof event {
+    SubscribedEvent subscribed = 1;
+    ChangeEvent change = 2;
+  }
+}
+message SubscribedEvent { uint64 subscription_id = 1; }
+message ChangeEvent { repeated Frame frames = 1; }
 
 message Params {
   oneof params { PositionalParams positional = 1; NamedParams named = 2; }

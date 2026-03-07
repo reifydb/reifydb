@@ -38,10 +38,6 @@ cfg_if! {
 	}
 }
 
-// =============================================================================
-// Shared error types
-// =============================================================================
-
 /// Error returned when sending a message fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SendError<M> {

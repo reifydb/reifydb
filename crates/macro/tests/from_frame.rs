@@ -116,10 +116,6 @@ fn test_multiple_field_types() {
 	);
 }
 
-// ============================================================================
-// 2. Column Name Mapping (#[frame(column = "name")])
-// ============================================================================
-
 #[derive(FromFrame, Debug, PartialEq, Clone)]
 struct RenamedColumns {
 	#[frame(column = "user_id")]
@@ -206,10 +202,6 @@ fn test_raw_identifier_column_name() {
 		}
 	);
 }
-
-// ============================================================================
-// 3. Optional Fields (#[frame(optional)])
-// ============================================================================
 
 #[derive(FromFrame, Debug, PartialEq, Clone)]
 struct OptionalFields {
@@ -313,10 +305,6 @@ fn test_mixed_required_and_optional() {
 	);
 }
 
-// ============================================================================
-// 4. Type Coercion (#[frame(coerce)])
-// ============================================================================
-
 #[derive(FromFrame, Debug, PartialEq, Clone)]
 struct CoercedFields {
 	#[frame(coerce)]
@@ -374,10 +362,6 @@ fn test_mixed_strict_and_coerced() {
 	assert_eq!(items[0].strict_int, 100);
 	assert_eq!(items[0].coerced_int, 200);
 }
-
-// ============================================================================
-// 5. Skipped Fields (#[frame(skip)])
-// ============================================================================
 
 #[derive(FromFrame, Debug, PartialEq, Clone)]
 struct WithSkipped {
@@ -437,10 +421,6 @@ fn test_skip_optional_field() {
 	assert_eq!(items[1].metadata, None);
 }
 
-// ============================================================================
-// 6. Error Cases
-// ============================================================================
-
 #[test]
 fn test_missing_required_column() {
 	let frame = frame(vec![int8_column("id", vec![1, 2])]);
@@ -487,10 +467,6 @@ fn test_type_mismatch_error() {
 		_ => panic!("Expected ValueError error"),
 	}
 }
-
-// ============================================================================
-// 7. All Value Types Coverage
-// ============================================================================
 
 #[derive(FromFrame, Debug, Clone)]
 struct AllIntegerTypes {
@@ -552,10 +528,6 @@ fn test_float_types() {
 	assert!((items[0].float4 - 3.14).abs() < 0.001);
 	assert!((items[0].float8 - 2.71828).abs() < 0.00001);
 }
-
-// ============================================================================
-// 8. Temporal and UUID Types
-// ============================================================================
 
 #[derive(FromFrame, Debug, PartialEq, Clone)]
 struct WithDate {
@@ -647,10 +619,6 @@ fn test_uuid7_type() {
 	assert_eq!(items[0].uuid, uuid);
 }
 
-// ============================================================================
-// 9. Combined attributes
-// ============================================================================
-
 #[derive(FromFrame, Debug, Clone, PartialEq)]
 struct CombinedAttributes {
 	id: i64,
@@ -692,10 +660,6 @@ fn test_combined_attributes() {
 		}
 	);
 }
-
-// ============================================================================
-// 9. Large dataset
-// ============================================================================
 
 #[test]
 fn test_large_dataset() {

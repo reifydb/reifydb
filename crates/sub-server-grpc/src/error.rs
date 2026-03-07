@@ -3,7 +3,7 @@
 
 use std::{error, fmt, string::FromUtf8Error, sync::Arc};
 
-use reifydb_sub_server::{auth::AuthError, execute::ExecuteError};
+use reifydb_sub_server::{auth::AuthError, execute::ExecuteError, subscribe::CreateSubscriptionError};
 use reifydb_type::{error::Diagnostic, value::r#type::Type};
 use serde_json::to_string as to_json;
 use tonic::Status;
@@ -44,6 +44,8 @@ pub enum GrpcError {
 		diagnostic: Arc<Diagnostic>,
 		statement: String,
 	},
+	/// Subscription creation failed.
+	SubscriptionFailed(String),
 }
 
 impl fmt::Display for GrpcError {
@@ -72,6 +74,7 @@ impl fmt::Display for GrpcError {
 				diagnostic,
 				..
 			} => write!(f, "Engine error: {}", diagnostic.message),
+			GrpcError::SubscriptionFailed(msg) => write!(f, "Subscription failed: {}", msg),
 		}
 	}
 }
@@ -109,6 +112,7 @@ impl fmt::Debug for GrpcError {
 				.field("diagnostic", diagnostic)
 				.field("statement", statement)
 				.finish(),
+			GrpcError::SubscriptionFailed(msg) => f.debug_tuple("SubscriptionFailed").field(msg).finish(),
 		}
 	}
 }
@@ -134,6 +138,17 @@ impl From<ExecuteError> for GrpcError {
 				diagnostic,
 				statement,
 			},
+		}
+	}
+}
+
+impl From<CreateSubscriptionError> for GrpcError {
+	fn from(err: CreateSubscriptionError) -> Self {
+		match err {
+			CreateSubscriptionError::Execute(e) => GrpcError::from(e),
+			CreateSubscriptionError::ExtractionFailed => {
+				GrpcError::SubscriptionFailed("Failed to extract subscription ID".to_string())
+			}
 		}
 	}
 }
@@ -169,6 +184,7 @@ impl From<GrpcError> for Status {
 				let json = to_json(&diag).unwrap_or_else(|_| diagnostic.message.clone());
 				Status::invalid_argument(json)
 			}
+			GrpcError::SubscriptionFailed(_) => Status::internal(err.to_string()),
 		}
 	}
 }

@@ -286,10 +286,6 @@ impl fmt::Display for WasmJoinError {
 
 impl error::Error for WasmJoinError {}
 
-// =============================================================================
-// WASM ActorRef internals
-// =============================================================================
-
 /// WASM implementation of ActorRef inner.
 struct ActorRefInner<M> {
 	processor: Rc<RefCell<Option<Box<dyn FnMut(M)>>>>,

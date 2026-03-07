@@ -112,14 +112,6 @@ pub fn extract_identity_from_ws_auth(token: Option<&str>) -> AuthResult<Identity
 	}
 }
 
-// ============================================================================
-// Token Validation Functions
-//
-// These functions are stubs that should be implemented with actual authentication
-// logic before production use. They currently return errors to prevent accidental
-// use of unauthenticated requests.
-// ============================================================================
-
 /// Validate a bearer token and return the associated identity.
 ///
 /// # TODO: Implementation

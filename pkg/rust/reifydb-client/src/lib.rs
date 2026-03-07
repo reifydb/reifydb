@@ -13,7 +13,7 @@ pub mod ws;
 
 // Re-export client types
 #[cfg(feature = "grpc")]
-pub use grpc::GrpcClient;
+pub use grpc::{GrpcClient, GrpcSubscription};
 #[cfg(feature = "http")]
 pub use http::HttpClient;
 // Re-export derive macro
@@ -62,10 +62,6 @@ pub struct CommandResult {
 pub struct QueryResult {
 	pub frames: Vec<Frame>,
 }
-
-// ============================================================================
-// Wire format types for HTTP/WebSocket protocol
-// ============================================================================
 
 #[cfg(any(feature = "http", feature = "ws"))]
 /// Wire format for a single typed value: `{"type": "Int2", "value": "1234"}`.
@@ -144,10 +140,6 @@ pub fn params_to_wire(params: Params) -> Option<WireParams> {
 	}
 }
 
-// ============================================================================
-// Request Types (matching server)
-// ============================================================================
-
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
@@ -206,10 +198,6 @@ pub struct SubscribeRequest {
 pub struct UnsubscribeRequest {
 	pub subscription_id: String,
 }
-
-// ============================================================================
-// Response Types (matching server)
-// ============================================================================
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
@@ -286,10 +274,6 @@ pub struct WebsocketColumn {
 	pub r#type: Type,
 	pub data: Vec<String>,
 }
-
-// ============================================================================
-// Server Push Types (server-initiated, no request id)
-// ============================================================================
 
 #[cfg(any(feature = "http", feature = "ws"))]
 /// Server-initiated push message (no request id).

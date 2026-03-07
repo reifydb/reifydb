@@ -6,15 +6,14 @@
 //! Handles WebSocket subscription requests by creating database subscriptions
 //! and registering them with the registry and poller for real-time updates.
 
-use reifydb_core::interface::catalog::id::SubscriptionId as DbSubscriptionId;
-use reifydb_sub_server::{execute::execute_admin, state::AppState};
-use reifydb_subscription::poller::SubscriptionPoller;
-use reifydb_type::{
-	params::Params,
-	value::{Value, identity::IdentityId, uuid::Uuid7},
+use reifydb_sub_server::{
+	state::AppState,
+	subscribe::{CreateSubscriptionError, create_subscription},
 };
+use reifydb_subscription::poller::SubscriptionPoller;
+use reifydb_type::value::{identity::IdentityId, uuid::Uuid7};
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::info;
 
 use crate::{
 	handler::error_to_response,
@@ -51,75 +50,24 @@ pub(crate) async fn handle_subscribe(
 	poller: &SubscriptionPoller,
 	push_tx: mpsc::Sender<PushMessage>,
 ) -> Option<String> {
-	// Authenticate if needed (subscriptions may require auth depending on your policy)
-	let id: IdentityId = match identity {
-		Some(id) => id,
-		None => {
-			// For now, allow unauthenticated subscriptions using root identity
-			IdentityId::root()
-		}
-	};
-
-	let params = Params::None;
-	let timeout = state.query_timeout();
+	let id: IdentityId = identity.unwrap_or_else(IdentityId::root);
 	let user_query = sub.query.clone();
 
-	let create_sub_statement = format!("CREATE SUBSCRIPTION AS {{ {} }}", user_query);
+	match create_subscription(state, id, &user_query).await {
+		Ok(subscription_id) => {
+			registry.subscribe(subscription_id, connection_id, user_query, push_tx);
+			poller.register(subscription_id);
 
-	debug!("Generated subscription statement: {}", create_sub_statement);
+			info!("Connection {} subscribed: subscription_id={}", connection_id, subscription_id);
 
-	// Execute CREATE SUBSCRIPTION command
-	match execute_admin(state.actor_system(), state.engine_clone(), vec![create_sub_statement], id, params, timeout)
-		.await
-	{
-		Ok(cmd_frames) => {
-			// Extract subscription ID
-			let db_subscription_id = if let Some(cmd_frame) = cmd_frames.first() {
-				// Look for "subscription_id" column (should be first)
-				if let Some(sub_id_col) = cmd_frame.columns.iter().find(|c| c.name == "subscription_id")
-				{
-					if sub_id_col.data.len() > 0 {
-						let value = sub_id_col.data.get_value(0);
-						match value {
-							Value::Uint8(id) => Some(DbSubscriptionId(id)),
-							_ => {
-								error!(
-									"subscription_id column has wrong type: {:?}",
-									value
-								);
-								None
-							}
-						}
-					} else {
-						None
-					}
-				} else {
-					error!("No subscription_id column in CREATE SUBSCRIPTION result");
-					None
-				}
-			} else {
-				None
-			};
-
-			if let Some(subscription_id) = db_subscription_id {
-				// Register with registry using database subscription ID
-				registry.subscribe(subscription_id, connection_id, user_query, push_tx);
-
-				// Register with poller
-				poller.register(subscription_id);
-
-				info!("Connection {} subscribed: subscription_id={}", connection_id, subscription_id);
-
-				Some(Response::subscribed(request_id, subscription_id.to_string()).to_json())
-			} else {
-				Some(Response::internal_error(
-					request_id,
-					"SUBSCRIPTION_FAILED",
-					"Failed to extract subscription ID",
-				)
-				.to_json())
-			}
+			Some(Response::subscribed(request_id, subscription_id.to_string()).to_json())
 		}
-		Err(e) => Some(error_to_response(request_id, e)),
+		Err(CreateSubscriptionError::Execute(e)) => Some(error_to_response(request_id, e)),
+		Err(CreateSubscriptionError::ExtractionFailed) => Some(Response::internal_error(
+			request_id,
+			"SUBSCRIPTION_FAILED",
+			"Failed to extract subscription ID",
+		)
+		.to_json()),
 	}
 }

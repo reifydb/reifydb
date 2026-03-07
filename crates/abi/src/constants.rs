@@ -20,10 +20,6 @@ pub const OPERATOR_MAGIC: u32 = 231123;
 /// FFI operator libraries must export this function to be recognized as valid operators.
 pub type FFIOperatorMagicFn = extern "C" fn() -> u32;
 
-// =============================
-// FFI Return Codes
-// =============================
-
 /// FFI return code: Operation succeeded, value found, or iterator has next item
 pub const FFI_OK: i32 = 0;
 

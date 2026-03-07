@@ -222,10 +222,6 @@ fn internal_fragment(text: &str) -> Fragment {
 	}
 }
 
-// ============================================================================
-// Expression -> JsonExpression conversion
-// ============================================================================
-
 impl From<&Expression> for JsonExpression {
 	fn from(expr: &Expression) -> Self {
 		match expr {
@@ -429,10 +425,6 @@ impl From<&Expression> for JsonExpression {
 		}
 	}
 }
-
-// ============================================================================
-// JsonExpression -> Expression conversion
-// ============================================================================
 
 impl TryFrom<JsonExpression> for Expression {
 	type Error = Error;
@@ -818,10 +810,6 @@ fn parse_type(s: &str) -> Result<Type> {
 
 	Ok(ty)
 }
-
-// ============================================================================
-// Public API
-// ============================================================================
 
 /// Serialize an Expression to a JSON string.
 ///

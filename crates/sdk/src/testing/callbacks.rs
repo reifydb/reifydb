@@ -74,10 +74,6 @@ extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *m
 	unsafe { system_realloc(ptr, old_layout, new_layout.size()) }
 }
 
-// ============================================================================
-// State Callbacks (TestContext HashMap)
-// ============================================================================
-
 /// Helper to get TestContext from FFI context
 unsafe fn get_test_context(ctx: *mut ContextFFI) -> &'static TestContext {
 	unsafe {
@@ -193,10 +189,6 @@ extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 		FFI_OK
 	}
 }
-
-// ============================================================================
-// State Iterator Support
-// ============================================================================
 
 /// Internal structure for state iterators
 #[repr(C)]
@@ -409,19 +401,11 @@ extern "C" fn test_state_range(
 	}
 }
 
-// ============================================================================
-// Log Callback (Capture to TestContext)
-// ============================================================================
-
 /// Capture log message to TestContext
 #[unsafe(no_mangle)]
 extern "C" fn test_log_message(_operator_id: u64, _level: u32, _message: *const u8, _message_len: usize) {
 	unimplemented!()
 }
-
-// ============================================================================
-// Store Callbacks (Stub - not available in tests)
-// ============================================================================
 
 /// Store get - returns not found (store not available in tests)
 extern "C" fn test_store_get(_ctx: *mut ContextFFI, _key: *const u8, _key_len: usize, _output: *mut BufferFFI) -> i32 {
@@ -548,10 +532,6 @@ extern "C" fn test_catalog_free_table(_table: *mut TableFFI) {
 	// No-op in test callbacks
 }
 
-// ============================================================================
-// RQL callbacks (stub for testing)
-// ============================================================================
-
 extern "C" fn test_rql(
 	_ctx: *mut ContextFFI,
 	_rql_ptr: *const u8,
@@ -562,10 +542,6 @@ extern "C" fn test_rql(
 ) -> i32 {
 	FFI_ERROR_INTERNAL
 }
-
-// ============================================================================
-// Public API
-// ============================================================================
 
 /// Create the complete host callbacks structure for testing
 pub fn create_test_callbacks() -> HostCallbacks {

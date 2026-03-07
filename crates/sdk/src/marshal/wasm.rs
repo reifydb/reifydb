@@ -228,10 +228,6 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 	}
 }
 
-// ============================================================================
-// Bitvec helpers
-// ============================================================================
-
 fn marshal_bitvec_to_buf(buf: &mut Vec<u8>, bitvec: &BitVec) -> (u32, u32) {
 	let len = bitvec.len();
 	if len == 0 {
@@ -268,10 +264,6 @@ fn unmarshal_bitvec_from_bytes(bytes: &[u8], len: usize) -> BitVec {
 	}
 	BitVec::from_slice(&bits)
 }
-
-// ============================================================================
-// Column data marshalling (to buf)
-// ============================================================================
 
 /// Marshal column data bytes + offsets into buf, returning (data_offset, data_len, offsets_offset, offsets_len).
 fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnData) -> (u32, u32, u32, u32) {
@@ -480,10 +472,6 @@ fn marshal_data_with_offsets_to_buf(buf: &mut Vec<u8>, data: &[u8], offsets: &[u
 	(data_offset, data_len, offsets_offset, offsets_len)
 }
 
-// ============================================================================
-// Column data unmarshalling (from bytes)
-// ============================================================================
-
 fn type_code_from_u32(v: u32) -> ColumnTypeCode {
 	match v {
 		0 => ColumnTypeCode::Bool,
@@ -611,10 +599,6 @@ fn unmarshal_column_data(
 	// Wrap in Option if bitvec has any false (null) values
 	maybe_wrap_option(inner, bitvec)
 }
-
-// ============================================================================
-// Unmarshal helpers
-// ============================================================================
 
 fn read_offsets(bytes: &[u8]) -> Vec<u64> {
 	bytes.chunks_exact(size_of::<u64>()).map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap())).collect()

@@ -29,8 +29,6 @@ use tokio::{
 	net::TcpListener,
 	select,
 	sync::{Semaphore, oneshot, watch},
-	task,
-	time::interval,
 };
 use tracing::{debug, info, warn};
 
@@ -208,31 +206,17 @@ impl Subsystem for WsSubsystem {
 		let poller_clone = poller.clone();
 		let poller_state = state.clone();
 		let poller_registry = registry.clone();
-		let mut poller_shutdown_rx = rx.clone();
+		let poller_shutdown_rx = rx.clone();
 		runtime.spawn(async move {
-			let mut tick = interval(poll_interval);
-			loop {
-				select! {
-					biased;
-
-					result = poller_shutdown_rx.changed() => {
-						if result.is_err() || *poller_shutdown_rx.borrow() {
-							debug!("Subscription poller shutting down");
-							break;
-						}
-					}
-
-					_ = tick.tick() => {
-						let p = poller_clone.clone();
-					let e = poller_state.engine_clone();
-					let s = poller_state.actor_system();
-					let r = poller_registry.clone();
-					let _ = task::spawn_blocking(move || {
-						p.poll_all(&e, &s, r.as_ref());
-					}).await;
-					}
-				}
-			}
+			poller_clone
+				.run_loop(
+					poller_state.engine_clone(),
+					poller_state.actor_system(),
+					poller_registry,
+					poll_interval,
+					poller_shutdown_rx,
+				)
+				.await;
 		});
 
 		runtime.spawn(async move {

@@ -2192,6 +2192,7 @@ dependencies = [
  "futures-util",
  "num_cpus",
  "once_cell",
+ "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -2225,6 +2226,7 @@ dependencies = [
 name = "reifydb-sub-server-grpc"
 version = "0.4.0"
 dependencies = [
+ "dashmap",
  "num-bigint",
  "prost",
  "reifydb-core",
@@ -2232,6 +2234,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
+ "reifydb-subscription",
  "reifydb-type",
  "serde_json",
  "tokio",
@@ -2286,7 +2289,6 @@ version = "0.4.0"
 dependencies = [
  "dashmap",
  "futures-util",
- "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",

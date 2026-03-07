@@ -1,31 +1,44 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
 	execute::{execute_admin, execute_command, execute_query},
 	state::AppState,
+	subscribe::{cleanup_subscription_sync, create_subscription},
 };
+use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{params::Params, value::identity::IdentityId};
+use tokio::{spawn, sync::mpsc};
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
+use tracing::{debug, info, warn};
 
 use crate::{
 	convert::{frames_to_proto, proto_params_to_params},
 	error::GrpcError,
 	generated::{
 		AdminRequest, AdminResponse, CommandRequest, CommandResponse, Params as ProtoParams, QueryRequest,
-		QueryResponse, reify_db_server::ReifyDb,
+		QueryResponse, SubscribeRequest, SubscribedEvent, SubscriptionEvent, reify_db_server::ReifyDb,
+		subscription_event,
 	},
+	subscription::GrpcSubscriptionRegistry,
 };
 
 pub struct ReifyDbService {
 	state: AppState,
+	registry: Arc<GrpcSubscriptionRegistry>,
+	poller: Arc<SubscriptionPoller>,
 }
 
 impl ReifyDbService {
-	pub fn new(state: AppState) -> Self {
+	pub fn new(state: AppState, registry: Arc<GrpcSubscriptionRegistry>, poller: Arc<SubscriptionPoller>) -> Self {
 		Self {
 			state,
+			registry,
+			poller,
 		}
 	}
 
@@ -117,5 +130,70 @@ impl ReifyDb for ReifyDbService {
 		Ok(Response::new(QueryResponse {
 			frames: frames_to_proto(frames),
 		}))
+	}
+
+	type SubscribeStream = ReceiverStream<Result<SubscriptionEvent, Status>>;
+
+	async fn subscribe(
+		&self,
+		request: Request<SubscribeRequest>,
+	) -> Result<Response<Self::SubscribeStream>, Status> {
+		let identity = self.extract_identity(&request)?;
+		let inner = request.into_inner();
+
+		let subscription_id =
+			create_subscription(&self.state, identity, &inner.query).await.map_err(GrpcError::from)?;
+
+		let (tx, rx) = mpsc::channel(256);
+
+		// Send initial subscribed event
+		let subscribed_event = SubscriptionEvent {
+			event: Some(subscription_event::Event::Subscribed(SubscribedEvent {
+				subscription_id: subscription_id.0,
+			})),
+		};
+		if tx.send(Ok(subscribed_event)).await.is_err() {
+			return Err(Status::internal("Failed to send subscribed event"));
+		}
+
+		// Register with registry and poller
+		self.registry.register(subscription_id, tx.clone());
+		self.poller.register(subscription_id);
+
+		info!("gRPC subscription created: {}", subscription_id);
+
+		// Spawn cleanup task that monitors when the receiver is dropped
+		let registry = self.registry.clone();
+		let poller = self.poller.clone();
+		let engine = self.state.engine_clone();
+		let system = self.state.actor_system();
+		spawn(async move {
+			// Wait until the sender can no longer send (receiver dropped)
+			tx.closed().await;
+
+			debug!("gRPC subscription {} stream closed, cleaning up", subscription_id);
+
+			// Unregister from poller and registry
+			poller.unregister(&subscription_id);
+			registry.unregister(&subscription_id);
+
+			// Cleanup database subscription
+			let engine_clone = engine.clone();
+			let result =
+				system.compute(move || cleanup_subscription_sync(&engine_clone, subscription_id)).await;
+			match result {
+				Ok(Ok(())) => debug!("Cleaned up gRPC subscription {}", subscription_id),
+				Ok(Err(e)) => warn!(
+					"Failed to cleanup subscription {} from database: {:?}",
+					subscription_id, e
+				),
+				Err(e) => warn!(
+					"Compute pool error cleaning up subscription {}: {:?}",
+					subscription_id, e
+				),
+			}
+		});
+
+		Ok(Response::new(ReceiverStream::new(rx)))
 	}
 }
