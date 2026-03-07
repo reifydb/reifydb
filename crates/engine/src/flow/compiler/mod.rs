@@ -261,6 +261,9 @@ impl FlowCompiler {
 				unimplemented!("Assert compilation not yet implemented for flow")
 			}
 			QueryPlan::SeriesScan(series_scan) => SeriesScanCompiler::from(series_scan).compile(self, txn),
+			QueryPlan::RemoteScan(_) => {
+				unimplemented!("RemoteScan is not supported in flow graphs")
+			}
 		}
 	}
 }

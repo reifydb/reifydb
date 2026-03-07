@@ -214,6 +214,26 @@ impl ActorSystem {
 		handle.await
 	}
 
+	/// Runs a potentially I/O-blocking function on tokio's blocking pool.
+	///
+	/// Like `compute()`, uses admission control via the semaphore, but
+	/// does NOT route through the rayon pool. Use this for work that may
+	/// block on I/O (e.g., queries touching remote namespaces).
+	pub async fn execute<R, F>(&self, f: F) -> Result<R, task::JoinError>
+	where
+		R: Send + 'static,
+		F: FnOnce() -> R + Send + 'static,
+	{
+		let permit = self.inner.permits.clone().acquire_owned().await.expect("semaphore closed");
+
+		let handle = task::spawn_blocking(move || {
+			let _permit = permit;
+			f()
+		});
+
+		handle.await
+	}
+
 	/// Get direct access to the rayon pool (for advanced use cases).
 	pub(crate) fn pool(&self) -> &Arc<ThreadPool> {
 		&self.inner.pool

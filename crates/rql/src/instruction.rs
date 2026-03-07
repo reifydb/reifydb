@@ -10,11 +10,11 @@ use crate::{
 	nodes::{
 		self, AlterSequenceNode, CreateColumnPropertyNode, CreateDeferredViewNode, CreateDictionaryNode,
 		CreateEventNode, CreateMigrationNode, CreateNamespaceNode, CreatePrimaryKeyNode, CreateProcedureNode,
-		CreateRingBufferNode, CreateSeriesNode, CreateSubscriptionNode, CreateSumTypeNode, CreateTableNode,
-		CreateTagNode, CreateTransactionalViewNode, DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode,
-		DispatchNode, FunctionParameter, InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode,
-		InsertTableNode, MigrateNode, RollbackMigrationNode, UpdateRingBufferNode, UpdateSeriesNode,
-		UpdateTableNode,
+		CreateRemoteNamespaceNode, CreateRingBufferNode, CreateSeriesNode, CreateSubscriptionNode,
+		CreateSumTypeNode, CreateTableNode, CreateTagNode, CreateTransactionalViewNode, DeleteRingBufferNode,
+		DeleteSeriesNode, DeleteTableNode, DispatchNode, FunctionParameter, InsertDictionaryNode,
+		InsertRingBufferNode, InsertSeriesNode, InsertTableNode, MigrateNode, RollbackMigrationNode,
+		UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -153,6 +153,7 @@ pub enum Instruction {
 
 	// === DDL ===
 	CreateNamespace(CreateNamespaceNode),
+	CreateRemoteNamespace(CreateRemoteNamespaceNode),
 	CreateTable(CreateTableNode),
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateDeferredView(CreateDeferredViewNode),
@@ -173,6 +174,7 @@ pub enum Instruction {
 	Dispatch(DispatchNode),
 	AlterSequence(AlterSequenceNode),
 	AlterTable(nodes::AlterTableNode),
+	AlterRemoteNamespace(nodes::AlterRemoteNamespaceNode),
 
 	// === DDL (Drop) ===
 	DropNamespace(nodes::DropNamespaceNode),

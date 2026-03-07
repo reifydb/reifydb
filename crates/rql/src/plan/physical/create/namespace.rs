@@ -5,6 +5,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	Result,
+	nodes::CreateRemoteNamespaceNode,
 	plan::{
 		logical,
 		physical::{Compiler, CreateNamespaceNode, PhysicalPlan},
@@ -20,6 +21,18 @@ impl<'bump> Compiler<'bump> {
 		Ok(PhysicalPlan::CreateNamespace(CreateNamespaceNode {
 			segments: create.segments.iter().map(|s| self.interner.intern_fragment(s)).collect(),
 			if_not_exists: create.if_not_exists,
+		}))
+	}
+
+	pub(crate) fn compile_create_remote_namespace(
+		&mut self,
+		_rx: &mut Transaction<'_>,
+		create: logical::CreateRemoteNamespaceNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		Ok(PhysicalPlan::CreateRemoteNamespace(CreateRemoteNamespaceNode {
+			segments: create.segments.iter().map(|s| self.interner.intern_fragment(s)).collect(),
+			if_not_exists: create.if_not_exists,
+			grpc: self.interner.intern_fragment(&create.grpc),
 		}))
 	}
 }

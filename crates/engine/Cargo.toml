@@ -44,3 +44,4 @@ indexmap = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 futures-util = { workspace = true }
+reifydb-client = { workspace = true, features = ["grpc"] }

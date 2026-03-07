@@ -861,6 +861,12 @@ pub enum IdentifierError {
 		table: String,
 		name: String,
 	},
+	RemoteNamespace {
+		namespace: String,
+		name: String,
+		address: String,
+		fragment: Fragment,
+	},
 }
 
 impl fmt::Display for IdentifierError {
@@ -894,6 +900,18 @@ impl fmt::Display for IdentifierError {
 			} => {
 				write!(f, "Index '{}' on table '{}::{}' not found", name, namespace, table)
 			}
+			IdentifierError::RemoteNamespace {
+				namespace,
+				name,
+				address,
+				..
+			} => {
+				write!(
+					f,
+					"Remote namespace '{}': source '{}' is on remote instance at {}",
+					namespace, name, address
+				)
+			}
 		}
 	}
 }
@@ -910,6 +928,32 @@ impl From<IdentifierError> for Error {
 				fragment: e.fragment.clone(),
 			}
 			.into(),
+			IdentifierError::RemoteNamespace {
+				namespace,
+				name,
+				address,
+				fragment,
+			} => Error(Diagnostic {
+				code: "REMOTE_001".to_string(),
+				statement: None,
+				message: format!(
+					"Remote namespace '{}': source '{}' is on remote instance at {}",
+					namespace, name, address
+				),
+				column: None,
+				fragment,
+				label: Some("source is on a remote instance".to_string()),
+				help: Some(
+					"Remote namespaces cannot be queried directly. Use the remote instance's endpoint instead."
+						.to_string(),
+				),
+				notes: vec![
+					format!("Namespace '{}' is configured as a remote namespace", namespace),
+					format!("Remote gRPC address: {}", address),
+				],
+				cause: None,
+				operator_chain: None,
+			}),
 			_ => {
 				internal_error!("{}", err)
 			}

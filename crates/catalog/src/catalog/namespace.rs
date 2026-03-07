@@ -25,6 +25,7 @@ pub struct NamespaceToCreate {
 	pub namespace_fragment: Option<Fragment>,
 	pub name: String,
 	pub parent_id: NamespaceId,
+	pub grpc: Option<String>,
 }
 
 impl From<NamespaceToCreate> for StoreNamespaceToCreate {
@@ -33,6 +34,7 @@ impl From<NamespaceToCreate> for StoreNamespaceToCreate {
 			namespace_fragment: to_create.namespace_fragment,
 			name: to_create.name,
 			parent_id: to_create.parent_id,
+			grpc: to_create.grpc,
 		}
 	}
 }
@@ -301,5 +303,19 @@ impl Catalog {
 	#[instrument(name = "catalog::namespace::list_all", level = "debug", skip(self, txn))]
 	pub fn list_namespaces_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<NamespaceDef>> {
 		CatalogStore::list_namespaces_all(txn)
+	}
+
+	#[instrument(name = "catalog::namespace::update_grpc", level = "debug", skip(self, txn))]
+	pub fn update_namespace_grpc(
+		&self,
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		grpc: Option<String>,
+	) -> Result<()> {
+		CatalogStore::update_namespace_grpc(txn, namespace_id, grpc)?;
+		// Re-read the updated namespace and track the change
+		let updated = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
+		txn.track_namespace_def_created(updated)?;
+		Ok(())
 	}
 }

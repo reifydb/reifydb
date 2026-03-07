@@ -1,5 +1,5 @@
 # Copyright (c) reifydb.com 2025
-# This file is licensed under the AGPL-3.0-or-later, see license.md file
+# This file is licensed under the Apache-2.0, see license.md file
 
 # Tests that an update moves the old version to historical.
 # When updating a key, the old version becomes historical.

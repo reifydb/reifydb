@@ -150,6 +150,7 @@ pub mod tests {
 				namespace_fragment: Some(Fragment::internal("test_ns".to_string())),
 				name: "test_ns".to_string(),
 				parent_id: NamespaceId::ROOT,
+				grpc: None,
 			},
 		)
 		.unwrap();

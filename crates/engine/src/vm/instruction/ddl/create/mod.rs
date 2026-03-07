@@ -27,6 +27,7 @@ pub mod policy;
 pub mod primary_key;
 pub mod procedure;
 pub mod property;
+pub mod remote_namespace;
 pub mod ringbuffer;
 pub mod role;
 pub mod series;

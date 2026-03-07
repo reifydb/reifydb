@@ -13,8 +13,10 @@ use crate::{
 	bump::{BumpBox, BumpFragment, BumpVec},
 	expression::{AndExpression, EqExpression, Expression, OrExpression, join::JoinConditionCompiler},
 	plan::logical::{
-		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::PrimitiveScan,
-		PrimitiveScanNode, resolver,
+		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
+		LogicalPlan::PrimitiveScan,
+		PrimitiveScanNode, RemoteScanNode,
+		resolver::{self, ResolvedSource},
 	},
 };
 
@@ -143,14 +145,9 @@ impl<'bump> Compiler<'bump> {
 					UnresolvedPrimitiveIdentifier::new(source.namespace.clone(), source.name);
 				unresolved = unresolved.with_alias(*alias);
 
-				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
+				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
 				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(PrimitiveScan(PrimitiveScanNode {
-					source: resolved_source,
-					columns: None,
-					index: None,
-				}));
+				result.push(plan);
 				Ok(result)
 			}
 			Ast::Identifier(identifier) => {
@@ -158,14 +155,9 @@ impl<'bump> Compiler<'bump> {
 					UnresolvedPrimitiveIdentifier::new(vec![], identifier.token.fragment);
 				unresolved = unresolved.with_alias(*alias);
 
-				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
+				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
 				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(PrimitiveScan(PrimitiveScanNode {
-					source: resolved_source,
-					columns: None,
-					index: None,
-				}));
+				result.push(plan);
 				Ok(result)
 			}
 			Ast::Infix(AstInfix {
@@ -188,14 +180,9 @@ impl<'bump> Compiler<'bump> {
 				);
 				unresolved = unresolved.with_alias(*alias);
 
-				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
+				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
 				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(PrimitiveScan(PrimitiveScanNode {
-					source: resolved_source,
-					columns: None,
-					index: None,
-				}));
+				result.push(plan);
 				Ok(result)
 			}
 			_ => unimplemented!(),
@@ -218,14 +205,9 @@ impl<'bump> Compiler<'bump> {
 					UnresolvedPrimitiveIdentifier::new(source.namespace.clone(), source.name);
 				unresolved = unresolved.with_alias(*alias);
 
-				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
+				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
 				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(PrimitiveScan(PrimitiveScanNode {
-					source: resolved_source,
-					columns: None,
-					index: None,
-				}));
+				result.push(plan);
 				Ok(result)
 			}
 			Ast::Identifier(identifier) => {
@@ -233,14 +215,9 @@ impl<'bump> Compiler<'bump> {
 					UnresolvedPrimitiveIdentifier::new(vec![], identifier.token.fragment);
 				unresolved = unresolved.with_alias(*alias);
 
-				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
+				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
 				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(PrimitiveScan(PrimitiveScanNode {
-					source: resolved_source,
-					columns: None,
-					index: None,
-				}));
+				result.push(plan);
 				Ok(result)
 			}
 			Ast::Infix(AstInfix {
@@ -263,17 +240,36 @@ impl<'bump> Compiler<'bump> {
 				);
 				unresolved = unresolved.with_alias(*alias);
 
-				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
+				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
 				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(PrimitiveScan(PrimitiveScanNode {
-					source: resolved_source,
-					columns: None,
-					index: None,
-				}));
+				result.push(plan);
 				Ok(result)
 			}
 			_ => unimplemented!(),
 		}
+	}
+}
+
+fn resolve_join_plan<'bump>(
+	catalog: &reifydb_catalog::catalog::Catalog,
+	tx: &mut Transaction<'_>,
+	unresolved: &UnresolvedPrimitiveIdentifier,
+) -> Result<LogicalPlan<'bump>> {
+	let resolved = resolver::resolve_unresolved_source(catalog, tx, unresolved)?;
+	match resolved {
+		ResolvedSource::Primitive(p) => Ok(PrimitiveScan(PrimitiveScanNode {
+			source: p,
+			columns: None,
+			index: None,
+		})),
+		ResolvedSource::Remote {
+			address,
+			local_namespace,
+			remote_name,
+		} => Ok(LogicalPlan::RemoteScan(RemoteScanNode {
+			address,
+			local_namespace,
+			remote_name,
+		})),
 	}
 }

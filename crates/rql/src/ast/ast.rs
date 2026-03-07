@@ -803,6 +803,7 @@ pub enum AstCreate<'bump> {
 	DeferredView(AstCreateDeferredView<'bump>),
 	TransactionalView(AstCreateTransactionalView<'bump>),
 	Namespace(AstCreateNamespace<'bump>),
+	RemoteNamespace(AstCreateRemoteNamespace<'bump>),
 	Series(AstCreateSeries<'bump>),
 	Subscription(AstCreateSubscription<'bump>),
 	Table(AstCreateTable<'bump>),
@@ -828,6 +829,7 @@ pub enum AstAlter<'bump> {
 	Sequence(AstAlterSequence<'bump>),
 	Policy(AstAlterPolicy<'bump>),
 	Table(AstAlterTable<'bump>),
+	RemoteNamespace(AstAlterRemoteNamespace<'bump>),
 }
 
 #[derive(Debug)]
@@ -966,6 +968,21 @@ pub struct AstCreateNamespace<'bump> {
 	pub token: Token<'bump>,
 	pub namespace: MaybeQualifiedNamespaceIdentifier<'bump>,
 	pub if_not_exists: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateRemoteNamespace<'bump> {
+	pub token: Token<'bump>,
+	pub namespace: MaybeQualifiedNamespaceIdentifier<'bump>,
+	pub if_not_exists: bool,
+	pub grpc: BumpFragment<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstAlterRemoteNamespace<'bump> {
+	pub token: Token<'bump>,
+	pub namespace: MaybeQualifiedNamespaceIdentifier<'bump>,
+	pub grpc: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]
@@ -1151,6 +1168,10 @@ impl<'bump> AstCreate<'bump> {
 				token,
 				..
 			}) => token,
+			AstCreate::RemoteNamespace(AstCreateRemoteNamespace {
+				token,
+				..
+			}) => token,
 			AstCreate::Series(AstCreateSeries {
 				token,
 				..
@@ -1239,6 +1260,10 @@ impl<'bump> AstAlter<'bump> {
 				..
 			}) => token,
 			AstAlter::Table(AstAlterTable {
+				token,
+				..
+			}) => token,
+			AstAlter::RemoteNamespace(AstAlterRemoteNamespace {
 				token,
 				..
 			}) => token,

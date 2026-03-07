@@ -21,16 +21,26 @@ use crate::{
 	error::{IdentifierError, PrimitiveNotFoundError},
 };
 
+pub enum ResolvedSource {
+	Primitive(ResolvedPrimitive),
+	Remote {
+		address: String,
+		local_namespace: String,
+		remote_name: String,
+	},
+}
+
 /// Default namespace for unqualified identifiers
 pub const DEFAULT_NAMESPACE: &str = "default";
 
-/// Resolve an unresolved source identifier to a ResolvedPrimitive
-/// This is used when processing From clauses and joins
+/// Resolve an unresolved source identifier to a ResolvedSource.
+/// Returns `ResolvedSource::Remote` for remote namespaces, or
+/// `ResolvedSource::Primitive` for local sources.
 pub fn resolve_unresolved_source(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	unresolved: &UnresolvedPrimitiveIdentifier,
-) -> Result<ResolvedPrimitive> {
+) -> Result<ResolvedSource> {
 	let namespace_str = if !unresolved.namespace.is_empty() {
 		unresolved.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::")
 	} else {
@@ -45,6 +55,15 @@ pub fn resolve_unresolved_source(
 		catalog.get_namespace_by_name(tx, DEFAULT_NAMESPACE)?
 	};
 
+	// Check if this is a remote namespace
+	if let Some(ref grpc) = ns_def.grpc {
+		return Ok(ResolvedSource::Remote {
+			address: grpc.clone(),
+			local_namespace: namespace_str.to_string(),
+			remote_name: name_str.to_string(),
+		});
+	}
+
 	let namespace_fragment = Fragment::internal(ns_def.name.clone());
 	let namespace = ResolvedNamespace::new(namespace_fragment, ns_def.clone());
 	let name_fragment = Fragment::internal(name_str.to_string());
@@ -52,11 +71,11 @@ pub fn resolve_unresolved_source(
 
 	// Check for user-defined virtual tables first (in any namespace)
 	if let Some(virtual_def) = catalog.find_vtable_user_by_name(tx, ns_def.id, name_str) {
-		return Ok(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(
+		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
 			(*virtual_def).clone(),
-		)));
+		))));
 	}
 
 	// Check if it's a system table (namespace = "system")
@@ -69,25 +88,33 @@ pub fn resolve_unresolved_source(
 			columns: vec![], // Columns are populated at execution time
 		};
 
-		return Ok(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(name_fragment, namespace, def)));
+		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(
+			name_fragment,
+			namespace,
+			def,
+		))));
 	}
 
 	// Try table first
 	if let Some(table) = catalog.find_table_by_name(tx, ns_def.id, name_str)? {
 		// ResolvedTable doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedPrimitive::Table(ResolvedTable::new(name_fragment, namespace, table)));
+		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::Table(ResolvedTable::new(
+			name_fragment,
+			namespace,
+			table,
+		))));
 	}
 
 	// Try ring buffer
 	if let Some(ringbuffer) = catalog.find_ringbuffer_by_name(tx, ns_def.id, name_str)? {
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedPrimitive::RingBuffer(ResolvedRingBuffer::new(
+		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::RingBuffer(ResolvedRingBuffer::new(
 			name_fragment,
 			namespace,
 			ringbuffer,
-		)));
+		))));
 	}
 
 	// Try views FIRST (deferred views share name with their flow)
@@ -95,7 +122,7 @@ pub fn resolve_unresolved_source(
 		// Check view type to create appropriate resolved view
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		let resolved_source = match view.kind {
+		let primitive = match view.kind {
 			ViewKind::Deferred => ResolvedPrimitive::DeferredView(ResolvedDeferredView::new(
 				name_fragment,
 				namespace,
@@ -105,21 +132,25 @@ pub fn resolve_unresolved_source(
 				ResolvedTransactionalView::new(name_fragment, namespace, view),
 			),
 		};
-		return Ok(resolved_source);
+		return Ok(ResolvedSource::Primitive(primitive));
 	}
 
 	// Try dictionaries
 	if let Some(dictionary) = catalog.find_dictionary_by_name(tx, ns_def.id, name_str)? {
-		return Ok(ResolvedPrimitive::Dictionary(ResolvedDictionary::new(
+		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::Dictionary(ResolvedDictionary::new(
 			name_fragment,
 			namespace,
 			dictionary,
-		)));
+		))));
 	}
 
 	// Try series
 	if let Some(series) = catalog.find_series_by_name(tx, ns_def.id, name_str)? {
-		return Ok(ResolvedPrimitive::Series(ResolvedSeries::new(name_fragment, namespace, series)));
+		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::Series(ResolvedSeries::new(
+			name_fragment,
+			namespace,
+			series,
+		))));
 	}
 
 	// Not found

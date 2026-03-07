@@ -34,6 +34,7 @@ pub(crate) fn create_namespace(
 					namespace_fragment: Some(plan.segments[i].clone()),
 					name: prefix,
 					parent_id,
+					grpc: None,
 				},
 			)?;
 			txn.track_namespace_def_created(result.clone())?;
@@ -57,6 +58,7 @@ pub(crate) fn create_namespace(
 			namespace_fragment: plan.segments.last().cloned(),
 			name: full_name,
 			parent_id,
+			grpc: None,
 		},
 	)?;
 	txn.track_namespace_def_created(result.clone())?;

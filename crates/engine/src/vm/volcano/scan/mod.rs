@@ -3,6 +3,7 @@
 
 pub mod dictionary;
 pub mod index;
+pub mod remote;
 pub mod ringbuffer;
 pub mod series;
 pub mod table;

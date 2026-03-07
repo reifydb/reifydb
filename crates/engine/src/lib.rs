@@ -17,6 +17,8 @@ pub mod flow;
 pub(crate) mod interceptor;
 pub mod policy;
 pub mod procedure;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod remote;
 #[allow(unused)]
 pub mod test_utils;
 pub mod transaction;

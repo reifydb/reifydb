@@ -14,6 +14,7 @@ pub struct NamespaceDef {
 	pub id: NamespaceId,
 	pub name: String,
 	pub parent_id: NamespaceId,
+	pub grpc: Option<String>,
 }
 
 impl NamespaceDef {
@@ -22,6 +23,7 @@ impl NamespaceDef {
 			id: NamespaceId(1),
 			name: "system".to_string(),
 			parent_id: NamespaceId::ROOT,
+			grpc: None,
 		}
 	}
 
@@ -30,6 +32,7 @@ impl NamespaceDef {
 			id: NamespaceId(2),
 			name: "default".to_string(),
 			parent_id: NamespaceId::ROOT,
+			grpc: None,
 		}
 	}
 }

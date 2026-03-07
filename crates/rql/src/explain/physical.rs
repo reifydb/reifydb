@@ -88,6 +88,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreateDeferredView(_) => unimplemented!(),
 		PhysicalPlan::CreateTransactionalView(_) => unimplemented!(),
 		PhysicalPlan::CreateNamespace(_) => unimplemented!(),
+		PhysicalPlan::CreateRemoteNamespace(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::CreateRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::CreateDictionary(_) => unimplemented!(),
@@ -496,6 +497,13 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			});
 		}
 
+		PhysicalPlan::RemoteScan(node) => {
+			let label = format!(
+				"RemoteScan {}::{} @ {} rql=\"{}\"",
+				node.local_namespace, node.remote_name, node.address, node.remote_rql
+			);
+			write_node_header(output, prefix, is_last, &label);
+		}
 		PhysicalPlan::InlineData(node) => {
 			let total_fields: usize = node.rows.iter().map(|row| row.len()).sum();
 			let label = format!("InlineData rows: {}, fields: {}", node.rows.len(), total_fields);
@@ -551,6 +559,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			let label = format!("AlterTable: {}.{}", node.namespace.name(), node.table.text());
 			write_node_header(output, prefix, is_last, &label);
 		}
+		PhysicalPlan::AlterRemoteNamespace(_) => unimplemented!(),
 		PhysicalPlan::TableVirtualScan(node) => {
 			let label = format!("VirtualScan: {}::{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);

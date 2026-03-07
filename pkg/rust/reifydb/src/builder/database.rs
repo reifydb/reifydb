@@ -40,6 +40,7 @@ use reifydb_engine::{
 		registry::{Procedures, ProceduresBuilder},
 		system::set_config::SetConfigProcedure,
 	},
+	remote::RemoteRegistry,
 	transform::registry::Transforms,
 };
 use reifydb_function::registry::{Functions, FunctionsBuilder};
@@ -337,6 +338,9 @@ impl DatabaseBuilder {
 			procedures_builder.build()
 		};
 
+		// Create RemoteRegistry for forwarding queries to remote namespaces
+		let remote_registry = RemoteRegistry::new(runtime.clone());
+
 		// Create engine before CDC worker (CDC worker needs engine for cleanup)
 		let engine = StandardEngine::new(
 			multi.clone(),
@@ -349,6 +353,7 @@ impl DatabaseBuilder {
 			procedures,
 			transforms,
 			self.ioc.clone(),
+			Some(remote_registry),
 		);
 
 		self.ioc = self.ioc.register(engine.clone());
@@ -466,6 +471,7 @@ impl DatabaseBuilder {
 						namespace_fragment: None,
 						name: "config".to_string(),
 						parent_id: NamespaceId(1),
+						grpc: None,
 					},
 				)?;
 				ns.id

@@ -16,6 +16,8 @@ use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
 use reifydb_type::value::sumtype::SumTypeId;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::remote::RemoteRegistry;
 use crate::{
 	procedure::{Procedure, registry::Procedures},
 	transform::registry::Transforms,
@@ -37,6 +39,8 @@ pub struct Services {
 	pub stats_reader: MetricReader<SingleStore>,
 	pub ioc: IocContainer,
 	pub auth_registry: AuthenticationRegistry,
+	#[cfg(not(target_arch = "wasm32"))]
+	pub remote_registry: Option<RemoteRegistry>,
 }
 
 impl Services {
@@ -49,6 +53,7 @@ impl Services {
 		flow_operator_store: FlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
 		ioc: IocContainer,
+		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
 	) -> Self {
 		Self {
 			compiler: Compiler::new(catalog.clone()),
@@ -62,6 +67,8 @@ impl Services {
 			stats_reader,
 			ioc,
 			auth_registry: AuthenticationRegistry::new(),
+			#[cfg(not(target_arch = "wasm32"))]
+			remote_registry,
 		}
 	}
 
@@ -102,6 +109,8 @@ impl Services {
 			FlowOperatorStore::new(),
 			MetricReader::new(store),
 			IocContainer::new(),
+			#[cfg(not(target_arch = "wasm32"))]
+			None,
 		);
 		services.auth_registry = AuthenticationRegistry::new();
 		Arc::new(services)

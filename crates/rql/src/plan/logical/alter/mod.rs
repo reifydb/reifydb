@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+pub mod remote_namespace;
 pub mod sequence;
 pub mod table;
 
@@ -26,6 +27,7 @@ impl<'bump> Compiler<'bump> {
 				action: node.action,
 			})),
 			AstAlter::Table(node) => self.compile_alter_table(node, tx),
+			AstAlter::RemoteNamespace(node) => self.compile_alter_remote_namespace(node),
 		}
 	}
 }

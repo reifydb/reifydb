@@ -128,7 +128,7 @@ pub async fn execute_query(
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
 	// Execute synchronous query on actor system's compute pool with timeout
-	let task = system.compute(move || engine.query_as(identity, &query, params));
+	let task = system.execute(move || engine.query_as(identity, &query, params));
 
 	let result = time::timeout(timeout, task).await;
 
@@ -170,7 +170,7 @@ pub async fn execute_admin(
 	let combined = statements.join("; ");
 
 	// Execute synchronous admin operation on actor system's compute pool with timeout
-	let task = system.compute(move || retry_on_conflict(|| engine.admin_as(identity, &combined, params.clone())));
+	let task = system.execute(move || retry_on_conflict(|| engine.admin_as(identity, &combined, params.clone())));
 
 	let result = time::timeout(timeout, task).await;
 
@@ -212,7 +212,7 @@ pub async fn execute_command(
 	let combined = statements.join("; ");
 
 	// Execute synchronous command on actor system's compute pool with timeout
-	let task = system.compute(move || retry_on_conflict(|| engine.command_as(identity, &combined, params.clone())));
+	let task = system.execute(move || retry_on_conflict(|| engine.command_as(identity, &combined, params.clone())));
 
 	let result = time::timeout(timeout, task).await;
 

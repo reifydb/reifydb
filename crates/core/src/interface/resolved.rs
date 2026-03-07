@@ -989,6 +989,7 @@ pub mod tests {
 			id: NamespaceId(1),
 			name: "public".to_string(),
 			parent_id: NamespaceId::ROOT,
+			grpc: None,
 		}
 	}
 

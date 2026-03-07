@@ -13,7 +13,7 @@ use crate::{
 		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, Compiler, CreateColumnPropertyNode,
 		CreateIndexNode, CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GateNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
-		PatchNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
+		PatchNode, PrimitiveScanNode, RemoteScanNode, TakeNode, VariableSourceNode,
 	},
 };
 
@@ -79,6 +79,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::CreateDeferredView(_) => unimplemented!(),
 		LogicalPlan::CreateTransactionalView(_) => unimplemented!(),
 		LogicalPlan::CreateNamespace(_) => unimplemented!(),
+		LogicalPlan::CreateRemoteNamespace(_) => unimplemented!(),
 		LogicalPlan::CreateSequence(_) => unimplemented!(),
 		LogicalPlan::CreateTable(_) => unimplemented!(),
 		LogicalPlan::CreateRingBuffer(_) => unimplemented!(),
@@ -567,6 +568,16 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 
 			output.push_str(&format!("{}{} {} {}\n", prefix, branch, scan_type, display_name));
 		}
+		LogicalPlan::RemoteScan(RemoteScanNode {
+			address,
+			local_namespace,
+			remote_name,
+		}) => {
+			output.push_str(&format!(
+				"{}{} RemoteScan {}::{} @ {}\n",
+				prefix, branch, local_namespace, remote_name, address
+			));
+		}
 		LogicalPlan::InlineData(InlineDataNode {
 			rows,
 		}) => {
@@ -851,6 +862,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			};
 			output.push_str(&format!("{}{} AlterTable: {}\n", prefix, branch, table_name));
 		}
+		LogicalPlan::AlterRemoteNamespace(_) => unimplemented!(),
 		LogicalPlan::DefineFunction(def) => {
 			let params: Vec<String> = def
 				.parameters

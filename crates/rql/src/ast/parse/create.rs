@@ -14,10 +14,10 @@ use crate::{
 			AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind, AstColumnToCreate, AstCreate,
 			AstCreateColumnProperty, AstCreateDeferredView, AstCreateDictionary, AstCreateEvent,
 			AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
-			AstCreateProcedure, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
-			AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTransactionalView, AstIndexColumn,
-			AstPolicyTargetType, AstPrimaryKeyDef, AstProcedureParam, AstStatement, AstTimestampPrecision,
-			AstType, AstVariantDef,
+			AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries,
+			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
+			AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKeyDef,
+			AstProcedureParam, AstStatement, AstTimestampPrecision, AstType, AstVariantDef,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -33,8 +33,8 @@ use crate::{
 		keyword::{
 			Keyword,
 			Keyword::{
-				Create, Deferred, Dictionary, Exists, For, If, Namespace, Replace, Ringbuffer, Series,
-				Subscription, Table, Tag, Transactional, View,
+				Create, Deferred, Dictionary, Exists, For, If, Namespace, Remote, Replace, Ringbuffer,
+				Series, Subscription, Table, Tag, Transactional, View,
 			},
 		},
 		operator::{
@@ -72,6 +72,11 @@ impl<'bump> Parser<'bump> {
 				),
 				fragment,
 			}));
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Remote))?).is_some() {
+			self.consume_keyword(Namespace)?;
+			return self.parse_remote_namespace(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Namespace))?).is_some() {
@@ -333,6 +338,97 @@ impl<'bump> Parser<'bump> {
 			token,
 			namespace,
 			if_not_exists,
+		}))
+	}
+
+	fn parse_remote_namespace(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+		// Check for IF NOT EXISTS BEFORE identifier
+		let mut if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
+			self.consume_operator(Not)?;
+			self.consume_keyword(Exists)?;
+			true
+		} else {
+			false
+		};
+
+		let segments = self.parse_double_colon_separated_identifiers()?;
+
+		// Check for IF NOT EXISTS AFTER identifier (alternate syntax)
+		if !if_not_exists && (self.consume_if(TokenKind::Keyword(If))?).is_some() {
+			self.consume_operator(Not)?;
+			self.consume_keyword(Exists)?;
+			if_not_exists = true;
+		}
+
+		let namespace = MaybeQualifiedNamespaceIdentifier::new(
+			segments.into_iter().map(|s| s.into_fragment()).collect(),
+		);
+
+		// Parse required WITH { grpc: '...' } block
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut grpc = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"grpc" => {
+					let value = self.consume_literal(Literal::Text)?;
+					grpc = Some(value.fragment);
+				}
+				_other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'grpc'".to_string(),
+						},
+						message: format!(
+							"Unexpected token: expected {}, got {}",
+							"'grpc'",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		let grpc = grpc.ok_or_else(|| {
+			Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "'grpc' key in WITH block".to_string(),
+				},
+				message: "CREATE REMOTE NAMESPACE requires 'grpc' in WITH block".to_string(),
+				fragment: token.fragment.to_owned(),
+			})
+		})?;
+
+		Ok(AstCreate::RemoteNamespace(AstCreateRemoteNamespace {
+			token,
+			namespace,
+			if_not_exists,
+			grpc,
 		}))
 	}
 

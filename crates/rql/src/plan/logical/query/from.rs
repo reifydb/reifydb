@@ -11,7 +11,8 @@ use crate::{
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
 		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, PrimitiveScanNode,
-		VariableSourceNode, resolver,
+		RemoteScanNode, VariableSourceNode,
+		resolver::{self, ResolvedSource},
 	},
 };
 
@@ -25,12 +26,24 @@ impl<'bump> Compiler<'bump> {
 				..
 			} => {
 				let resolved_source = resolver::resolve_unresolved_source(&self.catalog, tx, &source)?;
-
-				Ok(LogicalPlan::PrimitiveScan(PrimitiveScanNode {
-					source: resolved_source,
-					columns: None,
-					index: None,
-				}))
+				match resolved_source {
+					ResolvedSource::Remote {
+						address,
+						local_namespace,
+						remote_name,
+					} => Ok(LogicalPlan::RemoteScan(RemoteScanNode {
+						address,
+						local_namespace,
+						remote_name,
+					})),
+					ResolvedSource::Primitive(resolved) => {
+						Ok(LogicalPlan::PrimitiveScan(PrimitiveScanNode {
+							source: resolved,
+							columns: None,
+							index: None,
+						}))
+					}
+				}
 			}
 			AstFrom::Inline {
 				list,

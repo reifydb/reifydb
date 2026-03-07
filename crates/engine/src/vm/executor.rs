@@ -15,11 +15,14 @@ use reifydb_transaction::transaction::{
 	Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
 };
 use reifydb_type::{
+	error::{Diagnostic, Error},
 	params::Params,
 	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
 };
 use tracing::instrument;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::remote::{self, RemoteRegistry};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -60,6 +63,7 @@ impl Executor {
 		flow_operator_store: FlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
 		ioc: IocContainer,
+		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
 	) -> Self {
 		Self(Arc::new(Services::new(
 			catalog,
@@ -70,6 +74,8 @@ impl Executor {
 			flow_operator_store,
 			stats_reader,
 			ioc,
+			#[cfg(not(target_arch = "wasm32"))]
+			remote_registry,
 		)))
 	}
 
@@ -86,6 +92,20 @@ impl Executor {
 	#[allow(dead_code)]
 	pub fn testing() -> Self {
 		Self(Services::testing())
+	}
+
+	/// If the error is a REMOTE_001 and we have a RemoteRegistry, forward the query.
+	/// Returns `Ok(Some(frames))` if forwarded, `Ok(None)` if not a remote query.
+	#[cfg(not(target_arch = "wasm32"))]
+	fn try_forward_remote_query(&self, err: &Error, rql: &str, params: Params) -> Result<Option<Vec<Frame>>> {
+		if let Some(ref registry) = self.0.remote_registry {
+			if remote::is_remote_query(err) {
+				if let Some(address) = remote::extract_remote_address(err) {
+					return registry.forward_query(&address, rql, params).map(Some);
+				}
+			}
+		}
+		Ok(None)
 	}
 }
 
@@ -161,10 +181,17 @@ impl Executor {
 
 		let compiled = match self.compiler.compile_with_policy(tx, rql, |plans, bump, cat, tx| {
 			inject_read_policies(plans, bump, cat, tx, identity)
-		})? {
-			CompilationResult::Ready(compiled) => compiled,
-			CompilationResult::Incremental(_) => {
+		}) {
+			Ok(CompilationResult::Ready(compiled)) => compiled,
+			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("incremental compilation not supported in rql()")
+			}
+			Err(err) => {
+				#[cfg(not(target_arch = "wasm32"))]
+				if let Some(frames) = self.try_forward_remote_query(&err, rql, params)? {
+					return Ok(frames);
+				}
+				return Err(err);
 			}
 		};
 
@@ -199,8 +226,15 @@ impl Executor {
 			&mut Transaction::Admin(txn),
 			cmd.rql,
 			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
-		)? {
-			CompilationResult::Ready(compiled) => {
+		) {
+			Err(err) => {
+				#[cfg(not(target_arch = "wasm32"))]
+				if let Some(frames) = self.try_forward_remote_query(&err, cmd.rql, cmd.params)? {
+					return Ok(frames);
+				}
+				return Err(err);
+			}
+			Ok(CompilationResult::Ready(compiled)) => {
 				for compiled in compiled.iter() {
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
@@ -213,7 +247,7 @@ impl Executor {
 					}
 				}
 			}
-			CompilationResult::Incremental(mut state) => {
+			Ok(CompilationResult::Incremental(mut state)) => {
 				let policy = constrain_policy(|plans, bump, cat, tx| {
 					inject_read_policies(plans, bump, cat, tx, identity)
 				});
@@ -261,10 +295,24 @@ impl Executor {
 			&mut Transaction::Command(txn),
 			cmd.rql,
 			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
-		)? {
-			CompilationResult::Ready(compiled) => compiled,
-			CompilationResult::Incremental(_) => {
+		) {
+			Ok(CompilationResult::Ready(compiled)) => compiled,
+			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("DDL statements require admin transactions, not command transactions")
+			}
+			Err(err) => {
+				#[cfg(not(target_arch = "wasm32"))]
+				if self.0.remote_registry.is_some() && remote::is_remote_query(&err) {
+					return Err(Error(Diagnostic {
+						code: "REMOTE_002".to_string(),
+						message: "Write operations on remote namespaces are not supported"
+							.to_string(),
+						help: Some("Use the remote instance directly for write operations"
+							.to_string()),
+						..Default::default()
+					}));
+				}
+				return Err(err);
 			}
 		};
 
@@ -340,10 +388,17 @@ impl Executor {
 			&mut Transaction::Query(txn),
 			qry.rql,
 			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
-		)? {
-			CompilationResult::Ready(compiled) => compiled,
-			CompilationResult::Incremental(_) => {
+		) {
+			Ok(CompilationResult::Ready(compiled)) => compiled,
+			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("DDL statements require admin transactions, not query transactions")
+			}
+			Err(err) => {
+				#[cfg(not(target_arch = "wasm32"))]
+				if let Some(frames) = self.try_forward_remote_query(&err, qry.rql, qry.params)? {
+					return Ok(frames);
+				}
+				return Err(err);
 			}
 		};
 

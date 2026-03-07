@@ -52,6 +52,7 @@ pub enum PhysicalPlan {
 	CreateDeferredView(CreateDeferredViewNode),
 	CreateTransactionalView(CreateTransactionalViewNode),
 	CreateNamespace(CreateNamespaceNode),
+	CreateRemoteNamespace(CreateRemoteNamespaceNode),
 	CreateTable(CreateTableNode),
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateDictionary(CreateDictionaryNode),
@@ -71,6 +72,7 @@ pub enum PhysicalPlan {
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode),
+	AlterRemoteNamespace(AlterRemoteNamespaceNode),
 	// Mutate
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),
@@ -118,6 +120,7 @@ pub enum PhysicalPlan {
 	Patch(PatchNode),
 	Apply(ApplyNode),
 	InlineData(InlineDataNode),
+	RemoteScan(RemoteScanNode),
 	TableScan(TableScanNode),
 	TableVirtualScan(TableVirtualScanNode),
 	ViewScan(ViewScanNode),
@@ -167,6 +170,19 @@ pub struct CreateTransactionalViewNode {
 pub struct CreateNamespaceNode {
 	pub segments: Vec<Fragment>,
 	pub if_not_exists: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateRemoteNamespaceNode {
+	pub segments: Vec<Fragment>,
+	pub if_not_exists: bool,
+	pub grpc: Fragment,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterRemoteNamespaceNode {
+	pub namespace: Fragment,
+	pub grpc: Fragment,
 }
 
 #[derive(Debug, Clone)]
@@ -548,6 +564,14 @@ pub struct InlineDataNode {
 pub struct IndexScanNode {
 	pub source: ResolvedTable,
 	pub index_name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RemoteScanNode {
+	pub address: String,
+	pub remote_rql: String,
+	pub local_namespace: String,
+	pub remote_name: String,
 }
 
 #[derive(Debug, Clone)]

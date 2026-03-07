@@ -46,6 +46,8 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::remote::RemoteRegistry;
 use crate::{
 	Result,
 	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
@@ -286,6 +288,7 @@ impl StandardEngine {
 		procedures: Procedures,
 		transforms: Transforms,
 		ioc: IocContainer,
+		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
 	) -> Self {
 		let flow_operator_store = FlowOperatorStore::new();
 		let listener = FlowOperatorEventListener::new(flow_operator_store.clone());
@@ -318,6 +321,8 @@ impl StandardEngine {
 				flow_operator_store.clone(),
 				stats_reader,
 				ioc,
+				#[cfg(not(target_arch = "wasm32"))]
+				remote_registry,
 			),
 			interceptors,
 			catalog,

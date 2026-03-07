@@ -43,7 +43,12 @@ use crate::{
 	ast::ast::{AstAlterPolicyAction, AstPolicyScope},
 	bump::{Bump, BumpBox, FragmentInterner},
 	error::RqlError,
-	expression::{ConstantExpression, Expression, Expression::Constant, VariableExpression},
+	expression::{
+		AndExpression, ConstantExpression, Expression,
+		Expression::Constant,
+		VariableExpression,
+		rql::{expression_to_rql, extend_expression_to_rql, sort_key_to_rql},
+	},
 	nodes::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
 		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
@@ -70,6 +75,7 @@ pub enum PhysicalPlan<'bump> {
 	CreateDeferredView(CreateDeferredViewNode<'bump>),
 	CreateTransactionalView(CreateTransactionalViewNode<'bump>),
 	CreateNamespace(CreateNamespaceNode),
+	CreateRemoteNamespace(nodes::CreateRemoteNamespaceNode),
 	CreateTable(CreateTableNode),
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateDictionary(CreateDictionaryNode),
@@ -98,6 +104,7 @@ pub enum PhysicalPlan<'bump> {
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode<'bump>),
+	AlterRemoteNamespace(nodes::AlterRemoteNamespaceNode),
 	// Mutate
 	Delete(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
@@ -149,6 +156,7 @@ pub enum PhysicalPlan<'bump> {
 	Patch(PatchNode<'bump>),
 	Apply(ApplyNode<'bump>),
 	InlineData(InlineDataNode),
+	RemoteScan(nodes::RemoteScanNode),
 	TableScan(TableScanNode),
 	TableVirtualScan(TableVirtualScanNode),
 	ViewScan(ViewScanNode),
@@ -559,6 +567,10 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_namespace(rx, create)?);
 				}
 
+				LogicalPlan::CreateRemoteNamespace(create) => {
+					stack.push(self.compile_create_remote_namespace(rx, create)?);
+				}
+
 				LogicalPlan::CreateTable(create) => {
 					stack.push(self.compile_create_table(rx, create)?);
 				}
@@ -641,6 +653,18 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::AlterTable(alter) => {
 					stack.push(self.compile_alter_table(rx, alter)?);
+				}
+
+				LogicalPlan::AlterRemoteNamespace(alter) => {
+					let ns_name: String =
+						alter.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
+					let namespace = Fragment::internal(ns_name);
+					stack.push(PhysicalPlan::AlterRemoteNamespace(
+						nodes::AlterRemoteNamespaceNode {
+							namespace,
+							grpc: self.interner.intern_fragment(&alter.grpc),
+						},
+					));
 				}
 
 				// Drop
@@ -831,6 +855,47 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::Filter(filter) => {
 					let input = stack.pop().unwrap(); // FIXME
+
+					// Push-down into RemoteScan: try full push-down first
+					if let Some(pushed) = try_remote_push_down(&input, || {
+						expression_to_rql(&filter.condition)
+							.map(|rql| format!("FILTER {}", rql))
+					}) {
+						stack.push(pushed);
+						continue;
+					}
+					// Try partial push-down: split AND conjuncts
+					if let PhysicalPlan::RemoteScan(ref remote) = input {
+						let mut conjuncts = Vec::new();
+						flatten_and_refs(&filter.condition, &mut conjuncts);
+						let (pushable, local): (Vec<_>, Vec<_>) = conjuncts
+							.into_iter()
+							.partition(|e| expression_to_rql(e).is_some());
+
+						if !pushable.is_empty() {
+							let mut remote = remote.clone();
+							let pushed = pushable
+								.iter()
+								.filter_map(|e| expression_to_rql(e))
+								.collect::<Vec<_>>()
+								.join(" and ");
+							remote.remote_rql =
+								format!("{} | FILTER {}", remote.remote_rql, pushed);
+
+							if local.is_empty() {
+								stack.push(PhysicalPlan::RemoteScan(remote));
+							} else {
+								let remaining = rebuild_and_expression(local);
+								stack.push(PhysicalPlan::Filter(FilterNode {
+									conditions: vec![remaining],
+									input: self.bump_box(PhysicalPlan::RemoteScan(
+										remote,
+									)),
+								}));
+							}
+							continue;
+						}
+					}
 
 					// Try to optimize rownum predicates for O(1)/O(k) access
 					if let Some(predicate) = extract_row_predicate(&filter.condition) {
@@ -1579,6 +1644,20 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::Order(order) => {
 					let input = stack.pop().unwrap(); // FIXME
+
+					// Push-down: fold sort into RemoteScan
+					let sort_rql =
+						order.by.iter()
+							.map(|k| sort_key_to_rql(k))
+							.collect::<Vec<_>>()
+							.join(", ");
+					if let Some(pushed) = try_remote_push_down(&input, || {
+						Some(format!("SORT {{ {} }}", sort_rql))
+					}) {
+						stack.push(pushed);
+						continue;
+					}
+
 					stack.push(PhysicalPlan::Sort(SortNode {
 						by: order.by,
 						input: self.bump_box(input),
@@ -1596,6 +1675,7 @@ impl<'bump> Compiler<'bump> {
 								id: NamespaceId(1),
 								name: "_context".to_string(),
 								parent_id: NamespaceId::ROOT,
+								grpc: None,
 							},
 						);
 
@@ -1648,6 +1728,23 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::Extend(extend) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
+
+					// Push-down: fold extend into RemoteScan
+					if let Some(ref boxed_input) = input {
+						if let Some(pushed) = try_remote_push_down(boxed_input, || {
+							extend.extend
+								.iter()
+								.map(|e| extend_expression_to_rql(e))
+								.collect::<Option<Vec<_>>>()
+								.map(|parts| {
+									format!("EXTEND {{ {} }}", parts.join(", "))
+								})
+						}) {
+							stack.push(pushed);
+							continue;
+						}
+					}
+
 					stack.push(PhysicalPlan::Extend(ExtendNode {
 						extend: extend.extend,
 						input,
@@ -1758,8 +1855,29 @@ impl<'bump> Compiler<'bump> {
 					}
 				},
 
+				LogicalPlan::RemoteScan(scan) => {
+					stack.push(PhysicalPlan::RemoteScan(nodes::RemoteScanNode {
+						address: scan.address,
+						remote_rql: format!(
+							"FROM {}::{}",
+							scan.local_namespace, scan.remote_name
+						),
+						local_namespace: scan.local_namespace,
+						remote_name: scan.remote_name,
+					}));
+				}
+
 				LogicalPlan::Take(take) => {
 					let input = stack.pop().unwrap(); // FIXME
+
+					// Push-down: fold take into RemoteScan
+					if let Some(pushed) =
+						try_remote_push_down(&input, || Some(format!("TAKE {}", take.take)))
+					{
+						stack.push(pushed);
+						continue;
+					}
+
 					stack.push(PhysicalPlan::Take(TakeNode {
 						take: take.take,
 						input: self.bump_box(input),
@@ -2130,4 +2248,47 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(Some(stack.pop().unwrap()))
 	}
+}
+
+/// Try to push down an operation into a RemoteScan node by appending an RQL suffix.
+/// Returns `Some(PhysicalPlan::RemoteScan(...))` if the input is a RemoteScan and the
+/// suffix closure returns `Some(...)`. Returns `None` otherwise (caller falls through to local op).
+fn try_remote_push_down<'a>(
+	input: &PhysicalPlan<'a>,
+	rql_suffix: impl FnOnce() -> Option<String>,
+) -> Option<PhysicalPlan<'a>> {
+	if let PhysicalPlan::RemoteScan(remote) = input {
+		if let Some(suffix) = rql_suffix() {
+			let mut pushed = remote.clone();
+			pushed.remote_rql = format!("{} | {}", pushed.remote_rql, suffix);
+			return Some(PhysicalPlan::RemoteScan(pushed));
+		}
+	}
+	None
+}
+
+/// Flatten AND expressions into a list of conjunct references.
+fn flatten_and_refs<'a>(expr: &'a Expression, out: &mut Vec<&'a Expression>) {
+	match expr {
+		Expression::And(and) => {
+			flatten_and_refs(&and.left, out);
+			flatten_and_refs(&and.right, out);
+		}
+		other => out.push(other),
+	}
+}
+
+/// Rebuild an AND tree from a list of expression references.
+fn rebuild_and_expression(exprs: Vec<&Expression>) -> Expression {
+	assert!(!exprs.is_empty());
+	let mut iter = exprs.into_iter();
+	let mut result = iter.next().unwrap().clone();
+	for expr in iter {
+		result = Expression::And(AndExpression {
+			fragment: result.full_fragment_owned(),
+			left: Box::new(result.clone()),
+			right: Box::new(expr.clone()),
+		});
+	}
+	result
 }

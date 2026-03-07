@@ -7,14 +7,19 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			AstAlter, AstAlterSequence, AstAlterTable, AstAlterTableAction, AstLiteral, AstLiteralNumber,
-			AstPolicyTargetType,
+			AstAlter, AstAlterRemoteNamespace, AstAlterSequence, AstAlterTable, AstAlterTableAction,
+			AstLiteral, AstLiteralNumber, AstPolicyTargetType,
 		},
-		identifier::{MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier},
+		identifier::{
+			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
+			MaybeQualifiedTableIdentifier,
+		},
 		parse::Parser,
 	},
 	token::{
 		keyword::Keyword,
+		operator::Operator,
+		separator::Separator,
 		token::{Literal, Token, TokenKind},
 	},
 };
@@ -47,6 +52,12 @@ impl<'bump> Parser<'bump> {
 			self.consume_keyword(Keyword::Ringbuffer)?;
 			self.consume_keyword(Keyword::Policy)?;
 			return self.parse_alter_policy(token, AstPolicyTargetType::RingBuffer);
+		}
+
+		if self.current()?.is_keyword(Keyword::Remote) {
+			self.consume_keyword(Keyword::Remote)?;
+			self.consume_keyword(Keyword::Namespace)?;
+			return self.parse_alter_remote_namespace(token);
 		}
 
 		if self.current()?.is_keyword(Keyword::Namespace) {
@@ -196,6 +207,80 @@ impl<'bump> Parser<'bump> {
 			token,
 			table,
 			action,
+		}))
+	}
+
+	fn parse_alter_remote_namespace(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
+		let segments = self.parse_double_colon_separated_identifiers()?;
+
+		let namespace = MaybeQualifiedNamespaceIdentifier::new(
+			segments.into_iter().map(|s| s.into_fragment()).collect(),
+		);
+
+		// Parse required WITH { grpc: '...' } block
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut grpc = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"grpc" => {
+					let value = self.consume_literal(Literal::Text)?;
+					grpc = Some(value.fragment);
+				}
+				_other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'grpc'".to_string(),
+						},
+						message: format!(
+							"Unexpected token: expected {}, got {}",
+							"'grpc'",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		let grpc = grpc.ok_or_else(|| {
+			Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "'grpc' key in WITH block".to_string(),
+				},
+				message: "ALTER REMOTE NAMESPACE requires 'grpc' in WITH block".to_string(),
+				fragment: token.fragment.to_owned(),
+			})
+		})?;
+
+		Ok(AstAlter::RemoteNamespace(AstAlterRemoteNamespace {
+			token,
+			namespace,
+			grpc,
 		}))
 	}
 }

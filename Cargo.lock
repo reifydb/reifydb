@@ -1955,6 +1955,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
+ "reifydb-client",
  "reifydb-core",
  "reifydb-function",
  "reifydb-metric",

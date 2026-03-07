@@ -129,6 +129,12 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 					t.table.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();
 				format!("ALTER TABLE {}{}", namespace, t.table.name.text())
 			}
+			AstAlter::RemoteNamespace(ns) => {
+				format!(
+					"ALTER REMOTE NAMESPACE {}",
+					ns.namespace.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join("::")
+				)
+			}
 		},
 		Ast::Create(create) => match create {
 			AstCreate::PrimaryKey(pk) => {
@@ -333,6 +339,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 				AstAlter::Table(_) => {
 					// Table alter doesn't have child operations to display here
 				}
+				AstAlter::RemoteNamespace(_) => {}
 			}
 			// Return early since we handled the children
 			return;

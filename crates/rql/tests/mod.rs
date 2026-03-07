@@ -94,6 +94,7 @@ impl Runner for TestRunner {
 								namespace_fragment: None,
 								name: "test".to_string(),
 								parent_id: NamespaceId::ROOT,
+								grpc: None,
 							},
 						)
 						.unwrap();

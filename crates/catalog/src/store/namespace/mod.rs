@@ -14,16 +14,20 @@ pub mod find;
 pub mod get;
 pub mod list;
 pub mod schema;
+pub mod update;
 
 pub(crate) fn convert_namespace(multi: MultiVersionValues) -> NamespaceDef {
 	let row = multi.values;
 	let id = NamespaceId(namespace::SCHEMA.get_u64(&row, namespace::ID));
 	let name = namespace::SCHEMA.get_utf8(&row, namespace::NAME).to_string();
 	let parent_id = NamespaceId(namespace::SCHEMA.get_u64(&row, namespace::PARENT_ID));
+	let grpc =
+		namespace::SCHEMA.try_get_utf8(&row, namespace::GRPC).map(|s| s.to_string()).filter(|s| !s.is_empty());
 
 	NamespaceDef {
 		id,
 		name,
 		parent_id,
+		grpc,
 	}
 }

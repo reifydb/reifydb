@@ -363,6 +363,7 @@ pub enum LogicalPlan<'bump> {
 	CreateDeferredView(CreateDeferredViewNode<'bump>),
 	CreateTransactionalView(CreateTransactionalViewNode<'bump>),
 	CreateNamespace(CreateNamespaceNode<'bump>),
+	CreateRemoteNamespace(CreateRemoteNamespaceNode<'bump>),
 	CreateSequence(CreateSequenceNode<'bump>),
 	CreateTable(CreateTableNode<'bump>),
 	CreateRingBuffer(CreateRingBufferNode<'bump>),
@@ -393,6 +394,7 @@ pub enum LogicalPlan<'bump> {
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
+	AlterRemoteNamespace(AlterRemoteNamespaceNode<'bump>),
 	// Mutate
 	DeleteTable(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
@@ -432,6 +434,7 @@ pub enum LogicalPlan<'bump> {
 	Apply(ApplyNode<'bump>),
 	InlineData(InlineDataNode),
 	PrimitiveScan(PrimitiveScanNode),
+	RemoteScan(RemoteScanNode),
 	Window(WindowNode),
 	Generator(GeneratorNode<'bump>),
 	VariableSource(VariableSourceNode<'bump>),
@@ -578,6 +581,19 @@ pub struct CreateTransactionalViewNode<'bump> {
 pub struct CreateNamespaceNode<'bump> {
 	pub segments: Vec<BumpFragment<'bump>>,
 	pub if_not_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateRemoteNamespaceNode<'bump> {
+	pub segments: Vec<BumpFragment<'bump>>,
+	pub if_not_exists: bool,
+	pub grpc: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AlterRemoteNamespaceNode<'bump> {
+	pub namespace: Vec<BumpFragment<'bump>>,
+	pub grpc: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]
@@ -793,6 +809,13 @@ pub struct PrimitiveScanNode {
 	pub source: ResolvedPrimitive,
 	pub columns: Option<Vec<ResolvedColumn>>,
 	pub index: Option<ResolvedIndex>,
+}
+
+#[derive(Debug)]
+pub struct RemoteScanNode {
+	pub address: String,
+	pub local_namespace: String,
+	pub remote_name: String,
 }
 
 #[derive(Debug)]

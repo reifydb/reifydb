@@ -273,6 +273,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		PhysicalPlan::RowListLookup(node) => QueryPlan::RowListLookup(node),
 		PhysicalPlan::RowRangeScan(node) => QueryPlan::RowRangeScan(node),
 		PhysicalPlan::InlineData(node) => QueryPlan::InlineData(node),
+		PhysicalPlan::RemoteScan(node) => QueryPlan::RemoteScan(node),
 		PhysicalPlan::Generator(node) => QueryPlan::Generator(node),
 		PhysicalPlan::Variable(node) => QueryPlan::Variable(node),
 		PhysicalPlan::Environment(node) => QueryPlan::Environment(node),
@@ -781,6 +782,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateNamespace(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateRemoteNamespace(node) => {
+				self.emit(Instruction::CreateRemoteNamespace(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateTable(node) => {
 				self.emit(Instruction::CreateTable(node));
 				self.emit(Instruction::Emit);
@@ -981,6 +986,10 @@ impl InstructionCompiler {
 						},
 					},
 				}));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::AlterRemoteNamespace(node) => {
+				self.emit(Instruction::AlterRemoteNamespace(node));
 				self.emit(Instruction::Emit);
 			}
 
@@ -1289,6 +1298,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(QueryPlan::InlineData(node)));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::RemoteScan(node) => {
+				self.emit(Instruction::Query(QueryPlan::RemoteScan(node)));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::Generator(node) => {
 				self.emit(Instruction::Query(QueryPlan::Generator(node)));
 				self.emit(Instruction::Emit);
@@ -1503,6 +1516,9 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::InlineData(node) => {
 				self.emit(Instruction::Query(QueryPlan::InlineData(node)));
+			}
+			PhysicalPlan::RemoteScan(node) => {
+				self.emit(Instruction::Query(QueryPlan::RemoteScan(node)));
 			}
 			PhysicalPlan::Generator(node) => {
 				self.emit(Instruction::Query(QueryPlan::Generator(node)));

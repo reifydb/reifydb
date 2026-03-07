@@ -72,9 +72,9 @@ use crate::vm::volcano::{
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
 	scan::{
-		dictionary::DictionaryScanNode, index::IndexScanNode, ringbuffer::RingBufferScan,
-		series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode, view::ViewScanNode,
-		vtable::VirtualScanNode,
+		dictionary::DictionaryScanNode, index::IndexScanNode, remote::RemoteFetchNode,
+		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
+		view::ViewScanNode, vtable::VirtualScanNode,
 	},
 	sort::SortNode,
 	take::TakeNode,
@@ -90,6 +90,7 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 		RqlQueryPlan::RingBufferScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::DictionaryScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::SeriesScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		RqlQueryPlan::RemoteScan(_) => None,
 		// For other node types, try to recursively find the source
 		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_source_name_from_query(p)),
 		RqlQueryPlan::Filter(node) => extract_source_name_from_query(&node.input),
@@ -106,6 +107,7 @@ pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedPri
 		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedPrimitive::RingBuffer(node.source.clone())),
 		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedPrimitive::Dictionary(node.source.clone())),
 		RqlQueryPlan::SeriesScan(node) => Some(ResolvedPrimitive::Series(node.source.clone())),
+		RqlQueryPlan::RemoteScan(_) => None,
 		RqlQueryPlan::Filter(node) => extract_resolved_source(&node.input),
 		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
 		RqlQueryPlan::Map(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
@@ -613,6 +615,8 @@ pub(crate) fn compile<'a>(
 
 			Box::new(VirtualScanNode::new(virtual_table_impl, context, virtual_context).unwrap())
 		}
+
+		RqlQueryPlan::RemoteScan(node) => Box::new(RemoteFetchNode::new(node.address, node.remote_rql)),
 
 		RqlQueryPlan::Variable(var_node) => Box::new(VariableNode::new(var_node.variable_expr)),
 

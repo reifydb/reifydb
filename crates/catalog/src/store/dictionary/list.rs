@@ -124,6 +124,7 @@ pub mod tests {
 				namespace_fragment: None,
 				name: "namespace2".to_string(),
 				parent_id: NamespaceId::ROOT,
+				grpc: None,
 			},
 		)
 		.unwrap();
@@ -172,6 +173,7 @@ pub mod tests {
 				namespace_fragment: None,
 				name: "namespace2".to_string(),
 				parent_id: NamespaceId::ROOT,
+				grpc: None,
 			},
 		)
 		.unwrap();

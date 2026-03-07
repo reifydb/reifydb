@@ -184,6 +184,7 @@ Current => "CURRENT",
 Pending => "PENDING",
 Authentication => "AUTHENTICATION",
 Contains => "CONTAINS",
+Remote => "REMOTE",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -307,6 +308,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("PENDING", Keyword::Pending);
 	map.insert("AUTHENTICATION", Keyword::Authentication);
 	map.insert("CONTAINS", Keyword::Contains);
+	map.insert("REMOTE", Keyword::Remote);
 	map
 });
 

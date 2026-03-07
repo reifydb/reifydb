@@ -28,10 +28,15 @@ impl CatalogStore {
 					let parent_id = NamespaceId(
 						namespace::SCHEMA.get_u64(&entry.values, namespace::PARENT_ID),
 					);
+					let grpc = namespace::SCHEMA
+						.try_get_utf8(&entry.values, namespace::GRPC)
+						.map(|s| s.to_string())
+						.filter(|s| !s.is_empty());
 					let namespace_def = NamespaceDef {
 						id: namespace_id,
 						name,
 						parent_id,
+						grpc,
 					};
 
 					result.push(namespace_def);

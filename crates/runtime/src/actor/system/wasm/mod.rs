@@ -224,6 +224,17 @@ impl ActorSystem {
 	{
 		Ok(f())
 	}
+
+	/// Runs a potentially I/O-blocking function immediately (sequential execution).
+	///
+	/// In WASM, this is identical to `compute()` — executes synchronously.
+	pub async fn execute<R, F>(&self, f: F) -> Result<R, WasmJoinError>
+	where
+		R: Send + 'static,
+		F: FnOnce() -> R + Send + 'static,
+	{
+		Ok(f())
+	}
 }
 
 impl fmt::Debug for ActorSystem {

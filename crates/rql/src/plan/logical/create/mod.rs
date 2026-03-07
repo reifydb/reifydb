@@ -39,6 +39,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::DeferredView(node) => self.compile_deferred_view(node, tx),
 			AstCreate::TransactionalView(node) => self.compile_transactional_view(node, tx),
 			AstCreate::Namespace(node) => self.compile_create_namespace(node),
+			AstCreate::RemoteNamespace(node) => self.compile_create_remote_namespace(node),
 			AstCreate::Series(node) => self.compile_create_series(node, tx),
 			AstCreate::Table(node) => self.compile_create_table(node, tx),
 			AstCreate::RingBuffer(node) => self.compile_create_ringbuffer(node, tx),

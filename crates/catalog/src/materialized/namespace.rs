@@ -100,6 +100,7 @@ pub mod tests {
 			id,
 			name: name.to_string(),
 			parent_id: NamespaceId::ROOT,
+			grpc: None,
 		}
 	}
 

@@ -144,6 +144,8 @@ impl WasmDB {
 			Procedures::empty(),
 			reifydb_engine::transform::registry::Transforms::empty(),
 			ioc,
+			#[cfg(not(target_arch = "wasm32"))]
+			None,
 		);
 
 		// Spawn CDC producer actor on the shared runtime, passing engine as CdcHost

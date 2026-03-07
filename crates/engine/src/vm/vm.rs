@@ -27,12 +27,16 @@ use reifydb_type::{
 use super::{
 	instruction::{
 		ddl::{
-			alter::{sequence::alter_table_sequence, table::execute_alter_table},
+			alter::{
+				remote_namespace::alter_remote_namespace, sequence::alter_table_sequence,
+				table::execute_alter_table,
+			},
 			create::{
 				deferred::create_deferred_view, dictionary::create_dictionary,
 				migration::create_migration, namespace::create_namespace,
 				primary_key::create_primary_key, procedure::create_procedure,
-				property::create_column_property, ringbuffer::create_ringbuffer, series::create_series,
+				property::create_column_property, remote_namespace::create_remote_namespace,
+				ringbuffer::create_ringbuffer, series::create_series,
 				subscription::create_subscription, sumtype::create_sumtype, table::create_table,
 				tag::create_tag, transactional::create_transactional_view,
 			},
@@ -1065,6 +1069,18 @@ impl Vm {
 					let columns = create_namespace(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
+				Instruction::CreateRemoteNamespace(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_remote_namespace(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
 				Instruction::CreateTable(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
@@ -1280,6 +1296,18 @@ impl Vm {
 						}
 					};
 					let columns = execute_alter_table(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::AlterRemoteNamespace(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = alter_remote_namespace(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 

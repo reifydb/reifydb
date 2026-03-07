@@ -106,6 +106,7 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 				namespace_fragment: None,
 				name: "reifydb".to_string(),
 				parent_id: NamespaceId::ROOT,
+				grpc: None,
 			},
 		)
 		.unwrap();
@@ -209,6 +210,8 @@ pub fn create_test_engine() -> StandardEngine {
 		Procedures::empty(),
 		Transforms::empty(),
 		ioc,
+		#[cfg(not(target_arch = "wasm32"))]
+		None,
 	);
 
 	let cdc_handle = spawn_cdc_producer(
