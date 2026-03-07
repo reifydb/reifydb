@@ -19,6 +19,7 @@ use axum::{
 	response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::{assets, state::AdminState};
 
@@ -82,7 +83,7 @@ pub async fn handle_login(State(state): State<AdminState>, Json(request): Json<L
 pub async fn handle_logout() -> impl IntoResponse {
 	(
 		StatusCode::OK,
-		Json(serde_json::json!({
+		Json(json!({
 			"success": true,
 			"message": "Logged out"
 		})),
@@ -115,7 +116,7 @@ pub async fn handle_execute(
 	// TODO: Execute query using the engine
 	(
 		StatusCode::OK,
-		Json(serde_json::json!({
+		Json(json!({
 			"success": true,
 			"message": "Query execution not yet implemented",
 			"query": request.query

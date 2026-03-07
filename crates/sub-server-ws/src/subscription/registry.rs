@@ -11,6 +11,7 @@ use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::column
 use reifydb_sub_server::response::{ResponseColumn, ResponseFrame};
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_type::value::uuid::Uuid7;
+use serde_json::{Value as JsonValue, json};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
@@ -24,7 +25,7 @@ pub enum PushMessage {
 	Change {
 		subscription_id: SubscriptionId,
 		content_type: String,
-		body: serde_json::Value,
+		body: JsonValue,
 	},
 }
 
@@ -137,7 +138,7 @@ impl SubscriptionRegistry {
 	/// Broadcast a message to all active subscriptions.
 	///
 	/// Used by the test push thread to send periodic updates.
-	pub async fn broadcast(&self, content_type: String, body: serde_json::Value) {
+	pub async fn broadcast(&self, content_type: String, body: JsonValue) {
 		for entry in self.subscriptions.iter() {
 			let subscription_id = *entry.key();
 			let state = entry.value();
@@ -219,7 +220,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 			columns: response_columns,
 		};
 
-		let body = serde_json::json!({ "frames": [frame] });
+		let body = json!({ "frames": [frame] });
 
 		let msg = PushMessage::Change {
 			subscription_id: *subscription_id,
@@ -257,7 +258,7 @@ pub mod tests {
 		assert_eq!(registry.subscription_count(), 1);
 
 		// Broadcast with a content_type + body
-		let body = serde_json::json!({
+		let body = json!({
 			"frames": [{
 				"row_numbers": [0],
 				"columns": [{

@@ -3,7 +3,7 @@
 
 use reifydb_type::value::{Value, frame::frame::Frame, r#type::Type};
 use serde::{Deserialize, Serialize};
-use serde_json;
+use serde_json::{self, Map, Value as JsonValue, to_string as json_to_string};
 
 /// A resolved JSON response for `?format=json` mode.
 pub struct ResolvedResponse {
@@ -46,12 +46,12 @@ pub fn resolve_response_json(frames: Vec<Frame>, unwrap: bool) -> Result<Resolve
 			}
 		} else {
 			// Structured (Record/List/etc): serialize to JSON
-			let json_values: Vec<serde_json::Value> =
+			let json_values: Vec<JsonValue> =
 				(0..row_count).map(|i| body_col.data.get_value(i).to_json_value()).collect();
 			if unwrap {
-				serde_json::to_string(&json_values[0]).unwrap()
+				json_to_string(&json_values[0]).unwrap()
 			} else {
-				serde_json::to_string(&json_values).unwrap()
+				json_to_string(&json_values).unwrap()
 			}
 		};
 
@@ -64,9 +64,9 @@ pub fn resolve_response_json(frames: Vec<Frame>, unwrap: bool) -> Result<Resolve
 		let json_frames = frames_to_json_rows(&frames);
 
 		let body = if unwrap && json_frames.len() == 1 && json_frames[0].len() == 1 {
-			serde_json::to_string(&json_frames[0][0]).unwrap()
+			json_to_string(&json_frames[0][0]).unwrap()
 		} else {
-			serde_json::to_string(&json_frames).unwrap()
+			json_to_string(&json_frames).unwrap()
 		};
 
 		Ok(ResolvedResponse {
@@ -79,17 +79,17 @@ pub fn resolve_response_json(frames: Vec<Frame>, unwrap: bool) -> Result<Resolve
 /// Convert frames to row-oriented JSON arrays.
 ///
 /// Returns one array of JSON objects per frame. Each object maps column names to JSON values.
-fn frames_to_json_rows(frames: &[Frame]) -> Vec<Vec<serde_json::Value>> {
+fn frames_to_json_rows(frames: &[Frame]) -> Vec<Vec<JsonValue>> {
 	frames.iter()
 		.map(|frame| {
 			let row_count = frame.columns.first().map(|c| c.data.len()).unwrap_or(0);
 			(0..row_count)
 				.map(|i| {
-					let mut obj = serde_json::Map::new();
+					let mut obj = Map::new();
 					for col in frame.iter() {
 						obj.insert(col.name.clone(), col.data.get_value(i).to_json_value());
 					}
-					serde_json::Value::Object(obj)
+					JsonValue::Object(obj)
 				})
 				.collect()
 		})

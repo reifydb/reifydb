@@ -15,9 +15,9 @@ use reifydb_sub_server::{
 use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{
 	params::Params,
-	value::{identity::IdentityId, uuid::Uuid7},
+	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
-use serde_json::from_str;
+use serde_json::{Value as JsonValue, from_str, json};
 use tokio::{
 	net::TcpStream,
 	select,
@@ -417,27 +417,18 @@ pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
 ///
 /// When `format` is `Some("json")`, resolves the body column to raw JSON.
 /// Otherwise, converts frames to the standard frame format.
-fn build_response_body(
-	frames: Vec<reifydb_type::value::frame::frame::Frame>,
-	format: Option<&str>,
-	unwrap: bool,
-) -> (String, serde_json::Value) {
+fn build_response_body(frames: Vec<Frame>, format: Option<&str>, unwrap: bool) -> (String, JsonValue) {
 	if format == Some("json") {
 		match resolve_response_json(frames, unwrap) {
 			Ok(resolved) => {
-				// Parse the raw JSON string into a serde_json::Value to embed in the envelope
-				let body = serde_json::from_str(&resolved.body)
-					.unwrap_or(serde_json::Value::String(resolved.body));
+				let body = from_str(&resolved.body).unwrap_or(JsonValue::String(resolved.body));
 				(CONTENT_TYPE_JSON.to_string(), body)
 			}
-			Err(e) => {
-				// Return error as a JSON string in the body
-				(CONTENT_TYPE_JSON.to_string(), serde_json::Value::String(e))
-			}
+			Err(e) => (CONTENT_TYPE_JSON.to_string(), JsonValue::String(e)),
 		}
 	} else {
 		let ws_frames = convert_frames(frames);
-		let body = serde_json::json!({ "frames": ws_frames });
+		let body = json!({ "frames": ws_frames });
 		(CONTENT_TYPE_FRAMES.to_string(), body)
 	}
 }

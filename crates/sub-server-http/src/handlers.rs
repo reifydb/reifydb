@@ -12,7 +12,7 @@ use axum::{
 	Json,
 	extract::{Query, State},
 	http::{HeaderMap, StatusCode, header},
-	response::IntoResponse,
+	response::{IntoResponse, Response},
 };
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
@@ -104,7 +104,7 @@ pub async fn handle_query(
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
-) -> Result<axum::response::Response, AppError> {
+) -> Result<Response, AppError> {
 	// Extract identity from headers
 	let identity = extract_identity(&headers)?;
 
@@ -155,7 +155,7 @@ pub async fn handle_admin(
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
-) -> Result<axum::response::Response, AppError> {
+) -> Result<Response, AppError> {
 	// Extract identity from headers
 	let identity = extract_identity(&headers)?;
 
@@ -219,7 +219,7 @@ pub async fn handle_command(
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
-) -> Result<axum::response::Response, AppError> {
+) -> Result<Response, AppError> {
 	// Extract identity from headers
 	let identity = extract_identity(&headers)?;
 

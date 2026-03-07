@@ -9,7 +9,7 @@
 
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 use serde::Serialize;
-use serde_json::to_string;
+use serde_json::{Value as JsonValue, to_string};
 
 pub const CONTENT_TYPE_FRAMES: &str = "application/vnd.reifydb.frames+json";
 pub const CONTENT_TYPE_JSON: &str = "application/json";
@@ -46,19 +46,19 @@ pub struct ErrResponse {
 #[derive(Debug, Serialize)]
 pub struct AdminResponse {
 	pub content_type: String,
-	pub body: serde_json::Value,
+	pub body: JsonValue,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CommandResponse {
 	pub content_type: String,
-	pub body: serde_json::Value,
+	pub body: JsonValue,
 }
 
 #[derive(Debug, Serialize)]
 pub struct QueryResponse {
 	pub content_type: String,
-	pub body: serde_json::Value,
+	pub body: JsonValue,
 }
 
 #[derive(Debug, Serialize)]
@@ -83,7 +83,7 @@ pub enum ServerPush {
 pub struct ChangePayload {
 	pub subscription_id: String,
 	pub content_type: String,
-	pub body: serde_json::Value,
+	pub body: JsonValue,
 }
 
 impl Response {
@@ -94,7 +94,7 @@ impl Response {
 		}
 	}
 
-	pub fn admin(id: impl Into<String>, content_type: impl Into<String>, body: serde_json::Value) -> Self {
+	pub fn admin(id: impl Into<String>, content_type: impl Into<String>, body: JsonValue) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Admin(AdminResponse {
@@ -104,7 +104,7 @@ impl Response {
 		}
 	}
 
-	pub fn query(id: impl Into<String>, content_type: impl Into<String>, body: serde_json::Value) -> Self {
+	pub fn query(id: impl Into<String>, content_type: impl Into<String>, body: JsonValue) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Query(QueryResponse {
@@ -114,7 +114,7 @@ impl Response {
 		}
 	}
 
-	pub fn command(id: impl Into<String>, content_type: impl Into<String>, body: serde_json::Value) -> Self {
+	pub fn command(id: impl Into<String>, content_type: impl Into<String>, body: JsonValue) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Command(CommandResponse {
@@ -177,11 +177,7 @@ impl Response {
 }
 
 impl ServerPush {
-	pub fn change(
-		subscription_id: impl Into<String>,
-		content_type: impl Into<String>,
-		body: serde_json::Value,
-	) -> Self {
+	pub fn change(subscription_id: impl Into<String>, content_type: impl Into<String>, body: JsonValue) -> Self {
 		Self::Change(ChangePayload {
 			subscription_id: subscription_id.into(),
 			content_type: content_type.into(),
