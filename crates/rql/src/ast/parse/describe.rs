@@ -38,8 +38,9 @@ pub mod tests {
 	#[test]
 	fn describe_query() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "describe { map {cast(9924, int8)} }").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "describe { map {cast(9924, int8)} }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		match result.first().unwrap().first_unchecked().as_describe() {

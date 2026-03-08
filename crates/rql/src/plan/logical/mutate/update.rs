@@ -43,12 +43,14 @@ impl<'bump> Compiler<'bump> {
 		};
 		let filter_plan = LogicalPlan::Filter(FilterNode {
 			condition: ExpressionCompiler::compile(BumpBox::into_inner(filter_ast.node))?,
+			rql: filter_ast.rql.to_string(),
 		});
 
 		// 3. Create PATCH node from assignments (merges with original row)
 		let patch_ast = AstPatch {
 			token: ast.token.clone(),
 			assignments: ast.assignments,
+			rql: "",
 		};
 		let patch_plan = self.compile_patch(patch_ast)?;
 

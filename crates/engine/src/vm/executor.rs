@@ -14,8 +14,9 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_type::error::{Diagnostic, Error};
 use reifydb_type::{
-	error::{Diagnostic, Error},
 	params::Params,
 	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
 };

@@ -18,6 +18,7 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(LogicalPlan::Distinct(DistinctNode {
 			columns: ast.columns,
+			rql: ast.rql.to_string(),
 		}))
 	}
 }

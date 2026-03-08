@@ -165,11 +165,9 @@ pub mod tests {
 	#[test]
 	fn test_def_function_no_params() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FUN hello () { MAP { \"message\": \"Hello\" } }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "FUN hello () { MAP { \"message\": \"Hello\" } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -184,11 +182,9 @@ pub mod tests {
 	#[test]
 	fn test_def_function_with_params() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FUN greet ($name) { MAP { \"message\": $name } }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "FUN greet ($name) { MAP { \"message\": $name } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -204,8 +200,9 @@ pub mod tests {
 	#[test]
 	fn test_def_function_with_typed_params() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FUN add ($a: int, $b: int) { $a + $b }").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "FUN add ($a: int, $b: int) { $a + $b }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -231,9 +228,9 @@ pub mod tests {
 	#[test]
 	fn test_def_function_with_return_type() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "FUN add ($a: int, $b: int) : int { $a + $b }").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "FUN add ($a: int, $b: int) : int { $a + $b }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -250,8 +247,9 @@ pub mod tests {
 	#[test]
 	fn test_def_function_mixed_typed_params() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FUN example ($x, $y: int) { $x + $y }").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "FUN example ($x, $y: int) { $x + $y }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::DefFunction(def) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -271,8 +269,9 @@ pub mod tests {
 	#[test]
 	fn test_return_with_value() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "RETURN 42").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "RETURN 42";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Return(ret) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -285,8 +284,9 @@ pub mod tests {
 	#[test]
 	fn test_return_without_value() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "RETURN;").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "RETURN;";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Return(ret) = result.pop().unwrap().nodes.pop().unwrap() else {

@@ -109,16 +109,11 @@ pub mod tests {
 	fn test_insert_with_inline_array() {
 		let bump = Bump::new();
 		// New syntax: no FROM keyword for inline arrays
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         INSERT users [{ id: 1, name: "Alice" }]
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -137,16 +132,11 @@ pub mod tests {
 	fn test_insert_with_namespace() {
 		let bump = Bump::new();
 		// New syntax: no FROM keyword for inline arrays
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         INSERT test::users [{ id: 1, name: "Bob" }]
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -162,16 +152,11 @@ pub mod tests {
 	fn test_insert_from_source_table() {
 		let bump = Bump::new();
 		// Table sources still use FROM keyword
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         INSERT target_table FROM source_table
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -198,16 +183,11 @@ pub mod tests {
 	fn test_insert_variable() {
 		let bump = Bump::new();
 		// New syntax: no FROM keyword for variables
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         INSERT users $data
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -225,16 +205,11 @@ pub mod tests {
 	#[test]
 	fn test_insert_missing_source_fails() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         INSERT users
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
@@ -242,16 +217,11 @@ pub mod tests {
 	#[test]
 	fn test_insert_missing_target_fails() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         INSERT [{ id: 1 }]
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
@@ -260,20 +230,15 @@ pub mod tests {
 	fn test_insert_multiple_rows() {
 		let bump = Bump::new();
 		// New syntax: no FROM keyword for inline arrays
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         INSERT users [
           { id: 1, name: "Alice" },
           { id: 2, name: "Bob" },
           { id: 3, name: "Charlie" }
         ]
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -295,8 +260,9 @@ pub mod tests {
 	#[test]
 	fn test_insert_positional_single_row() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"INSERT users [(1, "Alice")]"#).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = r#"INSERT users [(1, "Alice")]"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -322,19 +288,14 @@ pub mod tests {
 	#[test]
 	fn test_insert_positional_multiple_rows() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
 			INSERT users [
 			  (1, "Alice", "alice@example.com", true),
 			  (2, "Bob", "bob@example.com", false)
 			]
-			"#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+			"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -357,8 +318,9 @@ pub mod tests {
 	#[test]
 	fn test_insert_positional_with_namespace() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"INSERT test::users [(1, "Alice")]"#).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = r#"INSERT test::users [(1, "Alice")]"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

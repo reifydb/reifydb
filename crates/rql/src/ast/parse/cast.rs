@@ -29,8 +29,9 @@ pub mod tests {
 	#[test]
 	fn test_cast() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "cast(9924, int8)").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "cast(9924, int8)";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let AstCast {

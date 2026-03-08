@@ -13,6 +13,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_filter(&mut self) -> Result<AstFilter<'bump>> {
+		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Filter)?;
 
 		// Check if braces are used (optional)
@@ -36,6 +37,7 @@ impl<'bump> Parser<'bump> {
 		Ok(AstFilter {
 			token,
 			node: BumpBox::new_in(node, self.bump()),
+			rql: self.source_since(start),
 		})
 	}
 }
@@ -54,8 +56,9 @@ pub mod tests {
 	#[test]
 	fn test_simple_comparison() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "filter {price > 100}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter {price > 100}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		assert_eq!(filter.token.kind, TokenKind::Keyword(Keyword::Filter));
@@ -69,8 +72,9 @@ pub mod tests {
 	#[test]
 	fn test_nested_expression() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "filter {(price + fee) > 100}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter {(price + fee) > 100}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
@@ -86,8 +90,9 @@ pub mod tests {
 	#[test]
 	fn test_filter_without_braces() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "filter price > 100").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter price > 100";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
@@ -99,8 +104,9 @@ pub mod tests {
 	#[test]
 	fn test_keyword() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "filter {value > 100}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter {value > 100}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
@@ -112,8 +118,9 @@ pub mod tests {
 	#[test]
 	fn test_logical_and() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "filter {price > 100 and qty < 50}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter {price > 100 and qty < 50}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
@@ -133,9 +140,9 @@ pub mod tests {
 	#[test]
 	fn test_logical_or() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "filter {active == true or premium == true}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter {active == true or premium == true}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
@@ -153,9 +160,9 @@ pub mod tests {
 	#[test]
 	fn test_logical_xor() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "filter {active == true xor guest == true}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter {active == true xor guest == true}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
@@ -173,11 +180,9 @@ pub mod tests {
 	#[test]
 	fn test_comptokenize_logical_chain() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "filter {active == true and price > 100 or premium == true}")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter {active == true and price > 100 or premium == true}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
@@ -194,8 +199,9 @@ pub mod tests {
 	#[test]
 	fn test_filter_with_braces() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "filter { price > 100 }").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter { price > 100 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		assert_eq!(filter.token.kind, TokenKind::Keyword(Keyword::Filter));
@@ -209,11 +215,9 @@ pub mod tests {
 	#[test]
 	fn test_filter_comptokenize_expression_with_braces() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "filter { (price + fee) > 100 and active == true }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter { (price + fee) > 100 and active == true }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
@@ -236,8 +240,9 @@ pub mod tests {
 	#[test]
 	fn test_filter_without_braces_logical() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "filter active == true and price > 100").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter active == true and price > 100";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
@@ -253,9 +258,9 @@ pub mod tests {
 	#[test]
 	fn test_filter_with_braces_logical_operators() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "filter { active == true or premium == true }").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter { active == true or premium == true }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
 		let node = filter.node.as_infix();
@@ -273,8 +278,9 @@ pub mod tests {
 	#[test]
 	fn test_filter_empty_braces() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "filter { }").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "filter { }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_filter().unwrap();
 		assert!(matches!(&*result.node, Ast::Nop));
 	}

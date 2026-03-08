@@ -738,6 +738,7 @@ pub struct AstApply<'bump> {
 	pub token: Token<'bump>,
 	pub operator: UnqualifiedIdentifier<'bump>,
 	pub expressions: Vec<Ast<'bump>>,
+	pub rql: &'bump str,
 }
 
 #[derive(Debug)]
@@ -1330,12 +1331,14 @@ impl<'bump> AstDrop<'bump> {
 pub struct AstFilter<'bump> {
 	pub token: Token<'bump>,
 	pub node: BumpBox<'bump, Ast<'bump>>,
+	pub rql: &'bump str,
 }
 
 #[derive(Debug)]
 pub struct AstGate<'bump> {
 	pub token: Token<'bump>,
 	pub node: BumpBox<'bump, Ast<'bump>>,
+	pub rql: &'bump str,
 }
 
 #[derive(Debug)]
@@ -1364,6 +1367,7 @@ pub struct AstAggregate<'bump> {
 	pub token: Token<'bump>,
 	pub by: Vec<Ast<'bump>>,
 	pub map: Vec<Ast<'bump>>,
+	pub rql: &'bump str,
 }
 
 impl<'bump> AstFrom<'bump> {
@@ -1600,6 +1604,7 @@ impl<'bump> AstLiteralNone<'bump> {
 pub struct AstDistinct<'bump> {
 	pub token: Token<'bump>,
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
+	pub rql: &'bump str,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1607,6 +1612,7 @@ pub struct AstSort<'bump> {
 	pub token: Token<'bump>,
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
 	pub directions: Vec<Option<BumpFragment<'bump>>>,
+	pub rql: &'bump str,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1662,6 +1668,7 @@ impl<'bump> AstPrefixOperator<'bump> {
 pub struct AstMap<'bump> {
 	pub token: Token<'bump>,
 	pub nodes: Vec<Ast<'bump>>,
+	pub rql: &'bump str,
 }
 
 impl<'bump> Index<usize> for AstMap<'bump> {
@@ -1703,6 +1710,7 @@ impl<'bump> AstGenerator<'bump> {
 pub struct AstExtend<'bump> {
 	pub token: Token<'bump>,
 	pub nodes: Vec<Ast<'bump>>,
+	pub rql: &'bump str,
 }
 
 impl<'bump> Index<usize> for AstExtend<'bump> {
@@ -1723,6 +1731,7 @@ impl<'bump> AstExtend<'bump> {
 pub struct AstPatch<'bump> {
 	pub token: Token<'bump>,
 	pub assignments: Vec<Ast<'bump>>,
+	pub rql: &'bump str,
 }
 
 impl<'bump> AstPatch<'bump> {
@@ -2017,6 +2026,7 @@ pub struct AstWindow<'bump> {
 	pub config: Vec<AstWindowConfig<'bump>>,
 	pub aggregations: Vec<Ast<'bump>>,
 	pub group_by: Vec<Ast<'bump>>,
+	pub rql: &'bump str,
 }
 
 #[derive(Debug)]

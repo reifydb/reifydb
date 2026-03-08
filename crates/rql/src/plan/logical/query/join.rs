@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::JoinType;
 use reifydb_transaction::transaction::Transaction;
 
@@ -251,7 +252,7 @@ impl<'bump> Compiler<'bump> {
 }
 
 fn resolve_join_plan<'bump>(
-	catalog: &reifydb_catalog::catalog::Catalog,
+	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	unresolved: &UnresolvedPrimitiveIdentifier,
 ) -> Result<LogicalPlan<'bump>> {

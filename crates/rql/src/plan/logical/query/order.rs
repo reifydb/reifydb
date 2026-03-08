@@ -29,6 +29,7 @@ impl<'bump> Compiler<'bump> {
 					}
 				})
 				.collect(),
+			rql: ast.rql.to_string(),
 		}))
 	}
 }

@@ -139,6 +139,17 @@ impl<'bump> Parser<'bump> {
 		self.bump
 	}
 
+	/// Extract the source text from `start_offset` to the end of the most recently consumed token.
+	pub(crate) fn source_since(&self, start_offset: usize) -> &'bump str {
+		let end = if self.position > 0 {
+			let prev = &self.tokens[self.position - 1];
+			prev.fragment.source_end()
+		} else {
+			start_offset
+		};
+		&self.source[start_offset..end]
+	}
+
 	fn parse(&mut self) -> Result<Vec<AstStatement<'bump>>> {
 		let mut result = Vec::with_capacity(4);
 		loop {
@@ -841,8 +852,9 @@ pub mod tests {
 	#[test]
 	fn test_advance() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "1 + 2").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "1 + 2";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 
 		let one = parser.advance().unwrap();
 		assert_eq!(one.kind, Literal(Number));
@@ -860,8 +872,9 @@ pub mod tests {
 	#[test]
 	fn test_consume_but_eof() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let err = parser.consume(Identifier).err().unwrap();
 		assert_eq!(err, AstError::UnexpectedEof.into())
 	}
@@ -869,8 +882,9 @@ pub mod tests {
 	#[test]
 	fn test_consume_but_unexpected_token() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "false").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "false";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.consume(Literal(True));
 		assert!(result.is_err());
 
@@ -882,8 +896,9 @@ pub mod tests {
 	#[test]
 	fn test_consume() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "true 99").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "true 99";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.consume(Literal(True)).unwrap();
 		assert_eq!(result.kind, Literal(True));
 
@@ -894,8 +909,9 @@ pub mod tests {
 	#[test]
 	fn test_consume_if_but_eof() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.consume_if(Literal(True));
 		assert_eq!(result, Ok(None))
 	}
@@ -903,8 +919,9 @@ pub mod tests {
 	#[test]
 	fn test_consume_if_but_unexpected_token() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "false").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "false";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.consume_if(Literal(True));
 		assert_eq!(result, Ok(None));
 	}
@@ -912,8 +929,9 @@ pub mod tests {
 	#[test]
 	fn test_consume_if() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "true 0x99").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "true 0x99";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.consume_if(Literal(True)).unwrap().unwrap();
 		assert_eq!(result.kind, Literal(True));
 
@@ -924,8 +942,9 @@ pub mod tests {
 	#[test]
 	fn test_current_but_eof() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, "", tokens);
+		let source = "";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, source, tokens);
 		let result = parser.current();
 		assert_eq!(result, Err(AstError::UnexpectedEof.into()))
 	}
@@ -933,8 +952,9 @@ pub mod tests {
 	#[test]
 	fn test_semicolon_statement_separation() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "let $x = 1; FROM users").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "let $x = 1; FROM users";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let statements = parser.parse().unwrap();
 		assert_eq!(statements.len(), 2, "Should parse two separate statements");
 
@@ -957,7 +977,7 @@ pub mod tests {
 		FROM $user_data
 		"#;
 		let tokens = tokenize(&bump, sql).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let mut parser = Parser::new(&bump, sql, tokens);
 		let statements = parser.parse().unwrap();
 		assert_eq!(statements.len(), 2, "Should parse two separate statements from multiline input");
 
@@ -977,8 +997,9 @@ pub mod tests {
 	#[test]
 	fn test_current() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "true false").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "true false";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 
 		let true_token = parser.current().unwrap();
 		assert_eq!(true_token.kind, Literal(True));
@@ -992,8 +1013,9 @@ pub mod tests {
 	#[test]
 	fn test_current_expect_but_eof() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, "", tokens);
+		let source = "";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, source, tokens);
 		let result = parser.current_expect(Separator(Semicolon));
 		assert_eq!(result, Err(AstError::UnexpectedEof.into()))
 	}
@@ -1001,8 +1023,9 @@ pub mod tests {
 	#[test]
 	fn test_current_expect() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "true false").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "true false";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 
 		let result = parser.current_expect(Literal(True));
 		assert!(result.is_ok());
@@ -1016,8 +1039,9 @@ pub mod tests {
 	#[test]
 	fn test_current_expect_but_different() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "true").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, "", tokens);
+		let source = "true";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, source, tokens);
 
 		let result = parser.current_expect(Literal(False));
 		assert!(result.is_err());
@@ -1030,8 +1054,9 @@ pub mod tests {
 	#[test]
 	fn test_current_precedence_but_eof() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, "", tokens);
+		let source = "";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, source, tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Precedence::None))
 	}
@@ -1039,8 +1064,9 @@ pub mod tests {
 	#[test]
 	fn test_current_precedence() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "+").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, "", tokens);
+		let source = "+";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, source, tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Term))
 	}
@@ -1048,8 +1074,9 @@ pub mod tests {
 	#[test]
 	fn test_between_precedence() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "BETWEEN").unwrap().into_iter().collect();
-		let parser = Parser::new(&bump, "", tokens);
+		let source = "BETWEEN";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let parser = Parser::new(&bump, source, tokens);
 		let result = parser.current_precedence();
 		assert_eq!(result, Ok(Precedence::Comparison))
 	}
@@ -1057,8 +1084,9 @@ pub mod tests {
 	#[test]
 	fn test_parse_between_expression() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "x BETWEEN 1 AND 10").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "x BETWEEN 1 AND 10";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let between = result[0].first_unchecked().as_between();
@@ -1070,8 +1098,9 @@ pub mod tests {
 	#[test]
 	fn test_pipe_operator_simple() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "from users | sort {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "from users | sort {name}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -1085,11 +1114,9 @@ pub mod tests {
 	#[test]
 	fn test_pipe_operator_multiple() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "from users | filter {age > 18} | sort {name} | take {10}")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "from users | filter {age > 18} | sort {name} | take {10}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -1105,8 +1132,9 @@ pub mod tests {
 	#[test]
 	fn test_pipe_with_system_tables() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "from system::tables | sort {id}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "from system::tables | sort {id}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -1120,8 +1148,9 @@ pub mod tests {
 	#[test]
 	fn test_newline_still_works() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "from users\nsort {name}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "from users\nsort {name}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -1135,8 +1164,9 @@ pub mod tests {
 	#[test]
 	fn test_output_prefix_first_statement() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "OUTPUT FROM users; FROM orders").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "OUTPUT FROM users; FROM orders";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 2);
@@ -1149,8 +1179,9 @@ pub mod tests {
 	#[test]
 	fn test_output_prefix_not_present() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM users; FROM orders").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM users; FROM orders";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 2);
@@ -1161,11 +1192,9 @@ pub mod tests {
 	#[test]
 	fn test_output_prefix_multiple() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "OUTPUT FROM users; OUTPUT FROM products; FROM orders")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "OUTPUT FROM users; OUTPUT FROM products; FROM orders";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 3);
@@ -1177,11 +1206,9 @@ pub mod tests {
 	#[test]
 	fn test_mixed_pipe_and_newline() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "from users | filter {age > 18}\nsort {name} | take {10}")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "from users | filter {age > 18}\nsort {name} | take {10}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);

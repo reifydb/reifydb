@@ -166,8 +166,9 @@ pub mod tests {
 	#[test]
 	fn test_namespaced_call() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CALL ns::greet()").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "CALL ns::greet()";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 		let Ast::Call(call) = result[0].first_unchecked() else {
 			panic!("expected Call")
@@ -180,8 +181,9 @@ pub mod tests {
 	#[test]
 	fn test_simple_call() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CALL greet()").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "CALL greet()";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 		let Ast::Call(call) = result[0].first_unchecked() else {
 			panic!("expected Call")
@@ -193,8 +195,9 @@ pub mod tests {
 	#[test]
 	fn test_simple_function_call() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "func()").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "func()";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
@@ -206,8 +209,9 @@ pub mod tests {
 	#[test]
 	fn test_function_call_with_args() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "func('arg')").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "func('arg')";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
@@ -219,8 +223,9 @@ pub mod tests {
 	#[test]
 	fn test_namespaced_function_call() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "blob::hex('deadbeef')").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "blob::hex('deadbeef')";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
@@ -233,8 +238,9 @@ pub mod tests {
 	#[test]
 	fn test_deeply_nested_function_call() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "ext::crypto::hash::sha256('data')").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "ext::crypto::hash::sha256('data')";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
@@ -249,8 +255,9 @@ pub mod tests {
 	#[test]
 	fn test_identifier_without_parens_not_function_call() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "identifier").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "identifier";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		// Should be parsed as identifier, not function call
@@ -260,8 +267,9 @@ pub mod tests {
 	#[test]
 	fn test_namespaced_function_call_with_keyword_name() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "clock::set(1000)").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "clock::set(1000)";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let call = result[0].first_unchecked().as_call_function();
@@ -273,8 +281,9 @@ pub mod tests {
 	#[test]
 	fn test_namespace_access_without_parens_not_function_call() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "namespace::identifier").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "namespace::identifier";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		// Should be parsed as infix expression, not function call

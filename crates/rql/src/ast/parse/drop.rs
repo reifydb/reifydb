@@ -310,8 +310,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_table_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP TABLE users").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP TABLE users";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::Table(drop) = result else {
@@ -326,9 +327,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_table_if_exists_qualified() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "DROP TABLE IF EXISTS analytics::users CASCADE").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP TABLE IF EXISTS analytics::users CASCADE";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::Table(drop) = result else {
@@ -343,8 +344,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_view_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP VIEW my_view").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP VIEW my_view";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::View(drop) = result else {
@@ -359,8 +361,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_view_if_exists_qualified() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP VIEW IF EXISTS ns::my_view CASCADE").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP VIEW IF EXISTS ns::my_view CASCADE";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::View(drop) = result else {
@@ -375,8 +378,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_ringbuffer_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP RINGBUFFER my_buffer").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP RINGBUFFER my_buffer";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::RingBuffer(drop) = result else {
@@ -391,8 +395,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_ringbuffer_if_exists_qualified() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP RINGBUFFER IF EXISTS ns::my_buffer").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP RINGBUFFER IF EXISTS ns::my_buffer";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::RingBuffer(drop) = result else {
@@ -406,8 +411,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_namespace_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP NAMESPACE analytics").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP NAMESPACE analytics";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::Namespace(drop) = result else {
@@ -422,9 +428,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_namespace_if_exists_cascade() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "DROP NAMESPACE IF EXISTS analytics CASCADE").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP NAMESPACE IF EXISTS analytics CASCADE";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::Namespace(drop) = result else {
@@ -438,8 +444,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_dictionary_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP DICTIONARY my_dict").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP DICTIONARY my_dict";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::Dictionary(drop) = result else {
@@ -454,9 +461,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_dictionary_if_exists_qualified() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "DROP DICTIONARY IF EXISTS ns::my_dict CASCADE").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP DICTIONARY IF EXISTS ns::my_dict CASCADE";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::Dictionary(drop) = result else {
@@ -471,8 +478,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_enum_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP ENUM my_enum").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP ENUM my_enum";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::Enum(drop) = result else {
@@ -487,8 +495,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_enum_if_exists_qualified() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP ENUM IF EXISTS ns::my_enum CASCADE").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP ENUM IF EXISTS ns::my_enum CASCADE";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::Enum(drop) = result else {
@@ -503,8 +512,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_subscription_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP SUBSCRIPTION sub_123").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP SUBSCRIPTION sub_123";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::Subscription(drop) = result else {
@@ -518,8 +528,9 @@ pub mod tests {
 	#[test]
 	fn test_drop_subscription_if_exists() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP SUBSCRIPTION IF EXISTS sub_123").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP SUBSCRIPTION IF EXISTS sub_123";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_drop().unwrap();
 
 		let AstDrop::Subscription(drop) = result else {

@@ -215,8 +215,9 @@ pub mod tests {
 	#[test]
 	fn test_from_schema_and_table() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM reifydb::users").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM reifydb::users";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -240,8 +241,9 @@ pub mod tests {
 	#[test]
 	fn test_from_table_without_schema() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM users").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM users";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -265,8 +267,9 @@ pub mod tests {
 	#[test]
 	fn test_from_static_empty() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM []").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM []";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -288,8 +291,9 @@ pub mod tests {
 	#[test]
 	fn test_from_static() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM [ { field: 'value' }]").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM [ { field: 'value' }]";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -316,16 +320,11 @@ pub mod tests {
 	#[test]
 	fn test_from_static_multiple() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			"FROM [ { field: 'value' },\
+		let source = "FROM [ { field: 'value' },\
         { field: 'value2' }\
-        ]",
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+        ]";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -358,8 +357,9 @@ pub mod tests {
 	#[test]
 	fn test_from_with_index_directive() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM users USING user_id_pk").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM users USING user_id_pk";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -383,11 +383,9 @@ pub mod tests {
 	#[test]
 	fn test_from_namespace_table_with_index_directive() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM company::employees USING employee_email_pk")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM company::employees USING employee_email_pk";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -411,8 +409,9 @@ pub mod tests {
 	#[test]
 	fn test_from_table_with_alias() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM orders o").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM orders o";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -437,8 +436,9 @@ pub mod tests {
 	#[test]
 	fn test_from_namespace_table_with_alias() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM test::orders o").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM test::orders o";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -463,8 +463,9 @@ pub mod tests {
 	#[test]
 	fn test_from_static_trailing_comma() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM [ { field: 'value' }, ]").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM [ { field: 'value' }, ]";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -491,8 +492,9 @@ pub mod tests {
 	#[test]
 	fn test_parse_static_with_tuples() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM [(1, \"a\"), (2, \"b\")]").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM [(1, \"a\"), (2, \"b\")]";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -519,9 +521,9 @@ pub mod tests {
 	#[test]
 	fn test_from_generator_simple() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "FROM generate_series { start: 1, end: 100 }").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM generate_series { start: 1, end: 100 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -550,11 +552,9 @@ pub mod tests {
 	#[test]
 	fn test_from_generator_complex() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM data_loader { endpoint: '/api/v1', timeout: 30 * 1000 }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM data_loader { endpoint: '/api/v1', timeout: 30 * 1000 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -589,8 +589,9 @@ pub mod tests {
 	fn test_from_table_with_hyphens() {
 		let bump = Bump::new();
 		// Test: FROM hyphenated-table
-		let tokens = tokenize(&bump, "FROM my-table").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM my-table";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_from().unwrap();
 
 		// Should parse as single table identifier "my-table"
@@ -610,8 +611,9 @@ pub mod tests {
 	fn test_from_namespace_table_with_hyphens() {
 		let bump = Bump::new();
 		// Test: FROM namespace::hyphenated-table
-		let tokens = tokenize(&bump, "FROM test::even-numbers").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM test::even-numbers";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_from().unwrap();
 
 		// Should parse namespace="test", table="even-numbers"
@@ -631,8 +633,9 @@ pub mod tests {
 	fn test_from_hyphenated_with_alias() {
 		let bump = Bump::new();
 		// Test: FROM my-table AS t
-		let tokens = tokenize(&bump, "FROM my-table t").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM my-table t";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_from().unwrap();
 
 		// Should parse table="my-table", alias="t"
@@ -652,8 +655,9 @@ pub mod tests {
 	fn test_from_namespace_hyphens_with_alias() {
 		let bump = Bump::new();
 		// Test: FROM test::even-numbers nums
-		let tokens = tokenize(&bump, "FROM test::even-numbers nums").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "FROM test::even-numbers nums";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_from().unwrap();
 
 		if let AstFrom::Source {

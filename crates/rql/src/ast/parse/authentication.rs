@@ -100,12 +100,9 @@ mod tests {
 	#[test]
 	fn test_create_authentication_password() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE AUTHENTICATION FOR alice { method: password; password: 'secret' }")
-				.unwrap()
-				.into_iter()
-				.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE AUTHENTICATION FOR alice { method: password; password: 'secret' }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
@@ -121,11 +118,9 @@ mod tests {
 	#[test]
 	fn test_create_authentication_token() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE AUTHENTICATION FOR alice { method: token }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE AUTHENTICATION FOR alice { method: token }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
@@ -140,11 +135,9 @@ mod tests {
 	#[test]
 	fn test_drop_authentication() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP AUTHENTICATION FOR alice { method: password }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP AUTHENTICATION FOR alice { method: password }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
@@ -163,11 +156,9 @@ mod tests {
 	#[test]
 	fn test_drop_authentication_if_exists() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP AUTHENTICATION IF EXISTS FOR alice { method: token }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP AUTHENTICATION IF EXISTS FOR alice { method: token }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
 		let drop = match node {

@@ -54,6 +54,10 @@ impl QueryNode for MapNode {
 			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
 			.collect();
 		self.context = Some((Arc::new(ctx.clone()), compiled));
+		let column_names = self.expressions.iter().map(column_name_from_expression).collect();
+		self.headers = Some(ColumnHeaders {
+			columns: column_names,
+		});
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
@@ -70,11 +74,6 @@ impl QueryNode for MapNode {
 				params: &stored_ctx.params,
 			};
 			let result = self.apply(&transform_ctx, columns)?;
-
-			let column_names = self.expressions.iter().map(column_name_from_expression).collect();
-			self.headers = Some(ColumnHeaders {
-				columns: column_names,
-			});
 
 			return Ok(Some(result));
 		}

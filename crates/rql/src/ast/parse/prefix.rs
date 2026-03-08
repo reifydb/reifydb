@@ -36,6 +36,7 @@ impl<'bump> Parser<'bump> {
 						column: operator.token().fragment.column(),
 						line: operator.token().fragment.line(),
 						offset: 0,
+						source_end: 0,
 						text,
 					},
 				}))));
@@ -92,8 +93,9 @@ pub mod tests {
 	#[test]
 	fn test_negative_number() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "-2").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "-2";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Literal(AstLiteral::Number(AstLiteralNumber(token))) = &result[0].first_unchecked() else {
@@ -105,8 +107,9 @@ pub mod tests {
 	#[test]
 	fn test_group_plus() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "+(2)").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "+(2)";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Prefix(AstPrefix {
@@ -130,8 +133,9 @@ pub mod tests {
 	#[test]
 	fn test_group_negate() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "-(2)").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "-(2)";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Prefix(AstPrefix {
@@ -155,8 +159,9 @@ pub mod tests {
 	#[test]
 	fn test_group_negate_negative_number() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "-(-2)").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "-(-2)";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Prefix(AstPrefix {
@@ -180,8 +185,9 @@ pub mod tests {
 	#[test]
 	fn test_not_false() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "!false").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "!false";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Prefix(AstPrefix {
@@ -202,8 +208,9 @@ pub mod tests {
 	#[test]
 	fn test_not_word_false() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "not false").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "not false";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Prefix(AstPrefix {
@@ -224,8 +231,9 @@ pub mod tests {
 	#[test]
 	fn test_not_comparison_precedence() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "not x == 5").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "not x == 5";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		// Should parse as: not (x == 5), not (not x) == 5

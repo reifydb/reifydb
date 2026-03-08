@@ -368,12 +368,14 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		}
 		LogicalPlan::Filter(FilterNode {
 			condition,
+			..
 		}) => {
 			output.push_str(&format!("{}{} Filter\n", prefix, branch));
 			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition.to_string()));
 		}
 		LogicalPlan::Gate(GateNode {
 			condition,
+			..
 		}) => {
 			output.push_str(&format!("{}{} Filter\n", prefix, branch));
 			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition.to_string()));
@@ -381,6 +383,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 
 		LogicalPlan::Map(MapNode {
 			map,
+			..
 		}) => {
 			output.push_str(&format!("{}{} Map\n", prefix, branch));
 			for (i, expr) in map.iter().enumerate() {
@@ -399,6 +402,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		}
 		LogicalPlan::Extend(ExtendNode {
 			extend,
+			..
 		}) => {
 			output.push_str(&format!("{}{} Extend\n", prefix, branch));
 			for (i, expr) in extend.iter().enumerate() {
@@ -417,6 +421,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		}
 		LogicalPlan::Patch(PatchNode {
 			assignments,
+			..
 		}) => {
 			output.push_str(&format!("{}{} Patch\n", prefix, branch));
 			for (i, expr) in assignments.iter().enumerate() {
@@ -436,6 +441,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::Aggregate(AggregateNode {
 			by,
 			map,
+			..
 		}) => {
 			output.push_str(&format!("{}{} Aggregate\n", prefix, branch));
 
@@ -482,6 +488,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		}
 		LogicalPlan::Order(OrderNode {
 			by,
+			..
 		}) => {
 			output.push_str(&format!("{}{} Order\n", prefix, branch));
 			for (i, key) in by.iter().enumerate() {
@@ -609,6 +616,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		}
 		LogicalPlan::Distinct(DistinctNode {
 			columns,
+			..
 		}) => {
 			output.push_str(&format!("{}{} Distinct\n", prefix, branch));
 			let child_prefix = format!(

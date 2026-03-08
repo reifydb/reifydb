@@ -270,8 +270,9 @@ mod tests {
 	#[test]
 	fn test_drop_table_policy() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP TABLE POLICY tenant_isolation").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP TABLE POLICY tenant_isolation";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
 		let drop = match node {
@@ -289,9 +290,9 @@ mod tests {
 	#[test]
 	fn test_drop_table_policy_if_exists() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "DROP TABLE POLICY IF EXISTS tenant_isolation").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP TABLE POLICY IF EXISTS tenant_isolation";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
 		let drop = match node {

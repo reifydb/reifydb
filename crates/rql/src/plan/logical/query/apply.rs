@@ -17,6 +17,7 @@ impl<'bump> Compiler<'bump> {
 				.into_iter()
 				.map(ExpressionCompiler::compile)
 				.collect::<Result<Vec<_>>>()?,
+			rql: ast.rql.to_string(),
 		}))
 	}
 }

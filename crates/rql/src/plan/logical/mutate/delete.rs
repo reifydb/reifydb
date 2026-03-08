@@ -43,6 +43,7 @@ impl<'bump> Compiler<'bump> {
 		};
 		let filter_plan = LogicalPlan::Filter(FilterNode {
 			condition: ExpressionCompiler::compile(BumpBox::into_inner(filter_ast.node))?,
+			rql: filter_ast.rql.to_string(),
 		});
 
 		// 3. Build pipeline: FROM -> FILTER

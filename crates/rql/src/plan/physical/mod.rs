@@ -43,12 +43,7 @@ use crate::{
 	ast::ast::{AstAlterPolicyAction, AstPolicyScope},
 	bump::{Bump, BumpBox, FragmentInterner},
 	error::RqlError,
-	expression::{
-		AndExpression, ConstantExpression, Expression,
-		Expression::Constant,
-		VariableExpression,
-		rql::{expression_to_rql, extend_expression_to_rql, sort_key_to_rql},
-	},
+	expression::{ConstantExpression, Expression, Expression::Constant, VariableExpression},
 	nodes::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
 		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
@@ -558,30 +553,9 @@ impl<'bump> Compiler<'bump> {
 					let input = stack.pop().unwrap(); // FIXME
 
 					// Push-down: fold aggregate into RemoteScan
-					if let Some(pushed) = try_remote_push_down(&input, || {
-						let map_parts: Option<Vec<String>> = aggregate
-							.map
-							.iter()
-							.map(|e| extend_expression_to_rql(e))
-							.collect();
-						let map_parts = map_parts?;
-
-						let by_parts: Option<Vec<String>> = aggregate
-							.by
-							.iter()
-							.map(|e| extend_expression_to_rql(e))
-							.collect();
-						let by_parts = by_parts?;
-
-						let mut rql = String::from("AGGREGATE");
-						if !map_parts.is_empty() {
-							rql.push_str(&format!(" {{ {} }}", map_parts.join(", ")));
-						}
-						if !by_parts.is_empty() {
-							rql.push_str(&format!(" BY {{ {} }}", by_parts.join(", ")));
-						}
-						Some(rql)
-					}) {
+					if let Some(pushed) =
+						try_remote_push_down(&input, || Some(aggregate.rql.clone()))
+					{
 						stack.push(pushed);
 						continue;
 					}
@@ -886,45 +860,11 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Filter(filter) => {
 					let input = stack.pop().unwrap(); // FIXME
 
-					// Push-down into RemoteScan: try full push-down first
-					if let Some(pushed) = try_remote_push_down(&input, || {
-						expression_to_rql(&filter.condition)
-							.map(|rql| format!("FILTER {}", rql))
-					}) {
+					// Push-down into RemoteScan
+					if let Some(pushed) = try_remote_push_down(&input, || Some(filter.rql.clone()))
+					{
 						stack.push(pushed);
 						continue;
-					}
-					// Try partial push-down: split AND conjuncts
-					if let PhysicalPlan::RemoteScan(ref remote) = input {
-						let mut conjuncts = Vec::new();
-						flatten_and_refs(&filter.condition, &mut conjuncts);
-						let (pushable, local): (Vec<_>, Vec<_>) = conjuncts
-							.into_iter()
-							.partition(|e| expression_to_rql(e).is_some());
-
-						if !pushable.is_empty() {
-							let mut remote = remote.clone();
-							let pushed = pushable
-								.iter()
-								.filter_map(|e| expression_to_rql(e))
-								.collect::<Vec<_>>()
-								.join(" and ");
-							remote.remote_rql =
-								format!("{} | FILTER {}", remote.remote_rql, pushed);
-
-							if local.is_empty() {
-								stack.push(PhysicalPlan::RemoteScan(remote));
-							} else {
-								let remaining = rebuild_and_expression(local);
-								stack.push(PhysicalPlan::Filter(FilterNode {
-									conditions: vec![remaining],
-									input: self.bump_box(PhysicalPlan::RemoteScan(
-										remote,
-									)),
-								}));
-							}
-							continue;
-						}
 					}
 
 					// Try to optimize rownum predicates for O(1)/O(k) access
@@ -1014,10 +954,7 @@ impl<'bump> Compiler<'bump> {
 					let input = stack.pop().unwrap();
 
 					// Push-down: fold gate into RemoteScan
-					if let Some(pushed) = try_remote_push_down(&input, || {
-						expression_to_rql(&gate.condition)
-							.map(|rql| format!("GATE {}", rql))
-					}) {
+					if let Some(pushed) = try_remote_push_down(&input, || Some(gate.rql.clone())) {
 						stack.push(pushed);
 						continue;
 					}
@@ -1686,14 +1623,7 @@ impl<'bump> Compiler<'bump> {
 					let input = stack.pop().unwrap(); // FIXME
 
 					// Push-down: fold sort into RemoteScan
-					let sort_rql =
-						order.by.iter()
-							.map(|k| sort_key_to_rql(k))
-							.collect::<Vec<_>>()
-							.join(", ");
-					if let Some(pushed) = try_remote_push_down(&input, || {
-						Some(format!("SORT {{ {} }}", sort_rql))
-					}) {
+					if let Some(pushed) = try_remote_push_down(&input, || Some(order.rql.clone())) {
 						stack.push(pushed);
 						continue;
 					}
@@ -1708,18 +1638,9 @@ impl<'bump> Compiler<'bump> {
 					let input = stack.pop().unwrap(); // FIXME
 
 					// Push-down: fold distinct into RemoteScan
-					if let Some(pushed) = try_remote_push_down(&input, || {
-						if distinct.columns.is_empty() {
-							Some("DISTINCT".to_string())
-						} else {
-							let cols: Vec<String> = distinct
-								.columns
-								.iter()
-								.map(|col| col.name.text().to_string())
-								.collect();
-							Some(format!("DISTINCT {{ {} }}", cols.join(", ")))
-						}
-					}) {
+					if let Some(pushed) =
+						try_remote_push_down(&input, || Some(distinct.rql.clone()))
+					{
 						stack.push(pushed);
 						continue;
 					}
@@ -1779,15 +1700,9 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: fold map into RemoteScan
 					if let Some(ref boxed_input) = input {
-						if let Some(pushed) = try_remote_push_down(boxed_input, || {
-							map.map
-								.iter()
-								.map(|e| extend_expression_to_rql(e))
-								.collect::<Option<Vec<_>>>()
-								.map(|parts| {
-									format!("MAP {{ {} }}", parts.join(", "))
-								})
-						}) {
+						if let Some(pushed) =
+							try_remote_push_down(boxed_input, || Some(map.rql.clone()))
+						{
 							stack.push(pushed);
 							continue;
 						}
@@ -1804,15 +1719,9 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: fold extend into RemoteScan
 					if let Some(ref boxed_input) = input {
-						if let Some(pushed) = try_remote_push_down(boxed_input, || {
-							extend.extend
-								.iter()
-								.map(|e| extend_expression_to_rql(e))
-								.collect::<Option<Vec<_>>>()
-								.map(|parts| {
-									format!("EXTEND {{ {} }}", parts.join(", "))
-								})
-						}) {
+						if let Some(pushed) =
+							try_remote_push_down(boxed_input, || Some(extend.rql.clone()))
+						{
 							stack.push(pushed);
 							continue;
 						}
@@ -1829,15 +1738,9 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: fold patch into RemoteScan
 					if let Some(ref boxed_input) = input {
-						if let Some(pushed) = try_remote_push_down(boxed_input, || {
-							patch.assignments
-								.iter()
-								.map(|e| extend_expression_to_rql(e))
-								.collect::<Option<Vec<_>>>()
-								.map(|parts| {
-									format!("PATCH {{ {} }}", parts.join(", "))
-								})
-						}) {
+						if let Some(pushed) =
+							try_remote_push_down(boxed_input, || Some(patch.rql.clone()))
+						{
 							stack.push(pushed);
 							continue;
 						}
@@ -1854,19 +1757,9 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: fold apply into RemoteScan
 					if let Some(ref boxed_input) = input {
-						if let Some(pushed) = try_remote_push_down(boxed_input, || {
-							let args: Option<Vec<String>> = apply
-								.arguments
-								.iter()
-								.map(|e| extend_expression_to_rql(e))
-								.collect();
-							let args = args?;
-							Some(format!(
-								"APPLY {} {{ {} }}",
-								apply.operator.text(),
-								args.join(", ")
-							))
-						}) {
+						if let Some(pushed) =
+							try_remote_push_down(boxed_input, || Some(apply.rql.clone()))
+						{
 							stack.push(pushed);
 							continue;
 						}
@@ -2376,30 +2269,4 @@ fn try_remote_push_down<'a>(
 		}
 	}
 	None
-}
-
-/// Flatten AND expressions into a list of conjunct references.
-fn flatten_and_refs<'a>(expr: &'a Expression, out: &mut Vec<&'a Expression>) {
-	match expr {
-		Expression::And(and) => {
-			flatten_and_refs(&and.left, out);
-			flatten_and_refs(&and.right, out);
-		}
-		other => out.push(other),
-	}
-}
-
-/// Rebuild an AND tree from a list of expression references.
-fn rebuild_and_expression(exprs: Vec<&Expression>) -> Expression {
-	assert!(!exprs.is_empty());
-	let mut iter = exprs.into_iter();
-	let mut result = iter.next().unwrap().clone();
-	for expr in iter {
-		result = Expression::And(AndExpression {
-			fragment: result.full_fragment_owned(),
-			left: Box::new(result.clone()),
-			right: Box::new(expr.clone()),
-		});
-	}
-	result
 }

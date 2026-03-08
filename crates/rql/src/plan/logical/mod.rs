@@ -310,6 +310,7 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(LogicalPlan::Map(MapNode {
 			map: vec![Expression::Alias(alias_expr)],
+			rql: String::new(),
 		}))
 	}
 
@@ -724,11 +725,13 @@ pub struct UpdateSeriesNode<'bump> {
 pub struct AggregateNode {
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
+	pub rql: String,
 }
 
 #[derive(Debug)]
 pub struct DistinctNode<'bump> {
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
+	pub rql: String,
 }
 
 #[derive(Debug)]
@@ -740,11 +743,13 @@ pub struct AssertNode {
 #[derive(Debug)]
 pub struct FilterNode {
 	pub condition: Expression,
+	pub rql: String,
 }
 
 #[derive(Debug)]
 pub struct GateNode {
 	pub condition: Expression,
+	pub rql: String,
 }
 
 #[derive(Debug)]
@@ -776,27 +781,32 @@ pub struct TakeNode {
 #[derive(Debug)]
 pub struct OrderNode {
 	pub by: Vec<SortKey>,
+	pub rql: String,
 }
 
 #[derive(Debug)]
 pub struct MapNode {
 	pub map: Vec<Expression>,
+	pub rql: String,
 }
 
 #[derive(Debug)]
 pub struct ExtendNode {
 	pub extend: Vec<Expression>,
+	pub rql: String,
 }
 
 #[derive(Debug)]
 pub struct PatchNode {
 	pub assignments: Vec<Expression>,
+	pub rql: String,
 }
 
 #[derive(Debug)]
 pub struct ApplyNode<'bump> {
 	pub operator: BumpFragment<'bump>,
 	pub arguments: Vec<Expression>,
+	pub rql: String,
 }
 
 #[derive(Debug)]

@@ -190,6 +190,7 @@ impl<'bump> Cursor<'bump> {
 		BumpFragment::Statement {
 			text: &self.input[start_pos..self.pos],
 			offset: start_pos,
+			source_end: self.pos,
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
 		}
@@ -208,6 +209,7 @@ impl<'bump> Cursor<'bump> {
 		BumpFragment::Statement {
 			text: &self.input[text_start..text_end],
 			offset: token_offset,
+			source_end: self.pos,
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
 		}

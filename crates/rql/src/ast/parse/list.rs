@@ -53,8 +53,9 @@ pub mod tests {
 	#[test]
 	fn test_empty() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "[]").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "[]";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -66,8 +67,9 @@ pub mod tests {
 	#[test]
 	fn test_single() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "[ 'ReifyDB' ]").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "[ 'ReifyDB' ]";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -82,8 +84,9 @@ pub mod tests {
 	#[test]
 	fn test_numbers() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "[1, 2.2 , 2.34142]").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "[1, 2.2 , 2.34142]";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -104,8 +107,9 @@ pub mod tests {
 	#[test]
 	fn test_row() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "[ { field: 'value' }]").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "[ { field: 'value' }]";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

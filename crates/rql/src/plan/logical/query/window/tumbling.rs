@@ -11,6 +11,7 @@ pub fn create_tumbling_window(
 	config: WindowConfig,
 	group_by: Vec<Expression>,
 	aggregations: Vec<Expression>,
+	rql: String,
 ) -> Result<WindowNode> {
 	validate_tumbling_config(&config)?;
 
@@ -39,6 +40,7 @@ pub fn create_tumbling_window(
 		min_events: config.min_events.unwrap_or(1),
 		max_window_count: config.max_window_count,
 		max_window_age: config.max_window_age,
+		rql,
 	})
 }
 
@@ -93,7 +95,7 @@ pub mod tests {
 			is_rolling: false,
 		};
 
-		let result = create_tumbling_window(config, vec![], vec![]);
+		let result = create_tumbling_window(config, vec![], vec![], String::new());
 		assert!(result.is_ok());
 
 		let window = result.unwrap();
@@ -115,7 +117,7 @@ pub mod tests {
 			is_rolling: false,
 		};
 
-		let result = create_tumbling_window(config, vec![], vec![]);
+		let result = create_tumbling_window(config, vec![], vec![], String::new());
 		assert!(result.is_ok());
 
 		let window = result.unwrap();
@@ -137,7 +139,7 @@ pub mod tests {
 			is_rolling: false,
 		};
 
-		let result = create_tumbling_window(config, vec![], vec![]);
+		let result = create_tumbling_window(config, vec![], vec![], String::new());
 		assert!(result.is_err());
 	}
 
@@ -154,7 +156,7 @@ pub mod tests {
 			is_rolling: false,
 		};
 
-		let result = create_tumbling_window(config, vec![], vec![]);
+		let result = create_tumbling_window(config, vec![], vec![], String::new());
 		assert!(result.is_err());
 	}
 }

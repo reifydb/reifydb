@@ -221,6 +221,7 @@ impl<'bump> Compiler<'bump> {
 					};
 					let result_plan = LogicalPlan::Map(MapNode {
 						map: vec![Expression::Alias(alias_expr)],
+						rql: String::new(),
 					});
 
 					branches.push((condition, result_plan));
@@ -286,6 +287,7 @@ impl<'bump> Compiler<'bump> {
 					};
 					let result_plan = LogicalPlan::Map(MapNode {
 						map: vec![Expression::Alias(alias_expr)],
+						rql: String::new(),
 					});
 
 					branches.push((condition, result_plan));

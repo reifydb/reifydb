@@ -81,16 +81,11 @@ pub mod tests {
 	#[test]
 	fn test_basic_update_syntax() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         UPDATE users { name: 'alice' } FILTER {id == 1}
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -110,16 +105,11 @@ pub mod tests {
 	#[test]
 	fn test_update_with_namespace() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         UPDATE test::users { name: 'alice' } FILTER {id == 1}
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -133,16 +123,11 @@ pub mod tests {
 	#[test]
 	fn test_update_multiple_assignments() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         UPDATE users { name: 'alice', age: 30, active: true } FILTER {id == 1}
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -155,16 +140,11 @@ pub mod tests {
 	#[test]
 	fn test_update_complex_filter() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         UPDATE users { status: 'inactive' } FILTER {age > 18 and active == true}
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -179,16 +159,11 @@ pub mod tests {
 	#[test]
 	fn test_update_missing_filter_fails() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         UPDATE users { name: 'alice' }
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
@@ -196,16 +171,11 @@ pub mod tests {
 	#[test]
 	fn test_update_missing_assignments_fails() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         UPDATE users FILTER id == 1
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
@@ -213,16 +183,11 @@ pub mod tests {
 	#[test]
 	fn test_update_empty_assignments_fails() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         UPDATE users { } FILTER id == 1
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}

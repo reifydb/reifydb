@@ -17,6 +17,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_window(&mut self) -> Result<AstWindow<'bump>> {
+		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Window)?;
 
 		// Parse computation block
@@ -86,6 +87,7 @@ impl<'bump> Parser<'bump> {
 			config,
 			aggregations,
 			group_by,
+			rql: self.source_since(start),
 		})
 	}
 
@@ -192,11 +194,9 @@ pub mod tests {
 	#[test]
 	fn test_parse_time_window() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"window { count(*) } with { interval: "5m" }"#)
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = r#"window { count(*) } with { interval: "5m" }"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -210,9 +210,9 @@ pub mod tests {
 	#[test]
 	fn test_parse_count_window() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, r#"window { sum(value) } with { count: 100 }"#).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = r#"window { sum(value) } with { count: 100 }"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -226,11 +226,9 @@ pub mod tests {
 	#[test]
 	fn test_parse_sliding_window() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"window { count(*), avg(value) } with { interval: "5m", slide: "1m" }"#)
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = r#"window { count(*), avg(value) } with { interval: "5m", slide: "1m" }"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -243,11 +241,9 @@ pub mod tests {
 	#[test]
 	fn test_parse_grouped_window() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"window { count(*) } with { interval: "1h" } by { user_id }"#)
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = r#"window { count(*) } with { interval: "1h" } by { user_id }"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -261,11 +257,9 @@ pub mod tests {
 	#[test]
 	fn test_parse_window_by_then_with() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"window { count(*) } by { user_id, region } with { interval: "1h" }"#)
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = r#"window { count(*) } by { user_id, region } with { interval: "1h" }"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -279,8 +273,9 @@ pub mod tests {
 	#[test]
 	fn test_parse_window_multiple_aggregations_and_grouping() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"window { count(*), sum(amount), avg(price) } with { interval: "30m", slide: "5m" } by { customer_id, product_category }"#).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = r#"window { count(*), sum(amount), avg(price) } with { interval: "30m", slide: "5m" } by { customer_id, product_category }"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -294,14 +289,9 @@ pub mod tests {
 	#[test]
 	fn test_parse_rolling_count_window() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"window { count(*), avg(value) } with { count: 10, rolling: true } by { user_id }"#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = r#"window { count(*), avg(value) } with { count: 10, rolling: true } by { user_id }"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
@@ -317,11 +307,9 @@ pub mod tests {
 	#[test]
 	fn test_parse_rolling_time_window() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"window { sum(amount) } with { interval: "5m", rolling: true }"#)
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = r#"window { sum(amount) } with { interval: "5m", rolling: true }"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);

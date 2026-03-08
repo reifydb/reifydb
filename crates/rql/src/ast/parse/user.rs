@@ -70,8 +70,9 @@ mod tests {
 	#[test]
 	fn test_create_user() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE USER alice").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE USER alice";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
@@ -84,8 +85,9 @@ mod tests {
 	#[test]
 	fn test_create_role() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE ROLE analyst").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE ROLE analyst";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
@@ -98,8 +100,9 @@ mod tests {
 	#[test]
 	fn test_drop_user() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP USER alice").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP USER alice";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
@@ -117,8 +120,9 @@ mod tests {
 	#[test]
 	fn test_drop_user_if_exists() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP USER IF EXISTS alice").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP USER IF EXISTS alice";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
 		let drop = match node {
@@ -135,8 +139,9 @@ mod tests {
 	#[test]
 	fn test_drop_role() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "DROP ROLE analyst").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "DROP ROLE analyst";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		let node = stmts[0].first_unchecked();
 		let drop = match node {

@@ -242,9 +242,6 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_sub_server::response::ResponseColumn;
-	use reifydb_type::value::r#type::Type;
-
 	use super::*;
 
 	#[tokio::test]

@@ -268,8 +268,9 @@ pub mod tests {
 	#[test]
 	fn test_simple_variant_arm() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "MATCH x { Active => 1, ELSE => 0 }").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "MATCH x { Active => 1, ELSE => 0 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let m = result[0].first_unchecked().as_match();
@@ -283,11 +284,9 @@ pub mod tests {
 	#[test]
 	fn test_variant_arm_with_destructure() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "MATCH x { Circle { radius } => radius, ELSE => 0 }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "MATCH x { Circle { radius } => radius, ELSE => 0 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let m = result[0].first_unchecked().as_match();
@@ -312,9 +311,9 @@ pub mod tests {
 	#[test]
 	fn test_variant_arm_with_guard() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "MATCH x { Active IF y > 0 => 1, ELSE => 0 }").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "MATCH x { Active IF y > 0 => 1, ELSE => 0 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let m = result[0].first_unchecked().as_match();
@@ -326,11 +325,9 @@ pub mod tests {
 	#[test]
 	fn test_mixed_value_and_variant_arms() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "MATCH x { 1 => 'one', Active => 'active', ELSE => 'other' }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "MATCH x { 1 => 'one', Active => 'active', ELSE => 'other' }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let m = result[0].first_unchecked().as_match();
@@ -345,12 +342,9 @@ pub mod tests {
 	#[test]
 	fn test_variant_arm_multi_field_destructure() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "MATCH shape { Rectangle { width, height } => width * height, ELSE => 0 }")
-				.unwrap()
-				.into_iter()
-				.collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "MATCH shape { Rectangle { width, height } => width * height, ELSE => 0 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let m = result[0].first_unchecked().as_match();

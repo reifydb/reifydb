@@ -78,6 +78,7 @@ impl<'bump> Parser<'bump> {
 			let fragment = BumpFragment::Statement {
 				text,
 				offset: 0,
+				source_end: 0,
 				line: start_line,
 				column: start_column,
 			};
@@ -125,6 +126,7 @@ impl<'bump> Parser<'bump> {
 		let fragment = BumpFragment::Statement {
 			text,
 			offset: 0,
+			source_end: 0,
 			line: start_line,
 			column: start_column,
 		};
@@ -250,8 +252,9 @@ pub mod tests {
 	#[test]
 	fn identifier() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "x").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "x";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -263,8 +266,9 @@ pub mod tests {
 	#[test]
 	fn identifier_with_underscore() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "some_identifier").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "some_identifier";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -277,8 +281,9 @@ pub mod tests {
 	fn identifier_with_hyphen_context_aware() {
 		let bump = Bump::new();
 		// Test hyphenated identifier in CREATE NAMESPACE context
-		let tokens = tokenize(&bump, "CREATE NAMESPACE my-identifier").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "CREATE NAMESPACE my-identifier";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -296,8 +301,9 @@ pub mod tests {
 	fn identifier_with_multiple_hyphens() {
 		let bump = Bump::new();
 		// Test identifier with multiple hyphens in CREATE NAMESPACE context
-		let tokens = tokenize(&bump, "CREATE NAMESPACE user-profile-data").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "CREATE NAMESPACE user-profile-data";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -326,10 +332,11 @@ pub mod tests {
 		// Rationale: CREATE statements (and all DDL) should stand alone. Trailing tokens
 		// are almost certainly a user error. If consecutive hyphens are intended, use backticks.
 
-		let tokens: Vec<_> = tokenize(&bump, "CREATE NAMESPACE name--space").unwrap().into_iter().collect();
+		let source = "CREATE NAMESPACE name--space";
+		let tokens: Vec<_> = tokenize(&bump, source).unwrap().into_iter().collect();
 		assert_eq!(tokens.len(), 6); // CREATE, NAMESPACE, name, -, -, space
 
-		let result = parse(&bump, "", tokens);
+		let result = parse(&bump, source, tokens);
 
 		// Parser should reject this with an error about unexpected trailing tokens
 		assert!(result.is_err(), "Parser should reject trailing tokens after CREATE statement");
@@ -348,8 +355,9 @@ pub mod tests {
 	#[test]
 	fn identifier_backtick_with_hyphen() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "`my-identifier`").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "`my-identifier`";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -362,8 +370,9 @@ pub mod tests {
 	fn identifier_backtick_without_hyphen() {
 		let bump = Bump::new();
 		// Test that backticks work for simple identifiers without special characters
-		let tokens = tokenize(&bump, "`myidentifier`").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "`myidentifier`";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -376,8 +385,9 @@ pub mod tests {
 	fn identifier_backtick_with_underscore() {
 		let bump = Bump::new();
 		// Test that backticks work for identifiers with underscores
-		let tokens = tokenize(&bump, "`my_identifier`").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "`my_identifier`";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -390,8 +400,9 @@ pub mod tests {
 	fn identifier_with_hyphen_and_number_suffix() {
 		let bump = Bump::new();
 		// Number suffix is valid: twap-10min
-		let tokens = tokenize(&bump, "CREATE NAMESPACE twap-10min").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "CREATE NAMESPACE twap-10min";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -409,8 +420,9 @@ pub mod tests {
 	fn identifier_with_hyphen_and_number_middle() {
 		let bump = Bump::new();
 		// Number in middle is valid: avg-10min-window
-		let tokens = tokenize(&bump, "CREATE NAMESPACE avg-10min-window").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "CREATE NAMESPACE avg-10min-window";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -427,8 +439,9 @@ pub mod tests {
 	#[test]
 	fn identifier_with_keyword_and_number() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE NAMESPACE create-2024-table").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "CREATE NAMESPACE create-2024-table";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {

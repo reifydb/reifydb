@@ -1679,8 +1679,9 @@ pub mod tests {
 	#[test]
 	fn test_create_namespace() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE NAMESPACE REIFYDB").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE NAMESPACE REIFYDB";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1703,8 +1704,9 @@ pub mod tests {
 	#[test]
 	fn test_create_namespace_with_hyphen() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE NAMESPACE my-namespace").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE NAMESPACE my-namespace";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1727,9 +1729,9 @@ pub mod tests {
 	#[test]
 	fn test_create_namespace_if_not_exists() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE NAMESPACE IF NOT EXISTS my_namespace").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE NAMESPACE IF NOT EXISTS my_namespace";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1752,11 +1754,9 @@ pub mod tests {
 	#[test]
 	fn test_create_namespace_if_not_exists_with_hyphen() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE NAMESPACE IF NOT EXISTS my-test-namespace")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE NAMESPACE IF NOT EXISTS my-test-namespace";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1779,9 +1779,9 @@ pub mod tests {
 	#[test]
 	fn test_create_namespace_if_not_exists_with_backtick() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE NAMESPACE IF NOT EXISTS `my-namespace`").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE NAMESPACE IF NOT EXISTS `my-namespace`";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1804,9 +1804,9 @@ pub mod tests {
 	#[test]
 	fn test_create_namespace_name_if_not_exists() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE NAMESPACE my_namespace IF NOT EXISTS").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE NAMESPACE my_namespace IF NOT EXISTS";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1829,11 +1829,9 @@ pub mod tests {
 	#[test]
 	fn test_create_namespace_name_if_not_exists_with_hyphen() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE NAMESPACE my-test-namespace IF NOT EXISTS")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE NAMESPACE my-test-namespace IF NOT EXISTS";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1856,9 +1854,9 @@ pub mod tests {
 	#[test]
 	fn test_create_namespace_name_if_not_exists_with_backtick() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE NAMESPACE `my-namespace` IF NOT EXISTS").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE NAMESPACE `my-namespace` IF NOT EXISTS";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1881,9 +1879,9 @@ pub mod tests {
 	#[test]
 	fn test_create_table_with_hyphen() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE TABLE my-schema::my-table { id: Int4 }").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE TABLE my-schema::my-table { id: Int4 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1905,11 +1903,9 @@ pub mod tests {
 	#[test]
 	fn test_create_ringbuffer_with_hyphen() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE RINGBUFFER my-ns::my-buffer { id: Int4 } WITH { capacity: 100 }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE RINGBUFFER my-ns::my-buffer { id: Int4 } WITH { capacity: 100 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1933,9 +1929,9 @@ pub mod tests {
 	#[test]
 	fn test_create_dictionary_with_hyphen() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE DICTIONARY my-dict FOR Text AS Int4").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE DICTIONARY my-dict FOR Text AS Int4";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1956,11 +1952,9 @@ pub mod tests {
 	#[test]
 	fn test_create_table_with_hyphenated_columns() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE TABLE test::user-data { user-id: Int4, user-name: Text }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE TABLE test::user-data { user-id: Int4, user-name: Text }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -1985,8 +1979,9 @@ pub mod tests {
 	#[test]
 	fn test_create_namespace_with_backtick() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE NAMESPACE `my-namespace`").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE NAMESPACE `my-namespace`";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2007,16 +2002,11 @@ pub mod tests {
 	#[test]
 	fn test_create_series() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
             create series test::metrics{value: Int2}
-        "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+        "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2050,16 +2040,11 @@ pub mod tests {
 	#[test]
 	fn test_create_table() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         create table test::users{id: int2, name: text, is_premium: bool}
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2119,16 +2104,11 @@ pub mod tests {
 	#[test]
 	fn test_create_table_with_auto_increment() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         create table test::users { id: int4 with { auto_increment }, name: utf8 }
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2177,16 +2157,11 @@ pub mod tests {
 	#[test]
 	fn test_create_deferred_view() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         create deferred view test::views{field: int2}
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2220,16 +2195,11 @@ pub mod tests {
 	#[test]
 	fn test_create_transactional_view() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         create transactional view test::myview{id: int4, name: utf8}
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2277,16 +2247,11 @@ pub mod tests {
 	#[test]
 	fn test_create_ringbuffer() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         create ringbuffer test::events { id: int4, data: utf8 } with { capacity: 10 }
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2334,19 +2299,14 @@ pub mod tests {
 	#[test]
 	fn test_create_transactional_view_with_query() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         create transactional view test::myview{id: int4, name: utf8} as {
             from test::users
             where age > 18
         }
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2377,11 +2337,9 @@ pub mod tests {
 	#[test]
 	fn test_create_dictionary_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE DICTIONARY token_mints FOR Utf8 AS Uint2")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE DICTIONARY token_mints FOR Utf8 AS Uint2";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2408,11 +2366,9 @@ pub mod tests {
 	#[test]
 	fn test_create_dictionary_qualified() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE DICTIONARY analytics::token_mints FOR Utf8 AS Uint4")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE DICTIONARY analytics::token_mints FOR Utf8 AS Uint4";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2439,9 +2395,9 @@ pub mod tests {
 	#[test]
 	fn test_create_dictionary_blob_value() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE DICTIONARY hashes FOR Blob AS Uint8").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE DICTIONARY hashes FOR Blob AS Uint8";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2467,11 +2423,9 @@ pub mod tests {
 	#[test]
 	fn test_create_dictionary_if_not_exists() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE DICTIONARY IF NOT EXISTS token_mints FOR Utf8 AS Uint4")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE DICTIONARY IF NOT EXISTS token_mints FOR Utf8 AS Uint4";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2499,11 +2453,9 @@ pub mod tests {
 	#[test]
 	fn test_create_enum_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE ENUM Status { Active, Inactive, Pending }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE ENUM Status { Active, Inactive, Pending }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2535,14 +2487,10 @@ pub mod tests {
 	#[test]
 	fn test_create_enum_with_fields() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			"CREATE ENUM Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source =
+			"CREATE ENUM Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2574,11 +2522,9 @@ pub mod tests {
 	#[test]
 	fn test_create_enum_qualified_name() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE ENUM analytics::Status { Active, Inactive }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE ENUM analytics::Status { Active, Inactive }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2602,9 +2548,9 @@ pub mod tests {
 	#[test]
 	fn test_create_enum_if_not_exists() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE ENUM IF NOT EXISTS Status { Active }").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE ENUM IF NOT EXISTS Status { Active }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2631,9 +2577,9 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_basic() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE SUBSCRIPTION { id: Int4, name: Utf8 }").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE SUBSCRIPTION { id: Int4, name: Utf8 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2676,8 +2622,9 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_single_column() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { value: Float8 }").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE SUBSCRIPTION { value: Float8 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2705,11 +2652,9 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_with_simple_query() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { id: Int4, name: Utf8 } AS { from test::products }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE SUBSCRIPTION { id: Int4, name: Utf8 } AS { from test::products }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2745,9 +2690,9 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_with_piped_query() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump,"CREATE SUBSCRIPTION { id: Int4, price: Float8 } AS { from test::products | filter {price > 50} | filter {stock > 0} }",
-		).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE SUBSCRIPTION { id: Int4, price: Float8 } AS { from test::products | filter {price > 50} | filter {stock > 0} }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2780,8 +2725,9 @@ pub mod tests {
 	fn test_create_subscription_without_as_clause() {
 		let bump = Bump::new();
 		// Ensure subscriptions without AS clause still work (backwards compatibility)
-		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { value: Float8 }").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE SUBSCRIPTION { value: Float8 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2803,9 +2749,9 @@ pub mod tests {
 	fn test_create_subscription_schemaless() {
 		let bump = Bump::new();
 		// Test schema-less subscription: CREATE SUBSCRIPTION AS { FROM demo::events }
-		let tokens =
-			tokenize(&bump, "CREATE SUBSCRIPTION AS { FROM demo::events }").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE SUBSCRIPTION AS { FROM demo::events }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2838,12 +2784,9 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_schemaless_with_filter() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "CREATE SUBSCRIPTION AS { FROM demo::events | FILTER {id > 1 and id < 3} }")
-				.unwrap()
-				.into_iter()
-				.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE SUBSCRIPTION AS { FROM demo::events | FILTER {id > 1 and id < 3} }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -2876,8 +2819,9 @@ pub mod tests {
 	fn test_create_subscription_schemaless_missing_as_fails() {
 		let bump = Bump::new();
 		// Test that schema-less subscription without AS clause fails
-		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE SUBSCRIPTION";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 
 		// Should fail with an error
@@ -2888,11 +2832,9 @@ pub mod tests {
 	fn test_create_subscription_backward_compat_with_columns() {
 		let bump = Bump::new();
 		// Test backward compatibility: subscriptions with columns and AS still work
-		let tokens = tokenize(&bump, "CREATE SUBSCRIPTION { id: Int4 } AS { FROM demo::events }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "CREATE SUBSCRIPTION { id: Int4 } AS { FROM demo::events }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

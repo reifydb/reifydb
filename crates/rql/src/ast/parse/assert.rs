@@ -48,8 +48,9 @@ pub mod tests {
 	#[test]
 	fn test_assert_simple() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "ASSERT { 1 + 1 == 2 }").unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "ASSERT { 1 + 1 == 2 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let assert_node = result[0].first_unchecked().as_assert();
@@ -60,8 +61,9 @@ pub mod tests {
 	#[test]
 	fn test_assert_with_message() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, r#"ASSERT { x > 0 } "must be positive""#).unwrap().into_iter().collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = r#"ASSERT { x > 0 } "must be positive""#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let assert_node = result[0].first_unchecked().as_assert();
@@ -71,11 +73,9 @@ pub mod tests {
 	#[test]
 	fn test_assert_in_pipeline() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "FROM users | ASSERT { count(*) > 0 } | MAP { name }")
-			.unwrap()
-			.into_iter()
-			.collect();
-		let result = parse(&bump, "", tokens).unwrap();
+		let source = "FROM users | ASSERT { count(*) > 0 } | MAP { name }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let statement = &result[0];

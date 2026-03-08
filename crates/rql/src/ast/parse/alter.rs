@@ -299,9 +299,9 @@ pub mod tests {
 	#[test]
 	fn test_alter_sequence_with_schema() {
 		let bump = Bump::new();
-		let tokens =
-			tokenize(&bump, "ALTER SEQUENCE test::users::id SET VALUE 1000").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "ALTER SEQUENCE test::users::id SET VALUE 1000";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -333,8 +333,9 @@ pub mod tests {
 	#[test]
 	fn test_alter_sequence_without_schema() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "ALTER SEQUENCE users::id SET VALUE 500").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "ALTER SEQUENCE users::id SET VALUE 500";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 

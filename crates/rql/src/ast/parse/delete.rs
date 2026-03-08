@@ -65,16 +65,11 @@ pub mod tests {
 	#[test]
 	fn test_basic_delete_syntax() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         DELETE users FILTER {id == 1}
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -90,16 +85,11 @@ pub mod tests {
 	#[test]
 	fn test_delete_with_namespace() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         DELETE test::users FILTER {id == 1}
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -113,16 +103,11 @@ pub mod tests {
 	#[test]
 	fn test_delete_complex_filter() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         DELETE users FILTER {age > 18 and active == false}
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -137,16 +122,11 @@ pub mod tests {
 	#[test]
 	fn test_delete_missing_filter_fails() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         DELETE users
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}
@@ -154,16 +134,11 @@ pub mod tests {
 	#[test]
 	fn test_delete_missing_target_fails() {
 		let bump = Bump::new();
-		let tokens = tokenize(
-			&bump,
-			r#"
+		let source = r#"
         DELETE FILTER id == 1
-    "#,
-		)
-		.unwrap()
-		.into_iter()
-		.collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 		assert!(result.is_err());
 	}

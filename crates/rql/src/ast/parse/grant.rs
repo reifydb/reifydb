@@ -51,8 +51,9 @@ mod tests {
 	#[test]
 	fn test_grant_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "GRANT analyst TO alice").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "GRANT analyst TO alice";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
@@ -67,8 +68,9 @@ mod tests {
 	#[test]
 	fn test_revoke_basic() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "REVOKE analyst FROM alice").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "REVOKE analyst FROM alice";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();

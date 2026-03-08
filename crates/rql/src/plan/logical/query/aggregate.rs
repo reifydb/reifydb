@@ -13,6 +13,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::Aggregate(AggregateNode {
 			by: ast.by.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?,
 			map: ast.map.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?,
+			rql: ast.rql.to_string(),
 		}))
 	}
 }

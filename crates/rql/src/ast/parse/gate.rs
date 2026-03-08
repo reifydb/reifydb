@@ -13,6 +13,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_gate(&mut self) -> Result<AstGate<'bump>> {
+		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Gate)?;
 
 		// Check if braces are used (optional)
@@ -36,6 +37,7 @@ impl<'bump> Parser<'bump> {
 		Ok(AstGate {
 			token,
 			node: BumpBox::new_in(node, self.bump()),
+			rql: self.source_since(start),
 		})
 	}
 }

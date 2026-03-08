@@ -146,6 +146,7 @@ fn inject_pipeline<'a>(
 						condition: Expression::Constant(ConstantExpression::Bool {
 							fragment: Fragment::internal("false"),
 						}),
+						rql: String::new(),
 					}));
 				}
 			}

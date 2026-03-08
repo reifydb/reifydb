@@ -10,6 +10,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_patch(&mut self) -> Result<AstPatch<'bump>> {
+		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Patch)?;
 
 		let (nodes, has_braces) = self.parse_expressions(true, false)?;
@@ -25,6 +26,7 @@ impl<'bump> Parser<'bump> {
 		Ok(AstPatch {
 			token,
 			assignments: nodes,
+			rql: self.source_since(start),
 		})
 	}
 }
@@ -37,8 +39,9 @@ pub mod tests {
 	#[test]
 	fn test_patch_colon_syntax() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "PATCH {status: \"active\"}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "PATCH {status: \"active\"}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -53,8 +56,9 @@ pub mod tests {
 	#[test]
 	fn test_patch_multiple_assignments() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "PATCH {status: \"active\", score: 100}").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "PATCH {status: \"active\", score: 100}";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
@@ -73,8 +77,9 @@ pub mod tests {
 	#[test]
 	fn test_patch_without_braces_fails() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "PATCH 1").unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, "", tokens);
+		let source = "PATCH 1";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
 
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "PATCH_001");

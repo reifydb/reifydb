@@ -12,6 +12,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_map(&self, ast: AstMap<'bump>) -> Result<LogicalPlan<'bump>> {
 		Ok(LogicalPlan::Map(MapNode {
 			map: ast.nodes.into_iter().map(ExpressionCompiler::compile).collect::<Result<Vec<_>>>()?,
+			rql: ast.rql.to_string(),
 		}))
 	}
 }

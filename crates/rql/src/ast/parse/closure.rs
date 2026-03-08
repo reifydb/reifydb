@@ -170,8 +170,9 @@ pub mod tests {
 	#[test]
 	fn test_closure_simple() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "let $double = ($x) { $x * 2 }").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "let $double = ($x) { $x * 2 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Let(let_node) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -188,8 +189,9 @@ pub mod tests {
 	#[test]
 	fn test_closure_multi_param() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "let $add = ($a, $b) { $a + $b }").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "let $add = ($a, $b) { $a + $b }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Let(let_node) = result.pop().unwrap().nodes.pop().unwrap() else {
@@ -213,8 +215,9 @@ pub mod tests {
 	#[test]
 	fn test_closure_empty_params() {
 		let bump = Bump::new();
-		let tokens = tokenize(&bump, "let $greet = () { 42 }").unwrap().into_iter().collect();
-		let mut result = parse(&bump, "", tokens).unwrap();
+		let source = "let $greet = () { 42 }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
 		let Ast::Let(let_node) = result.pop().unwrap().nodes.pop().unwrap() else {

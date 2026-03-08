@@ -35,6 +35,7 @@ pub struct WindowNode {
 	pub min_events: usize,
 	pub max_window_count: Option<usize>,
 	pub max_window_age: Option<Duration>,
+	pub rql: String,
 }
 
 /// Configuration parameters parsed from WITH clause
@@ -52,6 +53,7 @@ pub struct WindowConfig {
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_window(&self, ast: AstWindow<'bump>) -> Result<LogicalPlan<'bump>> {
+		let rql = ast.rql.to_string();
 		let mut config = WindowConfig::default();
 		let mut group_by = Vec::new();
 
@@ -78,13 +80,13 @@ impl<'bump> Compiler<'bump> {
 			// Rolling window - set slide to Rolling variant
 			let mut rolling_config = config;
 			rolling_config.slide = Some(WindowSlide::Rolling);
-			sliding::create_sliding_window(rolling_config, group_by, aggregations)?
+			sliding::create_sliding_window(rolling_config, group_by, aggregations, rql)?
 		} else if config.slide.is_some() {
 			// Sliding window
-			sliding::create_sliding_window(config, group_by, aggregations)?
+			sliding::create_sliding_window(config, group_by, aggregations, rql)?
 		} else {
 			// Tumbling window
-			tumbling::create_tumbling_window(config, group_by, aggregations)?
+			tumbling::create_tumbling_window(config, group_by, aggregations, rql)?
 		};
 
 		Ok(LogicalPlan::Window(window_node))
