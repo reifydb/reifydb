@@ -20,6 +20,7 @@ use crate::{Result, catalog::Catalog, store::sequence::system::SystemSequence};
 pub struct TestToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
+	pub cases: Option<String>,
 	pub body: String,
 }
 
@@ -154,6 +155,7 @@ impl Catalog {
 			id,
 			namespace: to_create.namespace,
 			name: to_create.name.text().to_string(),
+			cases: to_create.cases,
 			body: to_create.body,
 		};
 

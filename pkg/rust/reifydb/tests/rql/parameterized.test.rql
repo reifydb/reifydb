@@ -1,0 +1,21 @@
+# Parameterized tests
+
+CREATE NAMESPACE ptest;
+
+CREATE TEST ptest::square [
+    { x: 1, expected: 1 },
+    { x: 2, expected: 4 },
+    { x: 3, expected: 9 },
+] {
+    ASSERT { $x * $x == $expected }
+};
+
+CREATE TEST ptest::identity [
+    { val: 10 },
+    { val: 20 },
+    { val: 30 },
+] {
+    ASSERT { $val == $val }
+};
+
+RUN TESTS ptest

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
 use reifydb_rql::{
@@ -11,14 +11,112 @@ use reifydb_rql::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	params::Params,
-	value::{Value, duration::Duration as RqlDuration},
+	value::{Value, duration::Duration as RqlDuration, frame::frame::Frame},
 };
 
 use crate::{
 	Result,
 	test::result::{TestOutcome, classify_outcome},
-	vm::{services::Services, vm::Vm},
+	vm::{services::Services, stack::Variable, vm::Vm},
 };
+
+/// Run a single test invocation (body compiled + executed with given params).
+/// If `named_vars` is provided, injects them as variables before execution.
+/// Returns (outcome, message).
+fn run_single(
+	vm: &mut Vm,
+	services: &Arc<Services>,
+	txn: &mut Transaction<'_>,
+	body: &str,
+	params: &Params,
+	named_vars: Option<&HashMap<String, Value>>,
+) -> (String, String) {
+	match services.compiler.compile(txn, body) {
+		Ok(compiled) => match compiled {
+			CompilationResult::Ready(compiled_list) => {
+				let saved_ip = vm.ip;
+				let mut exec_error = None;
+
+				// Inject named variables into the symbol table
+				if let Some(vars) = named_vars {
+					for (name, value) in vars {
+						if let Err(e) = vm.symbol_table.set(
+							name.clone(),
+							Variable::scalar(value.clone()),
+							false,
+						) {
+							return ("error".to_string(), format!("{}", e));
+						}
+					}
+				}
+
+				for compiled_unit in compiled_list.iter() {
+					vm.ip = 0;
+					let mut test_result = Vec::new();
+					if let Err(e) = vm.run(
+						services,
+						txn,
+						&compiled_unit.instructions,
+						params,
+						&mut test_result,
+					) {
+						exec_error = Some(e);
+						break;
+					}
+				}
+
+				vm.ip = saved_ip;
+
+				match classify_outcome(match exec_error {
+					None => Ok(()),
+					Some(ref e) => Err(e),
+				}) {
+					TestOutcome::Pass => ("pass".to_string(), String::new()),
+					TestOutcome::Fail(msg) => ("fail".to_string(), msg),
+					TestOutcome::Error(msg) => ("error".to_string(), msg),
+				}
+			}
+			CompilationResult::Incremental(_) => {
+				("error".to_string(), "test body requires incremental compilation".to_string())
+			}
+		},
+		Err(e) => ("error".to_string(), format!("{}", e)),
+	}
+}
+
+/// Resolve params data from a cases string by compiling `FROM <source>` and executing it.
+fn resolve_params(vm: &mut Vm, services: &Arc<Services>, txn: &mut Transaction<'_>, source: &str) -> Result<Frame> {
+	let query = format!("FROM {}", source);
+	let compiled = services.compiler.compile(txn, &query)?;
+	match compiled {
+		CompilationResult::Ready(compiled_list) => {
+			let saved_ip = vm.ip;
+			let mut frames = Vec::new();
+
+			for compiled_unit in compiled_list.iter() {
+				vm.ip = 0;
+				vm.run(services, txn, &compiled_unit.instructions, &Params::None, &mut frames)?;
+			}
+
+			vm.ip = saved_ip;
+
+			match frames.into_iter().last() {
+				Some(frame) => Ok(frame),
+				None => Err(internal_error!("params source produced no output")),
+			}
+		}
+		CompilationResult::Incremental(_) => {
+			Err(internal_error!("params source requires incremental compilation"))
+		}
+	}
+}
+
+/// Format a row label like `[x=1, expected=1]` for display in test names.
+fn format_row_label(col_names: &[String], row_values: &[Value]) -> String {
+	let pairs: Vec<String> =
+		col_names.iter().zip(row_values.iter()).map(|(name, val)| format!("{}={}", name, val)).collect();
+	format!("[{}]", pairs.join(", "))
+}
 
 pub(crate) fn run_tests(
 	vm: &mut Vm,
@@ -72,80 +170,85 @@ pub(crate) fn run_tests(
 			.map(|ns| ns.name)
 			.unwrap_or_else(|| format!("{}", test_def.namespace.0));
 
-		let start = Instant::now();
+		match &test_def.cases {
+			None => {
+				// Non-parameterized: single run
+				let start = Instant::now();
+				let (outcome, message) = run_single(
+					vm,
+					services,
+					&mut Transaction::Admin(&mut *txn),
+					&test_def.body,
+					params,
+					None,
+				);
+				let elapsed = start.elapsed();
+				let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
 
-		// Compile and execute the test body, following the migrate pattern
-		let outcome;
-		let message;
+				let row = Columns::single_row([
+					("name", Value::Utf8(test_def.name.clone())),
+					("namespace", Value::Utf8(ns_name.clone())),
+					("outcome", Value::Utf8(outcome)),
+					("duration", Value::Duration(duration)),
+					("message", Value::Utf8(message)),
+				]);
 
-		match services.compiler.compile(&mut Transaction::Admin(&mut *txn), &test_def.body) {
-			Ok(compiled) => match compiled {
-				CompilationResult::Ready(compiled_list) => {
-					let saved_ip = vm.ip;
-					let mut exec_error = None;
-
-					for compiled_unit in compiled_list.iter() {
-						vm.ip = 0;
-						let mut test_result = Vec::new();
-						if let Err(e) = vm.run(
-							services,
-							&mut Transaction::Admin(&mut *txn),
-							&compiled_unit.instructions,
-							params,
-							&mut test_result,
-						) {
-							exec_error = Some(e);
-							break;
-						}
-					}
-
-					vm.ip = saved_ip;
-
-					let test_outcome = match exec_error {
-						None => classify_outcome(Ok(())),
-						Some(ref e) => classify_outcome(Err(e)),
-					};
-					match &test_outcome {
-						TestOutcome::Pass => {
-							outcome = "pass".to_string();
-							message = String::new();
-						}
-						TestOutcome::Fail(msg) => {
-							outcome = "fail".to_string();
-							message = msg.clone();
-						}
-						TestOutcome::Error(msg) => {
-							outcome = "error".to_string();
-							message = msg.clone();
-						}
-					}
+				if result_columns.is_empty() {
+					result_columns = row;
+				} else {
+					result_columns.append_columns(row)?;
 				}
-				CompilationResult::Incremental(_) => {
-					outcome = "error".to_string();
-					message = "test body requires incremental compilation".to_string();
-				}
-			},
-			Err(e) => {
-				outcome = "error".to_string();
-				message = format!("{}", e);
 			}
-		}
+			Some(source) => {
+				// Parameterized: resolve params, iterate rows
+				let cases_frame =
+					resolve_params(vm, services, &mut Transaction::Admin(&mut *txn), source)?;
 
-		let elapsed = start.elapsed();
-		let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
+				let col_names: Vec<String> =
+					cases_frame.columns.iter().map(|c| c.name.clone()).collect();
 
-		let row = Columns::single_row([
-			("name", Value::Utf8(test_def.name.clone())),
-			("namespace", Value::Utf8(ns_name)),
-			("outcome", Value::Utf8(outcome)),
-			("duration", Value::Duration(duration)),
-			("message", Value::Utf8(message)),
-		]);
+				let row_count = cases_frame.columns.first().map_or(0, |c| c.data.len());
 
-		if result_columns.is_empty() {
-			result_columns = row;
-		} else {
-			result_columns.append_columns(row)?;
+				for row_idx in 0..row_count {
+					let row_values: Vec<Value> =
+						cases_frame.columns.iter().map(|c| c.data.get_value(row_idx)).collect();
+					let row_label = format_row_label(&col_names, &row_values);
+
+					// Build named variables from column names + row values
+					let mut named_vars = HashMap::new();
+					for (name, value) in col_names.iter().zip(row_values.into_iter()) {
+						named_vars.insert(name.clone(), value);
+					}
+
+					let start = Instant::now();
+					let (outcome, message) = run_single(
+						vm,
+						services,
+						&mut Transaction::Admin(&mut *txn),
+						&test_def.body,
+						params,
+						Some(&named_vars),
+					);
+					let elapsed = start.elapsed();
+					let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
+
+					let display_name = format!("{} {}", test_def.name, row_label);
+
+					let row = Columns::single_row([
+						("name", Value::Utf8(display_name)),
+						("namespace", Value::Utf8(ns_name.clone())),
+						("outcome", Value::Utf8(outcome)),
+						("duration", Value::Duration(duration)),
+						("message", Value::Utf8(message)),
+					]);
+
+					if result_columns.is_empty() {
+						result_columns = row;
+					} else {
+						result_columns.append_columns(row)?;
+					}
+				}
+			}
 		}
 	}
 

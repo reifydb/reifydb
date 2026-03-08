@@ -289,6 +289,35 @@ impl<'bump> Parser<'bump> {
 
 		let test_ident = MaybeQualifiedTestIdentifier::new(name).with_namespace(namespace);
 
+		// Parse optional params source: [ { x: 1, expected: 1 }, ... ]
+		let cases = if !self.is_eof() && self.current()?.kind == TokenKind::Operator(Operator::OpenBracket) {
+			let params_start_pos = self.position;
+			let mut depth = 0u32;
+			loop {
+				let tok = &self.tokens[self.position];
+				match tok.kind {
+					TokenKind::Operator(Operator::OpenBracket) => depth += 1,
+					TokenKind::Operator(Operator::CloseBracket) => {
+						depth -= 1;
+						if depth == 0 {
+							self.position += 1; // consume the closing bracket
+							break;
+						}
+					}
+					_ => {}
+				}
+				self.position += 1;
+			}
+			let params_end_pos = self.position;
+			// Capture source text between (and including) the brackets
+			let start = self.tokens[params_start_pos].fragment.offset();
+			let end = self.tokens[params_end_pos - 1].fragment.offset()
+				+ self.tokens[params_end_pos - 1].fragment.text().len();
+			Some(self.source[start..end].to_string())
+		} else {
+			None
+		};
+
 		// Consume opening brace
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -334,6 +363,7 @@ impl<'bump> Parser<'bump> {
 		Ok(AstCreate::Test(AstCreateTest {
 			token,
 			name: test_ident,
+			cases,
 			body,
 			body_source,
 		}))

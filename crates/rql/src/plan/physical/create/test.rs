@@ -38,6 +38,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(PhysicalPlan::CreateTest(nodes::CreateTestNode {
 			namespace: namespace_def,
 			name: self.interner.intern_fragment(&create.test.name),
+			cases: create.cases,
 			body_source: create.body_source,
 		}))
 	}

@@ -1,17 +1,21 @@
-// LET and variable usage
+# LET and variable usage
 
-test("let and assert") {
+CREATE NAMESPACE test;
+
+CREATE TEST test::let_and_assert {
     LET $x = 5;
     ASSERT { $x == 5 }
-}
+};
 
-test("let with arithmetic") {
+CREATE TEST test::let_with_arithmetic {
     LET $a = 10;
     LET $b = 20;
     ASSERT { $a + $b == 30 }
-}
+};
 
-test("let with string") {
+CREATE TEST test::let_with_string {
     LET $name = "Alice";
     ASSERT { $name == "Alice" }
-}
+};
+
+RUN TESTS

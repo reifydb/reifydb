@@ -1,25 +1,19 @@
-// Basic DDL, DML, and query round-trip
+# Basic DDL, DML, and query round-trip
 
-test("create namespace") {
-    CREATE NAMESPACE test
-}
+CREATE NAMESPACE test;
 
-test("create table and insert") {
-    CREATE NAMESPACE test;
-    CREATE TABLE test::users { id: int4, name: text };
-    INSERT test::users [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }]
-}
+CREATE TABLE test::users { id: int4, name: text };
+INSERT test::users [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }];
 
-test("query after insert") {
-    CREATE NAMESPACE test;
-    CREATE TABLE test::users { id: int4, name: text };
-    INSERT test::users [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }];
+CREATE TABLE test::items { id: int4, active: bool };
+INSERT test::items [{ id: 1, active: true }, { id: 2, active: false }];
+
+CREATE TEST test::query_after_insert {
     FROM test::users | ASSERT { id > 0 }
-}
+};
 
-test("filter rows") {
-    CREATE NAMESPACE test;
-    CREATE TABLE test::items { id: int4, active: bool };
-    INSERT test::items [{ id: 1, active: true }, { id: 2, active: false }];
+CREATE TEST test::filter_rows {
     FROM test::items | FILTER active == true | ASSERT { id == 1 }
-}
+};
+
+RUN TESTS

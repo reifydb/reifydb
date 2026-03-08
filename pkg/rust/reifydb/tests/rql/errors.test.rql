@@ -1,18 +1,22 @@
-// Edge cases that should pass correctly
+# Edge cases that should pass correctly
 
-test("assert with nested expressions") {
+CREATE NAMESPACE test;
+
+CREATE TABLE test::t { val: int4 };
+INSERT test::t [{ val: 42 }];
+
+CREATE TEST test::assert_with_nested_expressions {
     ASSERT { (1 + 2) * 3 == 9 }
-}
+};
 
-test("multiple assertions in sequence") {
+CREATE TEST test::multiple_assertions_in_sequence {
     ASSERT { true };
     ASSERT { 1 == 1 };
     ASSERT { 2 > 1 }
-}
+};
 
-test("create and immediately query") {
-    CREATE NAMESPACE test;
-    CREATE TABLE test::t { val: int4 };
-    INSERT test::t [{ val: 42 }];
+CREATE TEST test::create_and_immediately_query {
     FROM test::t | ASSERT { val == 42 }
-}
+};
+
+RUN TESTS

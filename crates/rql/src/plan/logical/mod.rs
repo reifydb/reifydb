@@ -912,6 +912,7 @@ pub struct CreateProcedureNode<'bump> {
 #[derive(Debug)]
 pub struct CreateTestNode<'bump> {
 	pub test: MaybeQualifiedTestIdentifier<'bump>,
+	pub cases: Option<String>,
 	pub body_source: String,
 }
 

@@ -1,21 +1,25 @@
-// ASSERT syntax coverage
+# ASSERT syntax coverage
 
-test("assert true") {
+CREATE NAMESPACE test;
+
+CREATE TEST test::assert_true {
     ASSERT { true }
-}
+};
 
-test("assert arithmetic") {
+CREATE TEST test::assert_arithmetic {
     ASSERT { 1 + 1 == 2 }
-}
+};
 
-test("assert comparison") {
+CREATE TEST test::assert_comparison {
     ASSERT { 10 > 5 }
-}
+};
 
-test("assert not equal") {
+CREATE TEST test::assert_not_equal {
     ASSERT { 1 != 2 }
-}
+};
 
-test("assert inline pipeline") {
+CREATE TEST test::assert_inline_pipeline {
     FROM [{ x: 1 }, { x: 2 }] | ASSERT { x > 0 }
-}
+};
+
+RUN TESTS

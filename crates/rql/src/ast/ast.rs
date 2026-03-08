@@ -1033,6 +1033,7 @@ pub struct AstCreateProcedure<'bump> {
 pub struct AstCreateTest<'bump> {
 	pub token: Token<'bump>,
 	pub name: MaybeQualifiedTestIdentifier<'bump>,
+	pub cases: Option<String>,
 	pub body: Vec<Ast<'bump>>,
 	pub body_source: String,
 }

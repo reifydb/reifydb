@@ -1,167 +1,85 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{path::Path, time::Instant};
+use std::path::Path;
 
-use reifydb_engine::test::parser::{self, TestCase};
-pub use reifydb_engine::test::{
-	parser::ParseError,
-	result::{PrintConfig, TestOutcome, TestResult, TestSuiteResult},
-};
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
-use reifydb_type::params::Params;
+use reifydb_type::{params::Params, value::Value};
 
 use crate::embedded;
 
-pub struct TestRunnerConfig {
-	pub runtime: Option<SharedRuntime>,
+/// Run a `.test.rql` file as plain RQL against a fresh in-memory database.
+///
+/// The file content is executed as-is via `admin_as_root`. Any RQL is valid,
+/// including `CREATE TEST` / `RUN TESTS`, `ASSERT`, DDL, DML, etc.
+/// If any statement errors (including `RUN TESTS` with failures), the call
+/// returns an error.
+pub fn run_test_file(path: impl AsRef<Path>) -> Result<(), String> {
+	let content = std::fs::read_to_string(path.as_ref()).map_err(|e| format!("failed to read file: {}", e))?;
+	run_test_str(&content)
 }
 
-impl Default for TestRunnerConfig {
-	fn default() -> Self {
-		Self {
-			runtime: None,
-		}
-	}
-}
+/// Run RQL test content against a fresh in-memory database.
+pub fn run_test_str(content: &str) -> Result<(), String> {
+	let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default());
 
-/// Parse and run all test blocks from a string.
-pub fn run_test_str(input: &str, config: TestRunnerConfig) -> Result<TestSuiteResult, ParseError> {
-	let cases = parser::parse(input)?;
-	Ok(run(&cases, config))
-}
+	let mut db = embedded::memory()
+		.with_runtime(runtime)
+		.build()
+		.map_err(|e| format!("failed to create database: {}", e))?;
 
-/// Parse and run all test blocks from a file.
-pub fn run_test_file(path: impl AsRef<Path>, config: TestRunnerConfig) -> Result<TestSuiteResult, ParseError> {
-	let input = std::fs::read_to_string(path.as_ref()).map_err(|e| ParseError {
-		message: format!("failed to read file: {}", e),
-		line: 0,
-	})?;
-	run_test_str(&input, config)
-}
+	db.start().map_err(|e| format!("failed to start database: {}", e))?;
 
-fn run(test_cases: &[TestCase], config: TestRunnerConfig) -> TestSuiteResult {
-	let runtime = config.runtime.unwrap_or_else(|| SharedRuntime::from_config(SharedRuntimeConfig::default()));
-	let mut results = Vec::with_capacity(test_cases.len());
-
-	for test_case in test_cases {
-		let start = Instant::now();
-		let outcome = run_single(test_case, &runtime);
-		let duration = start.elapsed();
-
-		results.push(TestResult {
-			name: test_case.name.clone(),
-			outcome,
-			duration,
-		});
-	}
-
-	TestSuiteResult {
-		results,
-	}
-}
-
-fn run_single(test_case: &TestCase, runtime: &SharedRuntime) -> TestOutcome {
-	let mut db = match embedded::memory().with_runtime(runtime.clone()).build() {
-		Ok(db) => db,
-		Err(e) => return TestOutcome::Error(format!("failed to create database: {}", e)),
-	};
-
-	if let Err(e) = db.start() {
-		return TestOutcome::Error(format!("failed to start database: {}", e));
-	}
-
-	let outcome = match db.admin_as_root(&test_case.body, Params::None) {
-		Ok(_) => TestOutcome::Pass,
-		Err(e) => {
-			if e.code == "ASSERT" {
-				TestOutcome::Fail(e.message.clone())
-			} else {
-				TestOutcome::Error(format!("{}", e))
-			}
-		}
-	};
+	let result = db.admin_as_root(content, Params::None);
 
 	let _ = db.stop();
-	outcome
-}
 
-#[cfg(test)]
-mod tests {
-	use super::*;
+	match result {
+		Ok(frames) => {
+			// Check the last frame for test failures (RUN TESTS output)
+			if let Some(frame) = frames.last() {
+				let outcome_idx = frame.columns.iter().position(|c| c.name == "outcome");
+				let name_idx = frame.columns.iter().position(|c| c.name == "name");
+				let ns_idx = frame.columns.iter().position(|c| c.name == "namespace");
+				let msg_idx = frame.columns.iter().position(|c| c.name == "message");
 
-	#[test]
-	fn test_pass() {
-		let input = r#"
-test("simple pass") {
-    CREATE NAMESPACE test
-}
-"#;
-		let result = run_test_str(input, TestRunnerConfig::default()).unwrap();
-		assert_eq!(result.total(), 1);
-		assert!(result.all_passed());
-	}
+				if let Some(oi) = outcome_idx {
+					let outcome_col = &frame.columns[oi];
+					let row_count = outcome_col.data.len();
+					let mut failures = Vec::new();
 
-	#[test]
-	fn test_assertion_failure() {
-		let input = r#"
-test("should fail") {
-    ASSERT { 1 == 2 }
-}
-"#;
-		let result = run_test_str(input, TestRunnerConfig::default()).unwrap();
-		assert_eq!(result.total(), 1);
-		assert_eq!(result.failed(), 1);
-	}
+					for i in 0..row_count {
+						let outcome = outcome_col.data.get_value(i);
+						if matches!(&outcome, Value::Utf8(s) if s == "fail" || s == "error") {
+							let prefix = match &outcome {
+								Value::Utf8(s) if s == "fail" => "FAIL",
+								_ => "ERROR",
+							};
+							let ns = ns_idx
+								.map(|idx| frame.columns[idx].data.as_string(i))
+								.unwrap_or_default();
+							let name = name_idx
+								.map(|idx| frame.columns[idx].data.as_string(i))
+								.unwrap_or_default();
+							let msg = msg_idx
+								.map(|idx| frame.columns[idx].data.as_string(i))
+								.unwrap_or_default();
+							failures.push(format!("{} {}::{}: {}", prefix, ns, name, msg));
+						}
+					}
 
-	#[test]
-	fn test_error() {
-		let input = r#"
-test("should error") {
-    FROM nonexistent.table
-}
-"#;
-		let result = run_test_str(input, TestRunnerConfig::default()).unwrap();
-		assert_eq!(result.total(), 1);
-		assert_eq!(result.errored(), 1);
-	}
-
-	#[test]
-	fn test_multiple_tests() {
-		let input = r#"
-test("pass") {
-    CREATE NAMESPACE test
-}
-
-test("fail") {
-    ASSERT { 1 == 2 }
-}
-
-test("error") {
-    FROM nonexistent.table
-}
-"#;
-		let result = run_test_str(input, TestRunnerConfig::default()).unwrap();
-		assert_eq!(result.total(), 3);
-		assert_eq!(result.passed(), 1);
-		assert_eq!(result.failed(), 1);
-		assert_eq!(result.errored(), 1);
-	}
-
-	#[test]
-	fn test_isolation() {
-		let input = r#"
-test("create schema") {
-    CREATE NAMESPACE test;
-    CREATE TABLE test::users { id: int4, name: text };
-    INSERT test::users [{ id: 1, name: "Alice" }];
-}
-
-test("schema should not exist") {
-    ASSERT { 1 == 1 };
-}
-"#;
-		let result = run_test_str(input, TestRunnerConfig::default()).unwrap();
-		assert_eq!(result.passed(), 2);
+					if !failures.is_empty() {
+						let failed = failures.len();
+						let summary = failures.join("\n  ");
+						return Err(format!(
+							"{} of {} test(s) failed:\n  {}",
+							failed, row_count, summary
+						));
+					}
+				}
+			}
+			Ok(())
+		}
+		Err(e) => Err(format!("{}", e)),
 	}
 }

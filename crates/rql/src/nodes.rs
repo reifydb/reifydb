@@ -316,6 +316,7 @@ pub struct CreateTagNode {
 pub struct CreateTestNode {
 	pub namespace: NamespaceDef,
 	pub name: Fragment,
+	pub cases: Option<String>,
 	pub body_source: String,
 }
 

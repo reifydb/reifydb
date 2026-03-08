@@ -1,20 +1,12 @@
-// Verify each test block gets a fresh database
+# Verify each test file gets a fresh database.
+# If the DB were shared across files, this namespace might already exist.
 
-test("create namespace - first") {
-    CREATE NAMESPACE isolated
-}
+CREATE NAMESPACE isolated;
+CREATE TABLE isolated::data { id: int4 };
+INSERT isolated::data [{ id: 42 }];
 
-// This would fail if the DB were shared with the previous test
-test("create same namespace - second") {
-    CREATE NAMESPACE isolated
-}
+CREATE TEST isolated::db_is_clean {
+    FROM isolated::data | ASSERT { id == 42 }
+};
 
-test("create table - first") {
-    CREATE NAMESPACE ns;
-    CREATE TABLE ns::data { id: int4 }
-}
-
-test("create same table - second") {
-    CREATE NAMESPACE ns;
-    CREATE TABLE ns::data { id: int4 }
-}
+RUN TESTS

@@ -10,5 +10,6 @@ pub struct TestDef {
 	pub id: TestId,
 	pub namespace: NamespaceId,
 	pub name: String,
+	pub cases: Option<String>,
 	pub body: String,
 }

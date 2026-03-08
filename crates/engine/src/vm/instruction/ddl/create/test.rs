@@ -15,6 +15,7 @@ pub(crate) fn create_test(services: &Services, txn: &mut AdminTransaction, plan:
 		TestToCreate {
 			name: plan.name.clone(),
 			namespace: plan.namespace.id,
+			cases: plan.cases,
 			body: plan.body_source,
 		},
 	)?;
