@@ -293,6 +293,28 @@ describe('DurationValue', () => {
             expect(DurationValue.parse('⟪none⟫').value).toBeUndefined();
         });
 
+        it('should parse human-readable duration strings', () => {
+            expect(DurationValue.parse('0s').toString()).toBe('0s');
+            expect(DurationValue.parse('1s').toString()).toBe('1s');
+            expect(DurationValue.parse('1m').toString()).toBe('1m');
+            expect(DurationValue.parse('1h').toString()).toBe('1h');
+            expect(DurationValue.parse('1d').toString()).toBe('1d');
+            expect(DurationValue.parse('1mo').toString()).toBe('1mo');
+            expect(DurationValue.parse('1y').toString()).toBe('1y');
+            expect(DurationValue.parse('1h30m').toString()).toBe('1h30m');
+            expect(DurationValue.parse('1d2h30m').toString()).toBe('1d2h30m');
+            expect(DurationValue.parse('1y2mo3d4h5m6s').toString()).toBe('1y2mo3d4h5m6s');
+            expect(DurationValue.parse('500ms').toString()).toBe('500ms');
+            expect(DurationValue.parse('100us').toString()).toBe('100us');
+            expect(DurationValue.parse('50ns').toString()).toBe('50ns');
+            expect(DurationValue.parse('1s500ms').toString()).toBe('1s500ms');
+        });
+
+        it('should parse negative human-readable durations', () => {
+            expect(DurationValue.parse('-30s').toString()).toBe('-30s');
+            expect(DurationValue.parse('-1d').toString()).toBe('-1d');
+        });
+
         it('should throw error for invalid formats', () => {
             expect(() => DurationValue.parse('invalid')).toThrow('Cannot parse');
             expect(() => DurationValue.parse('30S')).toThrow('Cannot parse'); // Missing P
@@ -379,111 +401,102 @@ describe('DurationValue', () => {
 
     describe('toString', () => {
         describe('zero duration', () => {
-            it('should format zero duration as 00:00:00', () => {
-                expect(DurationValue.zero().toString()).toBe('00:00:00');
-                expect(DurationValue.fromSeconds(0).toString()).toBe('00:00:00');
-                expect(DurationValue.fromNanoseconds(0n).toString()).toBe('00:00:00');
+            it('should format zero duration as 0s', () => {
+                expect(DurationValue.zero().toString()).toBe('0s');
+                expect(DurationValue.fromSeconds(0).toString()).toBe('0s');
+                expect(DurationValue.fromNanoseconds(0n).toString()).toBe('0s');
             });
         });
 
         describe('time only', () => {
             it('should format seconds only', () => {
-                expect(DurationValue.fromSeconds(1).toString()).toBe('00:00:01');
-                expect(DurationValue.fromSeconds(30).toString()).toBe('00:00:30');
-                expect(DurationValue.fromSeconds(59).toString()).toBe('00:00:59');
+                expect(DurationValue.fromSeconds(1).toString()).toBe('1s');
+                expect(DurationValue.fromSeconds(30).toString()).toBe('30s');
+                expect(DurationValue.fromSeconds(59).toString()).toBe('59s');
             });
 
             it('should format minutes only', () => {
-                expect(DurationValue.fromMinutes(1).toString()).toBe('00:01:00');
-                expect(DurationValue.fromMinutes(30).toString()).toBe('00:30:00');
-                expect(DurationValue.fromMinutes(59).toString()).toBe('00:59:00');
+                expect(DurationValue.fromMinutes(1).toString()).toBe('1m');
+                expect(DurationValue.fromMinutes(30).toString()).toBe('30m');
+                expect(DurationValue.fromMinutes(59).toString()).toBe('59m');
             });
 
             it('should format hours only', () => {
-                expect(DurationValue.fromHours(1).toString()).toBe('01:00:00');
-                expect(DurationValue.fromHours(12).toString()).toBe('12:00:00');
-                expect(DurationValue.fromHours(23).toString()).toBe('23:00:00');
+                expect(DurationValue.fromHours(1).toString()).toBe('1h');
+                expect(DurationValue.fromHours(12).toString()).toBe('12h');
+                expect(DurationValue.fromHours(23).toString()).toBe('23h');
             });
 
             it('should format combined time', () => {
                 const duration = DurationValue.new(0, 0, (1n * 60n * 60n + 30n * 60n) * 1_000_000_000n);
-                expect(duration.toString()).toBe('01:30:00');
+                expect(duration.toString()).toBe('1h30m');
 
                 const duration2 = DurationValue.new(0, 0, (2n * 60n * 60n + 30n * 60n + 45n) * 1_000_000_000n);
-                expect(duration2.toString()).toBe('02:30:45');
+                expect(duration2.toString()).toBe('2h30m45s');
             });
         });
 
         describe('days only', () => {
-            it('should format single day', () => {
-                expect(DurationValue.fromDays(1).toString()).toBe('1 day');
-            });
-
-            it('should format multiple days', () => {
-                expect(DurationValue.fromDays(2).toString()).toBe('2 days');
-                expect(DurationValue.fromDays(7).toString()).toBe('7 days');
-                expect(DurationValue.fromDays(365).toString()).toBe('365 days');
+            it('should format days', () => {
+                expect(DurationValue.fromDays(1).toString()).toBe('1d');
+                expect(DurationValue.fromDays(2).toString()).toBe('2d');
+                expect(DurationValue.fromDays(7).toString()).toBe('7d');
+                expect(DurationValue.fromDays(365).toString()).toBe('365d');
             });
 
             it('should format weeks as days', () => {
-                expect(DurationValue.fromWeeks(1).toString()).toBe('7 days');
-                expect(DurationValue.fromWeeks(2).toString()).toBe('14 days');
+                expect(DurationValue.fromWeeks(1).toString()).toBe('7d');
+                expect(DurationValue.fromWeeks(2).toString()).toBe('14d');
             });
         });
 
         describe('months only', () => {
-            it('should format single month', () => {
-                expect(DurationValue.fromMonths(1).toString()).toBe('1 mon');
-            });
-
-            it('should format multiple months', () => {
-                expect(DurationValue.fromMonths(2).toString()).toBe('2 mons');
-                expect(DurationValue.fromMonths(6).toString()).toBe('6 mons');
-                expect(DurationValue.fromMonths(11).toString()).toBe('11 mons');
+            it('should format months', () => {
+                expect(DurationValue.fromMonths(1).toString()).toBe('1mo');
+                expect(DurationValue.fromMonths(2).toString()).toBe('2mo');
+                expect(DurationValue.fromMonths(6).toString()).toBe('6mo');
+                expect(DurationValue.fromMonths(11).toString()).toBe('11mo');
             });
         });
 
         describe('years only', () => {
-            it('should format single year', () => {
-                expect(DurationValue.fromYears(1).toString()).toBe('1 year');
-            });
-
-            it('should format multiple years', () => {
-                expect(DurationValue.fromYears(2).toString()).toBe('2 years');
-                expect(DurationValue.fromYears(10).toString()).toBe('10 years');
-                expect(DurationValue.fromYears(100).toString()).toBe('100 years');
+            it('should format years', () => {
+                expect(DurationValue.fromYears(1).toString()).toBe('1y');
+                expect(DurationValue.fromYears(2).toString()).toBe('2y');
+                expect(DurationValue.fromYears(10).toString()).toBe('10y');
+                expect(DurationValue.fromYears(100).toString()).toBe('100y');
             });
         });
 
         describe('combined date components', () => {
             it('should format years and months', () => {
                 const duration = DurationValue.new(13, 0, 0n); // 1 year 1 month
-                expect(duration.toString()).toBe('1 year 1 mon');
+                expect(duration.toString()).toBe('1y1mo');
             });
 
             it('should format multiple years and months', () => {
                 const duration = DurationValue.new(27, 0, 0n); // 2 years 3 months
-                expect(duration.toString()).toBe('2 years 3 mons');
+                expect(duration.toString()).toBe('2y3mo');
             });
 
             it('should format months and days', () => {
                 const duration = DurationValue.new(2, 15, 0n);
-                expect(duration.toString()).toBe('2 mons 15 days');
+                expect(duration.toString()).toBe('2mo15d');
             });
 
             it('should format years, months, and days', () => {
                 const duration = DurationValue.new(14, 3, 0n); // 1 year 2 months 3 days
-                expect(duration.toString()).toBe('1 year 2 mons 3 days');
+                expect(duration.toString()).toBe('1y2mo3d');
             });
         });
 
         describe('combined date and time', () => {
             it('should format days and time', () => {
                 const duration = DurationValue.new(0, 1, (2n * 60n * 60n) * 1_000_000_000n);
-                expect(duration.toString()).toBe('1 day 02:00:00');
+                expect(duration.toString()).toBe('1d2h');
 
                 const duration2 = DurationValue.new(0, 3, (4n * 60n * 60n + 5n * 60n + 6n) * 1_000_000_000n);
-                expect(duration2.toString()).toBe('3 days 04:05:06');
+                expect(duration2.toString()).toBe('3d4h5m6s');
             });
 
             it('should format complete duration with all components', () => {
@@ -492,80 +505,86 @@ describe('DurationValue', () => {
                     3,  // 3 days
                     (4n * 60n * 60n + 5n * 60n + 6n) * 1_000_000_000n // 4 hours 5 minutes 6 seconds
                 );
-                expect(duration.toString()).toBe('1 year 2 mons 3 days 04:05:06');
+                expect(duration.toString()).toBe('1y2mo3d4h5m6s');
             });
         });
 
-        describe('fractional seconds', () => {
+        describe('sub-second components', () => {
             it('should format milliseconds', () => {
-                expect(DurationValue.fromMilliseconds(123).toString()).toBe('00:00:00.123');
-                expect(DurationValue.fromMilliseconds(1).toString()).toBe('00:00:00.001');
-                expect(DurationValue.fromMilliseconds(1500).toString()).toBe('00:00:01.5');
+                expect(DurationValue.fromMilliseconds(123).toString()).toBe('123ms');
+                expect(DurationValue.fromMilliseconds(1).toString()).toBe('1ms');
+                expect(DurationValue.fromMilliseconds(1500).toString()).toBe('1s500ms');
             });
 
             it('should format microseconds', () => {
-                expect(DurationValue.fromMicroseconds(123456).toString()).toBe('00:00:00.123456');
-                expect(DurationValue.fromMicroseconds(1).toString()).toBe('00:00:00.000001');
+                expect(DurationValue.fromMicroseconds(123456).toString()).toBe('123ms456us');
+                expect(DurationValue.fromMicroseconds(1).toString()).toBe('1us');
             });
 
             it('should format nanoseconds', () => {
-                expect(DurationValue.fromNanoseconds(123456789n).toString()).toBe('00:00:00.123456789');
-                expect(DurationValue.fromNanoseconds(1n).toString()).toBe('00:00:00.000000001');
+                expect(DurationValue.fromNanoseconds(123456789n).toString()).toBe('123ms456us789ns');
+                expect(DurationValue.fromNanoseconds(1n).toString()).toBe('1ns');
             });
 
-            it('should remove trailing zeros from fractional seconds', () => {
-                expect(DurationValue.fromNanoseconds(100000000n).toString()).toBe('00:00:00.1');
-                expect(DurationValue.fromNanoseconds(123000000n).toString()).toBe('00:00:00.123');
-                expect(DurationValue.fromNanoseconds(123456000n).toString()).toBe('00:00:00.123456');
+            it('should decompose sub-seconds correctly', () => {
+                expect(DurationValue.fromNanoseconds(100000000n).toString()).toBe('100ms');
+                expect(DurationValue.fromNanoseconds(123000000n).toString()).toBe('123ms');
+                expect(DurationValue.fromNanoseconds(123456000n).toString()).toBe('123ms456us');
             });
 
-            it('should format days with fractional seconds', () => {
+            it('should format days with sub-seconds', () => {
                 const duration = DurationValue.new(0, 1, 500n * 1_000_000n);
-                expect(duration.toString()).toBe('1 day 00:00:00.5');
+                expect(duration.toString()).toBe('1d500ms');
             });
         });
 
         describe('large values and normalization', () => {
             it('should normalize hours >= 24 to days', () => {
-                expect(DurationValue.fromHours(25).toString()).toBe('1 day 01:00:00');
-                expect(DurationValue.fromHours(48).toString()).toBe('2 days');
-                expect(DurationValue.fromMinutes(1500).toString()).toBe('1 day 01:00:00'); // 25 hours
+                expect(DurationValue.fromHours(25).toString()).toBe('1d1h');
+                expect(DurationValue.fromHours(48).toString()).toBe('2d');
+                expect(DurationValue.fromMinutes(1500).toString()).toBe('1d1h'); // 25 hours
             });
 
             it('should format large day values', () => {
-                expect(DurationValue.fromDays(1000).toString()).toBe('1000 days');
+                expect(DurationValue.fromDays(1000).toString()).toBe('1000d');
             });
         });
 
         describe('negative durations', () => {
             it('should format negative time components', () => {
-                expect(DurationValue.fromSeconds(-30).toString()).toBe('00:00:-30');
-                expect(DurationValue.fromMinutes(-5).toString()).toBe('00:-5:00');
-                expect(DurationValue.fromHours(-2).toString()).toBe('-2:00:00');
+                expect(DurationValue.fromSeconds(-30).toString()).toBe('-30s');
+                expect(DurationValue.fromMinutes(-5).toString()).toBe('-5m');
+                expect(DurationValue.fromHours(-2).toString()).toBe('-2h');
             });
 
             it('should format negative days', () => {
-                expect(DurationValue.fromDays(-1).toString()).toBe('-1 days');
-                expect(DurationValue.fromDays(-7).toString()).toBe('-7 days');
+                expect(DurationValue.fromDays(-1).toString()).toBe('-1d');
+                expect(DurationValue.fromDays(-7).toString()).toBe('-7d');
+            });
+
+            it('should format negative sub-seconds', () => {
+                expect(DurationValue.fromMilliseconds(-500).toString()).toBe('-500ms');
+                expect(DurationValue.fromMicroseconds(-100).toString()).toBe('-100us');
+                expect(DurationValue.fromNanoseconds(-50n).toString()).toBe('-50ns');
             });
         });
 
         describe('edge cases', () => {
-            it('should handle only fractional seconds', () => {
-                expect(DurationValue.fromNanoseconds(999999999n).toString()).toBe('00:00:00.999999999');
-                expect(DurationValue.fromNanoseconds(1000000000n).toString()).toBe('00:00:01');
+            it('should handle sub-second boundaries', () => {
+                expect(DurationValue.fromNanoseconds(999999999n).toString()).toBe('999ms999us999ns');
+                expect(DurationValue.fromNanoseconds(1000000000n).toString()).toBe('1s');
             });
 
             it('should handle exactly one minute', () => {
-                expect(DurationValue.fromNanoseconds(BigInt(60 * 1_000_000_000)).toString()).toBe('00:01:00');
+                expect(DurationValue.fromNanoseconds(BigInt(60 * 1_000_000_000)).toString()).toBe('1m');
             });
 
             it('should handle exactly one hour', () => {
-                expect(DurationValue.fromNanoseconds(BigInt(3600 * 1_000_000_000)).toString()).toBe('01:00:00');
+                expect(DurationValue.fromNanoseconds(BigInt(3600 * 1_000_000_000)).toString()).toBe('1h');
             });
 
             it('should handle exactly one day', () => {
-                expect(DurationValue.fromNanoseconds(BigInt(86400 * 1_000_000_000)).toString()).toBe('1 day');
+                expect(DurationValue.fromNanoseconds(BigInt(86400 * 1_000_000_000)).toString()).toBe('1d');
             });
         });
     });

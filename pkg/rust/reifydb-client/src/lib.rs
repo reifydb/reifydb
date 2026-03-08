@@ -110,7 +110,7 @@ fn value_to_wire(value: Value) -> WireValue {
 		Value::Date(d) => ("Date", d.to_string()),
 		Value::DateTime(dt) => ("DateTime", dt.to_string()),
 		Value::Time(t) => ("Time", t.to_string()),
-		Value::Duration(d) => ("Duration", d.to_string()),
+		Value::Duration(d) => ("Duration", d.to_iso_string()),
 		Value::Blob(b) => ("Blob", b.to_hex()),
 		Value::IdentityId(id) => ("IdentityId", id.to_string()),
 		Value::Int(i) => ("Int", i.to_string()),

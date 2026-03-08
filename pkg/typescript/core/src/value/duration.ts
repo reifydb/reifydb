@@ -321,39 +321,27 @@ export class DurationValue implements Value {
     }
 
     /**
-     * Format as human-readable duration string
-     * Examples: "1 year 2 mons 3 days 04:05:06.789", "3 days", "00:00:01.5"
+     * Format as compact human-readable duration string
+     * Examples: "1y2mo3d4h5m6s", "1d2h", "30s", "500ms", "0s"
      */
     toString(): string {
         if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
             return 'none';
         }
 
-        // Handle zero duration
         if (this.months === 0 && this.days === 0 && this.nanos === 0n) {
-            return '00:00:00';
+            return '0s';
         }
 
-        const parts: string[] = [];
+        let result = '';
 
-        // Extract years and months
         const years = Math.floor(this.months / 12);
         const months = this.months % 12;
 
-        if (years !== 0) {
-            parts.push(years === 1 ? '1 year' : `${years} years`);
-        }
-
-        if (months !== 0) {
-            parts.push(months === 1 ? '1 mon' : `${months} mons`);
-        }
-
-        // Time components from nanos with normalization
         const totalSeconds = this.nanos / 1_000_000_000n;
         const remainingNanos = this.nanos % 1_000_000_000n;
 
-        // Normalize to days if hours >= 24
-        const extraDays = totalSeconds / 86400n; // 24 * 60 * 60
+        const extraDays = totalSeconds / 86400n;
         const remainingSeconds = totalSeconds % 86400n;
 
         const displayDays = this.days + Number(extraDays);
@@ -361,39 +349,29 @@ export class DurationValue implements Value {
         const minutes = (remainingSeconds % 3600n) / 60n;
         const seconds = remainingSeconds % 60n;
 
-        if (displayDays !== 0) {
-            parts.push(displayDays === 1 ? '1 day' : `${displayDays} days`);
-        }
+        const absRemaining = remainingNanos < 0n ? -remainingNanos : remainingNanos;
+        const ms = absRemaining / 1_000_000n;
+        const us = (absRemaining % 1_000_000n) / 1_000n;
+        const ns = absRemaining % 1_000n;
 
-        // Format time components as HH:MM:SS[.ffffff]
-        if (hours !== 0n || minutes !== 0n || seconds !== 0n || remainingNanos !== 0n || parts.length === 0) {
-            const hoursStr = String(hours).padStart(2, '0');
-            const minutesStr = String(minutes).padStart(2, '0');
+        if (years !== 0) result += `${years}y`;
+        if (months !== 0) result += `${months}mo`;
+        if (displayDays !== 0) result += `${displayDays}d`;
+        if (hours !== 0n) result += `${hours}h`;
+        if (minutes !== 0n) result += `${minutes}m`;
+        if (seconds !== 0n) result += `${seconds}s`;
 
-            let secondsStr: string;
-            if (remainingNanos !== 0n) {
-                // Format fractional seconds with trailing zeros removed
-                const fractional = Number(remainingNanos) / 1_000_000_000;
-                const totalSecondsFloat = Number(seconds) + fractional;
-                // Format with 9 decimal places then remove trailing zeros
-                const formatted = totalSecondsFloat.toFixed(9).replace(/0+$/, '').replace(/\.$/, '');
-                // Split into whole and fractional parts to pad the whole part correctly
-                const dotIndex = formatted.indexOf('.');
-                if (dotIndex >= 0) {
-                    const wholePart = formatted.substring(0, dotIndex).padStart(2, '0');
-                    const fractionalPart = formatted.substring(dotIndex);
-                    secondsStr = wholePart + fractionalPart;
-                } else {
-                    secondsStr = formatted.padStart(2, '0');
-                }
-            } else {
-                secondsStr = String(seconds).padStart(2, '0');
+        if (ms !== 0n || us !== 0n || ns !== 0n) {
+            if (remainingNanos < 0n && seconds === 0n && hours === 0n && minutes === 0n
+                && displayDays === 0 && years === 0 && months === 0) {
+                result += '-';
             }
-
-            parts.push(`${hoursStr}:${minutesStr}:${secondsStr}`);
+            if (ms !== 0n) result += `${ms}ms`;
+            if (us !== 0n) result += `${us}us`;
+            if (ns !== 0n) result += `${ns}ns`;
         }
 
-        return parts.join(' ');
+        return result;
     }
 
     valueOf(): { months: number; days: number; nanos: bigint } | undefined {
@@ -411,23 +389,30 @@ export class DurationValue implements Value {
     }
 
     /**
-     * Helper to parse ISO 8601 duration format
+     * Helper to parse duration format (human-readable or ISO 8601)
      */
     private static parseDuration(str: string): { months: number; days: number; nanos: bigint } | null {
-        // Match ISO 8601 duration format: P[n]Y[n]M[n]DT[n]H[n]M[n.n]S
-        // Also handle negative durations
         const negative = str.startsWith('-');
         const cleanStr = negative ? str.substring(1) : str;
-        
-        if (!cleanStr.startsWith('P')) {
-            return null;
+
+        // Try ISO 8601 format first (starts with P)
+        if (cleanStr.startsWith('P')) {
+            return DurationValue.parseIsoDuration(cleanStr, negative);
         }
 
-        const match = cleanStr.match(/^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);
+        // Try human-readable format: 1y2mo3d4h5m6s500ms100us50ns
+        return DurationValue.parseHumanDuration(cleanStr, negative);
+    }
+
+    /**
+     * Parse ISO 8601 duration format: P[n]Y[n]M[n]DT[n]H[n]M[n.n]S
+     */
+    private static parseIsoDuration(str: string, negative: boolean): { months: number; days: number; nanos: bigint } | null {
+        const match = str.match(/^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);
         if (!match) {
             return null;
         }
-        
+
         // Check if the match has at least one value
         if (!match[1] && !match[2] && !match[3] && !match[4] && !match[5] && !match[6]) {
             return null; // Invalid: P without any values
@@ -459,18 +444,51 @@ export class DurationValue implements Value {
         const totalMonths = years * 12 + months;
 
         if (negative) {
-            return {
-                months: -totalMonths,
-                days: -days,
-                nanos: -totalNanos
-            };
-        } else {
-            return {
-                months: totalMonths,
-                days: days,
-                nanos: totalNanos
-            };
+            return { months: -totalMonths, days: -days, nanos: -totalNanos };
         }
+        return { months: totalMonths, days: days, nanos: totalNanos };
+    }
+
+    /**
+     * Parse human-readable duration format: 1y2mo3d4h5m6s500ms100us50ns
+     */
+    private static parseHumanDuration(str: string, negative: boolean): { months: number; days: number; nanos: bigint } | null {
+        // Match components: years, months, days, hours, minutes, seconds, ms, us, ns
+        // Order matters: 'mo' before 'm', 'ms' before 'm', 'us' before 'u', 'ns' before 'n'
+        const pattern = /^(?:(\d+)y)?(?:(\d+)mo)?(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m(?!s|o))?(?:(\d+)s(?!$)?)?(?:(\d+)ms)?(?:(\d+)us)?(?:(\d+)ns)?$/;
+        const match = str.match(pattern);
+        if (!match) {
+            return null;
+        }
+
+        // Check if the match has at least one value
+        if (!match[1] && !match[2] && !match[3] && !match[4] && !match[5] && !match[6] && !match[7] && !match[8] && !match[9]) {
+            return null;
+        }
+
+        const years = parseInt(match[1] || '0', 10);
+        const months = parseInt(match[2] || '0', 10);
+        const days = parseInt(match[3] || '0', 10);
+        const hours = parseInt(match[4] || '0', 10);
+        const minutes = parseInt(match[5] || '0', 10);
+        const seconds = parseInt(match[6] || '0', 10);
+        const ms = parseInt(match[7] || '0', 10);
+        const us = parseInt(match[8] || '0', 10);
+        const ns = parseInt(match[9] || '0', 10);
+
+        const totalNanos = BigInt(hours) * 3600n * 1_000_000_000n +
+                          BigInt(minutes) * 60n * 1_000_000_000n +
+                          BigInt(seconds) * 1_000_000_000n +
+                          BigInt(ms) * 1_000_000n +
+                          BigInt(us) * 1_000n +
+                          BigInt(ns);
+
+        const totalMonths = years * 12 + months;
+
+        if (negative) {
+            return { months: -totalMonths, days: -days, nanos: -totalNanos };
+        }
+        return { months: totalMonths, days: days, nanos: totalNanos };
     }
 
     /**

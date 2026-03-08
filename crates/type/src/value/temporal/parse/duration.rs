@@ -57,11 +57,138 @@ fn validate_component_order(
 }
 
 pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
-	let fragment = fragment;
 	let fragment_value = fragment.text();
-	// Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
-	if fragment_value.len() == 1 || !fragment_value.starts_with('P') || fragment_value == "PT" {
+	if fragment_value.starts_with('P') {
+		return parse_iso_duration(fragment);
+	}
+
+	parse_human_duration(fragment)
+}
+
+/// Parse human-readable duration format: `1y2mo3d4h5m6s500ms100us50ns`
+fn parse_human_duration(fragment: Fragment) -> Result<Duration, Error> {
+	let input = fragment.text();
+	let bytes = input.as_bytes();
+	let len = bytes.len();
+
+	if len == 0 {
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidDurationFormat,
+			message: "invalid duration format".into(),
+			fragment,
+		}
+		.into());
+	}
+
+	let mut months = 0i32;
+	let mut days = 0i32;
+	let mut nanos = 0i64;
+	let mut pos = 0;
+	let mut found_any = false;
+	// Track component order: y=1, mo=2, d=3, h=4, m=5, s=6, ms=7, us=8, ns=9
+	let mut last_order = 0u8;
+
+	while pos < len {
+		// Parse number
+		let num_start = pos;
+		while pos < len && bytes[pos].is_ascii_digit() {
+			pos += 1;
+		}
+
+		if pos == num_start || pos >= len {
+			return Err(TypeError::Temporal {
+				kind: TemporalKind::InvalidDurationFormat,
+				message: "invalid duration format".into(),
+				fragment,
+			}
+			.into());
+		}
+
+		let num_str = &input[num_start..pos];
+		let value: i64 = num_str.parse().map_err(|_| {
+			let frag = fragment.sub_fragment(num_start, num_str.len());
+			let err: Error = TypeError::Temporal {
+				kind: TemporalKind::InvalidDurationFormat,
+				message: "invalid duration format".into(),
+				fragment: frag,
+			}
+			.into();
+			err
+		})?;
+
+		// Parse unit suffix
+		let (order, advance) = if pos + 1 < len && bytes[pos] == b'n' && bytes[pos + 1] == b's' {
+			nanos += value;
+			(9u8, 2)
+		} else if pos + 1 < len && bytes[pos] == b'u' && bytes[pos + 1] == b's' {
+			nanos += value * 1_000;
+			(8u8, 2)
+		} else if pos + 1 < len && bytes[pos] == b'm' && bytes[pos + 1] == b's' {
+			nanos += value * 1_000_000;
+			(7u8, 2)
+		} else if pos + 1 < len && bytes[pos] == b'm' && bytes[pos + 1] == b'o' {
+			months += value as i32;
+			(2u8, 2)
+		} else if bytes[pos] == b'y' {
+			months += value as i32 * 12;
+			(1u8, 1)
+		} else if bytes[pos] == b'd' {
+			days += value as i32;
+			(3u8, 1)
+		} else if bytes[pos] == b'h' {
+			nanos += value * 60 * 60 * 1_000_000_000;
+			(4u8, 1)
+		} else if bytes[pos] == b'm' {
+			nanos += value * 60 * 1_000_000_000;
+			(5u8, 1)
+		} else if bytes[pos] == b's' {
+			nanos += value * 1_000_000_000;
+			(6u8, 1)
+		} else {
+			let char_frag = fragment.sub_fragment(pos, 1);
+			return Err(TypeError::Temporal {
+				kind: TemporalKind::InvalidDurationCharacter,
+				message: format!("invalid character in duration '{}'", char_frag.text()),
+				fragment: char_frag,
+			}
+			.into());
+		};
+
+		if order <= last_order {
+			let frag = fragment.sub_fragment(pos, advance);
+			return Err(TypeError::Temporal {
+				kind: TemporalKind::OutOfOrderDurationComponent {
+					component: bytes[pos] as char,
+				},
+				message: format!("duration component '{}' is out of order", &input[pos..pos + advance]),
+				fragment: frag,
+			}
+			.into());
+		}
+
+		last_order = order;
+		pos += advance;
+		found_any = true;
+	}
+
+	if !found_any {
+		return Err(TypeError::Temporal {
+			kind: TemporalKind::InvalidDurationFormat,
+			message: "invalid duration format".into(),
+			fragment,
+		}
+		.into());
+	}
+
+	Ok(Duration::new(months, days, nanos))
+}
+
+/// Parse ISO 8601 duration format: `P[n]Y[n]M[n]DT[n]H[n]M[n.n]S`
+fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
+	let fragment_value = fragment.text();
+
+	if fragment_value.len() == 1 || fragment_value == "PT" {
 		return Err(TypeError::Temporal {
 			kind: TemporalKind::InvalidDurationFormat,
 			message: "invalid duration format".into(),
@@ -664,5 +791,104 @@ pub mod tests {
 		let fragment = Fragment::testing("P1");
 		let err = parse_duration(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_015");
+	}
+
+	// ---- Human-readable format tests ----
+
+	#[test]
+	fn test_human_seconds() {
+		let d = parse_duration(Fragment::testing("30s")).unwrap();
+		assert_eq!(d.get_nanos(), 30 * 1_000_000_000);
+	}
+
+	#[test]
+	fn test_human_minutes() {
+		let d = parse_duration(Fragment::testing("5m")).unwrap();
+		assert_eq!(d.get_nanos(), 5 * 60 * 1_000_000_000);
+	}
+
+	#[test]
+	fn test_human_hours() {
+		let d = parse_duration(Fragment::testing("1h")).unwrap();
+		assert_eq!(d.get_nanos(), 60 * 60 * 1_000_000_000);
+	}
+
+	#[test]
+	fn test_human_days() {
+		let d = parse_duration(Fragment::testing("1d")).unwrap();
+		assert_eq!(d.get_days(), 1);
+		assert_eq!(d.get_nanos(), 0);
+	}
+
+	#[test]
+	fn test_human_months() {
+		let d = parse_duration(Fragment::testing("3mo")).unwrap();
+		assert_eq!(d.get_months(), 3);
+	}
+
+	#[test]
+	fn test_human_years() {
+		let d = parse_duration(Fragment::testing("2y")).unwrap();
+		assert_eq!(d.get_months(), 24);
+	}
+
+	#[test]
+	fn test_human_hours_minutes() {
+		let d = parse_duration(Fragment::testing("2h30m")).unwrap();
+		assert_eq!(d.get_nanos(), (2 * 60 * 60 + 30 * 60) * 1_000_000_000);
+	}
+
+	#[test]
+	fn test_human_days_hours_minutes() {
+		let d = parse_duration(Fragment::testing("1d2h30m")).unwrap();
+		assert_eq!(d.get_days(), 1);
+		assert_eq!(d.get_nanos(), (2 * 60 * 60 + 30 * 60) * 1_000_000_000);
+	}
+
+	#[test]
+	fn test_human_full_format() {
+		let d = parse_duration(Fragment::testing("1y2mo3d4h5m6s")).unwrap();
+		assert_eq!(d.get_months(), 14); // 12 + 2
+		assert_eq!(d.get_days(), 3);
+		let expected_nanos = (4 * 60 * 60 + 5 * 60 + 6) * 1_000_000_000;
+		assert_eq!(d.get_nanos(), expected_nanos);
+	}
+
+	#[test]
+	fn test_human_milliseconds() {
+		let d = parse_duration(Fragment::testing("500ms")).unwrap();
+		assert_eq!(d.get_nanos(), 500 * 1_000_000);
+	}
+
+	#[test]
+	fn test_human_microseconds() {
+		let d = parse_duration(Fragment::testing("100us")).unwrap();
+		assert_eq!(d.get_nanos(), 100 * 1_000);
+	}
+
+	#[test]
+	fn test_human_nanoseconds() {
+		let d = parse_duration(Fragment::testing("50ns")).unwrap();
+		assert_eq!(d.get_nanos(), 50);
+	}
+
+	#[test]
+	fn test_human_seconds_with_milliseconds() {
+		let d = parse_duration(Fragment::testing("1s500ms")).unwrap();
+		assert_eq!(d.get_nanos(), 1 * 1_000_000_000 + 500 * 1_000_000);
+	}
+
+	#[test]
+	fn test_human_zero() {
+		let d = parse_duration(Fragment::testing("0s")).unwrap();
+		assert_eq!(d.get_months(), 0);
+		assert_eq!(d.get_days(), 0);
+		assert_eq!(d.get_nanos(), 0);
+	}
+
+	#[test]
+	fn test_human_all_sub_second() {
+		let d = parse_duration(Fragment::testing("123ms456us789ns")).unwrap();
+		assert_eq!(d.get_nanos(), 123 * 1_000_000 + 456 * 1_000 + 789);
 	}
 }

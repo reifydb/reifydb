@@ -48,7 +48,7 @@ impl Value {
 			Value::Date(d) => JsonValue::String(d.to_string()),
 			Value::DateTime(dt) => JsonValue::String(dt.to_string()),
 			Value::Time(t) => JsonValue::String(t.to_string()),
-			Value::Duration(d) => JsonValue::String(d.to_string()),
+			Value::Duration(d) => JsonValue::String(d.to_iso_string()),
 			Value::Blob(b) => JsonValue::String(b.to_string()),
 			Value::DictionaryId(id) => JsonValue::String(id.to_string()),
 			Value::Type(t) => JsonValue::String(t.to_string()),

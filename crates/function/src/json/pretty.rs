@@ -36,7 +36,7 @@ fn to_json_pretty(value: &Value, indent: usize) -> String {
 		Value::Date(d) => format!("\"{}\"", d),
 		Value::DateTime(dt) => format!("\"{}\"", dt),
 		Value::Time(t) => format!("\"{}\"", t),
-		Value::Duration(d) => format!("\"{}\"", d),
+		Value::Duration(d) => format!("\"{}\"", d.to_iso_string()),
 		Value::Blob(b) => format!("\"{}\"", b),
 		Value::DictionaryId(id) => format!("\"{}\"", id),
 		Value::Type(t) => format!("\"{}\"", t),

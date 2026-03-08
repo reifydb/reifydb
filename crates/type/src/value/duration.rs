@@ -3,7 +3,7 @@
 
 use std::{
 	cmp,
-	fmt::{self, Display, Formatter},
+	fmt::{self, Display, Formatter, Write},
 	ops,
 };
 
@@ -171,6 +171,64 @@ impl Duration {
 			nanos: -self.nanos,
 		}
 	}
+
+	/// Format as ISO 8601 duration string: `P[n]Y[n]M[n]DT[n]H[n]M[n.n]S`
+	pub fn to_iso_string(&self) -> String {
+		if self.months == 0 && self.days == 0 && self.nanos == 0 {
+			return "PT0S".to_string();
+		}
+
+		let mut result = String::from("P");
+
+		let years = self.months / 12;
+		let months = self.months % 12;
+
+		if years != 0 {
+			write!(result, "{}Y", years).unwrap();
+		}
+		if months != 0 {
+			write!(result, "{}M", months).unwrap();
+		}
+
+		let total_seconds = self.nanos / 1_000_000_000;
+		let remaining_nanos = self.nanos % 1_000_000_000;
+
+		let extra_days = total_seconds / 86400;
+		let remaining_seconds = total_seconds % 86400;
+
+		let display_days = self.days + extra_days as i32;
+		let hours = remaining_seconds / 3600;
+		let minutes = (remaining_seconds % 3600) / 60;
+		let seconds = remaining_seconds % 60;
+
+		if display_days != 0 {
+			write!(result, "{}D", display_days).unwrap();
+		}
+
+		if hours != 0 || minutes != 0 || seconds != 0 || remaining_nanos != 0 {
+			result.push('T');
+
+			if hours != 0 {
+				write!(result, "{}H", hours).unwrap();
+			}
+			if minutes != 0 {
+				write!(result, "{}M", minutes).unwrap();
+			}
+			if seconds != 0 || remaining_nanos != 0 {
+				if remaining_nanos != 0 {
+					let fractional = remaining_nanos as f64 / 1_000_000_000.0;
+					let total_seconds_f = seconds as f64 + fractional;
+					let formatted_str = format!("{:.9}", total_seconds_f);
+					let formatted = formatted_str.trim_end_matches('0').trim_end_matches('.');
+					write!(result, "{}S", formatted).unwrap();
+				} else {
+					write!(result, "{}S", seconds).unwrap();
+				}
+			}
+		}
+
+		result
+	}
 }
 
 impl PartialOrd for Duration {
@@ -233,31 +291,17 @@ impl ops::Mul<i64> for Duration {
 
 impl Display for Duration {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		// ISO 8601 duration format: P[n]Y[n]M[n]DT[n]H[n]M[n.n]S
 		if self.months == 0 && self.days == 0 && self.nanos == 0 {
-			return write!(f, "PT0S");
+			return write!(f, "0s");
 		}
 
-		write!(f, "P")?;
-
-		// Extract years and months
 		let years = self.months / 12;
 		let months = self.months % 12;
 
-		if years != 0 {
-			write!(f, "{}Y", years)?;
-		}
-
-		if months != 0 {
-			write!(f, "{}M", months)?;
-		}
-
-		// Time components from nanos with normalization
 		let total_seconds = self.nanos / 1_000_000_000;
 		let remaining_nanos = self.nanos % 1_000_000_000;
 
-		// Normalize to days if hours >= 24
-		let extra_days = total_seconds / 86400; // 24 * 60 * 60
+		let extra_days = total_seconds / 86400;
 		let remaining_seconds = total_seconds % 86400;
 
 		let display_days = self.days + extra_days as i32;
@@ -265,35 +309,46 @@ impl Display for Duration {
 		let minutes = (remaining_seconds % 3600) / 60;
 		let seconds = remaining_seconds % 60;
 
+		let abs_remaining = remaining_nanos.abs();
+		let ms = abs_remaining / 1_000_000;
+		let us = (abs_remaining % 1_000_000) / 1_000;
+		let ns = abs_remaining % 1_000;
+
+		if years != 0 {
+			write!(f, "{}y", years)?;
+		}
+		if months != 0 {
+			write!(f, "{}mo", months)?;
+		}
 		if display_days != 0 {
-			write!(f, "{}D", display_days)?;
+			write!(f, "{}d", display_days)?;
+		}
+		if hours != 0 {
+			write!(f, "{}h", hours)?;
+		}
+		if minutes != 0 {
+			write!(f, "{}m", minutes)?;
+		}
+		if seconds != 0 {
+			write!(f, "{}s", seconds)?;
 		}
 
-		if hours != 0 || minutes != 0 || seconds != 0 || remaining_nanos != 0 {
-			write!(f, "T")?;
-
-			if hours != 0 {
-				write!(f, "{}H", hours)?;
+		if ms != 0 || us != 0 || ns != 0 {
+			if remaining_nanos < 0
+				&& seconds == 0 && hours == 0
+				&& minutes == 0 && display_days == 0
+				&& years == 0 && months == 0
+			{
+				write!(f, "-")?;
 			}
-
-			if minutes != 0 {
-				write!(f, "{}M", minutes)?;
+			if ms != 0 {
+				write!(f, "{}ms", ms)?;
 			}
-
-			if seconds != 0 || remaining_nanos != 0 {
-				if remaining_nanos != 0 {
-					// Format fractional seconds with
-					// trailing zeros removed
-					let fractional = remaining_nanos as f64 / 1_000_000_000.0;
-					let total_seconds_f = seconds as f64 + fractional;
-					// Remove trailing zeros from fractional
-					// part
-					let formatted_str = format!("{:.9}", total_seconds_f);
-					let formatted = formatted_str.trim_end_matches('0').trim_end_matches('.');
-					write!(f, "{}S", formatted)?;
-				} else {
-					write!(f, "{}S", seconds)?;
-				}
+			if us != 0 {
+				write!(f, "{}us", us)?;
+			}
+			if ns != 0 {
+				write!(f, "{}ns", ns)?;
 			}
 		}
 
@@ -305,309 +360,353 @@ impl Display for Duration {
 pub mod tests {
 	use super::*;
 
+	// ---- to_iso_string tests (ISO 8601 format) ----
+
+	#[test]
+	fn test_duration_iso_string_zero() {
+		assert_eq!(Duration::zero().to_iso_string(), "PT0S");
+		assert_eq!(Duration::from_seconds(0).to_iso_string(), "PT0S");
+		assert_eq!(Duration::from_nanoseconds(0).to_iso_string(), "PT0S");
+		assert_eq!(Duration::default().to_iso_string(), "PT0S");
+	}
+
+	#[test]
+	fn test_duration_iso_string_seconds() {
+		assert_eq!(Duration::from_seconds(1).to_iso_string(), "PT1S");
+		assert_eq!(Duration::from_seconds(30).to_iso_string(), "PT30S");
+		assert_eq!(Duration::from_seconds(59).to_iso_string(), "PT59S");
+	}
+
+	#[test]
+	fn test_duration_iso_string_minutes() {
+		assert_eq!(Duration::from_minutes(1).to_iso_string(), "PT1M");
+		assert_eq!(Duration::from_minutes(30).to_iso_string(), "PT30M");
+		assert_eq!(Duration::from_minutes(59).to_iso_string(), "PT59M");
+	}
+
+	#[test]
+	fn test_duration_iso_string_hours() {
+		assert_eq!(Duration::from_hours(1).to_iso_string(), "PT1H");
+		assert_eq!(Duration::from_hours(12).to_iso_string(), "PT12H");
+		assert_eq!(Duration::from_hours(23).to_iso_string(), "PT23H");
+	}
+
+	#[test]
+	fn test_duration_iso_string_days() {
+		assert_eq!(Duration::from_days(1).to_iso_string(), "P1D");
+		assert_eq!(Duration::from_days(7).to_iso_string(), "P7D");
+		assert_eq!(Duration::from_days(365).to_iso_string(), "P365D");
+	}
+
+	#[test]
+	fn test_duration_iso_string_weeks() {
+		assert_eq!(Duration::from_weeks(1).to_iso_string(), "P7D");
+		assert_eq!(Duration::from_weeks(2).to_iso_string(), "P14D");
+		assert_eq!(Duration::from_weeks(52).to_iso_string(), "P364D");
+	}
+
+	#[test]
+	fn test_duration_iso_string_combined_time() {
+		let d = Duration::new(0, 0, (1 * 60 * 60 + 30 * 60) * 1_000_000_000);
+		assert_eq!(d.to_iso_string(), "PT1H30M");
+
+		let d = Duration::new(0, 0, (5 * 60 + 45) * 1_000_000_000);
+		assert_eq!(d.to_iso_string(), "PT5M45S");
+
+		let d = Duration::new(0, 0, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000);
+		assert_eq!(d.to_iso_string(), "PT2H30M45S");
+	}
+
+	#[test]
+	fn test_duration_iso_string_combined_date_time() {
+		assert_eq!(Duration::new(0, 1, 2 * 60 * 60 * 1_000_000_000).to_iso_string(), "P1DT2H");
+		assert_eq!(Duration::new(0, 1, 30 * 60 * 1_000_000_000).to_iso_string(), "P1DT30M");
+		assert_eq!(Duration::new(0, 1, (2 * 60 * 60 + 30 * 60) * 1_000_000_000).to_iso_string(), "P1DT2H30M");
+		assert_eq!(
+			Duration::new(0, 1, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000).to_iso_string(),
+			"P1DT2H30M45S"
+		);
+	}
+
+	#[test]
+	fn test_duration_iso_string_milliseconds() {
+		assert_eq!(Duration::from_milliseconds(123).to_iso_string(), "PT0.123S");
+		assert_eq!(Duration::from_milliseconds(1).to_iso_string(), "PT0.001S");
+		assert_eq!(Duration::from_milliseconds(999).to_iso_string(), "PT0.999S");
+		assert_eq!(Duration::from_milliseconds(1500).to_iso_string(), "PT1.5S");
+	}
+
+	#[test]
+	fn test_duration_iso_string_microseconds() {
+		assert_eq!(Duration::from_microseconds(123456).to_iso_string(), "PT0.123456S");
+		assert_eq!(Duration::from_microseconds(1).to_iso_string(), "PT0.000001S");
+		assert_eq!(Duration::from_microseconds(999999).to_iso_string(), "PT0.999999S");
+		assert_eq!(Duration::from_microseconds(1500000).to_iso_string(), "PT1.5S");
+	}
+
+	#[test]
+	fn test_duration_iso_string_nanoseconds() {
+		assert_eq!(Duration::from_nanoseconds(123456789).to_iso_string(), "PT0.123456789S");
+		assert_eq!(Duration::from_nanoseconds(1).to_iso_string(), "PT0.000000001S");
+		assert_eq!(Duration::from_nanoseconds(999999999).to_iso_string(), "PT0.999999999S");
+		assert_eq!(Duration::from_nanoseconds(1500000000).to_iso_string(), "PT1.5S");
+	}
+
+	#[test]
+	fn test_duration_iso_string_fractional_seconds() {
+		let d = Duration::new(0, 0, 1 * 1_000_000_000 + 500 * 1_000_000);
+		assert_eq!(d.to_iso_string(), "PT1.5S");
+
+		let d = Duration::new(0, 0, 2 * 1_000_000_000 + 123456 * 1_000);
+		assert_eq!(d.to_iso_string(), "PT2.123456S");
+
+		let d = Duration::new(0, 0, 3 * 1_000_000_000 + 123456789);
+		assert_eq!(d.to_iso_string(), "PT3.123456789S");
+	}
+
+	#[test]
+	fn test_duration_iso_string_complex() {
+		let d = Duration::new(0, 1, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000 + 123 * 1_000_000);
+		assert_eq!(d.to_iso_string(), "P1DT2H30M45.123S");
+
+		let d = Duration::new(0, 7, (12 * 60 * 60 + 45 * 60 + 30) * 1_000_000_000 + 456789 * 1_000);
+		assert_eq!(d.to_iso_string(), "P7DT12H45M30.456789S");
+	}
+
+	#[test]
+	fn test_duration_iso_string_trailing_zeros() {
+		assert_eq!(Duration::from_nanoseconds(100000000).to_iso_string(), "PT0.1S");
+		assert_eq!(Duration::from_nanoseconds(120000000).to_iso_string(), "PT0.12S");
+		assert_eq!(Duration::from_nanoseconds(123000000).to_iso_string(), "PT0.123S");
+		assert_eq!(Duration::from_nanoseconds(123400000).to_iso_string(), "PT0.1234S");
+		assert_eq!(Duration::from_nanoseconds(123450000).to_iso_string(), "PT0.12345S");
+		assert_eq!(Duration::from_nanoseconds(123456000).to_iso_string(), "PT0.123456S");
+		assert_eq!(Duration::from_nanoseconds(123456700).to_iso_string(), "PT0.1234567S");
+		assert_eq!(Duration::from_nanoseconds(123456780).to_iso_string(), "PT0.12345678S");
+		assert_eq!(Duration::from_nanoseconds(123456789).to_iso_string(), "PT0.123456789S");
+	}
+
+	#[test]
+	fn test_duration_iso_string_negative() {
+		assert_eq!(Duration::from_seconds(-30).to_iso_string(), "PT-30S");
+		assert_eq!(Duration::from_minutes(-5).to_iso_string(), "PT-5M");
+		assert_eq!(Duration::from_hours(-2).to_iso_string(), "PT-2H");
+		assert_eq!(Duration::from_days(-1).to_iso_string(), "P-1D");
+	}
+
+	#[test]
+	fn test_duration_iso_string_large() {
+		assert_eq!(Duration::from_days(1000).to_iso_string(), "P1000D");
+		assert_eq!(Duration::from_hours(25).to_iso_string(), "P1DT1H");
+		assert_eq!(Duration::from_minutes(1500).to_iso_string(), "P1DT1H");
+		assert_eq!(Duration::from_seconds(90000).to_iso_string(), "P1DT1H");
+	}
+
+	#[test]
+	fn test_duration_iso_string_edge_cases() {
+		assert_eq!(Duration::from_nanoseconds(1).to_iso_string(), "PT0.000000001S");
+		assert_eq!(Duration::from_nanoseconds(999999999).to_iso_string(), "PT0.999999999S");
+		assert_eq!(Duration::from_nanoseconds(1000000000).to_iso_string(), "PT1S");
+		assert_eq!(Duration::from_nanoseconds(60 * 1000000000).to_iso_string(), "PT1M");
+		assert_eq!(Duration::from_nanoseconds(3600 * 1000000000).to_iso_string(), "PT1H");
+		assert_eq!(Duration::from_nanoseconds(86400 * 1000000000).to_iso_string(), "P1D");
+	}
+
+	#[test]
+	fn test_duration_iso_string_precision() {
+		assert_eq!(Duration::from_nanoseconds(100).to_iso_string(), "PT0.0000001S");
+		assert_eq!(Duration::from_nanoseconds(10).to_iso_string(), "PT0.00000001S");
+		assert_eq!(Duration::from_nanoseconds(1).to_iso_string(), "PT0.000000001S");
+	}
+
+	// ---- Display tests (human-readable format) ----
+
 	#[test]
 	fn test_duration_display_zero() {
-		let duration = Duration::zero();
-		assert_eq!(format!("{}", duration), "PT0S");
-
-		let duration = Duration::from_seconds(0);
-		assert_eq!(format!("{}", duration), "PT0S");
-
-		let duration = Duration::from_nanoseconds(0);
-		assert_eq!(format!("{}", duration), "PT0S");
-
-		let duration = Duration::default();
-		assert_eq!(format!("{}", duration), "PT0S");
+		assert_eq!(format!("{}", Duration::zero()), "0s");
+		assert_eq!(format!("{}", Duration::from_seconds(0)), "0s");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(0)), "0s");
+		assert_eq!(format!("{}", Duration::default()), "0s");
 	}
 
 	#[test]
 	fn test_duration_display_seconds_only() {
-		let duration = Duration::from_seconds(1);
-		assert_eq!(format!("{}", duration), "PT1S");
-
-		let duration = Duration::from_seconds(30);
-		assert_eq!(format!("{}", duration), "PT30S");
-
-		let duration = Duration::from_seconds(59);
-		assert_eq!(format!("{}", duration), "PT59S");
+		assert_eq!(format!("{}", Duration::from_seconds(1)), "1s");
+		assert_eq!(format!("{}", Duration::from_seconds(30)), "30s");
+		assert_eq!(format!("{}", Duration::from_seconds(59)), "59s");
 	}
 
 	#[test]
 	fn test_duration_display_minutes_only() {
-		let duration = Duration::from_minutes(1);
-		assert_eq!(format!("{}", duration), "PT1M");
-
-		let duration = Duration::from_minutes(30);
-		assert_eq!(format!("{}", duration), "PT30M");
-
-		let duration = Duration::from_minutes(59);
-		assert_eq!(format!("{}", duration), "PT59M");
+		assert_eq!(format!("{}", Duration::from_minutes(1)), "1m");
+		assert_eq!(format!("{}", Duration::from_minutes(30)), "30m");
+		assert_eq!(format!("{}", Duration::from_minutes(59)), "59m");
 	}
 
 	#[test]
 	fn test_duration_display_hours_only() {
-		let duration = Duration::from_hours(1);
-		assert_eq!(format!("{}", duration), "PT1H");
-
-		let duration = Duration::from_hours(12);
-		assert_eq!(format!("{}", duration), "PT12H");
-
-		let duration = Duration::from_hours(23);
-		assert_eq!(format!("{}", duration), "PT23H");
+		assert_eq!(format!("{}", Duration::from_hours(1)), "1h");
+		assert_eq!(format!("{}", Duration::from_hours(12)), "12h");
+		assert_eq!(format!("{}", Duration::from_hours(23)), "23h");
 	}
 
 	#[test]
 	fn test_duration_display_days_only() {
-		let duration = Duration::from_days(1);
-		assert_eq!(format!("{}", duration), "P1D");
-
-		let duration = Duration::from_days(7);
-		assert_eq!(format!("{}", duration), "P7D");
-
-		let duration = Duration::from_days(365);
-		assert_eq!(format!("{}", duration), "P365D");
+		assert_eq!(format!("{}", Duration::from_days(1)), "1d");
+		assert_eq!(format!("{}", Duration::from_days(7)), "7d");
+		assert_eq!(format!("{}", Duration::from_days(365)), "365d");
 	}
 
 	#[test]
 	fn test_duration_display_weeks_only() {
-		let duration = Duration::from_weeks(1);
-		assert_eq!(format!("{}", duration), "P7D");
+		assert_eq!(format!("{}", Duration::from_weeks(1)), "7d");
+		assert_eq!(format!("{}", Duration::from_weeks(2)), "14d");
+		assert_eq!(format!("{}", Duration::from_weeks(52)), "364d");
+	}
 
-		let duration = Duration::from_weeks(2);
-		assert_eq!(format!("{}", duration), "P14D");
+	#[test]
+	fn test_duration_display_months_only() {
+		assert_eq!(format!("{}", Duration::from_months(1)), "1mo");
+		assert_eq!(format!("{}", Duration::from_months(6)), "6mo");
+		assert_eq!(format!("{}", Duration::from_months(11)), "11mo");
+	}
 
-		let duration = Duration::from_weeks(52);
-		assert_eq!(format!("{}", duration), "P364D");
+	#[test]
+	fn test_duration_display_years_only() {
+		assert_eq!(format!("{}", Duration::from_years(1)), "1y");
+		assert_eq!(format!("{}", Duration::from_years(10)), "10y");
+		assert_eq!(format!("{}", Duration::from_years(100)), "100y");
 	}
 
 	#[test]
 	fn test_duration_display_combined_time() {
-		// Hours and minutes
-		let duration = Duration::new(0, 0, (1 * 60 * 60 + 30 * 60) * 1_000_000_000);
-		assert_eq!(format!("{}", duration), "PT1H30M");
+		let d = Duration::new(0, 0, (1 * 60 * 60 + 30 * 60) * 1_000_000_000);
+		assert_eq!(format!("{}", d), "1h30m");
 
-		// Minutes and seconds
-		let duration = Duration::new(0, 0, (5 * 60 + 45) * 1_000_000_000);
-		assert_eq!(format!("{}", duration), "PT5M45S");
+		let d = Duration::new(0, 0, (5 * 60 + 45) * 1_000_000_000);
+		assert_eq!(format!("{}", d), "5m45s");
 
-		// Hours, minutes, and seconds
-		let duration = Duration::new(0, 0, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000);
-		assert_eq!(format!("{}", duration), "PT2H30M45S");
+		let d = Duration::new(0, 0, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000);
+		assert_eq!(format!("{}", d), "2h30m45s");
 	}
 
 	#[test]
 	fn test_duration_display_combined_date_time() {
-		// Days and hours
-		let duration = Duration::new(0, 1, 2 * 60 * 60 * 1_000_000_000);
-		assert_eq!(format!("{}", duration), "P1DT2H");
+		assert_eq!(format!("{}", Duration::new(0, 1, 2 * 60 * 60 * 1_000_000_000)), "1d2h");
+		assert_eq!(format!("{}", Duration::new(0, 1, 30 * 60 * 1_000_000_000)), "1d30m");
+		assert_eq!(format!("{}", Duration::new(0, 1, (2 * 60 * 60 + 30 * 60) * 1_000_000_000)), "1d2h30m");
+		assert_eq!(
+			format!("{}", Duration::new(0, 1, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000)),
+			"1d2h30m45s"
+		);
+	}
 
-		// Days and minutes
-		let duration = Duration::new(0, 1, 30 * 60 * 1_000_000_000);
-		assert_eq!(format!("{}", duration), "P1DT30M");
+	#[test]
+	fn test_duration_display_years_months() {
+		assert_eq!(format!("{}", Duration::new(13, 0, 0)), "1y1mo");
+		assert_eq!(format!("{}", Duration::new(27, 0, 0)), "2y3mo");
+	}
 
-		// Days, hours, and minutes
-		let duration = Duration::new(0, 1, (2 * 60 * 60 + 30 * 60) * 1_000_000_000);
-		assert_eq!(format!("{}", duration), "P1DT2H30M");
-
-		// Days, hours, minutes, and seconds
-		let duration = Duration::new(0, 1, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000);
-		assert_eq!(format!("{}", duration), "P1DT2H30M45S");
+	#[test]
+	fn test_duration_display_full_components() {
+		let nanos = (4 * 60 * 60 + 5 * 60 + 6) * 1_000_000_000i64;
+		assert_eq!(format!("{}", Duration::new(14, 3, nanos)), "1y2mo3d4h5m6s");
 	}
 
 	#[test]
 	fn test_duration_display_milliseconds() {
-		let duration = Duration::from_milliseconds(123);
-		assert_eq!(format!("{}", duration), "PT0.123S");
-
-		let duration = Duration::from_milliseconds(1);
-		assert_eq!(format!("{}", duration), "PT0.001S");
-
-		let duration = Duration::from_milliseconds(999);
-		assert_eq!(format!("{}", duration), "PT0.999S");
-
-		let duration = Duration::from_milliseconds(1500);
-		assert_eq!(format!("{}", duration), "PT1.5S");
+		assert_eq!(format!("{}", Duration::from_milliseconds(123)), "123ms");
+		assert_eq!(format!("{}", Duration::from_milliseconds(1)), "1ms");
+		assert_eq!(format!("{}", Duration::from_milliseconds(999)), "999ms");
+		assert_eq!(format!("{}", Duration::from_milliseconds(1500)), "1s500ms");
 	}
 
 	#[test]
 	fn test_duration_display_microseconds() {
-		let duration = Duration::from_microseconds(123456);
-		assert_eq!(format!("{}", duration), "PT0.123456S");
-
-		let duration = Duration::from_microseconds(1);
-		assert_eq!(format!("{}", duration), "PT0.000001S");
-
-		let duration = Duration::from_microseconds(999999);
-		assert_eq!(format!("{}", duration), "PT0.999999S");
-
-		let duration = Duration::from_microseconds(1500000);
-		assert_eq!(format!("{}", duration), "PT1.5S");
+		assert_eq!(format!("{}", Duration::from_microseconds(123456)), "123ms456us");
+		assert_eq!(format!("{}", Duration::from_microseconds(1)), "1us");
+		assert_eq!(format!("{}", Duration::from_microseconds(999999)), "999ms999us");
+		assert_eq!(format!("{}", Duration::from_microseconds(1500000)), "1s500ms");
 	}
 
 	#[test]
 	fn test_duration_display_nanoseconds() {
-		let duration = Duration::from_nanoseconds(123456789);
-		assert_eq!(format!("{}", duration), "PT0.123456789S");
-
-		let duration = Duration::from_nanoseconds(1);
-		assert_eq!(format!("{}", duration), "PT0.000000001S");
-
-		let duration = Duration::from_nanoseconds(999999999);
-		assert_eq!(format!("{}", duration), "PT0.999999999S");
-
-		let duration = Duration::from_nanoseconds(1500000000);
-		assert_eq!(format!("{}", duration), "PT1.5S");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(123456789)), "123ms456us789ns");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(1)), "1ns");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(999999999)), "999ms999us999ns");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(1500000000)), "1s500ms");
 	}
 
 	#[test]
-	fn test_duration_display_fractional_seconds_with_integers() {
-		// Seconds with milliseconds
-		let duration = Duration::new(0, 0, 1 * 1_000_000_000 + 500 * 1_000_000);
-		assert_eq!(format!("{}", duration), "PT1.5S");
+	fn test_duration_display_sub_second_decomposition() {
+		let d = Duration::new(0, 0, 1 * 1_000_000_000 + 500 * 1_000_000);
+		assert_eq!(format!("{}", d), "1s500ms");
 
-		// Seconds with microseconds
-		let duration = Duration::new(0, 0, 2 * 1_000_000_000 + 123456 * 1_000);
-		assert_eq!(format!("{}", duration), "PT2.123456S");
+		let d = Duration::new(0, 0, 2 * 1_000_000_000 + 123456 * 1_000);
+		assert_eq!(format!("{}", d), "2s123ms456us");
 
-		// Seconds with nanoseconds
-		let duration = Duration::new(0, 0, 3 * 1_000_000_000 + 123456789);
-		assert_eq!(format!("{}", duration), "PT3.123456789S");
+		let d = Duration::new(0, 0, 3 * 1_000_000_000 + 123456789);
+		assert_eq!(format!("{}", d), "3s123ms456us789ns");
 	}
 
 	#[test]
-	fn test_duration_display_comptokenize_durations() {
-		// Comptokenize interval with all components
-		let duration = Duration::new(0, 1, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000 + 123 * 1_000_000);
-		assert_eq!(format!("{}", duration), "P1DT2H30M45.123S");
+	fn test_duration_display_complex() {
+		let d = Duration::new(0, 1, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000 + 123 * 1_000_000);
+		assert_eq!(format!("{}", d), "1d2h30m45s123ms");
 
-		// Another comptokenize interval
-		let duration = Duration::new(0, 7, (12 * 60 * 60 + 45 * 60 + 30) * 1_000_000_000 + 456789 * 1_000);
-		assert_eq!(format!("{}", duration), "P7DT12H45M30.456789S");
+		let d = Duration::new(0, 7, (12 * 60 * 60 + 45 * 60 + 30) * 1_000_000_000 + 456789 * 1_000);
+		assert_eq!(format!("{}", d), "7d12h45m30s456ms789us");
 	}
 
 	#[test]
-	fn test_duration_display_trailing_zeros_removed() {
-		// Test that trailing zeros are removed from fractional seconds
-		let duration = Duration::from_nanoseconds(100000000); // 0.1 seconds
-		assert_eq!(format!("{}", duration), "PT0.1S");
-
-		let duration = Duration::from_nanoseconds(120000000); // 0.12 seconds
-		assert_eq!(format!("{}", duration), "PT0.12S");
-
-		let duration = Duration::from_nanoseconds(123000000); // 0.123 seconds
-		assert_eq!(format!("{}", duration), "PT0.123S");
-
-		let duration = Duration::from_nanoseconds(123400000); // 0.1234 seconds
-		assert_eq!(format!("{}", duration), "PT0.1234S");
-
-		let duration = Duration::from_nanoseconds(123450000); // 0.12345 seconds
-		assert_eq!(format!("{}", duration), "PT0.12345S");
-
-		let duration = Duration::from_nanoseconds(123456000); // 0.123456 seconds
-		assert_eq!(format!("{}", duration), "PT0.123456S");
-
-		let duration = Duration::from_nanoseconds(123456700); // 0.1234567 seconds
-		assert_eq!(format!("{}", duration), "PT0.1234567S");
-
-		let duration = Duration::from_nanoseconds(123456780); // 0.12345678 seconds
-		assert_eq!(format!("{}", duration), "PT0.12345678S");
-
-		let duration = Duration::from_nanoseconds(123456789); // 0.123456789 seconds
-		assert_eq!(format!("{}", duration), "PT0.123456789S");
+	fn test_duration_display_sub_second_only() {
+		assert_eq!(format!("{}", Duration::from_nanoseconds(100000000)), "100ms");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(120000000)), "120ms");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(123000000)), "123ms");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(100)), "100ns");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(10)), "10ns");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(1000)), "1us");
 	}
 
 	#[test]
-	fn test_duration_display_negative_durations() {
-		// Test negative intervals
-		let duration = Duration::from_seconds(-30);
-		assert_eq!(format!("{}", duration), "PT-30S");
-
-		let duration = Duration::from_minutes(-5);
-		assert_eq!(format!("{}", duration), "PT-5M");
-
-		let duration = Duration::from_hours(-2);
-		assert_eq!(format!("{}", duration), "PT-2H");
-
-		let duration = Duration::from_days(-1);
-		assert_eq!(format!("{}", duration), "P-1D");
+	fn test_duration_display_negative() {
+		assert_eq!(format!("{}", Duration::from_seconds(-30)), "-30s");
+		assert_eq!(format!("{}", Duration::from_minutes(-5)), "-5m");
+		assert_eq!(format!("{}", Duration::from_hours(-2)), "-2h");
+		assert_eq!(format!("{}", Duration::from_days(-1)), "-1d");
 	}
 
 	#[test]
-	fn test_duration_display_large_values() {
-		// Test large intervals
-		let duration = Duration::from_days(1000);
-		assert_eq!(format!("{}", duration), "P1000D");
+	fn test_duration_display_negative_sub_second() {
+		assert_eq!(format!("{}", Duration::from_milliseconds(-500)), "-500ms");
+		assert_eq!(format!("{}", Duration::from_microseconds(-100)), "-100us");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(-50)), "-50ns");
+	}
 
-		let duration = Duration::from_hours(25);
-		assert_eq!(format!("{}", duration), "P1DT1H");
-
-		let duration = Duration::from_minutes(1500); // 25 hours
-		assert_eq!(format!("{}", duration), "P1DT1H");
-
-		let duration = Duration::from_seconds(90000); // 25 hours
-		assert_eq!(format!("{}", duration), "P1DT1H");
+	#[test]
+	fn test_duration_display_large() {
+		assert_eq!(format!("{}", Duration::from_days(1000)), "1000d");
+		assert_eq!(format!("{}", Duration::from_hours(25)), "1d1h");
+		assert_eq!(format!("{}", Duration::from_minutes(1500)), "1d1h");
+		assert_eq!(format!("{}", Duration::from_seconds(90000)), "1d1h");
 	}
 
 	#[test]
 	fn test_duration_display_edge_cases() {
-		// Test edge cases with single nanosecond
-		let duration = Duration::from_nanoseconds(1);
-		assert_eq!(format!("{}", duration), "PT0.000000001S");
-
-		// Test maximum nanoseconds in a second
-		let duration = Duration::from_nanoseconds(999999999);
-		assert_eq!(format!("{}", duration), "PT0.999999999S");
-
-		// Test exactly 1 second
-		let duration = Duration::from_nanoseconds(1000000000);
-		assert_eq!(format!("{}", duration), "PT1S");
-
-		// Test exactly 1 minute
-		let duration = Duration::from_nanoseconds(60 * 1000000000);
-		assert_eq!(format!("{}", duration), "PT1M");
-
-		// Test exactly 1 hour
-		let duration = Duration::from_nanoseconds(3600 * 1000000000);
-		assert_eq!(format!("{}", duration), "PT1H");
-
-		// Test exactly 1 day
-		let duration = Duration::from_nanoseconds(86400 * 1000000000);
-		assert_eq!(format!("{}", duration), "P1D");
-	}
-
-	#[test]
-	fn test_duration_display_precision_boundaries() {
-		// Test precision boundaries
-		let duration = Duration::from_nanoseconds(100); // 0.0000001 seconds
-		assert_eq!(format!("{}", duration), "PT0.0000001S");
-
-		let duration = Duration::from_nanoseconds(10); // 0.00000001 seconds
-		assert_eq!(format!("{}", duration), "PT0.00000001S");
-
-		let duration = Duration::from_nanoseconds(1); // 0.000000001 seconds
-		assert_eq!(format!("{}", duration), "PT0.000000001S");
-	}
-
-	#[test]
-	fn test_duration_display_from_nanos() {
-		// Test the from_nanos method
-		let duration = Duration::from_nanoseconds(123456789);
-		assert_eq!(format!("{}", duration), "PT0.123456789S");
-
-		let duration = Duration::from_nanoseconds(3661000000000); // 1 hour 1 minute 1 second
-		assert_eq!(format!("{}", duration), "PT1H1M1S");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(1)), "1ns");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(999999999)), "999ms999us999ns");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(1000000000)), "1s");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(60 * 1000000000)), "1m");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(3600 * 1000000000)), "1h");
+		assert_eq!(format!("{}", Duration::from_nanoseconds(86400 * 1000000000)), "1d");
 	}
 
 	#[test]
 	fn test_duration_display_abs_and_negate() {
-		// Test absolute value
-		let duration = Duration::from_seconds(-30);
-		let abs_duration = duration.abs();
-		assert_eq!(format!("{}", abs_duration), "PT30S");
+		let d = Duration::from_seconds(-30);
+		assert_eq!(format!("{}", d.abs()), "30s");
 
-		// Test negation
-		let duration = Duration::from_seconds(30);
-		let neg_duration = duration.negate();
-		assert_eq!(format!("{}", neg_duration), "PT-30S");
+		let d = Duration::from_seconds(30);
+		assert_eq!(format!("{}", d.negate()), "-30s");
 	}
 }
