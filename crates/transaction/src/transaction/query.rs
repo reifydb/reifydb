@@ -11,7 +11,7 @@ use reifydb_core::{
 			handler::HandlerDef,
 			id::{
 				HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-				SubscriptionId, TableId, ViewId,
+				SubscriptionId, TableId, TestId, ViewId,
 			},
 			migration::MigrationDef,
 			namespace::Namespace,
@@ -22,6 +22,7 @@ use reifydb_core::{
 			subscription::SubscriptionDef,
 			sumtype::SumTypeDef,
 			table::TableDef,
+			test::TestDef,
 			user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
 			user_authentication::{UserAuthenticationDef, UserAuthenticationId},
 			view::ViewDef,
@@ -42,8 +43,9 @@ use crate::{
 		TransactionalHandlerChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
 		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
 		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalUserAuthenticationChanges,
-		TransactionalUserChanges, TransactionalUserRoleChanges, TransactionalViewChanges,
+		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
+		TransactionalUserAuthenticationChanges, TransactionalUserChanges, TransactionalUserRoleChanges,
+		TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -231,6 +233,24 @@ impl TransactionalProcedureChanges for QueryTransaction {
 	}
 
 	fn is_procedure_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalTestChanges for QueryTransaction {
+	fn find_test(&self, _id: TestId) -> Option<&TestDef> {
+		None
+	}
+
+	fn find_test_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&TestDef> {
+		None
+	}
+
+	fn is_test_deleted(&self, _id: TestId) -> bool {
+		false
+	}
+
+	fn is_test_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

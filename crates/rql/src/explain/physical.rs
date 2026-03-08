@@ -542,6 +542,12 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::CreateTag(_) => {
 			write_node_header(output, prefix, is_last, "CreateTag");
 		}
+		PhysicalPlan::CreateTest(_) => {
+			write_node_header(output, prefix, is_last, "CreateTest");
+		}
+		PhysicalPlan::RunTests(_) => {
+			write_node_header(output, prefix, is_last, "RunTests");
+		}
 
 		PhysicalPlan::CreateMigration(_) => {
 			write_node_header(output, prefix, is_last, "CreateMigration");

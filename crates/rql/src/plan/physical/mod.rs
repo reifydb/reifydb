@@ -85,6 +85,8 @@ pub enum PhysicalPlan<'bump> {
 
 	CreateSeries(nodes::CreateSeriesNode),
 	CreateTag(nodes::CreateTagNode),
+	CreateTest(nodes::CreateTestNode),
+	RunTests(nodes::RunTestsNode),
 	CreateMigration(nodes::CreateMigrationNode),
 	Migrate(nodes::MigrateNode),
 	RollbackMigration(nodes::RollbackMigrationNode),
@@ -626,6 +628,93 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::CreateProcedure(create) => {
 					stack.push(self.compile_create_procedure(rx, create)?);
 				}
+
+				LogicalPlan::CreateTest(create) => {
+					stack.push(self.compile_create_test(rx, create)?);
+				}
+
+				LogicalPlan::RunTests(scope) => match scope {
+					logical::RunTestsNode::All => {
+						stack.push(PhysicalPlan::RunTests(nodes::RunTestsNode {
+							scope: nodes::RunTestsScope::All,
+						}));
+					}
+					logical::RunTestsNode::Namespace(ns) => {
+						let namespace_name = ns
+							.segments
+							.iter()
+							.map(|n| n.text())
+							.collect::<Vec<_>>()
+							.join("::");
+						let Some(namespace_def) =
+							self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						else {
+							let ns_fragment = if let Some(n) = ns.segments.first() {
+								let interned = self.interner.intern_fragment(n);
+								interned.with_text(&namespace_name)
+							} else {
+								Fragment::internal("default".to_string())
+							};
+							return_error!(namespace_not_found(
+								ns_fragment,
+								&namespace_name
+							));
+						};
+						let namespace_id = if let Some(n) = ns.segments.first() {
+							let interned = self.interner.intern_fragment(n);
+							interned.with_text(&namespace_name)
+						} else {
+							Fragment::internal(namespace_name)
+						};
+						let resolved_namespace =
+							ResolvedNamespace::new(namespace_id, namespace_def);
+						stack.push(PhysicalPlan::RunTests(nodes::RunTestsNode {
+							scope: nodes::RunTestsScope::Namespace(resolved_namespace),
+						}));
+					}
+					logical::RunTestsNode::Single(test) => {
+						let namespace_name = if test.namespace.is_empty() {
+							"default".to_string()
+						} else {
+							test.namespace
+								.iter()
+								.map(|n| n.text())
+								.collect::<Vec<_>>()
+								.join("::")
+						};
+						let Some(namespace_def) =
+							self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						else {
+							let ns_fragment = if let Some(n) = test.namespace.first() {
+								let interned = self.interner.intern_fragment(n);
+								interned.with_text(&namespace_name)
+							} else {
+								Fragment::internal("default".to_string())
+							};
+							return_error!(namespace_not_found(
+								ns_fragment,
+								&namespace_name
+							));
+						};
+						let namespace_id = if let Some(n) = test.namespace.first() {
+							let interned = self.interner.intern_fragment(n);
+							interned.with_text(&namespace_name)
+						} else {
+							Fragment::internal(namespace_name)
+						};
+						let resolved_namespace =
+							ResolvedNamespace::new(namespace_id, namespace_def);
+						stack.push(PhysicalPlan::RunTests(nodes::RunTestsNode {
+							scope: nodes::RunTestsScope::Single(
+								resolved_namespace,
+								self.interner
+									.intern_fragment(&test.name)
+									.text()
+									.to_string(),
+							),
+						}));
+					}
+				},
 
 				LogicalPlan::CreateSeries(create) => {
 					stack.push(self.compile_create_series(rx, create)?);

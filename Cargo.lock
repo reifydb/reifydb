@@ -1803,6 +1803,7 @@ dependencies = [
  "reifydb-subscription",
  "reifydb-transaction",
  "reifydb-type",
+ "test_each_file",
  "tokio",
  "tracing",
  "tracing-opentelemetry",

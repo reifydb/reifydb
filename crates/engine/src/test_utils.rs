@@ -41,7 +41,7 @@ use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::transaction::{MultiTransaction, register_oracle_defaults},
 	single::SingleTransaction,
-	transaction::{admin::AdminTransaction, command::CommandTransaction},
+	transaction::admin::AdminTransaction,
 };
 use reifydb_type::{
 	fragment::Fragment,

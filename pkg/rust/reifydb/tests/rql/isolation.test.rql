@@ -1,0 +1,20 @@
+// Verify each test block gets a fresh database
+
+test("create namespace - first") {
+    CREATE NAMESPACE isolated
+}
+
+// This would fail if the DB were shared with the previous test
+test("create same namespace - second") {
+    CREATE NAMESPACE isolated
+}
+
+test("create table - first") {
+    CREATE NAMESPACE ns;
+    CREATE TABLE ns::data { id: int4 }
+}
+
+test("create same table - second") {
+    CREATE NAMESPACE ns;
+    CREATE TABLE ns::data { id: int4 }
+}

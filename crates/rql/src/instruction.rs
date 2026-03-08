@@ -11,10 +11,10 @@ use crate::{
 		self, AlterSequenceNode, CreateColumnPropertyNode, CreateDeferredViewNode, CreateDictionaryNode,
 		CreateEventNode, CreateMigrationNode, CreateNamespaceNode, CreatePrimaryKeyNode, CreateProcedureNode,
 		CreateRemoteNamespaceNode, CreateRingBufferNode, CreateSeriesNode, CreateSubscriptionNode,
-		CreateSumTypeNode, CreateTableNode, CreateTagNode, CreateTransactionalViewNode, DeleteRingBufferNode,
-		DeleteSeriesNode, DeleteTableNode, DispatchNode, FunctionParameter, InsertDictionaryNode,
-		InsertRingBufferNode, InsertSeriesNode, InsertTableNode, MigrateNode, RollbackMigrationNode,
-		UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
+		CreateSumTypeNode, CreateTableNode, CreateTagNode, CreateTestNode, CreateTransactionalViewNode,
+		DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, DispatchNode, FunctionParameter,
+		InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode, InsertTableNode, MigrateNode,
+		RollbackMigrationNode, RunTestsNode, UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -167,6 +167,8 @@ pub enum Instruction {
 	CreateSeries(CreateSeriesNode),
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
+	CreateTest(CreateTestNode),
+	RunTests(RunTestsNode),
 
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),

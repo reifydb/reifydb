@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::error::{AstErrorKind, Error, TypeError};
+
 use crate::{
 	Result,
 	ast::{
 		ast::{
-			Ast, AstCallFunction, AstEnvironment, AstFrom, AstIdentity, AstRequire, AstRownum, AstVariable,
-			AstWildcard,
+			Ast, AstCallFunction, AstEnvironment, AstFrom, AstIdentity, AstRequire, AstRownum, AstRunTests,
+			AstVariable, AstWildcard,
 		},
-		identifier::MaybeQualifiedFunctionIdentifier,
+		identifier::{
+			MaybeQualifiedFunctionIdentifier, MaybeQualifiedNamespaceIdentifier,
+			MaybeQualifiedTestIdentifier,
+		},
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
@@ -115,6 +120,64 @@ impl<'bump> Parser<'bump> {
 					Keyword::Migrate => Ok(Ast::Migrate(self.parse_migrate()?)),
 					Keyword::Rollback => {
 						Ok(Ast::RollbackMigration(self.parse_rollback_migration()?))
+					}
+					Keyword::Run => {
+						let token = self.advance()?;
+						if (self.consume_if(TokenKind::Keyword(Keyword::Tests))?).is_some() {
+							// RUN TESTS [namespace]
+							if self.is_eof()
+								|| self.current()?.is_separator(NewLine) || self
+								.current()?
+								.is_operator(Operator::Pipe) || matches!(
+								self.current()?.kind,
+								TokenKind::Separator(_)
+							) {
+								return Ok(Ast::RunTests(AstRunTests::All {
+									token,
+								}));
+							}
+							// Parse namespace
+							let segments =
+								self.parse_double_colon_separated_identifiers()?;
+							let namespace = MaybeQualifiedNamespaceIdentifier::new(
+								segments.into_iter()
+									.map(|s| s.into_fragment())
+									.collect(),
+							);
+							return Ok(Ast::RunTests(AstRunTests::Namespace {
+								token,
+								namespace,
+							}));
+						} else if (self.consume_if(TokenKind::Keyword(Keyword::Test))?)
+							.is_some()
+						{
+							// RUN TEST ns::test_name
+							let mut segments =
+								self.parse_double_colon_separated_identifiers()?;
+							let name = segments.pop().unwrap().into_fragment();
+							let namespace: Vec<_> = segments
+								.into_iter()
+								.map(|s| s.into_fragment())
+								.collect();
+							let test_ident = MaybeQualifiedTestIdentifier::new(name)
+								.with_namespace(namespace);
+							return Ok(Ast::RunTests(AstRunTests::Single {
+								token,
+								test: test_ident,
+							}));
+						} else {
+							let fragment = self.current()?.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "TESTS or TEST after RUN".to_string(),
+								},
+								message: format!(
+									"expected TESTS or TEST after RUN, found `{}`",
+									fragment.text()
+								),
+								fragment,
+							}));
+						}
 					}
 					Keyword::Loop => Ok(Ast::Loop(self.parse_loop()?)),
 					Keyword::While => Ok(Ast::While(self.parse_while()?)),

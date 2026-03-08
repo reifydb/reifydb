@@ -44,6 +44,9 @@ tracing-opentelemetry = { workspace = true, optional = true }
 
 libc = { workspace = true }
 
+[dev-dependencies]
+test_each_file = { workspace = true }
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

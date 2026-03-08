@@ -6,62 +6,94 @@
 use reifydb::server;
 use reifydb_type::params::Params;
 
+fn admin(db: &reifydb::Database, label: &str, cmd: &str) {
+	println!("\n--- {label} ---");
+	println!("> {cmd}");
+	match db.admin_as_root(cmd, Params::None) {
+		Ok(frames) => {
+			for frame in &frames {
+				println!("{frame}");
+			}
+		}
+		Err(e) => println!("ERROR: {e}"),
+	}
+}
+
+fn query(db: &reifydb::Database, label: &str, cmd: &str) {
+	println!("\n--- {label} ---");
+	println!("> {cmd}");
+	match db.query_as_root(cmd, Params::None) {
+		Ok(frames) => {
+			for frame in &frames {
+				println!("{frame}");
+			}
+		}
+		Err(e) => println!("ERROR: {e}"),
+	}
+}
+
 fn main() {
 	let db = server::memory().build().unwrap();
 
-	println!("--- Schema setup ---");
-	let frames = db.admin_as_root("CREATE NAMESPACE test", Params::None).unwrap();
-	for frame in &frames {
-		println!("{}", frame);
-	}
-
-	let frames = db
-		.admin_as_root(
-			"CREATE ENUM test::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
-			Params::None,
-		)
-		.unwrap();
-	for frame in &frames {
-		println!("{}", frame);
-	}
-
-	let frames =
-		db.admin_as_root("CREATE TABLE test::drawings { id: Int4, shape: test::Shape }", Params::None).unwrap();
-	for frame in &frames {
-		println!("{}", frame);
-	}
-
-	println!("\n--- INSERT ---");
-	let result = db.command_as_root(
-		r#"INSERT test::drawings [
-			{ id: 1, shape: test::Shape::Circle { radius: 5.0 } },
-			{ id: 2, shape: test::Shape::Rectangle { width: 3.0, height: 4.0 } },
-			{ id: 3, shape: test::Shape::Circle { radius: 10.0 } }
+	// ── Schema ──────────────────────────────────────────────
+	admin(&db, "Create namespace", "CREATE NAMESPACE demo");
+	admin(&db, "Create table", "CREATE TABLE demo::users { id: Int4, name: Text, active: Boolean }");
+	admin(
+		&db,
+		"Insert seed data",
+		r#"INSERT demo::users [
+			{ id: 1, name: "Alice",   active: true  },
+			{ id: 2, name: "Bob",     active: true  },
+			{ id: 3, name: "Charlie", active: false }
 		]"#,
-		Params::None,
 	);
-	match result {
-		Ok(frames) => {
-			println!("SUCCESS:");
-			for frame in &frames {
-				println!("{}", frame);
-			}
-		}
-		Err(e) => {
-			println!("ERROR: {}", e);
-		}
-	}
 
-	println!("\n--- FROM test::drawings ---");
-	let result = db.command_as_root("FROM test::drawings", Params::None);
-	match result {
-		Ok(frames) => {
-			for frame in &frames {
-				println!("{}", frame);
-			}
-		}
-		Err(e) => {
-			println!("ERROR: {}", e);
-		}
-	}
+	// ── First-class tests ───────────────────────────────────
+	admin(
+		&db,
+		"CREATE TEST — checks Alice is present",
+		r#"CREATE TEST demo::alice_exists {
+			FROM demo::users | FILTER name == "Alice" | ASSERT { name == "Alice" }
+		}"#,
+	);
+
+	admin(
+		&db,
+		"CREATE TEST — checks Bob is active",
+		r#"CREATE TEST demo::bob_active {
+			FROM demo::users | FILTER name == "Bob" | ASSERT { active == true }
+		}"#,
+	);
+
+	admin(
+		&db,
+		"CREATE TEST — deliberately failing (Charlie is inactive)",
+		r#"CREATE TEST demo::charlie_is_active {
+			FROM demo::users | FILTER name == "Charlie" | ASSERT { active == true }
+		}"#,
+	);
+
+	// ── Run tests ───────────────────────────────────────────
+	admin(&db, "RUN TESTS demo (all in namespace)", "RUN TESTS demo");
+
+	admin(&db, "RUN TEST (single passing)", "RUN TEST demo::alice_exists");
+
+	admin(&db, "RUN TEST (single failing)", "RUN TEST demo::charlie_is_active");
+
+	// ── Tests with mutations ────────────────────────────────
+	admin(
+		&db,
+		"CREATE TEST — inserts inside test body",
+		r#"CREATE TEST demo::insert_in_test {
+			INSERT demo::users [{ id: 99, name: "Ghost", active: true }];
+			FROM demo::users | FILTER id == 99 | ASSERT { name == "Ghost" }
+		}"#,
+	);
+
+	admin(&db, "Run the insert test", "RUN TEST demo::insert_in_test");
+
+	query(&db, "Verify Ghost row exists (no per-test rollback yet)", "FROM demo::users | FILTER id == 99");
+
+	// ── Run all tests ───────────────────────────────────────
+	admin(&db, "RUN TESTS (all tests in database)", "RUN TESTS");
 }

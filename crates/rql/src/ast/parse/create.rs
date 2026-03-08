@@ -15,7 +15,7 @@ use crate::{
 			AstCreateColumnProperty, AstCreateDeferredView, AstCreateDictionary, AstCreateEvent,
 			AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
 			AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries,
-			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
+			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest,
 			AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKeyDef,
 			AstProcedureParam, AstStatement, AstTimestampPrecision, AstType, AstVariantDef,
 		},
@@ -23,7 +23,7 @@ use crate::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
 			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
 			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
 			MaybeQualifiedTransactionalViewIdentifier,
 		},
 		parse::{Parser, Precedence},
@@ -34,7 +34,7 @@ use crate::{
 			Keyword,
 			Keyword::{
 				Create, Deferred, Dictionary, Exists, For, If, Namespace, Remote, Replace, Ringbuffer,
-				Series, Subscription, Table, Tag, Transactional, View,
+				Series, Subscription, Table, Tag, Test, Transactional, View,
 			},
 		},
 		operator::{
@@ -164,6 +164,10 @@ impl<'bump> Parser<'bump> {
 			return self.parse_procedure(token);
 		}
 
+		if (self.consume_if(TokenKind::Keyword(Test))?).is_some() {
+			return self.parse_test(token);
+		}
+
 		if (self.consume_if(TokenKind::Keyword(Keyword::Event))?).is_some() {
 			return self.parse_event(token);
 		}
@@ -272,6 +276,64 @@ impl<'bump> Parser<'bump> {
 			token,
 			name: proc_ident,
 			params,
+			body,
+			body_source,
+		}))
+	}
+
+	fn parse_test(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+		// Parse dot-separated name: ns::test_name
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+
+		let test_ident = MaybeQualifiedTestIdentifier::new(name).with_namespace(namespace);
+
+		// Consume opening brace
+		self.consume_operator(Operator::OpenCurly)?;
+
+		// Track token position for body source reconstruction
+		let body_start_pos = self.position;
+
+		let mut body = Vec::new();
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let node = self.parse_node(Precedence::None)?;
+			body.push(node);
+
+			// Handle pipe operator between nodes (e.g., FROM x | FILTER y | ASSERT z)
+			if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+				self.advance()?;
+				continue;
+			}
+
+			// Try to consume separator
+			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
+		}
+
+		// Capture body source
+		let body_end_pos = self.position;
+		let body_source = if body_start_pos < body_end_pos {
+			let start = self.tokens[body_start_pos].fragment.offset();
+			let end = self.tokens[body_end_pos - 1].fragment.offset()
+				+ self.tokens[body_end_pos - 1].fragment.text().len();
+			self.source[start..end].trim().to_string()
+		} else {
+			String::new()
+		};
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstCreate::Test(AstCreateTest {
+			token,
+			name: test_ident,
 			body,
 			body_source,
 		}))

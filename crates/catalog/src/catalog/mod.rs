@@ -31,6 +31,7 @@ pub mod series;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
+pub mod test;
 pub mod user;
 pub mod view;
 pub mod vtable;

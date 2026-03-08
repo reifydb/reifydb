@@ -1,0 +1,17 @@
+// LET and variable usage
+
+test("let and assert") {
+    LET $x = 5;
+    ASSERT { $x == 5 }
+}
+
+test("let with arithmetic") {
+    LET $a = 10;
+    LET $b = 20;
+    ASSERT { $a + $b == 30 }
+}
+
+test("let with string") {
+    LET $name = "Alice";
+    ASSERT { $name == "Alice" }
+}

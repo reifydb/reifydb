@@ -18,6 +18,7 @@ pub mod series;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
+pub mod test;
 pub mod user;
 pub mod user_authentication;
 pub mod user_role;

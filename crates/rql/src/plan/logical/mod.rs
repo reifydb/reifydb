@@ -41,16 +41,17 @@ use crate::{
 	ast::{
 		ast::{
 			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstInfix, AstPolicyOperationEntry,
-			AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstStatement, AstType, AstVariantDef,
-			InfixOperator,
+			AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstRunTests, AstStatement, AstType,
+			AstVariantDef, InfixOperator,
 		},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedIndexIdentifier,
-			MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
+			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
@@ -285,6 +286,19 @@ impl<'bump> Compiler<'bump> {
 			Ast::RollbackMigration(node) => Ok(LogicalPlan::RollbackMigration(RollbackMigrationNode {
 				target: node.target,
 			})),
+			Ast::RunTests(node) => match node {
+				AstRunTests::All {
+					..
+				} => Ok(LogicalPlan::RunTests(RunTestsNode::All)),
+				AstRunTests::Namespace {
+					namespace,
+					..
+				} => Ok(LogicalPlan::RunTests(RunTestsNode::Namespace(namespace))),
+				AstRunTests::Single {
+					test,
+					..
+				} => Ok(LogicalPlan::RunTests(RunTestsNode::Single(test))),
+			},
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
@@ -376,6 +390,8 @@ pub enum LogicalPlan<'bump> {
 	CreatePrimaryKey(CreatePrimaryKeyNode<'bump>),
 	CreateColumnProperty(CreateColumnPropertyNode<'bump>),
 	CreateProcedure(CreateProcedureNode<'bump>),
+	CreateTest(CreateTestNode<'bump>),
+	RunTests(RunTestsNode<'bump>),
 	CreateSeries(CreateSeriesNode<'bump>),
 	CreateEvent(CreateEventNode<'bump>),
 	CreateTag(CreateTagNode<'bump>),
@@ -891,6 +907,19 @@ pub struct CreateProcedureNode<'bump> {
 	pub on_event: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	/// Variant name for event-triggered procedures
 	pub on_variant: Option<BumpFragment<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct CreateTestNode<'bump> {
+	pub test: MaybeQualifiedTestIdentifier<'bump>,
+	pub body_source: String,
+}
+
+#[derive(Debug)]
+pub enum RunTestsNode<'bump> {
+	All,
+	Namespace(MaybeQualifiedNamespaceIdentifier<'bump>),
+	Single(MaybeQualifiedTestIdentifier<'bump>),
 }
 
 // === Drop nodes ===

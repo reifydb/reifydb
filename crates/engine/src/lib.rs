@@ -20,6 +20,7 @@ pub mod procedure;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod remote;
 #[allow(unused)]
+pub mod test;
 pub mod test_utils;
 pub mod transaction;
 pub mod transform;

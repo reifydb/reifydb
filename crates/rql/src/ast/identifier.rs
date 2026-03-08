@@ -432,3 +432,26 @@ impl<'bump> MaybeQualifiedProcedureIdentifier<'bump> {
 		self
 	}
 }
+
+/// Maybe-qualified test identifier
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedTestIdentifier<'bump> {
+	/// Namespace chain (may be empty or partial)
+	pub namespace: Vec<BumpFragment<'bump>>,
+	/// Test name
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedTestIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}

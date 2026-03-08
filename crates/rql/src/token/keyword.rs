@@ -160,6 +160,9 @@ Event => "EVENT",
 Handler => "HANDLER",
 Dispatch => "DISPATCH",
 Tag => "TAG",
+Test => "TEST",
+Tests => "TESTS",
+Run => "RUN",
 User => "USER",
 Role => "ROLE",
 Grant => "GRANT",
@@ -284,6 +287,9 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("HANDLER", Keyword::Handler);
 	map.insert("DISPATCH", Keyword::Dispatch);
 	map.insert("TAG", Keyword::Tag);
+	map.insert("TEST", Keyword::Test);
+	map.insert("TESTS", Keyword::Tests);
+	map.insert("RUN", Keyword::Run);
 	map.insert("USER", Keyword::User);
 	map.insert("ROLE", Keyword::Role);
 	map.insert("GRANT", Keyword::Grant);
@@ -506,6 +512,9 @@ pub mod tests {
 	test_keyword_feature => (Feature, "FEATURE"),
 	test_keyword_authentication => (Authentication, "AUTHENTICATION"),
 	test_keyword_contains => (Contains, "CONTAINS"),
+	test_keyword_test => (Test, "TEST"),
+	test_keyword_tests => (Tests, "TESTS"),
+	test_keyword_run => (Run, "RUN"),
 	}
 
 	fn check_no_keyword(repr: &str) {
@@ -664,6 +673,9 @@ pub mod tests {
 	test_not_keyword_feature => ( "feature"),
 	test_not_keyword_authentication => ( "authentication"),
 	test_not_keyword_contains => ( "contains"),
+	test_not_keyword_test => ( "test"),
+	test_not_keyword_tests => ( "tests"),
+	test_not_keyword_run => ( "run"),
 	}
 
 	#[test]

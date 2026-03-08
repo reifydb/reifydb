@@ -97,6 +97,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::Require(_) => "Require",
 		Ast::Migrate(_) => "Migrate",
 		Ast::RollbackMigration(_) => "RollbackMigration",
+		Ast::RunTests(_) => "RunTests",
 	};
 
 	let branch = if is_last {

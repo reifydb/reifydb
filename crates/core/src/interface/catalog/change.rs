@@ -21,6 +21,7 @@ use crate::interface::catalog::{
 	subscription::SubscriptionDef,
 	sumtype::SumTypeDef,
 	table::TableDef,
+	test::TestDef,
 	user::{RoleDef, UserDef, UserRoleDef},
 	user_authentication::UserAuthenticationDef,
 	view::ViewDef,
@@ -116,6 +117,13 @@ pub trait CatalogTrackProcedureChangeOperations {
 	fn track_procedure_def_deleted(&mut self, procedure: ProcedureDef) -> Result<()>;
 }
 
+/// Trait for tracking test definition changes during a transaction.
+pub trait CatalogTrackTestChangeOperations {
+	fn track_test_def_created(&mut self, test: TestDef) -> Result<()>;
+
+	fn track_test_def_deleted(&mut self, test: TestDef) -> Result<()>;
+}
+
 /// Trait for tracking handler definition changes during a transaction.
 pub trait CatalogTrackHandlerChangeOperations {
 	fn track_handler_def_created(&mut self, handler: HandlerDef) -> Result<()>;
@@ -192,6 +200,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackSubscriptionChangeOperations
 	+ CatalogTrackSumTypeChangeOperations
 	+ CatalogTrackTableChangeOperations
+	+ CatalogTrackTestChangeOperations
 	+ CatalogTrackUserAuthenticationChangeOperations
 	+ CatalogTrackUserChangeOperations
 	+ CatalogTrackUserRoleChangeOperations

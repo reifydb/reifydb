@@ -830,6 +830,14 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateTag(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateTest(node) => {
+				self.emit(Instruction::CreateTest(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::RunTests(node) => {
+				self.emit(Instruction::RunTests(node));
+				self.emit(Instruction::Emit);
+			}
 
 			PhysicalPlan::CreateMigration(node) => {
 				self.emit(Instruction::CreateMigration(node));

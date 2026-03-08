@@ -17,6 +17,7 @@ pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod tag;
+pub mod test;
 pub mod transactional;
 
 use reifydb_transaction::transaction::Transaction;
@@ -72,6 +73,7 @@ impl<'bump> Compiler<'bump> {
 				operations: node.operations,
 			})),
 			AstCreate::Migration(node) => self.compile_create_migration(node),
+			AstCreate::Test(node) => self.compile_create_test(node),
 		}
 	}
 }

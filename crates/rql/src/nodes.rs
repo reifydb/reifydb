@@ -64,6 +64,8 @@ pub enum PhysicalPlan {
 	CreateSeries(CreateSeriesNode),
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
+	CreateTest(CreateTestNode),
+	RunTests(RunTestsNode),
 
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),
@@ -307,6 +309,27 @@ pub struct CreateTagNode {
 	pub namespace: Namespace,
 	pub name: Fragment,
 	pub variants: Vec<CreateSumTypeVariant>,
+}
+
+// Create Test node
+#[derive(Debug, Clone)]
+pub struct CreateTestNode {
+	pub namespace: NamespaceDef,
+	pub name: Fragment,
+	pub body_source: String,
+}
+
+// Run Tests node
+#[derive(Debug, Clone)]
+pub struct RunTestsNode {
+	pub scope: RunTestsScope,
+}
+
+#[derive(Debug, Clone)]
+pub enum RunTestsScope {
+	All,
+	Namespace(ResolvedNamespace),
+	Single(ResolvedNamespace, String),
 }
 
 /// Physical node for CREATE MIGRATION

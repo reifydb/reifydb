@@ -9,7 +9,7 @@ tokenize 'create primary key pk_users on test::users {id}'
 >   [  2] Keyword(Key)
 >   [  3] Identifier("pk_users")
 >   [  4] Keyword(On)
->   [  5] Identifier("test")
+>   [  5] Keyword(Test)
 >   [  6] Operator(DoubleColon)
 >   [  7] Identifier("users")
 >   [  8] Operator(OpenCurly)

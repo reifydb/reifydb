@@ -14,7 +14,7 @@ use crate::{
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIndexIdentifier,
 		MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
 		MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier,
-		MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+		MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
 		MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier, UnqualifiedIdentifier,
 		UnresolvedPrimitiveIdentifier,
 	},
@@ -129,6 +129,7 @@ pub enum Ast<'bump> {
 	Require(AstRequire<'bump>),
 	Migrate(AstMigrate<'bump>),
 	RollbackMigration(AstRollbackMigration<'bump>),
+	RunTests(AstRunTests<'bump>),
 }
 
 impl<'bump> Default for Ast<'bump> {
@@ -226,6 +227,7 @@ impl<'bump> Ast<'bump> {
 			Ast::Require(node) => &node.token,
 			Ast::Migrate(node) => &node.token,
 			Ast::RollbackMigration(node) => &node.token,
+			Ast::RunTests(node) => node.token(),
 		}
 	}
 
@@ -246,6 +248,7 @@ impl<'bump> Ast<'bump> {
 				| Ast::Alter(_) | Ast::Drop(_)
 				| Ast::Grant(_) | Ast::Revoke(_)
 				| Ast::Migrate(_) | Ast::RollbackMigration(_)
+				| Ast::RunTests(_)
 		)
 	}
 
@@ -823,6 +826,7 @@ pub enum AstCreate<'bump> {
 	Authentication(AstCreateAuthentication<'bump>),
 	Policy(AstCreatePolicy<'bump>),
 	Migration(AstCreateMigration<'bump>),
+	Test(AstCreateTest<'bump>),
 }
 
 #[derive(Debug)]
@@ -1023,6 +1027,47 @@ pub struct AstCreateProcedure<'bump> {
 	pub params: Vec<AstProcedureParam<'bump>>,
 	pub body: Vec<Ast<'bump>>,
 	pub body_source: String,
+}
+
+#[derive(Debug)]
+pub struct AstCreateTest<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedTestIdentifier<'bump>,
+	pub body: Vec<Ast<'bump>>,
+	pub body_source: String,
+}
+
+#[derive(Debug)]
+pub enum AstRunTests<'bump> {
+	All {
+		token: Token<'bump>,
+	},
+	Namespace {
+		token: Token<'bump>,
+		namespace: MaybeQualifiedNamespaceIdentifier<'bump>,
+	},
+	Single {
+		token: Token<'bump>,
+		test: MaybeQualifiedTestIdentifier<'bump>,
+	},
+}
+
+impl<'bump> AstRunTests<'bump> {
+	pub fn token(&self) -> &Token<'bump> {
+		match self {
+			AstRunTests::All {
+				token,
+			} => token,
+			AstRunTests::Namespace {
+				token,
+				..
+			} => token,
+			AstRunTests::Single {
+				token,
+				..
+			} => token,
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -1243,6 +1288,10 @@ impl<'bump> AstCreate<'bump> {
 				..
 			}) => token,
 			AstCreate::Migration(AstCreateMigration {
+				token,
+				..
+			}) => token,
+			AstCreate::Test(AstCreateTest {
 				token,
 				..
 			}) => token,

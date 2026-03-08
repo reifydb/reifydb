@@ -1,0 +1,21 @@
+// ASSERT syntax coverage
+
+test("assert true") {
+    ASSERT { true }
+}
+
+test("assert arithmetic") {
+    ASSERT { 1 + 1 == 2 }
+}
+
+test("assert comparison") {
+    ASSERT { 10 > 5 }
+}
+
+test("assert not equal") {
+    ASSERT { 1 != 2 }
+}
+
+test("assert inline pipeline") {
+    FROM [{ x: 1 }, { x: 2 }] | ASSERT { x > 0 }
+}

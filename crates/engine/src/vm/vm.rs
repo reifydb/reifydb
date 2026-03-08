@@ -38,7 +38,7 @@ use super::{
 				property::create_column_property, remote_namespace::create_remote_namespace,
 				ringbuffer::create_ringbuffer, series::create_series,
 				subscription::create_subscription, sumtype::create_sumtype, table::create_table,
-				tag::create_tag, transactional::create_transactional_view,
+				tag::create_tag, test::create_test, transactional::create_transactional_view,
 			},
 			drop::{
 				dictionary::drop_dictionary, namespace::drop_namespace, ringbuffer::drop_ringbuffer,
@@ -68,6 +68,7 @@ use crate::{
 	expression::{context::EvalContext, eval::evaluate},
 	policy::PolicyEvaluator,
 	procedure::context::ProcedureContext,
+	test::run::run_tests,
 	vm::{
 		executor::Executor,
 		instruction::{
@@ -1325,6 +1326,22 @@ impl Vm {
 						}
 					};
 					let columns = create_tag(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateTest(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_test(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::RunTests(node) => {
+					let columns = run_tests(self, services, tx, node.clone(), params)?;
 					self.stack.push(Variable::Columns(columns));
 				}
 

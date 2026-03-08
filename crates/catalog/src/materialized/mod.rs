@@ -18,6 +18,7 @@ pub mod role;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
+pub mod test;
 pub mod user;
 pub mod user_role;
 pub mod view;
@@ -35,7 +36,7 @@ use reifydb_core::{
 		handler::HandlerDef,
 		id::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId,
-			SubscriptionId, TableId, ViewId,
+			SubscriptionId, TableId, TestId, ViewId,
 		},
 		key::PrimaryKeyDef,
 		migration::{MigrationDef, MigrationEvent},
@@ -47,6 +48,7 @@ use reifydb_core::{
 		subscription::SubscriptionDef,
 		sumtype::SumTypeDef,
 		table::TableDef,
+		test::TestDef,
 		user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
 		view::ViewDef,
 		vtable::{VTableDef, VTableId},
@@ -76,6 +78,7 @@ pub type MultiVersionMigrationDef = MultiVersionContainer<MigrationDef>;
 pub type MultiVersionMigrationEvent = MultiVersionContainer<MigrationEvent>;
 pub type MultiVersionProcedureDef = MultiVersionContainer<ProcedureDef>;
 pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
+pub type MultiVersionTestDef = MultiVersionContainer<TestDef>;
 pub type MultiVersionSumTypeDef = MultiVersionContainer<SumTypeDef>;
 pub type MultiVersionSubscriptionDef = MultiVersionContainer<SubscriptionDef>;
 pub type MultiVersionUserDef = MultiVersionContainer<UserDef>;
@@ -115,6 +118,10 @@ pub struct MaterializedCatalogInner {
 	pub(crate) procedures_by_name: SkipMap<(NamespaceId, String), ProcedureId>,
 	/// Index from (sumtype_id, variant_tag) to Vec<ProcedureId> for procedure dispatch
 	pub(crate) procedures_by_variant: SkipMap<(SumTypeId, u8), Vec<ProcedureId>>,
+	/// MultiVersion test definitions indexed by test ID
+	pub(crate) tests: SkipMap<TestId, MultiVersionTestDef>,
+	/// Index from (namespace_id, test_name) to test ID for fast name lookups
+	pub(crate) tests_by_name: SkipMap<(NamespaceId, String), TestId>,
 	/// MultiVersion primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
 	/// MultiVersion source retention policies indexed by source ID
@@ -205,6 +212,8 @@ impl MaterializedCatalog {
 			procedures: SkipMap::new(),
 			procedures_by_name: SkipMap::new(),
 			procedures_by_variant: SkipMap::new(),
+			tests: SkipMap::new(),
+			tests_by_name: SkipMap::new(),
 			tables: SkipMap::new(),
 			tables_by_name: SkipMap::new(),
 			views: SkipMap::new(),

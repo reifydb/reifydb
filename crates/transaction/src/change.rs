@@ -10,7 +10,7 @@ use reifydb_core::{
 		handler::HandlerDef,
 		id::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-			SubscriptionId, TableId, ViewId,
+			SubscriptionId, TableId, TestId, ViewId,
 		},
 		migration::{MigrationDef, MigrationEvent},
 		namespace::Namespace,
@@ -21,6 +21,7 @@ use reifydb_core::{
 		subscription::SubscriptionDef,
 		sumtype::SumTypeDef,
 		table::TableDef,
+		test::TestDef,
 		user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
 		user_authentication::{UserAuthenticationDef, UserAuthenticationId},
 		view::ViewDef,
@@ -44,6 +45,7 @@ pub trait TransactionalChanges:
 	+ TransactionalSubscriptionChanges
 	+ TransactionalSumTypeChanges
 	+ TransactionalTableChanges
+	+ TransactionalTestChanges
 	+ TransactionalUserAuthenticationChanges
 	+ TransactionalUserChanges
 	+ TransactionalUserRoleChanges
@@ -99,6 +101,16 @@ pub trait TransactionalProcedureChanges {
 	fn is_procedure_deleted(&self, id: ProcedureId) -> bool;
 
 	fn is_procedure_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
+pub trait TransactionalTestChanges {
+	fn find_test(&self, id: TestId) -> Option<&TestDef>;
+
+	fn find_test_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&TestDef>;
+
+	fn is_test_deleted(&self, id: TestId) -> bool;
+
+	fn is_test_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
 pub trait TransactionalRingBufferChanges {
@@ -242,6 +254,8 @@ pub struct TransactionalDefChanges {
 	/// All subscription definition changes in order (no coalescing)
 	pub sumtype_def: Vec<Change<SumTypeDef>>,
 	pub subscription_def: Vec<Change<SubscriptionDef>>,
+	/// All test definition changes in order (no coalescing)
+	pub test_def: Vec<Change<TestDef>>,
 	/// All table definition changes in order (no coalescing)
 	pub table_def: Vec<Change<TableDef>>,
 	/// All user definition changes in order (no coalescing)
@@ -365,6 +379,21 @@ impl TransactionalDefChanges {
 		let op = change.op;
 		self.procedure_def.push(change);
 		self.log.push(Operation::Procedure {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_test_def_change(&mut self, change: Change<TestDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|t| t.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.test_def.push(change);
+		self.log.push(Operation::Test {
 			id,
 			op,
 		});
@@ -610,6 +639,10 @@ pub enum Operation {
 		id: SubscriptionId,
 		op: OperationType,
 	},
+	Test {
+		id: TestId,
+		op: OperationType,
+	},
 	Table {
 		id: TableId,
 		op: OperationType,
@@ -657,6 +690,7 @@ impl TransactionalDefChanges {
 			series_def: Vec::new(),
 			sumtype_def: Vec::new(),
 			subscription_def: Vec::new(),
+			test_def: Vec::new(),
 			table_def: Vec::new(),
 			user_def: Vec::new(),
 			user_authentication_def: Vec::new(),
@@ -753,6 +787,7 @@ impl TransactionalDefChanges {
 		self.series_def.clear();
 		self.sumtype_def.clear();
 		self.subscription_def.clear();
+		self.test_def.clear();
 		self.table_def.clear();
 		self.user_def.clear();
 		self.user_authentication_def.clear();
