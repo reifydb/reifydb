@@ -264,6 +264,9 @@ impl FlowCompiler {
 			QueryPlan::RemoteScan(_) => {
 				unimplemented!("RemoteScan is not supported in flow graphs")
 			}
+			QueryPlan::RunTests(_) => {
+				panic!("RunTests is not supported in flow graphs");
+			}
 		}
 	}
 }

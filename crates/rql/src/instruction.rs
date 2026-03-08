@@ -14,7 +14,7 @@ use crate::{
 		CreateSumTypeNode, CreateTableNode, CreateTagNode, CreateTestNode, CreateTransactionalViewNode,
 		DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, DispatchNode, FunctionParameter,
 		InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode, InsertTableNode, MigrateNode,
-		RollbackMigrationNode, RunTestsNode, UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
+		RollbackMigrationNode, UpdateRingBufferNode, UpdateSeriesNode, UpdateTableNode,
 	},
 	query::QueryPlan,
 };
@@ -168,7 +168,6 @@ pub enum Instruction {
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
 	CreateTest(CreateTestNode),
-	RunTests(RunTestsNode),
 
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),

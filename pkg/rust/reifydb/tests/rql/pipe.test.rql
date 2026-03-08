@@ -1,0 +1,12 @@
+# Verify RUN TESTS output can be piped into query operators
+
+CREATE NAMESPACE ptest;
+
+CREATE TABLE ptest::data { id: int4, value: int4 };
+INSERT ptest::data [{ id: 1, value: 10 }];
+
+CREATE TEST ptest::simple_pass {
+    FROM ptest::data | ASSERT { id == 1 }
+};
+
+RUN TESTS | map {name, outcome}

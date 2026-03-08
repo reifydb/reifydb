@@ -5,8 +5,8 @@ use crate::nodes::{
 	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, DictionaryScanNode, DistinctNode, EnvironmentNode,
 	ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode, JoinLeftNode,
 	JoinNaturalNode, MapNode, PatchNode, RemoteScanNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
-	RowRangeScanNode, ScalarizeNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode,
-	VariableNode, ViewScanNode, WindowNode,
+	RowRangeScanNode, RunTestsNode, ScalarizeNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode,
+	TakeNode, VariableNode, ViewScanNode, WindowNode,
 };
 
 #[derive(Debug, Clone)]
@@ -50,4 +50,6 @@ pub enum QueryPlan {
 	Environment(EnvironmentNode),
 
 	Scalarize(ScalarizeNode),
+
+	RunTests(RunTestsNode),
 }

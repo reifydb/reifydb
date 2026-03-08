@@ -368,6 +368,8 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(right))),
 		}),
 
+		PhysicalPlan::RunTests(node) => QueryPlan::RunTests(node),
+
 		// Non-query nodes cannot be materialized to QueryPlan
 		other => panic!(
 			"cannot materialize non-query PhysicalPlan to QueryPlan: {:?}",
@@ -835,7 +837,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::RunTests(node) => {
-				self.emit(Instruction::RunTests(node));
+				self.emit(Instruction::Query(QueryPlan::RunTests(node)));
 				self.emit(Instruction::Emit);
 			}
 

@@ -68,7 +68,6 @@ use crate::{
 	expression::{context::EvalContext, eval::evaluate},
 	policy::PolicyEvaluator,
 	procedure::context::ProcedureContext,
-	test::run::run_tests,
 	vm::{
 		executor::Executor,
 		instruction::{
@@ -1340,11 +1339,6 @@ impl Vm {
 					let columns = create_test(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::RunTests(node) => {
-					let columns = run_tests(self, services, tx, node.clone(), params)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-
 				Instruction::CreateMigration(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,

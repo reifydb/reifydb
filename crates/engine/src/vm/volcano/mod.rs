@@ -58,6 +58,7 @@ pub mod map;
 pub mod patch;
 pub mod query;
 pub mod row_lookup;
+pub mod run_tests;
 pub mod scalarize;
 pub mod scan;
 pub mod sort;

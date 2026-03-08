@@ -51,7 +51,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::constraint::Constraint};
 use tracing::instrument;
 
-use super::{apply_transform::ApplyTransformNode, filter::resolve_is_variant_tags};
+use super::{apply_transform::ApplyTransformNode, filter::resolve_is_variant_tags, run_tests::RunTestsQueryNode};
 use crate::vm::{
 	stack::Variable,
 	volcano::{
@@ -672,6 +672,8 @@ pub(crate) fn compile<'a>(
 				"Append operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 			)
 		}
+
+		RqlQueryPlan::RunTests(node) => Box::new(RunTestsQueryNode::new(node, context.clone())),
 
 		// Row-number optimized access nodes
 		RqlQueryPlan::RowPointLookup(RqlRowPointLookupNode {

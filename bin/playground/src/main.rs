@@ -95,5 +95,5 @@ fn main() {
 	query(&db, "Verify Ghost row exists (no per-test rollback yet)", "FROM demo::users | FILTER id == 99");
 
 	// ── Run all tests ───────────────────────────────────────
-	admin(&db, "RUN TESTS (all tests in database)", "RUN TESTS");
+	admin(&db, "RUN TESTS (all tests in database)", "RUN TESTS | map {name, outcome} | filter {outcome == 'fail'}");
 }
