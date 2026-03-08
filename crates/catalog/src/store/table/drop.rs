@@ -75,7 +75,7 @@ pub mod tests {
 			&mut txn,
 			TableToCreate {
 				name: Fragment::internal("test_table"),
-				namespace: namespace.id,
+				namespace: namespace.id(),
 				columns: vec![],
 				retention_policy: None,
 			},
@@ -83,18 +83,24 @@ pub mod tests {
 		.unwrap();
 
 		// Verify it exists
-		let found =
-			CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), namespace.id, "test_table")
-				.unwrap();
+		let found = CatalogStore::find_table_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace.id(),
+			"test_table",
+		)
+		.unwrap();
 		assert!(found.is_some());
 
 		// Delete it
 		CatalogStore::drop_table(&mut txn, created.id).unwrap();
 
 		// Verify it's gone
-		let found =
-			CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), namespace.id, "test_table")
-				.unwrap();
+		let found = CatalogStore::find_table_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace.id(),
+			"test_table",
+		)
+		.unwrap();
 		assert!(found.is_none());
 	}
 
@@ -174,7 +180,7 @@ pub mod tests {
 		assert!(policy.is_none());
 
 		// Verify table itself is gone
-		let found = CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), ns.id, "meta_table")
+		let found = CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "meta_table")
 			.unwrap();
 		assert!(found.is_none());
 	}

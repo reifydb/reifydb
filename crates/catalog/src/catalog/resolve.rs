@@ -26,7 +26,7 @@ impl Catalog {
 		namespace_id: NamespaceId,
 	) -> Result<ResolvedNamespace> {
 		let def = self.get_namespace(txn, namespace_id)?;
-		let ident = Fragment::internal(def.name.clone());
+		let ident = Fragment::internal(def.name().to_string());
 		Ok(ResolvedNamespace::new(ident, def))
 	}
 
@@ -72,7 +72,7 @@ impl Catalog {
 		target_name: &str,
 	) -> Result<Vec<String>> {
 		let namespace_id = if let Some(ns) = self.find_namespace_by_name(txn, namespace_name)? {
-			ns.id
+			ns.id()
 		} else {
 			return Ok(vec![]);
 		};

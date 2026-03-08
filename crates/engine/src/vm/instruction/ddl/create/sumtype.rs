@@ -19,12 +19,12 @@ pub(crate) fn create_sumtype(
 ) -> Result<Columns> {
 	if let Some(_) = services.catalog.find_sumtype_by_name(
 		&mut Transaction::Admin(&mut *txn),
-		plan.namespace.id,
+		plan.namespace.id(),
 		plan.name.text(),
 	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
-				("namespace", Value::Utf8(plan.namespace.name.clone())),
+				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("sumtype", Value::Utf8(plan.name.text().to_string())),
 				("created", Value::Boolean(false)),
 			]));
@@ -51,14 +51,14 @@ pub(crate) fn create_sumtype(
 		txn,
 		SumTypeToCreate {
 			name: plan.name.clone(),
-			namespace: plan.namespace.id,
+			namespace: plan.namespace.id(),
 			variants: variant_defs,
 			kind: SumTypeKind::Enum,
 		},
 	)?;
 
 	Ok(Columns::single_row([
-		("namespace", Value::Utf8(plan.namespace.name.clone())),
+		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("sumtype", Value::Utf8(plan.name.text().to_string())),
 		("created", Value::Boolean(true)),
 	]))

@@ -3,9 +3,9 @@
 
 use super::{
 	chain::InterceptorChain,
-	namespace_def::{
-		NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor, NamespaceDefPreDeleteInterceptor,
-		NamespaceDefPreUpdateInterceptor,
+	namespace::{
+		NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
+		NamespacePreUpdateInterceptor,
 	},
 	ringbuffer::{
 		RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor, RingBufferPostUpdateInterceptor,
@@ -57,10 +57,10 @@ pub struct Interceptors {
 	pub pre_commit: Chain<dyn PreCommitInterceptor + Send + Sync>,
 	pub post_commit: Chain<dyn PostCommitInterceptor + Send + Sync>,
 	// Namespace definition interceptors
-	pub namespace_def_post_create: Chain<dyn NamespaceDefPostCreateInterceptor + Send + Sync>,
-	pub namespace_def_pre_update: Chain<dyn NamespaceDefPreUpdateInterceptor + Send + Sync>,
-	pub namespace_def_post_update: Chain<dyn NamespaceDefPostUpdateInterceptor + Send + Sync>,
-	pub namespace_def_pre_delete: Chain<dyn NamespaceDefPreDeleteInterceptor + Send + Sync>,
+	pub namespace_post_create: Chain<dyn NamespacePostCreateInterceptor + Send + Sync>,
+	pub namespace_pre_update: Chain<dyn NamespacePreUpdateInterceptor + Send + Sync>,
+	pub namespace_post_update: Chain<dyn NamespacePostUpdateInterceptor + Send + Sync>,
+	pub namespace_pre_delete: Chain<dyn NamespacePreDeleteInterceptor + Send + Sync>,
 	// Table definition interceptors
 	pub table_def_post_create: Chain<dyn TableDefPostCreateInterceptor + Send + Sync>,
 	pub table_def_pre_update: Chain<dyn TableDefPreUpdateInterceptor + Send + Sync>,
@@ -108,10 +108,10 @@ impl Interceptors {
 			ringbuffer_post_delete: InterceptorChain::new(),
 			pre_commit: InterceptorChain::new(),
 			post_commit: InterceptorChain::new(),
-			namespace_def_post_create: InterceptorChain::new(),
-			namespace_def_pre_update: InterceptorChain::new(),
-			namespace_def_post_update: InterceptorChain::new(),
-			namespace_def_pre_delete: InterceptorChain::new(),
+			namespace_post_create: InterceptorChain::new(),
+			namespace_pre_update: InterceptorChain::new(),
+			namespace_post_update: InterceptorChain::new(),
+			namespace_pre_delete: InterceptorChain::new(),
 			table_def_post_create: InterceptorChain::new(),
 			table_def_pre_update: InterceptorChain::new(),
 			table_def_post_update: InterceptorChain::new(),
@@ -156,10 +156,10 @@ impl Clone for Interceptors {
 			ringbuffer_post_delete: self.ringbuffer_post_delete.clone(),
 			pre_commit: self.pre_commit.clone(),
 			post_commit: self.post_commit.clone(),
-			namespace_def_post_create: self.namespace_def_post_create.clone(),
-			namespace_def_pre_update: self.namespace_def_pre_update.clone(),
-			namespace_def_post_update: self.namespace_def_post_update.clone(),
-			namespace_def_pre_delete: self.namespace_def_pre_delete.clone(),
+			namespace_post_create: self.namespace_post_create.clone(),
+			namespace_pre_update: self.namespace_pre_update.clone(),
+			namespace_post_update: self.namespace_post_update.clone(),
+			namespace_pre_delete: self.namespace_pre_delete.clone(),
 			table_def_post_create: self.table_def_post_create.clone(),
 			table_def_pre_update: self.table_def_pre_update.clone(),
 			table_def_post_update: self.table_def_post_update.clone(),

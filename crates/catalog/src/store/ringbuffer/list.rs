@@ -96,7 +96,7 @@ pub mod tests {
 
 		// Create first ring buffer
 		let buffer1 = RingBufferToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("buffer1"),
 			capacity: 100,
 			columns: vec![],
@@ -105,7 +105,7 @@ pub mod tests {
 
 		// Create second ring buffer
 		let buffer2 = RingBufferToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("buffer2"),
 			capacity: 200,
 			columns: vec![],
@@ -138,7 +138,7 @@ pub mod tests {
 
 		// Create buffer in namespace1
 		let buffer1 = RingBufferToCreate {
-			namespace: namespace1.id,
+			namespace: namespace1.id(),
 			name: Fragment::internal("buffer1"),
 			capacity: 100,
 			columns: vec![],
@@ -147,7 +147,7 @@ pub mod tests {
 
 		// Create buffer in namespace2
 		let buffer2 = RingBufferToCreate {
-			namespace: namespace2.id,
+			namespace: namespace2.id(),
 			name: Fragment::internal("buffer2"),
 			capacity: 200,
 			columns: vec![],
@@ -160,10 +160,10 @@ pub mod tests {
 
 		// Check that buffer1 is in namespace1
 		let buffer1_entry = all_buffers.iter().find(|b| b.name == "buffer1").expect("buffer1 should exist");
-		assert_eq!(buffer1_entry.namespace, namespace1.id);
+		assert_eq!(buffer1_entry.namespace, namespace1.id());
 
 		// Check that buffer2 is in namespace2
 		let buffer2_entry = all_buffers.iter().find(|b| b.name == "buffer2").expect("buffer2 should exist");
-		assert_eq!(buffer2_entry.namespace, namespace2.id);
+		assert_eq!(buffer2_entry.namespace, namespace2.id());
 	}
 }

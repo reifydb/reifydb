@@ -11,9 +11,9 @@ use reifydb_transaction::{
 		WithInterceptors,
 		chain::InterceptorChain as Chain,
 		interceptors::Interceptors,
-		namespace_def::{
-			NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
-			NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor,
+		namespace::{
+			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
+			NamespacePreUpdateInterceptor,
 		},
 		ringbuffer::{
 			RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
@@ -356,26 +356,10 @@ impl WithInterceptors for FlowTransaction {
 	interceptor_method!(pre_commit_interceptors, pre_commit, PreCommitInterceptor);
 	interceptor_method!(post_commit_interceptors, post_commit, PostCommitInterceptor);
 
-	interceptor_method!(
-		namespace_def_post_create_interceptors,
-		namespace_def_post_create,
-		NamespaceDefPostCreateInterceptor
-	);
-	interceptor_method!(
-		namespace_def_pre_update_interceptors,
-		namespace_def_pre_update,
-		NamespaceDefPreUpdateInterceptor
-	);
-	interceptor_method!(
-		namespace_def_post_update_interceptors,
-		namespace_def_post_update,
-		NamespaceDefPostUpdateInterceptor
-	);
-	interceptor_method!(
-		namespace_def_pre_delete_interceptors,
-		namespace_def_pre_delete,
-		NamespaceDefPreDeleteInterceptor
-	);
+	interceptor_method!(namespace_post_create_interceptors, namespace_post_create, NamespacePostCreateInterceptor);
+	interceptor_method!(namespace_pre_update_interceptors, namespace_pre_update, NamespacePreUpdateInterceptor);
+	interceptor_method!(namespace_post_update_interceptors, namespace_post_update, NamespacePostUpdateInterceptor);
+	interceptor_method!(namespace_pre_delete_interceptors, namespace_pre_delete, NamespacePreDeleteInterceptor);
 
 	interceptor_method!(table_def_post_create_interceptors, table_def_post_create, TableDefPostCreateInterceptor);
 	interceptor_method!(table_def_pre_update_interceptors, table_def_pre_update, TableDefPreUpdateInterceptor);

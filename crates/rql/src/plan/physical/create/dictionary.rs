@@ -24,7 +24,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			create.dictionary.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = create.dictionary.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(&namespace_name)
@@ -44,7 +44,7 @@ impl<'bump> Compiler<'bump> {
 		let id_type = convert_data_type_with_constraints(&create.id_type)?.get_type();
 
 		Ok(PhysicalPlan::CreateDictionary(CreateDictionaryNode {
-			namespace: namespace_def,
+			namespace,
 			dictionary: self.interner.intern_fragment(&create.dictionary.name),
 			if_not_exists: create.if_not_exists,
 			value_type,

@@ -54,7 +54,7 @@ pub(crate) fn insert_series<'a>(
 	};
 
 	let series_name = plan.target.name();
-	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id, series_name)? else {
+	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
@@ -68,7 +68,7 @@ pub(crate) fn insert_series<'a>(
 	let has_tag = series_def.tag.is_some();
 
 	// Create resolved source for the series
-	let namespace_ident = Fragment::internal(namespace.name.clone());
+	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 	let series_ident = Fragment::internal(series_def.name.clone());
 	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series_def.clone());
@@ -233,7 +233,7 @@ pub(crate) fn insert_series<'a>(
 
 	// Return summary
 	Ok(Columns::single_row([
-		("namespace", Value::Utf8(namespace.name)),
+		("namespace", Value::Utf8(namespace.name().to_string())),
 		("series", Value::Utf8(series_def.name)),
 		("inserted", Value::Uint8(inserted_count)),
 	]))

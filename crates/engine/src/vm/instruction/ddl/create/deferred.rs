@@ -15,12 +15,14 @@ pub(crate) fn create_deferred_view(
 	txn: &mut AdminTransaction,
 	plan: CreateDeferredViewNode,
 ) -> Result<Columns> {
-	if let Some(_) =
-		services.catalog.find_view_by_name(&mut Transaction::Admin(txn), plan.namespace.id, plan.view.text())?
-	{
+	if let Some(_) = services.catalog.find_view_by_name(
+		&mut Transaction::Admin(txn),
+		plan.namespace.id(),
+		plan.view.text(),
+	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
-				("namespace", Value::Utf8(plan.namespace.name.to_string())),
+				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("view", Value::Utf8(plan.view.text().to_string())),
 				("created", Value::Boolean(false)),
 			]));
@@ -31,7 +33,7 @@ pub(crate) fn create_deferred_view(
 		txn,
 		ViewToCreate {
 			name: plan.view.clone(),
-			namespace: plan.namespace.id,
+			namespace: plan.namespace.id(),
 			columns: plan.columns,
 		},
 	)?;
@@ -40,7 +42,7 @@ pub(crate) fn create_deferred_view(
 	create_deferred_view_flow(&services.catalog, txn, &result, *plan.as_clause)?;
 
 	Ok(Columns::single_row([
-		("namespace", Value::Utf8(plan.namespace.name.to_string())),
+		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("view", Value::Utf8(plan.view.text().to_string())),
 		("created", Value::Boolean(true)),
 	]))

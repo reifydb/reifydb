@@ -18,12 +18,12 @@ pub(crate) fn create_dictionary(
 ) -> Result<Columns> {
 	if let Some(_) = services.catalog.find_dictionary_by_name(
 		&mut Transaction::Admin(txn),
-		plan.namespace.id,
+		plan.namespace.id(),
 		plan.dictionary.text(),
 	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
-				("namespace", Value::Utf8(plan.namespace.name.clone())),
+				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("dictionary", Value::Utf8(plan.dictionary.text().to_string())),
 				("created", Value::Boolean(false)),
 			]));
@@ -34,7 +34,7 @@ pub(crate) fn create_dictionary(
 		txn,
 		DictionaryToCreate {
 			name: plan.dictionary.clone(),
-			namespace: plan.namespace.id,
+			namespace: plan.namespace.id(),
 			value_type: plan.value_type,
 			id_type: plan.id_type,
 		},
@@ -42,7 +42,7 @@ pub(crate) fn create_dictionary(
 	txn.track_dictionary_def_created(result)?;
 
 	Ok(Columns::single_row([
-		("namespace", Value::Utf8(plan.namespace.name.clone())),
+		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("dictionary", Value::Utf8(plan.dictionary.text().to_string())),
 		("created", Value::Boolean(true)),
 	]))

@@ -28,7 +28,7 @@ impl<'bump> Compiler<'bump> {
 		match self.catalog.find_namespace_by_name(rx, &full_name)? {
 			Some(def) => Ok(PhysicalPlan::DropNamespace(nodes::DropNamespaceNode {
 				namespace_name,
-				namespace_id: Some(def.id),
+				namespace_id: Some(def.id()),
 				if_exists: drop.if_exists,
 				cascade: drop.cascade,
 			})),
@@ -54,7 +54,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			drop.table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.table.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&namespace_name)
 			} else {
@@ -65,12 +65,12 @@ impl<'bump> Compiler<'bump> {
 
 		let table_name = self.interner.intern_fragment(&drop.table.name);
 		let ns_fragment = if let Some(n) = drop.table.namespace.first() {
-			self.interner.intern_fragment(n).with_text(&namespace_def.name)
+			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace_def.name.clone())
+			Fragment::internal(namespace.name().to_string())
 		};
 
-		match self.catalog.find_table_by_name(rx, namespace_def.id, drop.table.name.text())? {
+		match self.catalog.find_table_by_name(rx, namespace.id(), drop.table.name.text())? {
 			Some(def) => Ok(PhysicalPlan::DropTable(nodes::DropTableNode {
 				namespace_name: ns_fragment,
 				table_name,
@@ -86,7 +86,7 @@ impl<'bump> Compiler<'bump> {
 				cascade: drop.cascade,
 			})),
 			None => {
-				return_error!(table_not_found(table_name, &namespace_def.name, drop.table.name.text()));
+				return_error!(table_not_found(table_name, namespace.name(), drop.table.name.text()));
 			}
 		}
 	}
@@ -101,7 +101,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			drop.view.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.view.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&namespace_name)
 			} else {
@@ -112,12 +112,12 @@ impl<'bump> Compiler<'bump> {
 
 		let view_name = self.interner.intern_fragment(&drop.view.name);
 		let ns_fragment = if let Some(n) = drop.view.namespace.first() {
-			self.interner.intern_fragment(n).with_text(&namespace_def.name)
+			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace_def.name.clone())
+			Fragment::internal(namespace.name().to_string())
 		};
 
-		match self.catalog.find_view_by_name(rx, namespace_def.id, drop.view.name.text())? {
+		match self.catalog.find_view_by_name(rx, namespace.id(), drop.view.name.text())? {
 			Some(def) => Ok(PhysicalPlan::DropView(nodes::DropViewNode {
 				namespace_name: ns_fragment,
 				view_name,
@@ -133,7 +133,7 @@ impl<'bump> Compiler<'bump> {
 				cascade: drop.cascade,
 			})),
 			None => {
-				return_error!(view_not_found(view_name, &namespace_def.name, drop.view.name.text()));
+				return_error!(view_not_found(view_name, namespace.name(), drop.view.name.text()));
 			}
 		}
 	}
@@ -148,7 +148,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			drop.ringbuffer.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.ringbuffer.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&namespace_name)
 			} else {
@@ -159,12 +159,12 @@ impl<'bump> Compiler<'bump> {
 
 		let rb_name = self.interner.intern_fragment(&drop.ringbuffer.name);
 		let ns_fragment = if let Some(n) = drop.ringbuffer.namespace.first() {
-			self.interner.intern_fragment(n).with_text(&namespace_def.name)
+			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace_def.name.clone())
+			Fragment::internal(namespace.name().to_string())
 		};
 
-		match self.catalog.find_ringbuffer_by_name(rx, namespace_def.id, drop.ringbuffer.name.text())? {
+		match self.catalog.find_ringbuffer_by_name(rx, namespace.id(), drop.ringbuffer.name.text())? {
 			Some(def) => Ok(PhysicalPlan::DropRingBuffer(nodes::DropRingBufferNode {
 				namespace_name: ns_fragment,
 				ringbuffer_name: rb_name,
@@ -182,7 +182,7 @@ impl<'bump> Compiler<'bump> {
 			None => {
 				return_error!(ringbuffer_not_found(
 					rb_name,
-					&namespace_def.name,
+					namespace.name(),
 					drop.ringbuffer.name.text()
 				));
 			}
@@ -199,7 +199,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			drop.dictionary.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.dictionary.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&namespace_name)
 			} else {
@@ -210,12 +210,12 @@ impl<'bump> Compiler<'bump> {
 
 		let dict_name = self.interner.intern_fragment(&drop.dictionary.name);
 		let ns_fragment = if let Some(n) = drop.dictionary.namespace.first() {
-			self.interner.intern_fragment(n).with_text(&namespace_def.name)
+			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace_def.name.clone())
+			Fragment::internal(namespace.name().to_string())
 		};
 
-		match self.catalog.find_dictionary_by_name(rx, namespace_def.id, drop.dictionary.name.text())? {
+		match self.catalog.find_dictionary_by_name(rx, namespace.id(), drop.dictionary.name.text())? {
 			Some(def) => Ok(PhysicalPlan::DropDictionary(nodes::DropDictionaryNode {
 				namespace_name: ns_fragment,
 				dictionary_name: dict_name,
@@ -233,7 +233,7 @@ impl<'bump> Compiler<'bump> {
 			None => {
 				return_error!(dictionary_not_found(
 					dict_name,
-					&namespace_def.name,
+					namespace.name(),
 					drop.dictionary.name.text()
 				));
 			}
@@ -250,7 +250,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			drop.sumtype.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.sumtype.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&namespace_name)
 			} else {
@@ -261,12 +261,12 @@ impl<'bump> Compiler<'bump> {
 
 		let sumtype_name = self.interner.intern_fragment(&drop.sumtype.name);
 		let ns_fragment = if let Some(n) = drop.sumtype.namespace.first() {
-			self.interner.intern_fragment(n).with_text(&namespace_def.name)
+			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace_def.name.clone())
+			Fragment::internal(namespace.name().to_string())
 		};
 
-		match self.catalog.find_sumtype_by_name(rx, namespace_def.id, drop.sumtype.name.text())? {
+		match self.catalog.find_sumtype_by_name(rx, namespace.id(), drop.sumtype.name.text())? {
 			Some(def) => Ok(PhysicalPlan::DropSumType(nodes::DropSumTypeNode {
 				namespace_name: ns_fragment,
 				sumtype_name,
@@ -284,7 +284,7 @@ impl<'bump> Compiler<'bump> {
 			None => {
 				return_error!(sumtype_not_found(
 					sumtype_name,
-					&namespace_def.name,
+					namespace.name(),
 					drop.sumtype.name.text()
 				));
 			}
@@ -317,7 +317,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			drop.series.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = drop.series.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&namespace_name)
 			} else {
@@ -328,12 +328,12 @@ impl<'bump> Compiler<'bump> {
 
 		let series_name = self.interner.intern_fragment(&drop.series.name);
 		let ns_fragment = if let Some(n) = drop.series.namespace.first() {
-			self.interner.intern_fragment(n).with_text(&namespace_def.name)
+			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace_def.name.clone())
+			Fragment::internal(namespace.name().to_string())
 		};
 
-		match self.catalog.find_series_by_name(rx, namespace_def.id, drop.series.name.text())? {
+		match self.catalog.find_series_by_name(rx, namespace.id(), drop.series.name.text())? {
 			Some(def) => Ok(PhysicalPlan::DropSeries(nodes::DropSeriesNode {
 				namespace_name: ns_fragment,
 				series_name,
@@ -349,11 +349,7 @@ impl<'bump> Compiler<'bump> {
 				cascade: drop.cascade,
 			})),
 			None => {
-				return_error!(series_not_found(
-					series_name,
-					&namespace_def.name,
-					drop.series.name.text()
-				));
+				return_error!(series_not_found(series_name, namespace.name(), drop.series.name.text()));
 			}
 		}
 	}

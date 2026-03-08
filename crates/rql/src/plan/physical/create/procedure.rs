@@ -33,7 +33,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			create.procedure.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = create.procedure.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(&namespace_name)
@@ -54,7 +54,7 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		Ok(PhysicalPlan::CreateProcedure(nodes::CreateProcedureNode {
-			namespace: namespace_def,
+			namespace,
 			name: self.interner.intern_fragment(&create.procedure.name),
 			params,
 			body_source: create.body_source,

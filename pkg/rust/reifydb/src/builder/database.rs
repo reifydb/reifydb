@@ -463,7 +463,7 @@ impl DatabaseBuilder {
 		let ns_id = match catalog_api
 			.find_namespace_by_path(&mut Transaction::Admin(&mut admin), "system::config")?
 		{
-			Some(ns) => ns.id,
+			Some(ns) => ns.id(),
 			None => {
 				let ns = catalog_api.create_namespace(
 					&mut admin,
@@ -474,7 +474,7 @@ impl DatabaseBuilder {
 						grpc: None,
 					},
 				)?;
-				ns.id
+				ns.id()
 			}
 		};
 

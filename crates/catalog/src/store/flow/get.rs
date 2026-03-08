@@ -44,7 +44,7 @@ pub mod tests {
 		let result = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), FlowId(1)).unwrap();
 		assert_eq!(result.id, FlowId(1));
 		assert_eq!(result.name, "flow_one");
-		assert_eq!(result.namespace, namespace_one.id);
+		assert_eq!(result.namespace, namespace_one.id());
 	}
 
 	#[test]

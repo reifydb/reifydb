@@ -36,7 +36,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("test_dict"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint2,

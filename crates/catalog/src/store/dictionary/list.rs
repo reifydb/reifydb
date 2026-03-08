@@ -87,7 +87,8 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let result = CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace.id).unwrap();
+		let result =
+			CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace.id()).unwrap();
 
 		assert!(result.is_empty());
 	}
@@ -100,7 +101,7 @@ pub mod tests {
 		// Create multiple dictionaries
 		for i in 0..3 {
 			let to_create = DictionaryToCreate {
-				namespace: namespace.id,
+				namespace: namespace.id(),
 				name: Fragment::internal(format!("dict_{}", i)),
 				value_type: Type::Utf8,
 				id_type: Type::Uint2,
@@ -108,7 +109,8 @@ pub mod tests {
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
 
-		let result = CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace.id).unwrap();
+		let result =
+			CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace.id()).unwrap();
 
 		assert_eq!(result.len(), 3);
 	}
@@ -132,7 +134,7 @@ pub mod tests {
 		// Create 2 dictionaries in namespace1
 		for i in 0..2 {
 			let to_create = DictionaryToCreate {
-				namespace: namespace1.id,
+				namespace: namespace1.id(),
 				name: Fragment::internal(format!("ns1_dict_{}", i)),
 				value_type: Type::Utf8,
 				id_type: Type::Uint2,
@@ -143,7 +145,7 @@ pub mod tests {
 		// Create 3 dictionaries in namespace2
 		for i in 0..3 {
 			let to_create = DictionaryToCreate {
-				namespace: namespace2.id,
+				namespace: namespace2.id(),
 				name: Fragment::internal(format!("ns2_dict_{}", i)),
 				value_type: Type::Uint8,
 				id_type: Type::Uint4,
@@ -153,12 +155,12 @@ pub mod tests {
 
 		// Verify namespace1 has 2 dictionaries
 		let ns1_dicts =
-			CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace1.id).unwrap();
+			CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace1.id()).unwrap();
 		assert_eq!(ns1_dicts.len(), 2);
 
 		// Verify namespace2 has 3 dictionaries
 		let ns2_dicts =
-			CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace2.id).unwrap();
+			CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace2.id()).unwrap();
 		assert_eq!(ns2_dicts.len(), 3);
 	}
 
@@ -181,7 +183,7 @@ pub mod tests {
 		// Create dictionaries in both namespaces
 		for i in 0..2 {
 			let to_create = DictionaryToCreate {
-				namespace: namespace1.id,
+				namespace: namespace1.id(),
 				name: Fragment::internal(format!("ns1_dict_{}", i)),
 				value_type: Type::Utf8,
 				id_type: Type::Uint2,
@@ -191,7 +193,7 @@ pub mod tests {
 
 		for i in 0..3 {
 			let to_create = DictionaryToCreate {
-				namespace: namespace2.id,
+				namespace: namespace2.id(),
 				name: Fragment::internal(format!("ns2_dict_{}", i)),
 				value_type: Type::Uint8,
 				id_type: Type::Uint4,

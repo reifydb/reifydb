@@ -42,7 +42,7 @@ impl<'bump> Compiler<'bump> {
 					let sumtype = ns
 						.and_then(|ns| {
 							self.catalog
-								.find_sumtype_by_name(tx, ns.id, type_name)
+								.find_sumtype_by_name(tx, ns.id(), type_name)
 								.transpose()
 						})
 						.transpose()?;
@@ -113,7 +113,7 @@ impl<'bump> Compiler<'bump> {
 
 						let Some(dictionary) = self.catalog.find_dictionary_by_name(
 							tx,
-							namespace.id,
+							namespace.id(),
 							dict_name,
 						)?
 						else {

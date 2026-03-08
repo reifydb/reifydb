@@ -160,7 +160,7 @@ pub mod tests {
 		assert!(found.is_some());
 
 		// Delete it
-		CatalogStore::drop_namespace(&mut txn, created.id).unwrap();
+		CatalogStore::drop_namespace(&mut txn, created.id()).unwrap();
 
 		// Verify it's gone
 		let found = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_ns").unwrap();
@@ -191,7 +191,7 @@ pub mod tests {
 		let dict = CatalogStore::create_dictionary(
 			&mut txn,
 			DictionaryToCreate {
-				namespace: ns.id,
+				namespace: ns.id(),
 				name: Fragment::internal("child_dict"),
 				value_type: Type::Utf8,
 				id_type: Type::Uint2,
@@ -200,22 +200,26 @@ pub mod tests {
 		.unwrap();
 
 		// Verify all children exist before drop
-		assert!(CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), ns.id, "child_table")
+		assert!(CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "child_table")
 			.unwrap()
 			.is_some());
-		assert!(CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id, "child_view")
+		assert!(CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "child_view")
 			.unwrap()
 			.is_some());
-		assert!(CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id, "child_flow")
+		assert!(CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "child_flow")
 			.unwrap()
 			.is_some());
-		assert!(CatalogStore::find_sumtype_by_name(&mut Transaction::Admin(&mut txn), ns.id, "child_sumtype")
-			.unwrap()
-			.is_some());
+		assert!(CatalogStore::find_sumtype_by_name(
+			&mut Transaction::Admin(&mut txn),
+			ns.id(),
+			"child_sumtype"
+		)
+		.unwrap()
+		.is_some());
 		assert!(CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), dict.id).unwrap().is_some());
 
 		// Drop the namespace
-		CatalogStore::drop_namespace(&mut txn, ns.id).unwrap();
+		CatalogStore::drop_namespace(&mut txn, ns.id()).unwrap();
 
 		// Verify namespace is gone
 		assert!(CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "cascade_ns")
@@ -223,18 +227,22 @@ pub mod tests {
 			.is_none());
 
 		// Verify all children are gone
-		assert!(CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), ns.id, "child_table")
+		assert!(CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "child_table")
 			.unwrap()
 			.is_none());
-		assert!(CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id, "child_view")
+		assert!(CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "child_view")
 			.unwrap()
 			.is_none());
-		assert!(CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id, "child_flow")
+		assert!(CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "child_flow")
 			.unwrap()
 			.is_none());
-		assert!(CatalogStore::find_sumtype_by_name(&mut Transaction::Admin(&mut txn), ns.id, "child_sumtype")
-			.unwrap()
-			.is_none());
+		assert!(CatalogStore::find_sumtype_by_name(
+			&mut Transaction::Admin(&mut txn),
+			ns.id(),
+			"child_sumtype"
+		)
+		.unwrap()
+		.is_none());
 		assert!(CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), dict.id).unwrap().is_none());
 	}
 }

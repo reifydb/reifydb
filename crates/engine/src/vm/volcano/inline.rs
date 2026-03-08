@@ -150,7 +150,7 @@ impl InlineDataNode {
 							let sumtype_name = ctor.sumtype_name.text();
 							ctx.services
 								.catalog
-								.find_sumtype_by_name(txn, ns.id, sumtype_name)?
+								.find_sumtype_by_name(txn, ns.id(), sumtype_name)?
 								.unwrap()
 						};
 

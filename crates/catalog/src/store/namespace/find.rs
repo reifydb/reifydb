@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	encoded::encoded::EncodedValues,
-	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
+	interface::catalog::{id::NamespaceId, namespace::Namespace},
 	key::namespace::NamespaceKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -17,16 +17,16 @@ impl CatalogStore {
 	pub(crate) fn find_namespace_by_name(
 		rx: &mut Transaction<'_>,
 		name: impl AsRef<str>,
-	) -> Result<Option<NamespaceDef>> {
+	) -> Result<Option<Namespace>> {
 		let name = name.as_ref();
 
 		// Special case for system namespace - hardcoded with fixed ID
 		if name == "system" {
-			return Ok(Some(NamespaceDef::system()));
+			return Ok(Some(Namespace::system()));
 		}
 
 		if name == "default" {
-			return Ok(Some(NamespaceDef::default_namespace()));
+			return Ok(Some(Namespace::default_namespace()));
 		}
 
 		let mut stream = rx.range(NamespaceKey::full_scan(), 1024)?;
@@ -43,14 +43,14 @@ impl CatalogStore {
 		Ok(None)
 	}
 
-	pub(crate) fn find_namespace(rx: &mut Transaction<'_>, id: NamespaceId) -> Result<Option<NamespaceDef>> {
+	pub(crate) fn find_namespace(rx: &mut Transaction<'_>, id: NamespaceId) -> Result<Option<Namespace>> {
 		// Special case for system namespace - hardcoded with fixed ID
 		if id == NamespaceId(1) {
-			return Ok(Some(NamespaceDef::system()));
+			return Ok(Some(Namespace::system()));
 		}
 
 		if id == NamespaceId(2) {
-			return Ok(Some(NamespaceDef::default_namespace()));
+			return Ok(Some(Namespace::default_namespace()));
 		}
 
 		Ok(rx.get(&NamespaceKey::encoded(id))?.map(convert_namespace))
@@ -75,8 +75,8 @@ pub mod tests {
 				.unwrap()
 				.unwrap();
 
-		assert_eq!(namespace.id, NamespaceId(1025));
-		assert_eq!(namespace.name, "test_namespace");
+		assert_eq!(namespace.id(), NamespaceId(1025));
+		assert_eq!(namespace.name(), "test_namespace");
 	}
 
 	#[test]

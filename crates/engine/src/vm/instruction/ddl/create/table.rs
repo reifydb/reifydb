@@ -20,7 +20,7 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 	// Check if table already exists using the catalog
 	if let Some(_) = services.catalog.find_table_by_name(
 		&mut Transaction::Admin(txn),
-		plan.namespace.def().id,
+		plan.namespace.def().id(),
 		plan.table.text(),
 	)? {
 		if plan.if_not_exists {
@@ -40,7 +40,7 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 		txn,
 		TableToCreate {
 			name: plan.table.clone(),
-			namespace: plan.namespace.def().id,
+			namespace: plan.namespace.def().id(),
 			columns,
 			retention_policy: None,
 			primary_key_columns: None,

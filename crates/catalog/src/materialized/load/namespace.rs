@@ -15,8 +15,8 @@ pub(crate) fn load_namespaces(rx: &mut Transaction<'_>, catalog: &MaterializedCa
 	while let Some(entry) = stream.next() {
 		let multi = entry?;
 		let version = multi.version;
-		let namespace_def = namespace::convert_namespace(multi);
-		catalog.set_namespace(namespace_def.id, version, Some(namespace_def));
+		let namespace = namespace::convert_namespace(multi);
+		catalog.set_namespace(namespace.id(), version, Some(namespace));
 	}
 
 	Ok(())

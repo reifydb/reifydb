@@ -22,12 +22,12 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
 		let version = ctx.version;
 
-		for change in &ctx.changes.namespace_def {
+		for change in &ctx.changes.namespace {
 			let id = change
 				.post
 				.as_ref()
 				.or(change.pre.as_ref())
-				.map(|s| s.id)
+				.map(|s| s.id())
 				.expect("Change must have either pre or post state");
 			self.catalog.set_namespace(id, version, change.post.clone());
 		}

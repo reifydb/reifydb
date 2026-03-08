@@ -62,7 +62,7 @@ impl CatalogStore {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::View,
-				namespace: namespace.name,
+				namespace: namespace.name().to_string(),
 				name: view.name,
 				fragment: to_create.name.clone(),
 			}
@@ -127,7 +127,7 @@ impl CatalogStore {
 				view,
 				ColumnToCreate {
 					fragment: Some(column_to_create.fragment.clone()),
-					namespace_name: namespace.name.clone(),
+					namespace_name: namespace.name().to_string(),
 					primitive_name: to_create.name.text().to_string(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
@@ -164,7 +164,7 @@ pub mod tests {
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = ViewToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("test_view"),
 			columns: vec![],
 		};
@@ -185,7 +185,7 @@ pub mod tests {
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = ViewToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("test_view"),
 			columns: vec![],
 		};
@@ -193,7 +193,7 @@ pub mod tests {
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
 
 		let to_create = ViewToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("another_view"),
 			columns: vec![],
 		};
@@ -201,7 +201,7 @@ pub mod tests {
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
 
 		let links: Vec<_> = txn
-			.range(NamespaceViewKey::full_scan(namespace.id), 1024)
+			.range(NamespaceViewKey::full_scan(namespace.id()), 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

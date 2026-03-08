@@ -13,7 +13,7 @@ use reifydb_core::{
 			SubscriptionId, TableId, ViewId,
 		},
 		migration::{MigrationDef, MigrationEvent},
-		namespace::NamespaceDef,
+		namespace::Namespace,
 		policy::{PolicyDef, PolicyId},
 		procedure::ProcedureDef,
 		ringbuffer::RingBufferDef,
@@ -62,9 +62,9 @@ pub trait TransactionalDictionaryChanges {
 }
 
 pub trait TransactionalNamespaceChanges {
-	fn find_namespace(&self, id: NamespaceId) -> Option<&NamespaceDef>;
+	fn find_namespace(&self, id: NamespaceId) -> Option<&Namespace>;
 
-	fn find_namespace_by_name(&self, name: &str) -> Option<&NamespaceDef>;
+	fn find_namespace_by_name(&self, name: &str) -> Option<&Namespace>;
 
 	fn is_namespace_deleted(&self, id: NamespaceId) -> bool;
 
@@ -232,7 +232,7 @@ pub struct TransactionalDefChanges {
 	/// All migration event changes in order (no coalescing)
 	pub migration_event: Vec<Change<MigrationEvent>>,
 	/// All namespace definition changes in order (no coalescing)
-	pub namespace_def: Vec<Change<NamespaceDef>>,
+	pub namespace: Vec<Change<Namespace>>,
 	/// All procedure definition changes in order (no coalescing)
 	pub procedure_def: Vec<Change<ProcedureDef>>,
 	/// All ring buffer definition changes in order (no coalescing)
@@ -295,15 +295,15 @@ impl TransactionalDefChanges {
 		});
 	}
 
-	pub fn add_namespace_def_change(&mut self, change: Change<NamespaceDef>) {
+	pub fn add_namespace_change(&mut self, change: Change<Namespace>) {
 		let id = change
 			.post
 			.as_ref()
 			.or(change.pre.as_ref())
-			.map(|s| s.id)
+			.map(|s| s.id())
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.namespace_def.push(change);
+		self.namespace.push(change);
 		self.log.push(Operation::Namespace {
 			id,
 			op,
@@ -651,7 +651,7 @@ impl TransactionalDefChanges {
 			handler_def: Vec::new(),
 			migration_def: Vec::new(),
 			migration_event: Vec::new(),
-			namespace_def: Vec::new(),
+			namespace: Vec::new(),
 			procedure_def: Vec::new(),
 			ringbuffer_def: Vec::new(),
 			series_def: Vec::new(),
@@ -725,8 +725,8 @@ impl TransactionalDefChanges {
 	}
 
 	/// Get namespace definition changes
-	pub fn namespace_def(&self) -> &[Change<NamespaceDef>] {
-		&self.namespace_def
+	pub fn namespace(&self) -> &[Change<Namespace>] {
+		&self.namespace
 	}
 
 	/// Get table definition changes
@@ -747,7 +747,7 @@ impl TransactionalDefChanges {
 		self.handler_def.clear();
 		self.migration_def.clear();
 		self.migration_event.clear();
-		self.namespace_def.clear();
+		self.namespace.clear();
 		self.procedure_def.clear();
 		self.ringbuffer_def.clear();
 		self.series_def.clear();

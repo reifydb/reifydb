@@ -91,7 +91,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("test_dict"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint2,
@@ -126,7 +126,7 @@ pub mod tests {
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("token_mints"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint4,
@@ -136,7 +136,7 @@ pub mod tests {
 
 		let found = CatalogStore::find_dictionary_by_name(
 			&mut Transaction::Admin(&mut txn),
-			namespace.id,
+			namespace.id(),
 			"token_mints",
 		)
 		.unwrap()
@@ -155,7 +155,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_dictionary_by_name(
 			&mut Transaction::Admin(&mut txn),
-			namespace.id,
+			namespace.id(),
 			"nonexistent_dict",
 		)
 		.unwrap();
@@ -182,7 +182,7 @@ pub mod tests {
 
 		// Create dictionary in namespace1
 		let to_create = DictionaryToCreate {
-			namespace: namespace1.id,
+			namespace: namespace1.id(),
 			name: Fragment::internal("shared_name"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint2,
@@ -193,7 +193,7 @@ pub mod tests {
 		// Try to find in namespace2 - should not exist
 		let result = CatalogStore::find_dictionary_by_name(
 			&mut Transaction::Admin(&mut txn),
-			namespace2.id,
+			namespace2.id(),
 			"shared_name",
 		)
 		.unwrap();
@@ -203,7 +203,7 @@ pub mod tests {
 		// Find in namespace1 - should exist
 		let found = CatalogStore::find_dictionary_by_name(
 			&mut Transaction::Admin(&mut txn),
-			namespace1.id,
+			namespace1.id(),
 			"shared_name",
 		)
 		.unwrap();

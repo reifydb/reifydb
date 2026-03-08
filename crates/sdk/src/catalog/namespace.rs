@@ -11,7 +11,7 @@ use reifydb_abi::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
+	interface::catalog::{id::NamespaceId, namespace::Namespace},
 };
 
 use crate::{error::FFIError, operator::context::OperatorContext};
@@ -21,7 +21,7 @@ pub(super) fn raw_catalog_find_namespace(
 	ctx: &OperatorContext,
 	namespace_id: NamespaceId,
 	version: CommitVersion,
-) -> Result<Option<NamespaceDef>, FFIError> {
+) -> Result<Option<Namespace>, FFIError> {
 	unsafe {
 		// Get callback function
 		let callback = (*ctx.ctx).callbacks.catalog.find_namespace;
@@ -55,7 +55,7 @@ pub(super) fn raw_catalog_find_namespace_by_name(
 	ctx: &OperatorContext,
 	name: &str,
 	version: CommitVersion,
-) -> Result<Option<NamespaceDef>, FFIError> {
+) -> Result<Option<Namespace>, FFIError> {
 	unsafe {
 		// Get callback function
 		let callback = (*ctx.ctx).callbacks.catalog.find_namespace_by_name;
@@ -87,8 +87,8 @@ pub(super) fn raw_catalog_find_namespace_by_name(
 	}
 }
 
-/// Unmarshal NamespaceFFI to NamespaceDef
-unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<NamespaceDef, FFIError> {
+/// Unmarshal NamespaceFFI to Namespace
+unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<Namespace, FFIError> {
 	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_ns.name.ptr.is_null() && ffi_ns.name.len > 0 {
 		unsafe { from_raw_parts(ffi_ns.name.ptr, ffi_ns.name.len) }
@@ -100,10 +100,9 @@ unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<NamespaceDef, FFI
 		.map_err(|_| FFIError::Other("Invalid UTF-8 in namespace name".to_string()))?
 		.to_string();
 
-	Ok(NamespaceDef {
+	Ok(Namespace::Local {
 		id: NamespaceId(ffi_ns.id),
 		name,
 		parent_id: NamespaceId(ffi_ns.parent_id),
-		grpc: None,
 	})
 }

@@ -207,7 +207,7 @@ impl StandardEngine {
 		// Create the table definition
 		let def = Arc::new(VTableDef {
 			id: table_id,
-			namespace: ns_def.id,
+			namespace: ns_def.id(),
 			name: name.to_string(),
 			columns,
 		});
@@ -221,7 +221,7 @@ impl StandardEngine {
 			def: def.clone(),
 			data_fn,
 		};
-		self.executor.virtual_table_registry.register(ns_def.id, name.to_string(), entry);
+		self.executor.virtual_table_registry.register(ns_def.id(), name.to_string(), entry);
 		Ok(table_id)
 	}
 }

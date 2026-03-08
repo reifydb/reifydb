@@ -56,21 +56,21 @@ pub fn resolve_unresolved_source(
 	};
 
 	// Check if this is a remote namespace
-	if let Some(ref grpc) = ns_def.grpc {
+	if let Some(address) = ns_def.address() {
 		return Ok(ResolvedSource::Remote {
-			address: grpc.clone(),
+			address: address.to_string(),
 			local_namespace: namespace_str.to_string(),
 			remote_name: name_str.to_string(),
 		});
 	}
 
-	let namespace_fragment = Fragment::internal(ns_def.name.clone());
+	let namespace_fragment = Fragment::internal(ns_def.name().to_string());
 	let namespace = ResolvedNamespace::new(namespace_fragment, ns_def.clone());
 	let name_fragment = Fragment::internal(name_str.to_string());
 	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::internal(a.text()));
 
 	// Check for user-defined virtual tables first (in any namespace)
-	if let Some(virtual_def) = catalog.find_vtable_user_by_name(tx, ns_def.id, name_str) {
+	if let Some(virtual_def) = catalog.find_vtable_user_by_name(tx, ns_def.id(), name_str) {
 		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
@@ -96,7 +96,7 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Try table first
-	if let Some(table) = catalog.find_table_by_name(tx, ns_def.id, name_str)? {
+	if let Some(table) = catalog.find_table_by_name(tx, ns_def.id(), name_str)? {
 		// ResolvedTable doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::Table(ResolvedTable::new(
@@ -107,7 +107,7 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Try ring buffer
-	if let Some(ringbuffer) = catalog.find_ringbuffer_by_name(tx, ns_def.id, name_str)? {
+	if let Some(ringbuffer) = catalog.find_ringbuffer_by_name(tx, ns_def.id(), name_str)? {
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::RingBuffer(ResolvedRingBuffer::new(
@@ -118,7 +118,7 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Try views FIRST (deferred views share name with their flow)
-	if let Some(view) = catalog.find_view_by_name(tx, ns_def.id, name_str)? {
+	if let Some(view) = catalog.find_view_by_name(tx, ns_def.id(), name_str)? {
 		// Check view type to create appropriate resolved view
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
@@ -136,7 +136,7 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Try dictionaries
-	if let Some(dictionary) = catalog.find_dictionary_by_name(tx, ns_def.id, name_str)? {
+	if let Some(dictionary) = catalog.find_dictionary_by_name(tx, ns_def.id(), name_str)? {
 		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::Dictionary(ResolvedDictionary::new(
 			name_fragment,
 			namespace,
@@ -145,7 +145,7 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Try series
-	if let Some(series) = catalog.find_series_by_name(tx, ns_def.id, name_str)? {
+	if let Some(series) = catalog.find_series_by_name(tx, ns_def.id(), name_str)? {
 		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::Series(ResolvedSeries::new(
 			name_fragment,
 			namespace,

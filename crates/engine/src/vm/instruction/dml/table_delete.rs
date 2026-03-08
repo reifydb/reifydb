@@ -64,7 +64,7 @@ pub(crate) fn delete<'a>(
 			.into());
 		};
 
-		let Some(table) = services.catalog.find_table_by_name(txn, namespace.id, target.name())? else {
+		let Some(table) = services.catalog.find_table_by_name(txn, namespace.id(), target.name())? else {
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Table,
 				namespace: namespace_name.to_string(),
@@ -80,7 +80,7 @@ pub(crate) fn delete<'a>(
 	};
 
 	// Create resolved source for the table
-	let namespace_ident = Fragment::internal(namespace.name.clone());
+	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
 	let table_ident = Fragment::internal(table.name.clone());
@@ -125,7 +125,7 @@ pub(crate) fn delete<'a>(
 			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
 				txn,
 				identity,
-				&namespace.name,
+				&namespace.name(),
 				&table.name,
 				"delete",
 				&columns,
@@ -223,7 +223,7 @@ pub(crate) fn delete<'a>(
 
 	// Return summary columns
 	Ok(Columns::single_row([
-		("namespace", Value::Utf8(namespace.name)),
+		("namespace", Value::Utf8(namespace.name().to_string())),
 		("table", Value::Utf8(table.name)),
 		("deleted", Value::Uint8(deleted_count as u64)),
 	]))

@@ -13,7 +13,7 @@ use crate::interface::catalog::{
 	flow::FlowDef,
 	handler::HandlerDef,
 	migration::{MigrationDef, MigrationEvent},
-	namespace::NamespaceDef,
+	namespace::Namespace,
 	policy::PolicyDef,
 	procedure::ProcedureDef,
 	ringbuffer::RingBufferDef,
@@ -37,11 +37,11 @@ pub trait CatalogTrackTableChangeOperations {
 
 /// Trait for tracking namespace definition changes during a transaction.
 pub trait CatalogTrackNamespaceChangeOperations {
-	fn track_namespace_def_created(&mut self, namespace: NamespaceDef) -> Result<()>;
+	fn track_namespace_created(&mut self, namespace: Namespace) -> Result<()>;
 
-	fn track_namespace_def_updated(&mut self, pre: NamespaceDef, post: NamespaceDef) -> Result<()>;
+	fn track_namespace_updated(&mut self, pre: Namespace, post: Namespace) -> Result<()>;
 
-	fn track_namespace_def_deleted(&mut self, namespace: NamespaceDef) -> Result<()>;
+	fn track_namespace_deleted(&mut self, namespace: Namespace) -> Result<()>;
 }
 
 /// Trait for tracking flow definition changes during a transaction.

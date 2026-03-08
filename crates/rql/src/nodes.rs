@@ -12,7 +12,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
-			namespace::NamespaceDef,
+			namespace::Namespace,
 			procedure::{ProcedureParamDef, ProcedureTrigger},
 			property::ColumnPropertyKind,
 			series::TimestampPrecision,
@@ -150,7 +150,7 @@ pub enum PhysicalPlan {
 
 #[derive(Debug, Clone)]
 pub struct CreateDeferredViewNode {
-	pub namespace: NamespaceDef, // FIXME REsolvedNamespace
+	pub namespace: Namespace, // FIXME REsolvedNamespace
 	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
@@ -159,7 +159,7 @@ pub struct CreateDeferredViewNode {
 
 #[derive(Debug, Clone)]
 pub struct CreateTransactionalViewNode {
-	pub namespace: NamespaceDef, // FIXME REsolvedNamespace
+	pub namespace: Namespace, // FIXME REsolvedNamespace
 	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
@@ -204,7 +204,7 @@ pub struct CreateRingBufferNode {
 
 #[derive(Debug, Clone)]
 pub struct CreateDictionaryNode {
-	pub namespace: NamespaceDef,
+	pub namespace: Namespace,
 	pub dictionary: Fragment,
 	pub if_not_exists: bool,
 	pub value_type: Type,
@@ -213,7 +213,7 @@ pub struct CreateDictionaryNode {
 
 #[derive(Debug, Clone)]
 pub struct CreateSumTypeNode {
-	pub namespace: NamespaceDef,
+	pub namespace: Namespace,
 	pub name: Fragment,
 	pub if_not_exists: bool,
 	pub variants: Vec<CreateSumTypeVariant>,
@@ -276,7 +276,7 @@ pub struct CreatePrimaryKeyNode {
 // Create Procedure node
 #[derive(Debug, Clone)]
 pub struct CreateProcedureNode {
-	pub namespace: NamespaceDef,
+	pub namespace: Namespace,
 	pub name: Fragment,
 	pub params: Vec<ProcedureParamDef>,
 	pub body_source: String,
@@ -296,7 +296,7 @@ pub struct CreateSeriesNode {
 /// Physical node for CREATE EVENT
 #[derive(Debug, Clone)]
 pub struct CreateEventNode {
-	pub namespace: NamespaceDef,
+	pub namespace: Namespace,
 	pub name: Fragment,
 	pub variants: Vec<CreateSumTypeVariant>,
 }
@@ -304,7 +304,7 @@ pub struct CreateEventNode {
 /// Physical node for CREATE TAG
 #[derive(Debug, Clone)]
 pub struct CreateTagNode {
-	pub namespace: NamespaceDef,
+	pub namespace: Namespace,
 	pub name: Fragment,
 	pub variants: Vec<CreateSumTypeVariant>,
 }
@@ -332,7 +332,7 @@ pub struct RollbackMigrationNode {
 /// Physical node for DISPATCH
 #[derive(Debug, Clone)]
 pub struct DispatchNode {
-	pub namespace: NamespaceDef,
+	pub namespace: Namespace,
 	pub on_sumtype_id: SumTypeId,
 	pub variant_name: String,
 	pub fields: Vec<(String, Expression)>,

@@ -33,17 +33,17 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		// Query the catalog for the actual namespace
-		let namespace_def = self
+		let namespace = self
 			.catalog
 			.find_namespace_by_name(rx, &namespace_name)?
 			.unwrap_or_else(|| panic!("Namespace '{}' not found", namespace_name));
 
 		// Query the catalog for the actual table
 		let table_name = alter.sequence.name.text();
-		let Some(table_def) = self.catalog.find_table_by_name(rx, namespace_def.id, table_name)? else {
+		let Some(table_def) = self.catalog.find_table_by_name(rx, namespace.id(), table_name)? else {
 			return_error!(table_not_found(
 				self.interner.intern_fragment(&alter.sequence.name),
-				&namespace_def.name,
+				namespace.name(),
 				table_name
 			));
 		};
@@ -58,8 +58,8 @@ impl<'bump> Compiler<'bump> {
 			.clone();
 
 		// Create resolved namespace
-		let namespace_fragment = Fragment::internal(namespace_def.name.clone());
-		let resolved_namespace = ResolvedNamespace::new(namespace_fragment, namespace_def.clone());
+		let namespace_fragment = Fragment::internal(namespace.name().to_string());
+		let resolved_namespace = ResolvedNamespace::new(namespace_fragment, namespace.clone());
 
 		// Create resolved sequence (using table name as sequence name)
 		let sequence_def = SequenceDef {

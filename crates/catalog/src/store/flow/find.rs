@@ -86,13 +86,13 @@ pub mod tests {
 
 		let result = CatalogStore::find_flow_by_name(
 			&mut Transaction::Admin(&mut txn),
-			namespace_two.id,
+			namespace_two.id(),
 			"flow_two",
 		)
 		.unwrap()
 		.unwrap();
 		assert_eq!(result.name, "flow_two");
-		assert_eq!(result.namespace, namespace_two.id);
+		assert_eq!(result.namespace, namespace_two.id());
 	}
 
 	#[test]
@@ -102,7 +102,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_flow_by_name(
 			&mut Transaction::Admin(&mut txn),
-			test_namespace.id,
+			test_namespace.id(),
 			"some_flow",
 		)
 		.unwrap();
@@ -119,7 +119,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_flow_by_name(
 			&mut Transaction::Admin(&mut txn),
-			test_namespace.id,
+			test_namespace.id(),
 			"flow_three",
 		)
 		.unwrap();
@@ -135,9 +135,12 @@ pub mod tests {
 		create_flow(&mut txn, "namespace_one", "my_flow");
 
 		// Flow exists in namespace_one but not in namespace_two
-		let result =
-			CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), namespace_two.id, "my_flow")
-				.unwrap();
+		let result = CatalogStore::find_flow_by_name(
+			&mut Transaction::Admin(&mut txn),
+			namespace_two.id(),
+			"my_flow",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -149,14 +152,20 @@ pub mod tests {
 		create_flow(&mut txn, "test_namespace", "MyFlow");
 
 		// Flow names are case-sensitive
-		let result =
-			CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), test_namespace.id, "myflow")
-				.unwrap();
+		let result = CatalogStore::find_flow_by_name(
+			&mut Transaction::Admin(&mut txn),
+			test_namespace.id(),
+			"myflow",
+		)
+		.unwrap();
 		assert!(result.is_none());
 
-		let result =
-			CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), test_namespace.id, "MyFlow")
-				.unwrap();
+		let result = CatalogStore::find_flow_by_name(
+			&mut Transaction::Admin(&mut txn),
+			test_namespace.id(),
+			"MyFlow",
+		)
+		.unwrap();
 		assert!(result.is_some());
 	}
 

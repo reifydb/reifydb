@@ -21,7 +21,7 @@ pub(crate) fn create_column_property(
 	txn: &mut AdminTransaction,
 	plan: CreateColumnPropertyNode,
 ) -> Result<Columns> {
-	let namespace_id = plan.namespace.def().id;
+	let namespace_id = plan.namespace.def().id();
 	let table_name = plan.table.text();
 
 	// Find the table

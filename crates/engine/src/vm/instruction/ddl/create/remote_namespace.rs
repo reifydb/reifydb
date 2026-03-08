@@ -26,7 +26,7 @@ pub(crate) fn create_remote_namespace(
 		if let Some(existing) =
 			services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &prefix)?
 		{
-			parent_id = existing.id;
+			parent_id = existing.id();
 		} else {
 			let result = services.catalog.create_namespace(
 				txn,
@@ -37,8 +37,8 @@ pub(crate) fn create_remote_namespace(
 					grpc: None,
 				},
 			)?;
-			txn.track_namespace_def_created(result.clone())?;
-			parent_id = result.id;
+			txn.track_namespace_created(result.clone())?;
+			parent_id = result.id();
 		}
 	}
 
@@ -62,9 +62,12 @@ pub(crate) fn create_remote_namespace(
 			grpc: Some(grpc_text),
 		},
 	)?;
-	txn.track_namespace_def_created(result.clone())?;
+	txn.track_namespace_created(result.clone())?;
 
-	Ok(Columns::single_row([("namespace", Value::Utf8(result.name)), ("created", Value::Boolean(true))]))
+	Ok(Columns::single_row([
+		("namespace", Value::Utf8(result.name().to_string())),
+		("created", Value::Boolean(true)),
+	]))
 }
 
 #[cfg(test)]

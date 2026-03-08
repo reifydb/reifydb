@@ -49,7 +49,7 @@ impl CatalogStore {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Dictionary,
-				namespace: namespace.name,
+				namespace: namespace.name().to_string(),
 				name: dictionary.name,
 				fragment: to_create.name.clone(),
 			}
@@ -130,7 +130,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("token_mints"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint2,
@@ -139,7 +139,7 @@ pub mod tests {
 		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 
 		assert!(result.id.0 > 0);
-		assert_eq!(result.namespace, test_namespace.id);
+		assert_eq!(result.namespace, test_namespace.id());
 		assert_eq!(result.name, "token_mints");
 		assert_eq!(result.value_type, Type::Utf8);
 		assert_eq!(result.id_type, Type::Uint2);
@@ -151,7 +151,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("test_dict"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint4,
@@ -160,7 +160,7 @@ pub mod tests {
 		// First creation should succeed
 		let result = CatalogStore::create_dictionary(&mut txn, to_create.clone()).unwrap();
 		assert!(result.id.0 > 0);
-		assert_eq!(result.namespace, test_namespace.id);
+		assert_eq!(result.namespace, test_namespace.id());
 		assert_eq!(result.name, "test_dict");
 
 		// Second creation should fail with duplicate error
@@ -174,7 +174,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create1 = DictionaryToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("dict1"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint1,
@@ -183,7 +183,7 @@ pub mod tests {
 		CatalogStore::create_dictionary(&mut txn, to_create1).unwrap();
 
 		let to_create2 = DictionaryToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("dict2"),
 			value_type: Type::Uint8,
 			id_type: Type::Uint2,
@@ -193,7 +193,7 @@ pub mod tests {
 
 		// Check namespace links
 		let links: Vec<_> = txn
-			.range(NamespaceDictionaryKey::full_scan(test_namespace.id), 1024)
+			.range(NamespaceDictionaryKey::full_scan(test_namespace.id()), 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>>>()
 			.unwrap();
@@ -221,7 +221,7 @@ pub mod tests {
 
 		// Test with Uint1 ID type
 		let to_create = DictionaryToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("small_dict"),
 			value_type: Type::Utf8,
 			id_type: Type::Uint1,
@@ -231,7 +231,7 @@ pub mod tests {
 
 		// Test with Uint8 ID type
 		let to_create = DictionaryToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("large_dict"),
 			value_type: Type::Blob,
 			id_type: Type::Uint8,

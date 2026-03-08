@@ -124,7 +124,7 @@ pub mod tests {
 			&mut txn,
 			ViewToCreate {
 				name: Fragment::internal("test_view"),
-				namespace: namespace.id,
+				namespace: namespace.id(),
 				columns: vec![ViewColumnToCreate {
 					name: Fragment::internal("id"),
 					fragment: Fragment::None,

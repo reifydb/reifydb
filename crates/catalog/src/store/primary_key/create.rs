@@ -208,7 +208,7 @@ pub mod tests {
 			&mut txn,
 			ViewToCreate {
 				name: Fragment::internal("test_view"),
-				namespace: namespace.id,
+				namespace: namespace.id(),
 				columns: vec![
 					ViewColumnToCreate {
 						name: Fragment::internal("id"),
@@ -460,7 +460,7 @@ pub mod tests {
 			&mut txn,
 			TableToCreate {
 				name: Fragment::internal("test_table2"),
-				namespace: namespace.id,
+				namespace: namespace.id(),
 				columns: vec![],
 				retention_policy: None,
 			},

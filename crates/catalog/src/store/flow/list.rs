@@ -82,14 +82,14 @@ pub mod tests {
 		for flow in &result {
 			match flow.name.as_str() {
 				"flow_one" => {
-					assert_eq!(flow.namespace, namespace_one.id);
+					assert_eq!(flow.namespace, namespace_one.id());
 					assert_eq!(flow.status, FlowStatus::Active);
 				}
 				"flow_two" => {
-					assert_eq!(flow.namespace, namespace_one.id);
+					assert_eq!(flow.namespace, namespace_one.id());
 				}
 				"flow_three" => {
-					assert_eq!(flow.namespace, namespace_two.id);
+					assert_eq!(flow.namespace, namespace_two.id());
 				}
 				_ => panic!("Unexpected flow name: {}", flow.name),
 			}
@@ -122,7 +122,7 @@ pub mod tests {
 			&mut txn,
 			FlowToCreate {
 				name: Fragment::internal("paused_flow"),
-				namespace: namespace.id,
+				namespace: namespace.id(),
 				status: FlowStatus::Paused,
 			},
 		)

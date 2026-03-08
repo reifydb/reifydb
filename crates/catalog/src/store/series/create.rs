@@ -60,7 +60,7 @@ impl CatalogStore {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Series,
-				namespace: namespace.name,
+				namespace: namespace.name().to_string(),
 				name: series.name,
 				fragment: to_create.name.clone(),
 			}

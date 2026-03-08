@@ -18,9 +18,9 @@ impl CatalogStore {
 		let existing = Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 
 		let mut row = SCHEMA.allocate();
-		SCHEMA.set_u64(&mut row, ID, existing.id.0);
-		SCHEMA.set_utf8(&mut row, NAME, &existing.name);
-		SCHEMA.set_u64(&mut row, PARENT_ID, existing.parent_id.0);
+		SCHEMA.set_u64(&mut row, ID, existing.id().0);
+		SCHEMA.set_utf8(&mut row, NAME, existing.name());
+		SCHEMA.set_u64(&mut row, PARENT_ID, existing.parent_id().0);
 		if let Some(ref grpc) = grpc {
 			SCHEMA.set_utf8(&mut row, GRPC, grpc);
 		}

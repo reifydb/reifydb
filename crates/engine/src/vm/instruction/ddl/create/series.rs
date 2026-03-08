@@ -18,7 +18,7 @@ pub(crate) fn create_series(
 		txn,
 		SeriesToCreate {
 			name: plan.series.clone(),
-			namespace: plan.namespace.def().id,
+			namespace: plan.namespace.def().id(),
 			columns: plan.columns,
 			tag: plan.tag,
 			precision: plan.precision,

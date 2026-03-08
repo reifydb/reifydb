@@ -62,7 +62,7 @@ impl<'bump> Compiler<'bump> {
 
 						let Some(dictionary) = self.catalog.find_dictionary_by_name(
 							tx,
-							namespace.id,
+							namespace.id(),
 							dict_name,
 						)?
 						else {

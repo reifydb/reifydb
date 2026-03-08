@@ -24,7 +24,7 @@ pub(crate) fn find_column_dependents(
 	for info in columns {
 		if let Some(suffix) = check(info) {
 			let ns = catalog.find_namespace(&mut Transaction::Admin(txn), info.namespace)?;
-			let ns_name = ns.map(|n| n.name).unwrap_or_else(|| "?".to_string());
+			let ns_name = ns.map(|n| n.name().to_string()).unwrap_or_else(|| "?".to_string());
 			let mut desc = format!(
 				"column `{}` in {} `{}.{}`",
 				info.column.name, info.entity_kind, ns_name, info.entity_name
@@ -53,7 +53,7 @@ pub(crate) fn find_flow_dependents(
 		if check(&node_type) && seen_flows.insert(node.flow) {
 			if let Some(flow) = flows.iter().find(|f| f.id == node.flow) {
 				let ns = catalog.find_namespace(&mut Transaction::Admin(txn), flow.namespace)?;
-				let ns_name = ns.map(|n| n.name).unwrap_or_else(|| "?".to_string());
+				let ns_name = ns.map(|n| n.name().to_string()).unwrap_or_else(|| "?".to_string());
 				dependents.push(format!("flow `{}.{}`", ns_name, flow.name));
 			}
 		}

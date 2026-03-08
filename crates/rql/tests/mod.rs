@@ -4,7 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb_catalog::catalog::{Catalog, namespace::NamespaceToCreate, table::TableToCreate};
-use reifydb_core::interface::catalog::{id::NamespaceId, namespace::NamespaceDef};
+use reifydb_core::interface::catalog::{id::NamespaceId, namespace::Namespace};
 use reifydb_engine::test_utils::create_test_admin_transaction;
 use reifydb_rql::explain::{
 	ast::explain_ast, logical::explain_logical_plan, physical::explain_physical_plan, tokenize::explain_tokenize,
@@ -59,13 +59,13 @@ impl Runner for TestRunner {
 					let mut dummy_tx = create_test_admin_transaction();
 					let catalog = Catalog::testing();
 
-					let default_namespace = NamespaceDef::default_namespace();
+					let default_namespace = Namespace::default_namespace();
 
 					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
 							name: Fragment::internal("users"),
-							namespace: default_namespace.id,
+							namespace: default_namespace.id(),
 							columns: vec![],
 							retention_policy: None,
 							primary_key_columns: None,
@@ -77,7 +77,7 @@ impl Runner for TestRunner {
 						&mut dummy_tx,
 						TableToCreate {
 							name: Fragment::internal("orders"),
-							namespace: default_namespace.id,
+							namespace: default_namespace.id(),
 							columns: vec![],
 							retention_policy: None,
 							primary_key_columns: None,
@@ -103,7 +103,7 @@ impl Runner for TestRunner {
 						&mut dummy_tx,
 						TableToCreate {
 							name: Fragment::internal("users"),
-							namespace: test_ns.id,
+							namespace: test_ns.id(),
 							columns: vec![],
 							retention_policy: None,
 							primary_key_columns: None,
@@ -126,13 +126,13 @@ impl Runner for TestRunner {
 					let mut dummy_tx = create_test_admin_transaction();
 					let catalog = Catalog::testing();
 
-					let namespace = NamespaceDef::default_namespace();
+					let namespace = Namespace::default_namespace();
 
 					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
 							name: Fragment::internal("users"),
-							namespace: namespace.id,
+							namespace: namespace.id(),
 							columns: vec![],
 							retention_policy: None,
 							primary_key_columns: None,
@@ -144,7 +144,7 @@ impl Runner for TestRunner {
 						&mut dummy_tx,
 						TableToCreate {
 							name: Fragment::internal("orders"),
-							namespace: namespace.id,
+							namespace: namespace.id(),
 							columns: vec![],
 							retention_policy: None,
 							primary_key_columns: None,

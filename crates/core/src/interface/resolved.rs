@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use super::catalog::{
 	column::ColumnDef,
 	dictionary::DictionaryDef,
-	namespace::NamespaceDef,
+	namespace::Namespace,
 	property::ColumnPropertyKind,
 	ringbuffer::RingBufferDef,
 	series::SeriesDef,
@@ -25,43 +25,66 @@ use super::catalog::{
 
 /// Resolved namespace with both identifier and definition
 #[derive(Debug, Clone)]
-pub struct ResolvedNamespace(Arc<ResolvedNamespaceInner>);
+pub enum ResolvedNamespace {
+	Local(Arc<ResolvedNamespaceInner>),
+	Remote(Arc<ResolvedNamespaceInner>),
+}
 
 #[derive(Debug)]
-struct ResolvedNamespaceInner {
-	pub identifier: Fragment,
-	pub def: NamespaceDef,
+pub struct ResolvedNamespaceInner {
+	identifier: Fragment,
+	def: Namespace,
 }
 
 impl ResolvedNamespace {
-	pub fn new(identifier: Fragment, def: NamespaceDef) -> Self {
-		Self(Arc::new(ResolvedNamespaceInner {
+	pub fn new(identifier: Fragment, def: Namespace) -> Self {
+		let is_remote = def.is_remote();
+		let inner = Arc::new(ResolvedNamespaceInner {
 			identifier,
 			def,
-		}))
+		});
+		if is_remote {
+			Self::Remote(inner)
+		} else {
+			Self::Local(inner)
+		}
+	}
+
+	fn inner(&self) -> &ResolvedNamespaceInner {
+		match self {
+			Self::Local(inner) | Self::Remote(inner) => inner,
+		}
 	}
 
 	/// Get the namespace name
 	pub fn name(&self) -> &str {
-		&self.0.def.name
+		self.inner().def.name()
 	}
 
 	/// Get the namespace def
-	pub fn def(&self) -> &NamespaceDef {
-		&self.0.def
+	pub fn def(&self) -> &Namespace {
+		&self.inner().def
 	}
 
 	/// Get the fragment for error reporting
 	pub fn fragment(&self) -> &Fragment {
-		&self.0.identifier
+		&self.inner().identifier
+	}
+
+	/// Whether this is a remote namespace
+	pub fn is_remote(&self) -> bool {
+		matches!(self, Self::Remote(_))
+	}
+
+	/// Get the remote address if this is a remote namespace
+	pub fn address(&self) -> Option<&str> {
+		self.inner().def.address()
 	}
 
 	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedNamespace {
-		ResolvedNamespace(Arc::new(ResolvedNamespaceInner {
-			identifier: Fragment::internal(self.0.identifier.text()),
-			def: self.0.def.clone(),
-		}))
+		let inner = self.inner();
+		ResolvedNamespace::new(Fragment::internal(inner.identifier.text()), inner.def.clone())
 	}
 }
 
@@ -984,12 +1007,11 @@ pub mod tests {
 		id::{ColumnId, NamespaceId, TableId},
 	};
 
-	fn test_namespace_def() -> NamespaceDef {
-		NamespaceDef {
+	fn test_namespace_def() -> Namespace {
+		Namespace::Local {
 			id: NamespaceId(1),
 			name: "public".to_string(),
 			parent_id: NamespaceId::ROOT,
-			grpc: None,
 		}
 	}
 

@@ -13,7 +13,7 @@ pub(crate) fn execute_alter_table(
 	txn: &mut AdminTransaction,
 	plan: AlterTableNode,
 ) -> Result<Columns> {
-	let namespace_id = plan.namespace.def().id;
+	let namespace_id = plan.namespace.def().id();
 	let namespace_name = plan.namespace.name().to_string();
 	let table_name = plan.table.text().to_string();
 

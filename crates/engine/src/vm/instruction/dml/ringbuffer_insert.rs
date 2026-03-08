@@ -52,7 +52,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 	};
 
 	let ringbuffer_name = plan.target.name();
-	let Some(ringbuffer) = services.catalog.find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)? else {
+	let Some(ringbuffer) = services.catalog.find_ringbuffer_by_name(txn, namespace.id(), ringbuffer_name)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 	};
@@ -67,7 +67,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
 
 	// Create resolved source for the ring buffer
-	let namespace_ident = Fragment::internal(namespace.name.clone());
+	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
@@ -194,7 +194,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 
 	// Return summary
 	Ok(Columns::single_row([
-		("namespace", Value::Utf8(namespace.name)),
+		("namespace", Value::Utf8(namespace.name().to_string())),
 		("ringbuffer", Value::Utf8(ringbuffer.name)),
 		("inserted", Value::Uint8(inserted_count as u64)),
 	]))

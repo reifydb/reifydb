@@ -26,7 +26,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			create.series.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = create.series.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(&namespace_name)
@@ -38,11 +38,11 @@ impl<'bump> Compiler<'bump> {
 
 		let namespace_id = if let Some(n) = create.series.namespace.first() {
 			let interned = self.interner.intern_fragment(n);
-			interned.with_text(&namespace_def.name)
+			interned.with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace_def.name.clone())
+			Fragment::internal(namespace.name().to_string())
 		};
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 
 		// Resolve optional tag type
 		let tag = if let Some(tag_ident) = create.tag {
@@ -68,7 +68,7 @@ impl<'bump> Compiler<'bump> {
 			};
 
 			let tag_name = tag_ident.name.text();
-			let Some(sumtype) = self.catalog.find_sumtype_by_name(rx, tag_ns.id, tag_name)? else {
+			let Some(sumtype) = self.catalog.find_sumtype_by_name(rx, tag_ns.id(), tag_name)? else {
 				return Err(CatalogError::NotFound {
 					kind: CatalogObjectKind::Tag,
 					namespace: tag_namespace_name,

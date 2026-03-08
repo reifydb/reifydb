@@ -262,7 +262,7 @@ impl Catalog {
 		// Try to get the namespace name for the error message
 		let namespace_name = self
 			.find_namespace(txn, namespace)?
-			.map(|ns| ns.name)
+			.map(|ns| ns.name().to_string())
 			.unwrap_or_else(|| format!("namespace_{}", namespace));
 
 		self.find_table_by_name(txn, namespace, name.text())?.ok_or_else(|| {

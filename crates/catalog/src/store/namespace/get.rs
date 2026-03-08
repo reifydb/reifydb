@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
+	interface::catalog::{id::NamespaceId, namespace::Namespace},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +11,7 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_namespace(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<NamespaceDef> {
+	pub(crate) fn get_namespace(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Namespace> {
 		CatalogStore::find_namespace(rx, namespace)?.ok_or_else(|| {
 			Error(internal!(
 				"Namespace with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -38,8 +38,8 @@ pub mod tests {
 
 		let result = CatalogStore::get_namespace(&mut Transaction::Admin(&mut txn), NamespaceId(1026)).unwrap();
 
-		assert_eq!(result.id, NamespaceId(1026));
-		assert_eq!(result.name, "namespace_two");
+		assert_eq!(result.id(), NamespaceId(1026));
+		assert_eq!(result.name(), "namespace_two");
 	}
 
 	#[test]

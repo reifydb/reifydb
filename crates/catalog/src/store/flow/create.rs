@@ -40,7 +40,7 @@ impl CatalogStore {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Flow,
-				namespace: namespace.name,
+				namespace: namespace.name().to_string(),
 				name: to_create.name.text().to_string(),
 				fragment: to_create.name.clone(),
 			}
@@ -126,7 +126,7 @@ pub mod tests {
 
 		let to_create = FlowToCreate {
 			name: Fragment::internal("test_flow"),
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
 		};
 
@@ -150,21 +150,21 @@ pub mod tests {
 		// Create two flows
 		let to_create = FlowToCreate {
 			name: Fragment::internal("flow_one"),
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
 		let to_create = FlowToCreate {
 			name: Fragment::internal("flow_two"),
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			status: FlowStatus::Paused,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
 		// Verify both are linked to namespace
 		let links: Vec<_> = txn
-			.range(NamespaceFlowKey::full_scan(test_namespace.id), 1024)
+			.range(NamespaceFlowKey::full_scan(test_namespace.id()), 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();
@@ -205,7 +205,7 @@ pub mod tests {
 		// Create flow in first namespace
 		let to_create = FlowToCreate {
 			name: Fragment::internal("shared_name"),
-			namespace: namespace_one.id,
+			namespace: namespace_one.id(),
 			status: FlowStatus::Active,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
@@ -213,11 +213,11 @@ pub mod tests {
 		// Should be able to create flow with same name in different namespace
 		let to_create = FlowToCreate {
 			name: Fragment::internal("shared_name"),
-			namespace: namespace_two.id,
+			namespace: namespace_two.id(),
 			status: FlowStatus::Active,
 		};
 		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();
 		assert_eq!(result.name, "shared_name");
-		assert_eq!(result.namespace, namespace_two.id);
+		assert_eq!(result.namespace, namespace_two.id());
 	}
 }

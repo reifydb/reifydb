@@ -25,7 +25,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			create.table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = create.table.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(&namespace_name)
@@ -37,11 +37,11 @@ impl<'bump> Compiler<'bump> {
 
 		let namespace_id = if let Some(n) = create.table.namespace.first() {
 			let interned = self.interner.intern_fragment(n);
-			interned.with_text(&namespace_def.name)
+			interned.with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace_def.name.clone())
+			Fragment::internal(namespace.name().to_string())
 		};
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 
 		let columns = create
 			.columns

@@ -142,13 +142,13 @@ impl Catalog {
 	) -> Result<Option<ResolvedProcedure>> {
 		if let Some((ns_name, proc_name)) = Self::split_qualified_name(qualified_name) {
 			if let Some(ns) = self.find_namespace_by_path(txn, &ns_name)? {
-				if let Some(ref address) = ns.grpc {
+				if let Some(address) = ns.address() {
 					return Ok(Some(ResolvedProcedure::Remote {
-						address: address.clone(),
+						address: address.to_string(),
 					}));
 				}
 				return Ok(self
-					.find_procedure_by_name(txn, ns.id, proc_name)?
+					.find_procedure_by_name(txn, ns.id(), proc_name)?
 					.map(ResolvedProcedure::Local));
 			}
 			Ok(None)

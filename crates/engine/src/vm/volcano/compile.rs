@@ -505,11 +505,11 @@ pub(crate) fn compile<'a>(
 
 			// First check user-defined virtual tables
 			let virtual_table_impl: VTables = if let Some(user_table) =
-				context.services.virtual_table_registry.find_by_name(namespace.id, &table.name)
+				context.services.virtual_table_registry.find_by_name(namespace.id(), &table.name)
 			{
 				// User-defined virtual table - registry returns VTableImpl directly
 				user_table
-			} else if namespace.id == NamespaceId(1) {
+			} else if namespace.id() == NamespaceId(1) {
 				// Built-in system virtual tables
 				match table.name.as_str() {
 					"sequences" => VTables::Sequences(Sequences::new()),
@@ -599,7 +599,7 @@ pub(crate) fn compile<'a>(
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {
-				panic!("Unknown virtual table type: {}.{}", namespace.name, table.name)
+				panic!("Unknown virtual table type: {}.{}", namespace.name(), table.name)
 			};
 
 			let virtual_context = node

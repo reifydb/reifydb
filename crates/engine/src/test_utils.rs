@@ -115,7 +115,7 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 		&mut result,
 		TableToCreate {
 			name: Fragment::internal("flows"),
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			columns: vec![
 				TableColumnToCreate {
 					name: Fragment::internal("id"),

@@ -76,7 +76,7 @@ pub mod tests {
 		let created = CatalogStore::create_dictionary(
 			&mut txn,
 			DictionaryToCreate {
-				namespace: namespace.id,
+				namespace: namespace.id(),
 				name: Fragment::internal("test_dict"),
 				value_type: Type::Utf8,
 				id_type: Type::Uint2,
@@ -114,7 +114,7 @@ pub mod tests {
 		let dict_def = CatalogStore::create_dictionary(
 			&mut txn,
 			DictionaryToCreate {
-				namespace: namespace.id,
+				namespace: namespace.id(),
 				name: Fragment::internal("entry_dict"),
 				value_type: Type::Utf8,
 				id_type: Type::Uint2,

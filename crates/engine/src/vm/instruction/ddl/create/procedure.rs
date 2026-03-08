@@ -20,7 +20,7 @@ pub(crate) fn create_procedure(
 		txn,
 		ProcedureToCreate {
 			name: plan.name.clone(),
-			namespace: plan.namespace.id,
+			namespace: plan.namespace.id(),
 			params: plan.params,
 			return_type: None,
 			body: plan.body_source,
@@ -31,7 +31,7 @@ pub(crate) fn create_procedure(
 	if is_handler {
 		// Return handler-style output for backwards compatibility
 		Ok(Columns::single_row([
-			("namespace", Value::Utf8(plan.namespace.name.clone())),
+			("namespace", Value::Utf8(plan.namespace.name().to_string())),
 			("handler", Value::Utf8(procedure.name)),
 			("created", Value::Boolean(true)),
 		]))

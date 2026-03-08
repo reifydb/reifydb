@@ -25,8 +25,8 @@ use reifydb_transaction::interceptor::{
 	builder::InterceptorBuilder,
 	filter::InterceptFilter,
 	filtered::{
-		FilteredNamespaceDefPostCreateInterceptor, FilteredNamespaceDefPostUpdateInterceptor,
-		FilteredNamespaceDefPreDeleteInterceptor, FilteredNamespaceDefPreUpdateInterceptor,
+		FilteredNamespacePostCreateInterceptor, FilteredNamespacePostUpdateInterceptor,
+		FilteredNamespacePreDeleteInterceptor, FilteredNamespacePreUpdateInterceptor,
 		FilteredRingBufferDefPostCreateInterceptor, FilteredRingBufferDefPostUpdateInterceptor,
 		FilteredRingBufferDefPreDeleteInterceptor, FilteredRingBufferDefPreUpdateInterceptor,
 		FilteredRingBufferPostDeleteInterceptor, FilteredRingBufferPostInsertInterceptor,
@@ -44,9 +44,9 @@ use reifydb_transaction::interceptor::{
 		FilteredViewPreUpdateInterceptor,
 	},
 	interceptors::Interceptors,
-	namespace_def::{
-		NamespaceDefPostCreateContext, NamespaceDefPostUpdateContext, NamespaceDefPreDeleteContext,
-		NamespaceDefPreUpdateContext,
+	namespace::{
+		NamespacePostCreateContext, NamespacePostUpdateContext, NamespacePreDeleteContext,
+		NamespacePreUpdateContext,
 	},
 	ringbuffer::{
 		RingBufferPostDeleteContext, RingBufferPostInsertContext, RingBufferPostUpdateContext,
@@ -87,7 +87,7 @@ pub trait WithInterceptorBuilder: Sized {
 /// Intermediate builder returned by `.intercept()`.
 ///
 /// Use `.table(spec)`, `.ringbuffer(spec)`, or `.view(spec)` to select data operations,
-/// or `.table_def(spec)`, `.view_def(spec)`, `.ringbuffer_def(spec)`, `.namespace_def(spec)`
+/// or `.table_def(spec)`, `.view_def(spec)`, `.ringbuffer_def(spec)`, `.namespace(spec)`
 /// for schema lifecycle operations.
 pub struct InterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,
@@ -132,8 +132,8 @@ impl<B: WithInterceptorBuilder> InterceptBuilder<B> {
 	}
 
 	/// Start building interceptors for a specific namespace definition.
-	pub fn namespace_def(self, spec: &str) -> NamespaceDefInterceptBuilder<B> {
-		NamespaceDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn namespace(self, spec: &str) -> NamespaceInterceptBuilder<B> {
+		NamespaceInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Finish and return the underlying builder.
@@ -278,8 +278,8 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a namespace definition.
-	pub fn namespace_def(self, spec: &str) -> NamespaceDefInterceptBuilder<B> {
-		NamespaceDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn namespace(self, spec: &str) -> NamespaceInterceptBuilder<B> {
+		NamespaceInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Finish and return the underlying builder.
@@ -424,8 +424,8 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a namespace definition.
-	pub fn namespace_def(self, spec: &str) -> NamespaceDefInterceptBuilder<B> {
-		NamespaceDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn namespace(self, spec: &str) -> NamespaceInterceptBuilder<B> {
+		NamespaceInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Finish and return the underlying builder.
@@ -570,8 +570,8 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a namespace definition.
-	pub fn namespace_def(self, spec: &str) -> NamespaceDefInterceptBuilder<B> {
-		NamespaceDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn namespace(self, spec: &str) -> NamespaceInterceptBuilder<B> {
+		NamespaceInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Finish and return the underlying builder.
@@ -686,8 +686,8 @@ impl<B: WithInterceptorBuilder> TableDefInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a namespace definition.
-	pub fn namespace_def(self, spec: &str) -> NamespaceDefInterceptBuilder<B> {
-		NamespaceDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn namespace(self, spec: &str) -> NamespaceInterceptBuilder<B> {
+		NamespaceInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Finish and return the underlying builder.
@@ -802,8 +802,8 @@ impl<B: WithInterceptorBuilder> ViewDefInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a namespace definition.
-	pub fn namespace_def(self, spec: &str) -> NamespaceDefInterceptBuilder<B> {
-		NamespaceDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn namespace(self, spec: &str) -> NamespaceInterceptBuilder<B> {
+		NamespaceInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Finish and return the underlying builder.
@@ -918,8 +918,8 @@ impl<B: WithInterceptorBuilder> RingBufferDefInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a namespace definition.
-	pub fn namespace_def(self, spec: &str) -> NamespaceDefInterceptBuilder<B> {
-		NamespaceDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn namespace(self, spec: &str) -> NamespaceInterceptBuilder<B> {
+		NamespaceInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Finish and return the underlying builder.
@@ -929,12 +929,12 @@ impl<B: WithInterceptorBuilder> RingBufferDefInterceptBuilder<B> {
 }
 
 /// Fluent builder for namespace definition interceptors.
-pub struct NamespaceDefInterceptBuilder<B: WithInterceptorBuilder> {
+pub struct NamespaceInterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,
 	filter: InterceptFilter,
 }
 
-impl<B: WithInterceptorBuilder> NamespaceDefInterceptBuilder<B> {
+impl<B: WithInterceptorBuilder> NamespaceInterceptBuilder<B> {
 	/// Create a new namespace def intercept builder.
 	pub fn new(builder: B, filter: InterceptFilter) -> Self {
 		Self {
@@ -946,14 +946,14 @@ impl<B: WithInterceptorBuilder> NamespaceDefInterceptBuilder<B> {
 	/// Register a post-create interceptor for the namespace definition.
 	pub fn post_create<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut NamespaceDefPostCreateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut NamespacePostCreateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors.namespace_def_post_create.add(Arc::new(
-				FilteredNamespaceDefPostCreateInterceptor::new(filter.clone(), f.clone()),
-			));
+			interceptors
+				.namespace_post_create
+				.add(Arc::new(FilteredNamespacePostCreateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -961,14 +961,14 @@ impl<B: WithInterceptorBuilder> NamespaceDefInterceptBuilder<B> {
 	/// Register a pre-update interceptor for the namespace definition.
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut NamespaceDefPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut NamespacePreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors.namespace_def_pre_update.add(Arc::new(
-				FilteredNamespaceDefPreUpdateInterceptor::new(filter.clone(), f.clone()),
-			));
+			interceptors
+				.namespace_pre_update
+				.add(Arc::new(FilteredNamespacePreUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -976,14 +976,14 @@ impl<B: WithInterceptorBuilder> NamespaceDefInterceptBuilder<B> {
 	/// Register a post-update interceptor for the namespace definition.
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut NamespaceDefPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut NamespacePostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors.namespace_def_post_update.add(Arc::new(
-				FilteredNamespaceDefPostUpdateInterceptor::new(filter.clone(), f.clone()),
-			));
+			interceptors
+				.namespace_post_update
+				.add(Arc::new(FilteredNamespacePostUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -991,14 +991,14 @@ impl<B: WithInterceptorBuilder> NamespaceDefInterceptBuilder<B> {
 	/// Register a pre-delete interceptor for the namespace definition.
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut NamespaceDefPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut NamespacePreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors.namespace_def_pre_delete.add(Arc::new(
-				FilteredNamespaceDefPreDeleteInterceptor::new(filter.clone(), f.clone()),
-			));
+			interceptors
+				.namespace_pre_delete
+				.add(Arc::new(FilteredNamespacePreDeleteInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -1034,8 +1034,8 @@ impl<B: WithInterceptorBuilder> NamespaceDefInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a different namespace definition.
-	pub fn namespace_def(self, spec: &str) -> NamespaceDefInterceptBuilder<B> {
-		NamespaceDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn namespace(self, spec: &str) -> NamespaceInterceptBuilder<B> {
+		NamespaceInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Finish and return the underlying builder.

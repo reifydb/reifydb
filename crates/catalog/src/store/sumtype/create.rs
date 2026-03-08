@@ -42,7 +42,7 @@ impl CatalogStore {
 					SumTypeKind::Enum => CatalogObjectKind::Enum,
 					SumTypeKind::Tag => CatalogObjectKind::Tag,
 				},
-				namespace: namespace.name,
+				namespace: namespace.name().to_string(),
 				name: to_create.name.text().to_string(),
 				fragment: to_create.name.clone(),
 			}
@@ -104,10 +104,10 @@ pub mod tests {
 
 		let to_create = SumTypeToCreate {
 			name: Fragment::internal("Status"),
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			def: SumTypeDef {
 				id: SumTypeId(0),
-				namespace: test_namespace.id,
+				namespace: test_namespace.id(),
 				name: "Status".to_string(),
 				variants: variants.clone(),
 				kind: SumTypeKind::Enum,
@@ -117,7 +117,7 @@ pub mod tests {
 		let result = CatalogStore::create_sumtype(&mut txn, to_create).unwrap();
 
 		assert!(result.id.0 > 0);
-		assert_eq!(result.namespace, test_namespace.id);
+		assert_eq!(result.namespace, test_namespace.id());
 		assert_eq!(result.name, "Status");
 		assert_eq!(result.variants, variants);
 	}
@@ -129,10 +129,10 @@ pub mod tests {
 
 		let to_create = SumTypeToCreate {
 			name: Fragment::internal("Direction"),
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			def: SumTypeDef {
 				id: SumTypeId(0),
-				namespace: test_namespace.id,
+				namespace: test_namespace.id(),
 				name: "Direction".to_string(),
 				variants: vec![VariantDef {
 					tag: 0,
@@ -157,10 +157,10 @@ pub mod tests {
 
 		let to_create = SumTypeToCreate {
 			name: Fragment::internal("UserCreated"),
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			def: SumTypeDef {
 				id: SumTypeId(0),
-				namespace: test_namespace.id,
+				namespace: test_namespace.id(),
 				name: "UserCreated".to_string(),
 				variants: vec![],
 				kind: SumTypeKind::Event,
@@ -169,7 +169,7 @@ pub mod tests {
 
 		let result = CatalogStore::create_sumtype(&mut txn, to_create).unwrap();
 		assert!(result.id.0 > 0);
-		assert_eq!(result.namespace, test_namespace.id);
+		assert_eq!(result.namespace, test_namespace.id());
 		assert_eq!(result.name, "UserCreated");
 		assert_eq!(result.kind, SumTypeKind::Event);
 	}
@@ -181,10 +181,10 @@ pub mod tests {
 
 		let to_create1 = SumTypeToCreate {
 			name: Fragment::internal("Color"),
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			def: SumTypeDef {
 				id: SumTypeId(0),
-				namespace: test_namespace.id,
+				namespace: test_namespace.id(),
 				name: "Color".to_string(),
 				variants: vec![],
 				kind: SumTypeKind::Enum,
@@ -194,10 +194,10 @@ pub mod tests {
 
 		let to_create2 = SumTypeToCreate {
 			name: Fragment::internal("Shape"),
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			def: SumTypeDef {
 				id: SumTypeId(0),
-				namespace: test_namespace.id,
+				namespace: test_namespace.id(),
 				name: "Shape".to_string(),
 				variants: vec![],
 				kind: SumTypeKind::Enum,
@@ -206,7 +206,7 @@ pub mod tests {
 		CatalogStore::create_sumtype(&mut txn, to_create2).unwrap();
 
 		let links: Vec<_> = txn
-			.range(NamespaceSumTypeKey::full_scan(test_namespace.id), 1024)
+			.range(NamespaceSumTypeKey::full_scan(test_namespace.id()), 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>>>()
 			.unwrap();

@@ -33,14 +33,14 @@ pub(crate) fn create_tag(services: &Services, txn: &mut AdminTransaction, plan: 
 		txn,
 		SumTypeToCreate {
 			name: plan.name.clone(),
-			namespace: plan.namespace.id,
+			namespace: plan.namespace.id(),
 			variants: variant_defs,
 			kind: SumTypeKind::Tag,
 		},
 	)?;
 
 	Ok(Columns::single_row([
-		("namespace", Value::Utf8(plan.namespace.name.clone())),
+		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("tag", Value::Utf8(plan.name.text().to_string())),
 		("created", Value::Boolean(true)),
 	]))

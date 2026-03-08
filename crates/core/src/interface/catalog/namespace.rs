@@ -10,29 +10,87 @@ impl NamespaceId {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct NamespaceDef {
-	pub id: NamespaceId,
-	pub name: String,
-	pub parent_id: NamespaceId,
-	pub grpc: Option<String>,
+pub enum Namespace {
+	Local {
+		id: NamespaceId,
+		name: String,
+		parent_id: NamespaceId,
+	},
+	Remote {
+		id: NamespaceId,
+		name: String,
+		parent_id: NamespaceId,
+		address: String,
+	},
 }
 
-impl NamespaceDef {
+impl Namespace {
+	pub fn id(&self) -> NamespaceId {
+		match self {
+			Namespace::Local {
+				id,
+				..
+			}
+			| Namespace::Remote {
+				id,
+				..
+			} => *id,
+		}
+	}
+
+	pub fn name(&self) -> &str {
+		match self {
+			Namespace::Local {
+				name,
+				..
+			}
+			| Namespace::Remote {
+				name,
+				..
+			} => name,
+		}
+	}
+
+	pub fn parent_id(&self) -> NamespaceId {
+		match self {
+			Namespace::Local {
+				parent_id,
+				..
+			}
+			| Namespace::Remote {
+				parent_id,
+				..
+			} => *parent_id,
+		}
+	}
+
+	pub fn address(&self) -> Option<&str> {
+		match self {
+			Namespace::Remote {
+				address,
+				..
+			} => Some(address),
+			_ => None,
+		}
+	}
+
+	pub fn is_remote(&self) -> bool {
+		matches!(self, Namespace::Remote { .. })
+	}
+
 	pub fn system() -> Self {
-		Self {
+		Self::Local {
 			id: NamespaceId(1),
 			name: "system".to_string(),
 			parent_id: NamespaceId::ROOT,
-			grpc: None,
 		}
 	}
 
 	pub fn default_namespace() -> Self {
-		Self {
+		Self::Local {
 			id: NamespaceId(2),
 			name: "default".to_string(),
 			parent_id: NamespaceId::ROOT,
-			grpc: None,
 		}
 	}
 }

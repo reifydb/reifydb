@@ -58,7 +58,7 @@ pub(crate) fn update_table<'a>(
 			return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
 		};
 
-		let Some(table) = services.catalog.find_table_by_name(txn, namespace.id, target.name())? else {
+		let Some(table) = services.catalog.find_table_by_name(txn, namespace.id(), target.name())? else {
 			let fragment = target.identifier().clone();
 			return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 		};
@@ -72,7 +72,7 @@ pub(crate) fn update_table<'a>(
 	let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
 
 	// Create resolved source for the table
-	let namespace_ident = Fragment::internal(namespace.name.clone());
+	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
 	let table_ident = Fragment::internal(table.name.clone());
@@ -101,7 +101,7 @@ pub(crate) fn update_table<'a>(
 			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
 				txn,
 				identity,
-				&namespace.name,
+				&namespace.name(),
 				&table.name,
 				"update",
 				&columns,
@@ -213,7 +213,7 @@ pub(crate) fn update_table<'a>(
 	}
 
 	Ok(Columns::single_row([
-		("namespace", Value::Utf8(namespace.name)),
+		("namespace", Value::Utf8(namespace.name().to_string())),
 		("table", Value::Utf8(table.name)),
 		("updated", Value::Uint8(updated_count as u64)),
 	]))

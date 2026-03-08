@@ -45,7 +45,7 @@ pub(crate) fn insert_dictionary<'a>(
 	};
 
 	let dictionary_name = plan.target.name();
-	let Some(dictionary) = services.catalog.find_dictionary_by_name(txn, namespace.id, dictionary_name)? else {
+	let Some(dictionary) = services.catalog.find_dictionary_by_name(txn, namespace.id(), dictionary_name)? else {
 		let fragment = plan.target.identifier().clone();
 		return_error!(dictionary_not_found(fragment.clone(), namespace_name, dictionary_name,));
 	};
@@ -126,7 +126,7 @@ pub(crate) fn insert_dictionary<'a>(
 		return Ok(Columns::new(vec![
 			Column {
 				name: Fragment::internal("namespace"),
-				data: ColumnData::utf8(vec![namespace.name.clone()]),
+				data: ColumnData::utf8(vec![namespace.name()]),
 			},
 			Column {
 				name: Fragment::internal("dictionary"),
@@ -148,7 +148,7 @@ pub(crate) fn insert_dictionary<'a>(
 	Ok(Columns::new(vec![
 		Column {
 			name: Fragment::internal("namespace"),
-			data: ColumnData::utf8(vec![namespace.name.clone(); ids.len()]),
+			data: ColumnData::utf8(vec![namespace.name(); ids.len()]),
 		},
 		Column {
 			name: Fragment::internal("dictionary"),

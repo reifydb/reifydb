@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
+	interface::catalog::{id::NamespaceId, namespace::Namespace},
 	key::namespace::NamespaceKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -26,17 +26,14 @@ pub struct NamespaceToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_namespace(
-		txn: &mut AdminTransaction,
-		to_create: NamespaceToCreate,
-	) -> Result<NamespaceDef> {
+	pub(crate) fn create_namespace(txn: &mut AdminTransaction, to_create: NamespaceToCreate) -> Result<Namespace> {
 		if let Some(namespace) =
 			Self::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), &to_create.name)?
 		{
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Namespace,
-				namespace: namespace.name.clone(),
-				name: namespace.name.clone(),
+				namespace: namespace.name().to_string(),
+				name: namespace.name().to_string(),
 				fragment: to_create.namespace_fragment.unwrap_or_else(|| Fragment::None),
 			}
 			.into());
@@ -78,8 +75,8 @@ pub mod tests {
 
 		// First creation should succeed
 		let result = CatalogStore::create_namespace(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id, NamespaceId(1025));
-		assert_eq!(result.name, "test_namespace");
+		assert_eq!(result.id(), NamespaceId(1025));
+		assert_eq!(result.name(), "test_namespace");
 
 		// Creating the same namespace again with `if_not_exists =
 		// false` should return error

@@ -144,12 +144,12 @@ fn resolve_event_path(path: &str, catalog: &MaterializedCatalog) -> Result<(SumT
 	}
 	let (namespace_name, event_name, variant_name) = (parts[0], parts[1], parts[2]);
 
-	let namespace_def = catalog
+	let namespace = catalog
 		.find_namespace_by_name(namespace_name)
 		.ok_or_else(|| format!("Namespace '{}' not found", namespace_name))?;
 
 	let sumtype_def = catalog
-		.find_sumtype_by_name(namespace_def.id, event_name)
+		.find_sumtype_by_name(namespace.id(), event_name)
 		.ok_or_else(|| format!("SumType '{}' not found in namespace '{}'", event_name, namespace_name))?;
 
 	let variant_name_lower = variant_name.to_lowercase();

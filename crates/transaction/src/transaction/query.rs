@@ -14,7 +14,7 @@ use reifydb_core::{
 				SubscriptionId, TableId, ViewId,
 			},
 			migration::MigrationDef,
-			namespace::NamespaceDef,
+			namespace::Namespace,
 			policy::{PolicyDef, PolicyId},
 			procedure::ProcedureDef,
 			ringbuffer::RingBufferDef,
@@ -200,11 +200,11 @@ impl TransactionalFlowChanges for QueryTransaction {
 }
 
 impl TransactionalNamespaceChanges for QueryTransaction {
-	fn find_namespace(&self, _id: NamespaceId) -> Option<&NamespaceDef> {
+	fn find_namespace(&self, _id: NamespaceId) -> Option<&Namespace> {
 		None
 	}
 
-	fn find_namespace_by_name(&self, _name: &str) -> Option<&NamespaceDef> {
+	fn find_namespace_by_name(&self, _name: &str) -> Option<&Namespace> {
 		None
 	}
 

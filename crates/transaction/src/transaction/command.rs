@@ -28,9 +28,9 @@ use crate::{
 		WithInterceptors,
 		chain::InterceptorChain as Chain,
 		interceptors::Interceptors,
-		namespace_def::{
-			NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
-			NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor,
+		namespace::{
+			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
+			NamespacePreUpdateInterceptor,
 		},
 		ringbuffer::{
 			RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
@@ -481,28 +481,24 @@ impl WithInterceptors for CommandTransaction {
 		&mut self.interceptors.post_commit
 	}
 
-	fn namespace_def_post_create_interceptors(
+	fn namespace_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPostCreateInterceptor + Send + Sync> {
-		&mut self.interceptors.namespace_def_post_create
+	) -> &mut Chain<dyn NamespacePostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.namespace_post_create
 	}
 
-	fn namespace_def_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.namespace_def_pre_update
+	fn namespace_pre_update_interceptors(&mut self) -> &mut Chain<dyn NamespacePreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.namespace_pre_update
 	}
 
-	fn namespace_def_post_update_interceptors(
+	fn namespace_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.namespace_def_post_update
+	) -> &mut Chain<dyn NamespacePostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.namespace_post_update
 	}
 
-	fn namespace_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.namespace_def_pre_delete
+	fn namespace_pre_delete_interceptors(&mut self) -> &mut Chain<dyn NamespacePreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.namespace_pre_delete
 	}
 
 	fn table_def_post_create_interceptors(

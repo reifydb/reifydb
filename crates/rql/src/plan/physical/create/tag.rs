@@ -25,7 +25,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			create.name.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = if let Some(n) = create.name.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(&namespace_name)
@@ -58,7 +58,7 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		Ok(PhysicalPlan::CreateTag(CreateTagNode {
-			namespace: namespace_def,
+			namespace,
 			name: self.interner.intern_fragment(&create.name.name),
 			variants,
 		}))

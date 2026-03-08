@@ -59,7 +59,7 @@ impl CatalogStore {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Table,
-				namespace: namespace.name,
+				namespace: namespace.name().to_string(),
 				name: table.name,
 				fragment: to_create.name.clone(),
 			}
@@ -114,7 +114,7 @@ impl CatalogStore {
 	fn insert_columns(txn: &mut AdminTransaction, table: TableId, to_create: TableToCreate) -> Result<()> {
 		// Look up namespace name for error messages
 		let namespace_name = Self::find_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?
-			.map(|s| s.name)
+			.map(|s| s.name().to_string())
 			.unwrap_or_else(|| format!("namespace_{}", to_create.namespace));
 
 		for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
@@ -160,7 +160,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = TableToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("test_table"),
 			columns: vec![],
 			retention_policy: None,
@@ -182,7 +182,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = TableToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("test_table"),
 			columns: vec![],
 			retention_policy: None,
@@ -191,7 +191,7 @@ pub mod tests {
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
 
 		let to_create = TableToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("another_table"),
 			columns: vec![],
 			retention_policy: None,
@@ -200,7 +200,7 @@ pub mod tests {
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
 
 		let links: Vec<_> = txn
-			.range(NamespaceTableKey::full_scan(test_namespace.id), 1024)
+			.range(NamespaceTableKey::full_scan(test_namespace.id()), 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

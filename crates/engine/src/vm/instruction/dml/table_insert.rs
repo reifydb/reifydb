@@ -58,7 +58,7 @@ pub(crate) fn insert_table<'a>(
 	};
 
 	let table_name = plan.target.name();
-	let Some(table) = services.catalog.find_table_by_name(txn, namespace.id, table_name)? else {
+	let Some(table) = services.catalog.find_table_by_name(txn, namespace.id(), table_name)? else {
 		let fragment = plan.target.identifier().clone();
 		return_error!(table_not_found(fragment.clone(), namespace_name, table_name,));
 	};
@@ -67,7 +67,7 @@ pub(crate) fn insert_table<'a>(
 	let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
 
 	// Create resolved source for the table
-	let namespace_ident = Fragment::internal(namespace.name.clone());
+	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
 	let table_ident = Fragment::internal(table.name.clone());
@@ -185,7 +185,7 @@ pub(crate) fn insert_table<'a>(
 	if total_rows == 0 {
 		// No rows to insert, return early
 		return Ok(Columns::single_row([
-			("namespace", Value::Utf8(namespace.name)),
+			("namespace", Value::Utf8(namespace.name().to_string())),
 			("table", Value::Utf8(table.name)),
 			("inserted", Value::Uint8(0)),
 		]));
@@ -235,7 +235,7 @@ pub(crate) fn insert_table<'a>(
 
 	// Return summary columns
 	Ok(Columns::single_row([
-		("namespace", Value::Utf8(namespace.name)),
+		("namespace", Value::Utf8(namespace.name().to_string())),
 		("table", Value::Utf8(table.name)),
 		("inserted", Value::Uint8(total_rows as u64)),
 	]))

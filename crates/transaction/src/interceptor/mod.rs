@@ -8,7 +8,7 @@ pub mod factory;
 pub mod filter;
 pub mod filtered;
 pub mod interceptors;
-pub mod namespace_def;
+pub mod namespace;
 pub mod ringbuffer;
 pub mod ringbuffer_def;
 pub mod table;
@@ -19,9 +19,9 @@ pub mod view_def;
 
 // Re-import types for use in WithInterceptors trait
 use chain::InterceptorChain;
-use namespace_def::{
-	NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor, NamespaceDefPreDeleteInterceptor,
-	NamespaceDefPreUpdateInterceptor,
+use namespace::{
+	NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
+	NamespacePreUpdateInterceptor,
 };
 use ringbuffer::{
 	RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor, RingBufferPostUpdateInterceptor,
@@ -108,24 +108,20 @@ pub trait WithInterceptors {
 	fn post_commit_interceptors(&mut self) -> &mut Chain<dyn PostCommitInterceptor + Send + Sync>;
 
 	/// Access namespace post-create interceptor chain
-	fn namespace_def_post_create_interceptors(
+	fn namespace_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPostCreateInterceptor + Send + Sync>;
+	) -> &mut Chain<dyn NamespacePostCreateInterceptor + Send + Sync>;
 
 	/// Access namespace pre-update interceptor chain
-	fn namespace_def_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPreUpdateInterceptor + Send + Sync>;
+	fn namespace_pre_update_interceptors(&mut self) -> &mut Chain<dyn NamespacePreUpdateInterceptor + Send + Sync>;
 
 	/// Access namespace post-update interceptor chain
-	fn namespace_def_post_update_interceptors(
+	fn namespace_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPostUpdateInterceptor + Send + Sync>;
+	) -> &mut Chain<dyn NamespacePostUpdateInterceptor + Send + Sync>;
 
 	/// Access namespace pre-delete interceptor chain
-	fn namespace_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn NamespaceDefPreDeleteInterceptor + Send + Sync>;
+	fn namespace_pre_delete_interceptors(&mut self) -> &mut Chain<dyn NamespacePreDeleteInterceptor + Send + Sync>;
 
 	/// Access table definition post-create interceptor chain
 	fn table_def_post_create_interceptors(&mut self)

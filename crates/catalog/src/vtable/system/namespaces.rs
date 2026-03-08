@@ -48,9 +48,9 @@ impl VTable for Namespaces {
 
 		let namespaces = CatalogStore::list_namespaces_all(txn)?;
 		for namespace in namespaces {
-			namespace_ids.push(namespace.id.0);
-			namespace_names.push(namespace.name);
-			namespace_parent_ids.push(namespace.parent_id.0);
+			namespace_ids.push(namespace.id().0);
+			namespace_names.push(namespace.name().to_string());
+			namespace_parent_ids.push(namespace.parent_id().0);
 		}
 
 		let columns = vec![

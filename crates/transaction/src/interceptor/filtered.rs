@@ -10,10 +10,10 @@ use reifydb_type::Result;
 
 use super::{
 	filter::InterceptFilter,
-	namespace_def::{
-		NamespaceDefPostCreateContext, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateContext,
-		NamespaceDefPostUpdateInterceptor, NamespaceDefPreDeleteContext, NamespaceDefPreDeleteInterceptor,
-		NamespaceDefPreUpdateContext, NamespaceDefPreUpdateInterceptor,
+	namespace::{
+		NamespacePostCreateContext, NamespacePostCreateInterceptor, NamespacePostUpdateContext,
+		NamespacePostUpdateInterceptor, NamespacePreDeleteContext, NamespacePreDeleteInterceptor,
+		NamespacePreUpdateContext, NamespacePreUpdateInterceptor,
 	},
 	ringbuffer::{
 		RingBufferPostDeleteContext, RingBufferPostDeleteInterceptor, RingBufferPostInsertContext,
@@ -49,6 +49,9 @@ use super::{
 };
 
 /// Macro to generate filtered interceptor wrapper types.
+///
+/// The 4-arg form accesses the entity name via `ctx.$entity_field.name` (for struct types).
+/// The 5-arg form accesses it via `ctx.$entity_field.$name_method()` (for enum types like Namespace).
 macro_rules! define_filtered_interceptor {
 	(
 		$wrapper_name:ident,
@@ -69,7 +72,6 @@ macro_rules! define_filtered_interceptor {
 		where
 			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
 		{
-			/// Create a new filtered interceptor.
 			pub fn new(filter: InterceptFilter, handler: F) -> Self {
 				Self {
 					filter,
@@ -95,19 +97,66 @@ macro_rules! define_filtered_interceptor {
 			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
 		{
 			fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> Result<()> {
-				// TODO: Add namespace matching once we have namespace name resolution.
-				// For now, we only match by entity name if namespace is not specified in filter,
-				// or skip namespace check entirely.
-				let entity_name = &ctx.$entity_field.name;
+				let entity_name = ctx.$entity_field.name.as_str();
+				let name_matches =
+					self.filter.name.as_ref().map_or(true, |n| n.as_str() == entity_name);
+				if name_matches {
+					(self.handler)(ctx)
+				} else {
+					Ok(())
+				}
+			}
+		}
+	};
+	(
+		$wrapper_name:ident,
+		$trait_name:ident,
+		$context_type:ident,
+		$entity_field:ident,
+		$name_method:ident
+	) => {
+		/// Filtered interceptor wrapper that checks entity name before executing.
+		pub struct $wrapper_name<F>
+		where
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
+		{
+			filter: InterceptFilter,
+			handler: F,
+		}
 
-				// Check if name matches (or filter allows all names)
-				let name_matches = self.filter.name.as_ref().map_or(true, |n| n == entity_name);
+		impl<F> $wrapper_name<F>
+		where
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
+		{
+			pub fn new(filter: InterceptFilter, handler: F) -> Self {
+				Self {
+					filter,
+					handler,
+				}
+			}
+		}
 
-				// TODO: Namespace matching - for now we skip namespace check if filter has namespace
-				// This means "ns.table" currently only matches by table name
-				let ns_matches = true; // Placeholder until we add namespace resolution
+		impl<F> Clone for $wrapper_name<F>
+		where
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync + Clone,
+		{
+			fn clone(&self) -> Self {
+				Self {
+					filter: self.filter.clone(),
+					handler: self.handler.clone(),
+				}
+			}
+		}
 
-				if name_matches && ns_matches {
+		impl<F> $trait_name for $wrapper_name<F>
+		where
+			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
+		{
+			fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> Result<()> {
+				let entity_name = ctx.$entity_field.$name_method();
+				let name_matches =
+					self.filter.name.as_ref().map_or(true, |n| n.as_str() == entity_name);
+				if name_matches {
 					(self.handler)(ctx)
 				} else {
 					Ok(())
@@ -303,31 +352,35 @@ define_filtered_interceptor!(
 	pre
 );
 
-// Namespace definition filtered interceptors
+// Namespace filtered interceptors
 define_filtered_interceptor!(
-	FilteredNamespaceDefPostCreateInterceptor,
-	NamespaceDefPostCreateInterceptor,
-	NamespaceDefPostCreateContext,
-	post
+	FilteredNamespacePostCreateInterceptor,
+	NamespacePostCreateInterceptor,
+	NamespacePostCreateContext,
+	post,
+	name
 );
 
 define_filtered_interceptor!(
-	FilteredNamespaceDefPreUpdateInterceptor,
-	NamespaceDefPreUpdateInterceptor,
-	NamespaceDefPreUpdateContext,
-	pre
+	FilteredNamespacePreUpdateInterceptor,
+	NamespacePreUpdateInterceptor,
+	NamespacePreUpdateContext,
+	pre,
+	name
 );
 
 define_filtered_interceptor!(
-	FilteredNamespaceDefPostUpdateInterceptor,
-	NamespaceDefPostUpdateInterceptor,
-	NamespaceDefPostUpdateContext,
-	pre
+	FilteredNamespacePostUpdateInterceptor,
+	NamespacePostUpdateInterceptor,
+	NamespacePostUpdateContext,
+	pre,
+	name
 );
 
 define_filtered_interceptor!(
-	FilteredNamespaceDefPreDeleteInterceptor,
-	NamespaceDefPreDeleteInterceptor,
-	NamespaceDefPreDeleteContext,
-	pre
+	FilteredNamespacePreDeleteInterceptor,
+	NamespacePreDeleteInterceptor,
+	NamespacePreDeleteContext,
+	pre,
+	name
 );

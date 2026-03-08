@@ -62,7 +62,7 @@ impl CatalogStore {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::RingBuffer,
-				namespace: namespace.name,
+				namespace: namespace.name().to_string(),
 				name: ringbuffer.name,
 				fragment: to_create.name.clone(),
 			}
@@ -179,7 +179,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = RingBufferToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("trades"),
 			capacity: 1000,
 			columns: vec![
@@ -205,7 +205,7 @@ pub mod tests {
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
 		assert!(result.id.0 > 0);
-		assert_eq!(result.namespace, test_namespace.id);
+		assert_eq!(result.namespace, test_namespace.id());
 		assert_eq!(result.name, "trades");
 		assert_eq!(result.capacity, 1000);
 		assert_eq!(result.columns.len(), 2);
@@ -220,7 +220,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = RingBufferToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("empty_buffer"),
 			capacity: 100,
 			columns: vec![],
@@ -229,7 +229,7 @@ pub mod tests {
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
 		assert!(result.id.0 > 0);
-		assert_eq!(result.namespace, test_namespace.id);
+		assert_eq!(result.namespace, test_namespace.id());
 		assert_eq!(result.name, "empty_buffer");
 		assert_eq!(result.capacity, 100);
 		assert_eq!(result.columns.len(), 0);
@@ -241,7 +241,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = RingBufferToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("test_ringbuffer"),
 			capacity: 50,
 			columns: vec![],
@@ -250,7 +250,7 @@ pub mod tests {
 		// First creation should succeed
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create.clone()).unwrap();
 		assert!(result.id.0 > 0);
-		assert_eq!(result.namespace, test_namespace.id);
+		assert_eq!(result.namespace, test_namespace.id());
 		assert_eq!(result.name, "test_ringbuffer");
 
 		// Second creation should fail with duplicate error
@@ -264,7 +264,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = RingBufferToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("buffer1"),
 			capacity: 10,
 			columns: vec![],
@@ -273,7 +273,7 @@ pub mod tests {
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
 		let to_create = RingBufferToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("buffer2"),
 			capacity: 20,
 			columns: vec![],
@@ -283,7 +283,7 @@ pub mod tests {
 
 		// Check namespace links
 		let links: Vec<_> = txn
-			.range(NamespaceRingBufferKey::full_scan(test_namespace.id), 1024)
+			.range(NamespaceRingBufferKey::full_scan(test_namespace.id()), 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>>>()
 			.unwrap();
@@ -310,7 +310,7 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = RingBufferToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("metadata_buffer"),
 			capacity: 500,
 			columns: vec![],
@@ -337,7 +337,7 @@ pub mod tests {
 
 		// Create small buffer
 		let small = RingBufferToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("small_buffer"),
 			capacity: 10,
 			columns: vec![],
@@ -347,7 +347,7 @@ pub mod tests {
 
 		// Create medium buffer
 		let medium = RingBufferToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("medium_buffer"),
 			capacity: 1000,
 			columns: vec![],
@@ -357,7 +357,7 @@ pub mod tests {
 
 		// Create large buffer
 		let large = RingBufferToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("large_buffer"),
 			capacity: 1000000,
 			columns: vec![],
@@ -404,7 +404,7 @@ pub mod tests {
 		];
 
 		let to_create = RingBufferToCreate {
-			namespace: test_namespace.id,
+			namespace: test_namespace.id(),
 			name: Fragment::internal("ordered_buffer"),
 			capacity: 100,
 			columns: columns.clone(),

@@ -61,7 +61,7 @@ pub(crate) fn update_series<'a>(
 	};
 
 	let series_name = plan.target.name();
-	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id, series_name)? else {
+	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
@@ -441,7 +441,7 @@ pub(crate) fn update_series<'a>(
 
 	// Return summary
 	Ok(Columns::single_row([
-		("namespace", Value::Utf8(namespace.name)),
+		("namespace", Value::Utf8(namespace.name().to_string())),
 		("series", Value::Utf8(series_def.name)),
 		("updated", Value::Uint8(updated_count)),
 	]))

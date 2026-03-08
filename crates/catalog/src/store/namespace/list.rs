@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
+	interface::catalog::{id::NamespaceId, namespace::Namespace},
 	key::{Key, namespace::NamespaceKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, store::namespace::schema::namespace};
 
 impl CatalogStore {
-	pub(crate) fn list_namespaces_all(rx: &mut Transaction<'_>) -> Result<Vec<NamespaceDef>> {
+	pub(crate) fn list_namespaces_all(rx: &mut Transaction<'_>) -> Result<Vec<Namespace>> {
 		let mut result = Vec::new();
 
 		let namespace_range = NamespaceKey::full_scan();
@@ -32,20 +32,28 @@ impl CatalogStore {
 						.try_get_utf8(&entry.values, namespace::GRPC)
 						.map(|s| s.to_string())
 						.filter(|s| !s.is_empty());
-					let namespace_def = NamespaceDef {
-						id: namespace_id,
-						name,
-						parent_id,
-						grpc,
+					let namespace = if let Some(address) = grpc {
+						Namespace::Remote {
+							id: namespace_id,
+							name,
+							parent_id,
+							address,
+						}
+					} else {
+						Namespace::Local {
+							id: namespace_id,
+							name,
+							parent_id,
+						}
 					};
 
-					result.push(namespace_def);
+					result.push(namespace);
 				}
 			}
 		}
 
-		result.push(NamespaceDef::system());
-		result.push(NamespaceDef::default_namespace());
+		result.push(Namespace::system());
+		result.push(Namespace::default_namespace());
 
 		Ok(result)
 	}

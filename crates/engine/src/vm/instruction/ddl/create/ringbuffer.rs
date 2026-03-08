@@ -19,7 +19,7 @@ pub(crate) fn create_ringbuffer(
 	// Check if ring buffer already exists using the catalog
 	if let Some(_) = services.catalog.find_ringbuffer_by_name(
 		&mut Transaction::Admin(txn),
-		plan.namespace.def().id,
+		plan.namespace.def().id(),
 		plan.ringbuffer.text(),
 	)? {
 		if plan.if_not_exists {
@@ -37,7 +37,7 @@ pub(crate) fn create_ringbuffer(
 		txn,
 		RingBufferToCreate {
 			name: plan.ringbuffer.clone(),
-			namespace: plan.namespace.def().id,
+			namespace: plan.namespace.def().id(),
 			columns: plan.columns,
 			capacity: plan.capacity,
 		},

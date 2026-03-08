@@ -55,16 +55,16 @@ pub mod tests {
 		let created = create_view(&mut txn, "test_ns", "test_view", &[]);
 
 		// Verify it exists
-		let found =
-			CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id, "test_view").unwrap();
+		let found = CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "test_view")
+			.unwrap();
 		assert!(found.is_some());
 
 		// Drop it
 		CatalogStore::drop_view(&mut txn, created.id).unwrap();
 
 		// Verify it's gone
-		let found =
-			CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id, "test_view").unwrap();
+		let found = CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "test_view")
+			.unwrap();
 		assert!(found.is_none());
 	}
 
@@ -114,8 +114,8 @@ pub mod tests {
 		assert!(columns.is_empty());
 
 		// Verify view itself is gone
-		let found =
-			CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id, "meta_view").unwrap();
+		let found = CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "meta_view")
+			.unwrap();
 		assert!(found.is_none());
 	}
 }

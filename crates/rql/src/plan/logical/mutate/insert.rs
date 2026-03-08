@@ -67,16 +67,16 @@ impl<'bump> Compiler<'bump> {
 
 		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_name(tx, namespace_name_str)? {
 			// Check if this is a remote namespace
-			if let Some(ref grpc) = ns.grpc {
+			if let Some(address) = ns.address() {
 				return Err(IdentifierError::RemoteNamespace {
 					namespace: namespace_name_str.to_string(),
 					name: target_name.to_string(),
-					address: grpc.clone(),
+					address: address.to_string(),
 					fragment: name.to_owned(),
 				}
 				.into());
 			}
-			ns.id
+			ns.id()
 		} else {
 			let mut target = MaybeQualifiedTableIdentifier::new(name);
 			if !namespace.is_empty() {

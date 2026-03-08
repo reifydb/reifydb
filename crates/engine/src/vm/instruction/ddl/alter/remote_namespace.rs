@@ -17,7 +17,7 @@ pub(crate) fn alter_remote_namespace(
 	let ns_def = services.catalog.get_namespace_by_name(&mut Transaction::Admin(txn), ns_name)?;
 	let grpc_text = plan.grpc.text().to_string();
 
-	services.catalog.update_namespace_grpc(txn, ns_def.id, Some(grpc_text))?;
+	services.catalog.update_namespace_grpc(txn, ns_def.id(), Some(grpc_text))?;
 
 	Ok(Columns::single_row([("namespace", Value::Utf8(ns_name.to_string())), ("altered", Value::Boolean(true))]))
 }

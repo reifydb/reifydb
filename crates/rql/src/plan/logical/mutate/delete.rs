@@ -63,7 +63,7 @@ impl<'bump> Compiler<'bump> {
 
 		// Try to find namespace
 		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_name(tx, namespace_name_str)? {
-			ns.id
+			ns.id()
 		} else {
 			// If namespace doesn't exist, default to table (will error during physical plan)
 			let mut target = MaybeQualifiedTableIdentifier::new(name);

@@ -39,7 +39,7 @@ use reifydb_core::{
 		},
 		key::PrimaryKeyDef,
 		migration::{MigrationDef, MigrationEvent},
-		namespace::NamespaceDef,
+		namespace::Namespace,
 		policy::{PolicyDef, PolicyId},
 		primitive::PrimitiveId,
 		procedure::ProcedureDef,
@@ -64,7 +64,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 };
 
-pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
+pub type MultiVersionNamespace = MultiVersionContainer<Namespace>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
 pub type MultiVersionViewDef = MultiVersionContainer<ViewDef>;
 pub type MultiVersionFlowDef = MultiVersionContainer<FlowDef>;
@@ -94,7 +94,7 @@ pub struct MaterializedCatalogInner {
 	/// Runtime configuration registry (shared with the oracle)
 	pub(crate) system_config: SystemConfig,
 	/// MultiVersion namespace definitions indexed by namespace ID
-	pub(crate) namespaces: SkipMap<NamespaceId, MultiVersionNamespaceDef>,
+	pub(crate) namespaces: SkipMap<NamespaceId, MultiVersionNamespace>,
 	/// Index from namespace name to namespace ID for fast name lookups
 	pub(crate) namespaces_by_name: SkipMap<String, NamespaceId>,
 	/// MultiVersion table definitions indexed by table ID
@@ -180,16 +180,16 @@ impl ops::Deref for MaterializedCatalog {
 
 impl MaterializedCatalog {
 	pub fn new(system_config: SystemConfig) -> Self {
-		let system_namespace = NamespaceDef::system();
-		let system_namespace_id = system_namespace.id;
+		let system_namespace = Namespace::system();
+		let system_namespace_id = system_namespace.id();
 
 		let namespaces = SkipMap::new();
 		let container = MultiVersionContainer::new();
 		container.insert(1, system_namespace);
 		namespaces.insert(system_namespace_id, container);
 
-		let default_namespace = NamespaceDef::default_namespace();
-		let default_namespace_id = default_namespace.id;
+		let default_namespace = Namespace::default_namespace();
+		let default_namespace_id = default_namespace.id();
 		let default_container = MultiVersionContainer::new();
 		default_container.insert(1, default_namespace);
 		namespaces.insert(default_namespace_id, default_container);
@@ -252,7 +252,7 @@ impl MaterializedCatalog {
 			let ns_name = self
 				.namespaces
 				.get(&def.namespace)
-				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
+				.map(|e| e.value().get_latest().map(|n| n.name().to_string()).unwrap_or_default())
 				.unwrap_or_else(|| format!("{}", def.namespace.0));
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::VirtualTable,
@@ -280,7 +280,7 @@ impl MaterializedCatalog {
 			let ns_name = self
 				.namespaces
 				.get(&namespace)
-				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
+				.map(|e| e.value().get_latest().map(|n| n.name().to_string()).unwrap_or_default())
 				.unwrap_or_else(|| format!("{}", namespace.0));
 			Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::VirtualTable,

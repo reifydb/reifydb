@@ -27,7 +27,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			dispatch.on_event.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &ns_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &ns_name)? else {
 			let ns_fragment = Fragment::internal(ns_name.clone());
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Namespace,
@@ -40,7 +40,7 @@ impl<'bump> Compiler<'bump> {
 
 		// Look up event sumtype by name
 		let event_name = dispatch.on_event.name.text();
-		let Some(sumtype_def) = self.catalog.find_sumtype_by_name(rx, namespace_def.id, event_name)? else {
+		let Some(sumtype_def) = self.catalog.find_sumtype_by_name(rx, namespace.id(), event_name)? else {
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Event,
 				namespace: ns_name.to_string(),
@@ -58,7 +58,7 @@ impl<'bump> Compiler<'bump> {
 		let fields = dispatch.fields.into_iter().map(|(name, expr)| (name.text().to_string(), expr)).collect();
 
 		Ok(PhysicalPlan::Dispatch(DispatchNode {
-			namespace: namespace_def,
+			namespace,
 			on_sumtype_id: sumtype_def.id,
 			variant_name: dispatch.variant.text().to_string(),
 			fields,

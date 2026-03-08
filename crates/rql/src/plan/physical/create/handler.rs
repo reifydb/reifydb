@@ -34,7 +34,7 @@ impl<'bump> Compiler<'bump> {
 		} else {
 			create.procedure.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &handler_ns_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &handler_ns_name)? else {
 			let ns_fragment = if let Some(n) = create.procedure.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(&handler_ns_name)
@@ -69,7 +69,7 @@ impl<'bump> Compiler<'bump> {
 
 		// Look up the event sumtype by name
 		let event_name = on_event.name.text();
-		let Some(sumtype_def) = self.catalog.find_sumtype_by_name(rx, event_ns_def.id, event_name)? else {
+		let Some(sumtype_def) = self.catalog.find_sumtype_by_name(rx, event_ns_def.id(), event_name)? else {
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Event,
 				namespace: event_ns_name.to_string(),
@@ -100,7 +100,7 @@ impl<'bump> Compiler<'bump> {
 		let on_variant_tag = variant_def.tag;
 
 		Ok(PhysicalPlan::CreateProcedure(CreateProcedureNode {
-			namespace: namespace_def,
+			namespace,
 			name: self.interner.intern_fragment(&create.procedure.name),
 			params: vec![],
 			body_source: create.body_source,

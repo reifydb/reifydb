@@ -18,7 +18,7 @@ use reifydb_core::{
 		column::{ColumnDef, ColumnIndex},
 		id::{ColumnId, NamespaceId, PrimaryKeyId, TableId},
 		key::PrimaryKeyDef,
-		namespace::NamespaceDef,
+		namespace::Namespace,
 		table::TableDef,
 	},
 };
@@ -61,7 +61,7 @@ impl<'a> Catalog<'a> {
 		&self,
 		namespace: NamespaceId,
 		version: CommitVersion,
-	) -> Result<Option<NamespaceDef>, FFIError> {
+	) -> Result<Option<Namespace>, FFIError> {
 		namespace::raw_catalog_find_namespace(self.ctx, namespace, version)
 	}
 
@@ -81,7 +81,7 @@ impl<'a> Catalog<'a> {
 		&self,
 		namespace: &str,
 		version: CommitVersion,
-	) -> Result<Option<NamespaceDef>, FFIError> {
+	) -> Result<Option<Namespace>, FFIError> {
 		namespace::raw_catalog_find_namespace_by_name(self.ctx, namespace, version)
 	}
 

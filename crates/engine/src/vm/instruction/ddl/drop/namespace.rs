@@ -33,8 +33,8 @@ pub(crate) fn drop_namespace(
 	loop {
 		let mut changed = false;
 		for ns in &all_namespaces {
-			if !descendant_ids.contains(&ns.id) && descendant_ids.contains(&ns.parent_id) {
-				descendant_ids.insert(ns.id);
+			if !descendant_ids.contains(&ns.id()) && descendant_ids.contains(&ns.parent_id()) {
+				descendant_ids.insert(ns.id());
 				changed = true;
 			}
 		}

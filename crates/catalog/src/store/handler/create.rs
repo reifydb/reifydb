@@ -38,7 +38,7 @@ impl CatalogStore {
 			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Handler,
-				namespace: namespace.name,
+				namespace: namespace.name().to_string(),
 				name: to_create.name.text().to_string(),
 				fragment: to_create.name.clone(),
 			}
@@ -112,7 +112,7 @@ pub mod tests {
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = HandlerToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("test_handler"),
 			on_sumtype_id: SumTypeId(0),
 			on_variant_tag: 1,
@@ -137,7 +137,7 @@ pub mod tests {
 		let namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = HandlerToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("test_handler"),
 			on_sumtype_id: SumTypeId(0),
 			on_variant_tag: 0,
@@ -146,7 +146,7 @@ pub mod tests {
 		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(1)
 
 		let to_create = HandlerToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("another_handler"),
 			on_sumtype_id: SumTypeId(0),
 			on_variant_tag: 0,
@@ -155,7 +155,7 @@ pub mod tests {
 		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(2)
 
 		let links: Vec<_> = txn
-			.range(NamespaceHandlerKey::full_scan(namespace.id), 1024)
+			.range(NamespaceHandlerKey::full_scan(namespace.id()), 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

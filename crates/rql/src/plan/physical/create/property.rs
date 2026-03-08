@@ -36,7 +36,7 @@ impl<'bump> Compiler<'bump> {
 			_ => ("default".to_string(), Fragment::internal("_unknown")),
 		};
 
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(ns) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
 			let ns_fragment = match &create.column.primitive {
 				MaybeQualifiedColumnPrimitive::Primitive {
 					namespace,
@@ -61,14 +61,14 @@ impl<'bump> Compiler<'bump> {
 			} => {
 				if let Some(n) = namespace.first() {
 					let interned = self.interner.intern_fragment(n);
-					interned.with_text(&namespace_def.name)
+					interned.with_text(ns.name())
 				} else {
-					Fragment::internal(namespace_def.name.clone())
+					Fragment::internal(ns.name().to_string())
 				}
 			}
-			_ => Fragment::internal(namespace_def.name.clone()),
+			_ => Fragment::internal(ns.name().to_string()),
 		};
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+		let resolved_namespace = ResolvedNamespace::new(namespace_id, ns);
 
 		Ok(PhysicalPlan::CreateColumnProperty(CreateColumnPropertyNode {
 			namespace: resolved_namespace,

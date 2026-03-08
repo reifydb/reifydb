@@ -20,7 +20,7 @@ use reifydb_core::{
 		catalog::{
 			column::{ColumnDef, ColumnIndex},
 			id::{ColumnId, NamespaceId, TableId},
-			namespace::NamespaceDef,
+			namespace::Namespace,
 			table::TableDef,
 		},
 		resolved::{
@@ -184,7 +184,7 @@ pub enum PhysicalPlan<'bump> {
 
 #[derive(Debug)]
 pub struct CreateDeferredViewNode<'bump> {
-	pub namespace: NamespaceDef,
+	pub namespace: Namespace,
 	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
@@ -193,7 +193,7 @@ pub struct CreateDeferredViewNode<'bump> {
 
 #[derive(Debug)]
 pub struct CreateTransactionalViewNode<'bump> {
-	pub namespace: NamespaceDef,
+	pub namespace: Namespace,
 	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
@@ -1021,31 +1021,31 @@ impl<'bump> Compiler<'bump> {
 								.collect::<Vec<_>>()
 								.join("::")
 						};
-						let namespace_def = self
+						let namespace = self
 							.catalog
 							.find_namespace_by_name(rx, &namespace_name)?
 							.unwrap();
 						let Some(table_def) = self.catalog.find_table_by_name(
 							rx,
-							namespace_def.id,
+							namespace.id(),
 							table_id.name.text(),
 						)?
 						else {
 							return_error!(table_not_found(
 								self.interner.intern_fragment(&table_id.name),
-								&namespace_def.name,
+								namespace.name(),
 								table_id.name.text()
 							));
 						};
 
 						let namespace_id = if let Some(n) = table_id.namespace.first() {
 							let interned = self.interner.intern_fragment(n);
-							interned.with_text(&namespace_def.name)
+							interned.with_text(namespace.name())
 						} else {
-							Fragment::internal(namespace_def.name.clone())
+							Fragment::internal(namespace.name().to_string())
 						};
 						let resolved_namespace =
-							ResolvedNamespace::new(namespace_id, namespace_def);
+							ResolvedNamespace::new(namespace_id, namespace);
 						Some(ResolvedTable::new(
 							self.interner.intern_fragment(&table_id.name),
 							resolved_namespace,
@@ -1082,7 +1082,7 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join("::")
 					};
-					let Some(namespace_def) =
+					let Some(namespace) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
 					else {
 						let fragment = ringbuffer_id
@@ -1094,24 +1094,24 @@ impl<'bump> Compiler<'bump> {
 					};
 					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
 						rx,
-						namespace_def.id,
+						namespace.id(),
 						ringbuffer_id.name.text(),
 					)?
 					else {
 						return_error!(ringbuffer_not_found(
 							self.interner.intern_fragment(&ringbuffer_id.name),
-							&namespace_def.name,
+							namespace.name(),
 							ringbuffer_id.name.text()
 						));
 					};
 
 					let namespace_id = if let Some(n) = ringbuffer_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
-						interned.with_text(&namespace_def.name)
+						interned.with_text(namespace.name())
 					} else {
-						Fragment::internal(namespace_def.name.clone())
+						Fragment::internal(namespace.name().to_string())
 					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 					let target = ResolvedRingBuffer::new(
 						self.interner.intern_fragment(&ringbuffer_id.name),
 						resolved_namespace,
@@ -1135,7 +1135,7 @@ impl<'bump> Compiler<'bump> {
 					} else {
 						table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
 					};
-					let Some(namespace_def) =
+					let Some(namespace) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
 					else {
 						let fragment = table
@@ -1147,24 +1147,24 @@ impl<'bump> Compiler<'bump> {
 					};
 					let Some(table_def) = self.catalog.find_table_by_name(
 						rx,
-						namespace_def.id,
+						namespace.id(),
 						table.name.text(),
 					)?
 					else {
 						return_error!(table_not_found(
 							self.interner.intern_fragment(&table.name),
-							&namespace_def.name,
+							namespace.name(),
 							table.name.text()
 						));
 					};
 
 					let namespace_id = if let Some(n) = table.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
-						interned.with_text(&namespace_def.name)
+						interned.with_text(namespace.name())
 					} else {
-						Fragment::internal(namespace_def.name.clone())
+						Fragment::internal(namespace.name().to_string())
 					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 					let target = ResolvedTable::new(
 						self.interner.intern_fragment(&table.name),
 						resolved_namespace,
@@ -1193,7 +1193,7 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join("::")
 					};
-					let Some(namespace_def) =
+					let Some(namespace) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
 					else {
 						let fragment = ringbuffer_id
@@ -1205,24 +1205,24 @@ impl<'bump> Compiler<'bump> {
 					};
 					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
 						rx,
-						namespace_def.id,
+						namespace.id(),
 						ringbuffer_id.name.text(),
 					)?
 					else {
 						return_error!(ringbuffer_not_found(
 							self.interner.intern_fragment(&ringbuffer_id.name),
-							&namespace_def.name,
+							namespace.name(),
 							ringbuffer_id.name.text()
 						));
 					};
 
 					let namespace_id = if let Some(n) = ringbuffer_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
-						interned.with_text(&namespace_def.name)
+						interned.with_text(namespace.name())
 					} else {
-						Fragment::internal(namespace_def.name.clone())
+						Fragment::internal(namespace.name().to_string())
 					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 					let target = ResolvedRingBuffer::new(
 						self.interner.intern_fragment(&ringbuffer_id.name),
 						resolved_namespace,
@@ -1251,7 +1251,7 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join("::")
 					};
-					let Some(namespace_def) =
+					let Some(namespace) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
 					else {
 						let fragment = dictionary_id
@@ -1263,24 +1263,24 @@ impl<'bump> Compiler<'bump> {
 					};
 					let Some(dictionary_def) = self.catalog.find_dictionary_by_name(
 						rx,
-						namespace_def.id,
+						namespace.id(),
 						dictionary_id.name.text(),
 					)?
 					else {
 						return_error!(dictionary_not_found(
 							self.interner.intern_fragment(&dictionary_id.name),
-							&namespace_def.name,
+							namespace.name(),
 							dictionary_id.name.text()
 						));
 					};
 
 					let namespace_id = if let Some(n) = dictionary_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
-						interned.with_text(&namespace_def.name)
+						interned.with_text(namespace.name())
 					} else {
-						Fragment::internal(namespace_def.name.clone())
+						Fragment::internal(namespace.name().to_string())
 					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 					let target = ResolvedDictionary::new(
 						self.interner.intern_fragment(&dictionary_id.name),
 						resolved_namespace,
@@ -1309,7 +1309,7 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join("::")
 					};
-					let Some(namespace_def) =
+					let Some(namespace) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
 					else {
 						let fragment = series_id
@@ -1321,24 +1321,24 @@ impl<'bump> Compiler<'bump> {
 					};
 					let Some(series_def) = self.catalog.find_series_by_name(
 						rx,
-						namespace_def.id,
+						namespace.id(),
 						series_id.name.text(),
 					)?
 					else {
 						return_error!(series_not_found(
 							self.interner.intern_fragment(&series_id.name),
-							&namespace_def.name,
+							namespace.name(),
 							series_id.name.text()
 						));
 					};
 
 					let namespace_id = if let Some(n) = series_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
-						interned.with_text(&namespace_def.name)
+						interned.with_text(namespace.name())
 					} else {
-						Fragment::internal(namespace_def.name.clone())
+						Fragment::internal(namespace.name().to_string())
 					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 					let target = ResolvedSeries::new(
 						self.interner.intern_fragment(&series_id.name),
 						resolved_namespace,
@@ -1372,7 +1372,7 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join("::")
 					};
-					let Some(namespace_def) =
+					let Some(namespace) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
 					else {
 						let fragment = series_id
@@ -1384,24 +1384,24 @@ impl<'bump> Compiler<'bump> {
 					};
 					let Some(series_def) = self.catalog.find_series_by_name(
 						rx,
-						namespace_def.id,
+						namespace.id(),
 						series_id.name.text(),
 					)?
 					else {
 						return_error!(series_not_found(
 							self.interner.intern_fragment(&series_id.name),
-							&namespace_def.name,
+							namespace.name(),
 							series_id.name.text()
 						));
 					};
 
 					let namespace_id = if let Some(n) = series_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
-						interned.with_text(&namespace_def.name)
+						interned.with_text(namespace.name())
 					} else {
-						Fragment::internal(namespace_def.name.clone())
+						Fragment::internal(namespace.name().to_string())
 					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 					let target = ResolvedSeries::new(
 						self.interner.intern_fragment(&series_id.name),
 						resolved_namespace,
@@ -1434,7 +1434,7 @@ impl<'bump> Compiler<'bump> {
 								.collect::<Vec<_>>()
 								.join("::")
 						};
-						let Some(namespace_def) =
+						let Some(namespace) =
 							self.catalog.find_namespace_by_name(rx, &namespace_name)?
 						else {
 							let fragment = table_id
@@ -1446,25 +1446,25 @@ impl<'bump> Compiler<'bump> {
 						};
 						let Some(table_def) = self.catalog.find_table_by_name(
 							rx,
-							namespace_def.id,
+							namespace.id(),
 							table_id.name.text(),
 						)?
 						else {
 							return_error!(table_not_found(
 								self.interner.intern_fragment(&table_id.name),
-								&namespace_def.name,
+								namespace.name(),
 								table_id.name.text()
 							));
 						};
 
 						let namespace_id = if let Some(n) = table_id.namespace.first() {
 							let interned = self.interner.intern_fragment(n);
-							interned.with_text(&namespace_def.name)
+							interned.with_text(namespace.name())
 						} else {
-							Fragment::internal(namespace_def.name.clone())
+							Fragment::internal(namespace.name().to_string())
 						};
 						let resolved_namespace =
-							ResolvedNamespace::new(namespace_id, namespace_def);
+							ResolvedNamespace::new(namespace_id, namespace);
 						Some(ResolvedTable::new(
 							self.interner.intern_fragment(&table_id.name),
 							resolved_namespace,
@@ -1501,7 +1501,7 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join("::")
 					};
-					let Some(namespace_def) =
+					let Some(namespace) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
 					else {
 						let fragment = ringbuffer_id
@@ -1513,24 +1513,24 @@ impl<'bump> Compiler<'bump> {
 					};
 					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
 						rx,
-						namespace_def.id,
+						namespace.id(),
 						ringbuffer_id.name.text(),
 					)?
 					else {
 						return_error!(ringbuffer_not_found(
 							self.interner.intern_fragment(&ringbuffer_id.name),
-							&namespace_def.name,
+							namespace.name(),
 							ringbuffer_id.name.text()
 						));
 					};
 
 					let namespace_id = if let Some(n) = ringbuffer_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
-						interned.with_text(&namespace_def.name)
+						interned.with_text(namespace.name())
 					} else {
-						Fragment::internal(namespace_def.name.clone())
+						Fragment::internal(namespace.name().to_string())
 					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 					let target = ResolvedRingBuffer::new(
 						self.interner.intern_fragment(&ringbuffer_id.name),
 						resolved_namespace,
@@ -1564,7 +1564,7 @@ impl<'bump> Compiler<'bump> {
 							.collect::<Vec<_>>()
 							.join("::")
 					};
-					let Some(namespace_def) =
+					let Some(namespace) =
 						self.catalog.find_namespace_by_name(rx, &namespace_name)?
 					else {
 						let fragment = series_id
@@ -1576,24 +1576,24 @@ impl<'bump> Compiler<'bump> {
 					};
 					let Some(series_def) = self.catalog.find_series_by_name(
 						rx,
-						namespace_def.id,
+						namespace.id(),
 						series_id.name.text(),
 					)?
 					else {
 						return_error!(series_not_found(
 							self.interner.intern_fragment(&series_id.name),
-							&namespace_def.name,
+							namespace.name(),
 							series_id.name.text()
 						));
 					};
 
 					let namespace_id = if let Some(n) = series_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
-						interned.with_text(&namespace_def.name)
+						interned.with_text(namespace.name())
 					} else {
-						Fragment::internal(namespace_def.name.clone())
+						Fragment::internal(namespace.name().to_string())
 					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 					let target = ResolvedSeries::new(
 						self.interner.intern_fragment(&series_id.name),
 						resolved_namespace,
@@ -1671,11 +1671,10 @@ impl<'bump> Compiler<'bump> {
 					for col in distinct.columns {
 						let namespace = ResolvedNamespace::new(
 							Fragment::internal("_context"),
-							NamespaceDef {
+							Namespace::Local {
 								id: NamespaceId(1),
 								name: "_context".to_string(),
 								parent_id: NamespaceId::ROOT,
-								grpc: None,
 							},
 						);
 

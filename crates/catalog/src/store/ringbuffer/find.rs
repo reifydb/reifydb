@@ -177,7 +177,7 @@ pub mod tests {
 
 		// Create a ring buffer with specific name
 		let to_create = RingBufferToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("trades_buffer"),
 			capacity: 200,
 			columns: vec![RingBufferColumnToCreate {
@@ -195,7 +195,7 @@ pub mod tests {
 		// Find by name
 		let found = CatalogStore::find_ringbuffer_by_name(
 			&mut Transaction::Admin(&mut txn),
-			namespace.id,
+			namespace.id(),
 			"trades_buffer",
 		)
 		.unwrap()
@@ -214,7 +214,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_ringbuffer_by_name(
 			&mut Transaction::Admin(&mut txn),
-			namespace.id,
+			namespace.id(),
 			"nonexistent_buffer",
 		)
 		.unwrap();
@@ -241,7 +241,7 @@ pub mod tests {
 
 		// Create ring buffer in namespace1
 		let to_create = RingBufferToCreate {
-			namespace: namespace1.id,
+			namespace: namespace1.id(),
 			name: Fragment::internal("shared_name"),
 			capacity: 50,
 			columns: vec![],
@@ -252,7 +252,7 @@ pub mod tests {
 		// Try to find in namespace2 - should not exist
 		let result = CatalogStore::find_ringbuffer_by_name(
 			&mut Transaction::Admin(&mut txn),
-			namespace2.id,
+			namespace2.id(),
 			"shared_name",
 		)
 		.unwrap();
@@ -262,7 +262,7 @@ pub mod tests {
 		// Find in namespace1 - should exist
 		let found = CatalogStore::find_ringbuffer_by_name(
 			&mut Transaction::Admin(&mut txn),
-			namespace1.id,
+			namespace1.id(),
 			"shared_name",
 		)
 		.unwrap();
@@ -277,7 +277,7 @@ pub mod tests {
 
 		// Create ring buffer with columns
 		let to_create = RingBufferToCreate {
-			namespace: namespace.id,
+			namespace: namespace.id(),
 			name: Fragment::internal("pk_buffer"),
 			capacity: 100,
 			columns: vec![

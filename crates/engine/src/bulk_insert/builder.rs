@@ -175,7 +175,7 @@ fn execute_table_insert<V: ValidationMode>(
 		})?;
 
 	let table = catalog
-		.find_table_by_name(&mut Transaction::Command(txn), namespace.id, &pending.table)?
+		.find_table_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.table)?
 		.ok_or_else(|| CatalogError::NotFound {
 			kind: CatalogObjectKind::Table,
 			namespace: pending.namespace.to_string(),
@@ -309,7 +309,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		})?;
 
 	let ringbuffer = catalog
-		.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id, &pending.ringbuffer)?
+		.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.ringbuffer)?
 		.ok_or_else(|| CatalogError::NotFound {
 			kind: CatalogObjectKind::RingBuffer,
 			namespace: pending.namespace.to_string(),

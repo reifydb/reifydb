@@ -20,7 +20,7 @@ use reifydb_core::{
 		column::ColumnDef,
 		id::{NamespaceId, TableId},
 		key::PrimaryKeyDef,
-		namespace::NamespaceDef,
+		namespace::Namespace,
 		table::TableDef,
 	},
 };
@@ -242,10 +242,10 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 	}
 }
 
-/// Marshal a NamespaceDef to FFI
-fn marshal_namespace(namespace: &NamespaceDef) -> NamespaceFFI {
+/// Marshal a Namespace to FFI
+fn marshal_namespace(namespace: &Namespace) -> NamespaceFFI {
 	// Allocate and copy name
-	let name_bytes = namespace.name.as_bytes();
+	let name_bytes = namespace.name().as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
 	if !name_ptr.is_null() {
 		unsafe {
@@ -254,13 +254,13 @@ fn marshal_namespace(namespace: &NamespaceDef) -> NamespaceFFI {
 	}
 
 	NamespaceFFI {
-		id: namespace.id.0,
+		id: namespace.id().0,
 		name: BufferFFI {
 			ptr: name_ptr,
 			len: name_bytes.len(),
 			cap: name_bytes.len(),
 		},
-		parent_id: namespace.parent_id.0,
+		parent_id: namespace.parent_id().0,
 	}
 }
 

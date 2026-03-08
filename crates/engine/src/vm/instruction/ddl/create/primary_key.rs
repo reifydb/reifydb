@@ -18,7 +18,7 @@ pub(crate) fn create_primary_key(
 	txn: &mut AdminTransaction,
 	plan: CreatePrimaryKeyNode,
 ) -> Result<Columns> {
-	let namespace_id = plan.namespace.def().id;
+	let namespace_id = plan.namespace.def().id();
 	let table_name = plan.table.text();
 
 	// Find the table
