@@ -18,6 +18,16 @@ use tracing::instrument;
 
 use crate::{Result, catalog::Catalog, store::sequence::system::SystemSequence};
 
+/// Result of resolving a qualified procedure name.
+/// Distinguishes between locally-defined procedures and those in remote namespaces.
+#[derive(Debug, Clone)]
+pub enum ResolvedProcedure {
+	Local(ProcedureDef),
+	Remote {
+		address: String,
+	},
+}
+
 /// Procedure creation specification for the Catalog API.
 #[derive(Debug, Clone)]
 pub struct ProcedureToCreate {
@@ -121,22 +131,31 @@ impl Catalog {
 		qualified_name.rsplit_once("::").map(|(ns_part, entity_name)| (ns_part.to_string(), entity_name))
 	}
 
-	/// Convenience: splits "ns::name" into namespace + name, resolves namespace, then calls find_procedure_by_name
+	/// Convenience: splits "ns::name" into namespace + name, resolves namespace, then calls find_procedure_by_name.
+	/// Returns `ResolvedProcedure::Remote` when the namespace has a `grpc` address, without looking up the
+	/// procedure locally.
 	#[instrument(name = "catalog::procedure::find_by_qualified_name", level = "trace", skip(self, txn))]
 	pub fn find_procedure_by_qualified_name(
 		&self,
 		txn: &mut Transaction<'_>,
 		qualified_name: &str,
-	) -> Result<Option<ProcedureDef>> {
+	) -> Result<Option<ResolvedProcedure>> {
 		if let Some((ns_name, proc_name)) = Self::split_qualified_name(qualified_name) {
 			if let Some(ns) = self.find_namespace_by_path(txn, &ns_name)? {
-				return self.find_procedure_by_name(txn, ns.id, proc_name);
+				if let Some(ref address) = ns.grpc {
+					return Ok(Some(ResolvedProcedure::Remote {
+						address: address.clone(),
+					}));
+				}
+				return Ok(self
+					.find_procedure_by_name(txn, ns.id, proc_name)?
+					.map(ResolvedProcedure::Local));
 			}
 			Ok(None)
 		} else {
 			// No namespace qualifier — search in default namespace
 			let default_ns = NamespaceId(2); // default namespace ID
-			self.find_procedure_by_name(txn, default_ns, qualified_name)
+			Ok(self.find_procedure_by_name(txn, default_ns, qualified_name)?.map(ResolvedProcedure::Local))
 		}
 	}
 

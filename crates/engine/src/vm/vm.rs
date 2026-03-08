@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, mem, sync::Arc};
 
-use reifydb_catalog::catalog::Catalog;
+use reifydb_catalog::catalog::{Catalog, procedure::ResolvedProcedure};
 use reifydb_core::{
 	error::diagnostic::internal::internal_with_context,
 	interface::catalog::{policy::PolicyTargetType, procedure::ProcedureTrigger},
@@ -783,67 +783,76 @@ impl Vm {
 							)?
 						};
 
-						if let Some(proc_def) = proc_def {
-							// Enforce procedure call policy
-							let (pol_ns, pol_name) = if let Some((ns, name)) =
-								Catalog::split_qualified_name(func_name)
-							{
-								(ns, name.to_string())
-							} else {
-								("default".to_string(), func_name.to_string())
-							};
-							PolicyEvaluator::new(services, &self.symbol_table)
-								.enforce_identity_policy(
-									tx,
-									self.identity,
-									&pol_ns,
-									&pol_name,
-									"call",
-									PolicyTargetType::Procedure,
-								)?;
+						match proc_def {
+							Some(ResolvedProcedure::Local(proc_def)) => {
+								// Enforce procedure call policy
+								let (pol_ns, pol_name) = if let Some((ns, name)) =
+									Catalog::split_qualified_name(func_name)
+								{
+									(ns, name.to_string())
+								} else {
+									("default".to_string(), func_name.to_string())
+								};
+								PolicyEvaluator::new(services, &self.symbol_table)
+									.enforce_identity_policy(
+										tx,
+										self.identity,
+										&pol_ns,
+										&pol_name,
+										"call",
+										PolicyTargetType::Procedure,
+									)?;
 
-							match &proc_def.trigger {
-								ProcedureTrigger::NativeCall {
-									native_name,
-								} => {
-									let native_name = native_name.clone();
-									if let Some(proc_impl) = services
-										.procedures
-										.get_procedure(&native_name)
-									{
-										let call_params =
-											Params::Positional(args);
-										let identity = self.identity;
-										let executor = Executor::from_services(
-											services.clone(),
-										);
-										let ctx = ProcedureContext {
-											identity,
-											params: &call_params,
-											catalog: &services.catalog,
-											functions: &services.functions,
-											clock: &services.clock,
-											executor: &executor,
-										};
-										let columns =
-											proc_impl.call(&ctx, tx)?;
-										self.stack.push(Variable::Columns(
-											columns,
-										));
-									} else {
-										return Err(internal_error!(
-											"NativeCall procedure '{}' has no registered implementation",
-											native_name
-										));
+								match &proc_def.trigger {
+									ProcedureTrigger::NativeCall {
+										native_name,
+									} => {
+										let native_name = native_name.clone();
+										if let Some(proc_impl) = services
+											.procedures
+											.get_procedure(&native_name)
+										{
+											let call_params =
+												Params::Positional(
+													args,
+												);
+											let identity = self.identity;
+											let executor =
+												Executor::from_services(
+													services.clone(
+													),
+												);
+											let ctx = ProcedureContext {
+												identity,
+												params: &call_params,
+												catalog: &services
+													.catalog,
+												functions: &services
+													.functions,
+												clock: &services.clock,
+												executor: &executor,
+											};
+											let columns = proc_impl
+												.call(&ctx, tx)?;
+											self.stack.push(
+												Variable::Columns(
+													columns,
+												),
+											);
+										} else {
+											return Err(internal_error!(
+												"NativeCall procedure '{}' has no registered implementation",
+												native_name
+											));
+										}
 									}
-								}
-								_ => {
-									// Catalog-stored RQL procedure
-									let source = proc_def.body.clone();
-									let compiled = services
-										.compiler
-										.compile(tx, &source)?;
-									match compiled {
+									_ => {
+										// Catalog-stored RQL procedure
+										let source = proc_def.body.clone();
+										let compiled = services
+											.compiler
+											.compile(tx, &source)?;
+										match compiled {
 										CompilationResult::Ready(
 											compiled_list,
 										) => {
@@ -952,83 +961,152 @@ impl Vm {
 											));
 										}
 									}
-								}
-							}
-						} else if let Some(proc_impl) = services.get_procedure(func_name) {
-							// Runtime-registered native procedure (no catalog entry needed)
-							let call_params = Params::Positional(args);
-							let identity = self.identity;
-							let executor = Executor::from_services(services.clone());
-							let ctx = ProcedureContext {
-								identity,
-								params: &call_params,
-								catalog: &services.catalog,
-								functions: &services.functions,
-								clock: &services.clock,
-								executor: &executor,
-							};
-							let columns = proc_impl.call(&ctx, tx)?;
-
-							// Special handling: identity::inject updates the VM's identity
-							if func_name == "identity::inject" {
-								if let Some(col) = columns.get(0) {
-									if let Value::IdentityId(id) =
-										col.data().get_value(0)
-									{
-										self.identity = id;
 									}
 								}
 							}
-
-							self.stack.push(Variable::Columns(columns));
-						} else if is_procedure_call {
-							return Err(TypeError::Procedure {
-								kind: ProcedureErrorKind::UndefinedProcedure {
-									name: func_name.to_string(),
-								},
-								message: format!("Unknown procedure: {}", func_name),
-								fragment: name.clone(),
+							#[cfg(not(target_arch = "wasm32"))]
+							Some(ResolvedProcedure::Remote {
+								address,
+							}) => {
+								if let Some(ref registry) = services.remote_registry {
+									let param_refs: Vec<String> = (1..=args.len())
+										.map(|i| format!("${}", i))
+										.collect();
+									let remote_rql = format!(
+										"CALL {}({})",
+										func_name,
+										param_refs.join(", ")
+									);
+									let frames = registry.forward_query(
+										&address,
+										&remote_rql,
+										Params::Positional(args),
+									)?;
+									if let Some(frame) = frames.into_iter().next() {
+										let cols: Columns = frame.into();
+										self.stack
+											.push(Variable::Columns(cols));
+									} else {
+										self.stack.push(Variable::scalar(
+											Value::none(),
+										));
+									}
+								} else {
+									return Err(TypeError::Procedure {
+									kind: ProcedureErrorKind::UndefinedProcedure {
+										name: func_name.to_string(),
+									},
+									message: format!("Unknown procedure: {}", func_name),
+									fragment: name.clone(),
+								}
+								.into());
+								}
 							}
-							.into());
-						} else {
-							// Built-in function: evaluate via column evaluator
-							let evaluation_context = EvalContext {
-								target: None,
-								columns: Columns::empty(),
-								row_count: 1,
-								take: None,
-								params,
-								symbol_table: &self.symbol_table,
-								is_aggregate_context: false,
-								functions: &services.functions,
-								clock: &services.clock,
-								arena: None,
-								identity: self.identity,
-							};
-
-							let mut arg_exprs = Vec::with_capacity(arity);
-							for arg in &args {
-								arg_exprs.push(value_to_expression(arg));
+							#[cfg(target_arch = "wasm32")]
+							Some(ResolvedProcedure::Remote {
+								..
+							}) => {
+								return Err(TypeError::Procedure {
+									kind: ProcedureErrorKind::UndefinedProcedure {
+										name: func_name.to_string(),
+									},
+									message: format!(
+										"Unknown procedure: {}",
+										func_name
+									),
+									fragment: name.clone(),
+								}
+								.into());
 							}
+							None => {
+								if let Some(proc_impl) =
+									services.get_procedure(func_name)
+								{
+									// Runtime-registered native procedure (no
+									// catalog entry needed)
+									let call_params = Params::Positional(args);
+									let identity = self.identity;
+									let executor = Executor::from_services(
+										services.clone(),
+									);
+									let ctx = ProcedureContext {
+										identity,
+										params: &call_params,
+										catalog: &services.catalog,
+										functions: &services.functions,
+										clock: &services.clock,
+										executor: &executor,
+									};
+									let columns = proc_impl.call(&ctx, tx)?;
 
-							let proper_call = Expression::Call(CallExpression {
-								func: IdentExpression(name.clone()),
-								args: arg_exprs,
-								fragment: name.clone(),
-							});
+									// Special handling: identity::inject updates
+									// the VM's identity
+									if func_name == "identity::inject" {
+										if let Some(col) = columns.get(0) {
+											if let Value::IdentityId(id) =
+												col.data().get_value(0)
+											{
+												self.identity = id;
+											}
+										}
+									}
 
-							let result_column = evaluate(
-								&evaluation_context,
-								&proper_call,
-								&services.functions,
-								&services.clock,
-							)?;
-							let value = if result_column.data.len() > 0 {
-								result_column.data.get_value(0)
-							} else {
-								Value::none()
-							};
-							self.stack.push(Variable::scalar(value));
+									self.stack.push(Variable::Columns(columns));
+								} else if is_procedure_call {
+									return Err(TypeError::Procedure {
+									kind: ProcedureErrorKind::UndefinedProcedure {
+										name: func_name.to_string(),
+									},
+									message: format!("Unknown procedure: {}", func_name),
+									fragment: name.clone(),
+								}
+								.into());
+								} else {
+									// Built-in function: evaluate via column
+									// evaluator
+									let evaluation_context = EvalContext {
+										target: None,
+										columns: Columns::empty(),
+										row_count: 1,
+										take: None,
+										params,
+										symbol_table: &self.symbol_table,
+										is_aggregate_context: false,
+										functions: &services.functions,
+										clock: &services.clock,
+										arena: None,
+										identity: self.identity,
+									};
+
+									let mut arg_exprs = Vec::with_capacity(arity);
+									for arg in &args {
+										arg_exprs
+											.push(value_to_expression(arg));
+									}
+
+									let proper_call =
+										Expression::Call(CallExpression {
+											func: IdentExpression(
+												name.clone(),
+											),
+											args: arg_exprs,
+											fragment: name.clone(),
+										});
+
+									let result_column = evaluate(
+										&evaluation_context,
+										&proper_call,
+										&services.functions,
+										&services.clock,
+									)?;
+									let value = if result_column.data.len() > 0 {
+										result_column.data.get_value(0)
+									} else {
+										Value::none()
+									};
+									self.stack.push(Variable::scalar(value));
+								}
+							}
 						}
 					}
 				}
