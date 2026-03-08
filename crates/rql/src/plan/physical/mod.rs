@@ -556,6 +556,36 @@ impl<'bump> Compiler<'bump> {
 			match plan {
 				LogicalPlan::Aggregate(aggregate) => {
 					let input = stack.pop().unwrap(); // FIXME
+
+					// Push-down: fold aggregate into RemoteScan
+					if let Some(pushed) = try_remote_push_down(&input, || {
+						let map_parts: Option<Vec<String>> = aggregate
+							.map
+							.iter()
+							.map(|e| extend_expression_to_rql(e))
+							.collect();
+						let map_parts = map_parts?;
+
+						let by_parts: Option<Vec<String>> = aggregate
+							.by
+							.iter()
+							.map(|e| extend_expression_to_rql(e))
+							.collect();
+						let by_parts = by_parts?;
+
+						let mut rql = String::from("AGGREGATE");
+						if !map_parts.is_empty() {
+							rql.push_str(&format!(" {{ {} }}", map_parts.join(", ")));
+						}
+						if !by_parts.is_empty() {
+							rql.push_str(&format!(" BY {{ {} }}", by_parts.join(", ")));
+						}
+						Some(rql)
+					}) {
+						stack.push(pushed);
+						continue;
+					}
+
 					stack.push(PhysicalPlan::Aggregate(AggregateNode {
 						by: aggregate.by,
 						map: aggregate.map,
@@ -982,6 +1012,16 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::Gate(gate) => {
 					let input = stack.pop().unwrap();
+
+					// Push-down: fold gate into RemoteScan
+					if let Some(pushed) = try_remote_push_down(&input, || {
+						expression_to_rql(&gate.condition)
+							.map(|rql| format!("GATE {}", rql))
+					}) {
+						stack.push(pushed);
+						continue;
+					}
+
 					stack.push(PhysicalPlan::Gate(GateNode {
 						conditions: vec![gate.condition],
 						input: self.bump_box(input),
@@ -1667,6 +1707,23 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Distinct(distinct) => {
 					let input = stack.pop().unwrap(); // FIXME
 
+					// Push-down: fold distinct into RemoteScan
+					if let Some(pushed) = try_remote_push_down(&input, || {
+						if distinct.columns.is_empty() {
+							Some("DISTINCT".to_string())
+						} else {
+							let cols: Vec<String> = distinct
+								.columns
+								.iter()
+								.map(|col| col.name.text().to_string())
+								.collect();
+							Some(format!("DISTINCT {{ {} }}", cols.join(", ")))
+						}
+					}) {
+						stack.push(pushed);
+						continue;
+					}
+
 					let mut resolved_columns = Vec::with_capacity(distinct.columns.len());
 					for col in distinct.columns {
 						let namespace = ResolvedNamespace::new(
@@ -1719,6 +1776,23 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::Map(map) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
+
+					// Push-down: fold map into RemoteScan
+					if let Some(ref boxed_input) = input {
+						if let Some(pushed) = try_remote_push_down(boxed_input, || {
+							map.map
+								.iter()
+								.map(|e| extend_expression_to_rql(e))
+								.collect::<Option<Vec<_>>>()
+								.map(|parts| {
+									format!("MAP {{ {} }}", parts.join(", "))
+								})
+						}) {
+							stack.push(pushed);
+							continue;
+						}
+					}
+
 					stack.push(PhysicalPlan::Map(MapNode {
 						map: map.map,
 						input,
@@ -1752,6 +1826,23 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::Patch(patch) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
+
+					// Push-down: fold patch into RemoteScan
+					if let Some(ref boxed_input) = input {
+						if let Some(pushed) = try_remote_push_down(boxed_input, || {
+							patch.assignments
+								.iter()
+								.map(|e| extend_expression_to_rql(e))
+								.collect::<Option<Vec<_>>>()
+								.map(|parts| {
+									format!("PATCH {{ {} }}", parts.join(", "))
+								})
+						}) {
+							stack.push(pushed);
+							continue;
+						}
+					}
+
 					stack.push(PhysicalPlan::Patch(PatchNode {
 						assignments: patch.assignments,
 						input,
@@ -1760,6 +1851,27 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::Apply(apply) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
+
+					// Push-down: fold apply into RemoteScan
+					if let Some(ref boxed_input) = input {
+						if let Some(pushed) = try_remote_push_down(boxed_input, || {
+							let args: Option<Vec<String>> = apply
+								.arguments
+								.iter()
+								.map(|e| extend_expression_to_rql(e))
+								.collect();
+							let args = args?;
+							Some(format!(
+								"APPLY {} {{ {} }}",
+								apply.operator.text(),
+								args.join(", ")
+							))
+						}) {
+							stack.push(pushed);
+							continue;
+						}
+					}
+
 					stack.push(PhysicalPlan::Apply(ApplyNode {
 						operator: self.interner.intern_fragment(&apply.operator),
 						expressions: apply.arguments,
