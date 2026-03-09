@@ -439,6 +439,7 @@ pub enum LogicalPlan<'bump> {
 	Aggregate(AggregateNode),
 	Distinct(DistinctNode<'bump>),
 	Assert(AssertNode),
+	AssertBlock(AssertBlockNode),
 	Filter(FilterNode),
 	Gate(GateNode),
 	JoinInner(JoinInnerNode<'bump>),
@@ -756,6 +757,13 @@ pub struct AssertNode {
 	pub condition: Expression,
 	pub message: Option<String>,
 	pub rql: String,
+}
+
+#[derive(Debug)]
+pub struct AssertBlockNode {
+	pub rql: String,
+	pub expect_error: bool,
+	pub message: Option<String>,
 }
 
 #[derive(Debug)]

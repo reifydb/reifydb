@@ -1260,6 +1260,13 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Assert(node))));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::AssertBlock(node) => {
+				self.emit(Instruction::AssertBlock(nodes::AssertBlockNode {
+					rql: node.rql,
+					expect_error: node.expect_error,
+					message: node.message,
+				}));
+			}
 			PhysicalPlan::Filter(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))));
 				self.emit(Instruction::Emit);
@@ -1548,6 +1555,13 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::Assert(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Assert(node))));
+			}
+			PhysicalPlan::AssertBlock(node) => {
+				self.emit(Instruction::AssertBlock(nodes::AssertBlockNode {
+					rql: node.rql,
+					expect_error: node.expect_error,
+					message: node.message,
+				}));
 			}
 			PhysicalPlan::Filter(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))));

@@ -367,6 +367,15 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			output.push_str(&format!("{}{} Assert \"{}\"\n", prefix, branch, msg));
 			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition.to_string()));
 		}
+		LogicalPlan::AssertBlock(node) => {
+			let kind = if node.expect_error {
+				"AssertError"
+			} else {
+				"AssertBlock"
+			};
+			let msg = node.message.as_deref().unwrap_or("");
+			output.push_str(&format!("{}{} {} \"{}\"\n", prefix, branch, kind, msg));
+		}
 		LogicalPlan::Filter(FilterNode {
 			condition,
 			..

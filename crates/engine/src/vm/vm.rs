@@ -65,6 +65,7 @@ use super::{
 use crate::{
 	Result,
 	arena::QueryArena,
+	error::EngineError,
 	expression::{context::EvalContext, eval::evaluate},
 	policy::PolicyEvaluator,
 	procedure::context::ProcedureContext,
@@ -2038,6 +2039,99 @@ impl Vm {
 					};
 					let columns = drop_authentication(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
+				}
+
+				Instruction::AssertBlock(node) => {
+					let rql = &node.rql;
+					let compile_result = services.compiler.compile(tx, rql);
+
+					if node.expect_error {
+						// ASSERT ERROR: success if compilation or execution errors
+						match compile_result {
+							Err(_) => {
+								// Compilation error → assertion passes
+							}
+							Ok(CompilationResult::Ready(units)) => {
+								let mut error_occurred = false;
+								for unit in units.iter() {
+									let saved_ip = self.ip;
+									self.ip = 0;
+									let mut discard = Vec::new();
+									let exec_result = self.run(
+										services,
+										tx,
+										&unit.instructions,
+										params,
+										&mut discard,
+									);
+									self.ip = saved_ip;
+									if exec_result.is_err() {
+										error_occurred = true;
+										break;
+									}
+								}
+								if !error_occurred {
+									let msg = node.message.as_deref().unwrap_or(
+										"expected error but block succeeded",
+									);
+									return Err(EngineError::AssertionFailed {
+										fragment: Fragment::None,
+										message: msg.to_string(),
+										expression: Some(rql.clone()),
+									}
+									.into());
+								}
+							}
+							Ok(CompilationResult::Incremental(_)) => {
+								return Err(internal_error!(
+									"assert block does not support incremental compilation"
+								));
+							}
+						}
+					} else {
+						// Multi-statement ASSERT: compile body, execute, check last result
+						let units = match compile_result {
+							Err(e) => return Err(e),
+							Ok(CompilationResult::Ready(units)) => units,
+							Ok(CompilationResult::Incremental(_)) => {
+								return Err(internal_error!(
+									"assert block does not support incremental compilation"
+								));
+							}
+						};
+
+						let mut last_error = None;
+						for unit in units.iter() {
+							let saved_ip = self.ip;
+							self.ip = 0;
+							let mut discard = Vec::new();
+							let exec_result = self.run(
+								services,
+								tx,
+								&unit.instructions,
+								params,
+								&mut discard,
+							);
+							self.ip = saved_ip;
+							if let Err(e) = exec_result {
+								last_error = Some(e);
+								break;
+							}
+						}
+						if let Some(e) = last_error {
+							let msg = node.message.as_deref().unwrap_or("");
+							return Err(EngineError::AssertionFailed {
+								fragment: Fragment::None,
+								message: if msg.is_empty() {
+									format!("{}", e)
+								} else {
+									msg.to_string()
+								},
+								expression: Some(rql.clone()),
+							}
+							.into());
+						}
+					}
 				}
 			}
 

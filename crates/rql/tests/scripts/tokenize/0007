@@ -76,7 +76,7 @@ tokenize 'from [
 > Line 7:
 >   [ 51] Operator(CloseBracket)
 >   [ 52] Keyword(Insert)
->   [ 53] Keyword(Test)
+>   [ 53] Identifier("test")
 >   [ 54] Operator(DoubleColon)
 >   [ 55] Identifier("unicode_names")
 >

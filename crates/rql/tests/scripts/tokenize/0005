@@ -8,7 +8,7 @@ tokenize 'create index idx_status on test::users {created_at:desc, status:asc}'
 >   [  1] Keyword(Index)
 >   [  2] Identifier("idx_status")
 >   [  3] Keyword(On)
->   [  4] Keyword(Test)
+>   [  4] Identifier("test")
 >   [  5] Operator(DoubleColon)
 >   [  6] Identifier("users")
 >   [  7] Operator(OpenCurly)

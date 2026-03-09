@@ -168,6 +168,7 @@ pub enum Instruction {
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
 	CreateTest(CreateTestNode),
+	AssertBlock(nodes::AssertBlockNode),
 
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),

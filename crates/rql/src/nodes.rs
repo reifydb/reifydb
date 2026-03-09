@@ -312,6 +312,14 @@ pub struct CreateTagNode {
 	pub variants: Vec<CreateSumTypeVariant>,
 }
 
+// Assert Block node (multi-statement ASSERT or ASSERT ERROR)
+#[derive(Debug, Clone)]
+pub struct AssertBlockNode {
+	pub rql: String,
+	pub expect_error: bool,
+	pub message: Option<String>,
+}
+
 // Create Test node
 #[derive(Debug, Clone)]
 pub struct CreateTestNode {

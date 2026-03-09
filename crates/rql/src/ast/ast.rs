@@ -1113,7 +1113,12 @@ pub struct AstVariantDef<'bump> {
 #[derive(Debug)]
 pub struct AstAssert<'bump> {
 	pub token: Token<'bump>,
-	pub node: BumpBox<'bump, Ast<'bump>>,
+	/// Single expression for pipeline-compatible ASSERT (e.g. `FROM x | ASSERT { cond }`)
+	pub node: Option<BumpBox<'bump, Ast<'bump>>>,
+	/// RQL source text of the body for multi-statement or ASSERT ERROR blocks
+	pub body: Option<String>,
+	/// True when `ASSERT ERROR { ... }` syntax is used
+	pub expect_error: bool,
 	pub message: Option<Token<'bump>>,
 	pub rql: &'bump str,
 }

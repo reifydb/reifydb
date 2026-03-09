@@ -266,8 +266,7 @@ impl<'bump> Parser<'bump> {
 		let body_end_pos = self.position;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
-			let end = self.tokens[body_end_pos - 1].fragment.offset()
-				+ self.tokens[body_end_pos - 1].fragment.text().len();
+			let end = self.tokens[body_end_pos - 1].fragment.source_end();
 			self.source[start..end].trim().to_string()
 		} else {
 			String::new()
@@ -330,8 +329,7 @@ impl<'bump> Parser<'bump> {
 		let body_end_pos = self.position;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
-			let end = self.tokens[body_end_pos - 1].fragment.offset()
-				+ self.tokens[body_end_pos - 1].fragment.text().len();
+			let end = self.tokens[body_end_pos - 1].fragment.source_end();
 			self.source[start..end].trim().to_string()
 		} else {
 			String::new()
@@ -419,8 +417,7 @@ impl<'bump> Parser<'bump> {
 		let body_end_pos = self.position;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
-			let end = self.tokens[body_end_pos - 1].fragment.offset()
-				+ self.tokens[body_end_pos - 1].fragment.text().len();
+			let end = self.tokens[body_end_pos - 1].fragment.source_end();
 			self.source[start..end].trim().to_string()
 		} else {
 			String::new()
@@ -1682,8 +1679,7 @@ impl<'bump> Parser<'bump> {
 		let body_end_pos = self.position;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
-			let end = self.tokens[body_end_pos - 1].fragment.offset()
-				+ self.tokens[body_end_pos - 1].fragment.text().len();
+			let end = self.tokens[body_end_pos - 1].fragment.source_end();
 			self.source[start..end].trim().to_string()
 		} else {
 			String::new()
@@ -1761,8 +1757,7 @@ impl<'bump> Parser<'bump> {
 		let body_end_pos = self.position;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
-			let end = self.tokens[body_end_pos - 1].fragment.offset()
-				+ self.tokens[body_end_pos - 1].fragment.text().len();
+			let end = self.tokens[body_end_pos - 1].fragment.source_end();
 			self.source[start..end].trim().to_string()
 		} else {
 			String::new()

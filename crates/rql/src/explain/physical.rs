@@ -318,6 +318,16 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			});
 		}
 
+		PhysicalPlan::AssertBlock(node) => {
+			let kind = if node.expect_error {
+				"AssertError"
+			} else {
+				"AssertBlock"
+			};
+			let msg = node.message.as_deref().unwrap_or("");
+			write_node_header(output, prefix, is_last, &format!("{} \"{}\"", kind, msg));
+		}
+
 		PhysicalPlan::Take(TakeNode {
 			take,
 			input,

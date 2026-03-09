@@ -138,6 +138,7 @@ pub enum PhysicalPlan<'bump> {
 	// Query
 	Aggregate(AggregateNode<'bump>),
 	Assert(AssertNode<'bump>),
+	AssertBlock(AssertBlockNode),
 	Distinct(DistinctNode<'bump>),
 	Filter(FilterNode<'bump>),
 	Gate(GateNode<'bump>),
@@ -424,6 +425,13 @@ pub struct DistinctNode<'bump> {
 pub struct AssertNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub conditions: Vec<Expression>,
+	pub message: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct AssertBlockNode {
+	pub rql: String,
+	pub expect_error: bool,
 	pub message: Option<String>,
 }
 
@@ -965,6 +973,14 @@ impl<'bump> Compiler<'bump> {
 						conditions: vec![assert_node.condition],
 						message: assert_node.message,
 						input,
+					}));
+				}
+
+				LogicalPlan::AssertBlock(node) => {
+					stack.push(PhysicalPlan::AssertBlock(AssertBlockNode {
+						rql: node.rql,
+						expect_error: node.expect_error,
+						message: node.message,
 					}));
 				}
 

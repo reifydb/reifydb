@@ -188,6 +188,7 @@ Pending => "PENDING",
 Authentication => "AUTHENTICATION",
 Contains => "CONTAINS",
 Remote => "REMOTE",
+Error => "ERROR",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -315,6 +316,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("AUTHENTICATION", Keyword::Authentication);
 	map.insert("CONTAINS", Keyword::Contains);
 	map.insert("REMOTE", Keyword::Remote);
+	map.insert("ERROR", Keyword::Error);
 	map
 });
 
@@ -349,7 +351,7 @@ pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		// Check that the next character is not an identifier
 		// continuation
 		let next_char = cursor.peek_ahead(word.chars().count());
-		if next_char.map_or(true, |ch| !is_identifier_char(ch) && ch != '.') {
+		if next_char.map_or(true, |ch| !is_identifier_char(ch) && ch != '.' && ch != ':') {
 			// Consume the keyword
 			for _ in 0..word.chars().count() {
 				cursor.consume();

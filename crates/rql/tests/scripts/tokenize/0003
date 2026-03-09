@@ -9,7 +9,7 @@ tokenize 'create unique index idx_email on test::users {email}'
 >   [  2] Keyword(Index)
 >   [  3] Identifier("idx_email")
 >   [  4] Keyword(On)
->   [  5] Keyword(Test)
+>   [  5] Identifier("test")
 >   [  6] Operator(DoubleColon)
 >   [  7] Identifier("users")
 >   [  8] Operator(OpenCurly)

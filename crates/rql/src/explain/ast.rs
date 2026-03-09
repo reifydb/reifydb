@@ -350,7 +350,11 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 				ref_children.push(node);
 			}
 		}
-		Ast::Assert(a) => ref_children.push(&a.node),
+		Ast::Assert(a) => {
+			if let Some(ref node) = a.node {
+				ref_children.push(node);
+			}
+		}
 		Ast::SubQuery(sq) => {
 			// Add the nodes from the subquery statement as children
 			for node in &sq.statement.nodes {

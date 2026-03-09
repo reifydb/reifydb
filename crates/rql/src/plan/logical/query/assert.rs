@@ -6,7 +6,7 @@ use crate::{
 	ast::ast::AstAssert,
 	bump::BumpBox,
 	expression::ExpressionCompiler,
-	plan::logical::{AssertNode, Compiler, LogicalPlan},
+	plan::logical::{AssertBlockNode, AssertNode, Compiler, LogicalPlan},
 	token::token::{Literal, TokenKind},
 };
 
@@ -20,8 +20,18 @@ impl<'bump> Compiler<'bump> {
 			}
 		});
 
+		// Multi-statement or ASSERT ERROR: use block-based runtime recompilation
+		if let Some(body) = ast.body {
+			return Ok(LogicalPlan::AssertBlock(AssertBlockNode {
+				rql: body,
+				expect_error: ast.expect_error,
+				message,
+			}));
+		}
+
+		// Single-expression ASSERT (pipeline-compatible)
 		Ok(LogicalPlan::Assert(AssertNode {
-			condition: ExpressionCompiler::compile(BumpBox::into_inner(ast.node))?,
+			condition: ExpressionCompiler::compile(BumpBox::into_inner(ast.node.unwrap()))?,
 			message,
 			rql: ast.rql.to_string(),
 		}))
