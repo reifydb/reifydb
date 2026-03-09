@@ -501,6 +501,7 @@ impl DatabaseBuilder {
 				trigger: ProcedureTrigger::NativeCall {
 					native_name: "system::config::set".to_string(),
 				},
+				is_test: false,
 			},
 		)?;
 

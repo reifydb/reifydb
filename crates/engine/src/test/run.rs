@@ -31,6 +31,8 @@ fn run_single(
 	params: &Params,
 	named_vars: Option<&HashMap<String, Value>>,
 ) -> (String, String) {
+	vm.in_test_context = true;
+
 	match services.compiler.compile(txn, body) {
 		Ok(compiled) => match compiled {
 			CompilationResult::Ready(compiled_list) => {
@@ -135,12 +137,12 @@ pub(crate) fn run_tests(
 	let tests = match &plan.scope {
 		RunTestsScope::All => services.catalog.list_all_tests(&mut Transaction::Admin(&mut *txn))?,
 		RunTestsScope::Namespace(ns) => {
-			services.catalog.list_tests_in_namespace(&mut Transaction::Admin(&mut *txn), ns.def().id)?
+			services.catalog.list_tests_in_namespace(&mut Transaction::Admin(&mut *txn), ns.def().id())?
 		}
 		RunTestsScope::Single(ns, name) => {
 			match services.catalog.find_test_by_name(
 				&mut Transaction::Admin(&mut *txn),
-				ns.def().id,
+				ns.def().id(),
 				name,
 			)? {
 				Some(test) => vec![test],
@@ -167,7 +169,7 @@ pub(crate) fn run_tests(
 			.find_namespace(&mut Transaction::Admin(&mut *txn), test_def.namespace)
 			.ok()
 			.flatten()
-			.map(|ns| ns.name)
+			.map(|ns| ns.name().to_string())
 			.unwrap_or_else(|| format!("{}", test_def.namespace.0));
 
 		match &test_def.cases {

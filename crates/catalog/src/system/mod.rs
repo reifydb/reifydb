@@ -270,8 +270,9 @@ pub mod ids {
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
+			pub const IS_TEST: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 3] = [ID, NAMESPACE_ID, NAME];
+			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, IS_TEST];
 		}
 
 		pub mod tag_variants {

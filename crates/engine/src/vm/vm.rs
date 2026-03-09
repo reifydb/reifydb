@@ -107,6 +107,7 @@ pub struct Vm {
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
 	pub(crate) identity: IdentityId,
+	pub(crate) in_test_context: bool,
 }
 
 impl Vm {
@@ -119,6 +120,7 @@ impl Vm {
 			control_flow: ControlFlow::Normal,
 			dispatch_depth: 0,
 			identity,
+			in_test_context: false,
 		}
 	}
 
@@ -961,6 +963,112 @@ impl Vm {
 											));
 										}
 									}
+									}
+								}
+							}
+							Some(ResolvedProcedure::Test(proc_def)) => {
+								if !self.in_test_context {
+									return Err(TypeError::Procedure {
+										kind: ProcedureErrorKind::UndefinedProcedure {
+											name: func_name.to_string(),
+										},
+										message: format!(
+											"test procedure {} can only be called from test context",
+											func_name
+										),
+										fragment: name.clone(),
+									}
+									.into());
+								}
+
+								// Same execution logic as Local for Call-triggered
+								// procedures
+								let source = proc_def.body.clone();
+								let compiled =
+									services.compiler.compile(tx, &source)?;
+								match compiled {
+									CompilationResult::Ready(compiled_list) => {
+										let saved_ip = self.ip;
+
+										self.symbol_table.enter_scope(
+											ScopeType::Function,
+										);
+
+										for (param_def, arg) in proc_def
+											.params
+											.iter()
+											.zip(args.into_iter())
+										{
+											self.symbol_table.set(
+												param_def.name.clone(),
+												Variable::scalar(arg),
+												true,
+											)?;
+										}
+
+										let mut proc_result = Vec::new();
+										for compiled in compiled_list.iter() {
+											self.ip = 0;
+											self.run(
+												services,
+												tx,
+												&compiled.instructions,
+												params,
+												&mut proc_result,
+											)?;
+											if !self.control_flow
+												.is_normal()
+											{
+												break;
+											}
+										}
+
+										let stack_value = match mem::replace(
+											&mut self.control_flow,
+											ControlFlow::Normal,
+										) {
+											ControlFlow::Return(c) => {
+												Variable::Scalar(c.unwrap_or(
+													Columns::scalar(Value::none()),
+												))
+											}
+											_ => {
+												if let Some(frame) = proc_result.last() {
+													if !frame.columns.is_empty()
+														&& frame.columns[0].data.len() > 0
+													{
+														let cols: Vec<Column> = frame
+															.columns
+															.iter()
+															.map(|fc| {
+																let mut data = ColumnData::none_typed(Type::Boolean, 0);
+																for i in 0..fc.data.len() {
+																	data.push_value(fc.data.get_value(i));
+																}
+																Column::new(fc.name.as_str(), data)
+															})
+															.collect();
+														Variable::Columns(Columns::new(cols))
+													} else {
+														Variable::scalar(Value::none())
+													}
+												} else {
+													self.stack.pop().ok().unwrap_or(
+														Variable::scalar(Value::none()),
+													)
+												}
+											}
+										};
+
+										self.ip = saved_ip;
+										let _ = self.symbol_table.exit_scope();
+
+										self.stack.push(stack_value);
+									}
+									CompilationResult::Incremental(_) => {
+										return Err(internal_error!(
+											"Procedure body should not require incremental compilation"
+										));
 									}
 								}
 							}

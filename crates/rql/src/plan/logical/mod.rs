@@ -907,6 +907,8 @@ pub struct CreateProcedureNode<'bump> {
 	pub on_event: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	/// Variant name for event-triggered procedures
 	pub on_variant: Option<BumpFragment<'bump>>,
+	/// Test procedures can only be called from test context
+	pub is_test: bool,
 }
 
 #[derive(Debug)]

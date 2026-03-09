@@ -1017,6 +1017,7 @@ pub struct AstCreateSubscription<'bump> {
 pub struct AstCreateTable<'bump> {
 	pub token: Token<'bump>,
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
+	pub if_not_exists: bool,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 }
 
@@ -1027,6 +1028,7 @@ pub struct AstCreateProcedure<'bump> {
 	pub params: Vec<AstProcedureParam<'bump>>,
 	pub body: Vec<Ast<'bump>>,
 	pub body_source: String,
+	pub is_test: bool,
 }
 
 #[derive(Debug)]

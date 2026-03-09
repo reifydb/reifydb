@@ -25,6 +25,7 @@ pub(crate) fn create_procedure(
 			return_type: None,
 			body: plan.body_source,
 			trigger: plan.trigger,
+			is_test: plan.is_test,
 		},
 	)?;
 

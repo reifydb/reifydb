@@ -18,6 +18,7 @@ impl<'bump> Compiler<'bump> {
 			body_source: ast.body_source,
 			on_event: Some(ast.on_event),
 			on_variant: Some(ast.on_variant),
+			is_test: false,
 		}))
 	}
 }

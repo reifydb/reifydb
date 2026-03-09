@@ -26,6 +26,8 @@ pub enum ResolvedProcedure {
 	Remote {
 		address: String,
 	},
+	/// Test procedure — always local, only callable from test context
+	Test(ProcedureDef),
 }
 
 /// Procedure creation specification for the Catalog API.
@@ -37,6 +39,7 @@ pub struct ProcedureToCreate {
 	pub return_type: Option<TypeConstraint>,
 	pub body: String,
 	pub trigger: ProcedureTrigger,
+	pub is_test: bool,
 }
 
 impl Catalog {
@@ -147,15 +150,25 @@ impl Catalog {
 						address: address.to_string(),
 					}));
 				}
-				return Ok(self
-					.find_procedure_by_name(txn, ns.id(), proc_name)?
-					.map(ResolvedProcedure::Local));
+				return Ok(self.find_procedure_by_name(txn, ns.id(), proc_name)?.map(|p| {
+					if p.is_test {
+						ResolvedProcedure::Test(p)
+					} else {
+						ResolvedProcedure::Local(p)
+					}
+				}));
 			}
 			Ok(None)
 		} else {
 			// No namespace qualifier — search in default namespace
 			let default_ns = NamespaceId(2); // default namespace ID
-			Ok(self.find_procedure_by_name(txn, default_ns, qualified_name)?.map(ResolvedProcedure::Local))
+			Ok(self.find_procedure_by_name(txn, default_ns, qualified_name)?.map(|p| {
+				if p.is_test {
+					ResolvedProcedure::Test(p)
+				} else {
+					ResolvedProcedure::Local(p)
+				}
+			}))
 		}
 	}
 
@@ -225,6 +238,7 @@ impl Catalog {
 			return_type: to_create.return_type,
 			body: to_create.body,
 			trigger: to_create.trigger,
+			is_test: to_create.is_test,
 		};
 
 		txn.track_procedure_def_created(procedure.clone())?;

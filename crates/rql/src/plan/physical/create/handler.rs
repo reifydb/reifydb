@@ -108,6 +108,7 @@ impl<'bump> Compiler<'bump> {
 				sumtype_id: sumtype_def.id,
 				variant_tag: on_variant_tag,
 			},
+			is_test: false,
 		}))
 	}
 }

@@ -50,6 +50,15 @@ pub fn procedures() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
+				ColumnDef {
+					id: IS_TEST,
+					name: "is_test".to_string(),
+					constraint: TypeConstraint::unconstrained(Type::Boolean),
+					properties: vec![],
+					index: ColumnIndex(3),
+					auto_increment: false,
+					dictionary_id: None,
+				},
 			],
 		})
 	})

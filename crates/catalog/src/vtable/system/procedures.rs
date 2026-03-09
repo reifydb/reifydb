@@ -48,6 +48,7 @@ impl VTable for Procedures {
 		let mut ids = Vec::new();
 		let mut namespace_ids = Vec::new();
 		let mut names = Vec::new();
+		let mut is_tests = Vec::new();
 
 		for entry in self.catalog.materialized.procedures.iter() {
 			if let Some(proc_def) = entry.value().get_latest() {
@@ -58,6 +59,7 @@ impl VTable for Procedures {
 					ids.push(proc_def.id.0);
 					namespace_ids.push(proc_def.namespace.0);
 					names.push(proc_def.name.clone());
+					is_tests.push(proc_def.is_test);
 				}
 			}
 		}
@@ -66,6 +68,7 @@ impl VTable for Procedures {
 		let mut id_col = ColumnData::uint8_with_capacity(len);
 		let mut ns_col = ColumnData::uint8_with_capacity(len);
 		let mut name_col = ColumnData::utf8_with_capacity(len);
+		let mut is_test_col = ColumnData::bool_with_capacity(len);
 
 		for id in &ids {
 			id_col.push(*id);
@@ -75,6 +78,9 @@ impl VTable for Procedures {
 		}
 		for name in &names {
 			name_col.push(name.as_str());
+		}
+		for is_test in &is_tests {
+			is_test_col.push(*is_test);
 		}
 
 		let columns = vec![
@@ -89,6 +95,10 @@ impl VTable for Procedures {
 			Column {
 				name: Fragment::internal("name"),
 				data: name_col,
+			},
+			Column {
+				name: Fragment::internal("is_test"),
+				data: is_test_col,
 			},
 		];
 

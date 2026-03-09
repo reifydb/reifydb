@@ -1,0 +1,21 @@
+# Test procedures — shared helpers callable only from test context
+
+CREATE NAMESPACE tp;
+
+CREATE TABLE tp::users { id: int4, name: text };
+
+CREATE TEST PROCEDURE tp::setup_users AS {
+    INSERT tp::users [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }];
+};
+
+CREATE TEST tp::can_query {
+    CALL tp::setup_users();
+    FROM tp::users | ASSERT { id > 0 }
+};
+
+CREATE TEST tp::can_filter {
+    CALL tp::setup_users();
+    FROM tp::users | FILTER name == "Alice" | ASSERT { id == 1 }
+};
+
+RUN TESTS tp

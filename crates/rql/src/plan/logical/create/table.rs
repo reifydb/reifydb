@@ -168,7 +168,7 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
 			table,
-			if_not_exists: false,
+			if_not_exists: ast.if_not_exists,
 			columns,
 		}))
 	}

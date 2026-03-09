@@ -59,6 +59,7 @@ impl<'bump> Compiler<'bump> {
 			params,
 			body_source: create.body_source,
 			trigger: ProcedureTrigger::Call,
+			is_test: create.is_test,
 		}))
 	}
 }

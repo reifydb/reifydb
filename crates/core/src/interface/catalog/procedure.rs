@@ -37,6 +37,8 @@ pub struct ProcedureDef {
 	/// RQL source text, compiled on load
 	pub body: String,
 	pub trigger: ProcedureTrigger,
+	/// Test procedures can only be called from test context
+	pub is_test: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

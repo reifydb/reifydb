@@ -283,6 +283,7 @@ pub struct CreateProcedureNode {
 	pub params: Vec<ProcedureParamDef>,
 	pub body_source: String,
 	pub trigger: ProcedureTrigger,
+	pub is_test: bool,
 }
 
 /// Physical node for CREATE SERIES
@@ -314,7 +315,7 @@ pub struct CreateTagNode {
 // Create Test node
 #[derive(Debug, Clone)]
 pub struct CreateTestNode {
-	pub namespace: NamespaceDef,
+	pub namespace: Namespace,
 	pub name: Fragment,
 	pub cases: Option<String>,
 	pub body_source: String,

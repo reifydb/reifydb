@@ -165,6 +165,9 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Test))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
+				return self.parse_test_procedure(token);
+			}
 			return self.parse_test(token);
 		}
 
@@ -278,6 +281,71 @@ impl<'bump> Parser<'bump> {
 			params,
 			body,
 			body_source,
+			is_test: false,
+		}))
+	}
+
+	fn parse_test_procedure(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+		// Reuse parse_procedure logic but mark as test
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+
+		let proc_ident = MaybeQualifiedProcedureIdentifier::new(name).with_namespace(namespace);
+
+		// Parse optional parameter block: { param: Type, ... }
+		let params = if self.current()?.is_operator(Operator::OpenCurly) {
+			self.parse_procedure_params()?
+		} else {
+			Vec::new()
+		};
+
+		// Consume AS keyword
+		self.consume_operator(Operator::As)?;
+
+		// Parse body block: { statements... }
+		self.consume_operator(Operator::OpenCurly)?;
+
+		// Track token position for body source reconstruction
+		let body_start_pos = self.position;
+
+		let mut body = Vec::new();
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let node = self.parse_node(Precedence::None)?;
+			body.push(node);
+
+			// Try to consume separator
+			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
+		}
+
+		// Capture body source by slicing the original source between { and }
+		let body_end_pos = self.position;
+		let body_source = if body_start_pos < body_end_pos {
+			let start = self.tokens[body_start_pos].fragment.offset();
+			let end = self.tokens[body_end_pos - 1].fragment.offset()
+				+ self.tokens[body_end_pos - 1].fragment.text().len();
+			self.source[start..end].trim().to_string()
+		} else {
+			String::new()
+		};
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstCreate::Procedure(AstCreateProcedure {
+			token,
+			name: proc_ident,
+			params,
+			body,
+			body_source,
+			is_test: true,
 		}))
 	}
 
@@ -853,6 +921,14 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_table(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
+			self.consume_operator(Not)?;
+			self.consume_keyword(Exists)?;
+			true
+		} else {
+			false
+		};
+
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -863,6 +939,7 @@ impl<'bump> Parser<'bump> {
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
 			table,
+			if_not_exists,
 			columns,
 		}))
 	}
