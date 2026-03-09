@@ -2366,6 +2366,7 @@ dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
  "indexmap",
+ "rand 0.10.0",
  "reifydb-build",
  "reifydb-core",
  "reifydb-engine",

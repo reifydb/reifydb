@@ -301,10 +301,6 @@ where
 		}
 
 		if let Some(v) = self.pending_writes.get(key) {
-			if v.was_removed() {
-				return Ok(None);
-			}
-
 			Ok(Some(Pending {
 				delta: match v.values() {
 					Some(values) => Delta::Set {
