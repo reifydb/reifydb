@@ -243,7 +243,13 @@ impl<'bump> Compiler<'bump> {
 				.into());
 			}
 			// Auto-wrap scalar expressions into MAP constructs
-			Ast::Literal(_) | Ast::Variable(_) => self.compile_scalar_as_map(node),
+			Ast::Literal(_) => self.compile_scalar_as_map(node),
+			Ast::Variable(var) => {
+				let name = var.token.fragment;
+				Ok(LogicalPlan::VariableSource(VariableSourceNode {
+					name,
+				}))
+			}
 			// Function calls: check if it's potentially a user-defined function
 			Ast::CallFunction(call_node) => {
 				// If no namespaces, treat as potential user-defined function call

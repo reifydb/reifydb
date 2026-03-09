@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_engine::test_utils::create_test_engine;
-use reifydb_type::value::{frame::frame::Frame, identity::IdentityId};
+use reifydb_type::value::{Value, frame::frame::Frame, identity::IdentityId};
 
 fn test_identity() -> IdentityId {
 	IdentityId::root()
@@ -15,20 +15,17 @@ fn run_script(rql: &str) -> Vec<Frame> {
 	engine.query_as(identity, rql, Default::default()).unwrap()
 }
 
-/// Extract a single i64 scalar from the first frame's "value" column.
+/// Extract a single i64 scalar from the first frame's first column.
 fn scalar_i64(frames: &[Frame]) -> i64 {
 	let frame = &frames[0];
-	// Try i8 first (small literals), then widen
-	if let Ok(Some(v)) = frame.get::<i8>("value", 0) {
-		return v as i64;
+	let val = frame.columns[0].data.get_value(0);
+	match val {
+		Value::Int1(v) => v as i64,
+		Value::Int2(v) => v as i64,
+		Value::Int4(v) => v as i64,
+		Value::Int8(v) => v,
+		other => panic!("Expected integer value, got {:?}", other),
 	}
-	if let Ok(Some(v)) = frame.get::<i16>("value", 0) {
-		return v as i64;
-	}
-	if let Ok(Some(v)) = frame.get::<i32>("value", 0) {
-		return v as i64;
-	}
-	frame.get::<i64>("value", 0).unwrap().unwrap()
 }
 
 #[test]

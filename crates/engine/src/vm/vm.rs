@@ -18,7 +18,7 @@ use reifydb_rql::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
-	error::{Error, ProcedureErrorKind, RuntimeErrorKind, TypeError},
+	error::{Diagnostic, Error, ProcedureErrorKind, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
 	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
@@ -2047,12 +2047,16 @@ impl Vm {
 
 					if node.expect_error {
 						// ASSERT ERROR: success if compilation or execution errors
+						// Always push a diagnostic dataframe onto the stack
 						match compile_result {
-							Err(_) => {
-								// Compilation error → assertion passes
+							Err(e) => {
+								// Compilation error → assertion passes, push diagnostic
+								self.stack.push(Variable::Columns(
+									diagnostic_to_columns(&e.0),
+								));
 							}
 							Ok(CompilationResult::Ready(units)) => {
-								let mut error_occurred = false;
+								let mut caught_diagnostic = None;
 								for unit in units.iter() {
 									let saved_ip = self.ip;
 									self.ip = 0;
@@ -2065,12 +2069,16 @@ impl Vm {
 										&mut discard,
 									);
 									self.ip = saved_ip;
-									if exec_result.is_err() {
-										error_occurred = true;
+									if let Err(e) = exec_result {
+										caught_diagnostic = Some(e.0);
 										break;
 									}
 								}
-								if !error_occurred {
+								if let Some(diag) = caught_diagnostic {
+									self.stack.push(Variable::Columns(
+										diagnostic_to_columns(&diag),
+									));
+								} else {
 									let msg = node.message.as_deref().unwrap_or(
 										"expected error but block succeeded",
 									);
@@ -2214,4 +2222,33 @@ fn run_query_plan(
 	}
 
 	Ok(all_columns)
+}
+
+/// Convert a `Diagnostic` into a single-row `Columns` with fields:
+/// `code`, `message`, `statement`, `label`, `help`.
+fn diagnostic_to_columns(diag: &Diagnostic) -> Columns {
+	let code_col = Column::new("code", ColumnData::utf8([diag.code.as_str()]));
+	let message_col = Column::new("message", ColumnData::utf8([diag.message.as_str()]));
+	let statement_col = Column::new(
+		"statement",
+		match &diag.statement {
+			Some(s) => ColumnData::utf8([s.as_str()]),
+			None => ColumnData::none_typed(Type::Utf8, 1),
+		},
+	);
+	let label_col = Column::new(
+		"label",
+		match &diag.label {
+			Some(s) => ColumnData::utf8([s.as_str()]),
+			None => ColumnData::none_typed(Type::Utf8, 1),
+		},
+	);
+	let help_col = Column::new(
+		"help",
+		match &diag.help {
+			Some(s) => ColumnData::utf8([s.as_str()]),
+			None => ColumnData::none_typed(Type::Utf8, 1),
+		},
+	);
+	Columns::new(vec![code_col, message_col, statement_col, label_col, help_col])
 }

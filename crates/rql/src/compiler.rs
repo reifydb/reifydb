@@ -1092,6 +1092,12 @@ impl InstructionCompiler {
 						if matches!(&inner, PhysicalPlan::DefineClosure(_)) {
 							// Closures push their value onto the stack directly
 							self.compile_plan(inner)?;
+						} else if let PhysicalPlan::AssertBlock(block) = inner {
+							self.emit(Instruction::AssertBlock(nodes::AssertBlockNode {
+								rql: block.rql,
+								expect_error: block.expect_error,
+								message: block.message,
+							}));
 						} else {
 							let query = materialize_query_plan(inner);
 							self.emit(Instruction::Query(query));
@@ -1261,11 +1267,15 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::AssertBlock(node) => {
+				let expect_error = node.expect_error;
 				self.emit(Instruction::AssertBlock(nodes::AssertBlockNode {
 					rql: node.rql,
 					expect_error: node.expect_error,
 					message: node.message,
 				}));
+				if expect_error {
+					self.emit(Instruction::Pop);
+				}
 			}
 			PhysicalPlan::Filter(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))));
