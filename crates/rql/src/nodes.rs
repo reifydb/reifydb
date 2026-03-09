@@ -572,6 +572,7 @@ pub struct RemoteScanNode {
 	pub remote_rql: String,
 	pub local_namespace: String,
 	pub remote_name: String,
+	pub variables: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

@@ -139,6 +139,27 @@ impl QueryNode for SeriesScanNode {
 
 		if timestamps.is_empty() {
 			self.exhausted = true;
+			if self.last_key.is_none() {
+				// Empty series: return empty columns with correct types to preserve schema
+				let mut result_columns = Vec::new();
+				result_columns.push(Column {
+					name: Fragment::internal("timestamp"),
+					data: ColumnData::none_typed(Type::Int8, 0),
+				});
+				if has_tag {
+					result_columns.push(Column {
+						name: Fragment::internal("tag"),
+						data: ColumnData::none_typed(Type::Uint1, 0),
+					});
+				}
+				for col_def in series_def.columns.iter() {
+					result_columns.push(Column {
+						name: Fragment::internal(&col_def.name),
+						data: ColumnData::none_typed(col_def.constraint.get_type(), 0),
+					});
+				}
+				return Ok(Some(Columns::new(result_columns)));
+			}
 			return Ok(None);
 		}
 

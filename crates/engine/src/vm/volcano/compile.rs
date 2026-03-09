@@ -632,7 +632,9 @@ pub(crate) fn compile<'a>(
 			Box::new(VirtualScanNode::new(virtual_table_impl, context, virtual_context).unwrap())
 		}
 
-		RqlQueryPlan::RemoteScan(node) => Box::new(RemoteFetchNode::new(node.address, node.remote_rql)),
+		RqlQueryPlan::RemoteScan(node) => {
+			Box::new(RemoteFetchNode::new(node.address, node.remote_rql, node.variables))
+		}
 
 		RqlQueryPlan::Variable(var_node) => Box::new(VariableNode::new(var_node.variable_expr)),
 

@@ -114,6 +114,10 @@ impl QueryNode for ViewScanNode {
 		drop(stream);
 		if batch_rows.is_empty() {
 			self.exhausted = true;
+			if self.last_key.is_none() {
+				// Empty view: return empty columns with correct types to preserve schema
+				return Ok(Some(Columns::from_view(&self.view)));
+			}
 			return Ok(None);
 		}
 

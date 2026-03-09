@@ -17,6 +17,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_assert(&mut self) -> Result<AstAssert<'bump>> {
+		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Assert)?;
 		self.consume_operator(Operator::OpenCurly)?;
 		let node = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
@@ -33,6 +34,7 @@ impl<'bump> Parser<'bump> {
 			token,
 			node,
 			message,
+			rql: self.source_since(start),
 		})
 	}
 }

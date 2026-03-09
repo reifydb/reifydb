@@ -83,6 +83,7 @@ impl<'bump> Compiler<'bump> {
 				with,
 				using_clause,
 				alias,
+				rql,
 				..
 			} => {
 				let with = self.compile_join_subquery(&with, &alias, tx)?;
@@ -94,12 +95,14 @@ impl<'bump> Compiler<'bump> {
 					with,
 					on,
 					alias: Some(alias),
+					rql: rql.to_string(),
 				}))
 			}
 			AstJoin::LeftJoin {
 				with,
 				using_clause,
 				alias,
+				rql,
 				..
 			} => {
 				let with = self.compile_join_subquery(&with, &alias, tx)?;
@@ -111,12 +114,14 @@ impl<'bump> Compiler<'bump> {
 					with,
 					on,
 					alias: Some(alias),
+					rql: rql.to_string(),
 				}))
 			}
 			AstJoin::NaturalJoin {
 				with,
 				join_type,
 				alias,
+				rql,
 				..
 			} => {
 				let with = self.compile_natural_join_subquery(&with, &alias, tx)?;
@@ -125,6 +130,7 @@ impl<'bump> Compiler<'bump> {
 					with,
 					join_type: join_type.unwrap_or(JoinType::Inner),
 					alias: Some(alias),
+					rql: rql.to_string(),
 				}))
 			}
 		}

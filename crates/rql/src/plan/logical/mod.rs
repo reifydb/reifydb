@@ -739,6 +739,7 @@ pub struct DistinctNode<'bump> {
 pub struct AssertNode {
 	pub condition: Expression,
 	pub message: Option<String>,
+	pub rql: String,
 }
 
 #[derive(Debug)]
@@ -758,6 +759,7 @@ pub struct JoinInnerNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
+	pub rql: String,
 }
 
 #[derive(Debug)]
@@ -765,6 +767,7 @@ pub struct JoinLeftNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
+	pub rql: String,
 }
 
 #[derive(Debug)]
@@ -772,6 +775,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub join_type: JoinType,
 	pub alias: Option<BumpFragment<'bump>>,
+	pub rql: String,
 }
 
 #[derive(Debug)]

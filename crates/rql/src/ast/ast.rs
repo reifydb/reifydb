@@ -1067,6 +1067,7 @@ pub struct AstAssert<'bump> {
 	pub token: Token<'bump>,
 	pub node: BumpBox<'bump, Ast<'bump>>,
 	pub message: Option<Token<'bump>>,
+	pub rql: &'bump str,
 }
 
 #[derive(Debug)]
@@ -1546,18 +1547,21 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
+		rql: &'bump str,
 	},
 	LeftJoin {
 		token: Token<'bump>,
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
+		rql: &'bump str,
 	},
 	NaturalJoin {
 		token: Token<'bump>,
 		with: AstSubQuery<'bump>,
 		join_type: Option<JoinType>,
 		alias: BumpFragment<'bump>, // Required alias (no 'as' keyword)
+		rql: &'bump str,
 	},
 }
 

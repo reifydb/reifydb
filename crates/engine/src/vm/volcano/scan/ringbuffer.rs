@@ -140,6 +140,20 @@ impl QueryNode for RingBufferScan {
 
 		// If we've returned all rows, we're done
 		if self.rows_returned >= metadata.count {
+			if self.rows_returned == 0 {
+				// Empty ringbuffer: return empty columns with correct types to preserve schema
+				self.rows_returned = 1; // prevent re-entry
+				let columns: Vec<Column> = self
+					.ringbuffer
+					.columns()
+					.iter()
+					.map(|col| Column {
+						name: Fragment::internal(&col.name),
+						data: ColumnData::none_typed(col.constraint.get_type(), 0),
+					})
+					.collect();
+				return Ok(Some(Columns::new(columns)));
+			}
 			return Ok(None);
 		}
 

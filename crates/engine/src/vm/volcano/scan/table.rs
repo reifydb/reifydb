@@ -150,6 +150,19 @@ impl QueryNode for TableScanNode {
 
 		if batch_rows.is_empty() {
 			self.exhausted = true;
+			if self.last_key.is_none() {
+				// Empty table: return empty columns with correct types to preserve schema
+				let columns: Vec<Column> = self
+					.table
+					.columns()
+					.iter()
+					.map(|col| Column {
+						name: Fragment::internal(&col.name),
+						data: ColumnData::none_typed(col.constraint.get_type(), 0),
+					})
+					.collect();
+				return Ok(Some(Columns::new(columns)));
+			}
 			return Ok(None);
 		}
 

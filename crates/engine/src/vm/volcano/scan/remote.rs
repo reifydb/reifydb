@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_type::fragment::Fragment;
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_type::{params::Params, value::Value};
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::vm::stack::Variable;
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -17,15 +23,17 @@ use crate::{
 pub(crate) struct RemoteFetchNode {
 	address: String,
 	remote_rql: String,
+	variable_names: Vec<String>,
 	batches: VecDeque<Columns>,
 	headers: Option<ColumnHeaders>,
 }
 
 impl RemoteFetchNode {
-	pub fn new(address: String, remote_rql: String) -> Self {
+	pub fn new(address: String, remote_rql: String, variable_names: Vec<String>) -> Self {
 		Self {
 			address,
 			remote_rql,
+			variable_names,
 			batches: VecDeque::new(),
 			headers: None,
 		}
@@ -37,8 +45,31 @@ impl QueryNode for RemoteFetchNode {
 		#[cfg(not(target_arch = "wasm32"))]
 		{
 			if let Some(ref registry) = _ctx.services.remote_registry {
-				let frames =
-					registry.forward_query(&self.address, &self.remote_rql, _ctx.params.clone())?;
+				// Resolve local variables for remote execution
+				let mut named_params: HashMap<String, Value> = HashMap::new();
+				for var_name in &self.variable_names {
+					if let Some(Variable::Scalar(columns)) = _ctx.stack.get(var_name) {
+						named_params.insert(var_name.clone(), columns.scalar_value().clone());
+					}
+				}
+
+				// Merge with existing context params
+				let params = if named_params.is_empty() {
+					_ctx.params.clone()
+				} else {
+					// Merge: existing named params take precedence
+					if let Params::Named(ref existing) = _ctx.params {
+						let mut merged = named_params;
+						for (k, v) in existing {
+							merged.insert(k.clone(), v.clone());
+						}
+						Params::Named(merged)
+					} else {
+						Params::Named(named_params)
+					}
+				};
+
+				let frames = registry.forward_query(&self.address, &self.remote_rql, params)?;
 
 				for frame in frames {
 					let cols: Columns = frame.into();

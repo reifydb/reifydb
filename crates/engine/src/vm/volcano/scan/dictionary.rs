@@ -112,6 +112,20 @@ impl QueryNode for DictionaryScanNode {
 
 		if ids.is_empty() {
 			self.exhausted = true;
+			if self.last_key.is_none() {
+				// Empty dictionary: return empty columns with correct types to preserve schema
+				let columns = Columns::new(vec![
+					Column {
+						name: Fragment::internal("id"),
+						data: ColumnData::none_typed(dict_def.id_type.clone(), 0),
+					},
+					Column {
+						name: Fragment::internal("value"),
+						data: ColumnData::none_typed(dict_def.value_type.clone(), 0),
+					},
+				]);
+				return Ok(Some(columns));
+			}
 			return Ok(None);
 		}
 

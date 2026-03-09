@@ -23,6 +23,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::Assert(AssertNode {
 			condition: ExpressionCompiler::compile(BumpBox::into_inner(ast.node))?,
 			message,
+			rql: ast.rql.to_string(),
 		}))
 	}
 }

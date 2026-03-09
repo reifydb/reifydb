@@ -1994,3 +1994,142 @@ impl Display for FieldAccessExpression {
 		write!(f, "{}.{}", self.object, self.field.text())
 	}
 }
+
+/// Recursively extract all variable names referenced in an expression tree.
+pub fn extract_variable_names(expr: &Expression) -> Vec<String> {
+	let mut names = Vec::new();
+	collect_variable_names(expr, &mut names);
+	names
+}
+
+fn collect_variable_names(expr: &Expression, names: &mut Vec<String>) {
+	match expr {
+		Expression::Variable(v) => {
+			let name = v.name().to_string();
+			if !names.contains(&name) {
+				names.push(name);
+			}
+		}
+		Expression::Add(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::Sub(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::Mul(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::Div(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::Rem(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::GreaterThan(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::GreaterThanEqual(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::LessThan(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::LessThanEqual(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::Equal(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::NotEqual(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::And(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::Or(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::Xor(e) => {
+			collect_variable_names(&e.left, names);
+			collect_variable_names(&e.right, names);
+		}
+		Expression::Between(e) => {
+			collect_variable_names(&e.value, names);
+			collect_variable_names(&e.lower, names);
+			collect_variable_names(&e.upper, names);
+		}
+		Expression::In(e) => {
+			collect_variable_names(&e.value, names);
+			collect_variable_names(&e.list, names);
+		}
+		Expression::Contains(e) => {
+			collect_variable_names(&e.value, names);
+			collect_variable_names(&e.list, names);
+		}
+		Expression::Prefix(e) => collect_variable_names(&e.expression, names),
+		Expression::Cast(e) => collect_variable_names(&e.expression, names),
+		Expression::Alias(e) => collect_variable_names(&e.expression, names),
+		Expression::Call(e) => {
+			for arg in &e.args {
+				collect_variable_names(arg, names);
+			}
+		}
+		Expression::Tuple(e) => {
+			for expr in &e.expressions {
+				collect_variable_names(expr, names);
+			}
+		}
+		Expression::List(e) => {
+			for expr in &e.expressions {
+				collect_variable_names(expr, names);
+			}
+		}
+		Expression::If(e) => {
+			collect_variable_names(&e.condition, names);
+			collect_variable_names(&e.then_expr, names);
+			for else_if in &e.else_ifs {
+				collect_variable_names(&else_if.condition, names);
+				collect_variable_names(&else_if.then_expr, names);
+			}
+			if let Some(else_expr) = &e.else_expr {
+				collect_variable_names(else_expr, names);
+			}
+		}
+		Expression::Map(e) => {
+			for expr in &e.expressions {
+				collect_variable_names(expr, names);
+			}
+		}
+		Expression::Extend(e) => {
+			for expr in &e.expressions {
+				collect_variable_names(expr, names);
+			}
+		}
+		Expression::SumTypeConstructor(e) => {
+			for (_, expr) in &e.columns {
+				collect_variable_names(expr, names);
+			}
+		}
+		Expression::IsVariant(e) => collect_variable_names(&e.expression, names),
+		Expression::FieldAccess(e) => collect_variable_names(&e.object, names),
+		// Leaf nodes with no sub-expressions
+		Expression::Constant(_)
+		| Expression::Column(_)
+		| Expression::AccessSource(_)
+		| Expression::Parameter(_)
+		| Expression::Type(_) => {}
+	}
+}

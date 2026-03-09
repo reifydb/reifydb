@@ -361,6 +361,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::Assert(AssertNode {
 			condition,
 			message,
+			..
 		}) => {
 			let msg = message.as_deref().unwrap_or("assertion failed");
 			output.push_str(&format!("{}{} Assert \"{}\"\n", prefix, branch, msg));
@@ -509,6 +510,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			with,
 			on,
 			alias: _,
+			..
 		}) => {
 			let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
 			output.push_str(&format!("{}{}Join(Inner) [{}]\n", prefix, branch, on));
@@ -522,6 +524,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			with,
 			on,
 			alias: _,
+			..
 		}) => {
 			let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
 			output.push_str(&format!("{}{}Join(Left) [{}]\n", prefix, branch, on));
@@ -535,6 +538,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			with,
 			join_type,
 			alias: _,
+			..
 		}) => {
 			let join_type_str = match join_type {
 				JoinType::Inner => "Inner",

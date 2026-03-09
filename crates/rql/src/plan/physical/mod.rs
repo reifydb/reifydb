@@ -43,7 +43,9 @@ use crate::{
 	ast::ast::{AstAlterPolicyAction, AstPolicyScope},
 	bump::{Bump, BumpBox, FragmentInterner},
 	error::RqlError,
-	expression::{ConstantExpression, Expression, Expression::Constant, VariableExpression},
+	expression::{
+		ConstantExpression, Expression, Expression::Constant, VariableExpression, extract_variable_names,
+	},
 	nodes::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
 		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
@@ -553,9 +555,15 @@ impl<'bump> Compiler<'bump> {
 					let input = stack.pop().unwrap(); // FIXME
 
 					// Push-down: fold aggregate into RemoteScan
-					if let Some(pushed) =
-						try_remote_push_down(&input, || Some(aggregate.rql.clone()))
-					{
+					let mut vars = Vec::new();
+					for expr in aggregate.by.iter().chain(aggregate.map.iter()) {
+						vars.extend(extract_variable_names(expr));
+					}
+					if let Some(pushed) = try_remote_push_down_with_vars(
+						&input,
+						|| Some(aggregate.rql.clone()),
+						vars,
+					) {
 						stack.push(pushed);
 						continue;
 					}
@@ -850,6 +858,20 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::Assert(assert_node) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
+
+					// Push-down: fold assert into RemoteScan
+					if let Some(ref boxed_input) = input {
+						let vars = extract_variable_names(&assert_node.condition);
+						if let Some(pushed) = try_remote_push_down_with_vars(
+							boxed_input,
+							|| Some(assert_node.rql.clone()),
+							vars,
+						) {
+							stack.push(pushed);
+							continue;
+						}
+					}
+
 					stack.push(PhysicalPlan::Assert(AssertNode {
 						conditions: vec![assert_node.condition],
 						message: assert_node.message,
@@ -861,8 +883,12 @@ impl<'bump> Compiler<'bump> {
 					let input = stack.pop().unwrap(); // FIXME
 
 					// Push-down into RemoteScan
-					if let Some(pushed) = try_remote_push_down(&input, || Some(filter.rql.clone()))
-					{
+					let vars = extract_variable_names(&filter.condition);
+					if let Some(pushed) = try_remote_push_down_with_vars(
+						&input,
+						|| Some(filter.rql.clone()),
+						vars,
+					) {
 						stack.push(pushed);
 						continue;
 					}
@@ -954,7 +980,10 @@ impl<'bump> Compiler<'bump> {
 					let input = stack.pop().unwrap();
 
 					// Push-down: fold gate into RemoteScan
-					if let Some(pushed) = try_remote_push_down(&input, || Some(gate.rql.clone())) {
+					let vars = extract_variable_names(&gate.condition);
+					if let Some(pushed) =
+						try_remote_push_down_with_vars(&input, || Some(gate.rql.clone()), vars)
+					{
 						stack.push(pushed);
 						continue;
 					}
@@ -1586,6 +1615,21 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::JoinInner(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
+
+					// Push-down: both sides target same remote
+					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
+						(&left, &right)
+					{
+						if l.address == r.address {
+							let mut pushed = l.clone();
+							pushed.remote_rql =
+								format!("{} | {}", pushed.remote_rql, join.rql);
+							pushed.variables.extend(r.variables.iter().cloned());
+							stack.push(PhysicalPlan::RemoteScan(pushed));
+							continue;
+						}
+					}
+
 					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
 					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
 						left: self.bump_box(left),
@@ -1598,6 +1642,21 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::JoinLeft(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
+
+					// Push-down: both sides target same remote
+					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
+						(&left, &right)
+					{
+						if l.address == r.address {
+							let mut pushed = l.clone();
+							pushed.remote_rql =
+								format!("{} | {}", pushed.remote_rql, join.rql);
+							pushed.variables.extend(r.variables.iter().cloned());
+							stack.push(PhysicalPlan::RemoteScan(pushed));
+							continue;
+						}
+					}
+
 					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
 					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
 						left: self.bump_box(left),
@@ -1610,6 +1669,21 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::JoinNatural(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
+
+					// Push-down: both sides target same remote
+					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
+						(&left, &right)
+					{
+						if l.address == r.address {
+							let mut pushed = l.clone();
+							pushed.remote_rql =
+								format!("{} | {}", pushed.remote_rql, join.rql);
+							pushed.variables.extend(r.variables.iter().cloned());
+							stack.push(PhysicalPlan::RemoteScan(pushed));
+							continue;
+						}
+					}
+
 					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
 					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
 						left: self.bump_box(left),
@@ -1700,9 +1774,15 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: fold map into RemoteScan
 					if let Some(ref boxed_input) = input {
-						if let Some(pushed) =
-							try_remote_push_down(boxed_input, || Some(map.rql.clone()))
-						{
+						let mut vars = Vec::new();
+						for expr in &map.map {
+							vars.extend(extract_variable_names(expr));
+						}
+						if let Some(pushed) = try_remote_push_down_with_vars(
+							boxed_input,
+							|| Some(map.rql.clone()),
+							vars,
+						) {
 							stack.push(pushed);
 							continue;
 						}
@@ -1719,9 +1799,15 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: fold extend into RemoteScan
 					if let Some(ref boxed_input) = input {
-						if let Some(pushed) =
-							try_remote_push_down(boxed_input, || Some(extend.rql.clone()))
-						{
+						let mut vars = Vec::new();
+						for expr in &extend.extend {
+							vars.extend(extract_variable_names(expr));
+						}
+						if let Some(pushed) = try_remote_push_down_with_vars(
+							boxed_input,
+							|| Some(extend.rql.clone()),
+							vars,
+						) {
 							stack.push(pushed);
 							continue;
 						}
@@ -1738,9 +1824,15 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: fold patch into RemoteScan
 					if let Some(ref boxed_input) = input {
-						if let Some(pushed) =
-							try_remote_push_down(boxed_input, || Some(patch.rql.clone()))
-						{
+						let mut vars = Vec::new();
+						for expr in &patch.assignments {
+							vars.extend(extract_variable_names(expr));
+						}
+						if let Some(pushed) = try_remote_push_down_with_vars(
+							boxed_input,
+							|| Some(patch.rql.clone()),
+							vars,
+						) {
 							stack.push(pushed);
 							continue;
 						}
@@ -1757,9 +1849,15 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: fold apply into RemoteScan
 					if let Some(ref boxed_input) = input {
-						if let Some(pushed) =
-							try_remote_push_down(boxed_input, || Some(apply.rql.clone()))
-						{
+						let mut vars = Vec::new();
+						for expr in &apply.arguments {
+							vars.extend(extract_variable_names(expr));
+						}
+						if let Some(pushed) = try_remote_push_down_with_vars(
+							boxed_input,
+							|| Some(apply.rql.clone()),
+							vars,
+						) {
 							stack.push(pushed);
 							continue;
 						}
@@ -1868,6 +1966,7 @@ impl<'bump> Compiler<'bump> {
 						),
 						local_namespace: scan.local_namespace,
 						remote_name: scan.remote_name,
+						variables: Vec::new(),
 					}));
 				}
 
@@ -2261,10 +2360,25 @@ fn try_remote_push_down<'a>(
 	input: &PhysicalPlan<'a>,
 	rql_suffix: impl FnOnce() -> Option<String>,
 ) -> Option<PhysicalPlan<'a>> {
+	try_remote_push_down_with_vars(input, rql_suffix, Vec::new())
+}
+
+/// Try to push down an operation into a RemoteScan node, also tracking variable names
+/// that need to be resolved and passed as named params to the remote.
+fn try_remote_push_down_with_vars<'a>(
+	input: &PhysicalPlan<'a>,
+	rql_suffix: impl FnOnce() -> Option<String>,
+	variables: Vec<String>,
+) -> Option<PhysicalPlan<'a>> {
 	if let PhysicalPlan::RemoteScan(remote) = input {
 		if let Some(suffix) = rql_suffix() {
 			let mut pushed = remote.clone();
 			pushed.remote_rql = format!("{} | {}", pushed.remote_rql, suffix);
+			for var in variables {
+				if !pushed.variables.contains(&var) {
+					pushed.variables.push(var);
+				}
+			}
 			return Some(PhysicalPlan::RemoteScan(pushed));
 		}
 	}

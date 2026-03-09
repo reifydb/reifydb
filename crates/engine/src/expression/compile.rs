@@ -159,6 +159,20 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						.into());
 					}
 					None => {
+						// Fallback: check named params (for remote pushdown)
+						if let Some(value) = ctx.params.get_named(variable_name) {
+							let mut data = ColumnData::with_capacity(
+								value.get_type(),
+								ctx.row_count,
+							);
+							for _ in 0..ctx.row_count {
+								data.push_value(value.clone());
+							}
+							return Ok(Column {
+								name: Fragment::internal(variable_name),
+								data,
+							});
+						}
 						return Err(TypeError::Runtime {
 							kind: RuntimeErrorKind::VariableNotFound {
 								name: variable_name.to_string(),

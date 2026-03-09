@@ -21,6 +21,7 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_join(&mut self) -> Result<AstJoin<'bump>> {
+		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Join)?;
 		let with = self.parse_sub_query()?;
 
@@ -36,10 +37,12 @@ impl<'bump> Parser<'bump> {
 			with,
 			using_clause,
 			alias,
+			rql: self.source_since(start),
 		})
 	}
 
 	pub(crate) fn parse_natural_join(&mut self) -> Result<AstJoin<'bump>> {
+		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Natural)?;
 
 		let join_type = if self.current()?.is_keyword(Left) {
@@ -65,10 +68,12 @@ impl<'bump> Parser<'bump> {
 			with,
 			join_type,
 			alias,
+			rql: self.source_since(start),
 		})
 	}
 
 	pub(crate) fn parse_inner_join(&mut self) -> Result<AstJoin<'bump>> {
+		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Inner)?;
 		self.consume_keyword(Join)?;
 
@@ -86,10 +91,12 @@ impl<'bump> Parser<'bump> {
 			with,
 			using_clause,
 			alias,
+			rql: self.source_since(start),
 		})
 	}
 
 	pub(crate) fn parse_left_join(&mut self) -> Result<AstJoin<'bump>> {
+		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Left)?;
 		self.consume_keyword(Join)?;
 
@@ -107,6 +114,7 @@ impl<'bump> Parser<'bump> {
 			with,
 			using_clause,
 			alias,
+			rql: self.source_since(start),
 		})
 	}
 
