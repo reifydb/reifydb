@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{iter, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -17,6 +17,7 @@ use reifydb_core::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
+	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::{
@@ -54,6 +55,7 @@ pub(crate) fn update_series<'a>(
 	params: Params,
 	identity: IdentityId,
 	symbol_table_ref: &SymbolTable,
+	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -380,7 +382,7 @@ pub(crate) fn update_series<'a>(
 		updated_count += 1;
 	}
 
-	// Track flow changes for updated rows
+	// Track flow changes and testing mutations for updated rows
 	if let (Some(pre_cols), Some(post_cols)) = (&pre_columns, &post_columns) {
 		for &row_idx in &updated_row_indices {
 			let timestamp = scanned_timestamps[row_idx];
@@ -418,6 +420,23 @@ pub(crate) fn update_series<'a>(
 						data,
 					});
 				}
+			}
+
+			if let Some(log) = testing.as_mut() {
+				let old = Columns::single_row(
+					iter::once(("timestamp", Value::Int8(timestamp))).chain(pre_cols
+						.iter()
+						.filter(|c| c.name().text() != "timestamp" && c.name().text() != "tag")
+						.map(|c| (c.name().text(), c.data().get_value(row_idx)))),
+				);
+				let new = Columns::single_row(
+					iter::once(("timestamp", Value::Int8(timestamp))).chain(post_cols
+						.iter()
+						.filter(|c| c.name().text() != "timestamp" && c.name().text() != "tag")
+						.map(|c| (c.name().text(), c.data().get_value(row_idx)))),
+				);
+				let key = format!("{}::{}", namespace.name(), series_def.name);
+				log.record_update(key, old, new);
 			}
 
 			let pre = Columns {

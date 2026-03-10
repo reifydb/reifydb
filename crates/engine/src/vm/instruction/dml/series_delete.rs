@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{iter, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -15,6 +15,7 @@ use reifydb_core::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
+	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
@@ -49,6 +50,7 @@ pub(crate) fn delete_series<'a>(
 	params: Params,
 	identity: IdentityId,
 	symbol_table: &SymbolTable,
+	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -276,6 +278,27 @@ pub(crate) fn delete_series<'a>(
 						}],
 					});
 
+					if let Some(log) = testing.as_mut() {
+						let old = Columns::single_row(
+							iter::once((
+								"timestamp",
+								columns.iter()
+									.find(|c| c.name().text() == "timestamp")
+									.map(|c| c.data().get_value(i))
+									.unwrap_or(Value::Int8(0)),
+							))
+							.chain(columns
+								.iter()
+								.filter(|c| {
+									c.name().text() != "timestamp"
+										&& c.name().text() != "tag"
+								})
+								.map(|c| (c.name().text(), c.data().get_value(i)))),
+						);
+						let mutation_key = format!("{}::{}", namespace.name(), series_def.name);
+						log.record_delete(mutation_key, old);
+					}
+
 					txn.unset(key, encoded_values[i].clone())?;
 					deleted_count += 1;
 				}
@@ -329,6 +352,26 @@ pub(crate) fn delete_series<'a>(
 						pre,
 					}],
 				});
+			}
+
+			if let Some(log) = testing.as_mut() {
+				if let Some(decoded_key) = SeriesRowKey::decode(key) {
+					let data_values: Vec<Value> = series_def
+						.columns
+						.iter()
+						.enumerate()
+						.map(|(i, _)| delete_all_schema.get_value(encoded_values, i + 1))
+						.collect();
+					let old = Columns::single_row(
+						iter::once(("timestamp", Value::Int8(decoded_key.timestamp))).chain(
+							series_def.columns.iter().enumerate().map(|(i, col)| {
+								(col.name.as_str(), data_values[i].clone())
+							}),
+						),
+					);
+					let mutation_key = format!("{}::{}", namespace.name(), series_def.name);
+					log.record_delete(mutation_key, old);
+				}
 			}
 
 			txn.unset(key, encoded_values.clone())?;

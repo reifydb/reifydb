@@ -13,6 +13,7 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	},
 	key::row::RowKey,
+	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::DeleteRingBufferNode;
@@ -24,6 +25,7 @@ use reifydb_type::{
 	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 
+use super::schema::get_or_create_ringbuffer_schema;
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -45,6 +47,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 	params: Params,
 	identity: IdentityId,
 	symbol_table: &SymbolTable,
+	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -89,6 +92,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 					params: params.clone(),
 					stack: SymbolTable::new(),
 					identity: IdentityId::root(),
+					testing: None,
 				}),
 			);
 
@@ -99,6 +103,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 				params: params.clone(),
 				stack: SymbolTable::new(),
 				identity: IdentityId::root(),
+				testing: None,
 			};
 
 			// Initialize the operator before execution
@@ -142,6 +147,24 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 			if txn.contains_key(&key)? {
 				if row_numbers_to_delete.contains(&row_num) {
+					if let Some(log) = testing.as_mut() {
+						let schema = get_or_create_ringbuffer_schema(
+							&services.catalog,
+							&ringbuffer,
+							txn,
+						)?;
+						if let Some(old_row_data) = txn.get(&key)? {
+							let old = columns_from_encoded(
+								&ringbuffer.columns,
+								&schema,
+								&old_row_data.values,
+							);
+							let mutation_key =
+								format!("{}::{}", namespace.name(), ringbuffer.name);
+							log.record_delete(mutation_key, old);
+						}
+					}
+
 					// Delete this row
 					txn.remove_from_ringbuffer(&ringbuffer, row_num)?;
 					deleted_count += 1;
@@ -172,6 +195,20 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 			// Only delete if the entry exists
 			if txn.contains_key(&row_key)? {
+				if let Some(log) = testing.as_mut() {
+					let schema =
+						get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
+					if let Some(old_row_data) = txn.get(&row_key)? {
+						let old = columns_from_encoded(
+							&ringbuffer.columns,
+							&schema,
+							&old_row_data.values,
+						);
+						let mutation_key = format!("{}::{}", namespace.name(), ringbuffer.name);
+						log.record_delete(mutation_key, old);
+					}
+				}
+
 				txn.remove_from_ringbuffer(&ringbuffer, row_number)?;
 				deleted_count += 1;
 			}

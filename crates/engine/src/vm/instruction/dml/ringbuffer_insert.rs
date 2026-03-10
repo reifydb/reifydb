@@ -10,6 +10,7 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	},
 	internal_error,
+	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::InsertRingBufferNode;
@@ -45,6 +46,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 	params: Params,
 	identity: IdentityId,
 	symbol_table: &SymbolTable,
+	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -81,6 +83,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 		params: params.clone(),
 		stack: SymbolTable::new(),
 		identity: IdentityId::root(),
+		testing: None,
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
@@ -176,7 +179,13 @@ pub(crate) fn insert_ringbuffer<'a>(
 			let row_number = services.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
 
 			// Store the row
-			txn.insert_ringbuffer_at(&ringbuffer, &schema, row_number, row)?;
+			txn.insert_ringbuffer_at(&ringbuffer, &schema, row_number, row.clone())?;
+
+			if let Some(log) = testing.as_mut() {
+				let new = columns_from_encoded(&ringbuffer.columns, &schema, &row);
+				let key = format!("{}::{}", namespace.name(), ringbuffer.name);
+				log.record_insert(key, new);
+			}
 
 			// Update metadata
 			if metadata.is_empty() {

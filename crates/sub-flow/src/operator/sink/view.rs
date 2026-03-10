@@ -62,6 +62,18 @@ impl Operator for SinkViewOperator {
 						let key = RowKey::encoded(PrimitiveId::view(view_def.id), row_number);
 						txn.set(&key, encoded.clone())?;
 						ViewInterceptor::post_insert(txn, &view_def, row_number, &encoded)?;
+
+						if let Some(log) = txn.testing_mut() {
+							let new = Columns::single_row(coerced.iter().map(|col| {
+								(col.name().text(), col.data().get_value(row_idx))
+							}));
+							let mutation_key = format!(
+								"{}::{}",
+								self.view.namespace().name(),
+								self.view.name()
+							);
+							log.record_insert(mutation_key, new);
+						}
 					}
 					// Emit view change for downstream transactional flows
 					let version = txn.version();
@@ -118,6 +130,21 @@ impl Operator for SinkViewOperator {
 							&post_encoded,
 							&pre_encoded,
 						)?;
+
+						if let Some(log) = txn.testing_mut() {
+							let old = Columns::single_row(coerced_pre.iter().map(|col| {
+								(col.name().text(), col.data().get_value(row_idx))
+							}));
+							let new = Columns::single_row(coerced_post.iter().map(|col| {
+								(col.name().text(), col.data().get_value(row_idx))
+							}));
+							let mutation_key = format!(
+								"{}::{}",
+								self.view.namespace().name(),
+								self.view.name()
+							);
+							log.record_update(mutation_key, old, new);
+						}
 					}
 					// Emit view change for downstream transactional flows
 					let version = txn.version();
@@ -145,6 +172,18 @@ impl Operator for SinkViewOperator {
 						let key = RowKey::encoded(PrimitiveId::view(view_def.id), row_number);
 						txn.remove(&key)?;
 						ViewInterceptor::post_delete(txn, &view_def, row_number, &encoded)?;
+
+						if let Some(log) = txn.testing_mut() {
+							let old = Columns::single_row(coerced.iter().map(|col| {
+								(col.name().text(), col.data().get_value(row_idx))
+							}));
+							let mutation_key = format!(
+								"{}::{}",
+								self.view.namespace().name(),
+								self.view.name()
+							);
+							log.record_delete(mutation_key, old);
+						}
 					}
 					// Emit view change for downstream transactional flows
 					let version = txn.version();

@@ -2,11 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::nodes::{
-	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, DictionaryScanNode, DistinctNode, EnvironmentNode,
-	ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode, JoinLeftNode,
-	JoinNaturalNode, MapNode, PatchNode, RemoteScanNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode,
-	RowRangeScanNode, RunTestsNode, ScalarizeNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode,
-	TakeNode, VariableNode, ViewScanNode, WindowNode,
+	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode, DistinctNode,
+	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
+	JoinLeftNode, JoinNaturalNode, MapNode, PatchNode, RemoteScanNode, RingBufferScanNode, RowListLookupNode,
+	RowPointLookupNode, RowRangeScanNode, RunTestsNode, ScalarizeNode, SeriesScanNode, SortNode, TableScanNode,
+	TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
 };
 
 #[derive(Debug, Clone)]
@@ -52,4 +52,6 @@ pub enum QueryPlan {
 	Scalarize(ScalarizeNode),
 
 	RunTests(RunTestsNode),
+
+	CallFunction(CallFunctionNode),
 }

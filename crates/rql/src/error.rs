@@ -180,6 +180,12 @@ pub enum RqlError {
 	#[error("CONTINUE can only be used inside a loop")]
 	ContinueOutsideLoop,
 
+	#[error("Multiple statements must be separated by semicolons")]
+	MissingSemicolon {
+		fragment: Fragment,
+		count: usize,
+	},
+
 	#[error("Internal error in function {name}: {details}")]
 	InternalFunctionError {
 		name: String,
@@ -817,6 +823,24 @@ impl IntoDiagnostic for RqlError {
 				label: None,
 				help: Some("Use CONTINUE inside a LOOP, WHILE, or FOR block".to_string()),
 				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			RqlError::MissingSemicolon { fragment, count } => Diagnostic {
+				code: "SYNTAX_001".to_string(),
+				statement: None,
+				message: format!(
+					"found {} statements where only one was expected — are you missing semicolons?",
+					count,
+				),
+				column: None,
+				fragment,
+				label: Some("these statements need to be separated by semicolons".to_string()),
+				help: Some("Add a semicolon `;` after each statement, e.g.:\n  RUN TEST ns::test_name;\n  RUN TESTS ns".to_string()),
+				notes: vec![
+					"Without semicolons, multiple statements are parsed as a single compound statement".to_string(),
+					"Each RUN TEST, RUN TESTS, or other top-level command should end with `;` when followed by another statement".to_string(),
+				],
 				cause: None,
 				operator_chain: None,
 			},

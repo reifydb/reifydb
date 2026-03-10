@@ -22,6 +22,7 @@ pub mod remote;
 #[allow(unused)]
 pub mod test;
 pub mod test_utils;
+pub(crate) mod testing;
 pub mod transaction;
 pub mod transform;
 pub mod vm;

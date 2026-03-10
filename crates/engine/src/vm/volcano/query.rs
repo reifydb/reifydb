@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::resolved::ResolvedPrimitive,
+	testing::TestingContext,
 	value::{
 		batch::lazy::LazyBatch,
 		column::{columns::Columns, headers::ColumnHeaders},
@@ -47,6 +48,7 @@ pub struct QueryContext {
 	pub params: Params,
 	pub stack: SymbolTable,
 	pub identity: IdentityId,
+	pub testing: Option<TestingContext>,
 }
 
 impl QueryNode for Box<dyn QueryNode> {

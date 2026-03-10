@@ -370,6 +370,12 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 
 		PhysicalPlan::RunTests(node) => QueryPlan::RunTests(node),
 
+		PhysicalPlan::CallFunction(node) => QueryPlan::CallFunction(nodes::CallFunctionNode {
+			name: node.name,
+			arguments: node.arguments,
+			is_procedure_call: node.is_procedure_call,
+		}),
+
 		// Non-query nodes cannot be materialized to QueryPlan
 		other => panic!(
 			"cannot materialize non-query PhysicalPlan to QueryPlan: {:?}",

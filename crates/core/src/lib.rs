@@ -16,6 +16,7 @@ pub mod key;
 pub mod retention;
 pub mod row;
 pub mod sort;
+pub mod testing;
 pub mod util;
 pub mod value;
 

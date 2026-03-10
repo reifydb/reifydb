@@ -8,6 +8,7 @@ use reifydb_core::{
 	error::diagnostic::internal::internal_with_context,
 	interface::catalog::{policy::PolicyTargetType, procedure::ProcedureTrigger},
 	internal_error,
+	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::{
@@ -69,6 +70,7 @@ use crate::{
 	expression::{context::EvalContext, eval::evaluate},
 	policy::PolicyEvaluator,
 	procedure::context::ProcedureContext,
+	testing,
 	vm::{
 		executor::Executor,
 		instruction::{
@@ -109,6 +111,8 @@ pub struct Vm {
 	pub(crate) dispatch_depth: u8,
 	pub(crate) identity: IdentityId,
 	pub(crate) in_test_context: bool,
+	/// Test audit log. Only `Some` when in test context. Zero cost in production.
+	pub(crate) testing: Option<TestingContext>,
 }
 
 impl Vm {
@@ -122,6 +126,7 @@ impl Vm {
 			dispatch_depth: 0,
 			identity,
 			in_test_context: false,
+			testing: None,
 		}
 	}
 
@@ -634,6 +639,25 @@ impl Vm {
 						args.push(self.pop_value()?);
 					}
 					args.reverse();
+
+					// Built-in testing::* functions (zero cost — only checked in test context)
+					if func_name.starts_with("testing::") {
+						if !self.in_test_context {
+							return Err(internal_error!(
+								"testing::* functions are only available in test context"
+							));
+						}
+						let columns = testing::handle_testing_call(
+							func_name,
+							&args,
+							&self.testing,
+							&services.catalog,
+							tx,
+						)?;
+						self.stack.push(Variable::Columns(columns));
+						self.ip += 1;
+						continue;
+					}
 
 					if let Some(func_def) = self.symbol_table.get_function(func_name) {
 						let func_def = func_def.clone();
@@ -1665,6 +1689,7 @@ impl Vm {
 						params.clone(),
 						self.identity,
 						&self.symbol_table,
+						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1685,6 +1710,7 @@ impl Vm {
 						params.clone(),
 						self.identity,
 						&self.symbol_table,
+						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1704,6 +1730,7 @@ impl Vm {
 						node.clone(),
 						&mut self.symbol_table,
 						self.identity,
+						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1724,6 +1751,7 @@ impl Vm {
 						params.clone(),
 						self.identity,
 						&self.symbol_table,
+						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1743,6 +1771,7 @@ impl Vm {
 						node.clone(),
 						&mut self.symbol_table,
 						self.identity,
+						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1763,6 +1792,7 @@ impl Vm {
 						params.clone(),
 						self.identity,
 						&self.symbol_table,
+						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1783,6 +1813,7 @@ impl Vm {
 						params.clone(),
 						self.identity,
 						&self.symbol_table,
+						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1803,6 +1834,7 @@ impl Vm {
 						params.clone(),
 						self.identity,
 						&self.symbol_table,
+						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1823,6 +1855,7 @@ impl Vm {
 						params.clone(),
 						self.identity,
 						&self.symbol_table,
+						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1843,6 +1876,7 @@ impl Vm {
 						params.clone(),
 						self.identity,
 						&self.symbol_table,
+						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1856,6 +1890,7 @@ impl Vm {
 						params.clone(),
 						&mut self.symbol_table,
 						self.identity,
+						&self.testing,
 					)? {
 						self.stack.push(Variable::Columns(columns));
 					}
@@ -2183,6 +2218,7 @@ fn run_query_plan(
 	params: Params,
 	symbol_table: &mut SymbolTable,
 	identity: IdentityId,
+	testing: &Option<TestingContext>,
 ) -> Result<Option<Columns>> {
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
@@ -2191,6 +2227,7 @@ fn run_query_plan(
 		params,
 		stack: symbol_table.clone(),
 		identity,
+		testing: testing.clone(),
 	});
 
 	let mut query_node = compile(plan, txn, context.clone());

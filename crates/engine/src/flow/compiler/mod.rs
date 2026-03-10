@@ -267,6 +267,9 @@ impl FlowCompiler {
 			QueryPlan::RunTests(_) => {
 				panic!("RunTests is not supported in flow graphs");
 			}
+			QueryPlan::CallFunction(_) => {
+				panic!("CallFunction is not supported in flow graphs");
+			}
 		}
 	}
 }

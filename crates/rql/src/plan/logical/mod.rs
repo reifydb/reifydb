@@ -252,11 +252,13 @@ impl<'bump> Compiler<'bump> {
 			}
 			// Function calls: check if it's potentially a user-defined function
 			Ast::CallFunction(call_node) => {
-				// If no namespaces, treat as potential user-defined function call
 				if call_node.function.namespaces.is_empty() {
 					self.compile_call_function(call_node)
+				} else if call_node.function.namespaces.first().map(|ns| ns.text()) == Some("testing") {
+					// testing::* calls return Columns, route through call function path
+					self.compile_call_function(call_node)
 				} else {
-					// Namespaced function calls are always built-in functions
+					// Other namespaced function calls are built-in scalar functions
 					self.compile_scalar_as_map(Ast::CallFunction(call_node))
 				}
 			}

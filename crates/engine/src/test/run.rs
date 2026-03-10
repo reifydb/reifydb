@@ -176,6 +176,7 @@ pub(crate) fn run_tests(
 			None => {
 				// Non-parameterized: single run
 				let start = Instant::now();
+				let savepoint = txn.savepoint();
 				let (outcome, message) = run_single(
 					vm,
 					services,
@@ -184,6 +185,7 @@ pub(crate) fn run_tests(
 					params,
 					None,
 				);
+				txn.restore_savepoint(savepoint);
 				let elapsed = start.elapsed();
 				let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
 
@@ -223,6 +225,7 @@ pub(crate) fn run_tests(
 					}
 
 					let start = Instant::now();
+					let savepoint = txn.savepoint();
 					let (outcome, message) = run_single(
 						vm,
 						services,
@@ -231,6 +234,7 @@ pub(crate) fn run_tests(
 						params,
 						Some(&named_vars),
 					);
+					txn.restore_savepoint(savepoint);
 					let elapsed = start.elapsed();
 					let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
 

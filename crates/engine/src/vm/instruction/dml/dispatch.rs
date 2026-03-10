@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use reifydb_core::{
 	internal_error,
@@ -81,12 +81,23 @@ pub(crate) fn dispatch(
 	}
 	let event_payload = Columns::new(event_columns);
 
+	if let Some(log) = &mut vm.testing {
+		log.record_event(
+			plan.namespace.name().to_string(),
+			sumtype_def.name.clone(),
+			plan.variant_name.clone(),
+			dispatch_depth,
+			event_payload.clone(),
+		);
+	}
+
 	// Fire each catalog (RQL) procedure in declaration order
 	for procedure in &procedures {
 		let compiled = services.compiler.compile(tx, &procedure.body)?;
 
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
+				let handler_start = Instant::now();
 				let saved_ip = vm.ip;
 
 				// Enter handler scope
@@ -100,11 +111,42 @@ pub(crate) fn dispatch(
 				let mut handler_result = Vec::new();
 				for compiled_unit in compiled_list.iter() {
 					vm.ip = 0;
-					vm.run(services, tx, &compiled_unit.instructions, params, &mut handler_result)?;
+					if let Err(e) = vm.run(
+						services,
+						tx,
+						&compiled_unit.instructions,
+						params,
+						&mut handler_result,
+					) {
+						if let Some(log) = &mut vm.testing {
+							log.record_handler_invocation(
+								plan.namespace.name().to_string(),
+								procedure.name.clone(),
+								sumtype_def.name.clone(),
+								plan.variant_name.clone(),
+								handler_start.elapsed().as_nanos() as u64,
+								"error".to_string(),
+								format!("{}", e),
+							);
+						}
+						return Err(e);
+					}
 				}
 
 				vm.ip = saved_ip;
 				let _ = vm.symbol_table.exit_scope();
+
+				if let Some(log) = &mut vm.testing {
+					log.record_handler_invocation(
+						plan.namespace.name().to_string(),
+						procedure.name.clone(),
+						sumtype_def.name.clone(),
+						plan.variant_name.clone(),
+						handler_start.elapsed().as_nanos() as u64,
+						"success".to_string(),
+						String::new(),
+					);
+				}
 			}
 			CompilationResult::Incremental(_) => {
 				return Err(internal_error!("Handler body requires more input during dispatch"));

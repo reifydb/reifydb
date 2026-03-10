@@ -474,7 +474,17 @@ impl<'bump> Compiler<'bump> {
 
 	/// Compile a function call (potentially user-defined)
 	pub(crate) fn compile_call_function(&self, ast: AstCallFunction<'bump>) -> Result<LogicalPlan<'bump>> {
-		let name = ast.function.name;
+		let name = if ast.function.namespaces.is_empty() {
+			ast.function.name
+		} else {
+			let mut qualified = String::new();
+			for ns in &ast.function.namespaces {
+				qualified.push_str(ns.text());
+				qualified.push_str("::");
+			}
+			qualified.push_str(ast.function.name.text());
+			BumpFragment::internal(self.bump, &qualified)
+		};
 
 		// Compile arguments as expressions
 		let mut arguments = Vec::new();

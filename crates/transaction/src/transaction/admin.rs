@@ -16,6 +16,7 @@ use reifydb_core::{
 		change::Change,
 		store::{MultiVersionBatch, MultiVersionValues},
 	},
+	testing::TestingContext,
 };
 use reifydb_type::Result;
 use tracing::instrument;
@@ -61,7 +62,10 @@ use crate::{
 	},
 	multi::{
 		pending::PendingWrites,
-		transaction::{MultiTransaction, write::MultiWriteTransaction},
+		transaction::{
+			MultiTransaction,
+			write::{MultiWriteTransaction, WriteSavepoint},
+		},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::query::QueryTransaction,
@@ -89,6 +93,16 @@ pub struct AdminTransaction {
 
 	// Track table changes for transactional flow pre-commit processing
 	pub(crate) pending_flow_changes: Vec<Change>,
+
+	/// Testing audit log. Set by the VM when in test context.
+	pub testing: Option<TestingContext>,
+}
+
+/// Opaque savepoint for per-test transaction isolation.
+pub struct Savepoint {
+	write: WriteSavepoint,
+	row_changes_len: usize,
+	flow_changes_len: usize,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -96,6 +110,24 @@ enum TransactionState {
 	Active,
 	Committed,
 	RolledBack,
+}
+
+impl AdminTransaction {
+	/// Create a savepoint capturing current transaction state.
+	pub fn savepoint(&self) -> Savepoint {
+		Savepoint {
+			write: self.cmd.as_ref().unwrap().savepoint(),
+			row_changes_len: self.row_changes.len(),
+			flow_changes_len: self.pending_flow_changes.len(),
+		}
+	}
+
+	/// Restore transaction state to a previously created savepoint.
+	pub fn restore_savepoint(&mut self, sp: Savepoint) {
+		self.cmd.as_mut().unwrap().restore_savepoint(sp.write);
+		self.row_changes.truncate(sp.row_changes_len);
+		self.pending_flow_changes.truncate(sp.flow_changes_len);
+	}
 }
 
 impl AdminTransaction {
@@ -119,6 +151,7 @@ impl AdminTransaction {
 			changes: TransactionalDefChanges::new(txn_id),
 			row_changes: Vec::new(),
 			pending_flow_changes: Vec::new(),
+			testing: None,
 		})
 	}
 
@@ -164,8 +197,10 @@ impl AdminTransaction {
 			flow_changes: take(&mut self.pending_flow_changes),
 			pending_writes: Vec::new(),
 			transaction_writes,
+			testing: self.testing.take(),
 		};
 		self.interceptors.pre_commit.execute(&mut ctx)?;
+		self.testing = ctx.testing;
 
 		if let Some(mut multi) = self.cmd.take() {
 			// Apply pending view writes produced by pre-commit interceptors

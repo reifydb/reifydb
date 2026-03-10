@@ -29,6 +29,14 @@ use tracing::instrument;
 use super::{MultiTransaction, TransactionManagerCommand, version::StandardVersionProvider};
 use crate::{delta::optimize_deltas, multi::types::TransactionValue};
 
+/// Snapshot of write transaction state for savepoint/restore.
+pub struct WriteSavepoint {
+	pub(crate) pending_writes: PendingWrites,
+	pub(crate) count: u64,
+	pub(crate) size: u64,
+	pub(crate) duplicates: Vec<Pending>,
+}
+
 pub struct MultiWriteTransaction {
 	engine: MultiTransaction,
 	pub(crate) tm: TransactionManagerCommand<StandardVersionProvider>,
@@ -42,6 +50,26 @@ impl MultiWriteTransaction {
 			engine,
 			tm,
 		})
+	}
+}
+
+impl MultiWriteTransaction {
+	/// Snapshot pending writes for later restore.
+	pub fn savepoint(&self) -> WriteSavepoint {
+		WriteSavepoint {
+			pending_writes: self.tm.pending_writes.clone(),
+			count: self.tm.count,
+			size: self.tm.size,
+			duplicates: self.tm.duplicates.clone(),
+		}
+	}
+
+	/// Restore pending writes from a savepoint.
+	pub fn restore_savepoint(&mut self, sp: WriteSavepoint) {
+		self.tm.pending_writes = sp.pending_writes;
+		self.tm.count = sp.count;
+		self.tm.size = sp.size;
+		self.tm.duplicates = sp.duplicates;
 	}
 }
 

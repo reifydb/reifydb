@@ -85,6 +85,7 @@ impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
 		// Merge per-row changes from the same origin into batched changes
 		// (matching the deferred/CDC path which batches multiple diffs per Change).
 		let mut available_changes: Vec<Change> = merge_changes_by_origin(&ctx.flow_changes, read_version);
+		let mut testing = ctx.testing.take();
 
 		for flow_id in execution_order {
 			// Filter changes relevant to this flow using existing source routing.
@@ -121,6 +122,7 @@ impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
 				state_query,
 				self.catalog.clone(),
 				interceptors,
+				testing.take(),
 			);
 
 			for change in relevant {
@@ -129,6 +131,9 @@ impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
 
 			// Collect view changes emitted by SinkView for downstream flows.
 			available_changes.extend(flow_txn.take_view_changes());
+
+			// Retrieve testing context (with accumulated view mutations) for next flow.
+			testing = flow_txn.take_testing();
 
 			// Merge pending view writes into the commit context.
 			let flow_pending = flow_txn.take_pending();
@@ -140,6 +145,7 @@ impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
 			}
 		}
 
+		ctx.testing = testing;
 		Ok(())
 	}
 }

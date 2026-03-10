@@ -2379,8 +2379,11 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		if stack.len() != 1 {
-			dbg!(&stack);
-			panic!("logical plan did not reduce to a single physical plan"); // FIXME
+			return Err(RqlError::MissingSemicolon {
+				fragment: Fragment::internal("compile_physical"),
+				count: stack.len(),
+			}
+			.into());
 		}
 
 		Ok(Some(stack.pop().unwrap()))

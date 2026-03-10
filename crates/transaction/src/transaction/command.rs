@@ -16,6 +16,7 @@ use reifydb_core::{
 		change::Change,
 		store::{MultiVersionBatch, MultiVersionValues},
 	},
+	testing::TestingContext,
 };
 use reifydb_type::Result;
 use tracing::instrument;
@@ -85,6 +86,9 @@ pub struct CommandTransaction {
 
 	// Track table changes for transactional flow pre-commit processing
 	pub(crate) pending_flow_changes: Vec<Change>,
+
+	/// Testing audit log. Set by the VM when in test context.
+	pub testing: Option<TestingContext>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -113,6 +117,7 @@ impl CommandTransaction {
 			interceptors,
 			row_changes: Vec::new(),
 			pending_flow_changes: Vec::new(),
+			testing: None,
 		})
 	}
 
@@ -158,8 +163,10 @@ impl CommandTransaction {
 			flow_changes: take(&mut self.pending_flow_changes),
 			pending_writes: Vec::new(),
 			transaction_writes,
+			testing: self.testing.take(),
 		};
 		self.interceptors.pre_commit.execute(&mut ctx)?;
+		self.testing = ctx.testing;
 
 		if let Some(mut multi) = self.cmd.take() {
 			// Apply pending view writes produced by pre-commit interceptors

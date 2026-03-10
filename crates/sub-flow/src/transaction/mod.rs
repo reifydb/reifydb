@@ -5,7 +5,7 @@ use std::mem;
 
 use pending::{Pending, PendingWrite};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{common::CommitVersion, interface::change::Change};
+use reifydb_core::{common::CommitVersion, interface::change::Change, testing::TestingContext};
 use reifydb_transaction::{
 	interceptor::{
 		WithInterceptors,
@@ -113,6 +113,7 @@ pub enum FlowTransaction {
 		state_query: MultiReadTransaction,
 		catalog: Catalog,
 		interceptors: Interceptors,
+		testing: Option<TestingContext>,
 	},
 
 	/// Inline flow processing within a committing transaction.
@@ -126,6 +127,7 @@ pub enum FlowTransaction {
 		state_query: MultiReadTransaction,
 		catalog: Catalog,
 		interceptors: Interceptors,
+		testing: Option<TestingContext>,
 	},
 }
 
@@ -152,6 +154,7 @@ impl FlowTransaction {
 			state_query,
 			catalog,
 			interceptors,
+			testing: None,
 		}
 	}
 
@@ -173,6 +176,7 @@ impl FlowTransaction {
 			state_query,
 			catalog,
 			interceptors,
+			testing: None,
 		}
 	}
 
@@ -189,6 +193,7 @@ impl FlowTransaction {
 		state_query: MultiReadTransaction,
 		catalog: Catalog,
 		interceptors: Interceptors,
+		testing: Option<TestingContext>,
 	) -> Self {
 		Self::Transactional {
 			version,
@@ -198,6 +203,7 @@ impl FlowTransaction {
 			state_query,
 			catalog,
 			interceptors,
+			testing,
 		}
 	}
 
@@ -305,6 +311,34 @@ impl FlowTransaction {
 				catalog,
 				..
 			} => catalog,
+		}
+	}
+
+	/// Get mutable access to the testing context (if active).
+	pub fn testing_mut(&mut self) -> Option<&mut TestingContext> {
+		match self {
+			Self::Deferred {
+				testing,
+				..
+			} => testing.as_mut(),
+			Self::Transactional {
+				testing,
+				..
+			} => testing.as_mut(),
+		}
+	}
+
+	/// Extract the testing context, replacing it with `None`.
+	pub fn take_testing(&mut self) -> Option<TestingContext> {
+		match self {
+			Self::Deferred {
+				testing,
+				..
+			} => testing.take(),
+			Self::Transactional {
+				testing,
+				..
+			} => testing.take(),
 		}
 	}
 }
