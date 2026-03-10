@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	internal_error,
-	testing::TestingContext,
+	testing::{MutationRecord, TestingContext},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -124,8 +124,30 @@ fn build_dispatched_events(ctx: &TestingContext, args: &[Value]) -> Result<Colum
 	Ok(Columns::new(columns))
 }
 
-fn build_handler_invocations(ctx: &TestingContext, _args: &[Value]) -> Result<Columns> {
-	let invocations = &ctx.handler_invocations;
+fn build_handler_invocations(ctx: &TestingContext, args: &[Value]) -> Result<Columns> {
+	// Optional filter by handler name (e.g., "ns::handler_name")
+	let filter: Option<(&str, &str)> = if let Some(Value::Utf8(s)) = args.first() {
+		let parts: Vec<&str> = s.splitn(2, "::").collect();
+		if parts.len() == 2 {
+			Some((parts[0], parts[1]))
+		} else {
+			None
+		}
+	} else {
+		None
+	};
+
+	let invocations: Vec<_> = ctx
+		.handler_invocations
+		.iter()
+		.filter(|inv| {
+			if let Some((ns, name)) = filter {
+				inv.namespace == ns && inv.handler == name
+			} else {
+				true
+			}
+		})
+		.collect();
 
 	if invocations.is_empty() {
 		return Ok(Columns::empty());
@@ -140,7 +162,7 @@ fn build_handler_invocations(ctx: &TestingContext, _args: &[Value]) -> Result<Co
 	let mut outcome_data = ColumnData::utf8_with_capacity(invocations.len());
 	let mut message_data = ColumnData::utf8_with_capacity(invocations.len());
 
-	for inv in invocations {
+	for inv in &invocations {
 		seq_data.push(inv.sequence);
 		ns_data.push(inv.namespace.as_str());
 		handler_data.push(inv.handler.as_str());
@@ -180,32 +202,42 @@ fn column_for_values(values: &[Value]) -> ColumnData {
 	}
 }
 
-fn build_mutations(ctx: &TestingContext, args: &[Value], _primitive_type: &str) -> Result<Columns> {
-	let key = match args.first() {
-		Some(Value::Utf8(s)) => s.as_str(),
-		_ => {
-			return Err(internal_error!(
-				"testing::*::changed() requires a string argument like 'namespace::table_name'"
-			));
+fn build_mutations(ctx: &TestingContext, args: &[Value], primitive_type: &str) -> Result<Columns> {
+	// Collect (target_label, record) pairs — either single-key or all keys for this type
+	let entries: Vec<(&str, &MutationRecord)> = if let Some(Value::Utf8(s)) = args.first() {
+		// With arg: look up prefixed key
+		let full_key = format!("{}::{}", primitive_type, s);
+		match ctx.mutations.get(&full_key) {
+			Some(records) => records.iter().map(|r| (s.as_str(), r)).collect(),
+			None => return Ok(Columns::empty()),
 		}
+	} else {
+		// Without arg: iterate all keys starting with "{primitive_type}::"
+		let prefix = format!("{}::", primitive_type);
+		let mut all: Vec<(&str, &MutationRecord)> = Vec::new();
+		for (key, records) in &ctx.mutations {
+			if let Some(target) = key.strip_prefix(&prefix) {
+				for rec in records {
+					all.push((target, rec));
+				}
+			}
+		}
+		all.sort_by_key(|(_, r)| r.sequence);
+		all
 	};
 
-	let records = match ctx.mutations.get(key) {
-		Some(records) => records,
-		None => return Ok(Columns::empty()),
-	};
-
-	if records.is_empty() {
+	if entries.is_empty() {
 		return Ok(Columns::empty());
 	}
 
 	// Build metadata columns
-	let mut seq_data = ColumnData::uint8_with_capacity(records.len());
-	let mut op_data = ColumnData::utf8_with_capacity(records.len());
+	let mut seq_data = ColumnData::uint8_with_capacity(entries.len());
+	let mut op_data = ColumnData::utf8_with_capacity(entries.len());
+	let mut target_data = ColumnData::utf8_with_capacity(entries.len());
 
 	// Collect all field names from old and new columns
 	let mut field_names: Vec<String> = Vec::new();
-	for rec in records {
+	for (_, rec) in &entries {
 		for col in rec.old.iter() {
 			let name = col.name().text().to_string();
 			if !field_names.contains(&name) {
@@ -221,12 +253,13 @@ fn build_mutations(ctx: &TestingContext, args: &[Value], _primitive_type: &str) 
 	}
 
 	// Build old_/new_ columns
-	let mut old_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(records.len()); field_names.len()];
-	let mut new_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(records.len()); field_names.len()];
+	let mut old_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(entries.len()); field_names.len()];
+	let mut new_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(entries.len()); field_names.len()];
 
-	for rec in records {
+	for (target, rec) in &entries {
 		seq_data.push(rec.sequence);
 		op_data.push(rec.op.as_str());
+		target_data.push(*target);
 
 		for (i, field_name) in field_names.iter().enumerate() {
 			let old_val =
@@ -239,7 +272,8 @@ fn build_mutations(ctx: &TestingContext, args: &[Value], _primitive_type: &str) 
 		}
 	}
 
-	let mut columns = vec![Column::new("sequence", seq_data), Column::new("op", op_data)];
+	let mut columns =
+		vec![Column::new("sequence", seq_data), Column::new("op", op_data), Column::new("target", target_data)];
 
 	for (i, name) in field_names.iter().enumerate() {
 		let mut old_data = column_for_values(&old_columns[i]);

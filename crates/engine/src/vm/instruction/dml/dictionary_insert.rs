@@ -120,7 +120,7 @@ pub(crate) fn insert_dictionary<'a>(
 
 			if let Some(log) = testing.as_mut() {
 				let new = Columns::single_row([("value", coerced_value.clone())]);
-				let key = format!("{}::{}", namespace.name(), dictionary.name);
+				let key = format!("dictionaries::{}::{}", namespace.name(), dictionary.name);
 				log.record_insert(key, new);
 			}
 

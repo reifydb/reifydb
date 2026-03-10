@@ -215,7 +215,7 @@ pub(crate) fn update_table<'a>(
 						Columns::empty()
 					};
 					let new = columns_from_encoded(&table.columns, &schema, &row);
-					let key = format!("{}::{}", namespace.name(), table.name);
+					let key = format!("tables::{}::{}", namespace.name(), table.name);
 					log.record_update(key, old, new);
 				}
 

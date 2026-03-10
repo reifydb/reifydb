@@ -184,7 +184,7 @@ pub(crate) fn delete<'a>(
 			if let Some(log) = testing.as_mut() {
 				let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
 				let old = columns_from_encoded(&table.columns, &schema, &row_values);
-				let key = format!("{}::{}", namespace.name(), table.name);
+				let key = format!("tables::{}::{}", namespace.name(), table.name);
 				log.record_delete(key, old);
 			}
 
@@ -229,7 +229,7 @@ pub(crate) fn delete<'a>(
 			if let Some(log) = testing.as_mut() {
 				let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
 				let old = columns_from_encoded(&table.columns, &schema, &multi.values);
-				let key = format!("{}::{}", namespace.name(), table.name);
+				let key = format!("tables::{}::{}", namespace.name(), table.name);
 				log.record_delete(key, old);
 			}
 

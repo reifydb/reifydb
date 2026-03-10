@@ -435,7 +435,7 @@ pub(crate) fn update_series<'a>(
 						.filter(|c| c.name().text() != "timestamp" && c.name().text() != "tag")
 						.map(|c| (c.name().text(), c.data().get_value(row_idx)))),
 				);
-				let key = format!("{}::{}", namespace.name(), series_def.name);
+				let key = format!("series::{}::{}", namespace.name(), series_def.name);
 				log.record_update(key, old, new);
 			}
 

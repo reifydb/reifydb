@@ -159,8 +159,11 @@ pub(crate) fn delete_ringbuffer<'a>(
 								&schema,
 								&old_row_data.values,
 							);
-							let mutation_key =
-								format!("{}::{}", namespace.name(), ringbuffer.name);
+							let mutation_key = format!(
+								"ringbuffers::{}::{}",
+								namespace.name(),
+								ringbuffer.name
+							);
 							log.record_delete(mutation_key, old);
 						}
 					}
@@ -204,7 +207,11 @@ pub(crate) fn delete_ringbuffer<'a>(
 							&schema,
 							&old_row_data.values,
 						);
-						let mutation_key = format!("{}::{}", namespace.name(), ringbuffer.name);
+						let mutation_key = format!(
+							"ringbuffers::{}::{}",
+							namespace.name(),
+							ringbuffer.name
+						);
 						log.record_delete(mutation_key, old);
 					}
 				}

@@ -295,7 +295,8 @@ pub(crate) fn delete_series<'a>(
 								})
 								.map(|c| (c.name().text(), c.data().get_value(i)))),
 						);
-						let mutation_key = format!("{}::{}", namespace.name(), series_def.name);
+						let mutation_key =
+							format!("series::{}::{}", namespace.name(), series_def.name);
 						log.record_delete(mutation_key, old);
 					}
 
@@ -369,7 +370,7 @@ pub(crate) fn delete_series<'a>(
 							}),
 						),
 					);
-					let mutation_key = format!("{}::{}", namespace.name(), series_def.name);
+					let mutation_key = format!("series::{}::{}", namespace.name(), series_def.name);
 					log.record_delete(mutation_key, old);
 				}
 			}

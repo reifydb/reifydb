@@ -213,7 +213,7 @@ pub(crate) fn insert_table<'a>(
 
 		if let Some(log) = testing.as_mut() {
 			let new = columns_from_encoded(&table.columns, &schema, row);
-			let key = format!("{}::{}", namespace.name(), table.name);
+			let key = format!("tables::{}::{}", namespace.name(), table.name);
 			log.record_insert(key, new);
 		}
 

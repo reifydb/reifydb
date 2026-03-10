@@ -195,7 +195,7 @@ pub(crate) fn insert_series<'a>(
 						.enumerate()
 						.map(|(i, col)| (col.name.as_str(), data_values[i].clone()))),
 				);
-				let key = format!("{}::{}", namespace.name(), series_def.name);
+				let key = format!("series::{}::{}", namespace.name(), series_def.name);
 				log.record_insert(key, new);
 			}
 

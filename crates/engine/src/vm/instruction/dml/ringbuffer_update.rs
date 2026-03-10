@@ -217,7 +217,7 @@ pub(crate) fn update_ringbuffer<'a>(
 						Columns::empty()
 					};
 					let new = columns_from_encoded(&ringbuffer.columns, &schema, &row);
-					let key = format!("{}::{}", namespace.name(), ringbuffer.name);
+					let key = format!("ringbuffers::{}::{}", namespace.name(), ringbuffer.name);
 					log.record_update(key, old, new);
 				}
 

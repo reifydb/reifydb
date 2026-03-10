@@ -68,7 +68,7 @@ impl Operator for SinkViewOperator {
 								(col.name().text(), col.data().get_value(row_idx))
 							}));
 							let mutation_key = format!(
-								"{}::{}",
+								"views::{}::{}",
 								self.view.namespace().name(),
 								self.view.name()
 							);
@@ -139,7 +139,7 @@ impl Operator for SinkViewOperator {
 								(col.name().text(), col.data().get_value(row_idx))
 							}));
 							let mutation_key = format!(
-								"{}::{}",
+								"views::{}::{}",
 								self.view.namespace().name(),
 								self.view.name()
 							);
@@ -178,7 +178,7 @@ impl Operator for SinkViewOperator {
 								(col.name().text(), col.data().get_value(row_idx))
 							}));
 							let mutation_key = format!(
-								"{}::{}",
+								"views::{}::{}",
 								self.view.namespace().name(),
 								self.view.name()
 							);

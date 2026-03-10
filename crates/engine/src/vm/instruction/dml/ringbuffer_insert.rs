@@ -183,7 +183,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 
 			if let Some(log) = testing.as_mut() {
 				let new = columns_from_encoded(&ringbuffer.columns, &schema, &row);
-				let key = format!("{}::{}", namespace.name(), ringbuffer.name);
+				let key = format!("ringbuffers::{}::{}", namespace.name(), ringbuffer.name);
 				log.record_insert(key, new);
 			}
 
