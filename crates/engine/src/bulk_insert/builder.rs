@@ -408,9 +408,39 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 /// Parse a qualified name like "namespace::table" into (namespace, name).
 /// If no namespace is provided, uses "default".
 fn parse_qualified_name(qualified_name: &str) -> (String, String) {
-	if let Some((ns, name)) = qualified_name.split_once("::") {
+	if let Some((ns, name)) = qualified_name.rsplit_once("::") {
 		(ns.to_string(), name.to_string())
 	} else {
 		("default".to_string(), qualified_name.to_string())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn parse_qualified_name_simple() {
+		assert_eq!(parse_qualified_name("table"), ("default".to_string(), "table".to_string()));
+	}
+
+	#[test]
+	fn parse_qualified_name_single_namespace() {
+		assert_eq!(parse_qualified_name("ns::table"), ("ns".to_string(), "table".to_string()));
+	}
+
+	#[test]
+	fn parse_qualified_name_nested_namespace() {
+		assert_eq!(parse_qualified_name("a::b::table"), ("a::b".to_string(), "table".to_string()));
+	}
+
+	#[test]
+	fn parse_qualified_name_deeply_nested_namespace() {
+		assert_eq!(parse_qualified_name("a::b::c::table"), ("a::b::c".to_string(), "table".to_string()));
+	}
+
+	#[test]
+	fn parse_qualified_name_empty_string() {
+		assert_eq!(parse_qualified_name(""), ("default".to_string(), "".to_string()));
 	}
 }
