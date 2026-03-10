@@ -1,4 +1,8 @@
-use std::{fs, process::exit, time::Duration};
+#[cfg(target_os = "macos")]
+use std::ptr;
+#[cfg(target_os = "linux")]
+use std::{fs, io};
+use std::{mem, process::exit, time::Duration};
 
 use reifydb_sub_task::{
 	context::TaskContext,
@@ -30,96 +34,97 @@ impl MemoryWatchdog {
 		}
 	}
 
+	/// Get current process memory usage (RSS) in bytes on Linux.
+	///
+	/// Reads RSS (field 1) from `/proc/self/statm` and converts pages to bytes.
 	#[cfg(target_os = "linux")]
 	pub fn get_current_memory() -> Result<u64, String> {
-		// Read /proc/self/stat for the current process
-		let stat = fs::read_to_string("/proc/self/stat")
-			.map_err(|e| format!("Failed to read /proc/self/stat: {}", e))?;
-
-		// Find the last ')' to skip the comm field which can contain spaces
-		let comm_end = stat.rfind(')').ok_or("Invalid /proc/self/stat format: no closing parenthesis")?;
-
-		// Split the rest of the fields after the comm field
-		let fields_after_comm: Vec<&str> = stat[comm_end + 1..].split_whitespace().collect();
-
-		let rss_index_after_comm = 21;
-		if fields_after_comm.len() <= rss_index_after_comm {
-			return Err(format!(
-				"Invalid /proc/self/stat format: expected at least {} fields, got {}",
-				rss_index_after_comm + 1,
-				fields_after_comm.len()
-			));
-		}
-
-		let rss_pages: u64 = fields_after_comm[rss_index_after_comm]
+		let statm = fs::read_to_string("/proc/self/statm")
+			.map_err(|e| format!("Failed to read /proc/self/statm: {}", e))?;
+		let rss_pages: u64 = statm
+			.split_whitespace()
+			.nth(1)
+			.ok_or("Invalid /proc/self/statm format")?
 			.parse()
 			.map_err(|e| format!("Failed to parse RSS: {}", e))?;
-
-		// Get page size (typically 4096 bytes)
 		let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
-		let rss_bytes = rss_pages * page_size;
+		Ok(rss_pages * page_size)
+	}
 
-		Ok(rss_bytes)
+	/// Get current process memory usage (RSS) in bytes on macOS.
+	///
+	/// Uses `task_info()` with `MACH_TASK_BASIC_INFO` to get `resident_size`.
+	#[cfg(target_os = "macos")]
+	pub fn get_current_memory() -> Result<u64, String> {
+		unsafe {
+			let mut info: libc::mach_task_basic_info = mem::zeroed();
+			let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
+			let kr = libc::task_info(
+				libc::mach_task_self(),
+				libc::MACH_TASK_BASIC_INFO,
+				&mut info as *mut _ as *mut i32,
+				&mut count,
+			);
+			if kr != libc::KERN_SUCCESS {
+				return Err(format!("task_info failed with kern_return {}", kr));
+			}
+			Ok(info.resident_size)
+		}
 	}
 
 	/// Get current process memory usage (RSS) in bytes.
 	///
-	/// This is not supported on non-Linux platforms.
-	#[cfg(not(target_os = "linux"))]
+	/// This is not supported on non-Linux/macOS platforms.
+	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 	pub fn get_current_memory() -> Result<u64, String> {
-		panic!("Memory monitoring is only supported on Linux".to_string())
+		panic!("Memory monitoring is only supported on Linux and macOS".to_string())
 	}
 
-	/// Get maximum available system memory in bytes.
+	/// Get maximum available system memory in bytes on Linux.
 	///
-	/// This is Linux-only and reads from `/proc/meminfo`.
+	/// Uses `libc::sysinfo()` to get total physical memory.
 	#[cfg(target_os = "linux")]
 	pub fn get_max_available_memory() -> Result<u64, String> {
-		// cgroup v2
-		if let Ok(s) = fs::read_to_string("/sys/fs/cgroup/memory.max") {
-			let s = s.trim();
-			if s != "max" {
-				return s.parse::<u64>().map_err(|e| format!("Failed to parse memory.max: {}", e));
+		unsafe {
+			let mut info: libc::sysinfo = mem::zeroed();
+			let ret = libc::sysinfo(&mut info);
+			if ret != 0 {
+				return Err(format!("sysinfo() failed: {}", io::Error::last_os_error()));
 			}
+			Ok(info.totalram as u64 * info.mem_unit as u64)
 		}
+	}
 
-		// cgroup v1 fallback
-		if let Ok(s) = fs::read_to_string("/sys/fs/cgroup/memory/memory.limit_in_bytes") {
-			let bytes =
-				s.trim().parse::<u64>()
-					.map_err(|e| format!("Failed to parse memory.limit_in_bytes: {}", e))?;
-
-			// Docker sometimes sets this to a huge number if unlimited
-			if bytes < (1u64 << 60) {
-				return Ok(bytes);
+	/// Get maximum available system memory in bytes on macOS.
+	///
+	/// Uses `sysctl()` with `CTL_HW` + `HW_MEMSIZE` to get total physical memory.
+	#[cfg(target_os = "macos")]
+	pub fn get_max_available_memory() -> Result<u64, String> {
+		unsafe {
+			let mut mib = [libc::CTL_HW, libc::HW_MEMSIZE];
+			let mut memsize: u64 = 0;
+			let mut len = mem::size_of::<u64>();
+			let ret = libc::sysctl(
+				mib.as_mut_ptr(),
+				2,
+				&mut memsize as *mut _ as *mut libc::c_void,
+				&mut len,
+				ptr::null_mut(),
+				0,
+			);
+			if ret != 0 {
+				return Err(format!("sysctl HW_MEMSIZE failed with errno {}", *libc::__error()));
 			}
+			Ok(memsize)
 		}
-
-		// Read /proc/meminfo for MemTotal
-		let meminfo = fs::read_to_string("/proc/meminfo")
-			.map_err(|e| format!("Failed to read /proc/meminfo: {}", e))?;
-
-		for line in meminfo.lines() {
-			if line.starts_with("MemTotal:") {
-				let parts: Vec<&str> = line.split_whitespace().collect();
-				if parts.len() >= 2 {
-					let kb: u64 = parts[1]
-						.parse()
-						.map_err(|e| format!("Failed to parse MemTotal: {}", e))?;
-					return Ok(kb * 1024); // Convert KB to bytes
-				}
-			}
-		}
-
-		Err("MemTotal not found in /proc/meminfo".to_string())
 	}
 
 	/// Get maximum available system memory in bytes.
 	///
-	/// This is not supported on non-Linux platforms.
-	#[cfg(not(target_os = "linux"))]
+	/// This is not supported on non-Linux/macOS platforms.
+	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 	pub fn get_max_available_memory() -> Result<u64, String> {
-		panic!("Memory monitoring is only supported on Linux".to_string())
+		panic!("Memory monitoring is only supported on Linux and macOS".to_string())
 	}
 
 	fn check_and_kill_if_exceeded(&self, stats: &MemoryStats) {
@@ -139,7 +144,7 @@ impl MemoryWatchdog {
 	}
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn create_memory_watchdog_task() -> ScheduledTask {
 	ScheduledTask::builder("memory-watchdog")
 		.schedule(Schedule::FixedInterval(MEMORY_CHECK_INTERVAL))
@@ -178,7 +183,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	#[cfg(target_os = "linux")]
+	#[cfg(any(target_os = "linux", target_os = "macos"))]
 	fn test_get_current_memory() {
 		let current = MemoryWatchdog::get_current_memory();
 		assert!(current.is_ok(), "Failed to get current memory: {:?}", current);
@@ -186,7 +191,7 @@ mod tests {
 	}
 
 	#[test]
-	#[cfg(target_os = "linux")]
+	#[cfg(any(target_os = "linux", target_os = "macos"))]
 	fn test_get_max_available_memory() {
 		let total = MemoryWatchdog::get_max_available_memory();
 		assert!(total.is_ok(), "Failed to get max memory: {:?}", total);

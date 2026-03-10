@@ -9,7 +9,18 @@ use uuid::Uuid;
 pub enum DbPath {
 	File(PathBuf),
 	Tmpfs(PathBuf),  // tmpfs-backed file for WAL support + cleanup
-	Memory(PathBuf), // /dev/shm-backed file for RAM-only storage with WAL support + cleanup
+	Memory(PathBuf), // RAM-backed file for storage with WAL support + cleanup
+}
+
+fn memory_dir() -> PathBuf {
+	#[cfg(target_os = "linux")]
+	{
+		PathBuf::from("/dev/shm")
+	}
+	#[cfg(not(target_os = "linux"))]
+	{
+		std::env::temp_dir()
+	}
 }
 
 /// Configuration for SQLite storage backend
@@ -103,14 +114,14 @@ impl SqliteConfig {
 
 	/// Create an in-memory configuration for production use
 	/// - RAM-only database with WAL mode for concurrent access
-	/// - Uses /dev/shm for guaranteed RAM-backed storage
+	/// - Uses /dev/shm on Linux, temp dir on other platforms
 	/// - WAL journal mode for concurrent readers + single writer
 	/// - NORMAL synchronous mode (safe for RAM storage)
 	/// - MEMORY temp store
 	/// - Automatic cleanup on drop
 	pub fn in_memory() -> Self {
 		Self {
-			path: DbPath::Memory(PathBuf::from(format!("/dev/shm/reifydb_mem_{}.db", Uuid::new_v4()))),
+			path: DbPath::Memory(memory_dir().join(format!("reifydb_mem_{}.db", Uuid::new_v4()))),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
@@ -124,14 +135,14 @@ impl SqliteConfig {
 
 	/// Create a test configuration optimized for testing with in-memory database
 	/// - RAM-only database with WAL mode for concurrent access
-	/// - Uses /dev/shm for guaranteed RAM-backed storage
+	/// - Uses /dev/shm on Linux, temp dir on other platforms
 	/// - WAL journal mode for concurrent readers + single writer
 	/// - FULL synchronous mode for test safety
 	/// - MEMORY temp store for fastest temp operations
 	/// - Automatic cleanup on drop
 	pub fn test() -> Self {
 		Self {
-			path: DbPath::Memory(PathBuf::from(format!("/dev/shm/reifydb_test_{}.db", Uuid::new_v4()))),
+			path: DbPath::Memory(memory_dir().join(format!("reifydb_test_{}.db", Uuid::new_v4()))),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
